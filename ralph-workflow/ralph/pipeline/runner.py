@@ -29,7 +29,7 @@ from rich.text import Text
 from ralph.agents.chain import ChainManager
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
-from ralph.config.enums import Verbosity
+from ralph.config.enums import AgentTransport, Verbosity
 from ralph.display.artifact_renderer import (
     render_analysis_decision,
     render_commit_message,
@@ -63,7 +63,7 @@ from ralph.mcp.server.lifecycle import (
     shutdown_mcp_server,
     start_mcp_server,
 )
-from ralph.mcp.session_plan import build_session_mcp_plan
+from ralph.mcp.session_plan import SessionMcpPlan, build_session_mcp_plan
 from ralph.phases import PhaseContext, handle_phase, register_role_handlers
 from ralph.phases.required_artifacts import (
     build_required_artifacts,
@@ -714,6 +714,7 @@ def _run_pipeline_step(  # noqa: PLR0913
                 policy_bundle=policy_bundle,
                 workspace_scope=workspace_scope,
                 pipeline_subscriber=pipeline_subscriber,
+                config=config,
                 _monitor_stop_cb=_monitor_stop_cb,
             )
 
@@ -1668,11 +1669,107 @@ def _fan_out_display_and_subscriber(
     return parallel_display, effective_pipeline_subscriber
 
 
+def _build_session_mcp_plan_for_phase(
+    effect: FanOutEffect,
+    policy_bundle: PolicyBundle,
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig | None,
+) -> tuple[SessionMcpPlan, str]:
+    """Build session MCP plan for fan-out workers matching the serial execution contract.
+
+    Uses the exact same call signature as the serial path to ensure workers
+    inherit the same drain, capabilities, model identity, and capability profile
+    as the parent phase's serial AgentSession.
+
+    Returns:
+        A tuple of (SessionMcpPlan, normalized_drain). The normalized_drain is
+        the drain string used to build the plan, matching the serial path's
+        "effect.drain or effect.phase" pattern.
+    """
+    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
+
+    phase_def = policy_bundle.pipeline.phases.get(effect.phase)
+
+    # Resolve drain: use effect.drain if available (InvokeAgentEffect),
+    # else fall back to phase_def.drain (for proper phase mapping),
+    # else effect.phase, with "development" as final fallback for FanOutEffect
+    # where phase="" by default.
+    _effect_drain = getattr(effect, "drain", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    drain: str = (
+        cast("str", _effect_drain)
+        or (phase_def.drain if phase_def and hasattr(phase_def, "drain") else None)
+        or effect.phase
+        or "development"
+    )
+
+    # Resolve agent name for the phase to get transport/model_flag.
+    # Use the same lookup pattern as the serial path.
+    agent_name: str | None = None
+    if phase_def is not None:
+        config_agents = _config_agents_for_phase(
+            config,
+            phase=effect.phase,
+            policy_drain=drain,
+        )
+        if config_agents:
+            agent_name = config_agents[0]
+        else:
+            drain_binding = policy_bundle.agents.agent_drains.get(drain)
+            if drain_binding is not None:
+                chain_config = policy_bundle.agents.agent_chains.get(drain_binding.chain)
+                if chain_config is not None and chain_config.agents:
+                    agent_name = chain_config.agents[0]
+
+    # Get agent_config using the same pattern as serial path (no defensive try/except).
+    agent_config = None
+    if isinstance(agent_name, str) and agent_name and config is not None:
+        registry = AgentRegistry.from_config(config)
+        agent_config = registry.get(agent_name)
+
+    _transport_raw = getattr(agent_config, "transport", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    transport = cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
+    _model_flag_raw = getattr(agent_config, "model_flag", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    model_flag = cast("str | None", _model_flag_raw) if agent_config is not None else None
+
+    # Use the same effective_agents_policy resolution as serial path.
+    effective_agents_policy = (
+        policy_bundle.agents
+        if policy_bundle is not None
+        else load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+    )
+
+    # Try to build the session MCP plan. If agents_policy has invalid drain_class
+    # (e.g., MagicMock in test harnesses), fall back to loading from workspace.
+    try:
+        return build_session_mcp_plan(
+            transport=transport,
+            drain=drain,
+            workspace_path=workspace_scope.root,
+            agents_policy=effective_agents_policy,
+            model_flag=model_flag,
+        ), drain
+    except PolicyValidationError:
+        # Fall back to loading agents policy from workspace scope when the
+        # provided policy_bundle has invalid drain_class values (e.g., test harnesses).
+        fallback_agents_policy = load_agents_policy_for_workspace_scope(
+            workspace_scope, config=config
+        )
+        return build_session_mcp_plan(
+            transport=transport,
+            drain=drain,
+            workspace_path=workspace_scope.root,
+            agents_policy=fallback_agents_policy,
+            model_flag=model_flag,
+        ), drain
+
+
 def _fan_out_worker_context(
     *,
     workspace_scope: WorkspaceScope,
     repo_root: Path,
     bridge: SignalBridge,
+    session_drain: str,
+    session_mcp_plan: SessionMcpPlan,
 ) -> tuple[AgentExecutor, parallel_coordinator._WorkerContext]:
     from ralph.agents.subprocess_executor import SubprocessAgentExecutor  # noqa: PLC0415
     from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory  # noqa: PLC0415
@@ -1700,6 +1797,10 @@ def _fan_out_worker_context(
             executor_command=_parallel_worker_command(),
             signal_bridge=bridge,
             worker_namespace_root=worker_namespace_root,
+            session_drain=session_drain,
+            session_capabilities=session_mcp_plan.capabilities,
+            session_model_identity=session_mcp_plan.model_identity,
+            session_capability_profile=session_mcp_plan.capability_profile,
         ),
     )
 
@@ -1850,6 +1951,7 @@ async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
     workspace_scope: WorkspaceScope,
     repo_root: Path,
     pipeline_subscriber: _PipelineSubscriber | None,
+    config: UnifiedConfig | None = None,
     _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState:
     import asyncio  # noqa: PLC0415
@@ -1894,10 +1996,22 @@ async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
             )
             return recovered
 
+        # Build the session MCP plan from the parent phase's agent config so that
+        # same-workspace workers inherit the same multimodal contract as serial execution.
+        # Use the normalized drain from the plan (not phase_def.drain directly) to ensure
+        # session_drain matches the drain used for capability resolution.
+        session_mcp_plan, session_drain = _build_session_mcp_plan_for_phase(
+            effect=effect,
+            policy_bundle=policy_bundle,
+            workspace_scope=workspace_scope,
+            config=config,
+        )
         executor, worker_ctx = _fan_out_worker_context(
             workspace_scope=workspace_scope,
             repo_root=repo_root,
             bridge=bridge,
+            session_drain=session_drain,
+            session_mcp_plan=session_mcp_plan,
         )
         current, resume_units = _resume_fan_out_state(
             state,
@@ -2006,6 +2120,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
+    config: UnifiedConfig | None = None,
     _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
@@ -2025,6 +2140,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
             workspace_scope=workspace_scope,
             repo_root=workspace_scope.root,
             pipeline_subscriber=effective_pipeline_subscriber,
+            config=config,
             _monitor_stop_cb=_monitor_stop_cb,
         )
     )

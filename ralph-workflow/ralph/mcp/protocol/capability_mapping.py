@@ -395,12 +395,11 @@ def drain_class_for_drain_name(
         if drain_cfg is not None and drain_cfg.drain_class is not None:
             try:
                 return DrainClass(drain_cfg.drain_class)
-            except ValueError as exc:
-                known = ", ".join(c.value for c in DrainClass)
+            except ValueError as err:
                 raise PolicyValidationError(
-                    f"Drain '{name}' has drain_class '{drain_cfg.drain_class}' "
-                    f"which is not a valid DrainClass (known: {known})"
-                ) from exc
+                    f"Drain '{name}' has invalid drain_class '{drain_cfg.drain_class}'; "
+                    f"expected one of: planning, development, analysis, review, fix, commit."
+                ) from err
     raise PolicyValidationError(
         f"Drain '{name}' has no drain_class declared in agents.toml; "
         f"add drain_class = '<class>' under [agent_drains.{name}] "

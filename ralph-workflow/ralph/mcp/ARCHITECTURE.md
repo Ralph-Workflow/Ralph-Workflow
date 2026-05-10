@@ -244,6 +244,16 @@ This policy:
 - Makes multimodal content retrievable rather than discarded
 - Maintains a clear boundary between supported delivery modes and genuinely unsupported block shapes
 
+### Same-Workspace Parallel Worker Session Contract
+
+Same-workspace parallel workers inherit the parent phase's `SessionMcpPlan` contract verbatim. The session contract includes the drain, capabilities, resolved `MultimodalModelIdentity`, and `ResolvedCapabilityProfile`. This ensures that parallel workers expose the same multimodal capability surface as serial execution:
+
+- `read_media` and `read_image` are available by default when the parent phase has `media.read` capability
+- Delivery verdicts (inline image, typed block, resource reference replay, explicit unsupported) are provider-specific and consistent with the serial path
+- Worker-produced media artifacts are written under the worker's namespace with the phase-scoped handoff path, not a standalone fallback
+
+The session contract is propagated via `SameWorkspaceContext` fields (`session_drain`, `session_capabilities`, `session_model_identity`, `session_capability_profile`) from the runner's `build_session_mcp_plan` call into `_fan_out_worker_context`, then into `build_worker_session` where it is used to construct the worker `AgentSession`.
+
 ## Canonical Import Paths
 
 The following table lists the canonical import path for each public symbol:

@@ -55,6 +55,16 @@ Commit drains are strictly read-only: they receive only base read capabilities p
 
 `ralph.mcp.session_plan` constructs the capability grant set for a given drain and policy configuration. It resolves which capabilities the agent receives, validates that required capabilities are present, and produces the `SessionPlan` object consumed by the server factory.
 
+### Same-workspace parallel worker session contract
+
+Same-workspace parallel workers inherit the parent phase's session contract verbatim. The contract includes the drain, capabilities, resolved `MultimodalModelIdentity`, and `ResolvedCapabilityProfile`. This ensures that parallel workers expose the same multimodal capability surface as serial execution:
+
+- `read_media` and `read_image` are available by default when the parent phase has `media.read` capability
+- Delivery verdicts (inline image, typed block, resource reference replay, explicit unsupported) are provider-specific and consistent with the serial path
+- Worker-produced media artifacts are written under the worker's namespace with the phase-scoped handoff path, not a standalone fallback
+
+The session contract is propagated via `SameWorkspaceContext` fields (`session_drain`, `session_capabilities`, `session_model_identity`, `session_capability_profile`) from the runner's `build_session_mcp_plan` call into `_fan_out_worker_context`, then into `build_worker_session` where it constructs the worker `AgentSession`.
+
 ## Server lifecycle
 
 The MCP server lifecycle is managed by three modules:

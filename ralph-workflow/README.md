@@ -426,7 +426,9 @@ Ralph Workflow's Claude parser accepts both bare (`claude: ...`) and model-quali
 
 ## Parallel mode
 
-When the planning phase produces two or more work units, Ralph Workflow runs them as parallel workers in the **same git checkout** (same-workspace mode v1). Each worker is restricted to its declared `allowed_directories` and writes its artifacts under `.agent/workers/<unit_id>/`. Workers share the checkout and write to it directly, without separate git branches; coordination uses edit-area fencing and artifact namespaces only. For the full guide including configuration, work unit structure, and success criteria, see [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md).
+When the planning phase produces two or more work units, Ralph Workflow runs them as parallel workers in the **same git checkout** (same-workspace mode v1). Each worker is restricted to its declared `allowed_directories` and writes its artifacts under `.agent/workers/<unit_id>/`. Workers share the checkout and write to it directly, without separate git branches; coordination uses edit-area fencing and artifact namespaces only.
+
+**Multimodal session contract** — Same-workspace workers inherit the parent phase's `SessionMcpPlan` contract verbatim, including the resolved capability profile, model identity, and drain. This means parallel workers expose the same multimodal capability surface as serial execution: `read_media` and `read_image` are available by default when the parent phase has `media.read` capability, and delivery verdicts (inline image, typed block, resource reference replay, explicit unsupported) are provider-specific and consistent with the serial path. Worker-produced media artifacts are written under the worker's namespace with the phase-scoped handoff path, not a standalone fallback. For the full guide including configuration, work unit structure, and success criteria, see [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md).
 
 Quick configuration (in `.agent/pipeline.toml`):
 

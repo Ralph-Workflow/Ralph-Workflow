@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess as _subprocess
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -12,6 +13,11 @@ import pytest
 
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.mcp.artifacts.store import list_artifacts
+from ralph.mcp.multimodal.capabilities import (
+    MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
+    resolve_capability_profile,
+)
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.parallel import coordinator
@@ -45,21 +51,37 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
+@dataclass
+class _SessionContract:
+    """Bundled session contract parameters to reduce argument count."""
+
+    drain: str = ""
+    capabilities: frozenset[str] = frozenset()
+    model_identity: MultimodalModelIdentity | None = None
+    capability_profile: ResolvedCapabilityProfile | None = None
+
+
 def _make_same_workspace_context(
     tmp_path: Path,
     executor_command: tuple[str, ...] | None = None,
+    session_contract: _SessionContract | None = None,
 ) -> SameWorkspaceContext:
     mock_factory = MagicMock()
     mock_handle = MagicMock()
     mock_factory.build.return_value = mock_handle
     mock_handle.endpoint = "inproc://test"
     mock_handle.shutdown = MagicMock()
+    contract = session_contract or _SessionContract()
     return SameWorkspaceContext(
         repo_root=tmp_path,
         mcp_factory=mock_factory,
         executor_command=executor_command,
         signal_bridge=None,
         worker_namespace_root=tmp_path / ".agent" / "workers",
+        session_drain=contract.drain,
+        session_capabilities=contract.capabilities,
+        session_model_identity=contract.model_identity,
+        session_capability_profile=contract.capability_profile,
     )
 
 
@@ -188,6 +210,46 @@ class TestPrepareExecutorSameWorkspace:
         assert returned_executor is mock_executor
         assert bundle is None
         assert worker_namespace is None
+
+    def test_inprocess_forwards_session_contract_to_worker_session(self, tmp_path: Path) -> None:
+        """In-process _prepare_executor forwards session contract fields to build_worker_session."""
+        unit = _make_unit("unit-a")
+        mock_executor = MagicMock()
+        identity = MultimodalModelIdentity(provider="claude", model_id="claude-sonnet-4")
+        profile = resolve_capability_profile(identity)
+        capabilities = frozenset({"media.read", "workspace.edit"})
+        contract = _SessionContract(
+            drain="development",
+            capabilities=capabilities,
+            model_identity=identity,
+            capability_profile=profile,
+        )
+        ctx = _make_same_workspace_context(
+            tmp_path,
+            executor_command=None,
+            session_contract=contract,
+        )
+
+        _executor, bundle, _worker_namespace = _prepare_executor(unit, mock_executor, ctx)
+
+        assert bundle is not None
+        assert bundle.session.drain == "development"
+        assert bundle.session.capabilities == capabilities
+        assert bundle.session.model_identity == identity
+        assert bundle.session.stored_capability_profile == profile
+
+    def test_inprocess_worker_session_has_unknown_identity_when_context_has_none(
+        self, tmp_path: Path
+    ) -> None:
+        """When session_model_identity is None, worker session uses UNKNOWN_IDENTITY."""
+        unit = _make_unit("unit-a")
+        mock_executor = MagicMock()
+        ctx = _make_same_workspace_context(tmp_path, executor_command=None)
+
+        _executor, bundle, _worker_namespace = _prepare_executor(unit, mock_executor, ctx)
+
+        assert bundle is not None
+        assert bundle.session.model_identity.provider == "unknown"
 
 
 class TestWorkerArtifactIsolation:

@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, ResolvedCapabilityProfile
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
+    resolve_capability_profile,
+)
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.parallel.worker_session import build_worker_session
 from ralph.pipeline.work_units import WorkUnit
@@ -120,6 +125,66 @@ def test_worker_session_has_unknown_capability_profile(tmp_path: Path) -> None:
     # Capability profile must resolve to unknown-provider defaults, not a
     # known-provider profile, because the worker session carries no identity.
     bundle = build_worker_session(_make_unit(), _make_factory(), _make_scope(tmp_path))
+    profile = bundle.session.capability_profile
+    assert isinstance(profile, ResolvedCapabilityProfile)
+    assert not profile.identity.is_known()
+
+
+def test_worker_session_inherits_session_contract_params(tmp_path: Path) -> None:
+    """Explicit session contract parameters must land verbatim on the worker session."""
+    unit = _make_unit("task-contract")
+    scope = _make_scope(tmp_path)
+    identity = MultimodalModelIdentity(provider="claude", model_id="claude-sonnet-4-20250514")
+    profile = resolve_capability_profile(identity)
+    capabilities = frozenset({"media.read", "workspace.read", "workspace.edit"})
+    artifact_dir = tmp_path / ".agent" / "workers" / "task-contract" / "artifacts"
+    artifact_dir.mkdir(parents=True)
+
+    bundle = build_worker_session(
+        unit,
+        _make_factory(),
+        scope,
+        worker_artifact_dir=artifact_dir,
+        session_drain="development",
+        session_capabilities=capabilities,
+        session_model_identity=identity,
+        session_capability_profile=profile,
+    )
+
+    assert bundle.session.drain == "development"
+    assert bundle.session.capabilities == capabilities
+    assert bundle.session.model_identity == identity
+    assert bundle.session.stored_capability_profile == profile
+
+
+def test_worker_session_drain_defaults_to_empty_without_session_contract(
+    tmp_path: Path,
+) -> None:
+    """When no session contract is provided, drain defaults to empty string."""
+    bundle = build_worker_session(_make_unit(), _make_factory(), _make_scope(tmp_path))
+    assert bundle.session.drain == ""
+
+
+def test_worker_session_capabilities_default_to_empty_without_session_contract(
+    tmp_path: Path,
+) -> None:
+    """When no session contract is provided, capabilities default to empty frozenset."""
+    bundle = build_worker_session(_make_unit(), _make_factory(), _make_scope(tmp_path))
+    assert bundle.session.capabilities == set()
+
+
+def test_worker_session_uses_unknown_identity_when_not_provided(
+    tmp_path: Path,
+) -> None:
+    """When session_model_identity is None, worker session uses UNKNOWN_IDENTITY."""
+    bundle = build_worker_session(_make_unit(), _make_factory(), _make_scope(tmp_path))
+    assert bundle.session.model_identity == UNKNOWN_IDENTITY
+
+
+def test_worker_session_uses_unknown_profile_when_not_provided(tmp_path: Path) -> None:
+    """When session_capability_profile is None, capability_profile property resolves."""
+    bundle = build_worker_session(_make_unit(), _make_factory(), _make_scope(tmp_path))
+    # capability_profile is a property that resolves from model_identity when stored is None
     profile = bundle.session.capability_profile
     assert isinstance(profile, ResolvedCapabilityProfile)
     assert not profile.identity.is_known()

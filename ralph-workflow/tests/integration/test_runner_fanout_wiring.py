@@ -41,8 +41,12 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
         "planning": plan_phase,
     }
     bundle.agents.agent_drains = {
-        "development": MagicMock(chain="developer"),
-        "planning": MagicMock(chain="planner"),
+        "development": MagicMock(
+            chain="developer", drain_class="development", capability_class=None
+        ),
+        "planning": MagicMock(
+            chain="planner", drain_class="planning", capability_class=None
+        ),
     }
     bundle.agents.agent_chains = {
         "developer": MagicMock(agents=["developer"]),
@@ -172,6 +176,12 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     assert mcp_factory_calls
     ctx = cast("Any", coordinator_calls[0]["ctx"])
     assert ctx.same_workspace is not None
+    # Verify session contract fields are properly threaded from the runner's
+    # _build_session_mcp_plan_for_phase into SameWorkspaceContext.
+    assert ctx.same_workspace.session_drain == "development"
+    assert "media.read" in ctx.same_workspace.session_capabilities
+    assert ctx.same_workspace.session_model_identity is not None
+    assert ctx.same_workspace.session_capability_profile is not None
 
 
 def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_recovery_state(

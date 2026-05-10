@@ -242,6 +242,10 @@ def _prepare_executor(
             worker_scope,
             worker_artifact_dir=worker_namespace / "artifacts",
             worker_namespace=worker_namespace,
+            session_drain=same_workspace.session_drain,
+            session_capabilities=same_workspace.session_capabilities,
+            session_model_identity=same_workspace.session_model_identity,
+            session_capability_profile=same_workspace.session_capability_profile,
         )
         return executor, bundle, worker_namespace
 
@@ -256,6 +260,10 @@ def _prepare_executor(
         worker_scope,
         worker_artifact_dir=worker_namespace / "artifacts",
         worker_namespace=worker_namespace,
+        session_drain=same_workspace.session_drain,
+        session_capabilities=same_workspace.session_capabilities,
+        session_model_identity=same_workspace.session_model_identity,
+        session_capability_profile=same_workspace.session_capability_profile,
     )
     worker_artifact_dir = worker_namespace / "artifacts"
     agent_label_scope = bundle.session.session_id

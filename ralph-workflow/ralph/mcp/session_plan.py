@@ -176,11 +176,20 @@ def _resolve_capability_cls(
     Uses capability_class from agents_policy when declared, falling back to
     drain_class. This is the single source of truth for MCP surface selection.
     """
+    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
+
     drain_class = drain_class_for_session(drain, agents_policy)
     if agents_policy is not None:
         drain_cfg = agents_policy.agent_drains.get(drain)
         if drain_cfg is not None and drain_cfg.capability_class is not None:
-            return DrainClass(drain_cfg.capability_class)
+            try:
+                return DrainClass(drain_cfg.capability_class)
+            except ValueError as err:
+                raise PolicyValidationError(
+                    f"Drain '{drain}' has invalid capability_class "
+                    f"'{drain_cfg.capability_class}'; expected one of: "
+                    f"planning, development, analysis, review, fix, commit."
+                ) from err
     return drain_class
 
 
