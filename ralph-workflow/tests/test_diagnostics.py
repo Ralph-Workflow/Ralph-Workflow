@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig
 from ralph.diagnostics import (
@@ -27,58 +29,53 @@ MULTI_AGENT_COUNT = 2
 class TestSystemInfo:
     """Tests for SystemInfo dataclass."""
 
-    def test_system_info_gather_returns_instance(self) -> None:
+    @pytest.fixture(scope="class")
+    def info(self) -> SystemInfo:
+        return SystemInfo.gather()
+
+    def test_system_info_gather_returns_instance(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() returns a SystemInfo instance."""
-        info = SystemInfo.gather()
         assert isinstance(info, SystemInfo)
 
-    def test_system_info_gather_populates_os(self) -> None:
+    def test_system_info_gather_populates_os(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() populates the os field."""
-        info = SystemInfo.gather()
         assert info.os is not None
         assert isinstance(info.os, str)
         assert info.os in {"linux", "darwin", "win32", "cygwin"}
 
-    def test_system_info_gather_populates_arch(self) -> None:
+    def test_system_info_gather_populates_arch(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() populates the arch field."""
-        info = SystemInfo.gather()
         assert info.arch is not None
         assert isinstance(info.arch, str)
 
-    def test_system_info_gather_populates_working_directory(self) -> None:
+    def test_system_info_gather_populates_working_directory(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() populates working_directory."""
-        info = SystemInfo.gather()
         assert info.working_directory is not None
         assert isinstance(info.working_directory, str)
 
-    def test_system_info_gather_populates_shell(self) -> None:
+    def test_system_info_gather_populates_shell(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() populates shell (or None)."""
-        info = SystemInfo.gather()
         # shell may be None in CI environments, but the field should exist
         assert info.shell is None or isinstance(info.shell, str)
 
-    def test_system_info_gather_populates_git_version(self) -> None:
+    def test_system_info_gather_populates_git_version(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() populates git_version."""
-        info = SystemInfo.gather()
         # git_version may be None if git is not installed
         assert info.git_version is None or isinstance(info.git_version, str)
 
-    def test_system_info_gather_populates_git_repo(self) -> None:
+    def test_system_info_gather_populates_git_repo(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() populates git_repo as a bool."""
-        info = SystemInfo.gather()
         assert isinstance(info.git_repo, bool)
 
-    def test_system_info_gather_populates_git_branch(self) -> None:
+    def test_system_info_gather_populates_git_branch(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() populates git_branch when in repo."""
-        info = SystemInfo.gather()
         # git_branch may be None if not in a git repo or git command fails
         if info.git_repo:
             # If we're in a git repo, branch should be populated (or None on detached HEAD)
             assert info.git_branch is None or isinstance(info.git_branch, str)
 
-    def test_system_info_gather_populates_uncommitted_changes(self) -> None:
+    def test_system_info_gather_populates_uncommitted_changes(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() populates uncommitted_changes."""
-        info = SystemInfo.gather()
         # uncommitted_changes may be None if not in a git repo
         if info.git_repo:
             assert isinstance(info.uncommitted_changes, int)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import signal
 import threading
 from typing import TYPE_CHECKING
@@ -91,8 +92,7 @@ def tmp_git_repo(tmp_path: Path, _git_repo_template: Path) -> Path:
     Returns:
         Path to the temporary git repository.
     """
-    cloned = Repo.clone_from(_git_repo_template.as_posix(), tmp_path)
-    cloned.close()
+    shutil.copytree(str(_git_repo_template), str(tmp_path), dirs_exist_ok=True)
     return tmp_path
 
 

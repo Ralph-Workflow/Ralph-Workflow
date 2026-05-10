@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import pathlib
 import tempfile
-import time
 from datetime import timedelta
 
 import pytest
@@ -93,14 +92,13 @@ def test_supervisor_detects_crash_and_restarts_bridge() -> None:
     bridge, initial_process = _make_bridge_with_process()
     restart_recorded: list[int] = []
 
-    with McpSupervisor(
-        bridge,
-        check_interval=timedelta(milliseconds=30),
-        on_restart=restart_recorded.append,
-    ):
-        time.sleep(0.02)
-        initial_process._poll_result = 1
-        time.sleep(0.1)  # Give supervisor time to detect and restart
+    supervisor = McpSupervisor(bridge, on_restart=restart_recorded.append)
+
+    supervisor._do_check_once()  # process alive — no restart
+    assert bridge.restart_count == 0
+
+    initial_process._poll_result = 1  # process now dead
+    supervisor._do_check_once()  # detects crash, restarts
 
     assert bridge.restart_count == 1
     assert restart_recorded == [1]
@@ -108,25 +106,26 @@ def test_supervisor_detects_crash_and_restarts_bridge() -> None:
 
 def test_supervisor_raises_mcp_error_when_budget_exhausted() -> None:
     bridge = _make_exhausted_bridge(max_restarts=0)
+    supervisor = McpSupervisor(bridge, check_interval=timedelta(milliseconds=20))
 
-    with (
-        pytest.raises(lifecycle.McpServerError) as exc_info,
-        McpSupervisor(bridge, check_interval=timedelta(milliseconds=20)),
-    ):
-        time.sleep(0.1)
+    with pytest.raises(lifecycle.McpServerError) as exc_info:
+        supervisor._do_check_once()
 
     assert exc_info.value.restart_count == 0
+    # __exit__ re-raises the stored error
+    with pytest.raises(lifecycle.McpServerError), supervisor:
+        pass
 
 
 def test_supervisor_mcp_error_propagates_even_when_agent_also_fails() -> None:
     """McpServerError from supervisor takes priority over agent invocation errors."""
     bridge = _make_exhausted_bridge(max_restarts=0)
+    supervisor = McpSupervisor(bridge, check_interval=timedelta(milliseconds=20))
 
-    with (
-        pytest.raises(lifecycle.McpServerError),
-        McpSupervisor(bridge, check_interval=timedelta(milliseconds=20)),
-    ):
-        time.sleep(0.1)
+    with pytest.raises(lifecycle.McpServerError):
+        supervisor._do_check_once()
+
+    with pytest.raises(lifecycle.McpServerError), supervisor:
         raise RuntimeError("agent failed too")
 
 
@@ -134,12 +133,11 @@ def test_supervisor_no_restart_when_process_stays_alive() -> None:
     bridge, _ = _make_bridge_with_process()
     on_restart_calls: list[int] = []
 
-    with McpSupervisor(
-        bridge,
-        check_interval=timedelta(milliseconds=20),
-        on_restart=on_restart_calls.append,
-    ):
-        time.sleep(0.08)
+    supervisor = McpSupervisor(bridge, on_restart=on_restart_calls.append)
+
+    supervisor._do_check_once()
+    supervisor._do_check_once()
+    supervisor._do_check_once()
 
     assert bridge.restart_count == 0
     assert on_restart_calls == []
@@ -158,10 +156,13 @@ def test_supervisor_mid_run_restart_preserves_endpoint() -> None:
     bridge, initial_process = _make_bridge_with_process(max_restarts=3)
     initial_endpoint = bridge.agent_endpoint_uri()
 
-    with McpSupervisor(bridge, check_interval=timedelta(milliseconds=20)):
-        time.sleep(0.01)
-        initial_process._poll_result = 1
-        time.sleep(0.08)
+    supervisor = McpSupervisor(bridge)
+
+    supervisor._do_check_once()  # process alive — no restart
+    assert bridge.restart_count == 0
+
+    initial_process._poll_result = 1  # process now dead
+    supervisor._do_check_once()  # detects crash, restarts
 
     assert bridge.restart_count == 1
     # Endpoint unchanged — agent's MCP_ENDPOINT_ENV value remains valid
@@ -181,11 +182,22 @@ def test_supervisor_default_interval_equals_two_seconds() -> None:
     assert timedelta(seconds=2) == _DEFAULT_INTERVAL
 
 
+def test_supervisor_calls_on_error_callback_when_budget_exhausted() -> None:
+    """McpSupervisor calls on_error when restart budget is exhausted."""
+    bridge = _make_exhausted_bridge(max_restarts=0)
+    error_calls: list[lifecycle.McpServerError] = []
+
+    supervisor = McpSupervisor(bridge, on_error=error_calls.append)
+
+    with pytest.raises(lifecycle.McpServerError):
+        supervisor._do_check_once()
+
+    assert len(error_calls) == 1
+    assert error_calls[0].restart_count == 0
+
+
 def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
     """McpSupervisor restarts a bridge whose process is alive but responsiveness probe fails."""
-    import pathlib  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
-
     td = pathlib.Path(tempfile.mkdtemp())
     sf = td / "session.json"
     sf.write_text("{}", encoding="utf-8")
@@ -226,14 +238,15 @@ def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
     )
     restart_recorded: list[int] = []
 
-    with McpSupervisor(
-        bridge,
-        check_interval=timedelta(milliseconds=30),
-        on_restart=restart_recorded.append,
-    ):
-        time.sleep(0.02)
-        probe_should_fail[0] = True  # process alive, probe now fails
-        time.sleep(0.12)
+    supervisor = McpSupervisor(bridge, on_restart=restart_recorded.append)
+
+    # First check: process alive, probe passes — no restart
+    supervisor._do_check_once()
+    assert bridge.restart_count == 0
+
+    # Process still alive but probe now fails — should restart
+    probe_should_fail[0] = True
+    supervisor._do_check_once()
 
     assert bridge.restart_count == 1
     assert restart_recorded == [1]

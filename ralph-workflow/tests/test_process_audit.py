@@ -52,14 +52,17 @@ def _allowed(rel_path: str) -> bool:
 
 def test_no_direct_subprocess_calls_outside_process_manager() -> None:
     """Assert no production file under ralph/ uses subprocess directly except manager.py."""
-    violations = [
-        f"{py_file.relative_to(RALPH_ROOT).as_posix()}: contains '{pattern}'"
-        for py_file in sorted(RALPH_ROOT.rglob("*.py"))
-        for rel in [py_file.relative_to(RALPH_ROOT).as_posix()]
-        if rel != "process/manager.py" and not _allowed(rel)
-        for pattern in FORBIDDEN_PATTERNS
-        if pattern in py_file.read_text(encoding="utf-8")
-    ]
+    violations: list[str] = []
+    for py_file in sorted(RALPH_ROOT.rglob("*.py")):
+        rel = py_file.relative_to(RALPH_ROOT).as_posix()
+        if rel == "process/manager.py" or _allowed(rel):
+            continue
+        content = py_file.read_text(encoding="utf-8")
+        violations.extend(
+            f"{rel}: contains '{pattern}'"
+            for pattern in FORBIDDEN_PATTERNS
+            if pattern in content
+        )
 
     assert not violations, (
         "Direct subprocess calls found outside ralph/process/manager.py:\n"
@@ -74,16 +77,19 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
     New test files must not bypass ProcessManager.
     """
     all_patterns = FORBIDDEN_PATTERNS + POSIX_FORBIDDEN
-    violations = [
-        f"{py_file.relative_to(TESTS_ROOT).as_posix()}: contains '{pattern}'"
-        for py_file in sorted(TESTS_ROOT.rglob("*.py"))
-        # Skip files that are under RALPH_ROOT (already scanned above) or allowlisted
-        if not any(py_file.is_relative_to(p) for p in [RALPH_ROOT])
-        for rel in [py_file.name]
-        if rel not in TESTS_ALLOWLIST
-        for pattern in all_patterns
-        if pattern in py_file.read_text(encoding="utf-8")
-    ]
+    violations: list[str] = []
+    for py_file in sorted(TESTS_ROOT.rglob("*.py")):
+        if py_file.is_relative_to(RALPH_ROOT):
+            continue
+        if py_file.name in TESTS_ALLOWLIST:
+            continue
+        content = py_file.read_text(encoding="utf-8")
+        rel = py_file.relative_to(TESTS_ROOT).as_posix()
+        violations.extend(
+            f"{rel}: contains '{pattern}'"
+            for pattern in all_patterns
+            if pattern in content
+        )
 
     assert not violations, (
         "Direct subprocess/POSIX calls found in tests/ outside the allowlist:\n"

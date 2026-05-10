@@ -45,15 +45,41 @@ class McpSupervisor:
         *,
         check_interval: timedelta = _DEFAULT_INTERVAL,
         on_restart: Callable[[int], None] | None = None,
+        on_error: Callable[[McpServerError], None] | None = None,
     ) -> None:
         self._bridge = bridge
         self._check_interval = check_interval
         self._on_restart = on_restart
+        self._on_error = on_error
         self._mcp_error: McpServerError | None = None
         self._done = threading.Event()
         self._thread = threading.Thread(
             target=self._run, daemon=True, name="mcp-supervisor"
         )
+
+    def _do_check_once(self) -> bool:
+        """Execute one health check. Returns True if a restart occurred.
+
+        Raises :class:`~ralph.mcp.server.lifecycle.McpServerError` if the
+        restart budget is exhausted. The error is also stored in ``_mcp_error``
+        and passed to the ``on_error`` callback before being raised.
+        """
+        try:
+            restarted = self._bridge.check_health_and_restart_if_needed()
+            if restarted and self._on_restart is not None:
+                self._on_restart(self._bridge.restart_count)
+            return restarted
+        except McpServerError as exc:
+            self._mcp_error = exc
+            if self._on_error is not None:
+                self._on_error(exc)
+            logger.error(
+                "MCP server restart budget exhausted during active agent run; "
+                "restart_count={}: {}",
+                exc.restart_count,
+                exc,
+            )
+            raise
 
     def __enter__(self) -> McpSupervisor:
         self._thread.start()
@@ -74,17 +100,8 @@ class McpSupervisor:
         interval_s = self._check_interval.total_seconds()
         while not self._done.wait(timeout=interval_s):
             try:
-                restarted = self._bridge.check_health_and_restart_if_needed()
-                if restarted and self._on_restart is not None:
-                    self._on_restart(self._bridge.restart_count)
-            except McpServerError as exc:
-                self._mcp_error = exc
-                logger.error(
-                    "MCP server restart budget exhausted during active agent run; "
-                    "restart_count={}: {}",
-                    exc.restart_count,
-                    exc,
-                )
+                self._do_check_once()
+            except McpServerError:
                 return
 
 
