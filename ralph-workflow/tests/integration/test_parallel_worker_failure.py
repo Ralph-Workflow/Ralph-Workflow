@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
+from ralph.display.parallel_display import ParallelDisplay  # noqa: TC001
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
     Event,
@@ -27,14 +29,13 @@ def _long_running_outputs() -> list[str]:
 
 def _run_fan_out(
     effect: FanOutEffect,
-    state: PipelineState,
     runs: dict[str, FakeRun],
 ) -> list[Event]:
     return asyncio.run(
         coordinator.run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=cast("ParallelDisplay", _FakeDisplay()),
         )
     )
 
@@ -64,9 +65,8 @@ def test_one_failure_cancels_all() -> None:
         "unit-C": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
     }
     effect = FanOutEffect(work_units=units, max_workers=3)
-    state = PipelineState(phase="development", work_units=units)
 
-    events = _run_fan_out(effect, state, runs)
+    events = _run_fan_out(effect, runs)
 
     failed_events = [event for event in events if isinstance(event, WorkerFailedEvent)]
     completed_events = [event for event in events if isinstance(event, WorkerCompletedEvent)]
@@ -105,7 +105,7 @@ def test_failed_state_transitions_reflect_failure() -> None:
     effect = FanOutEffect(work_units=units, max_workers=3)
     initial_state = PipelineState(phase="development", work_units=units)
 
-    events = _run_fan_out(effect, initial_state, runs)
+    events = _run_fan_out(effect, runs)
 
     reduced_state = initial_state
     for event in events:

@@ -18,37 +18,40 @@ def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
-def _base_snapshot(**kwargs: object) -> PipelineSnapshot:
-    defaults: dict[str, object] = {
-        "phase": "development",
-        "previous_phase": None,
-        "review_issues_found": False,
-        "interrupted_by_user": False,
-        "last_error": None,
-        "pr_url": None,
-        "push_count": 0,
-        "total_agent_calls": 0,
-        "total_continuations": 0,
-        "total_fallbacks": 0,
-        "total_retries": 0,
-        "workers": (),
-        "prompt_path": None,
-        "prompt_preview": (),
-        "run_id": None,
-        "created_at": datetime.now(UTC),
-    }
-    defaults.update(kwargs)
-    return PipelineSnapshot(**defaults)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+def _base_snapshot(
+    *,
+    waiting_status_line: str | None = None,
+    last_activity_line: str | None = None,
+    active_agent: str | None = None,
+) -> PipelineSnapshot:
+    return PipelineSnapshot(
+        phase="development",
+        previous_phase=None,
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=0,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path=None,
+        prompt_preview=(),
+        run_id=None,
+        created_at=datetime.now(UTC),
+        waiting_status_line=waiting_status_line,
+        last_activity_line=last_activity_line,
+        active_agent=active_agent,
+    )
 
 
 def test_waiting_progress_renders_info_level() -> None:
     """A PROGRESS waiting_status_line is emitted as INFO level with [waiting] tag."""
     renderer, buf = _make_renderer()
-    snap = _base_snapshot(
-        waiting_status_line=(
-            "Background child work still active (run=60s, cumulative=120s, ceiling=1800s)"
-        ),
-    )
+    line = "Background child work still active (run=60s, cumulative=120s, ceiling=1800s)"
+    snap = _base_snapshot(waiting_status_line=line)
     renderer.emit_snapshot(snap)
     out = buf.getvalue()
     assert "[waiting]" in out
@@ -59,12 +62,11 @@ def test_waiting_progress_renders_info_level() -> None:
 def test_waiting_suspected_frozen_renders_warn_level() -> None:
     """A SUSPECTED_FROZEN waiting_status_line is emitted as WARN level with [waiting] tag."""
     renderer, buf = _make_renderer()
-    snap = _base_snapshot(
-        waiting_status_line=(
-            "Background child work may be frozen"
-            " (cumulative=600s, ceiling=1800s, evidence=time_and_workspace_quiet)"
-        ),
+    line = (
+        "Background child work may be frozen "
+        "(cumulative=600s, ceiling=1800s, evidence=time_and_workspace_quiet)"
     )
+    snap = _base_snapshot(waiting_status_line=line)
     renderer.emit_snapshot(snap)
     out = buf.getvalue()
     assert "[waiting]" in out
@@ -77,9 +79,8 @@ def test_waiting_hard_stop_renders_error_level() -> None:
     renderer, buf = _make_renderer()
     snap = _base_snapshot(
         waiting_status_line=(
-            "Background child work hit hard ceiling"
-            " (cumulative=1800s, ceiling=1800s,"
-            " scoped_child_active=True, oldest_child_seconds=720s)"
+            "Background child work hit hard ceiling (cumulative=1800s, ceiling=1800s, "
+            "scoped_child_active=True, oldest_child_seconds=720s)"
         ),
     )
     renderer.emit_snapshot(snap)
@@ -92,10 +93,9 @@ def test_waiting_hard_stop_renders_error_level() -> None:
 def test_waiting_line_does_not_overwrite_activity_line() -> None:
     """Both waiting_status_line and last_activity_line render as separate lines."""
     renderer, buf = _make_renderer()
+    line = "Background child work still active (run=60s, cumulative=120s, ceiling=1800s)"
     snap = _base_snapshot(
-        waiting_status_line=(
-            "Background child work still active (run=60s, cumulative=120s, ceiling=1800s)"
-        ),
+        waiting_status_line=line,
         last_activity_line="claude/sonnet tool: mcp__ralph__read_file",
         active_agent="claude/sonnet",
     )

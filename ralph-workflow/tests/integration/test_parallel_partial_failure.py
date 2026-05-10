@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from rich.console import Console
 
+from ralph.display.parallel_display import ParallelDisplay  # noqa: TC001
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
@@ -60,14 +61,13 @@ class _FakeDisplay:
 
 def _run_fan_out(
     effect: FanOutEffect,
-    state: PipelineState,
     runs: dict[str, FakeRun],
 ) -> list[Event]:
     return asyncio.run(
         coordinator.run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=cast("ParallelDisplay", _FakeDisplay()),
         )
     )
 
@@ -131,9 +131,8 @@ class TestPartialFailureReporting:
             ),
         }
         effect = FanOutEffect(work_units=units, max_workers=3)
-        state = PipelineState(phase="development", work_units=units)
 
-        events = _run_fan_out(effect, state, runs)
+        events = _run_fan_out(effect, runs)
 
         completed_ids = {
             event.unit_id for event in events if isinstance(event, WorkerCompletedEvent)
@@ -167,7 +166,7 @@ class TestPartialFailureReporting:
         initial_state = PipelineState(phase="development", work_units=units)
         effect = FanOutEffect(work_units=units, max_workers=3)
 
-        events = _run_fan_out(effect, initial_state, runs)
+        events = _run_fan_out(effect, runs)
 
         reduced_state = initial_state
         for event in events:
@@ -193,9 +192,8 @@ class TestPartialFailureReporting:
             ),
         }
         effect = FanOutEffect(work_units=units, max_workers=2)
-        state = PipelineState(phase="development", work_units=units)
 
-        events = _run_fan_out(effect, state, runs)
+        events = _run_fan_out(effect, runs)
 
         failed_events = [event for event in events if isinstance(event, WorkerFailedEvent)]
         unit_a_failures = [e for e in failed_events if e.unit_id == "unit-a"]
@@ -355,7 +353,7 @@ class TestPartialFailureHandoffContent:
         final_state = runner_module._execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=cast("ParallelDisplay", _FakeDisplay()),
             policy_bundle=bundle,
             workspace_scope=scope,
         )
@@ -435,7 +433,7 @@ class TestPartialFailureHandoffContent:
         runner_module._execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=cast("ParallelDisplay", _FakeDisplay()),
             policy_bundle=bundle,
             workspace_scope=scope,
         )

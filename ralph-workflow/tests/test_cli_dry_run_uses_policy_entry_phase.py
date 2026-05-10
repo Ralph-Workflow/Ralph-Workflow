@@ -104,7 +104,7 @@ def test_dry_run_phase_text_uses_policy_entry_phase() -> None:
     ctx = _display_context(console)
     bundle = _custom_policy_bundle(entry_phase="design")
     _print_dry_run(None, _fake_config(), bundle, display_context=ctx)
-    output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    output = console.file.getvalue()
     assert "design" in output
     assert "planning" not in output
 
@@ -114,7 +114,7 @@ def test_dry_run_phase_text_falls_back_to_unknown_without_policy() -> None:
     console = _console()
     ctx = _display_context(console)
     _print_dry_run(None, _fake_config(), None, display_context=ctx)
-    output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    output = console.file.getvalue()
     assert "unknown" in output
     assert "planning" not in output
 
@@ -127,6 +127,6 @@ def test_dry_run_uses_initial_state_phase_when_present() -> None:
     # Build a minimal PipelineState with phase="build"
     state = PipelineState(phase="build")
     _print_dry_run(state, _fake_config(), bundle, display_context=ctx)
-    output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    output = console.file.getvalue()
     assert "build" in output
     assert "design" not in output

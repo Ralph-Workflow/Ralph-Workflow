@@ -183,7 +183,7 @@ def test_snapshot_dataclasses_are_frozen_and_slotted() -> None:
     )
 
     with pytest.raises(FrozenInstanceError):
-        snapshot.phase = "development"  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        snapshot.phase = "development"
 
     assert hasattr(WorkerSnapshot, "__slots__")
     assert hasattr(PipelineSnapshot, "__slots__")

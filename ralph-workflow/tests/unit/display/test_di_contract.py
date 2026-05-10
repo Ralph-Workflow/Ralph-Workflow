@@ -127,12 +127,12 @@ class TestRenderersRequireDisplayContext:
             general=GeneralConfig(),
         )
         with pytest.raises(TypeError, match="display_context"):
-            show_agents(config=config)  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            show_agents(config=config)
 
     def test_show_phase_transition_rejects_missing_context(self) -> None:
         """show_phase_transition() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
-            show_phase_transition("planning", "development")  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            show_phase_transition("planning", "development")
 
     def test_plain_log_renderer_requires_display_context(self) -> None:
         """PlainLogRenderer() must fail when called without an explicit DisplayContext."""
@@ -149,32 +149,32 @@ class TestRenderersRequireDisplayContext:
     def test_show_providers_rejects_missing_context(self) -> None:
         """show_providers() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
-            show_providers(providers=[])  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            show_providers(providers=[])
 
     def test_render_missing_plan_hint_rejects_missing_context(self) -> None:
         """render_missing_plan_hint() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
-            render_missing_plan_hint()  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            render_missing_plan_hint()
 
     def test_render_plan_artifact_rejects_missing_context(self, tmp_path: pathlib.Path) -> None:
         """render_plan_artifact() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
-            render_plan_artifact(tmp_path)  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            render_plan_artifact(tmp_path)
 
     def test_render_analysis_decision_rejects_missing_context(self, tmp_path: pathlib.Path) -> None:
         """render_analysis_decision() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
-            render_analysis_decision(tmp_path, "development_analysis")  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            render_analysis_decision(tmp_path, "development_analysis")
 
     def test_render_commit_message_rejects_missing_context(self, tmp_path: pathlib.Path) -> None:
         """render_commit_message() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
-            render_commit_message(tmp_path)  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            render_commit_message(tmp_path)
 
     def test_render_fix_artifact_rejects_missing_context(self, tmp_path: pathlib.Path) -> None:
         """render_fix_artifact() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
-            render_fix_artifact(tmp_path)  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            render_fix_artifact(tmp_path)
 
 
 class TestColorDisabledPropagates:

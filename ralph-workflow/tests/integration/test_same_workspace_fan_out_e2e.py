@@ -17,7 +17,7 @@ import io
 import json
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
@@ -27,6 +27,7 @@ from pathlib import Path
 
 from rich.console import Console
 
+from ralph.display.parallel_display import ParallelDisplay  # noqa: TC001
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
@@ -194,7 +195,7 @@ class TestSameWorkspaceFanOutE2E:
             coordinator.run_fan_out(
                 effect=effect,
                 executor=FakeAgentExecutor(runs),
-                display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                display=cast("ParallelDisplay", _FakeDisplay()),
             )
         )
 
@@ -226,7 +227,7 @@ class TestSameWorkspaceFanOutE2E:
             coordinator.run_fan_out(
                 effect=effect,
                 executor=FakeAgentExecutor(runs),
-                display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                display=cast("ParallelDisplay", _FakeDisplay()),
             )
         )
 
@@ -261,7 +262,7 @@ class TestSameWorkspaceFanOutE2E:
             coordinator.run_fan_out(
                 effect=effect,
                 executor=FakeAgentExecutor(runs),
-                display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                display=cast("ParallelDisplay", _FakeDisplay()),
             )
         )
 
@@ -307,7 +308,7 @@ class TestSameWorkspaceFanOutE2E:
         ctx = ctx_module._WorkerContext(
             same_workspace=SameWorkspaceContext(
                 repo_root=tmp_path,
-                mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                mcp_factory=mcp_factory,
             )
         )
 
@@ -387,7 +388,7 @@ class TestSameWorkspaceFanOutE2E:
         ctx = ctx_module._WorkerContext(
             same_workspace=SameWorkspaceContext(
                 repo_root=tmp_path,
-                mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                mcp_factory=mcp_factory,
             )
         )
 
@@ -482,7 +483,7 @@ class TestSameWorkspaceFanOutE2E:
         ctx = ctx_module._WorkerContext(
             same_workspace=SameWorkspaceContext(
                 repo_root=tmp_path,
-                mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                mcp_factory=mcp_factory,
             )
         )
 
@@ -572,7 +573,7 @@ class TestRunnerAnalysisHandoffIntegration:
         runner_module._execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=cast("ParallelDisplay", _FakeDisplay()),
             policy_bundle=bundle,
             workspace_scope=scope,
         )
@@ -628,7 +629,7 @@ class TestRunnerAnalysisHandoffIntegration:
         runner_module._execute_fan_out_sync(
             effect=effect,
             state=initial_state,
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=cast("ParallelDisplay", _FakeDisplay()),
             policy_bundle=bundle,
             workspace_scope=scope,
         )

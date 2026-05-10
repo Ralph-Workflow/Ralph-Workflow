@@ -24,17 +24,20 @@ correct observable outcomes for multimodal-capable workers.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.mcp.artifacts.store import Artifact
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
 )
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import Event, WorkerCompletedEvent
 from ralph.pipeline.parallel import coordinator
+from ralph.pipeline.parallel.mode import SameWorkspaceContext
 from ralph.pipeline.work_units import WorkUnit
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 
@@ -58,6 +61,10 @@ class _FakeDisplay:
         del unit_id, status
 
 
+EXPECTED_TWO_WORKERS = 2
+EXPECTED_THREE_WORKERS = 3
+
+
 def _run_fan_out(
     effect: FanOutEffect,
     tmp_path: Path,
@@ -67,9 +74,7 @@ def _run_fan_out(
 ) -> list[Event]:
     """Run fan-out with FakeAgentExecutor and propagate session contract to SameWorkspaceContext."""
 
-    async def _run():
-        from ralph.pipeline.parallel.mode import SameWorkspaceContext
-
+    async def _run() -> list[Event]:
         # Build SameWorkspaceContext with the session contract (mimics what runner does)
         mock_factory = MagicMock()
         mock_handle = MagicMock()
@@ -89,6 +94,20 @@ def _run_fan_out(
             ),
         )
 
+        # Create worker namespace directories and artifacts for each unit
+        for unit in effect.work_units:
+            worker_ns = tmp_path / ".agent" / "workers" / unit.unit_id
+            artifact_dir = worker_ns / "artifacts"
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            # Create a minimal artifact to satisfy the completion check
+            artifact = Artifact(
+                name=f"artifact-{unit.unit_id}",
+                artifact_type="plan",
+                content={"text": f"Artifact for {unit.unit_id}"},
+            )
+            artifact_path = artifact_dir / f"artifact-{unit.unit_id}.json"
+            artifact_path.write_text(json.dumps(artifact.to_dict(), default=str))
+
         # Fake executor that succeeds
         runs = {
             unit.unit_id: FakeRun(outputs=[f"done-{unit.unit_id}"], exit_code=0, duration_ms=1)
@@ -98,7 +117,7 @@ def _run_fan_out(
         return await coordinator.run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=_FakeDisplay(),
             ctx=ctx,
         )
 
@@ -124,7 +143,9 @@ def test_workers_complete_successfully_with_multimodal_session_contract(tmp_path
     )
 
     completed_events = [e for e in events if isinstance(e, WorkerCompletedEvent)]
-    assert len(completed_events) == 2, f"Expected 2 completed events, got: {completed_events}"
+    assert len(completed_events) == EXPECTED_TWO_WORKERS, (
+        f"Expected {EXPECTED_TWO_WORKERS} completed events"
+    )
     assert all(e.exit_code == 0 for e in completed_events)
 
 
@@ -169,7 +190,7 @@ def test_multiple_workers_each_get_unique_session_ids(tmp_path: Path) -> None:
     )
 
     completed_events = [e for e in events if isinstance(e, WorkerCompletedEvent)]
-    assert len(completed_events) == 3
+    assert len(completed_events) == EXPECTED_THREE_WORKERS
 
     # Each worker completed with exit code 0
     assert all(e.exit_code == 0 for e in completed_events)

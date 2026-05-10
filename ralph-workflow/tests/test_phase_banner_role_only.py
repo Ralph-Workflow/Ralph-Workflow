@@ -142,7 +142,7 @@ class TestTransitionDescriptionRoleOnly:
         console = _console()
         ctx = make_display_context(console=console)
         show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
-        output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        output = console.file.getvalue()
         assert "Design" in output
         assert "Audit" in output
         # Must not contain old duplicated status prose
@@ -154,7 +154,7 @@ class TestTransitionDescriptionRoleOnly:
         console = _console()
         ctx = make_display_context(console=console)
         show_phase_transition("planning", "development", pipeline_policy=None, display_context=ctx)
-        output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        output = console.file.getvalue()
         # Old canonical table had 'Plan ready — starting development' which must not appear.
         assert "Plan ready" not in output
         assert "starting development" not in output
@@ -164,7 +164,7 @@ class TestTransitionDescriptionRoleOnly:
         console = _console()
         ctx = make_display_context(console=console, force_mode="medium")
         show_phase_transition("planning", "development", pipeline_policy=None, display_context=ctx)
-        output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        output = console.file.getvalue()
         # Minor transitions render as a simple Rule, not the major banner.
         # Major banners in medium/wide mode print two Rules + description.
         # We can verify the transition text appears but no description is emitted.

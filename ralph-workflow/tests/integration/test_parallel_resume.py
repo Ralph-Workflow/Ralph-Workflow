@@ -155,7 +155,7 @@ class TestParallelResume:
         _execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=_FakeDisplay(),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -201,7 +201,7 @@ class TestParallelResume:
         _execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=_FakeDisplay(),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -243,7 +243,7 @@ class TestParallelResume:
         final_state = _execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=_FakeDisplay(),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )

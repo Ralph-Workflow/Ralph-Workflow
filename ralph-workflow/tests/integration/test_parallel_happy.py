@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
+from ralph.display.parallel_display import ParallelDisplay  # noqa: TC001
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import Event, PipelineEvent, WorkerCompletedEvent
 from ralph.pipeline.parallel import coordinator
@@ -19,14 +21,13 @@ def _make_work_unit(uid: str) -> WorkUnit:
 
 def _run_fan_out(
     effect: FanOutEffect,
-    state: PipelineState,
     runs: dict[str, FakeRun],
 ) -> list[Event]:
     return asyncio.run(
         coordinator.run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=cast("ParallelDisplay", _FakeDisplay()),
         )
     )
 
@@ -50,9 +51,8 @@ def test_three_workers_all_succeed() -> None:
         for unit in units
     }
     effect = FanOutEffect(work_units=units, max_workers=3)
-    state = PipelineState(phase="development", work_units=units)
 
-    events = _run_fan_out(effect, state, runs)
+    events = _run_fan_out(effect, runs)
 
     completed_events = [event for event in events if isinstance(event, WorkerCompletedEvent)]
     completed_ids = {event.unit_id for event in completed_events}
@@ -96,7 +96,7 @@ def test_happy_path_state_transitions() -> None:
     effect = FanOutEffect(work_units=units, max_workers=3)
     policy = _fan_out_policy()
 
-    events = _run_fan_out(effect, initial_state, runs)
+    events = _run_fan_out(effect, runs)
 
     reduced_state = initial_state
     for event in events:

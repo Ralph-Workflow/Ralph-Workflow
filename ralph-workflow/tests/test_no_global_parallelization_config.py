@@ -26,7 +26,7 @@ def test_pipeline_toml_has_no_top_level_parallel_execution() -> None:
     try:
         import tomllib  # noqa: PLC0415
     except ImportError:
-        import tomli as tomllib  # type: ignore[no-redef]  # noqa: PLC0415  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        import tomli as tomllib  # noqa: PLC0415
 
     toml_path = _DEFAULTS_DIR / "pipeline.toml"
     data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
@@ -46,7 +46,7 @@ def test_ralph_workflow_toml_has_no_global_parallel_keys(toml_filename: str) -> 
     try:
         import tomllib  # noqa: PLC0415
     except ImportError:
-        import tomli as tomllib  # type: ignore[no-redef]  # noqa: PLC0415  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        import tomli as tomllib  # noqa: PLC0415
 
     toml_path = _DEFAULTS_DIR / toml_filename
     if not toml_path.exists():

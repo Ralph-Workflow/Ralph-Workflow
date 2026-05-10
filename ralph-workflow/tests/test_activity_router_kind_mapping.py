@@ -82,13 +82,13 @@ def test_unknown_maps_to_unknown() -> None:
     events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
 
     class _UnknownParser:
-        def parse(self, lines: object) -> list[AgentOutputLine]:  # type: ignore[override]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        def parse(self, lines: object) -> list[AgentOutputLine]:
             return [AgentOutputLine(type="totally_unknown", content="x")]
 
     def unknown_factory(_provider: ActivityProvider) -> _UnknownParser:
         return _UnknownParser()
 
-    router = ActivityRouter(  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    router = ActivityRouter(
         parser_factory=unknown_factory,
         on_event=lambda u, k, c, r, _m: events.append((u, k, c, r)),
     )

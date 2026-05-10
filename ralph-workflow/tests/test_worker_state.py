@@ -38,7 +38,7 @@ def test_worker_state_frozen_immutable() -> None:
     ws = WorkerState(unit_id="u1")
 
     with pytest.raises((TypeError, ValidationError)):
-        ws.status = WorkerStatus.RUNNING  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        ws.status = WorkerStatus.RUNNING
 
 
 def test_worker_state_round_trip_json() -> None:
@@ -70,7 +70,7 @@ def test_worker_state_all_status_values_serialize() -> None:
 def test_worker_state_unit_id_required() -> None:
     """WorkerState requires unit_id."""
     with pytest.raises(ValidationError):
-        WorkerState()  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        WorkerState()
 
 
 def test_worker_state_none_optionals_round_trip() -> None:

@@ -61,7 +61,7 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
 
     bus = FailureEventBus()
     bus.subscribe(
-        lambda evt: collected_fallovers.append(evt)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        lambda evt: collected_fallovers.append(evt)
         if isinstance(evt, FalloverEvent)
         else None
     )

@@ -81,7 +81,7 @@ class TestPhaseEntryModel:
     def test_is_frozen(self) -> None:
         m = PhaseEntryModel(phase_name="development", outer_dev_iteration=1)
         try:
-            m.outer_dev_iteration = 2  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            m.outer_dev_iteration = 2
             raise AssertionError("should be frozen")
         except (AttributeError, TypeError):
             pass
@@ -155,7 +155,7 @@ class TestPhaseExitModel:
     def test_is_frozen(self) -> None:
         m = PhaseExitModel(phase_name="development", elapsed_seconds=5.0)
         try:
-            m.elapsed_seconds = 10.0  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            m.elapsed_seconds = 10.0
             raise AssertionError("should be frozen")
         except (AttributeError, TypeError):
             pass
@@ -199,7 +199,7 @@ class TestRunCompletionModel:
     def test_is_frozen(self) -> None:
         m = RunCompletionModel(final_phase="done", is_failure=False)
         try:
-            m.total_agent_calls = 5  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            m.total_agent_calls = 5
             raise AssertionError("should be frozen")
         except (AttributeError, TypeError):
             pass

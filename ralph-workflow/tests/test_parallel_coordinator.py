@@ -356,7 +356,7 @@ async def test_same_workspace_creates_worker_session_and_shuts_down_mcp(
     ctx = make_worker_context(
         same_workspace=SameWorkspaceContext(
             repo_root=tmp_path,
-            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            mcp_factory=mcp_factory,
         )
     )
 
@@ -386,7 +386,7 @@ async def test_empirical_success_artifact_beats_nonzero_exit(tmp_path: Path) -> 
     ctx = make_worker_context(
         same_workspace=SameWorkspaceContext(
             repo_root=tmp_path,
-            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            mcp_factory=mcp_factory,
         )
     )
 
@@ -414,7 +414,7 @@ async def test_empirical_failure_no_artifact_despite_zero_exit(tmp_path: Path) -
     ctx = make_worker_context(
         same_workspace=SameWorkspaceContext(
             repo_root=tmp_path,
-            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            mcp_factory=mcp_factory,
         )
     )
 
@@ -502,7 +502,7 @@ async def test_activity_router_is_passed_to_subprocess_worker_executor(
     ctx = make_worker_context(
         same_workspace=SameWorkspaceContext(
             repo_root=tmp_path,
-            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            mcp_factory=mcp_factory,
             executor_command=("python", "-m", "ralph"),
         )
     )
@@ -599,7 +599,7 @@ async def test_subprocess_worker_receives_ralph_worker_artifact_dir(
     ctx = make_worker_context(
         same_workspace=SameWorkspaceContext(
             repo_root=tmp_path,
-            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            mcp_factory=mcp_factory,
             executor_command=("python", "-m", "ralph"),
         )
     )
@@ -696,7 +696,7 @@ async def test_subprocess_workers_receive_per_worker_agent_label_scope(
     ctx = make_worker_context(
         same_workspace=SameWorkspaceContext(
             repo_root=tmp_path,
-            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            mcp_factory=mcp_factory,
             executor_command=("python", "-m", "ralph"),
         )
     )
@@ -725,7 +725,7 @@ async def test_fan_out_start_log_line(tmp_path: Path) -> None:
     ctx = make_worker_context(
         same_workspace=SameWorkspaceContext(
             repo_root=tmp_path,
-            mcp_factory=_RecordingMcpFactory(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            mcp_factory=_RecordingMcpFactory(),
             executor_command=("python", "-m", "ralph"),
         )
     )

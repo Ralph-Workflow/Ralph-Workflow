@@ -123,7 +123,7 @@ def test_cloud_failure_does_not_propagate(tmp_path: Path) -> None:
         record_calls.append("called")
         original_record(event, **kwargs)
 
-    sub.record_waiting_status = _capturing_record  # type: ignore[method-assign]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    sub.record_waiting_status = _capturing_record
 
     _dispatch_waiting_event(
         _event(WaitingStatusKind.SUSPECTED_FROZEN),

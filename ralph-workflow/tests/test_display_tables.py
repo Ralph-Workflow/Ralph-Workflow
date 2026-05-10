@@ -141,7 +141,7 @@ def test_show_agents_compact_mode_hides_parser_and_can_commit() -> None:
     config = UnifiedConfig(agents={"alpha": agent})
 
     ctx = _make_display_context_for_mode("compact")
-    stream = ctx.console.file  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    stream = ctx.console.file
     show_agents(config, display_context=ctx)
     output = stream.getvalue()
 
@@ -163,7 +163,7 @@ def test_show_agents_wide_mode_shows_parser_and_can_commit() -> None:
     config = UnifiedConfig(agents={"alpha": agent})
 
     ctx = _make_display_context_for_mode("wide")
-    stream = ctx.console.file  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    stream = ctx.console.file
     show_agents(config, display_context=ctx)
     output = stream.getvalue()
 
@@ -180,7 +180,7 @@ def test_show_providers_compact_mode_hides_status() -> None:
     providers = ["openai", "anthropic"]
 
     ctx = _make_display_context_for_mode("compact")
-    stream = ctx.console.file  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    stream = ctx.console.file
     show_providers(providers, display_context=ctx)
     output = stream.getvalue()
 
@@ -195,7 +195,7 @@ def test_show_providers_wide_mode_shows_status() -> None:
     providers = ["openai", "anthropic"]
 
     ctx = _make_display_context_for_mode("wide")
-    stream = ctx.console.file  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    stream = ctx.console.file
     show_providers(providers, display_context=ctx)
     output = stream.getvalue()
 
@@ -213,7 +213,7 @@ def test_show_checkpoint_summary_compact_mode_shows_all_counters() -> None:
     )
 
     ctx = _make_display_context_for_mode("compact")
-    stream = ctx.console.file  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    stream = ctx.console.file
     show_checkpoint_summary(options, display_context=ctx)
     output = stream.getvalue()
 
@@ -233,7 +233,7 @@ def test_show_checkpoint_summary_wide_mode_shows_all_counters() -> None:
     )
 
     ctx = _make_display_context_for_mode("wide")
-    stream = ctx.console.file  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    stream = ctx.console.file
     show_checkpoint_summary(options, display_context=ctx)
     output = stream.getvalue()
 

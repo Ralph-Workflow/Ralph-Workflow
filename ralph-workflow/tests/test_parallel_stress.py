@@ -14,8 +14,8 @@ from contextlib import suppress
 from typing import Any
 from unittest.mock import MagicMock
 
-from hypothesis import given, settings  # pyright: ignore[reportMissingImports]
-from hypothesis import strategies as st  # pyright: ignore[reportMissingImports]
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.parallel import coordinator

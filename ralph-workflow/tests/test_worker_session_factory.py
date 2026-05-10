@@ -66,7 +66,7 @@ def test_work_unit_id_set(tmp_path: Path) -> None:
 def test_bundle_frozen(tmp_path: Path) -> None:
     bundle = build_worker_session(_make_unit(), _make_factory(), _make_scope(tmp_path))
     with pytest.raises(FrozenInstanceError):
-        bundle.session = None  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        bundle.session = None
 
 
 def test_mcp_handle_stored(tmp_path: Path) -> None:
