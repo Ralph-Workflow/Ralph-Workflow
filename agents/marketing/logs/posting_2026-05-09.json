@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-05-09T23:55:23.669945",
+  "results": [
+    {
+      "date": "2026-05-09",
+      "title": "Lobsters Post",
+      "platform": "write.as",
+      "ok": true,
+      "url": "https://write.as/9lm5g6xe6m1yt"
+    },
+    {
+      "date": "2026-05-09",
+      "title": "dev.to Article: \"I let AI code for 4 hours \u2014 here's the exact workflow\"",
+      "platform": "write.as",
+      "ok": true,
+      "url": "https://write.as/v4euvnxb3z5jh"
+    },
+    {
+      "date": "2026-05-09",
+      "title": "HN Post: \"I let AI code for 4 hours unattended\"",
+      "platform": "write.as",
+      "ok": false,
+      "url": null
+    }
+  ]
+}

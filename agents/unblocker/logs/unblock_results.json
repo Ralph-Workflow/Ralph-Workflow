@@ -1,0 +1,250 @@
+{
+  "timestamp": "2026-05-09T23:54:47.908380",
+  "checks": {
+    "twitter_workarounds": {
+      "platform": "twitter",
+      "method": "mobile_form",
+      "status": "form_accessible"
+    },
+    "github_workarounds": {
+      "platform": "github",
+      "attempts": [
+        {
+          "action": "Create gist",
+          "status": "blocked",
+          "error": "Resource not accessible by personal access token"
+        },
+        {
+          "action": "Create issue",
+          "status": "blocked",
+          "error": "Not Found"
+        },
+        {
+          "action": "Update repo",
+          "status": "blocked",
+          "error": "Body should be a JSON object"
+        }
+      ]
+    },
+    "alternative_platforms": [
+      {
+        "platform": "medium.com",
+        "url": "https://medium.com",
+        "post_type": "articles",
+        "http_status": "403",
+        "accessible": "auth_required"
+      },
+      {
+        "platform": "tumblr.com",
+        "url": "https://www.tumblr.com/new/text",
+        "http_status": "302",
+        "accessible": false
+      },
+      {
+        "platform": "wordpress.com",
+        "url": "https://wordpress.com",
+        "post_type": "post",
+        "http_status": "200",
+        "accessible": true
+      },
+      {
+        "platform": "blogger.com",
+        "url": "https://www.blogger.com",
+        "http_status": "302",
+        "accessible": false
+      },
+      {
+        "platform": "ghost.org",
+        "url": "https://ghost.org",
+        "post_type": "post",
+        "http_status": "200",
+        "accessible": true
+      },
+      {
+        "platform": "substack.com",
+        "url": "https://substack.com",
+        "post_type": "post",
+        "http_status": "200",
+        "accessible": true
+      },
+      {
+        "platform": "hashnode.com",
+        "url": "https://hashnode.com",
+        "post_type": "post",
+        "http_status": "200",
+        "accessible": true
+      },
+      {
+        "platform": "dev.to",
+        "url": "https://dev.to",
+        "post_type": "article",
+        "http_status": "200",
+        "accessible": true
+      },
+      {
+        "platform": "codenewbie.org",
+        "url": "https://community.codenewbie.org",
+        "post_type": "post",
+        "http_status": "200",
+        "accessible": true
+      },
+      {
+        "platform": "devror.com",
+        "url": "https://devror.com",
+        "http_status": "000",
+        "accessible": false
+      },
+      {
+        "platform": "codecademy.com",
+        "url": "https://codecademy.com",
+        "post_type": "post",
+        "http_status": "403",
+        "accessible": "auth_required"
+      }
+    ],
+    "email_platforms": [
+      {
+        "platform": "substack",
+        "url": "https://substack.com",
+        "use": "newsletter + posting",
+        "accessible": true
+      },
+      {
+        "platform": "ghost",
+        "url": "https://ghost.org",
+        "use": "blogging",
+        "accessible": true
+      },
+      {
+        "platform": "mailchimp",
+        "url": "https://mailchimp.com",
+        "use": "email marketing",
+        "accessible": true
+      },
+      {
+        "platform": "postmark",
+        "url": "https://postmarkapp.com",
+        "use": "email API",
+        "accessible": true
+      }
+    ],
+    "seo_quick_wins": [
+      {
+        "action": "google_search_console",
+        "http_code": "302"
+      },
+      {
+        "action": "google_url_inspection",
+        "http_code": "302"
+      },
+      {
+        "action": "bing_webmaster",
+        "http_code": "302"
+      },
+      {
+        "action": "yandex_webmaster",
+        "http_code": "302"
+      }
+    ],
+    "product_hunt": {
+      "platform": "producthunt",
+      "http_code": "403"
+    },
+    "hackernews_api": [
+      {
+        "platform": "hackernews",
+        "api": "firebase",
+        "status": "works",
+        "story_count": 500
+      }
+    ],
+    "reddit_api": {
+      "platform": "reddit",
+      "json_api": "blocked"
+    },
+    "telegram": {
+      "platform": "telegram",
+      "status": "401"
+    },
+    "discord_webhooks": {
+      "platform": "discord",
+      "webhooks": "unknown",
+      "http_code": "400"
+    },
+    "matrix": {
+      "platform": "matrix",
+      "public_rooms": "accessible"
+    },
+    "rss_aggregators": [
+      {
+        "aggregator": "Google Blog Search",
+        "url": "blogsearch.google.com",
+        "http_code": "301"
+      },
+      {
+        "aggregator": "FeedRoll",
+        "url": "www.feedroll.net",
+        "http_code": "000"
+      },
+      {
+        "aggregator": "Feedspot",
+        "url": "www.feedspot.com",
+        "http_code": "200"
+      },
+      {
+        "aggregator": "OnDemand",
+        "url": "www.ondemand",
+        "http_code": "000"
+      }
+    ],
+    "linkedin": {
+      "platform": "linkedin",
+      "company_page": "999"
+    },
+    "npm": {
+      "platform": "npm",
+      "accessible": true,
+      "downloads": 275
+    },
+    "pypi": {
+      "platform": "pypi",
+      "accessible": true,
+      "version": "0.8.1"
+    },
+    "devto_api": {
+      "platform": "dev.to",
+      "read_api": "works",
+      "articles_returned": 3
+    },
+    "codeberg": {
+      "platform": "codeberg",
+      "repo": "accessible",
+      "issues_status": "303"
+    },
+    "direct_seo": [
+      {
+        "path": "/sitemap.xml",
+        "status": "found"
+      },
+      {
+        "path": "/sitemap_index.xml",
+        "status": "404"
+      },
+      {
+        "path": "/wp-sitemap.xml",
+        "status": "404"
+      },
+      {
+        "path": "/sitemap.xml.gz",
+        "status": "406"
+      },
+      {
+        "path": "robots.txt",
+        "status": "200"
+      },
+      {
+        "wayback_machine": "000"
+      }
+    ]
+  }
+}

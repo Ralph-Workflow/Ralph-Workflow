@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "reddit-readonly": {
+      "version": "1.0.0",
+      "installedAt": 1778365577060
+    },
+    "rss-digest": {
+      "version": "0.2.1",
+      "installedAt": 1778365579761
+    },
+    "blogwatcher": {
+      "version": "1.0.0",
+      "installedAt": 1778365582011
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "tried": [
+    "dev.to",
+    "stackoverflow",
+    "quora",
+    "reddit-r-programming",
+    "reddit-programming"
+  ],
+  "results": [
+    {
+      "name": "dev.to",
+      "url": "https://dev.to",
+      "method": "api",
+      "difficulty": "hard",
+      "timestamp": "2026-05-09T11:02:20.437540",
+      "http_code": "200",
+      "status": "accessible",
+      "devto": {
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "stackoverflow",
+      "url": "https://stackoverflow.com",
+      "method": "answer",
+      "difficulty": "medium",
+      "timestamp": "2026-05-09T11:02:21.550049",
+      "http_code": "302",
+      "status": "http_302",
+      "stackoverflow": {
+        "action": "answer",
+        "question_id": 79834436,
+        "title": "Cursor AI Agent sometimes applies code changes automatically without showing the \u201cKeep\u201d or \u201cUndo\u201d options",
+        "link": null,
+        "score": -3,
+        "status": "found_question"
+      }
+    },
+    {
+      "name": "quora",
+      "url": "https://quora.com",
+      "method": "answer",
+      "difficulty": "medium",
+      "timestamp": "2026-05-09T11:02:22.634667",
+      "http_code": "308",
+      "status": "http_308"
+    },
+    {
+      "name": "reddit-r-programming",
+      "url": "https://reddit.com/r/rprogramming",
+      "method": "post",
+      "difficulty": "hard",
+      "timestamp": "2026-05-09T11:02:23.599754",
+      "http_code": "301",
+      "status": "redirects"
+    },
+    {
+      "name": "reddit-programming",
+      "url": "https://reddit.com/r/programming",
+      "method": "post",
+      "difficulty": "hard",
+      "timestamp": "2026-05-09T11:02:24.149491",
+      "http_code": "301",
+      "status": "redirects"
+    }
+  ],
+  "working": []
+}

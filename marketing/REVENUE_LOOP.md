@@ -36,7 +36,7 @@ Two assets:
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  REVENUE                                                   │
-│  LemonSqueezy handles billing, receipts, cancellations      │
+│  Billing handles billing, receipts, cancellations          │
 └──────────────────────────┬──────────────────────────────────┘
                            │
               ┌────────────┴────────────┐
@@ -142,7 +142,7 @@ This data is the FUEL for the self-reinforcing loop.
 
 ## What YOU Need To Do (Manual)
 
-1. **LemonSqueezy dashboard login** — create products (can't be done via API)
+1. **Billing dashboard login** — create products
 2. **YouTube account setup** — start uploading
 3. **Cal.com or similar** — booking link for consulting
 4. **Domain confirmed** — is billing.hireaegis.com live?

@@ -31,7 +31,7 @@
 - Pro: $79/mo — unlimited jobs, 5000 applications/month + ATS export + priority
 - Enterprise: $199/mo — unlimited everything + direct ATS integrations
 
-**Action needed:** Configure pricing in LemonSqueezy, transition from "free beta" to "paid with free tier"
+**Action needed:** Configure pricing in Billing, transition from "free beta" to "paid with free tier"
 
 ### Stream 2: HireAegis Interviewer — SUBSCRIPTION
 **Medium path.** Needs deployment + traffic.
@@ -55,7 +55,7 @@
 
 ### Gap 1: No pricing on HireAegis Bot Detection
 The product is free beta with no upgrade path. Companies want to pay for this.
-**Fix:** Configure pricing plans in LemonSqueezy, change landing page CTA from "free beta" to "start free, upgrade anytime"
+**Fix:** Configure pricing plans in Billing, change landing page CTA from "free beta" to "start free, upgrade anytime"
 
 ### Gap 2: Interviewer not publicly deployed
 interview.hireaegis.com doesn't exist yet.
@@ -65,7 +65,7 @@ interview.hireaegis.com doesn't exist yet.
 All three products have zero marketing.
 **Fix:** Content engine + community outreach agents
 
-### Gap 4: LemonSqueezy API blocked
+### Gap 4: Billing API blocked
 Can't track revenue, subscriptions, or test checkout.
 **Fix:** Get valid API key from LS dashboard
 
@@ -74,7 +74,7 @@ Can't track revenue, subscriptions, or test checkout.
 ## 30-Day Priority Actions
 
 ### Week 1 — Get first dollar
-- [ ] Add pricing to HireAegis Bot Detection (LemonSqueezy)
+- [ ] Add pricing to HireAegis Bot Detection (Billing)
 - [ ] Change landing page: "Free Beta" → "Free Tier + Paid Upgrade"
 - [ ] Post to Hacker News, Indie Hackers, r/recruiting
 - [ ] Get first paying customer

@@ -1,0 +1,106 @@
+{
+  "timestamp": "2026-05-09T10:31:16.083005",
+  "results": {
+    "sitemap": {
+      "exists": true,
+      "url_count": 242
+    },
+    "robots": {
+      "exists": true,
+      "content": "User-agent: *\nDisallow: /admin\nDisallow: /api\nDisallow: /auth\nDisallow: /good_job\nDisallow: /api-docs\n\nSitemap: https://ralphworkflow.com/sitemap.xml\n"
+    },
+    "backlinks": {
+      "backlinks": 0,
+      "sources": []
+    },
+    "github_mentions": {
+      "total_count": 75,
+      "items": [
+        {
+          "name": "SKILL.md",
+          "html_url": "https://github.com/majiayu000/claude-skill-registry/blob/fc98f4ec9f4271ca0e1e19f5b4e7951c10d984cf/skills/other/ralph-workflow/SKILL.md"
+        },
+        {
+          "name": "2026-03-23-ralph-workflow-redesign.md",
+          "html_url": "https://github.com/flora131/atomic/blob/ef4ea7fbc2ffb638bba5dd3adf1cd46c98d93f3e/specs/2026-03-23-ralph-workflow-redesign.md"
+        },
+        {
+          "name": "kanban-workflow.md",
+          "html_url": "https://github.com/salmanrrana/brain-dump/blob/992d3bbdabb62750e2a0a871ea107581545224aa/docs/flows/kanban-workflow.md"
+        },
+        {
+          "name": "orni-help.md",
+          "html_url": "https://github.com/Ornichus/Orni-Skills/blob/24f5e8ea7d5772f3fcb2d6a3f1d8aa47c0d1a094/commands/orni-help.md"
+        },
+        {
+          "name": "SETUP_PROMPT.md",
+          "html_url": "https://github.com/nicolaslara/ralph-claude-code/blob/8536c43eb55ba9c3b51f5c40a60d2ac055d45555/ralph-orchestrator-template/SETUP_PROMPT.md"
+        }
+      ]
+    },
+    "directories": [
+      {
+        "name": "Toolhunt AI",
+        "url": "https://toolhunt.ai/submit",
+        "listed": true
+      },
+      {
+        "name": "There's An AI For That",
+        "url": "https://theresanaiforthat.com/submit/",
+        "listed": true
+      },
+      {
+        "name": "AI Navigator",
+        "url": "https://ainavigator.ai/submit",
+        "listed": true
+      },
+      {
+        "name": "AlternativeTo",
+        "url": "https://alternativeto.net/submit/",
+        "listed": true
+      },
+      {
+        "name": "SaaSHub",
+        "url": "https://saashub.com/submit",
+        "listed": true
+      },
+      {
+        "name": "Product Hunt",
+        "url": "https://producthunt.com/submit",
+        "listed": true
+      }
+    ],
+    "keywords": [
+      {
+        "keyword": "AI agent workflow",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "unattended AI coding",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "AI engineering pipeline",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "Claude autonomous coding",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "GPT-4 coding workflow",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "AI pair programmer setup",
+        "has_competition": true,
+        "checked": true
+      }
+    ]
+  }
+}

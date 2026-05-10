@@ -1,0 +1,71 @@
+{
+  "timestamp": "2026-05-09T11:05:30.782234",
+  "scores": {
+    "channels": {
+      "writeas": {
+        "score": 0,
+        "history": [
+          {
+            "date": "2026-05-09",
+            "total_views": 0,
+            "num_posts": 0,
+            "score": 0
+          }
+        ]
+      },
+      "github": {
+        "score": 0.0,
+        "history": [
+          {
+            "date": "2026-05-09",
+            "total_stars": 0,
+            "score": 0.0
+          }
+        ]
+      },
+      "seo": {
+        "score": 5,
+        "history": [
+          {
+            "date": "2026-05-09",
+            "note": "No live SEO API - using site health as proxy"
+          }
+        ]
+      }
+    },
+    "last_update": "2026-05-09T11:05:30.780130",
+    "last_data": {
+      "writeas": [],
+      "github": [
+        {
+          "repo": "mistlight/Ralph-Workflow",
+          "stars": 0,
+          "forks": 0,
+          "issues": 0,
+          "description": "Mirror of Ralph-Workflow, I'm using https://codeberg.org/mistlight/Ralph-Workflow as my main repo"
+        }
+      ],
+      "seo": {
+        "ranked_keywords": [],
+        "note": "Needs SEO API for live data"
+      }
+    }
+  },
+  "new_data": {
+    "writeas": [],
+    "github": [
+      {
+        "repo": "mistlight/Ralph-Workflow",
+        "stars": 0,
+        "forks": 0,
+        "issues": 0,
+        "description": "Mirror of Ralph-Workflow, I'm using https://codeberg.org/mistlight/Ralph-Workflow as my main repo"
+      }
+    ],
+    "seo": {
+      "ranked_keywords": [],
+      "note": "Needs SEO API for live data"
+    }
+  },
+  "reflection": "## Weekly Reflection \u2014 2026-05-09\n\n### Channel Scores (0-10)\n\ud83d\udfe1 **seo**: 5.0\n\ud83d\udd34 **writeas**: 0.0\n\ud83d\udd34 **github**: 0.0\n\n### Top Content\n- No content data yet\n\n### Recommendations\n- \ud83d\udd34 write.as content needs improvement \u2014 try better headlines or keywords\n- \ud83d\udd34 GitHub presence weak \u2014 need write-access PAT to enable outreach\n- \ud83d\udca1 Try new content format this week (comparison, tutorial, case study)\n- \ud83d\udca1 If new credentials available, re-run channel discovery"
+}

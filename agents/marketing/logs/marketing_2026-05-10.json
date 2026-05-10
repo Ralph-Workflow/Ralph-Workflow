@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-05-10T08:02:59.879032",
+  "is_weekly": false,
+  "data": {
+    "site_health": {
+      "ok": true,
+      "status": 200
+    },
+    "github": {
+      "error": "No GitHub token"
+    },
+    "writeas_views": [],
+    "seo_rankings": [
+      {
+        "keyword": "Ralph Workflow AI",
+        "ranked": true
+      },
+      {
+        "keyword": "AI agent workflow composer",
+        "ranked": true
+      },
+      {
+        "keyword": "unattended AI coding pipeline",
+        "ranked": true
+      },
+      {
+        "keyword": "AI engineering workflow",
+        "ranked": true
+      }
+    ]
+  },
+  "post_results": [
+    "\u274c write.as: <urlopen error [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'api.write.as'. (_ssl.c:1029)>",
+    "\u274c Telegraph: UNKNOWN_METHOD"
+  ]
+}

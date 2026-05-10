@@ -1,0 +1,54 @@
+{
+  "posts": [
+    {
+      "date": "2026-05-09",
+      "title": "Lobsters Post",
+      "platform": "write.as",
+      "ok": true,
+      "url": "https://write.as/1sw9twes21hmr"
+    },
+    {
+      "date": "2026-05-09",
+      "title": "dev.to Article: \"I let AI code for 4 hours \u2014 here's the exact workflow\"",
+      "platform": "write.as",
+      "ok": true,
+      "url": "https://write.as/hc9rvxrkrkl5w"
+    },
+    {
+      "date": "2026-05-09",
+      "title": "HN Post: \"I let AI code for 4 hours unattended\"",
+      "platform": "write.as",
+      "ok": false,
+      "url": null
+    },
+    {
+      "date": "2026-05-09",
+      "title": "Lobsters Post",
+      "platform": "write.as",
+      "ok": true,
+      "url": "https://write.as/9lm5g6xe6m1yt"
+    },
+    {
+      "date": "2026-05-09",
+      "title": "dev.to Article: \"I let AI code for 4 hours \u2014 here's the exact workflow\"",
+      "platform": "write.as",
+      "ok": true,
+      "url": "https://write.as/v4euvnxb3z5jh"
+    },
+    {
+      "date": "2026-05-09",
+      "title": "HN Post: \"I let AI code for 4 hours unattended\"",
+      "platform": "write.as",
+      "ok": false,
+      "url": null
+    },
+    {
+      "date": "2026-05-10",
+      "title": "Why I Stopped Babysitting My AI Coding Assistant",
+      "platform": "write.as",
+      "ok": true,
+      "url": "https://write.as/f5hh1t20d6odi"
+    }
+  ],
+  "last_run": "2026-05-10T06:00:07.942763"
+}

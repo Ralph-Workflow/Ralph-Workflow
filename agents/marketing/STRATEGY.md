@@ -1,0 +1,185 @@
+# Ralph Workflow — Marketing Strategy & Reflection Loop
+
+## Product
+- **Name:** Ralph Workflow
+- **URL:** https://ralphworkflow.com
+- **Tagline:** "Preconfigured AI engineering workflow with planning and development phases, nested analysis feedback loops, and a fresh plan on every pass."
+- **Target:** Engineering teams and solo developers who want AI agents to work unattended
+- **Core differentiator:** Not a prompt tool — a workflow system that runs AI agents as unattended engineering pipelines
+
+## Traffic Channels
+
+### Tier 1: Automated Posting (works today ✅)
+| Platform | Status | Notes |
+|----------|--------|-------|
+| write.as | ✅ Active | Anonymous posting, cron daily |
+| Telegraph | ✅ Active | Anonymous posting, cron daily |
+
+### Tier 2: Account-Based (blocked) 🔒
+| Platform | Status | Blocker |
+|----------|--------|---------|
+| dev.to | 🔒 Needs GitHub OAuth | PAT is read-only |
+| Twitter/X | 🔒 Login blocked | x.com shows errors |
+| Reddit | 🔒 Needs account | Karma requirements |
+| Lobsters | 🔒 Needs invite | No access |
+| HN | 🔒 Needs invite | No access |
+| YouTube | 🔒 Needs Google + phone | Phone verification |
+
+### Tier 3: GitHub Outreach (blocked) 🔒
+| Action | Status | Blocker |
+|--------|--------|---------|
+| File issues | 🔒 403 | PAT read-only |
+| Submit PRs | 🔒 403 | PAT read-only |
+| Update topics | 🔒 403 | PAT read-only |
+
+### Tier 4: SEO & Directories (can improve today)
+- ✅ Sitemap.xml (242 URLs)
+- ✅ Robots.txt
+- ✅ Meta tags + OG tags
+- ✅ Schema.org markup
+- ❌ No Google Search Console
+- ❌ 0 backlinks from 103 repos that mention RW
+- ✅ Listed on Toolhunt AI, There's An AI For That, AI Navigator, AlternativeTo, SaaSHub
+- ❌ Not on Product Hunt
+
+## Content Calendar
+| Day | Type | Focus |
+|-----|------|-------|
+| Monday | Philosophy | Why AI agents need structure over prompts |
+| Wednesday | Technical | How nested analysis loops work |
+| Friday | Use case | ROI story / "what I shipped" |
+
+## Reflection Loop — How It Works
+
+### Weekly Review (every Monday)
+The marketing agent runs and asks:
+
+**1. What happened?**
+- Traffic changes (write.as views, SEO rankings)
+- GitHub activity (stars, forks, mentions)
+- Outreach results (PRs merged, issues responded)
+
+**2. What worked?**
+- Which content drove the most views?
+- Which channels brought visitors?
+- Which headlines/CTAs got engagement?
+
+**3. What didn't work?**
+- Low-performing content → revise or retire
+- Blocked channels → find workarounds
+- Wrong targeting → refine audience
+
+**4. What's the next experiment?**
+- Try a new keyword
+- Adjust content tone
+- Pursue a new platform
+- Double down on what works
+
+### Decision Rules (automated)
+| Signal | Action |
+|--------|--------|
+| write.as article > 100 views | Cross-post to dev.to |
+| GitHub star spike | Analyze which content triggered it |
+| SEO ranking improved for keyword X | Create more content around X |
+| No outreach responses in 2 weeks | Change message tone |
+| Twitter accessible again | Deploy Twitter bot |
+| New GitHub PAT available | Enable full outreach pipeline |
+
+## What's Working (as of 2026-05-09)
+- Content pipeline fully automated (write.as + Telegraph)
+- SEO fundamentals solid (sitemap, meta, schema)
+- 103 GitHub repos mention RW (potential backlinks)
+- All target keywords have low competition
+
+## What's Not Working
+- Zero backlinks (outreach blocked by read-only PAT)
+- Twitter blocked (login errors)
+- No Google Search Console (can't see actual traffic)
+
+## Experiments to Try
+1. **Keyword-targeted write.as posts** — "best AI coding workflow 2025", "how to run AI agents unattended"
+2. **SEO-only landing page** — target "ralph workflow alternative to [competitor]"
+3. **Submit to Product Hunt** — needs real launch, not just listing
+4. **dev.to via GitHub OAuth** — if PAT becomes read-write
+5. **Buy a反向链接 (backlink) via guest post** — requires finding dev blogs
+
+## Open Questions (need human input)
+- Should ralphworkflow.com link to the GitHub mirror or codeberg as primary?
+- What pricing model? LS product was deleted — what's the actual offer?
+- Is there a newsletter or email list to announce content?
+
+## Last Full Strategy Review
+2026-05-09 — Initial strategy built. Pipeline deployed. Outreach blocked.
+
+
+
+## Channel Status — 2026-05-09
+
+### Automated Posting ✅
+| Channel | Status | Notes |
+|---------|--------|-------|
+| write.as | ✅ Working | SSL works via curl, Python ssl module has cert mismatch |
+| Telegraph | ❌ Broken | Entire API returns UNKNOWN_METHOD — platform may be deprecated |
+
+### Account-Based Channels 🔒
+| Channel | Status | Notes |
+|---------|--------|-------|
+| dev.to | 🔒 Needs API key | Read works, posting needs auth |
+| Twitter/X | 🔒 Login errors | x.com flow fails, mobile too |
+| Reddit | 🔒 Needs account | All redirects to login |
+| HN | 🔒 Needs account | Requires login, no anonymous submit |
+| Lobsters | 🔒 Needs invite | No access |
+| Indie Hackers | 🔒 Firebase auth | Google OAuth required |
+| Product Hunt | 🔒 Cloudflare | Bot protection blocks automation |
+| Bluesky | 🔒 Phone verify | Requires phone number |
+
+### GitHub 🔒
+| Action | Status | Notes |
+|--------|--------|-------|
+| Read repos | ✅ Works | PAT allows search/read |
+| Create Gist | ❌ 403 | PAT is read-only |
+| File Issue | ❌ 403 | PAT is read-only |
+| Submit PR | ❌ 403 | PAT is read-only |
+| Update README | ❌ 403 | PAT is read-only |
+
+### SEO / Directories
+| Action | Status | Notes |
+|--------|--------|-------|
+| Sitemap | ✅ Working | 242 URLs |
+| Robots.txt | ✅ Working | Accessible |
+| SEO meta | ✅ Working | OG, Twitter cards, schema |
+| GSC | ❌ No access | Can't see search data |
+| Backlinks | ❌ 0 | 103 repos mention RW but none link |
+
+## What to Do Right Now (No Credentials Needed)
+
+1. **Improve write.as content** — Target low-competition keywords
+2. **Fix Python SSL** — Use curl wrapper for write.as API calls
+3. **Submit to more directories** — Find free tool directories
+4. **Improve ralphworkflow.com SEO** — Better internal linking, more content
+5. **Create linkable assets** — SEO-optimized standalone pages
+
+## What Needs Credentials (Highest Impact When Unblocked)
+
+1. **GitHub PAT with write access** — Enables full outreach (103 repos, 0 backlinks)
+2. **Twitter session cookies** — Enables bot posting
+3. **dev.to API key** — Enables article cross-posting
+4. **HN account** — Enables Show HN post
+
+
+
+## Weekly Reflection — 2026-05-09
+
+### Channel Scores (0-10)
+🟡 **seo**: 5.0
+🔴 **writeas**: 0.0
+🔴 **github**: 0.0
+
+### Top Content
+- No content data yet
+
+### Recommendations
+- 🔴 write.as content needs improvement — try better headlines or keywords
+- 🔴 GitHub presence weak — need write-access PAT to enable outreach
+- 💡 Try new content format this week (comparison, tutorial, case study)
+- 💡 If new credentials available, re-run channel discovery

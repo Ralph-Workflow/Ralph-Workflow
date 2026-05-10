@@ -52,7 +52,7 @@ It makes coding interviews **observably real**. The interviewer watches the cand
 **The product as currently built:**
 - Subscription tiers: Starter ($79/mo, 20 sessions), Professional ($199/mo, 50 sessions), Business ($399/mo, 100 sessions)
 - Sessions are consumed per interview room creation (1 session = 1 interview hour)
-- LemonSqueezy billing infrastructure is fully built: webhooks, subscription model, workspace gating, usage ledger
+- Billing billing infrastructure is fully built: webhooks, subscription model, workspace gating, usage ledger
 - **But production variant IDs are NOT configured** in `config/lemon_squeezy.yml` — payments aren't actually wired up
 
 **The honest simplest paid product:**
@@ -85,9 +85,9 @@ This is already defined in the code. The missing piece is activating it.
 
 ### Friction Point 3: Payment Integration Not Live
 - `config/lemon_squeezy.yml` production section has variant IDs commented out
-- The entire LemonSqueezy checkout flow redirects to `billing.hireaegis.com` which may not exist yet
+- The entire Billing checkout flow redirects to `billing.hireaegis.com` which may not exist yet
 
-**Fix:** Set up billing.hireaegis.com on LemonSqueezy and configure production variant IDs
+**Fix:** Set up billing.hireaegis.com on Billing and configure production variant IDs
 
 ### Friction Point 4: Landing Page Doesn't Close
 - The landing page is beautifully crafted but doesn't make the purchase path obvious
@@ -120,8 +120,8 @@ This is already defined in the code. The missing piece is activating it.
 
 ### Immediate actions (1-2 days):
 
-**1. Configure LemonSqueezy production variants**
-- Create products/variants in LemonSqueezy dashboard
+**1. Configure Billing production variants**
+- Create products/variants in Billing dashboard
 - Update `config/lemon_squeezy.yml` production section with real variant IDs
 - Set `LEMON_SQUEEZY_WEBHOOK_SECRET` env var and verify webhook endpoint works
 
@@ -153,7 +153,7 @@ This is already defined in the code. The missing piece is activating it.
 
 ### Quick Win 3: Pricing Page Checkout Button Fix
 **Time:** 1 day
-**What:** The `PricingCard` CTA currently links to `/sign-up` — it should link directly to the LemonSqueezy checkout URL (or the `/app/subscription/checkout_url` redirect)
+**What:** The `PricingCard` CTA currently links to `/sign-up` — it should link directly to the Billing checkout URL (or the `/app/subscription/checkout_url` redirect)
 **Why:** Currently there's no path from the marketing pricing page to a paying state without manual intervention
 
 ---
@@ -192,9 +192,9 @@ The existing home page at `/` is excellent. The missing element is a **"Start yo
 |---|---|
 | **What users pay for** | Interview sessions (20/50/100 per month) — time-boxed access to the full platform |
 | **Simplest paid product** | $79/month Starter plan — 20 sessions, 1 workspace, unlimited team members |
-| **Fastest path to first dollar** | Configure LemonSqueezy production variants + remove onboarding gate + give 1 free session |
+| **Fastest path to first dollar** | Configure Billing production variants + remove onboarding gate + give 1 free session |
 | **Top conversion friction** | 1) Payment not wired up 2) Manual onboarding gate 3) No free trial visible on landing page |
-| **Quick wins (<1 day each)** | 1) Wire up LemonSqueezy production 2) Remove onboarding gate 3) Fix pricing CTA to go to checkout |
+| **Quick wins (<1 day each)** | 1) Wire up Billing production 2) Remove onboarding gate 3) Fix pricing CTA to go to checkout |
 | **Landing page missing** | "Start pilot" form with Calendly/email capture + 1 free session offer |
 | **Competitor differentiator** | Live Docker preview + real-time AI transcript visible to both parties — no competitor matches this |
 | **Revenue model** | Subscription (monthly/annual) with session token bundles — clear upgrade path across 3 tiers |
@@ -204,7 +204,7 @@ The existing home page at `/` is excellent. The missing element is a **"Start yo
 
 ## 10. Immediate Next Steps (Priority Order)
 
-1. **Today:** Set up LemonSqueezy products (Starter/Pro/Business monthly + annual variants)
+1. **Today:** Set up Billing products (Starter/Pro/Business monthly + annual variants)
 2. **Today:** Update `config/lemon_squeezy.yml` production with real variant IDs
 3. **Today:** Verify webhook endpoint responds at `POST /lemon-squeezy-webhooks`
 4. **This week:** Set `MANUAL_ONBOARDING=false` (or leave it, but ensure users aren't stuck)

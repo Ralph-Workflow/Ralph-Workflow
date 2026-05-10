@@ -1,0 +1,54 @@
+# TOOLS.md - Local Notes
+
+Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
+
+## What Goes Here
+
+Things like:
+
+- Camera names and locations
+- SSH hosts and aliases
+- Preferred voices for TTS
+- Speaker/room names
+- Device nicknames
+- Anything environment-specific
+
+## Examples
+
+```markdown
+### Cameras
+
+- living-room → Main area, 180° wide angle
+- front-door → Entrance, motion-triggered
+
+### SSH
+
+- home-server → 192.168.1.100, user: admin
+
+### TTS
+
+- Preferred voice: "Nova" (warm, slightly British)
+- Default speaker: Kitchen HomePod
+```
+
+## Why Separate?
+
+Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
+
+---
+
+Add whatever helps you do your job. This is your cheat sheet.
+
+## SSH
+
+- **Personal key:** `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINv9IIpPvDKDDnq4z8bI/rlEaMxwi8LT/YxETu4dkKaa mistlight@Debian-1300-trixie-amd64-base`
+  - Used for: git repos, Codeberg, GitHub, etc.
+
+## External APIs
+
+- **Minimax API (OpenCode):** `sk-cp-cZhzgD75zcZiuQ42wsiiDM_EzFxbuKUV94M_vvYhE88ohNKfe9udkXXIrqBv6BNxRzasB_vqHBa6Ubtd6JOr4Y7rnbPjwvLC2yG5QapmSIcsudIyuEipodY`
+  - Used for: AI model access via OpenClaw
+
+## Related
+
+- [Agent workspace](/concepts/agent-workspace)

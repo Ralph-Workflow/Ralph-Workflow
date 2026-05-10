@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-05-09T10:57:24.959177",
+  "analysis": {
+    "trends": [],
+    "writeas_data": [],
+    "github_data": [],
+    "best_article": null,
+    "total_logs": 1
+  },
+  "insights": [
+    {
+      "priority": "INFO",
+      "action": "Collecting baseline data \u2014 no trends yet. Continue posting consistently for 2-3 weeks before evaluating.",
+      "reason": "Need more data points"
+    },
+    {
+      "priority": "ONGOING",
+      "action": "Wait for GitHub read-write PAT to enable outreach pipeline",
+      "reason": "75+ repos need backlink outreach but current token is read-only"
+    },
+    {
+      "priority": "ONGOING",
+      "action": "Try to unblock Twitter when login errors clear",
+      "reason": "Twitter would unlock massive reach"
+    }
+  ],
+  "next_experiment": {
+    "name": "keyword-targeted-content",
+    "action": "Write write.as post targeting 'best AI coding workflow 2025' \u2014 low competition keyword",
+    "expected_impact": "5-20 views/day from search",
+    "status": "ready"
+  }
+}
