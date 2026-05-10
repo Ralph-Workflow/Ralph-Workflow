@@ -1567,9 +1567,15 @@ def handle_read_image(
     *,
     max_inline_bytes: int = 5_242_880,
 ) -> ToolResult:
-    """Read an image file and return it as a base64-encoded content block.
+    """Read an image file and return it as a capability-aware content block.
 
-    Requires MediaRead capability. Enforces size limit and supported MIME types.
+    Requires MediaRead capability. Validates that the file is a supported image
+    format, then delegates to the shared workspace media handler for delivery
+    decision (inline image, typed block, or explicit unsupported/error).
+
+    This is a compatibility alias over ``_handle_workspace_media`` that restricts
+    inputs to image formats only while preserving the same truthful delivery
+    contract as ``read_media``.
     """
     require_capability(session, MEDIA_READ_CAPABILITY, "Image read")
     path = required_string_param(params, "path")
@@ -1588,44 +1594,10 @@ def handle_read_image(
             is_error=True,
         )
 
-    abs_path = workspace.absolute_path(normalized or path)
-    try:
-        file_size = Path(abs_path).stat().st_size
-    except OSError as exc:
-        return ToolResult(
-            content=[ToolContent.text_content(
-                f"Failed to stat image file '{path}': {exc}"
-            )],
-            is_error=True,
-        )
-
-    if file_size > max_inline_bytes:
-        return ToolResult(
-            content=[
-                ToolContent.text_content(
-                    f"Image file '{path}' is too large ({file_size} bytes). "
-                    f"Maximum allowed: {max_inline_bytes} bytes."
-                )
-            ],
-            is_error=True,
-        )
-
-    try:
-        with Path(abs_path).open("rb") as fh:
-            raw_bytes = fh.read()
-    except OSError as exc:
-        return ToolResult(
-            content=[ToolContent.text_content(
-                f"Failed to read image file '{path}': {exc}"
-            )],
-            is_error=True,
-        )
-
-    encoded = base64.b64encode(raw_bytes).decode("ascii")
-    return ToolResult(
-        content=[ImageContent(data=encoded, mime_type=mime_type)],
-        is_error=False,
-    )
+    # Delegate to the shared capability-aware handler for delivery decision.
+    # This ensures read_image respects the same INLINE_IMAGE / TYPED_BLOCK /
+    # RESOURCE_REFERENCE_REPLAY / UNSUPPORTED contract as read_media.
+    return _handle_workspace_media(session, workspace, path, max_inline_bytes)
 
 
 def _extract_resource_reference_replay_blocks(
@@ -1653,6 +1625,36 @@ def _extract_resource_reference_replay_blocks(
     return blocks
 
 
+def _extract_resource_reference_blocks(
+    result: object,
+) -> list[dict[str, str]]:
+    """Extract URI-backed resource_reference blocks from a normalized upstream result.
+
+    These blocks reference external URIs (not Ralph-owned artifacts) and cannot
+    be replayed across sessions. They are synthesized as unsupported_runtime_seam
+    entries at the cross-session handoff boundary.
+    """
+    if not isinstance(result, dict):
+        return []
+    raw_content: object = result.get("content")
+    if not isinstance(raw_content, list):
+        return []
+    blocks: list[dict[str, str]] = []
+    for item in raw_content:
+        if not isinstance(item, dict):
+            continue
+        block: dict[str, str] = {
+            k: str(v) for k, v in item.items()
+            if isinstance(v, str)
+        }
+        if (
+            block.get("type") == "resource_reference"
+            and block.get("delivery") == "resource_reference"
+        ):
+            blocks.append(block)
+    return blocks
+
+
 def persist_upstream_media_artifacts(
     result: object,
     session: object,
@@ -1660,47 +1662,84 @@ def persist_upstream_media_artifacts(
 ) -> None:
     """Persist upstream embedded media artifacts to the durable cache and session index.
 
-    Called after normalize_upstream_content_blocks so that resource_reference_replay
-    blocks (backed by ralph://media/... URIs stored in the session manifest) are
-    also written to the durable cache and session index. This enables cross-session
-    replay of artifacts that originated from upstream embedded-data blocks.
+    Called after normalize_upstream_content_blocks so that:
 
-    URI-backed resource_reference blocks (delivery='resource_reference') are
-    skipped — they reference external URIs, not Ralph-owned artifacts.
+    - resource_reference_replay blocks (backed by ralph://media/... URIs stored in
+      the session manifest) are written to the durable cache and session index,
+      enabling cross-session replay of artifacts from upstream embedded-data blocks.
+
+    - URI-backed resource_reference blocks (delivery='resource_reference') reference
+      external URIs and cannot be replayed across sessions. These are synthesized
+      as unsupported_runtime_seam entries so the failure is explicit at invoke time.
     """
     replay_blocks = _extract_resource_reference_replay_blocks(result)
-    if not replay_blocks:
+    uri_blocks = _extract_resource_reference_blocks(result)
+
+    if not replay_blocks and not uri_blocks:
         return
+
     manifest = _get_media_manifest(session)
-    if manifest is None:
-        return
     profile = _get_session_capability_profile(session)
-    for block in replay_blocks:
-        uri = block.get("uri", "")
-        artifact_id = parse_media_uri(uri)
-        if artifact_id is None:
-            continue
-        entry = manifest.get(artifact_id)
-        if entry is None:
-            continue
-        verdict = profile.verdict_for(entry.modality)
-        cache_path = _write_durable_media_cache(workspace, artifact_id, entry.raw_bytes)
-        _persist_media_session_entry(
-            session,
-            workspace,
-            {
-                "uri": uri,
-                "mime_type": entry.mime_type,
-                "title": entry.title,
-                "modality": entry.modality,
-                "delivery": "resource_reference_replay",
-                "reason": verdict.reason,
-                "source_path": "",
-                "cache_path": cache_path,
-                "source_uri": "",
-                "block_type": verdict.block_type or "",
-            },
-        )
+
+    # Persist replay blocks (embedded data stored in Ralph manifest)
+    if replay_blocks and manifest is not None:
+        for block in replay_blocks:
+            uri = block.get("uri", "")
+            artifact_id = parse_media_uri(uri)
+            if artifact_id is None:
+                continue
+            entry = manifest.get(artifact_id)
+            if entry is None:
+                continue
+            verdict = profile.verdict_for(entry.modality)
+            cache_path = _write_durable_media_cache(workspace, artifact_id, entry.raw_bytes)
+            _persist_media_session_entry(
+                session,
+                workspace,
+                {
+                    "uri": uri,
+                    "mime_type": entry.mime_type,
+                    "title": entry.title,
+                    "modality": entry.modality,
+                    "delivery": "resource_reference_replay",
+                    "reason": verdict.reason,
+                    "source_path": "",
+                    "cache_path": cache_path,
+                    "source_uri": "",
+                    "block_type": verdict.block_type or "",
+                },
+            )
+
+    # Synthesize unsupported_runtime_seam entries for URI-backed blocks
+    # These reference external URIs and cannot be replayed across sessions
+    if uri_blocks:
+        for block in uri_blocks:
+            uri = block.get("uri", "")
+            modality = block.get("modality", "unknown")
+            title = block.get("title", uri.rsplit("/", maxsplit=1)[-1] or "untitled")
+            mime_type = block.get("mimeType", "application/octet-stream")
+            source_uri = uri
+            reason = (
+                f"Active runtime seam cannot carry {modality} content through the handoff path. "
+                f"External URI-backed artifacts are not replayable across sessions."
+            )
+            _persist_media_session_entry(
+                session,
+                workspace,
+                {
+                    "uri": uri,
+                    "mime_type": mime_type,
+                    "title": title,
+                    "modality": modality,
+                    "delivery": "unsupported",
+                    "reason": reason,
+                    "source_path": "",
+                    "cache_path": "",
+                    "source_uri": source_uri,
+                    "block_type": "",
+                    "failure_kind": "unsupported_runtime_seam",
+                },
+            )
 
 
 __all__ = [

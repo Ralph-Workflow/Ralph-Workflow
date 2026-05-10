@@ -1524,15 +1524,25 @@ class TestHandleReadImage:
         ws = MagicMock()
         ws.absolute_path.return_value = "/tmp/nonexistent.png"
 
+        # MockSessionWithManifest is required for capability-aware delivery path
         result = handle_read_image(
-            MockSession(MEDIA_READ_CAPABILITY),
+            MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="claude"),
+            ),
             ws,
             {"path": "nonexistent.png"},
         )
         assert result.is_error is True
-        assert "Failed to stat" in cast("ToolContent", result.content[0]).text
+        assert "Failed to read" in cast("ToolContent", result.content[0]).text
 
-    def test_returns_error_for_oversized_file(self) -> None:
+    def test_delivers_via_resource_reference_when_inline_too_large(self) -> None:
+        """When inline image is too large, falls back to resource-reference delivery.
+
+        This tests that handle_read_image (as a compatibility alias over
+        _handle_workspace_media) properly routes oversized images through the
+        resource-reference path when inline delivery is not possible.
+        """
         ws = MagicMock()
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
@@ -1542,14 +1552,26 @@ class TestHandleReadImage:
         try:
             ws.absolute_path.return_value = temp_path
 
+            # MockSessionWithManifest with INLINE_IMAGE support but file exceeds limit
             result = handle_read_image(
-                MockSession(MEDIA_READ_CAPABILITY),
+                MockSessionWithManifest(
+                    MEDIA_READ_CAPABILITY,
+                    model_identity=MultimodalModelIdentity(provider="claude"),
+                ),
                 ws,
                 {"path": "large.png"},
                 max_inline_bytes=DEFAULT_MAX_INLINE_BYTES,
             )
-            assert result.is_error is True
-            assert "too large" in cast("ToolContent", result.content[0]).text
+            # With INLINE_IMAGE support but oversized file, falls back to resource-reference
+            assert result.is_error is False
+            content = result.content[0]
+            # Should be a resource reference, not an inline image
+            assert hasattr(content, "uri"), (
+                f"Expected resource-reference block, got {type(content).__name__}"
+            )
+            assert content.uri.startswith("ralph://media/"), (
+                f"Expected ralph://media/ URI, got: {content.uri}"
+            )
         finally:
             Path(temp_path).unlink()
 
@@ -1567,8 +1589,12 @@ class TestHandleReadImage:
             ws = MagicMock()
             ws.absolute_path.return_value = temp_path
 
+            # MockSessionWithManifest with INLINE_IMAGE support (claude model)
             result = handle_read_image(
-                MockSession(MEDIA_READ_CAPABILITY),
+                MockSessionWithManifest(
+                    MEDIA_READ_CAPABILITY,
+                    model_identity=MultimodalModelIdentity(provider="claude"),
+                ),
                 ws,
                 {"path": "test.png"},
             )
@@ -2357,12 +2383,17 @@ def test_persist_upstream_media_artifacts_writes_session_index(tmp_path: Path) -
     assert cache_file.read_bytes() == b"ID3" + b"\x00" * 50
 
 
-def test_persist_upstream_media_artifacts_skips_uri_backed_blocks(tmp_path: Path) -> None:
-    """persist_upstream_media_artifacts must not write URI-backed resource_reference blocks.
+def test_persist_upstream_media_artifacts_writes_uri_backed_as_unsupported_seam(
+    tmp_path: Path,
+) -> None:
+    """URI-backed blocks must be written as unsupported_runtime_seam entries.
 
-    URI-backed blocks (delivery='resource_reference') reference external URIs and are not
-    Ralph-owned artifacts — they must not be written to the session index.
+    URI-backed blocks (delivery='resource_reference') reference external URIs and
+    cannot be replayed across sessions. They must be written to the session index
+    as unsupported_runtime_seam entries so the failure is explicit at invoke time.
     """
+    import json  # noqa: PLC0415
+
     from ralph.mcp.tools.workspace import persist_upstream_media_artifacts  # noqa: PLC0415
     from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
 
@@ -2395,9 +2426,19 @@ def test_persist_upstream_media_artifacts_skips_uri_backed_blocks(tmp_path: Path
     persist_upstream_media_artifacts(result, session, ws)
 
     index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
-    assert not index_path.exists(), (
-        "URI-backed resource_reference blocks must NOT be written to the session index"
+    assert index_path.exists(), (
+        "URI-backed resource_reference blocks must be written as unsupported_runtime_seam entries"
     )
+    data = json.loads(index_path.read_text(encoding="utf-8"))
+    artifacts = data["artifacts"]
+    assert len(artifacts) == 1
+    entry = artifacts[0]
+    assert entry["delivery"] == "unsupported"
+    assert entry["failure_kind"] == "unsupported_runtime_seam"
+    assert entry["source_uri"] == "https://example.com/report.pdf"
+    assert entry["modality"] == "pdf"
+    assert entry["title"] == "report.pdf"
+    assert entry["cache_path"] == ""  # No cache path for URI-backed artifacts
 
 
 def test_unknown_provider_media_preserves_delivery_metadata() -> None:

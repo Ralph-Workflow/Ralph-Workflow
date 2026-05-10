@@ -54,7 +54,7 @@ Drain class groupings used in this table:
 | `web_search` | `web.search` | non-analysis/commit (config opt-in) | Search the web via configured backends |
 | `visit_url` | `web.visit` | non-commit drains (config opt-in) | Fetch and extract text from a single URL |
 | `read_media` | `media.read` | all (default-on; opt-out via mcp.toml) | Read a media file — images, PDFs, documents, audio, video; inline or resource-reference delivery based on model capability |
-| `read_image` | `media.read` | all (default-on; opt-out via mcp.toml) | Compatibility alias for `read_media`; always requests inline image delivery |
+| `read_image` | `media.read` | all (default-on; opt-out via mcp.toml) | Compatibility alias for `read_media` for image inputs; follows the same capability-aware delivery contract (inline image when supported, resource reference or explicit error otherwise) |
 
 Claude exposes every tool as `mcp__ralph__<tool>` (e.g., `mcp__ralph__read_file`).
 See `ralph.mcp.tools.names` for the canonical name constants.

@@ -69,7 +69,7 @@ url = "https://mcp.example.com/docs"
 
 Ralph Workflow supports broad multimodal MCP tools covering **images, PDFs, audio, video, and office documents**. This support is **enabled by default** to ensure seamless multimodal capability without configuration.
 
-The primary entry point is `read_media`, which handles all supported modalities. `read_image` remains available as a compatibility alias for inline image flows.
+The primary entry point is `read_media`, which handles all supported modalities. `read_image` is a compatibility alias for `read_media` restricted to image inputs; it follows the same capability-aware delivery contract as `read_media`.
 
 ### Disabling multimodal support
 
@@ -100,7 +100,7 @@ When `media.enabled = true` (default), Ralph Workflow registers `read_media` as 
 - Uses the session’s `ResolvedCapabilityProfile` — pre-computed at session start from the provider/model identity — to select the delivery mode for each modality (inline, typed-block, resource-reference, or explicit unsupported)
 - Returns an explicit error when the modality is unsupported by the current provider/model
 
-`read_image` is a compatibility alias that forwards to `read_media` for inline image workflows.
+`read_image` is a compatibility alias for `read_media` restricted to image inputs; it follows the same capability-aware delivery contract (inline image when supported, resource reference or explicit error otherwise).
 
 ### Supported multimodal workflows
 
