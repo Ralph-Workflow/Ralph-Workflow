@@ -1,0 +1,38 @@
+🐜 Unattended AI coding: stop babysitting your agent
+
+The biggest lie in AI coding tools: "just let it run."
+
+Reality: most "agents" need you nearby every 5 min to redirect them. That's not automation — that's remote-controlled pair programming.
+
+RalphWorkflow changes that.
+
+Here's the problem with single-agent loops:
+
+• Rate limit hits → your script dies at step 2
+• Agent drifts off spec → you wake up to a mess
+• No artifact record → you can't review what happened
+• Crash at hour 3 → start over
+
+What you actually want: something that runs overnight, makes commits, and shows you evidence.
+
+That's RalphWorkflow.
+
+It wraps Claude Code / Codex CLI / OpenCode in a real engineering workflow:
+
+→ Planning loop: drafts the spec, critiques it, revises until it's solid
+→ Development loop: builds, analyzes, retries until the diff holds
+→ Program loop: commits, then fresh planning for the next pass
+
+And when a rate limit hits? It falls back to the next agent automatically. When it crashes? Resume from checkpoint.
+
+No other tool gives you this loop structure AND agent fallback chains AND artifact evidence at every gate.
+
+I ran a 4-hour refactor last week. Went to sleep. Woke up to 6 clean commits and a fresh plan for next pass.
+
+That's what unattended actually means.
+
+$9/mo Starter | $29/mo Pro | Custom Enterprise
+
+Link in bio.
+
+#LLM #AICoding #DevTools #ClaudeCode

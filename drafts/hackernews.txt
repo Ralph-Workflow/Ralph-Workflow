@@ -1,0 +1,35 @@
+Show HN: RalphWorkflow — structured, unattended AI coding with planning + dev loops
+
+TL;DR: RalphWorkflow is a repo-native CLI that wraps Claude Code, Codex CLI, and OpenCode into a real engineering workflow — not just a prompt loop. Planning analysis, dev analysis, checkpoint resume, fallback chains, and commits per pass.
+
+---
+
+Most AI coding agents need you steering them every few minutes. You end up with a very expensive pair programmer who can't be left alone.
+
+I built RalphWorkflow because I wanted to actually sleep while AI coding worked.
+
+**What it does:**
+
+The default workflow has two nested loop structures:
+
+1. **Planning loop** — drafts the brief, analyzes it, revises until the handoff into development is strong enough
+2. **Development loop** — builds the diff, analyzes it, retries until the commit gate actually passes
+3. **Program loop** — commits, then starts the next pass back in planning with fresh context
+
+When a rate limit hits (e.g. minimax times out), it falls back to the next agent in the chain (claude/sonnet continues). When something crashes, it resumes from the last checkpoint — not from scratch.
+
+Each checkpoint produces structured artifacts. You review evidence, not just diffs.
+
+**The gap it fills:**
+
+- Generic AI tools: one prompt at a time, no workflow structure
+- Interactive agents: need a human redirecting constantly
+- Hand-built scripts: fall apart on first rate limit or network error
+
+RalphWorkflow ships with a working default loop family, failure classification, artifact contracts, and audited commits — the orchestration that glued scripts never get around to building.
+
+**Pricing:** Starter $9/mo, Pro $29/mo, Enterprise custom.
+
+Curious if this fills a real need for others or if I'm just solving my own pain. Would love feedback.
+
+https://ralphworkflow.com

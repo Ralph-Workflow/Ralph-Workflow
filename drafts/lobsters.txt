@@ -1,0 +1,33 @@
+RalphWorkflow: spec-driven, unattended AI coding with agent fallback chains
+
+Posted as a text post since this is more a concept than a link.
+
+---
+
+Most AI coding tools advertise "set it and forget it" but deliver "set it and babysit it." I've been thinking about why that gap exists and what minimal structure actually closes it.
+
+**The problem with the naive loop:**
+
+The Ralph loop (prompt → inspect → refine → repeat) is a good mental model but a fragile runtime. One rate limit, one network blip, one agent that drifts off spec — and you're debugging the script instead of shipping.
+
+**What RalphWorkflow adds:**
+
+RalphWorkflow is a CLI that wraps Claude Code, Codex CLI, and OpenCode in a structured workflow. Not just "run this agent again" — a real engineering process:
+
+- **Planning analysis loop**: drafts the spec, critiques it, revises until the handoff is trustworthy
+- **Development analysis loop**: builds, analyzes, retries until the diff passes a quality gate
+- **Program loop**: commits per pass, then fresh planning for the next cycle
+- **Fallback chains**: if one agent rate-limits, the next picks up from checkpoint
+- **Artifact contracts**: structured evidence at every gate, not just a diff
+
+The workflow lives in `.agent/ralph-workflow.toml` — it's repo-native, version-controlled, and forkable.
+
+**Why this matters for the unattended case:**
+
+The tools exist. Claude Code, Codex, OpenCode — they're all capable. The missing piece is orchestration: how do you run them for 4 hours without checking in? How do you trust the output? How do you resume when something breaks?
+
+RalphWorkflow is my answer. Starter $9/mo, Pro $29/mo, Enterprise custom.
+
+Would appreciate honest feedback on whether the loop structure actually maps to how people want to work, or if I'm projecting my own workflow too hard.
+
+https://ralphworkflow.com

@@ -1,0 +1,29 @@
+Title: [Dev Tool] RalphWorkflow — turns Claude Code / Codex CLI into an unattended engineering workflow with planning loops and agent fallback chains
+
+Hey r/Python / r/programming — been working on this and wondering if it's useful to others or just me.
+
+**The pitch:** RalphWorkflow is a CLI that wraps AI coding agents (Claude Code, Codex CLI, OpenCode) into a real engineering workflow, not just "run the same prompt again."
+
+**The problem it solves:**
+
+You want to let AI code overnight. You fire up Claude Code. Three hours in:
+- A rate limit hits → script exits
+- The agent decides to refactor the tests too → you wake up to a full rewrite
+- Network blip → start over from scratch
+
+RalphWorkflow adds the structure that glued scripts never get:
+
+→ Planning loop: draft the spec, critique it, revise until it's solid before touching code
+→ Development loop: build, analyze, retry until the diff passes a quality gate  
+→ Program loop: commit per pass, then fresh planning for next cycle
+→ Fallback chains: if minimax times out, claude/sonnet continues automatically
+→ Checkpoint resume: crash at hour 3, pick up where you left off
+→ Artifact evidence at every gate (not just a final diff)
+
+**Pricing:** Starter $9/mo, Pro $29/mo, Enterprise custom.
+
+The workflow config lives in `.agent/ralph-workflow.toml` in your repo — it's versioned, forkable, and repo-native.
+
+Curious if this resonates with anyone else doing long unattended AI coding runs, or if I'm just solving a very specific pain point I have. Happy to answer questions.
+
+https://ralphworkflow.com

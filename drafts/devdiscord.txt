@@ -1,0 +1,24 @@
+Hey all — wanted to share RalphWorkflow, a CLI I've been building for unattended AI coding workflows.
+
+**What it is:**
+Wraps Claude Code, Codex CLI, and OpenCode into a structured engineering workflow with planning → development → commit loops. Built for the case where you want to let AI code run for hours without babysitting it.
+
+**The gap it fills:**
+- Generic AI tools: one prompt at a time, no loop structure
+- Interactive agents: need human steering every few minutes
+- Your own scripts: fall apart on rate limits or network errors
+
+**What you get:**
+- Planning analysis loop (draft → critique → revise before touching code)
+- Development analysis loop (build → analyze → retry until diff passes gate)
+- Program loop (commit per pass, fresh planning for next cycle)
+- Fallback chains across agents on rate limits
+- Checkpoint resume after crashes
+- Artifact evidence at every loop gate
+
+**Repo-native:** workflow lives in `.agent/ralph-workflow.toml`, version-controlled.
+
+Starter $9/mo, Pro $29/mo, Enterprise custom.
+
+Happy to answer questions or hear if this is useful to others doing long unattended runs.
+https://ralphworkflow.com

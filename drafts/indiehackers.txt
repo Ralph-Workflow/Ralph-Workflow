@@ -1,0 +1,31 @@
+Title: I built RalphWorkflow to run AI coding agents unattended overnight — would love feedback on whether this solves a real problem
+
+Hey IH — long-time lurker, first-time poster.
+
+**The backstory:**
+I kept trying to run Claude Code for multi-hour coding sessions (refactors, greenfield scaffolding, test writing). Every time, something broke: a rate limit, a network blip, an agent that drifted off spec. I'd come back to either a crashed script or a diff that rewrote everything in sight.
+
+I wanted to actually sleep while AI coded. So I built the orchestration layer I kept reaching for.
+
+**What RalphWorkflow does:**
+
+It's a CLI that wraps Claude Code, Codex CLI, and OpenCode into a structured engineering workflow:
+
+- Planning loop: drafts the spec, critiques it, revises until it's solid before touching code
+- Development loop: builds, analyzes, retries until the diff passes a quality gate
+- Program loop: commits per pass, then fresh planning for the next cycle
+- Fallback chains: if one agent rate-limits, the next picks up from checkpoint automatically
+- Checkpoint resume: crash mid-run, pick up where you left off
+- Artifact evidence at every gate (not just a final diff)
+
+The workflow lives in `.agent/ralph-workflow.toml` — repo-native and version-controlled.
+
+**Pricing:** Starter $9/mo, Pro $29/mo, Enterprise custom.
+
+**My question for the community:**
+
+Is the "unattended AI coding" use case real for indie devs and small teams? I keep hearing "set it and forget it" as a promise but it always seems to need human babysitting. Is the pain point I'm solving a shared one, or am I an edge case?
+
+Would genuinely love honest feedback before I go deeper on content/marketing.
+
+https://ralphworkflow.com

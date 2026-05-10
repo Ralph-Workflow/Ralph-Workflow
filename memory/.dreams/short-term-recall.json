@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-10T17:04:42.266Z",
+  "entries": {
+    "memory:memory/2026-05-09.md:1:19": {
+      "key": "memory:memory/2026-05-09.md:1:19",
+      "path": "memory/2026-05-09.md",
+      "startLine": 1,
+      "endLine": 19,
+      "source": "memory",
+      "snippet": "## 07:55 - Runtime event continues ### Status at session resume - write.as article posted: https://write.as/43pbq6n5rhrve.md - Telegraph article posted - LemonSqueezy product \"AI Coding Service - Small Feature\" published with checkout: https://billing.hireaegis.com/checkout/buy/8016dd23-0dfb-4c38-b960-ee45d1d2d089 - Content agent run.py needs updating — old version had hardcoded auth that was failing ### Blocked - Tool writes restricted to memory/2026-05-09.md during this event - All major platforms (dev.to, Twitter, HN, Lobsters, YouTube) require account auth I don't have - User said they won't participate — can't create accounts myself ### Environment issue - Multiple exec calls causi",
+      "recallCount": 7,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 4.4241484141344145,
+      "maxScore": 0.6320212020192021,
+      "firstRecalledAt": "2026-05-09T10:04:43.135Z",
+      "lastRecalledAt": "2026-05-09T19:04:41.711Z",
+      "queryHashes": [
+        "552121c7ed73",
+        "cb573498334e",
+        "6d2a80a15faa",
+        "85659a356d23",
+        "06ceae2085fa",
+        "b4fa5e5ebe04"
+      ],
+      "recallDays": [
+        "2026-05-09"
+      ],
+      "conceptTags": [
+        "write.as",
+        "write.as/43pbq6n5rhrve.md",
+        "run.py",
+        "memory/2026-05-09.md",
+        "dev.to",
+        "runtime",
+        "event",
+        "continues"
+      ]
+    },
+    "memory:memory/2026-05-09.md:1:33": {
+      "key": "memory:memory/2026-05-09.md:1:33",
+      "path": "memory/2026-05-09.md",
+      "startLine": 1,
+      "endLine": 33,
+      "source": "memory",
+      "snippet": "## 07:55 - Runtime event continues ### Status at session resume - write.as article posted: https://write.as/43pbq6n5rhrve.md - Telegraph article posted - LemonSqueezy product \"AI Coding Service - Small Feature\" published with checkout: https://billing.hireaegis.com/checkout/buy/8016dd23-0dfb-4c38-b960-ee45d1d2d089 - Content agent run.py needs updating — old version had hardcoded auth that was failing ### Blocked - Tool writes restricted to memory/2026-05-09.md during this event - All major platforms (dev.to, Twitter, HN, Lobsters, YouTube) require account auth I don't have - User said they won't participate — can't create accounts myself ### Environment issue - Multiple exec calls causi",
+      "recallCount": 8,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 7.6320215377683045,
+      "maxScore": 1,
+      "firstRecalledAt": "2026-05-09T22:04:43.194Z",
+      "lastRecalledAt": "2026-05-10T17:04:42.266Z",
+      "queryHashes": [
+        "a9f26f7ccf7f",
+        "cdaccd20b2a3",
+        "6d2a80a15faa",
+        "c865bdeccbdc",
+        "762f834756dd",
+        "75b30ed5bd43",
+        "3a35dd7477ec",
+        "4cc62a58efca"
+      ],
+      "recallDays": [
+        "2026-05-10"
+      ],
+      "conceptTags": [
+        "write.as",
+        "write.as/43pbq6n5rhrve.md",
+        "run.py",
+        "memory/2026-05-09.md",
+        "dev.to",
+        "runtime",
+        "event",
+        "continues"
+      ]
+    },
+    "memory:memory/2026-05-09.md:25:55": {
+      "key": "memory:memory/2026-05-09.md:25:55",
+      "path": "memory/2026-05-09.md",
+      "startLine": 25,
+      "endLine": 55,
+      "source": "memory",
+      "snippet": "- Content agent run.py needs updating — old version had hardcoded auth that was failing ### Blocked - Tool writes restricted to memory/2026-05-09.md during this event - All major platforms (dev.to, Twitter, HN, Lobsters, YouTube) require account auth I don't have - User said they won't participate — can't create accounts myself ### Environment issue - Multiple exec calls causing garbled output earlier - Tool write blocked during \"continue\" event — seems memory flush context is sticky ## 21:52 - Session close (pre-compaction) ### Marketing loop built today Set up complete automated marketing loop for ralphworkflow.com: **Agents created:** - `agents/marketing/run.py` — daily data collecti",
+      "recallCount": 5,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 3.156540857767556,
+      "maxScore": 0.6313081715535113,
+      "firstRecalledAt": "2026-05-09T22:04:43.194Z",
+      "lastRecalledAt": "2026-05-10T15:04:41.789Z",
+      "queryHashes": [
+        "a9f26f7ccf7f",
+        "c865bdeccbdc",
+        "afcdf09fce26",
+        "75b30ed5bd43",
+        "3a35dd7477ec"
+      ],
+      "recallDays": [
+        "2026-05-10"
+      ],
+      "conceptTags": [
+        "run.py",
+        "memory/2026-05-09.md",
+        "dev.to",
+        "pre-compaction",
+        "ralphworkflow.com",
+        "agents/marketing/run.py",
+        "content",
+        "needs"
+      ]
+    },
+    "memory:memory/2026-05-09.md:47:80": {
+      "key": "memory:memory/2026-05-09.md:47:80",
+      "path": "memory/2026-05-09.md",
+      "startLine": 47,
+      "endLine": 80,
+      "source": "memory",
+      "snippet": "- `agents/marketing/seo_outreach.py` — weekly backlink + directory scanner (finds 103 repos mentioning Ralph Workflow) **Cron jobs:** - `content-poster` — 6am daily (posts to write.as + Telegraph) - `marketing-daily` — 8am daily (data collection) - `marketing-reflection` — 10am Mon (weekly review + reflection + channel discovery) **Published:** - write.as article: https://write.as/43pbq6n5rhrve.md - Telegraph article: https://telegra.ph/I-Let-AI-Code-for-4-Hours-Unattended--Heres-the-Exact-Workflow-05-09 **Key findings from SEO audit:** - 0 backlinks to ralphworkflow.com - 75 GitHub code search results for \"Ralph Workflow\" - 103 repos found via GitHub search - sitemap.xml: 242 URLs, robot",
+      "recallCount": 5,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 3.1559956620674248,
+      "maxScore": 0.6311992726801408,
+      "firstRecalledAt": "2026-05-09T22:04:43.194Z",
+      "lastRecalledAt": "2026-05-10T15:04:41.789Z",
+      "queryHashes": [
+        "a9f26f7ccf7f",
+        "c865bdeccbdc",
+        "afcdf09fce26",
+        "75b30ed5bd43",
+        "3a35dd7477ec"
+      ],
+      "recallDays": [
+        "2026-05-10"
+      ],
+      "conceptTags": [
+        "agents/marketing/seo-outreach.py",
+        "content-poster",
+        "write.as",
+        "marketing-daily",
+        "marketing-reflection",
+        "write.as/43pbq6n5rhrve.md",
+        "heres-the-exact-workflow-05-09",
+        "ralphworkflow.com"
+      ]
+    },
+    "memory:memory/2026-05-09.md:73:100": {
+      "key": "memory:memory/2026-05-09.md:73:100",
+      "path": "memory/2026-05-09.md",
+      "startLine": 73,
+      "endLine": 100,
+      "source": "memory",
+      "snippet": "→ Need: Twitter cookie session or alternative 3. **LS product needs deletion** — \"AI Coding Service\" at $9.99 needs manual delete from LS dashboard (UI automation failed due to Vue.js) ### Platforms assessed | Platform | Status | Notes | |----------|--------|-------| | write.as | ✅ Working | Anonymous posting, no auth | | Telegraph | ✅ Working | Anonymous posting, but API may be deprecated | | GitHub | ⚠️ Read-only | PAT has no write scope | | Reddit | ❌ Blocked | Bot detection | | Twitter | ❌ Blocked | Login flow fails | | HN/Lobsters | ❌ Blocked | Need accounts | | dev.to | ❌ Blocked | Needs GitHub OAuth or API key | | Reddit | ❌ Blocked | Karma + bot detection | ### What still works",
+      "recallCount": 1,
+      "dailyCount": 0,
+      "groundedCount": 0,
+      "totalScore": 0.63187063066865,
+      "maxScore": 0.63187063066865,
+      "firstRecalledAt": "2026-05-10T12:04:44.287Z",
+      "lastRecalledAt": "2026-05-10T12:04:44.287Z",
+      "queryHashes": [
+        "75b30ed5bd43"
+      ],
+      "recallDays": [
+        "2026-05-10"
+      ],
+      "conceptTags": [
+        "9.99",
+        "vue.js",
+        "write.as",
+        "read-only",
+        "hn/lobsters",
+        "dev.to",
+        "need",
+        "twitter"
+      ]
+    }
+  }
+}

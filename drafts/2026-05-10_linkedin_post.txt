@@ -1,0 +1,28 @@
+🧠 After watching 200+ developers code in live technical interviews, the patterns are clear.
+
+The best performers don't write more code.
+
+They write less code that does more.
+
+---
+
+Here's what actually separates senior engineers in 45-minute live coding interviews:
+
+▸ They define the problem before writing a line
+▸ They use AI as a collaborator — not just autocomplete  
+▸ They explain their thinking in real-time
+▸ They spot edge cases before the interviewer mentions them
+
+The surprising finding: experience level didn't correlate with speed.
+
+Seniors took LONGER but produced cleaner solutions.
+
+The whiteboard algorithm crowd? Fast and wrong more often than you'd think.
+
+---
+
+We're building HireAegis to make this kind of data-driven hiring accessible to every team.
+
+HireAegis data — link in comments
+
+#Engineering #Hiring #TechnicalInterviews #SoftwareEngineering
