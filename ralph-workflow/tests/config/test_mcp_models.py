@@ -151,6 +151,24 @@ class TestMediaConfig:
         with pytest.raises(ValidationError):
             config.enabled = True
 
+    def test_media_config_docstring_describes_broad_multimodal_not_image_only(self) -> None:
+        """MediaConfig.__doc__ must not describe support as image-only.
+
+        The docstring is the first contract surface an operator reads when
+        configuring mcp.toml. It must reflect the actual broad multimodal
+        default-on behavior rather than the stale image-only framing.
+        """
+        doc = MediaConfig.__doc__ or ""
+        assert "image support" not in doc.lower(), (
+            "MediaConfig.__doc__ must not say 'image support' — "
+            "Ralph supports broad multimodal (images, PDFs, audio, video, documents), "
+            f"not image-only.\nActual docstring: {doc!r}"
+        )
+        assert "multimodal" in doc.lower(), (
+            "MediaConfig.__doc__ must mention multimodal support. "
+            f"Actual docstring: {doc!r}"
+        )
+
 
 class TestMcpConfigMediaIntegration:
     """Tests for media config integration in McpConfig (Task 4)."""

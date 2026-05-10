@@ -106,10 +106,8 @@ class WebVisitConfig(_FrozenMcpModel):  # type: ignore[explicit-any]  # reason: 
 class MediaConfig(_FrozenMcpModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Multimodal media support config in `mcp.toml`.
 
-    Multimodal image support is enabled by default but can be disabled with:
-        [media]
-        enabled = false
-        max_inline_bytes = 5242880
+    Broad multimodal support (images, PDFs, audio, video, documents) is enabled
+    by default. Disable with ``[media] enabled = false`` in ``mcp.toml``.
     """
 
     enabled: bool = True
