@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING, Literal, cast
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import ConfigDict, Field, ValidationError, model_validator
+
+from ralph.pydantic_compat import RalphBaseModel
 
 _ISSUE_SEVERITIES = frozenset({"high", "medium", "low"})
 _ISSUES_STATUSES = frozenset({"issues_found", "no_issues"})
@@ -44,7 +46,7 @@ def _load_analysis_decision_vocabulary() -> frozenset[str]:
 _ANALYSIS_DECISION_VOCABULARY: frozenset[str] = _load_analysis_decision_vocabulary()
 
 
-class _IssueEntry(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class _IssueEntry(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
@@ -52,7 +54,7 @@ class _IssueEntry(BaseModel):  # type: ignore[explicit-any]  # reason: external 
     summary: str = Field(..., min_length=1)
 
 
-class Issues(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class Issues(RalphBaseModel):
     """Validated schema for an issues artifact payload."""
 
     model_config = ConfigDict(extra="forbid")
@@ -81,7 +83,7 @@ class Issues(BaseModel):  # type: ignore[explicit-any]  # reason: external libra
         return self
 
 
-class FixResult(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class FixResult(RalphBaseModel):
     """Validated schema for a fix_result artifact payload."""
 
     model_config = ConfigDict(extra="forbid")
@@ -91,7 +93,7 @@ class FixResult(BaseModel):  # type: ignore[explicit-any]  # reason: external li
     next_steps: str | None = None
 
 
-class AnalysisDecision(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class AnalysisDecision(RalphBaseModel):
     """Validation model for analysis decision artifacts.
 
     Enforces the documented artifact contract from format_docs/:
@@ -125,10 +127,10 @@ class TypedArtifactValidationError(ValueError):
     """Raised when a typed artifact payload is malformed."""
 
 
-def _validate(model_cls: type[BaseModel], content: dict[str, object]) -> dict[str, object]:
+def _validate(model_cls: type[RalphBaseModel], content: dict[str, object]) -> dict[str, object]:
     try:
         validated = model_cls.model_validate(content)
-        return cast("dict[str, object]", validated.model_dump(mode="python", exclude_none=True))
+        return validated.model_dump(mode="python", exclude_none=True)
     except ValidationError as exc:
         raise TypedArtifactValidationError(str(exc)) from exc
 

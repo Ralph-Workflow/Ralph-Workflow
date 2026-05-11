@@ -406,7 +406,7 @@ class TestVerificationAsciiAnnotation:
     """Tests that verification phases produce [verify: ...] annotation in ASCII output."""
 
     def _bundle_with_verification(self) -> PolicyBundle:
-        from ralph.policy.models import (  # noqa: PLC0415
+        from ralph.policy.models import (
             AgentChainConfig,
             AgentDrainConfig,
             AgentsPolicy,

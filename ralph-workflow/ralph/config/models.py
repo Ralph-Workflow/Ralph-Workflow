@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import pathlib
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import ConfigDict, Field, HttpUrl, model_validator
 
 from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.pydantic_compat import RalphBaseModel
 from ralph.timeout_defaults import (
     CHILD_EXIT_RECONCILE_SECONDS,
     CHILD_HEARTBEAT_TTL_SECONDS,
@@ -32,7 +33,7 @@ from ralph.timeout_defaults import (
 PATH_RUNTIME_CLASS = pathlib.Path
 
 
-class _FrozenConfigModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class _FrozenConfigModel(RalphBaseModel):
     """Private base for frozen configuration models.
 
     Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
@@ -43,7 +44,7 @@ class _FrozenConfigModel(BaseModel):  # type: ignore[explicit-any]  # reason: ex
     model_config = ConfigDict(frozen=True)
 
 
-class AgentConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class AgentConfig(_FrozenConfigModel):
     """Configuration for a single AI agent.
 
     Attributes:
@@ -96,7 +97,7 @@ class AgentConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: 
         object.__setattr__(self, "transport", inferred_transport)
 
 
-class CloudConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CloudConfig(_FrozenConfigModel):
     """Optional cloud reporting configuration.
 
     Attributes:
@@ -112,7 +113,7 @@ class CloudConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: 
     timeout_secs: int = 30
 
 
-class GeneralWorkflowFlags(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class GeneralWorkflowFlags(_FrozenConfigModel):
     """General configuration workflow automation flags.
 
     Attributes:
@@ -122,7 +123,7 @@ class GeneralWorkflowFlags(_FrozenConfigModel):  # type: ignore[explicit-any]  #
     checkpoint_enabled: bool = True
 
 
-class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class GeneralConfig(_FrozenConfigModel):
     """[general] section of ralph-workflow.toml.
 
     Attributes:
@@ -367,7 +368,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         return self
 
 
-class CcsConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CcsConfig(_FrozenConfigModel):
     """CCS (Claude Code Switch) defaults configuration.
 
     Attributes:
@@ -391,7 +392,7 @@ class CcsConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: ex
     can_commit: bool = True
 
 
-class CcsAliasConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CcsAliasConfig(_FrozenConfigModel):
     """Per-alias CCS configuration (table form).
 
     Attributes:
@@ -419,7 +420,7 @@ class CcsAliasConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reaso
     session_flag: str | None = None
 
 
-class UnifiedConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class UnifiedConfig(_FrozenConfigModel):
     """Top-level merged configuration (global + local + CLI overrides).
 
     This is the sole source of truth for Ralph configuration,

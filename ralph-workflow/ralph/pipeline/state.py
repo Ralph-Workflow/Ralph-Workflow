@@ -27,11 +27,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ralph.config.enums import PipelinePhase  # noqa: TC001
 from ralph.pipeline.work_units import WorkUnit  # noqa: TC001
 from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
+from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName, PipelinePolicy
@@ -48,13 +49,13 @@ def _migrate_counter_field(
         target[counter_name] = d[legacy_field]
 
 
-class _FrozenPipelineStateModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class _FrozenPipelineStateModel(RalphBaseModel):
     """Private base for frozen pipeline state models."""
 
     model_config = ConfigDict(frozen=True)
 
 
-class AgentChainState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class AgentChainState(_FrozenPipelineStateModel):
     """State for agent fallback chain management.
 
     Attributes:
@@ -84,7 +85,7 @@ class AgentChainState(_FrozenPipelineStateModel):  # type: ignore[explicit-any] 
         )
 
 
-class RebaseState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class RebaseState(_FrozenPipelineStateModel):
     """State for git rebase operations."""
 
     pending: bool = False
@@ -92,7 +93,7 @@ class RebaseState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # r
     completed: bool = False
 
 
-class CommitState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CommitState(_FrozenPipelineStateModel):
     """State for commit operations."""
 
     message_prepared: bool = False
@@ -100,7 +101,7 @@ class CommitState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # r
     agent_invoked: bool = False
 
 
-class RunMetrics(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class RunMetrics(_FrozenPipelineStateModel):
     """Run-level execution metrics."""
 
     total_agent_calls: int = 0
@@ -136,7 +137,7 @@ class RunMetrics(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # re
         )
 
 
-class FalloverRecord(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class FalloverRecord(_FrozenPipelineStateModel):
     """A record of a single agent fallover event persisted in pipeline state."""
 
     phase: str
@@ -145,7 +146,7 @@ class FalloverRecord(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  
     timestamp_iso: str
 
 
-class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PipelineState(_FrozenPipelineStateModel):
     """Immutable snapshot of pipeline execution state.
 
     This is the checkpoint payload - the single source of truth for pipeline progress.

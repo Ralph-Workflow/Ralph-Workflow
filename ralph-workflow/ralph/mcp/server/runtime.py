@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64 as _base64
 import json
 import os
 import uuid
@@ -57,6 +58,13 @@ from loguru import logger
 from ralph import __version__
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    MultimodalModelIdentity,
+    profile_from_payload,
+    resolve_capability_profile,
+)
+from ralph.mcp.multimodal.resources import MediaManifest, parse_media_uri
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import (
     MCP_SESSION_ENV as SESSION_ENV,
@@ -396,10 +404,6 @@ class McpServer:
     def _handle_resources_read(
         self, request: JsonRpcRequest
     ) -> tuple[JsonRpcResponse, ServerState]:
-        import base64 as _base64  # noqa: PLC0415
-
-        from ralph.mcp.multimodal.resources import parse_media_uri  # noqa: PLC0415
-
         params = request.params or {}
         uri = params.get("uri")
         if not isinstance(uri, str) or not uri:
@@ -700,7 +704,6 @@ class FileBackedSession:
             lambda: f"standalone-{uuid.uuid4().hex[:8]}"
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
-        from ralph.mcp.multimodal.resources import MediaManifest  # noqa: PLC0415
         self._media_manifest = MediaManifest()
 
 
@@ -741,10 +744,6 @@ class FileBackedSession:
 
     @property
     def model_identity(self) -> object:
-        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
-            UNKNOWN_IDENTITY,
-            MultimodalModelIdentity,
-        )
         raw = self._load().get("model_identity")
         if not isinstance(raw, dict):
             return UNKNOWN_IDENTITY
@@ -759,12 +758,6 @@ class FileBackedSession:
 
     @property
     def capability_profile(self) -> object:
-        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
-            UNKNOWN_IDENTITY,
-            MultimodalModelIdentity,
-            profile_from_payload,
-            resolve_capability_profile,
-        )
         raw = self._load().get("capability_profile")
         if isinstance(raw, dict):
             return profile_from_payload(raw)
@@ -825,12 +818,6 @@ def session_from_env(
         set(cast("list[str]", capabilities_value))
         if isinstance(capabilities_value, list)
         else set()
-    )
-    from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
-        UNKNOWN_IDENTITY,
-        MultimodalModelIdentity,
-        profile_from_payload,
-        resolve_capability_profile,
     )
     raw_identity = payload.get("model_identity")
     if isinstance(raw_identity, dict):

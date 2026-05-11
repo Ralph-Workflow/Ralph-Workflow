@@ -51,7 +51,7 @@ def test_merge_integration_effect_not_in_effects() -> None:
 
 
 def test_effect_union_does_not_include_merge_integration() -> None:
-    import typing  # noqa: PLC0415
+    import typing
     args = typing.get_args(effects.Effect)
     names = [getattr(t, "__name__", str(t)) for t in args]
     assert "MergeIntegrationEffect" not in names

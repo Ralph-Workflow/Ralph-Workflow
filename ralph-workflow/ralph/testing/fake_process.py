@@ -15,6 +15,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
     from typing import Protocol
 
+    from ralph.process.manager import (
+        _AsyncProcessLike,
+        _PsutilProcessLike,
+        _SyncProcessLike,
+    )
+
     class _SyncFactoryCallable(Protocol):
         def __call__(  # noqa: PLR0913
             self,
@@ -27,7 +33,7 @@ if TYPE_CHECKING:
             stderr: int | None,
             start_new_session: bool,
             text: bool,
-        ) -> FakePopen: ...
+        ) -> _SyncProcessLike: ...
 
     class _AsyncFactoryCallable(Protocol):
         async def __call__(  # noqa: PLR0913
@@ -40,7 +46,7 @@ if TYPE_CHECKING:
             stdout: int | None,
             stderr: int | None,
             start_new_session: bool,
-        ) -> FakeAsyncProcess: ...
+        ) -> _AsyncProcessLike: ...
 
 
 @dataclass
@@ -107,14 +113,14 @@ class FakePsutil:
 
     def wait_procs(
         self,
-        procs: list[FakePsutilProcess],
+        procs: Sequence[_PsutilProcessLike],
         timeout: float | None = None,
-    ) -> tuple[list[FakePsutilProcess], list[FakePsutilProcess]]:
-        """Simulate wait_procs - processes that were terminate()'d are considered dead."""
-        dead = []
-        alive = []
+    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
+        """Simulate wait_procs using the fake process lifecycle state."""
+        dead: list[_PsutilProcessLike] = []
+        alive: list[_PsutilProcessLike] = []
         for p in procs:
-            if p._terminated or p._killed:
+            if not p.is_running() or p.status() == "zombie":
                 dead.append(p)
             else:
                 alive.append(p)
@@ -196,6 +202,18 @@ class FakeAsyncProcess:
         self._stderr = stderr
 
     @property
+    def stdin(self) -> asyncio.StreamWriter | None:
+        return self._stdin
+
+    @property
+    def stdout(self) -> asyncio.StreamReader | None:
+        return self._stdout
+
+    @property
+    def stderr(self) -> asyncio.StreamReader | None:
+        return self._stderr
+
+    @property
     def returncode(self) -> int | None:
         return self._returncode
 
@@ -204,6 +222,12 @@ class FakeAsyncProcess:
 
     async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
         return b"", b""
+
+    def terminate(self) -> None:
+        self._terminated = True
+
+    def kill(self) -> None:
+        self._killed = True
 
 
 class FakeTimeoutPopen:

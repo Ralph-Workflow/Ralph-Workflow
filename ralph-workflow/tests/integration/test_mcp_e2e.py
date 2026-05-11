@@ -245,7 +245,7 @@ _MEDIA_CAPABILITIES = _REQUIRED_CAPABILITIES | {"media.read"}
 
 def _build_multimodal_server(session_id: str = "test-multimodal") -> McpServer:
     """Build a McpServer with media.read session capability."""
-    from ralph.mcp.protocol.session import AgentSession  # noqa: PLC0415
+    from ralph.mcp.protocol.session import AgentSession
 
     session = AgentSession(
         session_id=session_id,

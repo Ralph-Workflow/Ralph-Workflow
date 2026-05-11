@@ -12,6 +12,7 @@ Key features:
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import shlex
@@ -206,13 +207,22 @@ class _ObserverProtocol(_HasStop, Protocol):
     def start(self) -> None: ...
 
 
+class _WatchdogObserversModule(Protocol):
+    """Typed accessor for the optional watchdog.observers module."""
+
+    Observer: type[_ObserverProtocol]
+
+
 def _create_watchdog_observer() -> _ObserverProtocol | None:
     """Construct a watchdog observer when the optional dependency is installed."""
     try:
-        from watchdog.observers import Observer  # noqa: PLC0415
+        observers_module = cast(
+            "_WatchdogObserversModule",
+            importlib.import_module("watchdog.observers"),
+        )
     except ImportError:
         return None
-    return cast("_ObserverProtocol", Observer())
+    return observers_module.Observer()
 
 
 class _IdleStreamTimeoutError(RuntimeError):

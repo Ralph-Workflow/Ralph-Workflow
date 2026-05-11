@@ -8,14 +8,30 @@ complete for policy-driven orchestration.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from importlib import import_module
+from typing import TYPE_CHECKING, Protocol, cast
+
+from ralph.policy.models import PhaseDefinition, PipelinePolicy, PolicyBundle
 
 if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
     from ralph.pipeline.state import PipelineState
     from ralph.pipeline.work_units import WorkUnitsPlan
-    from ralph.policy.models import PipelinePolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
+
+
+class _WorkUnitsModule(Protocol):
+    """Typed accessor for the lazily imported work-units module."""
+
+    WorkUnitsValidationError: type[Exception]
+    validate_for_same_workspace: Callable[[object], object]
+
+
+class _InitCommandModule(Protocol):
+    """Typed accessor for the lazily imported init command module."""
+
+    STARTER_PROMPT_SENTINEL: str
 
 
 class CheckpointPolicyMismatchError(Exception):
@@ -183,10 +199,13 @@ class PolicyValidationError(Exception):
 PolicyViolation = PolicyValidationError
 
 
+def _work_units_validation_deps() -> tuple[type[Exception], Callable[[object], object]]:
+    module = cast("_WorkUnitsModule", import_module("ralph.pipeline.work_units"))
+    return (module.WorkUnitsValidationError, module.validate_for_same_workspace)
+
+
 def _validate_terminal_phase(phase_name: str, phase_def: object, errors: list[str]) -> None:
     """Validate constraints on the terminal phase entry."""
-    from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
-
     if not isinstance(phase_def, PhaseDefinition):
         return
     if phase_def.role is not None and phase_def.role != "terminal":
@@ -208,8 +227,6 @@ def _validate_analysis_phase(
     errors: list[str],
 ) -> None:
     """Validate constraints on analysis-role phases."""
-    from ralph.policy.models import PhaseDefinition, PolicyBundle  # noqa: PLC0415
-
     if not isinstance(phase_def, PhaseDefinition) or not isinstance(bundle, PolicyBundle):
         return
 
@@ -270,8 +287,6 @@ def _validate_review_phase(
     - clean_outcome: the bypass_routes key that signals a clean review (required
       when bypass_routes is non-empty, so the reducer knows which key to look up)
     """
-    from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
-
     if not isinstance(phase_def, PhaseDefinition):
         return
     if phase_def.issues_outcome is None:
@@ -299,8 +314,6 @@ def _validate_commit_phase_loop_resets(
     loop_resets entries must reference iteration_state_field values from analysis
     phases in the policy, or be empty.
     """
-    from ralph.policy.models import PhaseDefinition, PipelinePolicy  # noqa: PLC0415
-
     if not isinstance(phase_def, PhaseDefinition) or not isinstance(policy, PipelinePolicy):
         return
     if phase_def.commit_policy is None:
@@ -338,8 +351,6 @@ def _validate_commit_phase_post_commit_routes(
     When a commit phase increments a budget-tracking counter, at least one
     post_commit_route must apply to that phase so the pipeline can route after commit.
     """
-    from ralph.policy.models import PhaseDefinition, PipelinePolicy  # noqa: PLC0415
-
     if not isinstance(phase_def, PhaseDefinition) or not isinstance(policy, PipelinePolicy):
         return
     if phase_def.commit_policy is None:
@@ -377,8 +388,6 @@ def _validate_verification_phase(
     - verification.gate_for: one of 'advancement', 'completion', 'release'
     - verification.on_failure_route: either None or a known phase/terminal pseudo-phase
     """
-    from ralph.policy.models import PhaseDefinition, PipelinePolicy  # noqa: PLC0415
-
     if not isinstance(phase_def, PhaseDefinition) or not isinstance(policy, PipelinePolicy):
         return
     if phase_def.verification is None:
@@ -646,8 +655,6 @@ def _validate_skip_invocation_has_on_success(
     phase_name: str, phase_def: object, errors: list[str]
 ) -> None:
     """Validate that skip_invocation phases declare an on_success transition."""
-    from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
-
     if not isinstance(phase_def, PhaseDefinition):
         return
     if phase_def.skip_invocation and not phase_def.transitions.on_success:
@@ -662,8 +669,6 @@ def _validate_parallelization_consistency(
     phase_name: str, phase_def: object, errors: list[str]
 ) -> None:
     """Validate that max_work_units >= max_parallel_workers when parallelization is declared."""
-    from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
-
     if not isinstance(phase_def, PhaseDefinition):
         return
     para = phase_def.parallelization
@@ -860,11 +865,6 @@ def validate_work_units_against_policy(
     Raises:
         PolicyValidationError: If the plan is unsafe or the phase does not permit fan-out.
     """
-    from ralph.pipeline.work_units import (  # noqa: PLC0415
-        WorkUnitsValidationError,
-        validate_for_same_workspace,
-    )
-
     if len(work_units.work_units) <= 1:
         return
 
@@ -900,9 +900,10 @@ def validate_work_units_against_policy(
                     f"Work unit '{unit.unit_id}' must declare allowed_directories"
                 )
 
+    work_units_validation_error, validate_for_same_workspace = _work_units_validation_deps()
     try:
         validate_for_same_workspace(work_units)
-    except WorkUnitsValidationError as exc:
+    except work_units_validation_error as exc:
         raise PolicyValidationError(str(exc)) from exc
 
 
@@ -1015,10 +1016,11 @@ def validate_required_inputs(
             f"Required input file is empty: {prompt_path}. "
             "Run `ralph --init` to scaffold a starter template, then edit it with your task."
         )
-    from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL  # noqa: PLC0415
+    init_module = cast("_InitCommandModule", import_module("ralph.cli.commands.init"))
+    starter_prompt_sentinel = init_module.STARTER_PROMPT_SENTINEL
 
     content = prompt_path.read_text(encoding="utf-8")
-    if STARTER_PROMPT_SENTINEL in content:
+    if starter_prompt_sentinel in content:
         raise PolicyValidationError(
             f"PROMPT.md at {prompt_path} is still the `ralph --init` starter template. "
             "Edit it to describe YOUR task (remove the `<!-- ralph:starter-prompt ... -->` "

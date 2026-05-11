@@ -69,7 +69,7 @@ def test_probe_emits_claude_http_config_and_reaches_server(
     captured = _stub_http_handshake_pass(monkeypatch)
     captured_blobs: list[tuple[str, object]] = []
 
-    from ralph.mcp.transport.claude import claude_mcp_config as real_claude_config  # noqa: PLC0415
+    from ralph.mcp.transport.claude import claude_mcp_config as real_claude_config
 
     def spy_claude(endpoint: str, **kw: object) -> str:
         blob = real_claude_config(endpoint, **kw)
@@ -124,7 +124,7 @@ def test_probe_emits_opencode_config_with_remote_mcp_entry(
     server = _http_server(name="docs", url="http://docs.invalid/mcp")
     captured_endpoint = _stub_http_handshake_pass(monkeypatch)
     captured_configs: list[str] = []
-    from ralph.mcp.transport.opencode import (  # noqa: PLC0415
+    from ralph.mcp.transport.opencode import (
         build_opencode_provider_config as real_opencode,
     )
 

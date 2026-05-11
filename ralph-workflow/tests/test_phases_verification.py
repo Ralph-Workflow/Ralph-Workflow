@@ -149,7 +149,7 @@ class TestVerificationArtifactGate:
 
 class TestVerificationMakeTargetKind:
     def test_make_target_kind_is_rejected_by_policy(self) -> None:
-        from pydantic import ValidationError  # noqa: PLC0415
+        from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
             PhaseVerificationPolicy(

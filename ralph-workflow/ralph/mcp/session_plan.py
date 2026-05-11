@@ -10,6 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ralph.api.opencode import get_model_by_id
+from ralph.policy.validation import PolicyValidationError
+
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.multimodal.capabilities import (
@@ -79,7 +82,6 @@ def resolve_model_identity(
         )
     if transport == AgentTransport.OPENCODE and model_flag is not None:
         try:
-            from ralph.api.opencode import get_model_by_id  # noqa: PLC0415
             entry = get_model_by_id(model_flag)
             if entry is not None and entry.provider is not None:
                 return MultimodalModelIdentity(
@@ -176,8 +178,6 @@ def _resolve_capability_cls(
     Uses capability_class from agents_policy when declared, falling back to
     drain_class. This is the single source of truth for MCP surface selection.
     """
-    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
-
     drain_class = drain_class_for_session(drain, agents_policy)
     if agents_policy is not None:
         drain_cfg = agents_policy.agent_drains.get(drain)

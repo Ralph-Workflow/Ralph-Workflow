@@ -30,7 +30,7 @@ _FORBIDDEN_TOKENS = [
 
 def _read_source(module_name: str) -> str:
     """Read source for a module by name, falling back to __file__ if inspect fails."""
-    import importlib  # noqa: PLC0415
+    import importlib
 
     mod = importlib.import_module(module_name)
     try:
@@ -59,8 +59,8 @@ def test_parallel_module_does_not_import_rebase() -> None:
     Rebase is only used for the single-worker development flow; parallel workers
     in same-workspace mode do not rebase because they all write to the same checkout.
     """
-    import importlib  # noqa: PLC0415
-    import importlib.util  # noqa: PLC0415
+    import importlib
+    import importlib.util
 
     rebase_key = "ralph.git.rebase"
 
@@ -104,7 +104,7 @@ def test_parallel_modules_do_not_import_find_main_worktree_root() -> None:
     It is explicitly NOT part of the same-workspace parallel worker path and must
     never appear in any ralph.pipeline.parallel.* module.
     """
-    import importlib  # noqa: PLC0415
+    import importlib
 
     for module_name in _PARALLEL_MODULES:
         mod = importlib.import_module(module_name)

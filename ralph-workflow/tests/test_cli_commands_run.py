@@ -439,7 +439,7 @@ class TestValidateCounterOverrides:
     """Tests for CLI counter override validation via the shared policy validator."""
 
     def _pipeline_with_counters(self, *counter_names: str) -> PipelinePolicy:
-        from ralph.policy.models import BudgetCounterConfig  # noqa: PLC0415
+        from ralph.policy.models import BudgetCounterConfig
 
         return PipelinePolicy(
             phases={
@@ -454,7 +454,7 @@ class TestValidateCounterOverrides:
         )
 
     def test_unknown_counter_raises_policy_validation_error(self) -> None:
-        from ralph.policy.validation import _validate_cli_counter_overrides  # noqa: PLC0415
+        from ralph.policy.validation import _validate_cli_counter_overrides
 
         policy = self._pipeline_with_counters("declared_counter")
         errors: list[str] = []
@@ -462,7 +462,7 @@ class TestValidateCounterOverrides:
         assert any("unknown_counter" in e for e in errors)
 
     def test_declared_counter_passes_validation(self) -> None:
-        from ralph.policy.validation import _validate_cli_counter_overrides  # noqa: PLC0415
+        from ralph.policy.validation import _validate_cli_counter_overrides
 
         policy = self._pipeline_with_counters("my_counter")
         errors: list[str] = []
@@ -470,7 +470,7 @@ class TestValidateCounterOverrides:
         assert errors == []
 
     def test_empty_overrides_passes_validation(self) -> None:
-        from ralph.policy.validation import _validate_cli_counter_overrides  # noqa: PLC0415
+        from ralph.policy.validation import _validate_cli_counter_overrides
 
         policy = self._pipeline_with_counters()
         errors: list[str] = []

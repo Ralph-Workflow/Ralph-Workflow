@@ -138,9 +138,9 @@ class TestRunnerBoundaryPreflightRejection:
 
     def test_runner_uses_phase_scoped_max_parallel_workers(self) -> None:
         """FanOutEffect must use max_workers from the phase's parallelization."""
-        from unittest.mock import MagicMock  # noqa: PLC0415
+        from unittest.mock import MagicMock
 
-        from ralph.policy.models import PhaseParallelization  # noqa: PLC0415
+        from ralph.policy.models import PhaseParallelization
 
         bundle = MagicMock()
         # Set up a development phase with parallelization, max_workers=1
@@ -164,9 +164,9 @@ class TestRunnerBoundaryPreflightRejection:
 
     def test_runner_post_fanout_verification_reads_phase_scoped_value(self) -> None:
         """FanOutEffect.run_post_fanout_verification reads from phase parallelization."""
-        from unittest.mock import MagicMock  # noqa: PLC0415
+        from unittest.mock import MagicMock
 
-        from ralph.policy.models import PhaseParallelization  # noqa: PLC0415
+        from ralph.policy.models import PhaseParallelization
 
         bundle = MagicMock()
         para = PhaseParallelization(max_parallel_workers=8, post_fanout_verification=True)

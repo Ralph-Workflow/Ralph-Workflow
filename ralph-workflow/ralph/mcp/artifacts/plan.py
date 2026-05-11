@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from importlib import import_module
 from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import ConfigDict, Field, ValidationError
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -28,7 +30,7 @@ class PlanArtifactValidationError(ValueError):
     """Raised when a planning artifact does not match the formal schema."""
 
 
-class ScopeItem(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ScopeItem(RalphBaseModel):
     """A single item describing a unit of work within the plan scope."""
 
     model_config = ConfigDict(extra="forbid")
@@ -38,7 +40,7 @@ class ScopeItem(BaseModel):  # type: ignore[explicit-any]  # reason: external li
     category: str | None = None
 
 
-class Summary(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class Summary(RalphBaseModel):
     """High-level context and scope summary for the plan."""
 
     model_config = ConfigDict(extra="forbid")
@@ -47,7 +49,7 @@ class Summary(BaseModel):  # type: ignore[explicit-any]  # reason: external libr
     scope_items: list[ScopeItem] = Field(..., min_length=3)
 
 
-class SkillsMcp(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class SkillsMcp(RalphBaseModel):
     """Skills and MCP servers required to execute the plan."""
 
     model_config = ConfigDict(extra="forbid")
@@ -56,7 +58,7 @@ class SkillsMcp(BaseModel):  # type: ignore[explicit-any]  # reason: external li
     mcps: list[str] = Field(default_factory=list)
 
 
-class StepTarget(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class StepTarget(RalphBaseModel):
     """A file path and the action taken on it within a plan step."""
 
     model_config = ConfigDict(extra="forbid")
@@ -65,7 +67,7 @@ class StepTarget(BaseModel):  # type: ignore[explicit-any]  # reason: external l
     action: Literal["create", "modify", "delete"]
 
 
-class PlanStep(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PlanStep(RalphBaseModel):
     """A single numbered implementation step within the plan."""
 
     model_config = ConfigDict(extra="forbid")
@@ -81,7 +83,7 @@ class PlanStep(BaseModel):  # type: ignore[explicit-any]  # reason: external lib
     depends_on: list[int] = Field(default_factory=list)
 
 
-class CriticalPrimaryFile(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CriticalPrimaryFile(RalphBaseModel):
     """A primary file that will be created, modified, or deleted by the plan."""
 
     model_config = ConfigDict(extra="forbid")
@@ -91,7 +93,7 @@ class CriticalPrimaryFile(BaseModel):  # type: ignore[explicit-any]  # reason: e
     estimated_changes: str | None = None
 
 
-class ReferenceFile(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ReferenceFile(RalphBaseModel):
     """A reference file consulted during implementation but not modified."""
 
     model_config = ConfigDict(extra="forbid")
@@ -100,7 +102,7 @@ class ReferenceFile(BaseModel):  # type: ignore[explicit-any]  # reason: externa
     purpose: str = Field(..., min_length=1)
 
 
-class CriticalFiles(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CriticalFiles(RalphBaseModel):
     """All files touched by the plan, split into primary and reference groups."""
 
     model_config = ConfigDict(extra="forbid")
@@ -109,7 +111,7 @@ class CriticalFiles(BaseModel):  # type: ignore[explicit-any]  # reason: externa
     reference_files: list[ReferenceFile] = Field(default_factory=list)
 
 
-class RiskMitigation(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class RiskMitigation(RalphBaseModel):
     """A risk identified during planning together with its mitigation strategy."""
 
     model_config = ConfigDict(extra="forbid")
@@ -119,7 +121,7 @@ class RiskMitigation(BaseModel):  # type: ignore[explicit-any]  # reason: extern
     severity: Literal["low", "medium", "high", "critical"] | None = None
 
 
-class VerificationStep(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class VerificationStep(RalphBaseModel):
     """A single verification step with a method and expected outcome."""
 
     model_config = ConfigDict(extra="forbid")
@@ -128,7 +130,7 @@ class VerificationStep(BaseModel):  # type: ignore[explicit-any]  # reason: exte
     expected_outcome: str = Field(..., min_length=1)
 
 
-class EditArea(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class EditArea(RalphBaseModel):
     """File paths and directories edited by a parallel plan item."""
 
     model_config = ConfigDict(extra="forbid")
@@ -137,7 +139,7 @@ class EditArea(BaseModel):  # type: ignore[explicit-any]  # reason: external lib
     directories: list[str] = Field(default_factory=list)
 
 
-class ParallelPlanItem(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ParallelPlanItem(RalphBaseModel):
     """A unit of parallelisable work with dependency tracking."""
 
     model_config = ConfigDict(extra="forbid")
@@ -148,7 +150,7 @@ class ParallelPlanItem(BaseModel):  # type: ignore[explicit-any]  # reason: exte
     depends_on: list[str] = Field(default_factory=list)
 
 
-class PlanArtifact(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PlanArtifact(RalphBaseModel):
     """Top-level validated schema for a plan artifact."""
 
     model_config = ConfigDict(extra="forbid")
@@ -163,13 +165,13 @@ class PlanArtifact(BaseModel):  # type: ignore[explicit-any]  # reason: external
     work_units: list[dict[str, object]] = Field(default_factory=list)
 
 
-PLAN_SECTION_OBJECT_MODELS: dict[str, type[BaseModel]] = {
+PLAN_SECTION_OBJECT_MODELS: dict[str, type[RalphBaseModel]] = {
     "summary": Summary,
     "skills_mcp": SkillsMcp,
     "critical_files": CriticalFiles,
 }
 
-PLAN_SECTION_LIST_ITEM_MODELS: dict[str, type[BaseModel]] = {
+PLAN_SECTION_LIST_ITEM_MODELS: dict[str, type[RalphBaseModel]] = {
     "steps": PlanStep,
     "risks_mitigations": RiskMitigation,
     "verification_strategy": VerificationStep,
@@ -211,13 +213,10 @@ def normalize_plan_artifact_content(content: dict[str, object]) -> dict[str, obj
         return {"noop": True}
     try:
         validated = PlanArtifact.model_validate(content)
-        return cast(
-            "dict[str, object]",
-            validated.model_dump(
-                mode="python",
-                exclude_none=True,
-                exclude_defaults=True,
-            ),
+        return validated.model_dump(
+            mode="python",
+            exclude_none=True,
+            exclude_defaults=True,
         )
     except ValidationError as exc:
         raise PlanArtifactValidationError(_format_validation_error(exc)) from exc
@@ -227,15 +226,12 @@ def _format_validation_error(exc: ValidationError) -> str:
     return str(exc)
 
 
-def _dump_model(model: BaseModel) -> dict[str, object]:
-    return cast(
-        "dict[str, object]",
-        model.model_dump(mode="python", exclude_none=True, exclude_defaults=True),
-    )
+def _dump_model(model: RalphBaseModel) -> dict[str, object]:
+    return model.model_dump(mode="python", exclude_none=True, exclude_defaults=True)
 
 
 def _validate_list_item(
-    section: str, item_model: type[BaseModel], item: object
+    section: str, item_model: type[RalphBaseModel], item: object
 ) -> dict[str, object]:
     if not isinstance(item, dict):
         raise PlanArtifactValidationError(f"section '{section}' items must be JSON objects")
@@ -270,16 +266,17 @@ def validate_plan_section(
         return _dump_model(validated)
 
     if section == "work_units":
-        from ralph.pipeline.work_units import WorkUnit  # noqa: PLC0415
-
+        work_unit_model = cast(
+            "type[RalphBaseModel]", import_module("ralph.pipeline.work_units").WorkUnit
+        )
         if mode == "replace":
             if not isinstance(payload, list):
                 raise PlanArtifactValidationError(
                     "section 'work_units' with mode='replace' must be a JSON array"
                 )
-            return [_validate_list_item(section, WorkUnit, item) for item in payload]
+            return [_validate_list_item(section, work_unit_model, item) for item in payload]
         if mode == "append":
-            return _validate_list_item(section, WorkUnit, payload)
+            return _validate_list_item(section, work_unit_model, payload)
         raise PlanArtifactValidationError(f"unknown mode '{mode}' for section '{section}'")
 
     if section in PLAN_SECTION_LIST_ITEM_MODELS:

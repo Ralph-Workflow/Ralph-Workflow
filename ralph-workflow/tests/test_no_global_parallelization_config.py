@@ -8,9 +8,13 @@ in UnifiedConfig or ralph-workflow.toml are forbidden.
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
+
+from ralph.config.models import UnifiedConfig
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULTS_DIR = _REPO_ROOT / "ralph-workflow" / "ralph" / "policy" / "defaults"
@@ -23,11 +27,6 @@ _FORBIDDEN_TOP_LEVEL_KEYS = re.compile(
 
 def test_pipeline_toml_has_no_top_level_parallel_execution() -> None:
     """pipeline.toml must not have a top-level [parallel_execution] key."""
-    try:
-        import tomllib  # noqa: PLC0415
-    except ImportError:
-        import tomli as tomllib  # noqa: PLC0415
-
     toml_path = _DEFAULTS_DIR / "pipeline.toml"
     data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
     assert "parallel_execution" not in data, (
@@ -43,11 +42,6 @@ def test_pipeline_toml_has_no_top_level_parallel_execution() -> None:
 )
 def test_ralph_workflow_toml_has_no_global_parallel_keys(toml_filename: str) -> None:
     """ralph-workflow.toml and ralph-workflow-local.toml must not have global parallel keys."""
-    try:
-        import tomllib  # noqa: PLC0415
-    except ImportError:
-        import tomli as tomllib  # noqa: PLC0415
-
     toml_path = _DEFAULTS_DIR / toml_filename
     if not toml_path.exists():
         pytest.skip(f"{toml_filename} not found in defaults directory")
@@ -65,8 +59,6 @@ def _walk_model_fields(
     visited: set[type] | None = None,
 ) -> list[str]:
     """Recursively collect field names from a Pydantic model."""
-    from pydantic import BaseModel  # noqa: PLC0415
-
     if visited is None:
         visited = set()
     if model_cls in visited:
@@ -90,8 +82,6 @@ def _walk_model_fields(
 
 def test_unified_config_has_no_forbidden_parallel_fields() -> None:
     """UnifiedConfig and nested models must not expose forbidden global parallel fields."""
-    from ralph.config.models import UnifiedConfig  # noqa: PLC0415
-
     all_fields = _walk_model_fields(UnifiedConfig)
     violations = [
         name for name in all_fields if _FORBIDDEN_TOP_LEVEL_KEYS.match(name)

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from ralph.pipeline.progress import review_issues_found as _review_issues_found
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
@@ -140,8 +141,6 @@ def snapshot_from_state(  # noqa: PLR0913
     active_process_labels: tuple[str, ...] = (),
 ) -> PipelineSnapshot:
     """Project PipelineState into an immutable pipeline snapshot."""
-    from ralph.pipeline.progress import review_issues_found as _review_issues_found  # noqa: PLC0415
-
     created_at = datetime.now(UTC)
     workers = _snapshot_workers(state)
 

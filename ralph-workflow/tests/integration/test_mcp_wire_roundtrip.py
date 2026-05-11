@@ -547,7 +547,7 @@ def _build_multimodal_server(
     model_id: str = "claude-3-5-sonnet-20241022",
 ) -> McpServer:
     """Build a McpServer with media.read capability and Claude model identity."""
-    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 
     workspace = FsWorkspace(workspace_path)
     session = AgentSession(
@@ -675,7 +675,7 @@ class TestMultimodalToolRoundtrip:
         self, tmp_path: Path
     ) -> None:
         """Audio from unknown provider stored as resource_reference fetchable via resources/read."""
-        import tempfile  # noqa: PLC0415
+        import tempfile
 
         mp3_bytes = b"ID3" + b"\x00" * 50
         with tempfile.NamedTemporaryFile(
@@ -728,7 +728,7 @@ class TestMultimodalToolRoundtrip:
         self, tmp_path: Path
     ) -> None:
         """Video from unknown provider stored as resource_reference fetchable via resources/read."""
-        import tempfile  # noqa: PLC0415
+        import tempfile
 
         mp4_bytes = b"\x00\x00\x00\x20ftyp" + b"\x00" * 40
         with tempfile.NamedTemporaryFile(

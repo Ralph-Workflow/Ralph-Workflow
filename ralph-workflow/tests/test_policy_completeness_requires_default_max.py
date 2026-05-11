@@ -121,7 +121,7 @@ def test_validate_policy_completeness_rejects_custom_named_zero_tracked_counter(
 
 def test_validate_policy_completeness_accepts_untracked_zero_counter() -> None:
     """A zero default_max is allowed when tracks_budget=False."""
-    from ralph.policy.models import RecoveryPolicy  # noqa: PLC0415
+    from ralph.policy.models import RecoveryPolicy
 
     pipeline = PipelinePolicy(
         entry_phase="work",

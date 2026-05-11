@@ -1273,8 +1273,8 @@ class TestFileBackedSessionModelIdentity:
 
     def test_file_backed_session_restores_known_model_identity(self, tmp_path: Path) -> None:
         """FileBackedSession.model_identity returns the deserialized MultimodalModelIdentity."""
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+        from ralph.mcp.server.runtime import FileBackedSession
 
         payload = {
             "session_id": "sid-fbs",
@@ -1301,8 +1301,8 @@ class TestFileBackedSessionModelIdentity:
         self, tmp_path: Path
     ) -> None:
         """FileBackedSession.model_identity returns UNKNOWN_IDENTITY when payload omits it."""
-        from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY  # noqa: PLC0415
-        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+        from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY
+        from ralph.mcp.server.runtime import FileBackedSession
 
         payload = {
             "session_id": "sid-no-mi",
@@ -1319,11 +1319,11 @@ class TestFileBackedSessionModelIdentity:
 
     def test_lifecycle_payload_roundtrip_preserves_model_identity(self, tmp_path: Path) -> None:
         """session_payload_json + FileBackedSession restores the same model identity."""
-        import json as _json  # noqa: PLC0415
+        import json as _json
 
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-        from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
-        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+        from ralph.mcp.server.lifecycle import _session_payload_json
+        from ralph.mcp.server.runtime import FileBackedSession
 
         agent_session = AgentSession(
             session_id="sid-rt",
@@ -1361,15 +1361,15 @@ class TestFileBackedSessionCapabilityProfile:
         self, tmp_path: Path
     ) -> None:
         """FileBackedSession.capability_profile reads from the serialized payload."""
-        import json  # noqa: PLC0415
+        import json
 
-        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+        from ralph.mcp.multimodal.capabilities import (
             DeliveryMode,
             MultimodalModelIdentity,
             ResolvedCapabilityProfile,
         )
-        from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
-        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+        from ralph.mcp.server.lifecycle import _session_payload_json
+        from ralph.mcp.server.runtime import FileBackedSession
 
         agent_session = AgentSession(
             session_id="sid-cap",
@@ -1400,13 +1400,13 @@ class TestFileBackedSessionCapabilityProfile:
         self, tmp_path: Path
     ) -> None:
         """FileBackedSession.capability_profile falls back to computing from model_identity."""
-        import json  # noqa: PLC0415
+        import json
 
-        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+        from ralph.mcp.multimodal.capabilities import (
             DeliveryMode,
             ResolvedCapabilityProfile,
         )
-        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+        from ralph.mcp.server.runtime import FileBackedSession
 
         # Write a payload that has model_identity but no capability_profile
         payload = {
@@ -1431,10 +1431,10 @@ class TestFileBackedSessionCapabilityProfile:
         self, tmp_path: Path
     ) -> None:
         """_session_payload_json + FileBackedSession preserves the full capability profile."""
-        from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES  # noqa: PLC0415
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-        from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
-        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+        from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+        from ralph.mcp.server.lifecycle import _session_payload_json
+        from ralph.mcp.server.runtime import FileBackedSession
 
         agent_session = AgentSession(
             session_id="sid-rt-cp",

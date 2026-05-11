@@ -24,11 +24,16 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.phases import analysis as _analysis
+from ralph.phases import commit as _commit
+from ralph.phases import execution as _execution
+from ralph.phases import review as _review
+from ralph.phases import verification as _verification
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event
 
 if TYPE_CHECKING:
-    from typing import TypedDict, Unpack
+    from typing import NotRequired, TypedDict, Unpack
 
     from rich.console import Console
 
@@ -51,8 +56,8 @@ if TYPE_CHECKING:
         pipeline_policy: PipelinePolicy
         agents_policy: AgentsPolicy
         artifacts_policy: ArtifactsPolicy
-        config: UnifiedConfig | None
-        console: Console | None
+        config: NotRequired[UnifiedConfig | None]
+        console: NotRequired[Console | None]
 
 
 @dataclass(frozen=True)
@@ -154,28 +159,22 @@ def register_role_handlers(policy: PipelinePolicy) -> None:
     Args:
         policy: Loaded pipeline policy.
     """
-    from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
-    from ralph.phases.commit import handle_commit_phase  # noqa: PLC0415
-    from ralph.phases.execution import handle_execution_phase  # noqa: PLC0415
-    from ralph.phases.review import handle_review  # noqa: PLC0415
-    from ralph.phases.verification import handle_verification_phase  # noqa: PLC0415
-
     for phase_name, phase_def in policy.phases.items():
         if phase_def.role == "execution" and phase_name not in HANDLERS:
             logger.debug("Registering generic execution handler for phase '{}'", phase_name)
-            HANDLERS[phase_name] = handle_execution_phase
+            HANDLERS[phase_name] = _execution.handle_execution_phase
         elif phase_def.role == "commit" and phase_name not in HANDLERS:
             logger.debug("Registering generic commit handler for phase '{}'", phase_name)
-            HANDLERS[phase_name] = handle_commit_phase
+            HANDLERS[phase_name] = _commit.handle_commit_phase
         elif phase_def.role == "analysis" and phase_name not in HANDLERS:
             logger.debug("Registering generic analysis handler for phase '{}'", phase_name)
-            HANDLERS[phase_name] = handle_generic_analysis_phase
+            HANDLERS[phase_name] = _analysis.handle_generic_analysis_phase
         elif phase_def.role == "review" and phase_name not in HANDLERS:
             logger.debug("Registering generic review handler for phase '{}'", phase_name)
-            HANDLERS[phase_name] = handle_review
+            HANDLERS[phase_name] = _review.handle_review
         elif phase_def.role == "verification" and phase_name not in HANDLERS:
             logger.debug("Registering generic verification handler for phase '{}'", phase_name)
-            HANDLERS[phase_name] = handle_verification_phase
+            HANDLERS[phase_name] = _verification.handle_verification_phase
 
 
 def get_handler(phase_name: str) -> PhaseHandler:
@@ -223,13 +222,6 @@ def handle_phase(
     logger.debug("Dispatching to handler for phase: {}", phase_name)
     return handler(effect, ctx)
 
-
-# Import and register all built-in handlers (imported for side effects only)
-from ralph.phases import analysis as _analysis  # noqa: E402, F401
-from ralph.phases import commit as _commit  # noqa: E402, F401
-from ralph.phases import execution as _execution  # noqa: E402, F401
-from ralph.phases import review as _review  # noqa: E402, F401
-from ralph.phases import verification as _verification  # noqa: E402, F401
 
 __all__ = [
     "HANDLERS",

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from queue import Queue
+from unittest.mock import patch
 
 from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.worker_state import WorkerStatus
 
@@ -48,29 +50,22 @@ def test_emit_lines_mode_writes_to_console() -> None:
 
 def test_set_status_does_not_call_subscriber_notify() -> None:
     console = Console(force_terminal=True, width=120)
-    notify_calls: list[object] = []
 
-    q: Queue[object] = Queue(maxsize=64)
+    q: Queue[PipelineSnapshot] = Queue(maxsize=64)
     sub = PipelineSubscriber(
         queue=q,
         workspace_root=Path("/tmp"),
         run_id="test-run",
     )
-    original_notify = sub.notify
 
-    def tracking_notify(state: object) -> None:
-        notify_calls.append(state)
-        original_notify(state)
+    with patch.object(sub, "notify", wraps=sub.notify) as notify_mock:
+        pd = ParallelDisplay(
+            make_display_context(console=console, env={}, force_mode="compact"),
+            subscriber=sub,
+        )
+        pd.set_status("u1", WorkerStatus.RUNNING)
 
-    sub.notify = tracking_notify
-
-    pd = ParallelDisplay(
-        make_display_context(console=console, env={}, force_mode="compact"),
-        subscriber=sub,
-    )
-    pd.set_status("u1", WorkerStatus.RUNNING)
-
-    assert notify_calls == []
+    notify_mock.assert_not_called()
 
 
 def test_subscriber_property_exposed() -> None:
@@ -81,7 +76,7 @@ def test_subscriber_property_exposed() -> None:
 
 def test_injected_subscriber_used_directly() -> None:
     console = Console(force_terminal=True, width=120)
-    q: Queue[object] = Queue(maxsize=8)
+    q: Queue[PipelineSnapshot] = Queue(maxsize=8)
     sub = PipelineSubscriber(
         queue=q,
         workspace_root=Path("/tmp"),

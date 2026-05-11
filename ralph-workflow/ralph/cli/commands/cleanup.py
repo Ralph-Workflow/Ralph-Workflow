@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from typing import Annotated
 
 import typer
@@ -53,8 +54,6 @@ def cleanup(
         if not confirmed:
             typer.echo("Aborted")
             raise typer.Exit(0)
-
-    import shutil  # noqa: PLC0415
 
     removed = 0
     for unit_id in stale:

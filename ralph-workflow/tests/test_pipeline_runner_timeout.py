@@ -135,7 +135,7 @@ def _make_config_with_watchdog(
 
 def _capture_options_factory(captured: dict[str, object]) -> Any:
     """Return a fake_invoke_agent that captures the full options object."""
-    from ralph.config.models import AgentConfig as _AgentConfig  # noqa: PLC0415
+    from ralph.config.models import AgentConfig as _AgentConfig
 
     def fake_invoke_agent(
         config: _AgentConfig,
@@ -552,10 +552,10 @@ def test_record_mcp_restart_forwarded_to_subscriber(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """When bridge.restart_count > 0, record_mcp_restart is called on the display subscriber."""
-    import pathlib  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
+    import pathlib
+    import tempfile
 
-    from ralph.mcp.server.lifecycle import (  # noqa: PLC0415
+    from ralph.mcp.server.lifecycle import (
         McpRestartPolicy,
         ProcessLike,
         RestartAwareMcpBridge,
@@ -651,9 +651,9 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """_execute_agent_effect passes heartbeat_policy_from_env().interval to McpSupervisor."""
-    from datetime import timedelta  # noqa: PLC0415
+    from datetime import timedelta
 
-    from ralph.process.mcp_supervisor import McpSupervisor  # noqa: PLC0415
+    from ralph.process.mcp_supervisor import McpSupervisor
 
     config = _make_config_with_watchdog()
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -663,7 +663,7 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
 
     original_init = McpSupervisor.__init__
 
-    from collections.abc import Callable  # noqa: PLC0415, TC003
+    from collections.abc import Callable  # noqa: TC003
 
     def patched_init(
         self: McpSupervisor,

@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.state import CommitState, PipelineState
+from ralph.policy.models import PhaseCommitPolicy, PhaseDefinition, PhaseLoopPolicy
 
 if TYPE_CHECKING:
     from ralph.checkpoint.run_context import RunContext
@@ -45,8 +46,6 @@ def review_issues_found(state: PipelineState, policy: PipelinePolicy | None = No
     if state.review_outcome is None:
         return False
     if policy is not None:
-        from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
-
         for phase_def in policy.phases.values():
             if (
                 isinstance(phase_def, PhaseDefinition)
@@ -135,12 +134,9 @@ def apply_analysis_success(
     result = advanced_state.copy_with(review_outcome=None)
     if policy is not None:
         phase_def = policy.phases.get(state.phase)
-        if phase_def is not None:
-            from ralph.policy.models import PhaseLoopPolicy  # noqa: PLC0415
-
-            if isinstance(phase_def.loop_policy, PhaseLoopPolicy):
-                iteration_field = phase_def.loop_policy.iteration_state_field
-                result = result.with_loop_iteration(iteration_field, 0)
+        if phase_def is not None and isinstance(phase_def.loop_policy, PhaseLoopPolicy):
+            iteration_field = phase_def.loop_policy.iteration_state_field
+            result = result.with_loop_iteration(iteration_field, 0)
     return result
 
 
@@ -190,8 +186,6 @@ def _apply_commit_outcome_policy_driven(
     commit_policy: object,
 ) -> PipelineState:
     """Apply commit outcome using policy-declared commit_policy."""
-    from ralph.policy.models import PhaseCommitPolicy  # noqa: PLC0415
-
     if not isinstance(commit_policy, PhaseCommitPolicy):
         return advanced_state
 

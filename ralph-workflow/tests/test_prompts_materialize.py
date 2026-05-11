@@ -2,10 +2,25 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
-from ralph.prompts.materialize import _resolve_fix_result_content
+from ralph.mcp.artifacts.history import history_dir_for_artifact, history_index_path
+from ralph.policy.models import (
+    ArtifactContract,
+    ArtifactHistoryPolicy,
+    ArtifactsPolicy,
+    LoopCounterConfig,
+    PhaseDecisionRoute,
+    PhaseDefinition,
+    PhaseLoopPolicy,
+    PhaseTransition,
+    PipelinePolicy,
+)
+from ralph.prompts.materialize import _resolve_fix_result_content, materialize_prompt_for_phase
+from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -35,19 +50,6 @@ def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: P
 def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
     tmp_path: Path,
 ) -> None:
-    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
-    from ralph.policy.models import (  # noqa: PLC0415
-        ArtifactContract,
-        ArtifactHistoryPolicy,
-        ArtifactsPolicy,
-        PhaseDefinition,
-        PhaseTransition,
-        PipelinePolicy,
-    )
-    from ralph.prompts.materialize import materialize_prompt_for_phase  # noqa: PLC0415
-    from ralph.prompts.types import SessionCapabilities, SessionDrain  # noqa: PLC0415
-    from ralph.workspace.memory import MemoryWorkspace  # noqa: PLC0415
-
     pipeline_policy = PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -111,21 +113,6 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
     tmp_path: Path,
 ) -> None:
     """Fresh development entry clears artifact history when development policy enables it."""
-    from ralph.mcp.artifacts.history import (  # noqa: PLC0415
-        history_dir_for_artifact,
-        history_index_path,
-    )
-    from ralph.policy.models import (  # noqa: PLC0415
-        ArtifactHistoryPolicy,
-        ArtifactsPolicy,
-        PhaseDefinition,
-        PhaseTransition,
-        PipelinePolicy,
-    )
-    from ralph.prompts.materialize import materialize_prompt_for_phase  # noqa: PLC0415
-    from ralph.prompts.types import SessionCapabilities, SessionDrain  # noqa: PLC0415
-    from ralph.workspace.memory import MemoryWorkspace  # noqa: PLC0415
-
     pipeline_policy = PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -151,8 +138,6 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
         entry_phase="planning",
         terminal_phase="complete",
     )
-
-    from ralph.policy.models import ArtifactContract  # noqa: PLC0415
 
     artifacts_policy = ArtifactsPolicy(
         artifacts={
@@ -194,26 +179,6 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
     tmp_path: Path,
 ) -> None:
     """Development loopback from development_analysis must not clear artifact history."""
-    import json  # noqa: PLC0415
-
-    from ralph.mcp.artifacts.history import (  # noqa: PLC0415
-        history_dir_for_artifact,
-        history_index_path,
-    )
-    from ralph.policy.models import (  # noqa: PLC0415
-        ArtifactContract,
-        ArtifactHistoryPolicy,
-        ArtifactsPolicy,
-        PhaseDecisionRoute,
-        PhaseDefinition,
-        PhaseLoopPolicy,
-        PhaseTransition,
-        PipelinePolicy,
-    )
-    from ralph.prompts.materialize import materialize_prompt_for_phase  # noqa: PLC0415
-    from ralph.prompts.types import SessionCapabilities, SessionDrain  # noqa: PLC0415
-    from ralph.workspace.memory import MemoryWorkspace  # noqa: PLC0415
-
     pipeline_policy = PipelinePolicy(
         phases={
             "planning": PhaseDefinition(
@@ -253,9 +218,7 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
         entry_phase="planning",
         terminal_phase="complete",
         loop_counters={
-            "development_analysis_iteration": __import__(
-                "ralph.policy.models", fromlist=["LoopCounterConfig"]
-            ).LoopCounterConfig(default_max=3),
+            "development_analysis_iteration": LoopCounterConfig(default_max=3),
         },
     )
 
@@ -318,19 +281,6 @@ def test_development_prompt_includes_artifact_history_path_when_history_exists(
     tmp_path: Path,
 ) -> None:
     """Development prompt references artifact history index when it exists on disk."""
-    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
-    from ralph.policy.models import (  # noqa: PLC0415
-        ArtifactContract,
-        ArtifactHistoryPolicy,
-        ArtifactsPolicy,
-        PhaseDefinition,
-        PhaseTransition,
-        PipelinePolicy,
-    )
-    from ralph.prompts.materialize import materialize_prompt_for_phase  # noqa: PLC0415
-    from ralph.prompts.types import SessionCapabilities, SessionDrain  # noqa: PLC0415
-    from ralph.workspace.memory import MemoryWorkspace  # noqa: PLC0415
-
     pipeline_policy = PipelinePolicy(
         phases={
             "planning": PhaseDefinition(

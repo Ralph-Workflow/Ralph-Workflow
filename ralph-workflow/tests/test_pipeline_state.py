@@ -240,7 +240,7 @@ def test_recovery_fields_round_trip() -> None:
 
 
 def test_agent_chain_state_with_retry_increment_increments_retries_only() -> None:
-    from ralph.pipeline.state import AgentChainState  # noqa: PLC0415
+    from ralph.pipeline.state import AgentChainState
 
     chain = AgentChainState(agents=["a", "b"], current_index=0, retries=2)
 
@@ -253,7 +253,7 @@ def test_agent_chain_state_with_retry_increment_increments_retries_only() -> Non
 
 
 def test_agent_chain_state_with_advance_resets_retries_and_advances_index() -> None:
-    from ralph.pipeline.state import AgentChainState  # noqa: PLC0415
+    from ralph.pipeline.state import AgentChainState
 
     chain = AgentChainState(agents=["a", "b", "c"], current_index=1, retries=4)
 
@@ -267,7 +267,7 @@ def test_agent_chain_state_with_advance_resets_retries_and_advances_index() -> N
 
 
 def test_agent_chain_state_with_retry_increment_preserves_empty_agents() -> None:
-    from ralph.pipeline.state import AgentChainState  # noqa: PLC0415
+    from ralph.pipeline.state import AgentChainState
 
     chain = AgentChainState()
 
@@ -279,7 +279,7 @@ def test_agent_chain_state_with_retry_increment_preserves_empty_agents() -> None
 
 
 def test_run_metrics_with_retry_increment_increments_retries_only() -> None:
-    from ralph.pipeline.state import RunMetrics  # noqa: PLC0415
+    from ralph.pipeline.state import RunMetrics
 
     metrics = RunMetrics(
         total_agent_calls=2,
@@ -298,7 +298,7 @@ def test_run_metrics_with_retry_increment_increments_retries_only() -> None:
 
 
 def test_run_metrics_with_fallback_increment_increments_fallbacks_only() -> None:
-    from ralph.pipeline.state import RunMetrics  # noqa: PLC0415
+    from ralph.pipeline.state import RunMetrics
 
     metrics = RunMetrics(
         total_agent_calls=2,
@@ -317,7 +317,7 @@ def test_run_metrics_with_fallback_increment_increments_fallbacks_only() -> None
 
 
 def test_run_metrics_with_continuation_increment_increments_continuations_only() -> None:
-    from ralph.pipeline.state import RunMetrics  # noqa: PLC0415
+    from ralph.pipeline.state import RunMetrics
 
     metrics = RunMetrics(
         total_agent_calls=2,

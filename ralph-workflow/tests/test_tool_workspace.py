@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import tempfile
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -21,7 +22,7 @@ from ralph.mcp.multimodal.artifacts import (
 )
 from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
 from ralph.mcp.multimodal.errors import MultimodalFailureKind
-from ralph.mcp.multimodal.resources import MediaManifest
+from ralph.mcp.multimodal.resources import MediaManifest, build_media_uri
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     ImageContent,
@@ -60,6 +61,7 @@ from ralph.mcp.tools.workspace import (
     handle_list_directory_recursive,
     handle_move_file,
     handle_read_file,
+    persist_upstream_media_artifacts,
     handle_read_image,
     handle_read_media,
     handle_read_multiple_files,
@@ -68,6 +70,7 @@ from ralph.mcp.tools.workspace import (
     handle_write_file,
     required_string_param,
 )
+from ralph.workspace.fs import FsWorkspace
 
 MEDIA_READ_CAPABILITY = "media.read"
 DEFAULT_MAX_INLINE_BYTES = 5_242_880
@@ -1566,7 +1569,7 @@ class TestHandleReadImage:
             assert result.is_error is False
             content = result.content[0]
             # Should be a resource reference, not an inline image
-            assert hasattr(content, "uri"), (
+            assert isinstance(content, ResourceReferenceContent), (
                 f"Expected resource-reference block, got {type(content).__name__}"
             )
             assert content.uri.startswith("ralph://media/"), (
@@ -1858,8 +1861,6 @@ class TestHandleReadMedia:
 
     def test_resource_reference_persists_to_session_index(self, tmp_path: Path) -> None:
         """handle_read_media must write artifact metadata to the session media index."""
-        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
         pdf_bytes = b"%PDF-1.4 fake pdf content"
         media_file = tmp_path / "report.pdf"
         media_file.write_bytes(pdf_bytes)
@@ -1919,8 +1920,6 @@ class TestHandleReadMedia:
 
     def test_resource_reference_accumulates_entries_in_session_index(self, tmp_path: Path) -> None:
         """Multiple read_media calls must append entries to the session index."""
-        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
         @dataclass
         class SessionWithDrain:
             allowed_capability: str | None = None
@@ -1959,8 +1958,6 @@ class TestHandleReadMedia:
     # -------------------------------------------------------------------------
 
     def test_claude_pdf_returns_typed_pdf_block(self) -> None:
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-
         pdf_bytes = b"%PDF-1.4 fake pdf content"
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
             f.write(pdf_bytes)
@@ -1989,8 +1986,6 @@ class TestHandleReadMedia:
             Path(temp_path).unlink()
 
     def test_gemini_audio_returns_typed_audio_block(self) -> None:
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-
         mp3_bytes = b"ID3" + b"\x00" * 50
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             f.write(mp3_bytes)
@@ -2014,8 +2009,6 @@ class TestHandleReadMedia:
             Path(temp_path).unlink()
 
     def test_gemini_video_returns_typed_video_block(self) -> None:
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-
         mp4_bytes = b"\x00" * 100
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
             f.write(mp4_bytes)
@@ -2039,8 +2032,6 @@ class TestHandleReadMedia:
             Path(temp_path).unlink()
 
     def test_claude_document_returns_typed_document_block(self) -> None:
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-
         docx_bytes = b"PK\x03\x04" + b"\x00" * 50  # Fake DOCX (zip magic)
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
             f.write(docx_bytes)
@@ -2069,8 +2060,6 @@ class TestHandleReadMedia:
 
     def test_replay_handle_precedence_before_filesystem_lookup(self) -> None:
         """A ralph://media/... handle must be resolved from manifest before any filesystem check."""
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-
         png_bytes = b"\x89PNG" + b"\x00" * 20
         session = MockSessionWithManifest(
             MEDIA_READ_CAPABILITY,
@@ -2093,8 +2082,6 @@ class TestHandleReadMedia:
         assert isinstance(content, ImageContent)
 
     def test_replay_handle_returns_typed_pdf_block_from_manifest(self) -> None:
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-
         pdf_bytes = b"%PDF-1.4 fake"
         session = MockSessionWithManifest(
             MEDIA_READ_CAPABILITY,
@@ -2126,10 +2113,6 @@ class TestHandleReadMedia:
         assert MultimodalFailureKind.INVALID_REPLAY_HANDLE in text
 
     def test_replay_unknown_artifact_id_returns_missing_replay_source_error(self) -> None:
-        import uuid  # noqa: PLC0415
-
-        from ralph.mcp.multimodal.resources import build_media_uri  # noqa: PLC0415
-
         unknown_uri = build_media_uri(str(uuid.uuid4()))
         session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
         ws = MagicMock()
@@ -2142,9 +2125,6 @@ class TestHandleReadMedia:
 
     def test_cross_session_replay_from_persisted_cache(self, tmp_path: Path) -> None:
         """A replay handle must work across sessions using the persisted registry."""
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
         @dataclass
         class SessionWithDrain:
             allowed_capability: str | None = None
@@ -2171,9 +2151,8 @@ class TestHandleReadMedia:
         result1 = handle_read_media(session1, ws, {"path": "doc.pdf"})
         assert result1.is_error is False
         # The artifact URI from session 1
-        from ralph.mcp.multimodal.artifacts import PdfContent as PdfContentClass  # noqa: PLC0415
         content1 = result1.content[0]
-        assert isinstance(content1, PdfContentClass)
+        assert isinstance(content1, PdfContent)
         artifact_uri = content1.uri
 
         # Session 2: new empty manifest (simulates new session)
@@ -2184,14 +2163,11 @@ class TestHandleReadMedia:
         result2 = handle_read_media(session2, ws, {"path": artifact_uri})
         assert result2.is_error is False
         content2 = result2.content[0]
-        assert isinstance(content2, PdfContentClass)
+        assert isinstance(content2, PdfContent)
         assert content2.uri == artifact_uri
 
     def test_cross_session_replay_fails_when_cache_deleted(self, tmp_path: Path) -> None:
         """Replay returns missing_replay_source when cache bytes are gone."""
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
         @dataclass
         class SessionWithDrain:
             allowed_capability: str | None = None
@@ -2216,9 +2192,8 @@ class TestHandleReadMedia:
         ws = FsWorkspace(tmp_path)
         result1 = handle_read_media(session1, ws, {"path": "gone.pdf"})
         assert result1.is_error is False
-        from ralph.mcp.multimodal.artifacts import PdfContent as PdfContentClass2  # noqa: PLC0415
         content1 = result1.content[0]
-        assert isinstance(content1, PdfContentClass2)
+        assert isinstance(content1, PdfContent)
         artifact_uri = content1.uri
         artifact_id = artifact_uri.rsplit("/", 1)[-1]
 
@@ -2322,10 +2297,6 @@ def test_persist_upstream_media_artifacts_writes_session_index(tmp_path: Path) -
     the caller should call persist_upstream_media_artifacts so the artifact survives the session
     in the session index and registry for cross-session replay.
     """
-    from ralph.mcp.multimodal.resources import MediaManifest  # noqa: PLC0415
-    from ralph.mcp.tools.workspace import persist_upstream_media_artifacts  # noqa: PLC0415
-    from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
     manifest = MediaManifest()
     audio_entry = manifest.add(
         title="clip.mp3",
@@ -2392,11 +2363,6 @@ def test_persist_upstream_media_artifacts_writes_uri_backed_as_unsupported_seam(
     cannot be replayed across sessions. They must be written to the session index
     as unsupported_runtime_seam entries so the failure is explicit at invoke time.
     """
-    import json  # noqa: PLC0415
-
-    from ralph.mcp.tools.workspace import persist_upstream_media_artifacts  # noqa: PLC0415
-    from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
     result: dict[str, object] = {
         "content": [
             {
@@ -2448,8 +2414,6 @@ def test_unknown_provider_media_preserves_delivery_metadata() -> None:
     enough metadata for agents to diagnose the delivery mode without re-reading
     the raw artifact.
     """
-    import tempfile  # noqa: PLC0415
-
     mp3_bytes = b"ID3" + b"\x00" * 50
 
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
@@ -2487,9 +2451,6 @@ def test_persist_media_session_entry_stores_failure_kind(tmp_path: Path) -> None
     unsupported_runtime_seam remains distinct from unsupported_modality through
     sidecar persistence and invoke-time rendering.
     """
-    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-    from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
     @dataclass
     class _Session:
         allowed_capability: str | None = None

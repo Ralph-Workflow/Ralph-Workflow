@@ -17,10 +17,15 @@ import os
 import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
+from ralph.config.loader import load_toml
 from ralph.git.operations import append_to_gitignore
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 _GLOBAL_CONFIG_FILENAME = "ralph-workflow.toml"
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
@@ -32,15 +37,23 @@ _LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
 _DEFAULT_GITIGNORE_PATTERNS = (".agent/", "/PROMPT*", "wt-*/")
 
 
+def _module_attr_or_none(module: ModuleType, attribute: str) -> object | None:
+    namespace = cast("dict[str, object]", module.__dict__)
+    return namespace.get(attribute)
+
+
+
 def _get_bundled_defaults_dir() -> Path:
     """Return the path to the bundled default policy files.
 
     Computed lazily to avoid circular import: ralph.policy.loader imports
     ralph.phases which imports ralph.pipeline which imports ralph.config.
     """
-    import ralph.policy  # noqa: PLC0415
-
-    return Path(ralph.policy.__file__).parent / "defaults"
+    policy_module = import_module("ralph.policy")
+    policy_file = _module_attr_or_none(policy_module, "__file__")
+    if not isinstance(policy_file, str):
+        raise RuntimeError("ralph.policy module has no __file__")
+    return Path(policy_file).parent / "defaults"
 
 
 @dataclass(frozen=True)
@@ -236,8 +249,6 @@ def _backup_path(target: Path) -> Path:
 
 
 def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
-    from ralph.config.loader import load_toml  # noqa: PLC0415
-
     try:
         text = target.read_text(encoding="utf-8")
     except OSError:

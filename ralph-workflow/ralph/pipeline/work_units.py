@@ -11,7 +11,9 @@ import re
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
+
+from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -39,7 +41,7 @@ RESERVED_EDIT_PATHS: frozenset[str] = frozenset(
 )
 
 
-class _FrozenWorkUnitModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class _FrozenWorkUnitModel(RalphBaseModel):
     """Private base for frozen work unit models.
 
     Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
@@ -50,7 +52,7 @@ class _FrozenWorkUnitModel(BaseModel):  # type: ignore[explicit-any]  # reason: 
     model_config = ConfigDict(frozen=True)
 
 
-class WorkUnit(_FrozenWorkUnitModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class WorkUnit(_FrozenWorkUnitModel):
     """Single planning work unit declaration."""
 
     unit_id: str = Field(..., min_length=1)
@@ -82,7 +84,7 @@ class WorkUnit(_FrozenWorkUnitModel):  # type: ignore[explicit-any]  # reason: e
         return [_validate_relative_subpath(path) for path in v]
 
 
-class WorkUnitsPlan(_FrozenWorkUnitModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class WorkUnitsPlan(_FrozenWorkUnitModel):
     """Typed representation of work_units[] in planning artifacts."""
 
     work_units: list[WorkUnit] = Field(default_factory=list)

@@ -306,27 +306,27 @@ class TestRenderExplanationText:
 
 class TestExplainCLI:
     def test_explain_command_exits_0(self) -> None:
-        from ralph.cli.commands.explain import explain_command  # noqa: PLC0415
+        from ralph.cli.commands.explain import explain_command
 
         rc = explain_command(_DEFAULT_POLICY_DIR)
         assert rc == 0
 
     def test_explain_command_default_policy_dir(self) -> None:
-        from ralph.cli.commands.explain import explain_command  # noqa: PLC0415
+        from ralph.cli.commands.explain import explain_command
 
         rc = explain_command(None)
         assert rc == 0
 
     def test_explain_command_invalid_dir_returns_1(self) -> None:
-        from ralph.cli.commands.explain import explain_command  # noqa: PLC0415
+        from ralph.cli.commands.explain import explain_command
 
         rc = explain_command(Path("/nonexistent/policy/dir"))
         assert rc == 1
 
     def test_cli_explain_policy_flag(self) -> None:
-        from typer.testing import CliRunner  # noqa: PLC0415
+        from typer.testing import CliRunner
 
-        from ralph.cli.main import app  # noqa: PLC0415
+        from ralph.cli.main import app
 
         runner = CliRunner()
         result = runner.invoke(
@@ -343,7 +343,7 @@ class TestVerificationExplainRendering:
     def _bundle_with_verification(
         self, kind: str = "artifact", on_failure_route: str | None = "crashed"
     ) -> PolicyBundle:
-        from ralph.policy.models import PhaseVerificationPolicy  # noqa: PLC0415
+        from ralph.policy.models import PhaseVerificationPolicy
 
         return PolicyBundle(
             agents=AgentsPolicy(
@@ -402,7 +402,7 @@ class TestVerificationExplainRendering:
         assert "gates=advancement" in text
 
     def test_verification_explanation_sentence_includes_failure_route(self) -> None:
-        from ralph.policy.render import _render_explanation_sentences  # noqa: PLC0415
+        from ralph.policy.render import _render_explanation_sentences
 
         bundle = self._bundle_with_verification(on_failure_route="crashed")
         result = explain_policy(bundle)
@@ -418,7 +418,7 @@ class TestExplanationSentencesProductOutcomeD:
     def _bundle_with_verification_and_commit(
         self, on_failure_route: str = "crashed"
     ) -> PolicyBundle:
-        from ralph.policy.models import (  # noqa: PLC0415
+        from ralph.policy.models import (
             PhaseCommitPolicy,
             PhaseVerificationPolicy,
             PostCommitRoute,
@@ -504,7 +504,7 @@ class TestExplanationSentencesProductOutcomeD:
         )
 
     def test_verification_failure_route_sentence_emitted(self) -> None:
-        from ralph.policy.render import _render_explanation_sentences  # noqa: PLC0415
+        from ralph.policy.render import _render_explanation_sentences
 
         bundle = self._bundle_with_verification_and_commit()
         result = explain_policy(bundle)
@@ -515,7 +515,7 @@ class TestExplanationSentencesProductOutcomeD:
         assert "crashed" in combined
 
     def test_parallel_rejection_sentence_for_non_terminal_phase(self) -> None:
-        from ralph.policy.render import _render_explanation_sentences  # noqa: PLC0415
+        from ralph.policy.render import _render_explanation_sentences
 
         bundle = self._bundle_with_verification_and_commit()
         result = explain_policy(bundle)
@@ -526,7 +526,7 @@ class TestExplanationSentencesProductOutcomeD:
         assert "parallel execution is rejected" in combined
 
     def test_no_parallel_rejection_for_phase_with_parallelization(self) -> None:
-        from ralph.policy.render import _render_explanation_sentences  # noqa: PLC0415
+        from ralph.policy.render import _render_explanation_sentences
 
         bundle = load_policy(_DEFAULT_POLICY_DIR)
         result = explain_policy(bundle)
@@ -537,7 +537,7 @@ class TestExplanationSentencesProductOutcomeD:
         assert "parallel execution is rejected" not in combined
 
     def test_post_commit_route_sentences_emitted(self) -> None:
-        from ralph.policy.render import _render_explanation_sentences  # noqa: PLC0415
+        from ralph.policy.render import _render_explanation_sentences
 
         bundle = self._bundle_with_verification_and_commit()
         result = explain_policy(bundle)

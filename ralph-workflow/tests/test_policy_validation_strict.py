@@ -11,7 +11,9 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
+from ralph.mcp.protocol.capability_mapping import drain_class_for_session
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -26,7 +28,11 @@ from ralph.policy.models import (
     PolicyBundle,
     RecoveryPolicy,
 )
-from ralph.policy.validation import PolicyValidationError, validate_policy_completeness
+from ralph.policy.validation import (
+    PolicyValidationError,
+    validate_drain_contracts,
+    validate_policy_completeness,
+)
 
 
 def _minimal_agents(drains: list[str]) -> AgentsPolicy:
@@ -269,8 +275,6 @@ class TestLegacyFieldsRejected:
         (e.g. a drain named 'custom_fixer_drain' resolved to DrainClass.FIX).
         That inference was removed; an explicit drain_class is required.
         """
-        from ralph.mcp.protocol.capability_mapping import drain_class_for_session  # noqa: PLC0415
-
         agents = AgentsPolicy(
             agent_chains={"chain": AgentChainConfig(agents=["claude"])},
             agent_drains={"custom_fixer_drain": AgentDrainConfig(chain="chain")},
@@ -284,8 +288,6 @@ class TestLegacyFieldsRejected:
         When forbid_sibling_drain_inference=true, every pipeline-used drain must
         declare drain_class explicitly in agents.toml.
         """
-        from ralph.policy.validation import validate_drain_contracts  # noqa: PLC0415
-
         agents = AgentsPolicy(
             forbid_sibling_drain_inference=True,
             agent_chains={"chain": AgentChainConfig(agents=["claude"])},
@@ -322,8 +324,6 @@ class TestLegacyFieldsRejected:
 
     def test_drain_class_present_passes_strict_validation(self) -> None:
         """validate_drain_contracts passes when all drains have explicit drain_class."""
-        from ralph.policy.validation import validate_drain_contracts  # noqa: PLC0415
-
         agents = AgentsPolicy(
             forbid_sibling_drain_inference=True,
             agent_chains={"chain": AgentChainConfig(agents=["claude"])},
@@ -359,8 +359,6 @@ class TestLegacyFieldsRejected:
 
     def test_legacy_phase_field_requires_commit_rejected(self) -> None:
         """PhaseDefinition with requires_commit=True is rejected with an actionable error."""
-        from pydantic import ValidationError  # noqa: PLC0415
-
         with pytest.raises(ValidationError, match="requires_commit has been removed"):
             PhaseDefinition(
                 drain="build",
@@ -371,8 +369,6 @@ class TestLegacyFieldsRejected:
 
     def test_legacy_phase_field_embeds_analysis_rejected(self) -> None:
         """PhaseDefinition with embeds_analysis=True is rejected with an actionable error."""
-        from pydantic import ValidationError  # noqa: PLC0415
-
         with pytest.raises(ValidationError, match="embeds_analysis has been removed"):
             PhaseDefinition(
                 drain="build",

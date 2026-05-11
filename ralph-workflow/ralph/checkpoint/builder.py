@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, TypedDict
 
 from ralph.pipeline.progress import derive_run_context_progress
 
@@ -42,7 +42,7 @@ class CheckpointPayload:
     def to_dict(self) -> CheckpointPayloadDict:
         """Return a JSON-safe dictionary representation."""
         payload: CheckpointPayloadDict = {
-            "state": cast("dict[str, object]", self.state.model_dump(mode="json")),
+            "state": self.state.model_dump(mode="json"),
             "run_context": self.run_context.to_dict(),
             "execution_history": self.execution_history.to_dict(),
             "working_dir": self.working_dir,

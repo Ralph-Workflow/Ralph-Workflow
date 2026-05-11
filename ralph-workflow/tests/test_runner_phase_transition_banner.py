@@ -238,10 +238,10 @@ def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() ->
 
 def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
     """Commit effect must record the sha as artifact outcome for the phase-close banner."""
-    import tempfile  # noqa: PLC0415
-    import types  # noqa: PLC0415
+    import tempfile
+    import types
 
-    from ralph.pipeline.effects import CommitEffect  # noqa: PLC0415
+    from ralph.pipeline.effects import CommitEffect
 
     recorded: dict[str, str] = {}
 
@@ -287,12 +287,12 @@ def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
 
 def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
     """Commit effect records sha artifact outcome even when state and policy are provided."""
-    import tempfile  # noqa: PLC0415
-    import types  # noqa: PLC0415
+    import tempfile
+    import types
 
-    from ralph.pipeline.effects import CommitEffect  # noqa: PLC0415
-    from ralph.pipeline.state import PipelineState  # noqa: PLC0415
-    from ralph.policy.models import (  # noqa: PLC0415
+    from ralph.pipeline.effects import CommitEffect
+    from ralph.pipeline.state import PipelineState
+    from ralph.policy.models import (
         BudgetCounterConfig,
         PhaseCommitPolicy,
         PhaseDefinition,
@@ -512,7 +512,7 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
 
 def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> None:
     """review_issues_found must be populated when transitioning from a review phase."""
-    from ralph.policy.models import (  # noqa: PLC0415
+    from ralph.policy.models import (
         BudgetCounterConfig,
         PhaseDefinition,
         PhaseTransition,
@@ -551,7 +551,7 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
 
     display = _StubDisplay()
     # State with review_outcome set to issues-found (not "clean")
-    from ralph.pipeline.state import PipelineState as ReviewState  # noqa: PLC0415
+    from ralph.pipeline.state import PipelineState as ReviewState
     state = ReviewState(
         phase="done",
         previous_phase="review",

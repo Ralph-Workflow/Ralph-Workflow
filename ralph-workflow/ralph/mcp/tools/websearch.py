@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.config.mcp_models import WebSearchConfig
+from ralph.mcp.websearch.backends.brave import BraveBackend
+from ralph.mcp.websearch.backends.exa import ExaBackend
+from ralph.mcp.websearch.backends.searxng import SearxngBackend
+from ralph.mcp.websearch.backends.tavily import TavilyBackend
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -42,24 +46,16 @@ def _build_backend(name: str, config: WebSearchConfig) -> WebSearchBackend:
         url = spec.url if spec is not None else None
         if not url:
             raise WebSearchError("searxng backend requires url in config")
-        from ralph.mcp.websearch.backends.searxng import SearxngBackend  # noqa: PLC0415
-
         return SearxngBackend(url=url)
     spec = config.backends.get(name)
     if spec is None:
         raise WebSearchError(f"backend {name!r} not configured")
     resolved_key = resolve_secret(spec.api_key, spec.api_key_env)
     if name == "tavily":
-        from ralph.mcp.websearch.backends.tavily import TavilyBackend  # noqa: PLC0415
-
         return TavilyBackend(api_key=resolved_key)
     if name == "brave":
-        from ralph.mcp.websearch.backends.brave import BraveBackend  # noqa: PLC0415
-
         return BraveBackend(api_key=resolved_key)
     if name == "exa":
-        from ralph.mcp.websearch.backends.exa import ExaBackend  # noqa: PLC0415
-
         return ExaBackend(api_key=resolved_key)
     raise WebSearchError(f"unsupported backend: {name!r}")
 

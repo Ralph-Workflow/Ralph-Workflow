@@ -140,7 +140,7 @@ class TestCleanupNeverInvokesGit:
 
         Monkeypatches all subprocess entry points and asserts none were called.
         """
-        import pytest  # noqa: PLC0415
+        import pytest
 
         invocations: list[tuple[object, ...]] = []
 

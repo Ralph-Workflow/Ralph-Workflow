@@ -3505,7 +3505,9 @@ class TestStartCommitCapture:
     def test_run_pipeline_writes_start_commit_on_first_invocation(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
     ) -> None:
-        from ralph.pipeline.cycle_baseline import write_cycle_baseline as _real_write  # noqa: PLC0415, I001
+        from ralph.pipeline.cycle_baseline import (
+            write_cycle_baseline as _real_write,
+        )
 
         written: list[tuple[str, str]] = []
 
@@ -3545,7 +3547,9 @@ class TestStartCommitCapture:
         # Pre-write a sentinel SHA so run() sees the file as already present.
         # We make a second commit so the current HEAD differs from the sentinel,
         # ensuring a buggy "always-write" implementation would be caught.
-        from ralph.pipeline.cycle_baseline import write_cycle_baseline as _real_write  # noqa: PLC0415, I001
+        from ralph.pipeline.cycle_baseline import (
+            write_cycle_baseline as _real_write,
+        )
 
         with GitRepo(tmp_git_repo) as repo:
             sentinel_sha = repo.head.commit.hexsha
@@ -3826,7 +3830,7 @@ class TestCycleBaselineLifecycle:
     def test_run_clears_baseline_at_teardown_on_success(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
     ) -> None:
-        from ralph.pipeline.cycle_baseline import write_cycle_baseline  # noqa: PLC0415
+        from ralph.pipeline.cycle_baseline import write_cycle_baseline
 
         with GitRepo(tmp_git_repo) as _r:
             _head_sha = _r.head.commit.hexsha
@@ -3858,7 +3862,7 @@ class TestCycleBaselineLifecycle:
     def test_run_clears_baseline_at_teardown_on_failure(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
     ) -> None:
-        from ralph.pipeline.cycle_baseline import write_cycle_baseline  # noqa: PLC0415
+        from ralph.pipeline.cycle_baseline import write_cycle_baseline
 
         with GitRepo(tmp_git_repo) as _r:
             _head_sha = _r.head.commit.hexsha
@@ -3898,7 +3902,7 @@ class TestCycleBaselineLifecycle:
     def test_run_pipeline_step_clears_baseline_after_development_commit_success(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
     ) -> None:
-        from ralph.pipeline.cycle_baseline import write_cycle_baseline  # noqa: PLC0415
+        from ralph.pipeline.cycle_baseline import write_cycle_baseline
 
         with GitRepo(tmp_git_repo) as _r:
             _head_sha = _r.head.commit.hexsha
@@ -4209,7 +4213,7 @@ def test_handle_inline_effect_propagates_plan_handoff_error_outside_recovery(
 
 def _write_media_session(tmp_path: Path, phase: str, artifacts: list[dict[str, object]]) -> None:
     """Write a media session index file into the workspace as the MCP server would."""
-    import json as _json  # noqa: PLC0415
+    import json as _json
 
     normalized = phase.replace("/", "_").replace(" ", "_")
     path = tmp_path / ".agent" / "tmp" / f"{normalized}_media_session.json"

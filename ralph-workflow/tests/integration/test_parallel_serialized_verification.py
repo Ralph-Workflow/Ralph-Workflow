@@ -240,7 +240,7 @@ class TestSerializedPostFanoutVerification:
 
     def test_verification_skipped_when_any_worker_fails(self, monkeypatch, tmp_path) -> None:
         """Post-fanout verification must not run when a worker has failed."""
-        from ralph.pipeline.events import WorkerFailedEvent  # noqa: PLC0415
+        from ralph.pipeline.events import WorkerFailedEvent
 
         unit = _make_work_unit("unit-a")
         effect = FanOutEffect(
@@ -383,7 +383,7 @@ class TestSerializedPostFanoutVerification:
         before running verification — so overlap is architecturally impossible. This test
         proves that guarantee holds through the call chain.
         """
-        import time  # noqa: PLC0415
+        import time
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")

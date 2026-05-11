@@ -8,6 +8,7 @@ behaviour for CI smoke runs.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -72,8 +73,6 @@ class UpstreamValidationReport:
 
 def strict_mode_from_env(env: Mapping[str, str] | None = None) -> bool:
     """Return True when strict mode is active (the default)."""
-
-    import os  # noqa: PLC0415
 
     env_map = os.environ if env is None else env
     raw = env_map.get(_STRICT_ENV_VAR)

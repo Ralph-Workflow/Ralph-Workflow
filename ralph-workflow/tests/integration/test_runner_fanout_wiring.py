@@ -410,9 +410,9 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     monkeypatch, tmp_path
 ) -> None:
     """When RALPH_WORKER_NAMESPACE is set, prompt payloads land in the worker's namespace."""
-    from ralph.pipeline import runner as runner_module  # noqa: PLC0415
-    from ralph.pipeline.effects import PreparePromptEffect  # noqa: PLC0415
-    from ralph.policy.loader import load_policy  # noqa: PLC0415
+    from ralph.pipeline import runner as runner_module
+    from ralph.pipeline.effects import PreparePromptEffect
+    from ralph.policy.loader import load_policy
 
     worker_ns = tmp_path / ".agent" / "workers" / "unit-test"
     worker_ns.mkdir(parents=True, exist_ok=True)
@@ -430,7 +430,7 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     monkeypatch.setenv("RALPH_WORKER_NAMESPACE", str(worker_ns))
     monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     # Patch dump to avoid writing files
-    import ralph.prompts.materialize  # noqa: PLC0415
+    import ralph.prompts.materialize
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", _fake_dump)
 
     policy = load_policy(tmp_path / ".agent")
@@ -454,9 +454,9 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
     monkeypatch, tmp_path
 ) -> None:
     """Without RALPH_WORKER_NAMESPACE, worker_namespace is None (shared path used)."""
-    from ralph.pipeline import runner as runner_module  # noqa: PLC0415
-    from ralph.pipeline.effects import PreparePromptEffect  # noqa: PLC0415
-    from ralph.policy.loader import load_policy  # noqa: PLC0415
+    from ralph.pipeline import runner as runner_module
+    from ralph.pipeline.effects import PreparePromptEffect
+    from ralph.policy.loader import load_policy
 
     monkeypatch.delenv("RALPH_WORKER_NAMESPACE", raising=False)
     recorded_kwargs: list[dict] = []
@@ -465,7 +465,7 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
         recorded_kwargs.append(kwargs)
         return "rendered-prompt"
 
-    import ralph.prompts.materialize  # noqa: PLC0415
+    import ralph.prompts.materialize
     monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", lambda *a, **k: "/p")
 

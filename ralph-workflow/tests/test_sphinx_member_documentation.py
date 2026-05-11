@@ -102,11 +102,11 @@ def _public_members_with_missing_docstrings(source_path: Path) -> list[str]:
     missing: list[str] = []
     seen: set[str] = set()  # track names so @overload stubs don't hide impl failures
     for node in ast.iter_child_nodes(tree):
-        if not isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         if node.name.startswith("_"):
             continue
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_overload(node):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and _is_overload(node):
             continue  # @overload stubs don't need docstrings; the implementation does
         docstring = ast.get_docstring(node)
         if (not docstring or not docstring.strip()) and node.name not in seen:

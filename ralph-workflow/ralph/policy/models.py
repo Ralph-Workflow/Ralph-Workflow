@@ -14,7 +14,9 @@ from __future__ import annotations
 
 from typing import Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
+
+from ralph.pydantic_compat import RalphBaseModel
 
 # ---------------------------------------------------------------------------
 # Shared types
@@ -40,7 +42,7 @@ PhaseRole = Literal[
 ROLE_REVIEW: Literal["review"] = "review"
 
 
-class _FrozenPolicyModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class _FrozenPolicyModel(RalphBaseModel):
     """Private base for frozen policy models.
 
     Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
@@ -56,7 +58,7 @@ class _FrozenPolicyModel(BaseModel):  # type: ignore[explicit-any]  # reason: ex
 # ---------------------------------------------------------------------------
 
 
-class AgentDrainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class AgentDrainConfig(_FrozenPolicyModel):
     """Binding from a named drain to an agent chain.
 
     Attributes:
@@ -106,7 +108,7 @@ class AgentDrainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
         return self
 
 
-class AgentChainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class AgentChainConfig(_FrozenPolicyModel):
     """Definition of a named agent fallback chain.
 
     Attributes:
@@ -120,7 +122,7 @@ class AgentChainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     retry_delay_ms: int = Field(default=1000, ge=0, description="Base retry delay in milliseconds")
 
 
-class AgentsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class AgentsPolicy(_FrozenPolicyModel):
     """Top-level agents.toml policy document.
 
     Attributes:
@@ -165,7 +167,7 @@ class AgentsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason:
 # ---------------------------------------------------------------------------
 
 
-class ArtifactHistoryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ArtifactHistoryPolicy(_FrozenPolicyModel):
     """Per-phase artifact history policy.
 
     When enabled, the runtime archives the previous canonical artifact and its
@@ -191,7 +193,7 @@ class ArtifactHistoryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  
     )
 
 
-class PhaseRetryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseRetryPolicy(_FrozenPolicyModel):
     """Per-phase retry policy overriding chain-level defaults.
 
     Attributes:
@@ -205,7 +207,7 @@ class PhaseRetryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     retry_in_session: bool = False
 
 
-class PhaseLoopPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseLoopPolicy(_FrozenPolicyModel):
     """Loop linkage for analysis phases.
 
     The analysis cap is declared once in ``pipeline.loop_counters``. This policy
@@ -223,7 +225,7 @@ class PhaseLoopPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     loopback_review_outcome: str | None = None
 
 
-class PhaseDecisionRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseDecisionRoute(_FrozenPolicyModel):
     """Route produced by an analysis decision.
 
     Attributes:
@@ -235,7 +237,7 @@ class PhaseDecisionRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # r
     reset_loop: bool = False
 
 
-class PhaseCommitPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseCommitPolicy(_FrozenPolicyModel):
     """Commit semantics for commit-role phases.
 
     Attributes:
@@ -258,7 +260,7 @@ class PhaseCommitPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # re
     loop_resets: list[str] = Field(default_factory=list)
 
 
-class PhaseVerificationPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseVerificationPolicy(_FrozenPolicyModel):
     """Verification gating semantics for a phase.
 
     Attributes:
@@ -273,7 +275,7 @@ class PhaseVerificationPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]
     on_failure_route: str | None = None
 
 
-class LoopCounterConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class LoopCounterConfig(_FrozenPolicyModel):
     """Declaration of a named loop iteration counter in the pipeline.
 
     Loop counters track how many times an analysis phase has looped back.
@@ -288,7 +290,7 @@ class LoopCounterConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # re
     description: str = Field(default="", description="Human-readable description")
 
 
-class BudgetCounterConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class BudgetCounterConfig(_FrozenPolicyModel):
     """Declaration of a named budget counter in the pipeline.
 
     Budget counters track outer-progress (completed cycles) and remaining budget.
@@ -314,7 +316,7 @@ class BudgetCounterConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # 
     )
 
 
-class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class RecoveryPolicy(_FrozenPolicyModel):
     """Pipeline-wide recovery policy.
 
     Attributes:
@@ -387,7 +389,7 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
 # ---------------------------------------------------------------------------
 
 
-class PhaseTransition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseTransition(_FrozenPolicyModel):
     """Transition rules from a phase to other phases.
 
     Attributes:
@@ -406,7 +408,7 @@ class PhaseTransition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     )
 
 
-class PhaseParallelization(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseParallelization(_FrozenPolicyModel):
     """Transition-scoped parallelization policy for a pipeline phase.
 
     When present on a PhaseDefinition, same-workspace fan-out is enabled for
@@ -450,7 +452,7 @@ class PhaseParallelization(_FrozenPolicyModel):  # type: ignore[explicit-any]  #
     )
 
 
-class PhaseWorkflowFallback(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseWorkflowFallback(_FrozenPolicyModel):
     """Policy-declared workflow-level fallback when a phase's agent chain is exhausted.
 
     When the agent chain for a phase is fully exhausted, the reducer checks this
@@ -469,7 +471,7 @@ class PhaseWorkflowFallback(_FrozenPolicyModel):  # type: ignore[explicit-any]  
     )
 
 
-class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseDefinition(_FrozenPolicyModel):
     """Definition of a single phase in the pipeline graph.
 
     Attributes:
@@ -631,7 +633,7 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         return d
 
 
-class PostCommitRouteWhen(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PostCommitRouteWhen(_FrozenPolicyModel):
     """Condition selector for post-commit budget-guarded routing."""
 
     phase: str = Field(
@@ -647,7 +649,7 @@ class PostCommitRouteWhen(_FrozenPolicyModel):  # type: ignore[explicit-any]  # 
     )
 
 
-class PostCommitRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PostCommitRoute(_FrozenPolicyModel):
     """Budget-guarded route applied after commit success."""
 
     when: PostCommitRouteWhen = Field(..., description="Route condition")
@@ -670,7 +672,7 @@ def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
     return names
 
 
-class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PipelinePolicy(_FrozenPolicyModel):
     """Top-level pipeline.toml policy document.
 
     Attributes:
@@ -931,7 +933,7 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
 # ---------------------------------------------------------------------------
 
 
-class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ArtifactContract(_FrozenPolicyModel):
     """Contract for an artifact type submitted by an agent at a given drain.
 
     Attributes:
@@ -988,7 +990,7 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
         return raw
 
 
-class ArtifactsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ArtifactsPolicy(_FrozenPolicyModel):
     """Top-level artifacts.toml policy document.
 
     Attributes:
@@ -1020,7 +1022,7 @@ class ArtifactsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
 # ---------------------------------------------------------------------------
 
 
-class PolicyBundle(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PolicyBundle(_FrozenPolicyModel):
     """Aggregate of all three policy documents.
 
     This is what the loader returns after validating all three TOML files together.

@@ -421,7 +421,7 @@ class TestRichCloseArtifactOutcome:
             width={"compact": 50, "medium": 80, "wide": 120}[mode],
         )
         ctx = make_display_context(console=console, env={}, force_mode=mode)
-        from ralph.display.phase_banner import show_phase_close_banner  # noqa: PLC0415
+        from ralph.display.phase_banner import show_phase_close_banner
         show_phase_close_banner(exit_model, display_context=ctx)
         return console.export_text()
 
@@ -509,11 +509,11 @@ class TestSymmetricStartCloseTranscriptOrdering:
 
     def test_start_and_close_use_same_dev_label_vocabulary(self) -> None:
         """Phase-start banner and [phase-close] transcript line use the same Dev label."""
-        from io import StringIO  # noqa: PLC0415
+        from io import StringIO
 
-        from rich.console import Console  # noqa: PLC0415
+        from rich.console import Console
 
-        from ralph.display.phase_banner import show_phase_start_from_entry  # noqa: PLC0415
+        from ralph.display.phase_banner import show_phase_start_from_entry
 
         # Phase-start banner
         start_buf = StringIO()

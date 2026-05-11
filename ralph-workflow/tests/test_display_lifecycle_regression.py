@@ -91,7 +91,7 @@ def test_prompt_md_sequence_produces_no_lifecycle_noise(tmp_path: Path) -> None:
 
 def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> None:
     """PipelineSubscriber.record_activity must not store bare lifecycle markers."""
-    from unittest.mock import MagicMock  # noqa: PLC0415
+    from unittest.mock import MagicMock
 
     q: queue.Queue[PipelineSnapshot] = queue.Queue(maxsize=64)
     subscriber = PipelineSubscriber(
@@ -171,7 +171,7 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
 )
 def test_is_bare_lifecycle_smoke(lifecycle_line: str) -> None:
     """is_bare_lifecycle must return True for all known lifecycle markers."""
-    from ralph.display.lifecycle_filter import is_bare_lifecycle  # noqa: PLC0415
+    from ralph.display.lifecycle_filter import is_bare_lifecycle
 
     assert is_bare_lifecycle(lifecycle_line), (
         f"Expected is_bare_lifecycle({lifecycle_line!r}) to be True"
@@ -190,7 +190,7 @@ def test_is_bare_lifecycle_smoke(lifecycle_line: str) -> None:
 )
 def test_is_bare_lifecycle_passes_real_content(non_lifecycle_line: str) -> None:
     """is_bare_lifecycle must return False for real content lines."""
-    from ralph.display.lifecycle_filter import is_bare_lifecycle  # noqa: PLC0415
+    from ralph.display.lifecycle_filter import is_bare_lifecycle
 
     assert not is_bare_lifecycle(non_lifecycle_line), (
         f"Expected is_bare_lifecycle({non_lifecycle_line!r}) to be False"

@@ -1043,7 +1043,7 @@ def test_claude_prefixed_content_block_stop_is_suppressed() -> None:
 
 def test_claude_parser_tool_result_with_image_block_emits_placeholder() -> None:
     """Claude parser emits bounded placeholder for image block in tool_result, not an error."""
-    import json  # noqa: PLC0415
+    import json
 
     parser = ClaudeParser()
     # tool_result blocks appear in assistant message content
@@ -1078,7 +1078,7 @@ def test_claude_parser_tool_result_with_image_block_emits_placeholder() -> None:
 
 def test_claude_parser_tool_result_with_resource_reference_emits_placeholder() -> None:
     """Claude parser emits bounded placeholder for resource_reference block in tool_result."""
-    import json  # noqa: PLC0415
+    import json
 
     parser = ClaudeParser()
     line = json.dumps({
@@ -1110,7 +1110,7 @@ def test_claude_parser_tool_result_with_resource_reference_emits_placeholder() -
 
 def test_claude_parser_tool_result_with_mixed_text_and_image_preserves_text() -> None:
     """Claude parser preserves text blocks and adds placeholder for image in same tool_result."""
-    import json  # noqa: PLC0415
+    import json
 
     parser = ClaudeParser()
     line = json.dumps({
@@ -1148,7 +1148,7 @@ def test_claude_parser_tool_result_with_audio_resource_reference_emits_placehold
     The placeholder must name the modality and URI so unattended workflows can
     diagnose modality loss without pretending the audio content was delivered.
     """
-    import json as _json  # noqa: PLC0415
+    import json as _json
 
     parser = ClaudeParser()
     line = _json.dumps({
@@ -1186,7 +1186,7 @@ def test_claude_parser_tool_result_with_audio_resource_reference_emits_placehold
 
 def test_claude_parser_tool_result_with_video_resource_reference_emits_placeholder() -> None:
     """Claude parser emits explicit [video: URI] placeholder for video resource_reference blocks."""
-    import json as _json  # noqa: PLC0415
+    import json as _json
 
     parser = ClaudeParser()
     line = _json.dumps({
@@ -1225,7 +1225,7 @@ def test_opencode_parser_tool_result_with_resource_reference_emits_placeholder()
     the OpenCode parser must emit a bounded placeholder that names the modality
     and URI so unattended workflows can detect modality loss.
     """
-    import json as _json  # noqa: PLC0415
+    import json as _json
 
     parser = OpenCodeParser()
     lines = [

@@ -15,6 +15,7 @@ from typing import Literal
 from loguru import logger
 
 from ralph.mcp.tools.names import upstream_proxy_tool_name
+from ralph.mcp.upstream.validation import UpstreamValidationError
 from ralph.mcp.upstream.client import (
     HasMediaManifest,
     HttpUpstreamClient,
@@ -63,8 +64,6 @@ class UpstreamRegistry:
         client_factory: UpstreamClientFactory | None = None,
         on_unreachable: Literal["raise", "warn_and_skip"] = "raise",
     ) -> UpstreamRegistry:
-        from ralph.mcp.upstream.validation import UpstreamValidationError  # noqa: PLC0415
-
         _factory = client_factory if client_factory is not None else make_upstream_client
         seen_aliases: dict[str, tuple[str, str]] = {}
         proxied_tools: list[ProxiedTool] = []

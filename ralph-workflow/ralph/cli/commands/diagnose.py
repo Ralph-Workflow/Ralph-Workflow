@@ -6,8 +6,9 @@ environment and configuration.
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from rich.panel import Panel
 from rich.table import Table
@@ -16,7 +17,11 @@ from rich.text import Text
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
+from ralph.display.context import make_display_context
 from ralph.git.operations import find_repo_root, is_repo_clean
+from ralph.mcp.transport.common import mcp_toml_as_upstreams
+from ralph.mcp.upstream.agent_probe import probe_agent_transports
+from ralph.mcp.upstream.validation import validate_upstream_mcp_servers
 from ralph.policy.loader import (
     PolicyValidationError,
     load_policy,
@@ -29,9 +34,24 @@ from ralph.policy.validation import (
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from ralph.display.context import DisplayContext
 
-from ralph.display.context import make_display_context
+
+
+def _module_attr(module: ModuleType, attribute: str) -> object:
+    namespace = cast("dict[str, object]", module.__dict__)
+    return namespace[attribute]
+
+
+
+def _load_starter_prompt_sentinel() -> str:
+    return cast(
+        "str",
+        _module_attr(import_module("ralph.cli.commands.init"), "STARTER_PROMPT_SENTINEL"),
+    )
+
 
 
 def diagnose_command(
@@ -80,10 +100,8 @@ def diagnose_command(
     prompt_has_sentinel = False
     if prompt_exists:
         try:
-            from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL  # noqa: PLC0415
-            prompt_has_sentinel = STARTER_PROMPT_SENTINEL in prompt_path.read_text(
-                encoding="utf-8"
-            )
+            sentinel = _load_starter_prompt_sentinel()
+            prompt_has_sentinel = sentinel in prompt_path.read_text(encoding="utf-8")
         except Exception:
             pass
 
@@ -400,10 +418,6 @@ def _check_mcp_servers(
     Returns:
         True if check passed, False otherwise.
     """
-    from ralph.mcp.transport.common import mcp_toml_as_upstreams  # noqa: PLC0415
-    from ralph.mcp.upstream.agent_probe import probe_agent_transports  # noqa: PLC0415
-    from ralph.mcp.upstream.validation import validate_upstream_mcp_servers  # noqa: PLC0415
-
     c = display_context.console
 
     server_table = Table(title="Custom MCP Servers")

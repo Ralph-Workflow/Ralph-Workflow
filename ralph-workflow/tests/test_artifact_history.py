@@ -62,7 +62,7 @@ class TestArchiveArtifactBeforeOverwrite:
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "plan.json").write_text('{"type":"plan"}', encoding="utf-8")
         # Write a handoff file at the known handoff path for 'plan'
-        from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact  # noqa: PLC0415
+        from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 
         handoff_rel = handoff_path_for_artifact("plan")
         if handoff_rel:

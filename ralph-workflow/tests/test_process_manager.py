@@ -10,6 +10,7 @@ import asyncio
 import itertools
 import sys
 import time as _time
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
@@ -33,6 +34,9 @@ from ralph.testing.fake_process import (
     make_sync_process_factory,
 )
 
+if TYPE_CHECKING:
+    from ralph.testing.fake_process import _AsyncFactoryCallable, _SyncFactoryCallable
+
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
 )
@@ -48,9 +52,9 @@ def _reset_pm():
 
 def _make_pm(
     *,
-    sync_factory=None,
-    async_factory=None,
-    psutil_mod=None,
+    sync_factory: _SyncFactoryCallable | None = None,
+    async_factory: _AsyncFactoryCallable | None = None,
+    psutil_mod: FakePsutil | None = None,
 ) -> ProcessManager:
     """Build a ProcessManager with injected fake process factories."""
     return ProcessManager(

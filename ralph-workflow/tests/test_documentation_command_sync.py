@@ -11,6 +11,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 README_PATH = REPO_ROOT / "README.md"
 CONTRIBUTING_PATH = REPO_ROOT / "CONTRIBUTING.md"
+WORKSPACE_ROOT = REPO_ROOT.parent
+CODE_STYLE_PATH = WORKSPACE_ROOT / "CODE_STYLE.md"
+CODE_STYLE_INDEX_PATH = WORKSPACE_ROOT / "docs" / "code-style" / "index.md"
+PYTHON_TOOLING_PATH = WORKSPACE_ROOT / "docs" / "tooling" / "python-tooling.md"
 
 _STALE_FLAGS = [
     "--cov-report=term-missing",
@@ -58,6 +62,23 @@ def test_contributing_required_verification_references_make_verify() -> None:
     )
 
 
+def test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin() -> None:
+    """Repo-root strict-typing docs must reflect the no-plugin Pydantic contract."""
+    for path in (CODE_STYLE_PATH, CODE_STYLE_INDEX_PATH, PYTHON_TOOLING_PATH):
+        content = path.read_text(encoding="utf-8")
+        assert "pydantic.mypy" not in content, (
+            f"{path} must not instruct users to enable the pydantic.mypy plugin; "
+            "the maintained runtime contract uses first-party typed helpers instead."
+        )
+        assert (
+            "no-plugin" in content
+            or "first-party typed helper" in content
+            or "typed helper" in content
+        ), (
+            f"{path} must describe the maintained no-plugin Pydantic typing contract."
+        )
+
+
 _MCP_SERVERS_DOC = REPO_ROOT / "docs" / "mcp" / "mcp-servers.md"
 
 
@@ -83,6 +104,10 @@ def test_mcp_servers_doc_describes_upstream_normalization_policy() -> None:
 
 _README_PATH = REPO_ROOT / "README.md"
 _CONTRIBUTING_PATH = REPO_ROOT / "CONTRIBUTING.md"
+WORKSPACE_ROOT = REPO_ROOT.parent
+CODE_STYLE_PATH = WORKSPACE_ROOT / "CODE_STYLE.md"
+CODE_STYLE_INDEX_PATH = WORKSPACE_ROOT / "docs" / "code-style" / "index.md"
+PYTHON_TOOLING_PATH = WORKSPACE_ROOT / "docs" / "tooling" / "python-tooling.md"
 _ARCHITECTURE_PATH = REPO_ROOT / "ralph" / "mcp" / "ARCHITECTURE.md"
 _SPHINX_MCP_TOOLS_PATH = REPO_ROOT / "docs" / "sphinx" / "mcp-tools.md"
 _SPHINX_MCP_ARCH_PATH = REPO_ROOT / "docs" / "sphinx" / "mcp-architecture.md"

@@ -338,7 +338,7 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
     def fake_read_lines_from_process(*args: object, **kwargs: object):
         del args, kwargs
         yield "idle line\n"
-        from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+        from ralph.agents.idle_watchdog import WatchdogFireReason
         raise invoke_module._IdleStreamTimeoutError(0.05, WatchdogFireReason.NO_OUTPUT_DEADLINE)
 
     monkeypatch.setattr(
@@ -3771,7 +3771,7 @@ def test_idle_timeout_error_carries_fire_reason(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """AgentInactivityTimeoutError carries the watchdog fire reason on the no-output path."""
-    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+    from ralph.agents.idle_watchdog import WatchdogFireReason
 
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -3803,7 +3803,7 @@ def test_idle_timeout_children_persist_uses_distinct_reason_and_message(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """CHILDREN_PERSIST_TOO_LONG reason produces distinct error message mentioning child agents."""
-    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+    from ralph.agents.idle_watchdog import WatchdogFireReason
 
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -3851,7 +3851,7 @@ def test_invoke_agent_passes_config_drain_window_to_watchdog(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """InvokeOptions.drain_window_seconds and max_waiting_on_child_seconds reach TimeoutPolicy."""
-    from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy  # noqa: PLC0415
+    from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy
 
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -3909,7 +3909,7 @@ def test_invoke_agent_yields_lines_with_minimal_latency_under_system_clock(
     Without wait_for_event (old sleep-based polling), lines would take up to
     _IDLE_POLL_INTERVAL_SECONDS per line. This test ensures lines arrive well under 1s.
     """
-    import time as _time  # noqa: PLC0415
+    import time as _time
 
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -3998,7 +3998,7 @@ def test_process_exit_hang_raises_via_post_exit_watchdog(
             )
         )
 
-    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+    from ralph.agents.idle_watchdog import WatchdogFireReason
 
     assert exc_info.value.reason == WatchdogFireReason.PROCESS_EXIT_HANG
     assert exc_info.value.timeout_seconds == process_exit_wait
@@ -4044,7 +4044,7 @@ def test_invoke_agent_raises_process_exit_hang_when_stdout_closes_but_process_do
             )
         )
 
-    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+    from ralph.agents.idle_watchdog import WatchdogFireReason
 
     assert exc_info.value.reason == WatchdogFireReason.PROCESS_EXIT_HANG
     assert exc_info.value.timeout_seconds == process_exit_wait
@@ -4089,7 +4089,7 @@ def test_invoke_agent_raises_session_ceiling_despite_continuous_output(
 
     # BlockingStdout closes stdout immediately → post-exit watchdog fires
     # (PROCESS_EXIT_HANG), not SESSION_CEILING_EXCEEDED.
-    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+    from ralph.agents.idle_watchdog import WatchdogFireReason
 
     assert exc_info.value.reason == WatchdogFireReason.PROCESS_EXIT_HANG
 
@@ -4141,7 +4141,7 @@ def _write_sidecar(
     artifacts: list[dict[str, object]],
 ) -> None:
     """Write a multimodal handoff sidecar next to the given _prompt.md file."""
-    import json as _json  # noqa: PLC0415
+    import json as _json
 
     stem = prompt_file.stem  # e.g. "development_prompt"
     normalized = stem.removesuffix("_prompt")

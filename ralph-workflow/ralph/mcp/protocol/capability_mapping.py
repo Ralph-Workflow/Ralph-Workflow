@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, StrEnum
+from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
@@ -253,6 +254,13 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "workspace.delete": McpCapability.WORKSPACE_DELETE,
 }
 
+def _policy_validation_error_type() -> type[Exception]:
+    return cast(
+        "type[Exception]",
+        import_module("ralph.policy.validation").PolicyValidationError,
+    )
+
+
 _APPROVED_POLICY_VALUES = {"approved", "allow", "allowed"}
 _DENIED_POLICY_VALUES = {"denied", "deny", "denied_by_policy"}
 _APPROVED_WITH_RESTRICTION_VALUES = {
@@ -388,19 +396,18 @@ def drain_class_for_drain_name(
     1. Explicit drain_class on the AgentDrainConfig (highest priority).
     2. PolicyValidationError when no explicit drain_class is declared.
     """
-    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
-
+    policy_validation_error = _policy_validation_error_type()
     if agents_policy is not None:
         drain_cfg = agents_policy.agent_drains.get(name)
         if drain_cfg is not None and drain_cfg.drain_class is not None:
             try:
                 return DrainClass(drain_cfg.drain_class)
             except ValueError as err:
-                raise PolicyValidationError(
+                raise policy_validation_error(
                     f"Drain '{name}' has invalid drain_class '{drain_cfg.drain_class}'; "
                     f"expected one of: planning, development, analysis, review, fix, commit."
                 ) from err
-    raise PolicyValidationError(
+    raise policy_validation_error(
         f"Drain '{name}' has no drain_class declared in agents.toml; "
         f"add drain_class = '<class>' under [agent_drains.{name}] "
         f"(one of: planning, development, analysis, review, fix, commit)."
@@ -416,10 +423,8 @@ def drain_class_for_session(
     Resolution is policy-defined only: callers must supply ``agents_policy`` and
     the drain must be declared there with an explicit ``drain_class``.
     """
-    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
-
     if agents_policy is None:
-        raise PolicyValidationError(
+        raise _policy_validation_error_type()(
             f"Drain {drain!r} cannot resolve drain_class without agents_policy; "
             "pass the active agents policy so drain_class is read from declarations"
         )

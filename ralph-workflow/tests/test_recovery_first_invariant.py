@@ -47,6 +47,12 @@ def _reduce(
     return reducer_reduce(state, event, _minimal_policy())
 
 
+def _chain_for_phase(state: PipelineState, phase: str) -> AgentChainState:
+    chain = state.chain_for_phase(phase)
+    assert chain is not None
+    return chain
+
+
 class TestRecoveryFirstBehavior:
     """Regression tests for the recover-first invariant."""
 
@@ -73,25 +79,28 @@ class TestRecoveryFirstBehavior:
         # Agent 0: 3 retries (retries 0->1->2->3)
         for expected_retries in range(1, 4):
             state, effects = _reduce(state, crash_event)
+            chain = _chain_for_phase(state, "development")
             assert state.phase == "development"
-            assert state.chain_for_phase("development").current_index == 0
-            assert state.chain_for_phase("development").retries == expected_retries
+            assert chain.current_index == 0
+            assert chain.retries == expected_retries
             assert effects == []
 
         # 4th crash on agent 0: fallback to agent 1 (retries reset to 0)
         state, effects = _reduce(state, crash_event)
+        chain = _chain_for_phase(state, "development")
         assert state.phase == "development"
-        assert state.chain_for_phase("development").current_index == 1
-        assert state.chain_for_phase("development").retries == 0
+        assert chain.current_index == 1
+        assert chain.retries == 0
         assert state.metrics.total_fallbacks == 1
         assert effects == []
 
         # Agent 1: 3 more retries (retries 0->1->2->3)
         for expected_retries in range(1, 4):
             state, effects = _reduce(state, crash_event)
+            chain = _chain_for_phase(state, "development")
             assert state.phase == "development"
-            assert state.chain_for_phase("development").current_index == 1
-            assert state.chain_for_phase("development").retries == expected_retries
+            assert chain.current_index == 1
+            assert chain.retries == expected_retries
             assert effects == []
 
         # Final crash on agent 1 (chain exhausted): "failed" with descriptive reason

@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
+from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.content_condenser import condense_content
 from ralph.display.context import DisplayContext
@@ -24,7 +25,6 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
-    from ralph.display.activity_model import ActivityEventKind
     from ralph.display.phase_lifecycle import PhaseExitModel
     from ralph.display.phase_status import PhaseIterationContext
     from ralph.display.plain_renderer import RunStartOrientation
@@ -156,13 +156,11 @@ class ParallelDisplay:
         raw_ref: str | None,
         metadata: dict[str, object],
     ) -> None:
-        from ralph.display.activity_model import ActivityEventKind as _Kind  # noqa: PLC0415
-
         text = content or ""
 
         tool_signature: tuple[str, str] | None = None
 
-        if kind is _Kind.TOOL_USE:
+        if kind is ActivityEventKind.TOOL_USE:
             original_name = text
             text = friendly_tool_name(text)
             input_obj = metadata.get("input")
@@ -205,7 +203,7 @@ class ParallelDisplay:
 
         effective_summary_line = summary_line
         if (
-            kind is _Kind.TOOL_RESULT
+            kind is ActivityEventKind.TOOL_RESULT
             and summary_line is None
             and text.strip()
             and len(text) >= self._ctx.tool_result_headline_min_chars
@@ -263,10 +261,8 @@ class ParallelDisplay:
         metadata: dict[str, object],
     ) -> None:
         """Route a pre-parsed agent event through the structured activity path."""
-        from ralph.display.activity_model import ActivityEventKind as _Kind  # noqa: PLC0415
-
         if (
-            kind in (_Kind.LIFECYCLE, _Kind.UNKNOWN)
+            kind in (ActivityEventKind.LIFECYCLE, ActivityEventKind.UNKNOWN)
             and content is not None
             and _is_bare_lifecycle(content)
         ):

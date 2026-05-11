@@ -9,6 +9,8 @@ the handlers (I/O execution), and the reducer (state transitions).
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import shutil
 import sys
@@ -17,6 +19,8 @@ import time
 import uuid
 from collections.abc import Callable
 from contextlib import suppress
+from datetime import UTC, datetime
+from importlib import import_module
 from dataclasses import dataclass
 from inspect import signature
 from pathlib import Path
@@ -27,9 +31,20 @@ from loguru import logger
 from rich.text import Text
 
 from ralph.agents.chain import ChainManager
+from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
+from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
+    AgentInvocationError,
+    build_invoke_options_from_config,
+    extract_session_id,
+    invoke_agent,
+)
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
+from ralph.agents.subprocess_executor import SubprocessAgentExecutor
+from ralph.cloud.client import CloudClient, CloudClientConfig, ProgressEventType, ProgressUpdate
 from ralph.config.enums import AgentTransport, Verbosity
+from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.artifact_renderer import (
     render_analysis_decision,
     render_commit_message,
@@ -38,24 +53,31 @@ from ralph.display.artifact_renderer import (
     render_plan_artifact,
     render_review_artifact,
 )
-from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.context import DisplayContext, install_width_refresher, make_display_context
 from ralph.display.phase_banner import (
     show_phase_close_banner,
     show_phase_start_from_entry,
     show_phase_transition,
 )
 from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
+from ralph.display.plain_renderer import RunStartOrientation
+from ralph.executor.process import run_process_async
+from ralph.git.operations import create_commit, stage_all
 from ralph.interrupt import controller_from_process_manager
+from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.interrupt.controller import install_force_kill_handler
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
     read_commit_message_from_path,
 )
+from ralph.mcp.artifacts.handoffs import sync_markdown_handoff
+from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.protocol.capability_mapping import DrainClass
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
+from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.server.lifecycle import (
     McpServerError,
     RestartAwareMcpBridge,
@@ -64,6 +86,13 @@ from ralph.mcp.server.lifecycle import (
     start_mcp_server,
 )
 from ralph.mcp.session_plan import SessionMcpPlan, build_session_mcp_plan
+from ralph.mcp.transport.common import mcp_toml_as_upstreams
+from ralph.mcp.upstream.agent_probe import probe_agent_transports
+from ralph.mcp.upstream.validation import (
+    UpstreamValidationError,
+    strict_mode_from_env,
+    validate_upstream_mcp_servers,
+)
 from ralph.phases import PhaseContext, handle_phase, register_role_handlers
 from ralph.phases.required_artifacts import (
     build_required_artifacts,
@@ -88,10 +117,23 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent, WorkerFailedEvent
+from ralph.pipeline.events import (
+    Event,
+    PhaseFailureEvent,
+    PipelineEvent,
+    PostFanoutVerificationEvent,
+    WorkerFailedEvent,
+)
 from ralph.pipeline.handoffs import resolve_phase_drain
+from ralph.pipeline.parallel import coordinator
+from ralph.pipeline.parallel.mode import SameWorkspaceContext
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
+from ralph.pipeline.work_units import (
+    WorkUnitsPlan,
+    WorkUnitsValidationError,
+    validate_for_same_workspace,
+)
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import (
     load_agents_policy_for_workspace_scope,
@@ -102,6 +144,12 @@ from ralph.policy.loader import (
 )
 from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.process.mcp_supervisor import McpSupervisor
+from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
+from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS
+from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
+from ralph.recovery.controller import RecoveryController as _RecoveryController
+from ralph.recovery.events import FailureEvent as _FailureEvent
+from ralph.recovery.events import FalloverEvent as _FalloverEvent
 from ralph.prompts.materialize import (
     MissingPlanHandoffError,
     collect_media_entries_for_phase,
@@ -109,22 +157,24 @@ from ralph.prompts.materialize import (
     prompt_file_for_phase,
     tool_name_prefix_for_transport,
 )
+from ralph.policy.validation import PolicyValidationError
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator
+    from collections.abc import Iterable, Iterator
 
     from rich.console import Console
 
     from ralph.agents.executor import AgentExecutor
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.display.artifact_reader import AnalysisDecisionSummary, PlanSummary
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.display.snapshot import PipelineSnapshot
     from ralph.display.subscriber import PipelineSubscriber
-    from ralph.interrupt.asyncio_bridge import SignalBridge
     from ralph.mcp.upstream.agent_probe import AgentProbeReport
     from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.mcp.upstream.validation import UpstreamValidationReport
@@ -138,7 +188,6 @@ if TYPE_CHECKING:
         PipelinePolicy,
         PolicyBundle,
     )
-    from ralph.recovery.connectivity import ConnectivityState
     from ralph.recovery.controller import RecoveryController
 
     class _PipelineSubscriber(Protocol):
@@ -214,6 +263,117 @@ class _PlainRendererContextOwner(Protocol):
 
 class _DisplayWithPlainRenderer(_DisplayContextOwner, Protocol):
     _plain_renderer: _PlainRendererContextOwner
+
+
+class _ParallelDisplayModule(Protocol):
+    """Typed accessor for the lazily imported parallel display module."""
+
+    ParallelDisplay: type[ParallelDisplay]
+
+
+class _EmitCompletionSummaryFn(Protocol):
+    """Callable signature for the completion summary emitter."""
+
+    def __call__(
+        self,
+        snapshot: PipelineSnapshot,
+        *,
+        workspace_root: Path | None = None,
+        dropped_count: int = 0,
+        include_context_sections: bool = True,
+        content_block_count: int = 0,
+        thinking_block_count: int = 0,
+        tool_call_count: int = 0,
+        error_count: int = 0,
+        elapsed_seconds: float | None = None,
+        display_context: DisplayContext,
+        pipeline_policy: PipelinePolicy | None = None,
+    ) -> None: ...
+
+
+class _CompletionSummaryModule(Protocol):
+    """Typed accessor for the lazily imported completion summary module."""
+
+    emit_completion_summary: _EmitCompletionSummaryFn
+
+
+class _SnapshotFromStateFn(Protocol):
+    """Callable signature for building a pipeline snapshot."""
+
+    def __call__(
+        self,
+        state: PipelineState,
+        *,
+        prompt_path: str | None,
+        prompt_preview: tuple[str, ...],
+        run_id: str | None,
+    ) -> PipelineSnapshot: ...
+
+
+class _SnapshotModule(Protocol):
+    """Typed accessor for the lazily imported snapshot module."""
+
+    snapshot_from_state: _SnapshotFromStateFn
+
+
+class _ReadLatestAnalysisDecisionFn(Protocol):
+    """Callable signature for reading the latest analysis decision artifact."""
+
+    def __call__(
+        self,
+        workspace_root: Path,
+        drain: str,
+    ) -> AnalysisDecisionSummary | None: ...
+
+
+class _ReadPlanArtifactFn(Protocol):
+    """Callable signature for reading the plan artifact summary."""
+
+    def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
+
+
+class _ArtifactReaderModule(Protocol):
+    """Typed accessor for the lazily imported artifact reader module."""
+
+    read_latest_analysis_decision: _ReadLatestAnalysisDecisionFn
+    read_plan_artifact: _ReadPlanArtifactFn
+
+
+def _parallel_display_cls() -> type[ParallelDisplay]:
+    module = cast(
+        "_ParallelDisplayModule",
+        import_module("ralph.display.parallel_display"),
+    )
+    return module.ParallelDisplay
+
+
+def _emit_completion_summary_func() -> _EmitCompletionSummaryFn:
+    module = cast(
+        "_CompletionSummaryModule",
+        import_module("ralph.display.completion_summary"),
+    )
+    return module.emit_completion_summary
+
+
+def _snapshot_from_state_func() -> _SnapshotFromStateFn:
+    module = cast("_SnapshotModule", import_module("ralph.display.snapshot"))
+    return module.snapshot_from_state
+
+
+def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:
+    module = cast(
+        "_ArtifactReaderModule",
+        import_module("ralph.display.artifact_reader"),
+    )
+    return module.read_latest_analysis_decision
+
+
+def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
+    module = cast(
+        "_ArtifactReaderModule",
+        import_module("ralph.display.artifact_reader"),
+    )
+    return module.read_plan_artifact
 
 
 _session_capture_local = _SessionCapture()
@@ -333,12 +493,6 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     Tests can monkeypatch ``_VALIDATE_MCP`` and ``_PROBE_AGENT_TRANSPORTS`` to
     drive deterministic outcomes without spawning real upstream servers.
     """
-    from ralph.mcp.transport.common import mcp_toml_as_upstreams  # noqa: PLC0415
-    from ralph.mcp.upstream.validation import (  # noqa: PLC0415
-        UpstreamValidationError,
-        strict_mode_from_env,
-    )
-
     upstreams = mcp_toml_as_upstreams(workspace_root)
     if not upstreams:
         return 0
@@ -379,20 +533,12 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
 def _default_validate_mcp(
     servers: Iterable[UpstreamMcpServer], *, strict: bool
 ) -> UpstreamValidationReport:
-    from ralph.mcp.upstream.validation import (  # noqa: PLC0415
-        validate_upstream_mcp_servers,
-    )
-
     return validate_upstream_mcp_servers(servers, strict=strict)
 
 
 def _default_probe_agent_transports(
     servers: Iterable[UpstreamMcpServer], *, workspace_path: Path | None
 ) -> tuple[AgentProbeReport, ...]:
-    from ralph.mcp.upstream.agent_probe import (  # noqa: PLC0415
-        probe_agent_transports,
-    )
-
     return probe_agent_transports(servers, workspace_path=workspace_path)
 
 
@@ -494,11 +640,8 @@ def _build_default_display(
     render thread share a single subscriber.
     """
     try:
-        from ralph.display.parallel_display import (  # noqa: PLC0415
-            ParallelDisplay as _ParallelDisplay,
-        )
-
-        return _ParallelDisplay(
+        parallel_display_cls = _parallel_display_cls()
+        return parallel_display_cls(
             display_context,
             workspace_root=workspace_root,
             run_id=str(uuid.uuid4()),
@@ -1188,14 +1331,12 @@ def _emit_final_summary(
     theming rather than creating a new unthemed console.
     """
     try:
-        from ralph.display.completion_summary import emit_completion_summary  # noqa: PLC0415
-        from ralph.display.parallel_display import (  # noqa: PLC0415
-            ParallelDisplay as _ParallelDisplayCls,
-        )
-        from ralph.display.snapshot import snapshot_from_state  # noqa: PLC0415
+        emit_completion_summary = _emit_completion_summary_func()
+        parallel_display_cls = _parallel_display_cls()
+        snapshot_from_state = _snapshot_from_state_func()
 
         dropped_count = 0
-        snapshot = None
+        snapshot: PipelineSnapshot | None = None
         if subscriber is not None:
             try:
                 dropped_count = subscriber.dropped_count
@@ -1214,7 +1355,7 @@ def _emit_final_summary(
             )
         pipeline_policy = subscriber.pipeline_policy if subscriber is not None else None
         ctx = _get_display_context(display, display_context)
-        if isinstance(display, _ParallelDisplayCls):
+        if isinstance(display, parallel_display_cls):
             pr = display._plain_renderer
             content_block_count: int = pr.content_blocks_count
             thinking_block_count: int = pr.thinking_blocks_count
@@ -1320,11 +1461,6 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     )
     is_quiet = _verbosity_rank(effective_verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]
 
-    from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry  # noqa: PLC0415
-    from ralph.recovery.controller import RecoveryController as _RecoveryController  # noqa: PLC0415
-    from ralph.recovery.events import FailureEvent as _FailureEvent  # noqa: PLC0415
-    from ralph.recovery.events import FalloverEvent as _FalloverEvent  # noqa: PLC0415
-
     _sleep = _recovery_sleep or time.sleep
     _cycle_cap: int = 200
     _raw_cycle_cap: object = getattr(state, "recovery_cycle_cap", 200)
@@ -1332,17 +1468,13 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
         _cycle_cap = _raw_cycle_cap
     _monitor_stop: Callable[[], None] | None = None
     if connectivity_monitor is None:
-        import asyncio as _asyncio_mon  # noqa: PLC0415
-
-        from ralph.recovery.connectivity import ConnectivityMonitor as _ConnMon  # noqa: PLC0415
-
-        _real_monitor = _ConnMon()
+        _real_monitor = ConnectivityMonitor()
         connectivity_monitor = _real_monitor
-        _mon_loop = _asyncio_mon.new_event_loop()
+        _mon_loop = asyncio.new_event_loop()
         _mon_thread_started = threading.Event()
 
         def _run_mon_thread() -> None:
-            _asyncio_mon.set_event_loop(_mon_loop)
+            asyncio.set_event_loop(_mon_loop)
             _mon_loop.run_until_complete(_real_monitor.start())
             _mon_thread_started.set()
             _mon_loop.run_forever()
@@ -1354,9 +1486,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
         _mon_thread.start()
 
         def _stop_mon() -> None:
-            import asyncio as _asyncio_stop  # noqa: PLC0415
-
-            future = _asyncio_stop.run_coroutine_threadsafe(_real_monitor.stop(), _mon_loop)
+            future = asyncio.run_coroutine_threadsafe(_real_monitor.stop(), _mon_loop)
             with suppress(Exception):
                 future.result(timeout=2.0)
             _mon_loop.call_soon_threadsafe(_mon_loop.stop)
@@ -1429,8 +1559,6 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
 
     # Install cross-platform width refresher (SIGWINCH on POSIX, poll thread on Windows).
     # The refresher reads the current console width and recomputes mode/limits.
-    from ralph.display.context import install_width_refresher  # noqa: PLC0415
-
     def _display_stop() -> None:
         pass
 
@@ -1454,8 +1582,6 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
         with active_display:
             if not is_quiet and hasattr(active_display, "emit_run_start"):
                 with suppress(Exception):
-                    from ralph.display.plain_renderer import RunStartOrientation  # noqa: PLC0415
-
                     _prompt_path_raw: object = getattr(
                         effective_pipeline_subscriber, "_prompt_path", None
                     )
@@ -1612,8 +1738,6 @@ def _apply_connectivity_check(
     Records last_connectivity_state='offline' before blocking so checkpoints written
     during an interrupt while paused accurately reflect the offline condition.
     """
-    from ralph.recovery.connectivity import ConnectivityState  # noqa: PLC0415
-
     if monitor.current_state != ConnectivityState.OFFLINE:
         return state
 
@@ -1625,10 +1749,7 @@ def _apply_connectivity_check(
     wake = threading.Event()
 
     def _on_transition(evt: object) -> None:
-        from ralph.recovery.connectivity import ConnectivityEvent  # noqa: PLC0415
-        from ralph.recovery.connectivity import ConnectivityState as _ConnState  # noqa: PLC0415
-
-        if isinstance(evt, ConnectivityEvent) and evt.state == _ConnState.ONLINE:
+        if isinstance(evt, ConnectivityEvent) and evt.state == ConnectivityState.ONLINE:
             wake.set()
 
     unsub = monitor.add_listener(_on_transition)
@@ -1655,14 +1776,14 @@ def _fan_out_display_and_subscriber(
     pipeline_subscriber: _PipelineSubscriber | None,
     dashboard_subscriber: _PipelineSubscriber | None,
 ) -> tuple[ParallelDisplay, _PipelineSubscriber | None]:
-    from ralph.display.parallel_display import ParallelDisplay as _ParallelDisplay  # noqa: PLC0415
+    parallel_display_cls = _parallel_display_cls()
 
-    if isinstance(display, _ParallelDisplay):
+    if isinstance(display, parallel_display_cls):
         parallel_display = display
     elif isinstance(display, _LegacyConsoleDisplay):
-        parallel_display = _ParallelDisplay(display._ctx)
+        parallel_display = parallel_display_cls(display._ctx)
     else:
-        parallel_display = _ParallelDisplay(make_display_context(console=display.console))
+        parallel_display = parallel_display_cls(make_display_context(console=display.console))
     effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
     if effective_pipeline_subscriber is None and hasattr(parallel_display, "subscriber"):
         effective_pipeline_subscriber = cast(
@@ -1689,8 +1810,6 @@ def _build_session_mcp_plan_for_phase(
         the drain string used to build the plan, matching the serial path's
         "effect.drain or effect.phase" pattern.
     """
-    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
-
     phase_def = policy_bundle.pipeline.phases.get(effect.phase)
 
     # Resolve drain: use effect.drain if available (InvokeAgentEffect),
@@ -1774,11 +1893,6 @@ def _fan_out_worker_context(
     session_drain: str,
     session_mcp_plan: SessionMcpPlan,
 ) -> tuple[AgentExecutor, parallel_coordinator._WorkerContext]:
-    from ralph.agents.subprocess_executor import SubprocessAgentExecutor  # noqa: PLC0415
-    from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory  # noqa: PLC0415
-    from ralph.pipeline.parallel import coordinator  # noqa: PLC0415
-    from ralph.pipeline.parallel.mode import SameWorkspaceContext  # noqa: PLC0415
-
     executor = cast(
         "AgentExecutor",
         SubprocessAgentExecutor(_parallel_worker_command(), signal_bridge=bridge),
@@ -1840,11 +1954,6 @@ def _write_parallel_development_summary(  # noqa: PLR0913
     It is the authoritative handoff for the analysis phase when fan-out was used.
     Worker success is based on per-worker artifact evidence, never repo-wide git state.
     """
-    import json  # noqa: PLC0415
-
-    from ralph.mcp.artifacts.store import list_artifacts  # noqa: PLC0415
-    from ralph.pipeline.worker_state import WorkerStatus  # noqa: PLC0415
-
     workers: list[dict[str, object]] = []
     for unit in effect.work_units:
         uid = unit.unit_id
@@ -1914,8 +2023,6 @@ def _write_parallel_development_summary(  # noqa: PLR0913
         s=all_succeeded,
     )
 
-    from ralph.mcp.artifacts.handoffs import sync_markdown_handoff  # noqa: PLC0415
-
     sync_markdown_handoff(workspace_scope.root, "parallel_development_summary", summary)
 
 
@@ -1929,8 +2036,6 @@ async def _run_post_fanout_verification(workspace_scope: WorkspaceScope) -> str 
     Returns:
         None on success, or an error description string on failure.
     """
-    from ralph.executor.process import run_process_async  # noqa: PLC0415
-
     logger.debug("Running post-fanout workspace-wide verification (serialized)")
     verify_result = await run_process_async(
         "make",
@@ -1957,20 +2062,6 @@ async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
     config: UnifiedConfig | None = None,
     _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState:
-    import asyncio  # noqa: PLC0415
-
-    from ralph.interrupt.asyncio_bridge import (  # noqa: PLC0415
-        SignalBridge,
-        install_signal_handlers,
-    )
-    from ralph.pipeline.events import PostFanoutVerificationEvent  # noqa: PLC0415
-    from ralph.pipeline.parallel import coordinator  # noqa: PLC0415
-    from ralph.pipeline.work_units import (  # noqa: PLC0415
-        WorkUnitsPlan,
-        WorkUnitsValidationError,
-        validate_for_same_workspace,
-    )
-
     current = state
     try:
         loop = asyncio.get_running_loop()
@@ -2127,8 +2218,6 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
-    import asyncio  # noqa: PLC0415
-
     parallel_display, effective_pipeline_subscriber = _fan_out_display_and_subscriber(
         display,
         pipeline_subscriber,
@@ -2539,12 +2628,6 @@ def _determine_effect_from_policy(  # noqa: PLR0911
                     f"[phases.{state.phase}.parallelization] or remove the work_units from the plan"
                 )
             )
-        from ralph.pipeline.work_units import (  # noqa: PLC0415
-            WorkUnitsPlan,
-            WorkUnitsValidationError,
-            validate_for_same_workspace,
-        )
-
         try:
             validate_for_same_workspace(WorkUnitsPlan(work_units=list(state.work_units)))
         except WorkUnitsValidationError as exc:
@@ -2761,17 +2844,16 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
         and hasattr(display, "emit_analysis_result")
     ):
         try:
-            from ralph.display.artifact_reader import (  # noqa: PLC0415
-                read_latest_analysis_decision,
-            )
-
             drain = effect.drain or effect.phase
+            read_latest_analysis_decision = _read_latest_analysis_decision_func()
             summary = read_latest_analysis_decision(workspace_scope.root, drain)
             if summary is not None:
+                decision = summary.decision
+                reason = summary.reason
                 cast("ParallelDisplay", display).emit_analysis_result(
                     phase=effect.phase,
-                    decision=summary.decision,
-                    reason=summary.reason,
+                    decision=decision,
+                    reason=reason,
                 )
         except Exception:
             logger.debug("Failed to emit analysis result", exc_info=True)
@@ -2869,11 +2951,11 @@ def _render_success_artifact(  # noqa: PLR0913
     if artifact_type == "plan":
         render_plan_artifact(workspace_root, display_context)
         with suppress(Exception):
-            from ralph.display.artifact_reader import read_plan_artifact  # noqa: PLC0415
-
+            read_plan_artifact = _read_plan_artifact_func()
             plan = read_plan_artifact(workspace_root)
             produced = (
-                f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
+                f"{plan.total_steps} step(s), "
+                f"{len(plan.risks_mitigations)} risk(s)"
                 if plan is not None
                 else "(no plan artifact on disk)"
             )
@@ -2893,8 +2975,6 @@ def _render_success_artifact(  # noqa: PLR0913
     if artifact_type == "issues":
         render_review_artifact(workspace_root, display_context)
         with suppress(Exception):
-            import json  # noqa: PLC0415
-
             issue_count = 0
             issues_path = workspace_root / ra.json_path
             if issues_path.exists():
@@ -2946,13 +3026,6 @@ def _execute_effect(  # noqa: PLR0913
     Returns:
         Event resulting from effect execution.
     """
-    from ralph.agents.invoke import (  # noqa: PLC0415
-        AgentInvocationError,
-        invoke_agent,
-    )
-    from ralph.agents.registry import AgentRegistry  # noqa: PLC0415
-    from ralph.git.operations import create_commit, stage_all  # noqa: PLC0415
-
     deps = _AgentExecutionDeps(
         invoke_agent=invoke_agent,
         agent_invocation_error=AgentInvocationError,
@@ -3011,8 +3084,6 @@ def _dispatch_waiting_event(
 
     Exposed as a free function so tests can exercise it without a full pipeline.
     """
-    from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: PLC0415
-
     if subscriber is not None:
         try:
             subscriber.record_waiting_status(event, unit_id=unit_id, agent_name=agent_name)
@@ -3069,25 +3140,9 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             pipeline_policy=policy_bundle.pipeline,
         )
 
-    from ralph.agents.idle_watchdog import WaitingStatusEvent  # noqa: TC001,PLC0415
-    from ralph.agents.invoke import (  # noqa: PLC0415
-        AgentInactivityTimeoutError,
-        build_invoke_options_from_config,
-        extract_session_id,
-    )
-
     _display_subscriber = _subscriber_for_display(display)
     cloud_progress_fn: Callable[[object], None] | None = None
     if config.cloud.enabled and config.cloud.api_url and config.cloud.api_key:
-        from datetime import UTC, datetime  # noqa: PLC0415
-
-        from ralph.cloud.client import (  # noqa: PLC0415
-            CloudClient,
-            CloudClientConfig,
-            ProgressEventType,
-            ProgressUpdate,
-        )
-
         _cloud_cfg = CloudClientConfig(
             enabled=True,
             api_url=str(config.cloud.api_url),
@@ -3097,10 +3152,6 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
         _cloud_run_id = _display_subscriber.run_id if _display_subscriber is not None else "unknown"
 
         def _report_cloud_progress(evt: object) -> None:
-            from ralph.agents.idle_watchdog import (  # noqa: PLC0415
-                WaitingStatusEvent,
-                WaitingStatusKind,
-            )
             if not isinstance(evt, WaitingStatusEvent):
                 return
             event_type = (
@@ -3375,8 +3426,6 @@ def _failure_requires_fresh_session(
         return session_resume_safe is not True
 
     raw_details = "\n".join(_recovery_error_parts(exc))
-    from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS  # noqa: PLC0415
-
     return any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS)
 
 
@@ -3391,8 +3440,6 @@ def _retryable_agent_failure_reason(
         return "OpenCode exited without submitting a required completion artifact"
 
     raw_details = "\n".join(_recovery_error_parts(exc))
-    from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS  # noqa: PLC0415
-
     if any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS):
         return "a stale session ID (fresh session required)"
 
@@ -3685,15 +3732,13 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
                 raw_output_sink.append(text)
             yield text
 
-    from ralph.display.activity_router import map_parser_type_to_kind  # noqa: PLC0415
-    from ralph.display.parallel_display import ParallelDisplay as _ParallelDisplay  # noqa: PLC0415
-
+    parallel_display_cls = _parallel_display_cls()
     subscriber = _subscriber_for_display(display)
     for parsed_line in parser.parse(_iter_lines()):
         rendered = _render_agent_activity_line(parsed_line, agent_name)
         if rendered is not None and rendered_output_sink is not None:
             rendered_output_sink.append(rendered.plain)
-        if isinstance(display, _ParallelDisplay):
+        if isinstance(display, parallel_display_cls):
             kind = map_parser_type_to_kind(parsed_line.type)
             display.emit_parsed_event(
                 agent_name, kind, parsed_line.content, parsed_line.metadata or {}

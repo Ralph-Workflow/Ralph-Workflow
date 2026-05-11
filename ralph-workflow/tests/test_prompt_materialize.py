@@ -148,7 +148,7 @@ def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_p
 def test_fresh_planning_prompt_does_not_include_artifact_history_even_if_history_exists(
     tmp_path: Path,
 ) -> None:
-    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
+    from ralph.mcp.artifacts.history import history_index_path
 
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -479,7 +479,7 @@ def test_repeated_planning_loopback_never_renders_fresh_template(
 def test_planning_loopback_prompt_includes_artifact_history_path_when_history_exists(
     tmp_path: Path,
 ) -> None:
-    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
+    from ralph.mcp.artifacts.history import history_index_path
 
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -710,7 +710,7 @@ def test_materialize_resumed_planning_preserves_existing_plan_context(
 def test_planning_retry_prompt_includes_artifact_history_path_when_history_exists(
     tmp_path: Path,
 ) -> None:
-    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
+    from ralph.mcp.artifacts.history import history_index_path
 
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -1578,7 +1578,7 @@ def test_fresh_planning_clears_history_when_clear_on_fresh_entry_enabled(
     tmp_path: Path,
 ) -> None:
     """Fresh planning entry clears artifact history when planning policy enables it."""
-    from ralph.mcp.artifacts.history import (  # noqa: PLC0415
+    from ralph.mcp.artifacts.history import (
         history_dir_for_artifact,
         history_index_path,
     )
@@ -1612,7 +1612,7 @@ def test_fresh_planning_clears_history_when_clear_on_fresh_entry_enabled(
 
 def test_resolve_planning_history_path_returns_empty_when_no_index(tmp_path: Path) -> None:
     """Returns empty string when no history index exists."""
-    from ralph.prompts.materialize import _resolve_planning_history_path  # noqa: PLC0415
+    from ralph.prompts.materialize import _resolve_planning_history_path
 
     result = _resolve_planning_history_path(tmp_path)
     assert result == ""
@@ -1620,8 +1620,8 @@ def test_resolve_planning_history_path_returns_empty_when_no_index(tmp_path: Pat
 
 def test_resolve_planning_history_path_returns_path_when_index_exists(tmp_path: Path) -> None:
     """Returns the index path string when the history index file exists."""
-    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
-    from ralph.prompts.materialize import _resolve_planning_history_path  # noqa: PLC0415
+    from ralph.mcp.artifacts.history import history_index_path
+    from ralph.prompts.materialize import _resolve_planning_history_path
 
     artifact_dir = tmp_path / ".agent" / "artifacts"
     index = history_index_path(artifact_dir, "plan")
@@ -1636,7 +1636,7 @@ def test_planning_loopback_from_analysis_preserves_history(
     tmp_path: Path,
 ) -> None:
     """Planning loopback from planning_analysis must not clear artifact history."""
-    from ralph.mcp.artifacts.history import (  # noqa: PLC0415
+    from ralph.mcp.artifacts.history import (
         history_dir_for_artifact,
         history_index_path,
     )
@@ -1671,7 +1671,7 @@ def test_planning_loopback_from_analysis_preserves_history(
             "how_to_fix": ["Add exact commands."],
         },
     }
-    import json  # noqa: PLC0415
+    import json
 
     workspace.write(
         ".agent/artifacts/plan.json",
@@ -1966,7 +1966,7 @@ def test_v1_sidecar_is_read_with_defaults_for_new_fields(
             }
         ],
     })
-    from ralph.prompts.debug_dump import media_session_path  # noqa: PLC0415
+    from ralph.prompts.debug_dump import media_session_path
     workspace.write(media_session_path("development"), v1_payload)
 
     entries = collect_media_entries_for_phase(workspace, "development")
@@ -2004,7 +2004,7 @@ def test_v2_sidecar_persists_all_new_fields(
             }
         ],
     })
-    from ralph.prompts.debug_dump import media_session_path  # noqa: PLC0415
+    from ralph.prompts.debug_dump import media_session_path
     workspace.write(media_session_path("development"), v2_payload)
 
     entries = collect_media_entries_for_phase(workspace, "development")
@@ -2024,7 +2024,7 @@ def test_materialize_sidecar_preserves_delivery_reason_and_block_type_for_mixed_
     the sidecar so prompt-materialization and invoke-time appendix code can use them
     without re-deriving capability information.
     """
-    from ralph.prompts.debug_dump import media_session_path  # noqa: PLC0415
+    from ralph.prompts.debug_dump import media_session_path
 
     workspace = MemoryWorkspace()
     payload = json.dumps({
@@ -2114,11 +2114,11 @@ def test_sidecar_entries_built_from_capability_profile_verdicts_preserve_all_met
     back with delivery, block_type, reason, and URI all intact.
     This proves the end-to-end data contract from capability detection to runner handoff.
     """
-    from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+    from ralph.mcp.multimodal.capabilities import (
         MultimodalModelIdentity,
         resolve_capability_profile,
     )
-    from ralph.prompts.debug_dump import media_session_path  # noqa: PLC0415
+    from ralph.prompts.debug_dump import media_session_path
 
     # Claude profile: image=inline_image, pdf=typed_block, audio=unsupported
     claude_identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet")
@@ -2209,11 +2209,11 @@ def test_collect_media_entries_preserves_failure_kind_through_sidecar_round_trip
     reloading via collect_media_entries_for_phase must yield the same value, keeping
     unsupported_runtime_seam distinct from unsupported_modality all the way to invoke time.
     """
-    import json  # noqa: PLC0415
+    import json
 
-    from ralph.prompts.debug_dump import media_session_path  # noqa: PLC0415
-    from ralph.prompts.materialize import collect_media_entries_for_phase  # noqa: PLC0415
-    from ralph.workspace.memory import MemoryWorkspace  # noqa: PLC0415
+    from ralph.prompts.debug_dump import media_session_path
+    from ralph.prompts.materialize import collect_media_entries_for_phase
+    from ralph.workspace.memory import MemoryWorkspace
 
     payload = json.dumps({
         "schema_version": "2",

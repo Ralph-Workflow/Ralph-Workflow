@@ -30,16 +30,15 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum, auto
-from typing import IO, TYPE_CHECKING, cast
+from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Sequence
-    from typing import Protocol
 
     class _PsutilProcessLike(Protocol):
-        def children(self, recursive: bool = False) -> list[_PsutilProcessLike]: ...
+        def children(self, recursive: bool = False) -> Sequence[_PsutilProcessLike]: ...
         def terminate(self) -> None: ...
         def kill(self) -> None: ...
         def is_running(self) -> bool: ...
@@ -49,13 +48,61 @@ if TYPE_CHECKING:
     class _PsutilModuleLike(Protocol):
         NoSuchProcess: type[BaseException]
         AccessDenied: type[BaseException]
-        Process: Callable[[int], _PsutilProcessLike]
+
+        def Process(self, pid: int) -> _PsutilProcessLike: ...  # noqa: N802
 
         def wait_procs(
             self,
-            procs: list[_PsutilProcessLike],
+            procs: Sequence[_PsutilProcessLike],
             timeout: float | None = None,
         ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]: ...
+
+    class _SyncProcessLike(Protocol):
+        pid: int
+
+        @property
+        def stdin(self) -> IO[bytes] | None: ...
+
+        @property
+        def stdout(self) -> IO[bytes] | None: ...
+
+        @property
+        def stderr(self) -> IO[bytes] | None: ...
+
+        @property
+        def returncode(self) -> int | None: ...
+
+        def poll(self) -> int | None: ...
+        def wait(self, timeout: float | None = None) -> int: ...
+        def communicate(
+            self,
+            input: bytes | None = None,
+            timeout: float | None = None,
+        ) -> tuple[bytes | None, bytes | None]: ...
+        def terminate(self) -> None: ...
+        def kill(self) -> None: ...
+
+    class _AsyncProcessLike(Protocol):
+        pid: int
+
+        @property
+        def stdin(self) -> asyncio.StreamWriter | None: ...
+
+        @property
+        def stdout(self) -> asyncio.StreamReader | None: ...
+
+        @property
+        def stderr(self) -> asyncio.StreamReader | None: ...
+
+        @property
+        def returncode(self) -> int | None: ...
+
+        async def wait(self) -> int: ...
+        async def communicate(
+            self, input: bytes | None = None
+        ) -> tuple[bytes | None, bytes | None]: ...
+        def terminate(self) -> None: ...
+        def kill(self) -> None: ...
 
     class _SyncProcessFactory(Protocol):
         def __call__(  # noqa: PLR0913
@@ -69,7 +116,7 @@ if TYPE_CHECKING:
             stderr: int | None,
             start_new_session: bool,
             text: bool,
-        ) -> subprocess.Popen[bytes]: ...
+        ) -> _SyncProcessLike: ...
 
     class _AsyncProcessFactory(Protocol):
         async def __call__(  # noqa: PLR0913
@@ -82,7 +129,7 @@ if TYPE_CHECKING:
             stdout: int | None,
             stderr: int | None,
             start_new_session: bool,
-        ) -> asyncio.subprocess.Process: ...
+        ) -> _AsyncProcessLike: ...
 
 
 psutil: _PsutilModuleLike | None = None
@@ -191,7 +238,7 @@ class ManagedProcess:
 
     def __init__(
         self,
-        proc: subprocess.Popen[bytes],
+        proc: _SyncProcessLike,
         record: ProcessRecord,
         manager: ProcessManager,
     ) -> None:
@@ -333,7 +380,7 @@ class ManagedAsyncProcess:
 
     def __init__(
         self,
-        proc: asyncio.subprocess.Process,
+        proc: _AsyncProcessLike,
         record: ProcessRecord,
         manager: ProcessManager,
     ) -> None:
@@ -424,7 +471,7 @@ class ProcessManager:
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
         self._records: dict[int, ProcessRecord] = {}
-        self._sync_procs: dict[int, subprocess.Popen[bytes]] = {}
+        self._sync_procs: dict[int, _SyncProcessLike] = {}
         self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
         self._sync_process_factory = sync_process_factory or _default_sync_process_factory
@@ -461,7 +508,7 @@ class ProcessManager:
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            proc: subprocess.Popen[bytes] = self._sync_process_factory(
+            proc: _SyncProcessLike = self._sync_process_factory(
                 cmd,
                 cwd=cwd,
                 env=env,
@@ -617,7 +664,7 @@ class ProcessManager:
     def _terminate_root_only_sync(
         self,
         record: ProcessRecord,
-        proc: subprocess.Popen[bytes],
+        proc: _SyncProcessLike,
         grace_period_s: float,
     ) -> None:
         with contextlib.suppress(ProcessLookupError):
@@ -638,7 +685,7 @@ class ProcessManager:
     async def _terminate_root_only_async(
         self,
         record: ProcessRecord,
-        proc: asyncio.subprocess.Process,
+        proc: _AsyncProcessLike,
         grace_period_s: float,
     ) -> None:
         with contextlib.suppress(ProcessLookupError):
@@ -691,7 +738,7 @@ class ProcessManager:
     def _escalate_termination_sync(
         self,
         record: ProcessRecord,
-        proc: subprocess.Popen[bytes],
+        proc: _SyncProcessLike,
         grace_period_s: float,
     ) -> None:
         """Escalate termination for a ManagedProcess using psutil tree-walk."""
@@ -730,7 +777,7 @@ class ProcessManager:
     async def _escalate_termination_async(
         self,
         record: ProcessRecord,
-        proc: asyncio.subprocess.Process,
+        proc: _AsyncProcessLike,
         grace_period_s: float,
     ) -> None:
         """Escalate termination for a ManagedAsyncProcess using psutil tree-walk."""

@@ -45,7 +45,7 @@ def _make_work_unit(uid: str) -> WorkUnit:
 
 
 def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
-    from ralph.policy.models import PhaseParallelization  # noqa: PLC0415
+    from ralph.policy.models import PhaseParallelization
 
     bundle = MagicMock()
     para = PhaseParallelization(

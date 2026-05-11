@@ -269,7 +269,7 @@ class TestAsciiWorkflowFallbackContract:
     """Workflow fallback arrow: +--[workflow_fallback]--> target."""
 
     def _fallback_explanation(self) -> PolicyExplanation:
-        from ralph.policy.explain import PhaseExplanation, PolicyExplanation  # noqa: PLC0415
+        from ralph.policy.explain import PhaseExplanation, PolicyExplanation
 
         work = PhaseExplanation(
             name="work",
@@ -328,7 +328,7 @@ class TestAsciiWorkflowFallbackContract:
 
     def test_workflow_fallback_without_note(self) -> None:
         """Workflow fallback arrow without note renders correctly (no parentheses)."""
-        from ralph.policy.explain import PhaseExplanation, PolicyExplanation  # noqa: PLC0415
+        from ralph.policy.explain import PhaseExplanation, PolicyExplanation
 
         work = PhaseExplanation(
             name="work",

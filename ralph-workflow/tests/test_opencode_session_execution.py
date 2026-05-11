@@ -826,7 +826,7 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
 
     def test_waiting_on_child_defers_then_active_fires(self) -> None:
         """WAITING_ON_CHILD defers; handle is only terminated when ACTIVE fires afterward."""
-        from ralph.agents.timeout_clock import FakeClock  # noqa: PLC0415
+        from ralph.agents.timeout_clock import FakeClock
 
         stop_event = threading.Event()
 
@@ -1075,7 +1075,7 @@ class TestRegistryBackedClassifyExit:
 
     def test_observe_line_routes_progress_event_to_registry(self) -> None:
         """A child_progress JSON line routed via observe_line updates registry progress."""
-        import json  # noqa: PLC0415
+        import json
 
         t = [0.0]
         reg = ChildLivenessRegistry(
@@ -1100,7 +1100,7 @@ class TestRegistryBackedClassifyExit:
 
     def test_observe_line_routes_terminal_ack_to_registry(self) -> None:
         """A child_complete JSON line routes terminal ack into the registry."""
-        import json  # noqa: PLC0415
+        import json
 
         t = [0.0]
         reg = ChildLivenessRegistry(
@@ -1125,7 +1125,7 @@ class TestRegistryBackedClassifyExit:
 
     def test_classify_exit_terminal_complete_when_all_children_acked(self) -> None:
         """classify_exit returns TERMINAL_COMPLETE when registry shows all children done."""
-        import json  # noqa: PLC0415
+        import json
 
         t = [0.0]
         reg = ChildLivenessRegistry(
@@ -1153,7 +1153,7 @@ class TestRegistryBackedClassifyExit:
 
     def test_classify_exit_waiting_when_child_has_fresh_progress(self) -> None:
         """classify_exit stays WAITING_ON_CHILD when registry shows fresh progress."""
-        import json  # noqa: PLC0415
+        import json
 
         t = [0.0]
         reg = ChildLivenessRegistry(

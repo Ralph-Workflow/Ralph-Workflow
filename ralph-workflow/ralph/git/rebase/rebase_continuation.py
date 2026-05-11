@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from git import InvalidGitRepositoryError, Repo
+from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from ralph.git.operations import GitOperationError, find_repo_root
 from ralph.git.subprocess_runner import run_git
@@ -121,8 +121,6 @@ def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
 
 def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> bool:
     """Return True if the rebase is complete and HEAD is a descendant of ``upstream_branch``."""
-    from git import GitCommandError  # noqa: PLC0415
-
     repo = _open_repo(repo_root)
 
     if _rebase_in_progress_impl(repo):

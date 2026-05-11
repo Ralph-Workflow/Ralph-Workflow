@@ -84,12 +84,12 @@ class ClassifiedFailure:
 
 def _is_environmental_exc(exc: BaseException) -> bool:
     """Return True if this exception is clearly an environmental/network fault."""
-    if isinstance(exc, (ConnectionError, TimeoutError)):
+    if isinstance(exc, ConnectionError | TimeoutError):
         return True
     if isinstance(exc, socket.gaierror):
         return True
     try:
-        import urllib.error  # noqa: PLC0415
+        import urllib.error
 
         if isinstance(exc, urllib.error.URLError):
             return True

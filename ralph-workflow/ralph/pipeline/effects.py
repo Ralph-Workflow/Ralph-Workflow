@@ -9,6 +9,7 @@ No I/O is performed in this module - effects are pure data descriptions.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING
@@ -207,7 +208,6 @@ class FanOutEffect:
 
 def __getattr__(name: str) -> object:
     if name == "FanOutDevelopmentEffect":
-        import warnings  # noqa: PLC0415
         warnings.warn(
             "FanOutDevelopmentEffect is deprecated; use FanOutEffect instead. "
             "# reason: deprecation alias",

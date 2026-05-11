@@ -80,7 +80,7 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     4. Runner completes successfully (exit code 0).
     5. No FailureEvents are emitted during the offline window.
     """
-    from ralph.pipeline.events import PipelineEvent  # noqa: PLC0415
+    from ralph.pipeline.events import PipelineEvent
 
     bundle = _make_policy_bundle()
 
@@ -194,9 +194,9 @@ def test_offline_window_produces_no_failure_events(
     The offline period must be completely silent — no budget debits,
     no failure events, no fallover records.
     """
-    import ralph.recovery.controller as recovery_controller_module  # noqa: PLC0415
-    from ralph.pipeline.events import PipelineEvent  # noqa: PLC0415
-    from ralph.recovery.events import FailureEventBus  # noqa: PLC0415
+    import ralph.recovery.controller as recovery_controller_module
+    from ralph.pipeline.events import PipelineEvent
+    from ralph.recovery.events import FailureEventBus
 
     bundle = _make_policy_bundle()
 

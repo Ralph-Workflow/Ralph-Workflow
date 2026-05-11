@@ -265,8 +265,8 @@ def test_development_phase_receives_multimodal_handoff_metadata(
 
     # Spy on _materialize_agent_prompt_if_needed to capture what collect_media_entries_for_phase
     # returns for the development phase — without actually rendering templates.
-    from ralph.prompts.materialize import collect_media_entries_for_phase  # noqa: PLC0415
-    from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+    from ralph.prompts.materialize import collect_media_entries_for_phase
+    from ralph.workspace.fs import FsWorkspace
 
     captured_entries: list[object] = []
 
@@ -405,8 +405,8 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(index_payload), encoding="utf-8")
 
-    from ralph.prompts.materialize import collect_media_entries_for_phase  # noqa: PLC0415
-    from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+    from ralph.prompts.materialize import collect_media_entries_for_phase
+    from ralph.workspace.fs import FsWorkspace
 
     captured_entries: list[object] = []
 

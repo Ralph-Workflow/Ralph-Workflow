@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import json
+import pathlib
+import tempfile
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
+from ralph.mcp.server.lifecycle import _session_payload_json
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
@@ -223,9 +229,6 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
 def _make_standalone(
     endpoint: str = "http://127.0.0.1:9001/mcp", *, poll_result: int | None = None
 ) -> lifecycle.StandaloneMcpProcess:
-    import pathlib  # noqa: PLC0415
-    import tempfile  # noqa: PLC0415
-
     tmp_dir = pathlib.Path(tempfile.mkdtemp())
     session_file = tmp_dir / "session.json"
     session_file.write_text("{}", encoding="utf-8")
@@ -434,8 +437,6 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
 
 def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> None:
     """Bridge restarts when process is alive (poll=None) but responsiveness probe fails."""
-    from datetime import timedelta  # noqa: PLC0415
-
     inner = _make_standalone(poll_result=None)
     new_inner = _make_standalone(poll_result=None)
     restart_calls: list[int] = []
@@ -459,8 +460,6 @@ def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> N
 
 def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None:
     """McpServerError raised when budget exhausted even though process is alive (probe failure)."""
-    from datetime import timedelta  # noqa: PLC0415
-
     inner = _make_standalone(poll_result=None)
 
     def failing_probe(endpoint: str, timeout: timedelta) -> None:
@@ -481,8 +480,6 @@ def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None
 
 def test_restart_aware_bridge_terminates_stale_process_on_probe_failure(tmp_path: Path) -> None:
     """Stale but alive process is terminated via shutdown() before respawn on probe failure."""
-    from datetime import timedelta  # noqa: PLC0415
-
     session_file = tmp_path / "probe-stale-session.json"
     session_file.write_text("{}", encoding="utf-8")
     initial_process = FakeProcess(poll_result=None)
@@ -524,8 +521,6 @@ def test_restart_aware_bridge_no_probe_fn_means_alive_is_healthy() -> None:
 
 def test_restart_aware_bridge_passing_probe_does_not_trigger_restart() -> None:
     """When probe_fn succeeds, bridge reports healthy and does not restart."""
-    from datetime import timedelta  # noqa: PLC0415
-
     probe_calls: list[str] = []
 
     def passing_probe(endpoint: str, timeout: timedelta) -> None:
@@ -613,11 +608,6 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
 
 def test_session_payload_json_includes_model_identity_when_known() -> None:
     """_session_payload_json serializes model_identity for sessions with a known provider."""
-    import json  # noqa: PLC0415
-
-    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
-
     session = AgentSession(
         session_id="sid-mi",
         run_id="run-mi",
@@ -636,10 +626,6 @@ def test_session_payload_json_includes_model_identity_when_known() -> None:
 
 def test_session_payload_json_omits_model_identity_when_unknown() -> None:
     """_session_payload_json omits model_identity for UNKNOWN_IDENTITY sessions."""
-    import json  # noqa: PLC0415
-
-    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
-
     session = AgentSession(
         session_id="sid-unknown",
         run_id="run-unknown",
@@ -652,10 +638,6 @@ def test_session_payload_json_omits_model_identity_when_unknown() -> None:
 
 def test_session_payload_json_omits_model_identity_for_sessions_without_attribute() -> None:
     """_session_payload_json is safe when session lacks model_identity attribute."""
-    import json  # noqa: PLC0415
-
-    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
-
     class _MinimalSession:
         session_id = "sid-min"
         run_id = "run-min"
@@ -676,11 +658,6 @@ def test_session_payload_json_omits_model_identity_for_sessions_without_attribut
 
 def test_session_payload_json_includes_capability_profile_for_known_provider() -> None:
     """_session_payload_json serializes capability_profile for sessions with a known provider."""
-    import json  # noqa: PLC0415
-
-    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
-
     session = AgentSession(
         session_id="sid-cp",
         run_id="run-cp",
@@ -711,10 +688,6 @@ def test_session_payload_json_includes_profile_for_unknown_provider_with_rr_deli
     modalities — the profile is still serialized so the subprocess has a consistent
     runtime contract even when the provider identity cannot be resolved.
     """
-    import json  # noqa: PLC0415
-
-    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
-
     session = AgentSession(
         session_id="sid-cp-unknown",
         run_id="run-cp-unknown",
@@ -734,12 +707,6 @@ def test_session_payload_json_includes_profile_for_unknown_provider_with_rr_deli
 
 def test_session_payload_json_capability_profile_verdicts_cover_all_modalities() -> None:
     """Serialized capability_profile verdicts include all supported modalities."""
-    import json  # noqa: PLC0415
-
-    from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES  # noqa: PLC0415
-    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
-    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
-
     session = AgentSession(
         session_id="sid-cp-full",
         run_id="run-cp-full",

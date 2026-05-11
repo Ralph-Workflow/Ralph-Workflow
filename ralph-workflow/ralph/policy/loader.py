@@ -124,7 +124,7 @@ def _format_validation_error_detail(detail: ValidationErrorDetail) -> str:
 def _format_validation_location(raw_loc: object | None) -> str:
     if raw_loc is None:
         return "<root>"
-    if isinstance(raw_loc, (list, tuple)):
+    if isinstance(raw_loc, list | tuple):
         if not raw_loc:
             return "<root>"
         return ".".join(str(component) for component in raw_loc)

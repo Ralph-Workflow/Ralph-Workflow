@@ -3,9 +3,108 @@
 from __future__ import annotations
 
 import sys
+from importlib import import_module
 from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
+
+if TYPE_CHECKING:
+    from types import ModuleType
+
+    from ralph.config.models import UnifiedConfig
+    from ralph.policy.explain import PolicyExplanation
+    from ralph.policy.models import PolicyBundle
+    from ralph.workspace.scope import WorkspaceScope
 
 _BUNDLED_DEFAULTS_DIR: Path = Path(__file__).parent.parent.parent / "policy" / "defaults"
+
+
+class _LoadConfigFn(Protocol):
+    def __call__(
+        self,
+        config_path: Path | None = None,
+        cli_overrides: dict[str, object] | None = None,
+        workspace_scope: WorkspaceScope | None = None,
+    ) -> UnifiedConfig: ...
+
+
+class _ResolveWorkspaceScopeFn(Protocol):
+    def __call__(self, start: Path | str | None = None) -> WorkspaceScope: ...
+
+
+class _LoadPolicyFn(Protocol):
+    def __call__(
+        self,
+        config_dir: Path,
+        config: UnifiedConfig | None = None,
+    ) -> PolicyBundle: ...
+
+
+class _LoadPolicyForWorkspaceScopeFn(Protocol):
+    def __call__(
+        self,
+        workspace_scope: WorkspaceScope,
+        config: UnifiedConfig | None = None,
+    ) -> PolicyBundle: ...
+
+
+class _ExplainPolicyFn(Protocol):
+    def __call__(self, bundle: PolicyBundle) -> PolicyExplanation: ...
+
+
+class _RenderExplanationFn(Protocol):
+    def __call__(self, explanation: PolicyExplanation) -> str: ...
+
+
+def _module_attr(module: ModuleType, attribute: str) -> object:
+    namespace = cast("dict[str, object]", module.__dict__)
+    return namespace[attribute]
+
+
+def _load_config_loader() -> _LoadConfigFn:
+    return cast(
+        "_LoadConfigFn",
+        _module_attr(import_module("ralph.config.loader"), "load_config"),
+    )
+
+
+def _load_resolve_workspace_scope() -> _ResolveWorkspaceScopeFn:
+    return cast(
+        "_ResolveWorkspaceScopeFn",
+        _module_attr(import_module("ralph.workspace.scope"), "resolve_workspace_scope"),
+    )
+
+
+def _load_policy_loader() -> tuple[_LoadPolicyFn, _LoadPolicyForWorkspaceScopeFn]:
+    module = import_module("ralph.policy.loader")
+    return (
+        cast("_LoadPolicyFn", _module_attr(module, "load_policy")),
+        cast(
+            "_LoadPolicyForWorkspaceScopeFn",
+            _module_attr(module, "load_policy_for_workspace_scope"),
+        ),
+    )
+
+
+def _load_explain_policy() -> _ExplainPolicyFn:
+    return cast(
+        "_ExplainPolicyFn",
+        _module_attr(import_module("ralph.policy.explain"), "explain_policy"),
+    )
+
+
+def _load_renderers() -> tuple[_RenderExplanationFn, _RenderExplanationFn]:
+    module = import_module("ralph.policy.render")
+    return (
+        cast("_RenderExplanationFn", _module_attr(module, "render_explanation_ascii")),
+        cast("_RenderExplanationFn", _module_attr(module, "render_explanation_text")),
+    )
+
+
+def _load_policy_validation_error_type() -> type[Exception]:
+    return cast(
+        "type[Exception]",
+        _module_attr(import_module("ralph.policy.validation"), "PolicyValidationError"),
+    )
 
 
 def _resolve_policy_dir() -> tuple[Path, bool]:
@@ -15,9 +114,7 @@ def _resolve_policy_dir() -> tuple[Path, bool]:
     has an explicit local override file.
     """
     try:
-        from ralph.workspace.scope import resolve_workspace_scope  # noqa: PLC0415
-
-        scope = resolve_workspace_scope()
+        scope = _load_resolve_workspace_scope()()
         policy_dir = scope.resolve_agent_file("pipeline.toml").parent
         if policy_dir.is_dir() and any(policy_dir.glob("*.toml")):
             return policy_dir, False
@@ -41,14 +138,11 @@ def explain_command(policy_dir: Path | None = None) -> int:
     Returns:
         Exit code: 0 on success, 1 on general error, 2 on policy validation error.
     """
-    from ralph.config.loader import load_config  # noqa: PLC0415
-    from ralph.policy.explain import explain_policy  # noqa: PLC0415
-    from ralph.policy.loader import load_policy, load_policy_for_workspace_scope  # noqa: PLC0415
-    from ralph.policy.render import (  # noqa: PLC0415
-        render_explanation_ascii,
-        render_explanation_text,
-    )
-    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
+    load_config = _load_config_loader()
+    load_policy, load_policy_for_workspace_scope = _load_policy_loader()
+    explain_policy = _load_explain_policy()
+    render_explanation_ascii, render_explanation_text = _load_renderers()
+    policy_validation_error_type = _load_policy_validation_error_type()
 
     try:
         if policy_dir is not None:
@@ -59,9 +153,7 @@ def explain_command(policy_dir: Path | None = None) -> int:
                 return 1
             bundle = load_policy(resolved_dir)
         else:
-            from ralph.workspace.scope import resolve_workspace_scope  # noqa: PLC0415
-
-            scope = resolve_workspace_scope()
+            scope = _load_resolve_workspace_scope()()
             config = load_config(None, {}, workspace_scope=scope)
             resolved_dir, is_bundled = _resolve_policy_dir()
             bundle = load_policy_for_workspace_scope(scope, config=config)
@@ -79,7 +171,7 @@ def explain_command(policy_dir: Path | None = None) -> int:
         print("\n")
         print(render_explanation_text(explanation))
         return 0
-    except PolicyValidationError as exc:
+    except policy_validation_error_type as exc:
         print(f"Policy validation error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:

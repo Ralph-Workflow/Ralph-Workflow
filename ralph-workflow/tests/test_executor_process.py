@@ -98,9 +98,9 @@ async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> Non
     kill_followup_timeout_s > 0 lets _terminate_root_only_async complete
     after terminate() sets the event.
     """
-    import asyncio  # noqa: PLC0415
+    import asyncio
 
-    from ralph.testing.fake_process import FakeControllableAsyncProcess  # noqa: PLC0415
+    from ralph.testing.fake_process import FakeControllableAsyncProcess
 
     completion = asyncio.Event()  # never set → simulate a hanging process
     proc = FakeControllableAsyncProcess(

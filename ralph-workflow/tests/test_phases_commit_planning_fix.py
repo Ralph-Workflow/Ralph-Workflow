@@ -585,7 +585,7 @@ def test_handle_phase_dispatches_to_registered_handler() -> None:
 
     @register_handler("custom_phase")
     def _custom_handler(effect: Effect, context: PhaseContext) -> list[Event]:
-        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
+        assert isinstance(effect, PreparePromptEffect | InvokeAgentEffect)
         assert effect.phase == "custom_phase"
         assert context is ctx
         return [PipelineEvent.COMPLETE]

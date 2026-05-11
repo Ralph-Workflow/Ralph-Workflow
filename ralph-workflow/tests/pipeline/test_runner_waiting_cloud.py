@@ -21,7 +21,7 @@ def _event(
     cumulative: float = 120.0,
     run: float = 60.0,
     ceiling: float = 1800.0,
-    diagnostic: dict[str, object] | None = None,
+    diagnostic: dict[str, str | int | float | bool] | None = None,
 ) -> WaitingStatusEvent:
     return WaitingStatusEvent(
         kind=kind,
@@ -119,9 +119,14 @@ def test_cloud_failure_does_not_propagate(tmp_path: Path) -> None:
 
     original_record = sub.record_waiting_status
 
-    def _capturing_record(event: object, **kwargs: object) -> None:
+    def _capturing_record(
+        event: object,
+        *,
+        unit_id: str | None = None,
+        agent_name: str | None = None,
+    ) -> None:
         record_calls.append("called")
-        original_record(event, **kwargs)
+        original_record(event, unit_id=unit_id, agent_name=agent_name)
 
     sub.record_waiting_status = _capturing_record
 

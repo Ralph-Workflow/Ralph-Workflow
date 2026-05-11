@@ -8,7 +8,9 @@ from enum import StrEnum
 
 import httpx
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from ralph.pydantic_compat import RalphBaseModel
 
 
 class CloudConfigurationError(ValueError):
@@ -52,7 +54,7 @@ class ProgressEventType(StrEnum):
     CHILD_WAITING_HARD_STOP = "child_waiting_hard_stop"
 
 
-class _FrozenCloudModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class _FrozenCloudModel(RalphBaseModel):
     """Private base for frozen cloud payload models.
 
     Owns `model_config = ConfigDict(frozen=True)` once so descendants do not
@@ -63,7 +65,7 @@ class _FrozenCloudModel(BaseModel):  # type: ignore[explicit-any]  # reason: ext
     model_config = ConfigDict(frozen=True)
 
 
-class ProgressUpdate(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ProgressUpdate(_FrozenCloudModel):
     """Progress update payload sent to the cloud API."""
 
     timestamp: datetime
@@ -78,7 +80,7 @@ class ProgressUpdate(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
-class PipelineResult(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PipelineResult(_FrozenCloudModel):
     """Final workflow completion payload."""
 
     success: bool
@@ -95,7 +97,7 @@ class PipelineResult(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason
     error_message: str | None = None
 
 
-class TelemetryEvent(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class TelemetryEvent(_FrozenCloudModel):
     """Structured telemetry event payload."""
 
     timestamp: datetime
@@ -103,7 +105,7 @@ class TelemetryEvent(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason
     attributes: dict[str, object] = Field(default_factory=dict)
 
 
-class MetricSample(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class MetricSample(_FrozenCloudModel):
     """Single numeric metric sample."""
 
     name: str
@@ -111,13 +113,13 @@ class MetricSample(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: 
     tags: dict[str, str] = Field(default_factory=dict)
 
 
-class MetricsReport(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class MetricsReport(_FrozenCloudModel):
     """Batch of numeric metrics for a workflow run."""
 
     samples: list[MetricSample] = Field(default_factory=list)
 
 
-class HeartbeatPayload(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class HeartbeatPayload(_FrozenCloudModel):
     """Heartbeat payload sent to the API."""
 
     timestamp: datetime
@@ -166,7 +168,7 @@ class CloudClient:
             msg = "Cloud API key is required when cloud reporting is enabled"
             raise CloudConfigurationError(msg)
 
-    def _post_model(self, run_id: str, path: str, payload: BaseModel) -> bool:
+    def _post_model(self, run_id: str, path: str, payload: RalphBaseModel) -> bool:
         if not self.config.enabled:
             return False
 

@@ -392,7 +392,7 @@ def test_capabilities_use_policy_declared_drain_capability_class(
     resolves MCP capabilities using that class rather than the drain_class.
     """
     del isolated_home
-    from ralph.policy.models import (  # noqa: PLC0415
+    from ralph.policy.models import (
         AgentChainConfig,
         AgentDrainConfig,
         AgentsPolicy,
@@ -431,7 +431,7 @@ def test_capability_class_commit_suppresses_web_search_when_enabled(
     enables them, proving that is_commit uses the resolved capability_class not drain_class.
     """
     del isolated_home
-    from ralph.policy.models import (  # noqa: PLC0415
+    from ralph.policy.models import (
         AgentChainConfig,
         AgentDrainConfig,
         AgentsPolicy,
@@ -710,8 +710,8 @@ class TestSessionMcpPlanCapabilityProfile:
     def test_plan_includes_capability_profile_for_claude_transport(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
-        from ralph.mcp.multimodal.artifacts import MODALITY_AUDIO, MODALITY_IMAGE  # noqa: PLC0415
-        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+        from ralph.mcp.multimodal.artifacts import MODALITY_AUDIO, MODALITY_IMAGE
+        from ralph.mcp.multimodal.capabilities import (
             DeliveryMode,
             ResolvedCapabilityProfile,
         )
@@ -735,8 +735,8 @@ class TestSessionMcpPlanCapabilityProfile:
     def test_plan_includes_capability_profile_for_openai_codex_transport(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
-        from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE, MODALITY_PDF  # noqa: PLC0415
-        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+        from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE, MODALITY_PDF
+        from ralph.mcp.multimodal.capabilities import (
             DeliveryMode,
             ResolvedCapabilityProfile,
         )
@@ -761,8 +761,8 @@ class TestSessionMcpPlanCapabilityProfile:
     def test_plan_capability_profile_for_unknown_provider_uses_resource_reference(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
-        from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES  # noqa: PLC0415
-        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+        from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
+        from ralph.mcp.multimodal.capabilities import (
             DeliveryMode,
             ResolvedCapabilityProfile,
         )

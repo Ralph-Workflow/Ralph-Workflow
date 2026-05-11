@@ -6,6 +6,8 @@ This module implements the main pipeline execution command.
 from __future__ import annotations
 
 import pathlib  # noqa: TC003
+from functools import lru_cache
+from importlib import import_module
 from inspect import signature
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
@@ -29,8 +31,10 @@ from ralph.policy.validation import (
     PolicyValidationError,
     validate_agent_chains_satisfiable,
     validate_checkpoint_against_policy,
+    validate_drain_contracts,
     validate_policy_completeness,
     validate_recovery_config,
+    validate_required_inputs,
 )
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
@@ -51,13 +55,20 @@ class _RunnerFunc(Protocol):
     ) -> int: ...
 
 
-# Late import to avoid circular dependency
-try:
-    from ralph.pipeline.runner import run as _imported_run_func
-except ImportError:
-    _run_func: _RunnerFunc | None = None
-else:
-    _run_func = cast("_RunnerFunc", _imported_run_func)
+class _RunnerModule(Protocol):
+    """Typed accessor for the lazily imported pipeline runner module."""
+
+    run: _RunnerFunc
+
+
+@lru_cache(maxsize=1)
+def _get_run_func() -> _RunnerFunc | None:
+    try:
+        module = cast("_RunnerModule", import_module("ralph.pipeline.runner"))
+    except ImportError:
+        return None
+    return module.run
+
 
 ConfigOverrides = dict[str, object]
 
@@ -163,8 +174,6 @@ def _print_not_initialized_panel(*, display_context: DisplayContext) -> None:
 
 def _validate_loaded_policy_bundle(policy_bundle: PolicyBundle) -> None:
     """Validate cross-drain policy contracts for an already loaded bundle."""
-    from ralph.policy.validation import validate_drain_contracts  # noqa: PLC0415
-
     validate_drain_contracts(policy_bundle)
 
 
@@ -226,8 +235,6 @@ def _run_preflight_checks(  # noqa: PLR0913
     Returns:
         _EXIT_SUCCESS if all checks pass, _EXIT_PREFLIGHT if any check fails.
     """
-    from ralph.policy.validation import validate_required_inputs  # noqa: PLC0415
-
     console = display_context.console
     # validate_required_inputs requires workspace_scope
     if workspace_scope is not None and inline_prompt is None:
@@ -296,14 +303,15 @@ def _execute_pipeline(  # noqa: PLR0913
         Exit code from pipeline runner.
     """
     console = display_context.console
-    if _run_func is None:
+    run_func = _get_run_func()
+    if run_func is None:
         logger.error("Pipeline runner is unavailable")
         console.print(Text("Pipeline runner is unavailable", style="theme.status.error"))
         return _EXIT_CONFIG_ERROR
 
     try:
         kwargs: dict[str, object] = {}
-        runner_params = signature(_run_func).parameters
+        runner_params = signature(run_func).parameters
         if verbosity is not None and "verbosity" in runner_params:
             kwargs["verbosity"] = verbosity
         if policy_bundle is not None and "policy_bundle" in runner_params:
@@ -312,7 +320,7 @@ def _execute_pipeline(  # noqa: PLR0913
             kwargs["display_context"] = display_context
         if counter_overrides and "counter_overrides" in runner_params:
             kwargs["counter_overrides"] = counter_overrides
-        return _run_func(config, initial_state, **kwargs)
+        return run_func(config, initial_state, **kwargs)
     except KeyboardInterrupt:
         console.print(Text("\nInterrupted by user", style="theme.status.warning"))
         if initial_state is not None:

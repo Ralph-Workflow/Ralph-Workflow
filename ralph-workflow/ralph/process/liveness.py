@@ -37,7 +37,7 @@ class DefaultLivenessProbe:
         self._registry = registry
 
     def any_agent_active(self, label_prefix: str) -> bool:
-        from ralph.process.manager import get_process_manager  # noqa: PLC0415
+        from ralph.process.manager import get_process_manager
 
         return any(
             r.label is not None and r.label.startswith(label_prefix)
@@ -45,8 +45,8 @@ class DefaultLivenessProbe:
         )
 
     def child_snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
-        from ralph.process.child_liveness import ChildActivitySnapshot  # noqa: PLC0415
-        from ralph.process.manager import get_process_manager  # noqa: PLC0415
+        from ralph.process.child_liveness import ChildActivitySnapshot
+        from ralph.process.manager import get_process_manager
 
         # Only scan ProcessManager labels when we have a meaningful (non-empty) prefix.
         # An empty prefix would match ALL active processes including the parent itself.
@@ -113,7 +113,7 @@ class FakeLivenessProbe:
         return self._active
 
     def child_snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
-        from ralph.process.child_liveness import ChildActivitySnapshot  # noqa: PLC0415
+        from ralph.process.child_liveness import ChildActivitySnapshot
 
         if self._snapshot is not None:
             return self._snapshot

@@ -149,7 +149,7 @@ class TestPipelineHappyPath:
 
         # Planning should return PreparePromptEffect (not InvokeAgentEffect)
         # since the orchestrator first prepares the prompt before invoking
-        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
+        assert isinstance(effect, PreparePromptEffect | InvokeAgentEffect)
         assert effect.phase == "planning"
 
     def test_development_budget_routing(
@@ -169,7 +169,7 @@ class TestPipelineHappyPath:
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
         # development_commit should execute commit checkpoint before routing
-        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
+        assert isinstance(effect, PreparePromptEffect | InvokeAgentEffect)
         assert effect.phase == "development_commit"
 
     def test_memory_workspace_persistence(
@@ -277,7 +277,7 @@ class TestPipelinePhaseTransitions:
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
         # Development should continue (prep prompt or invoke)
-        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
+        assert isinstance(effect, PreparePromptEffect | InvokeAgentEffect)
         assert effect.phase == "development"
 
     def test_planning_analysis_routes_to_development(
@@ -292,5 +292,5 @@ class TestPipelinePhaseTransitions:
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
-        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
+        assert isinstance(effect, PreparePromptEffect | InvokeAgentEffect)
         assert effect.phase == "planning_analysis"

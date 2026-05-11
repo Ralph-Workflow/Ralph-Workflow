@@ -93,7 +93,7 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
     assert state.phase == "development_commit"
     assert isinstance(
         determine_next_effect(state, bundle.pipeline, bundle.agents),
-        (CommitEffect, PreparePromptEffect),
+        CommitEffect | PreparePromptEffect,
     )
 
     state = _apply(state, PipelineEvent.COMMIT_SUCCESS)

@@ -681,7 +681,7 @@ def _resolve_session_iterable(session: object, attribute: str) -> Sequence[str] 
         return None
     if callable(candidate):
         candidate = cast("Callable[[], object]", candidate)()
-    if isinstance(candidate, (str, bytes)):
+    if isinstance(candidate, str | bytes):
         return None
     if isinstance(candidate, Iterable):
         return tuple(item for item in candidate if isinstance(item, str))

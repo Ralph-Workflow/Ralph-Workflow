@@ -89,7 +89,7 @@ class RecoveryController:
         Returns:
             Tuple of (new_state, effects, failure_event).
         """
-        from ralph.pipeline.effects import ExitFailureEffect  # noqa: PLC0415
+        from ralph.pipeline.effects import ExitFailureEffect
 
         failure = self._classifier.classify(raw_failure, phase=phase, agent=agent)
 
@@ -259,9 +259,9 @@ class RecoveryController:
             phase: Pipeline phase where the failure occurred.
             failure: Classified failure with stale-session detail.
         """
-        from pathlib import Path  # noqa: PLC0415
+        from pathlib import Path
 
-        from ralph.phases.required_artifacts import (  # noqa: PLC0415
+        from ralph.phases.required_artifacts import (
             build_retry_hint,
             retry_hint_path,
         )
@@ -288,7 +288,7 @@ class RecoveryController:
         retry_in_session: bool = False,
     ) -> tuple[PipelineState, list[Effect]]:
         """Handle agent failure with budget debit and chain progression."""
-        from ralph.pipeline.state import FalloverRecord  # noqa: PLC0415
+        from ralph.pipeline.state import FalloverRecord
 
         chain = state.chain_for_phase(phase)
         if chain is None:

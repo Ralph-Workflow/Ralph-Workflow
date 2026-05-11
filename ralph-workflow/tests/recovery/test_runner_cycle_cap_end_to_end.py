@@ -164,7 +164,7 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     - Each cycle produces 2 FailureEvents (one per agent) + 1 FalloverEvent
     - Total: 2 x _CYCLE_CAP FailureEvents + _CYCLE_CAP FalloverEvents
     """
-    from ralph.recovery import controller as recovery_controller_module  # noqa: PLC0415
+    from ralph.recovery import controller as recovery_controller_module
 
     bundle = _make_policy_bundle()
 

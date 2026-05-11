@@ -46,15 +46,15 @@ class TestFanOutEffectIsPhaseAgnostic:
         )
 
     def test_fan_out_effect_is_in_effect_union(self) -> None:
-        import typing  # noqa: PLC0415
+        import typing
 
-        from ralph.pipeline import effects  # noqa: PLC0415
+        from ralph.pipeline import effects
 
         args = typing.get_args(effects.Effect)
         assert FanOutEffect in args, "FanOutEffect must be in the Effect union type"
 
     def test_fanout_development_effect_alias_returns_fanout_effect(self) -> None:
-        from ralph.pipeline import effects  # noqa: PLC0415
+        from ralph.pipeline import effects
 
         alias = effects.FanOutDevelopmentEffect
         assert alias is FanOutEffect, (

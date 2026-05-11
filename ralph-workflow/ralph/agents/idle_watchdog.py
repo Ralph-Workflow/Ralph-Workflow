@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.agents.execution_state import AgentExecutionState
 from ralph.process.child_liveness import AliveBy
 from ralph.timeout_defaults import (
     DESCENDANT_WAIT_POLL_SECONDS,
@@ -38,7 +39,6 @@ from ralph.timeout_defaults import (
 )
 
 if TYPE_CHECKING:
-    from ralph.agents.execution_state import AgentExecutionState
     from ralph.agents.timeout_clock import Clock
 
 __all__ = [
@@ -541,8 +541,6 @@ class IdleWatchdog:
             WAITING_ON_CHILD: idle deadline elapsed; children still active; last_activity not reset.
             FIRE: idle deadline elapsed with no valid deferral; caller must terminate.
         """
-        from ralph.agents.execution_state import AgentExecutionState  # noqa: PLC0415
-
         now = self._clock.monotonic()
 
         # Session ceiling check FIRST — activity cannot reset this.
@@ -595,8 +593,6 @@ class IdleWatchdog:
         drain window, the drain is abandoned and we fall back to WAITING_ON_CHILD
         deferral to prevent false-positive fires while children are alive.
         """
-        from ralph.agents.execution_state import AgentExecutionState  # noqa: PLC0415
-
         assert self._drain_started_at is not None
 
         quiet_state = classify_quiet()

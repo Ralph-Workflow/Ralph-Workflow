@@ -65,7 +65,7 @@ def test_web_search_tool_not_listed_without_capability() -> None:
         drain="development",
         capabilities={"WorkspaceRead"},
     )
-    from ralph.config.mcp_models import McpConfig  # noqa: PLC0415
+    from ralph.config.mcp_models import McpConfig
 
     bridge = build_ralph_tool_registry(session, _StubWorkspace(), mcp_config=McpConfig())
     tool_names = {t.name for t in bridge.list_definitions()}

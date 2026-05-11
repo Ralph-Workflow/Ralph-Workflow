@@ -261,7 +261,7 @@ def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
 
 
 def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
-    from ralph.display.phase_lifecycle import PhaseExitModel  # noqa: PLC0415
+    from ralph.display.phase_lifecycle import PhaseExitModel
 
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)

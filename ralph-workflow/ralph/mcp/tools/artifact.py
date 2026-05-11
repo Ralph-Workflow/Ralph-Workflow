@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
@@ -755,8 +756,6 @@ def _analysis_decision_vocabulary_for_artifact_type(
         return None
 
     try:
-        import tomllib  # noqa: PLC0415
-
         with artifacts_path.open("rb") as f:
             data = cast("dict[str, object]", tomllib.load(f))
     except (OSError, ValueError):

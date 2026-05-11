@@ -14,12 +14,10 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING
 
+from ralph.policy.explain import PhaseExplanation
+
 if TYPE_CHECKING:
-    from ralph.policy.explain import (
-        ParallelExplanation,
-        PhaseExplanation,
-        PolicyExplanation,
-    )
+    from ralph.policy.explain import ParallelExplanation, PolicyExplanation
 
 
 _ROLE_LABELS: dict[str, str] = {
@@ -630,8 +628,6 @@ def _render_phase_verification(phase: PhaseExplanation, lines: list[str]) -> Non
 
 def _render_phase_text(phase: object, lines: list[str]) -> None:
     """Render a single phase's explanation into text lines."""
-    from ralph.policy.explain import PhaseExplanation  # noqa: PLC0415
-
     if not isinstance(phase, PhaseExplanation):
         return
 

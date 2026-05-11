@@ -322,7 +322,7 @@ class TestCustomPipelineVerificationFailure:
         return state
 
     def test_verification_failure_routes_to_crashed(self, custom_bundle: PolicyBundle) -> None:
-        from ralph.pipeline.events import PhaseFailureEvent  # noqa: PLC0415
+        from ralph.pipeline.events import PhaseFailureEvent
 
         policy = custom_bundle.pipeline
         state = self._advance_to_verify(policy)
@@ -447,7 +447,7 @@ class TestCustomPipelineChainTracking:
         assert chain is None
 
     def test_retry_increments_for_custom_phase(self, custom_bundle: PolicyBundle) -> None:
-        from ralph.pipeline.events import PhaseFailureEvent  # noqa: PLC0415
+        from ralph.pipeline.events import PhaseFailureEvent
 
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
@@ -472,7 +472,7 @@ class TestCustomPipelinePolicyValidation:
     """Policy completeness validation passes for the custom bundle."""
 
     def test_validate_policy_completeness_passes(self, custom_bundle: PolicyBundle) -> None:
-        from ralph.policy.validation import validate_policy_completeness  # noqa: PLC0415
+        from ralph.policy.validation import validate_policy_completeness
 
         validate_policy_completeness(custom_bundle)  # must not raise
 

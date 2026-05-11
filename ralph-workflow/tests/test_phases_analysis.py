@@ -6,8 +6,25 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from ralph.phases.analysis import parse_analysis_decision_status
+import pytest
+
+from ralph.phases import HANDLERS, PhaseHandlerNotFoundError, handle_phase, register_role_handlers
+from ralph.phases.analysis import handle_generic_analysis_phase, parse_analysis_decision_status
+from ralph.phases.artifacts import decision_vocabulary_for_drain
+from ralph.phases.commit import handle_commit_phase
+from ralph.phases.execution import handle_execution_phase
+from ralph.phases.review import handle_review
+from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
+from ralph.pipeline.events import PhaseFailureEvent
 from ralph.policy.loader import load_policy
+from ralph.policy.models import (
+    PhaseCommitPolicy,
+    PhaseDecisionRoute,
+    PhaseDefinition,
+    PhaseLoopPolicy,
+    PhaseTransition,
+    PipelinePolicy,
+)
 
 
 class TestParseAnalysisDecision:
@@ -141,8 +158,6 @@ class TestDecisionVocabularyFullCoverage:
     """Every status in the policy decision_vocabulary must be parseable (return non-None)."""
 
     def _load_default_policy(self) -> object:
-        from ralph.policy.loader import load_policy  # noqa: PLC0415
-
         with tempfile.TemporaryDirectory() as tmp:
             bundle = load_policy(Path(tmp) / ".agent")
             return bundle.artifacts
@@ -150,8 +165,6 @@ class TestDecisionVocabularyFullCoverage:
     def test_every_development_analysis_vocabulary_entry_is_parseable(
         self,
     ) -> None:
-        from ralph.phases.artifacts import decision_vocabulary_for_drain  # noqa: PLC0415
-
         policy = self._load_default_policy()
         vocab = decision_vocabulary_for_drain(
             policy, "development_analysis", "development_analysis_decision"
@@ -181,14 +194,6 @@ class TestParseAnalysisDecisionPhaseNameParameter:
     """parse_analysis_decision uses phase_name for policy lookup, drain_name for artifact path."""
 
     def _make_custom_analysis_policy(self) -> object:
-        from ralph.policy.models import (  # noqa: PLC0415
-            PhaseDecisionRoute,
-            PhaseDefinition,
-            PhaseLoopPolicy,
-            PhaseTransition,
-            PipelinePolicy,
-        )
-
         return PipelinePolicy(
             phases={
                 "custom_analysis": PhaseDefinition(
@@ -290,15 +295,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
 class TestRegisterRoleHandlers:
     """register_role_handlers wires generic handlers for analysis- and commit-role phases."""
 
-    def _make_analysis_policy(self) -> object:
-        from ralph.policy.models import (  # noqa: PLC0415
-            PhaseDecisionRoute,
-            PhaseDefinition,
-            PhaseLoopPolicy,
-            PhaseTransition,
-            PipelinePolicy,
-        )
-
+    def _make_analysis_policy(self) -> PipelinePolicy:
         return PipelinePolicy(
             phases={
                 "my_custom_analysis": PhaseDefinition(
@@ -330,14 +327,7 @@ class TestRegisterRoleHandlers:
             terminal_phase="complete",
         )
 
-    def _make_commit_policy(self) -> object:
-        from ralph.policy.models import (  # noqa: PLC0415
-            PhaseCommitPolicy,
-            PhaseDefinition,
-            PhaseTransition,
-            PipelinePolicy,
-        )
-
+    def _make_commit_policy(self) -> PipelinePolicy:
         return PipelinePolicy(
             phases={
                 "my_custom_commit": PhaseDefinition(
@@ -368,9 +358,6 @@ class TestRegisterRoleHandlers:
 
     def test_register_role_handlers_registers_analysis_phase(self) -> None:
         """register_role_handlers adds a generic handler for analysis-role phases."""
-        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
-        from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
-
         policy = self._make_analysis_policy()
         HANDLERS.pop("my_custom_analysis", None)
 
@@ -381,9 +368,6 @@ class TestRegisterRoleHandlers:
 
     def test_register_role_handlers_registers_commit_phase(self) -> None:
         """register_role_handlers adds handle_commit_phase for commit-role phases."""
-        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
-        from ralph.phases.commit import handle_commit_phase  # noqa: PLC0415
-
         policy = self._make_commit_policy()
         HANDLERS.pop("my_custom_commit", None)
 
@@ -394,9 +378,6 @@ class TestRegisterRoleHandlers:
 
     def test_register_role_handlers_does_not_overwrite_existing_handler(self) -> None:
         """register_role_handlers skips phases that already have a handler registered."""
-        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
-        from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
-
         policy = self._make_analysis_policy()
         # Pre-register the generic handler; a second call must not overwrite it.
         HANDLERS["my_custom_analysis"] = handle_generic_analysis_phase
@@ -408,10 +389,6 @@ class TestRegisterRoleHandlers:
 
     def test_handle_phase_dispatches_to_registered_analysis_handler(self) -> None:
         """After register_role_handlers, handle_phase dispatches a custom analysis phase."""
-        from ralph.phases import HANDLERS, handle_phase, register_role_handlers  # noqa: PLC0415
-        from ralph.pipeline.effects import InvokeAgentEffect  # noqa: PLC0415
-        from ralph.pipeline.events import PhaseFailureEvent  # noqa: PLC0415
-
         policy = self._make_analysis_policy()
         HANDLERS.pop("my_custom_analysis", None)
         register_role_handlers(policy)
@@ -439,9 +416,6 @@ class TestRegisterRoleHandlers:
 
     def test_handle_phase_dispatches_to_registered_commit_handler(self) -> None:
         """After register_role_handlers, handle_phase dispatches a custom commit phase."""
-        from ralph.phases import HANDLERS, handle_phase, register_role_handlers  # noqa: PLC0415
-        from ralph.pipeline.effects import PreparePromptEffect  # noqa: PLC0415
-
         policy = self._make_commit_policy()
         HANDLERS.pop("my_custom_commit", None)
         register_role_handlers(policy)
@@ -458,14 +432,6 @@ class TestRegisterRoleHandlers:
 
     def test_register_role_handlers_registers_execution_phase(self) -> None:
         """register_role_handlers adds handle_execution_phase for execution-role phases."""
-        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
-        from ralph.phases.execution import handle_execution_phase  # noqa: PLC0415
-        from ralph.policy.models import (  # noqa: PLC0415
-            PhaseDefinition,
-            PhaseTransition,
-            PipelinePolicy,
-        )
-
         policy = PipelinePolicy(
             phases={
                 "my_custom_build": PhaseDefinition(
@@ -490,14 +456,6 @@ class TestRegisterRoleHandlers:
 
     def test_register_role_handlers_registers_review_phase(self) -> None:
         """register_role_handlers adds handle_review for review-role phases."""
-        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
-        from ralph.phases.review import handle_review  # noqa: PLC0415
-        from ralph.policy.models import (  # noqa: PLC0415
-            PhaseDefinition,
-            PhaseTransition,
-            PipelinePolicy,
-        )
-
         policy = PipelinePolicy(
             phases={
                 "my_custom_audit": PhaseDefinition(
@@ -522,11 +480,6 @@ class TestRegisterRoleHandlers:
 
     def test_unregistered_phase_raises_handler_not_found(self) -> None:
         """handle_phase raises PhaseHandlerNotFoundError for unregistered phase names."""
-        import pytest  # noqa: PLC0415
-
-        from ralph.phases import HANDLERS, PhaseHandlerNotFoundError, handle_phase  # noqa: PLC0415
-        from ralph.pipeline.effects import PreparePromptEffect  # noqa: PLC0415
-
         HANDLERS.pop("totally_unknown_phase", None)
         effect = PreparePromptEffect(phase="totally_unknown_phase", iteration=1)
         with pytest.raises(PhaseHandlerNotFoundError) as exc_info:

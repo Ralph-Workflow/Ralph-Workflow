@@ -26,6 +26,9 @@ from ralph.cli.main import (
     _handle_commit_plumbing,
     _handle_list_agents,
     _handle_list_providers,
+    _inject_quick_prompt,
+    _parse_counter_overrides,
+    _prepare_init_args,
     _run_pipeline,
     app,
 )
@@ -159,8 +162,9 @@ def test_removed_top_level_flags_are_rejected_after_cleanup(
 ) -> None:
     """Cleanup should leave the real CLI with no legacy top-level flags."""
     command = get_command(app)
+    click_module = cast("Any", click)
 
-    with pytest.raises(click.exceptions.NoSuchOption):
+    with pytest.raises(click_module.exceptions.NoSuchOption):
         command.make_context("ralph", [flag], resilient_parsing=False)
 
 
@@ -632,43 +636,29 @@ class TestParseCounterOverrides:
     """Tests for _parse_counter_overrides helper."""
 
     def test_parses_single_valid_entry(self) -> None:
-        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
-
         result = _parse_counter_overrides(["iteration=3"])
         assert result == {"iteration": 3}
 
     def test_parses_multiple_entries(self) -> None:
-        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
-
         result = _parse_counter_overrides(["iteration=3", "reviewer_pass=1"])
         assert result == {"iteration": 3, "reviewer_pass": 1}
 
     def test_empty_list_returns_empty_dict(self) -> None:
-        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
-
         assert _parse_counter_overrides([]) == {}
 
     def test_missing_equals_raises_usage_error(self) -> None:
-        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
-
         with pytest.raises(click.UsageError, match="invalid format"):
             _parse_counter_overrides(["iteration3"])
 
     def test_blank_name_raises_usage_error(self) -> None:
-        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
-
         with pytest.raises(click.UsageError, match="blank counter name"):
             _parse_counter_overrides(["=5"])
 
     def test_non_integer_value_raises_usage_error(self) -> None:
-        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
-
         with pytest.raises(click.UsageError, match="not a valid integer"):
             _parse_counter_overrides(["iteration=abc"])
 
     def test_zero_value_is_valid(self) -> None:
-        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
-
         result = _parse_counter_overrides(["reviewer_pass=0"])
         assert result == {"reviewer_pass": 0}
 
@@ -709,15 +699,11 @@ class TestPrepareInitArgs:
     """Tests for _prepare_init_args sys.argv fallback."""
 
     def test_none_falls_back_to_sys_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from ralph.cli.main import _prepare_init_args  # noqa: PLC0415
-
         monkeypatch.setattr("sys.argv", ["ralph", "-Q", "do a quick change", "--dry-run"])
         result = _prepare_init_args(None)
         assert result == ["-Q", "--prompt", "do a quick change", "--dry-run"]
 
     def test_explicit_args_bypass_sys_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from ralph.cli.main import _prepare_init_args  # noqa: PLC0415
-
         monkeypatch.setattr("sys.argv", ["ralph", "--should-not-be-used"])
         result = _prepare_init_args(["-Q", "task"])
         assert result == ["-Q", "--prompt", "task"]
@@ -727,50 +713,34 @@ class TestInjectQuickPrompt:
     """Tests for _inject_quick_prompt preprocessing helper."""
 
     def test_injects_prompt_flag_before_positional_text(self) -> None:
-        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
-
         result = _inject_quick_prompt(["-Q", "do a quick change"])
         assert result == ["-Q", "--prompt", "do a quick change"]
 
     def test_long_quick_flag_also_triggers_injection(self) -> None:
-        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
-
         result = _inject_quick_prompt(["--quick", "do a task"])
         assert result == ["--quick", "--prompt", "do a task"]
 
     def test_options_after_text_are_preserved(self) -> None:
-        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
-
         result = _inject_quick_prompt(["-Q", "do a task", "--dry-run"])
         assert result == ["-Q", "--prompt", "do a task", "--dry-run"]
 
     def test_skips_injection_when_prompt_already_present(self) -> None:
-        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
-
         result = _inject_quick_prompt(["-Q", "--prompt", "text"])
         assert result == ["-Q", "--prompt", "text"]
 
     def test_skips_injection_when_short_prompt_already_present(self) -> None:
-        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
-
         result = _inject_quick_prompt(["-Q", "-P", "text"])
         assert result == ["-Q", "-P", "text"]
 
     def test_no_injection_when_no_quick_flag(self) -> None:
-        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
-
         result = _inject_quick_prompt(["does-not-exist"])
         assert result == ["does-not-exist"]
 
     def test_known_subcommand_is_not_treated_as_prompt(self) -> None:
-        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
-
         result = _inject_quick_prompt(["-Q", "cleanup"])
         assert result == ["-Q", "cleanup"]
 
     def test_no_positional_text_leaves_args_unchanged(self) -> None:
-        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
-
         result = _inject_quick_prompt(["-Q", "--dry-run"])
         assert result == ["-Q", "--dry-run"]
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 def test_parallel_all_equals_v1_surface() -> None:
     """ralph.pipeline.parallel.__all__ must list exactly the v1 public surface."""
-    from ralph.pipeline import parallel  # noqa: PLC0415
+    from ralph.pipeline import parallel
 
     expected = {"ParallelExecutionMode", "SameWorkspaceContext", "validate_for_same_workspace"}
     actual = set(parallel.__all__)
@@ -24,7 +24,7 @@ def test_parallel_all_equals_v1_surface() -> None:
 
 def test_parallel_execution_mode_has_exactly_one_member() -> None:
     """ParallelExecutionMode must have exactly one member: 'same_workspace'."""
-    from ralph.pipeline.parallel import ParallelExecutionMode  # noqa: PLC0415
+    from ralph.pipeline.parallel import ParallelExecutionMode
 
     members = list(ParallelExecutionMode)
     assert len(members) == 1, (
@@ -39,7 +39,7 @@ def test_parallel_execution_mode_has_exactly_one_member() -> None:
 
 def test_worktree_fan_out_is_not_importable() -> None:
     """WorktreeFanOut must not exist in ralph.pipeline.parallel."""
-    import importlib  # noqa: PLC0415
+    import importlib
 
     parallel = importlib.import_module("ralph.pipeline.parallel")
     assert not hasattr(parallel, "WorktreeFanOut"), (
@@ -49,7 +49,7 @@ def test_worktree_fan_out_is_not_importable() -> None:
 
 def test_parallel_package_docstring_mentions_same_workspace() -> None:
     """Package docstring must explicitly describe same-workspace mode."""
-    from ralph.pipeline import parallel  # noqa: PLC0415
+    from ralph.pipeline import parallel
 
     doc = parallel.__doc__ or ""
     assert "same-workspace" in doc, (

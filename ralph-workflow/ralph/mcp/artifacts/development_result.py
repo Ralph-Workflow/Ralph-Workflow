@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import cast
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from ralph.pydantic_compat import RalphBaseModel
 
 DEVELOPMENT_RESULT_ARTIFACT_TYPE = "development_result"
 
@@ -13,7 +13,7 @@ class DevelopmentResultValidationError(ValueError):
     """Raised when a development_result artifact is malformed."""
 
 
-class Continuation(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class Continuation(RalphBaseModel):
     """Reference to a prior session when a development result is partial."""
 
     model_config = ConfigDict(extra="forbid")
@@ -21,7 +21,7 @@ class Continuation(BaseModel):  # type: ignore[explicit-any]  # reason: external
     prior_session_id: str = Field(..., min_length=1)
 
 
-class DevelopmentResult(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class DevelopmentResult(RalphBaseModel):
     """Validated schema for a development_result artifact."""
 
     model_config = ConfigDict(extra="forbid")
@@ -46,10 +46,7 @@ def normalize_development_result_content(content: dict[str, object]) -> dict[str
     """Validate and normalize a raw development_result content dict."""
     try:
         validated = DevelopmentResult.model_validate(content)
-        return cast(
-            "dict[str, object]",
-            validated.model_dump(mode="python", exclude_none=True),
-        )
+        return validated.model_dump(mode="python", exclude_none=True)
     except ValidationError as exc:
         raise DevelopmentResultValidationError(str(exc)) from exc
 

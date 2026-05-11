@@ -5,6 +5,12 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
+from ralph.cli.commands.explain import _resolve_policy_dir
+from ralph.policy.loader import PolicyValidationError as LoaderValidationError
+from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
+from ralph.policy.validation import PolicyValidationError, validate_policy_completeness
+from ralph.workspace.scope import resolve_workspace_scope
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -30,14 +36,6 @@ def check_policy_command(
     Returns:
         Exit code: 0 on success, 1 on general error, 2 on policy validation error.
     """
-    from ralph.cli.commands.explain import _resolve_policy_dir  # noqa: PLC0415
-    from ralph.policy.loader import PolicyValidationError as LoaderValidationError  # noqa: PLC0415
-    from ralph.policy.loader import load_policy, load_policy_for_workspace_scope  # noqa: PLC0415
-    from ralph.policy.validation import (  # noqa: PLC0415
-        PolicyValidationError,
-        validate_policy_completeness,
-    )
-
     try:
         if policy_dir is not None:
             resolved_dir = policy_dir
@@ -46,8 +44,6 @@ def check_policy_command(
                 return 1
             bundle = load_policy(resolved_dir)
         else:
-            from ralph.workspace.scope import resolve_workspace_scope  # noqa: PLC0415
-
             resolved_dir, _ = _resolve_policy_dir()
             bundle = load_policy_for_workspace_scope(resolve_workspace_scope())
 

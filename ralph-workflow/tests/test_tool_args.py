@@ -71,7 +71,7 @@ def test_format_tool_input_total_length_bounded_for_many_values() -> None:
 
 
 def test_friendly_tool_name_strips_mcp_ralph_prefix() -> None:
-    from ralph.display.tool_args import friendly_tool_name  # noqa: PLC0415
+    from ralph.display.tool_args import friendly_tool_name
 
     assert friendly_tool_name("mcp__ralph__read_file") == "ralph.read_file"
     assert friendly_tool_name("mcp__ralph__exec") == "ralph.exec"
@@ -79,7 +79,7 @@ def test_friendly_tool_name_strips_mcp_ralph_prefix() -> None:
 
 
 def test_friendly_tool_name_leaves_other_names_unchanged() -> None:
-    from ralph.display.tool_args import friendly_tool_name  # noqa: PLC0415
+    from ralph.display.tool_args import friendly_tool_name
 
     assert friendly_tool_name("bash") == "bash"
     assert friendly_tool_name("mcp__other__read") == "mcp__other__read"
@@ -89,13 +89,13 @@ def test_friendly_tool_name_leaves_other_names_unchanged() -> None:
 
 def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path: Path) -> None:
     """tool_use with mcp__ralph__ prefix renders with ralph. in output."""
-    import json  # noqa: PLC0415
-    from io import StringIO  # noqa: PLC0415
+    import json
+    from io import StringIO
 
-    from rich.console import Console  # noqa: PLC0415
+    from rich.console import Console
 
-    from ralph.display.activity_model import ActivityProvider  # noqa: PLC0415
-    from ralph.display.parallel_display import ParallelDisplay  # noqa: PLC0415
+    from ralph.display.activity_model import ActivityProvider
+    from ralph.display.parallel_display import ParallelDisplay
 
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=2000)
@@ -125,10 +125,10 @@ def test_tool_use_metadata_preserves_original_name() -> None:
     The friendly_tool_name transform is render-only: the router's on_event callback
     receives the original parser content and metadata untransformed.
     """
-    import json  # noqa: PLC0415
+    import json
 
-    from ralph.display.activity_model import ActivityEventKind, ActivityProvider  # noqa: PLC0415
-    from ralph.display.activity_router import ActivityRouter  # noqa: PLC0415
+    from ralph.display.activity_model import ActivityEventKind, ActivityProvider
+    from ralph.display.activity_router import ActivityRouter
 
     received: list[tuple[str | None, dict[str, object]]] = []
 

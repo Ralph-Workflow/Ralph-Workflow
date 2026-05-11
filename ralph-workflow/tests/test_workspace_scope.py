@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -209,8 +210,6 @@ def test_resolve_workspace_scope_prefers_worktree_local_policy_override_per_file
 class TestSameWorkspaceWorkerScopeFencing:
     def test_write_to_declared_dir_succeeds(self, tmp_path: Path) -> None:
         """Worker scoped to src/foo can write inside src/foo."""
-        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
         (tmp_path / "src" / "foo").mkdir(parents=True)
         worker_ns = tmp_path / ".agent" / "workers" / "u1"
         worker_ns.mkdir(parents=True)
@@ -226,8 +225,6 @@ class TestSameWorkspaceWorkerScopeFencing:
 
     def test_write_outside_declared_dir_raises(self, tmp_path: Path) -> None:
         """Worker scoped to src/foo cannot write to src/bar."""
-        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
         (tmp_path / "src" / "bar").mkdir(parents=True)
         worker_ns = tmp_path / ".agent" / "workers" / "u1"
         worker_ns.mkdir(parents=True)
@@ -244,8 +241,6 @@ class TestSameWorkspaceWorkerScopeFencing:
     def test_write_to_shared_agent_artifacts_denied(self, tmp_path: Path) -> None:
         """Worker u1 cannot write to .agent/artifacts/
         (only its own .agent/workers/u1/ namespace)."""
-        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
         (tmp_path / ".agent" / "artifacts").mkdir(parents=True)
         worker_ns = tmp_path / ".agent" / "workers" / "u1"
         worker_ns.mkdir(parents=True)
@@ -261,8 +256,6 @@ class TestSameWorkspaceWorkerScopeFencing:
 
     def test_write_to_other_workers_namespace_denied(self, tmp_path: Path) -> None:
         """Worker u1 cannot write to .agent/workers/u2/ (cross-worker namespace fencing)."""
-        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
-
         worker_ns_u1 = tmp_path / ".agent" / "workers" / "u1"
         worker_ns_u1.mkdir(parents=True)
         worker_ns_u2 = tmp_path / ".agent" / "workers" / "u2" / "artifacts"

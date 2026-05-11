@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 from ralph.display.artifact_reader import (
     PlanSummary,
     read_latest_analysis_decision,
@@ -33,8 +34,6 @@ _DECISION_LOG_MAX = 16
 
 def _format_waiting_status_line(event: object) -> str:
     """Build the human-readable line for a WaitingStatusEvent."""
-    from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: PLC0415
-
     assert isinstance(event, WaitingStatusEvent)
     cum = f"{event.cumulative_seconds:.0f}"
     ceil = f"{event.ceiling_seconds:.0f}"
@@ -255,8 +254,6 @@ class PipelineSubscriber:
         agent_name: str | None = None,
     ) -> None:
         """Record a waiting-status event from IdleWatchdog and push a fresh snapshot."""
-        from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: I001,PLC0415
-
         if not isinstance(event, WaitingStatusEvent):
             return
         line = _format_waiting_status_line(event)

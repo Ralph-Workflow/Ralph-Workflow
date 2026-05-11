@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path as RuntimePath
 from typing import TYPE_CHECKING, Annotated, Protocol, TypedDict, cast
 
@@ -43,11 +44,12 @@ from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+    from types import ModuleType
 
     from rich.console import Console
 
     from ralph.agents.registry import AgentRegistry
-    from ralph.config.models import AgentConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
 
 
@@ -183,6 +185,38 @@ class _CommandMain(Protocol):
     ) -> object: ...
 
 
+class _AgentRegistryFactory(Protocol):
+    @classmethod
+    def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
+
+
+class _ValidateCustomMcpServersFn(Protocol):
+    def __call__(self, workspace_root: RuntimePath) -> int: ...
+
+
+
+def _module_attr(module: ModuleType, attribute: str) -> object:
+    namespace = cast("dict[str, object]", module.__dict__)
+    return namespace[attribute]
+
+
+
+def _load_agent_registry_factory() -> _AgentRegistryFactory:
+    return cast(
+        "_AgentRegistryFactory",
+        _module_attr(import_module("ralph.agents.registry"), "AgentRegistry"),
+    )
+
+
+
+def _load_validate_custom_mcp_servers() -> _ValidateCustomMcpServersFn:
+    return cast(
+        "_ValidateCustomMcpServersFn",
+        _module_attr(import_module("ralph.pipeline.runner"), "_validate_custom_mcp_servers"),
+    )
+
+
+
 def _set_command_main(command: click.Command, callback: _CommandMain) -> None:
     cast("dict[str, object]", command.__dict__)["main"] = callback
 
@@ -268,11 +302,10 @@ def _resolve_effective_verbosity(
 
 def _try_load_registry() -> AgentRegistry | None:
     """Attempt to load the agent registry; returns None on failure."""
-    from ralph.agents.registry import AgentRegistry  # noqa: PLC0415
-
     try:
         cfg = load_config(None, {})
-        return AgentRegistry.from_config(cfg)
+        registry_type = _load_agent_registry_factory()
+        return registry_type.from_config(cfg)
     except Exception:
         return None
 
@@ -780,11 +813,11 @@ def _handle_check_mcp(check_mcp: bool, *, console: Console | None = None) -> int
     if not check_mcp:
         return None
     c = console if console is not None else _get_cli_context().console
-    from ralph.pipeline import runner as runner_module  # noqa: PLC0415
+    validate_custom_mcp_servers = _load_validate_custom_mcp_servers()
 
     try:
         workspace_scope = resolve_workspace_scope()
-        rc = runner_module._validate_custom_mcp_servers(workspace_scope.root)
+        rc = validate_custom_mcp_servers(workspace_scope.root)
     except Exception as e:
         logger.error("MCP validation failed: {}", e)
         return 1

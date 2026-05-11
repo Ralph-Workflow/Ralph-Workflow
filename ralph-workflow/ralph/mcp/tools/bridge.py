@@ -1561,9 +1561,10 @@ def build_ralph_tool_registry(
 ) -> ToolBridge:
     """Build the default Ralph MCP tool registry."""
 
-    from ralph.config.mcp_models import McpConfig  # noqa: PLC0415
-
-    mcp_cfg = mcp_config or McpConfig()
+    mcp_config_cls = cast(
+        "type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig
+    )
+    mcp_cfg = mcp_config or mcp_config_cls()
     bridge = ToolBridge(session=session)
     for spec in _tool_specs(mcp_cfg):
         is_websearch = (

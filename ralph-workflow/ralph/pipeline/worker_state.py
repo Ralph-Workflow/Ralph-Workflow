@@ -3,7 +3,9 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from ralph.pydantic_compat import RalphBaseModel
 
 
 class WorkerStatus(StrEnum):
@@ -16,7 +18,7 @@ class WorkerStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
-class WorkerState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class WorkerState(RalphBaseModel):
     """Immutable snapshot of a single parallel worker's execution state.
 
     Attributes:

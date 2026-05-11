@@ -22,6 +22,7 @@ import re
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -110,8 +111,6 @@ def archive_artifact_before_overwrite(
     created.append(archive_json)
 
     # Archive the Markdown handoff if it exists
-    from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact  # noqa: PLC0415
-
     handoff_rel = handoff_path_for_artifact(artifact_type)
     if handoff_rel:
         handoff_abs = workspace_root / handoff_rel
@@ -156,8 +155,6 @@ def snapshot_current_artifact(
     )
     backend.write_text(archive_json, backend.read_text(canonical_json))
     created.append(archive_json)
-
-    from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact  # noqa: PLC0415
 
     handoff_rel = handoff_path_for_artifact(artifact_type)
     if handoff_rel:

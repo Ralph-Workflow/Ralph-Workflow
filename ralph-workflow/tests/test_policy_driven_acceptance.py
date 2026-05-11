@@ -357,7 +357,7 @@ class TestRequirement5CommitSemantics:
 
 class TestRequirement6VerificationSemantics:
     def _bundle_with_verification(self) -> PolicyBundle:
-        from ralph.policy.models import PhaseVerificationPolicy  # noqa: PLC0415
+        from ralph.policy.models import PhaseVerificationPolicy
 
         return PolicyBundle(
             agents=AgentsPolicy(

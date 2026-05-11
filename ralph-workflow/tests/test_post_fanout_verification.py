@@ -80,9 +80,9 @@ class TestVerificationRunsOnlyWhenFlagTrue:
 
     def test_policy_post_fanout_verification_defaults_to_false(self) -> None:
         """The default pipeline policy must have post_fanout_verification=False."""
-        from pathlib import Path  # noqa: PLC0415
+        from pathlib import Path
 
-        from ralph.policy.loader import load_policy  # noqa: PLC0415
+        from ralph.policy.loader import load_policy
 
         defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
         bundle = load_policy(defaults_dir)
@@ -175,7 +175,7 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
 
     def test_post_fanout_verification_event_in_event_union(self) -> None:
         """PostFanoutVerificationEvent must be part of the Event union type."""
-        from ralph.pipeline.events import Event  # noqa: PLC0415
+        from ralph.pipeline.events import Event
 
         args = typing.get_args(Event)
         assert PostFanoutVerificationEvent in args, (
@@ -184,9 +184,9 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
 
     def test_verification_summary_entry_added_on_failure(self, tmp_path: Path) -> None:
         """When verification ran and failed, parallel_development_summary must include it."""
-        import json  # noqa: PLC0415
+        import json
 
-        from ralph.pipeline.runner import _write_parallel_development_summary  # noqa: PLC0415
+        from ralph.pipeline.runner import _write_parallel_development_summary
 
         effect = FanOutEffect(
             work_units=(

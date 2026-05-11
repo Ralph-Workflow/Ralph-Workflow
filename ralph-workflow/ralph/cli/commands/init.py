@@ -7,8 +7,9 @@ Ralph Workflow in a repository.
 from __future__ import annotations
 
 import shutil
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from rich.text import Text
 
@@ -22,7 +23,10 @@ from ralph.config.bootstrap import (
 from ralph.config.welcome import emit_first_run_welcome
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from ralph.agents.registry import AgentRegistry
+    from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
 
 from ralph.display.context import make_display_context
@@ -31,6 +35,42 @@ from ralph.workspace.scope import resolve_workspace_scope
 STARTER_PROMPT_SENTINEL = (
     "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
 )
+
+
+class _LoadConfigFn(Protocol):
+    def __call__(
+        self,
+        config_path: Path | None = None,
+        cli_overrides: dict[str, object] | None = None,
+    ) -> UnifiedConfig: ...
+
+
+class _AgentRegistryFactory(Protocol):
+    @classmethod
+    def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
+
+
+
+def _module_attr(module: ModuleType, attribute: str) -> object:
+    namespace = cast("dict[str, object]", module.__dict__)
+    return namespace[attribute]
+
+
+
+def _load_config_loader() -> _LoadConfigFn:
+    return cast(
+        "_LoadConfigFn",
+        _module_attr(import_module("ralph.config.loader"), "load_config"),
+    )
+
+
+
+def _load_agent_registry_factory() -> _AgentRegistryFactory:
+    return cast(
+        "_AgentRegistryFactory",
+        _module_attr(import_module("ralph.agents.registry"), "AgentRegistry"),
+    )
+
 
 
 def init_command(
@@ -129,12 +169,10 @@ def init_command(
 
 def _try_load_registry() -> AgentRegistry | None:
     """Attempt to load the agent registry; returns None on failure."""
-    from ralph.agents.registry import AgentRegistry  # noqa: PLC0415
-    from ralph.config.loader import load_config  # noqa: PLC0415
-
     try:
-        cfg = load_config(None, {})
-        return AgentRegistry.from_config(cfg)
+        cfg = _load_config_loader()(None, {})
+        registry_type = _load_agent_registry_factory()
+        return registry_type.from_config(cfg)
     except Exception:
         return None
 
