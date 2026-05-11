@@ -1,7 +1,11 @@
 # Remote Build Server Plan
 
+> **Historical/reference-only document.** This plan describes the retired Rust-era `cargo xtask`-based remote build infrastructure. The maintained Ralph Workflow product is the Python package in `ralph-workflow/`. This document is retained for historical reference and design context only.
+>
+> The only still-operationally-relevant content is **section 5 (Remote Machine Setup)**, which documents one-time server provisioning steps (Rust toolchain, bun, cargo-dylint, mold, sccache). All other sections describe the retired `cargo xtask` implementation that is no longer maintained.
+
 **Date:** 2026-04-08
-**Status:** Implemented
+**Status:** Implemented (retired — see note above)
 **Scope:** Offload `cargo xtask verify`, `cargo build`, and `cargo test` to a dedicated remote build machine (`rw-build-server`), with automatic fallback to local execution when the remote is unreachable.
 
 > **Implementation note:** All `cargo xtask` subcommands now auto-dispatch to the remote via `try_run_remote()` in `xtask/src/boundary/remote.rs`, wired into `run_from_env()`. Shell scripts in `scripts/remote/` extend this to arbitrary commands. See `docs/tooling/remote-build.md` for the developer-facing guide.

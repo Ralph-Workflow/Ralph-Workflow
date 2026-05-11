@@ -140,7 +140,9 @@ Host rw-build-server-2
 
 ### Remote toolchain
 
-See `docs/plans/2026-04-08-remote-build-server.md` section 5 for one-time remote machine setup (Rust, bun, cargo-dylint, system dependencies). Apply the same setup to `rw-build-server-2`.
+See **`docs/plans/2026-04-08-remote-build-server.md`** (section 5) for one-time remote machine setup steps (Rust, bun, cargo-dylint, system dependencies). Apply the same setup to `rw-build-server-2`.
+
+> **Historical/reference-only:** `docs/plans/2026-04-08-remote-build-server.md` is an implemented plan document retained for historical reference. The operational setup steps in section 5 are the only still-relevant content. All other sections describe the retired Rust-era `cargo xtask` implementation and are not relevant to the current Python package.
 
 ---
 
