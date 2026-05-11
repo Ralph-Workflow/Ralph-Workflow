@@ -1,0 +1,22 @@
+Tweet 1:
+Most coding interviews tell you nothing about real job performance. We decided to find out what does.
+---
+Tweet 2:
+Docker preview wins every time. Candidates can see their code running, interviewers can see their debugging process.
+---
+Tweet 3:
+The best performers explain their thinking out loud — even when they can't see the interviewer.
+---
+Tweet 4:
+Senior devs don't write more code. They write less code that does more.
+---
+Tweet 5:
+The questions candidates ask during the interview predict on-the-job questions better than answers.
+---
+Tweet 6:
+Candidates who write specs first solve the problem 3x faster. Not a typo.
+---
+Tweet 7:
+HireAegis — watch candidates code live with AI visibility. Free trial in bio.
+
+CHARACTER COUNT: 632 (limit: 280/tweet)

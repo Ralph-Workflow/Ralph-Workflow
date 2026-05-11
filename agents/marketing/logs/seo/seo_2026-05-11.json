@@ -1,0 +1,84 @@
+{
+  "timestamp": "2026-05-11T09:01:54.785867",
+  "results": {
+    "sitemap": {
+      "exists": true,
+      "url_count": 242
+    },
+    "robots": {
+      "exists": true,
+      "content": "User-agent: *\nDisallow: /admin\nDisallow: /api\nDisallow: /auth\nDisallow: /good_job\nDisallow: /api-docs\n\nSitemap: https://ralphworkflow.com/sitemap.xml\n"
+    },
+    "backlinks": {
+      "backlinks": 0,
+      "sources": []
+    },
+    "github_mentions": {
+      "error": "No token"
+    },
+    "directories": [
+      {
+        "name": "Toolhunt AI",
+        "url": "https://toolhunt.ai/submit",
+        "listed": true
+      },
+      {
+        "name": "There's An AI For That",
+        "url": "https://theresanaiforthat.com/submit/",
+        "listed": true
+      },
+      {
+        "name": "AI Navigator",
+        "url": "https://ainavigator.ai/submit",
+        "listed": true
+      },
+      {
+        "name": "AlternativeTo",
+        "url": "https://alternativeto.net/submit/",
+        "listed": true
+      },
+      {
+        "name": "SaaSHub",
+        "url": "https://saashub.com/submit",
+        "listed": true
+      },
+      {
+        "name": "Product Hunt",
+        "url": "https://producthunt.com/submit",
+        "listed": true
+      }
+    ],
+    "keywords": [
+      {
+        "keyword": "AI agent workflow",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "unattended AI coding",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "AI engineering pipeline",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "Claude autonomous coding",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "GPT-4 coding workflow",
+        "has_competition": true,
+        "checked": true
+      },
+      {
+        "keyword": "AI pair programmer setup",
+        "has_competition": true,
+        "checked": true
+      }
+    ]
+  }
+}

@@ -4,7 +4,12 @@
     "stackoverflow",
     "quora",
     "reddit-r-programming",
-    "reddit-programming"
+    "reddit-programming",
+    "hackernews",
+    "lobsters",
+    "producthunt",
+    "indiehackers",
+    "medium"
   ],
   "results": [
     {
@@ -62,6 +67,53 @@
       "timestamp": "2026-05-09T11:02:24.149491",
       "http_code": "301",
       "status": "redirects"
+    },
+    {
+      "name": "hackernews",
+      "url": "https://news.ycombinator.com",
+      "method": "submit",
+      "difficulty": "impossible",
+      "timestamp": "2026-05-11T10:02:55.413814",
+      "http_code": "200",
+      "status": "accessible"
+    },
+    {
+      "name": "lobsters",
+      "url": "https://lobste.rs",
+      "method": "submit",
+      "difficulty": "impossible",
+      "timestamp": "2026-05-11T10:02:56.949368",
+      "http_code": "200",
+      "status": "accessible"
+    },
+    {
+      "name": "producthunt",
+      "url": "https://producthunt.com",
+      "method": "submit",
+      "difficulty": "hard",
+      "timestamp": "2026-05-11T10:02:57.995805",
+      "http_code": "403",
+      "status": "blocked",
+      "note": "Cloudflare or bot protection"
+    },
+    {
+      "name": "indiehackers",
+      "url": "https://indiehackers.com",
+      "method": "post",
+      "difficulty": "medium",
+      "timestamp": "2026-05-11T10:02:58.609657",
+      "http_code": "301",
+      "status": "redirects"
+    },
+    {
+      "name": "medium",
+      "url": "https://medium.com",
+      "method": "article",
+      "difficulty": "hard",
+      "timestamp": "2026-05-11T10:02:59.688118",
+      "http_code": "403",
+      "status": "blocked",
+      "note": "Cloudflare or bot protection"
     }
   ],
   "working": []

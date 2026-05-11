@@ -118,6 +118,35 @@ Reactions are lightweight social signals. Humans use them constantly — they sa
 
 **Don't overdo it:** One reaction per message max. Pick the one that fits best.
 
+## Model Selection
+
+Default to **`openai-codex/gpt-5.4`**.
+
+Use **`minimax/MiniMax-M2.7-highspeed`** only when the task is clearly:
+- straightforward
+- low-risk
+- low-judgment
+- easy to verify
+- not sensitive to nuance or strategic mistakes
+
+If you're unsure which model to use, choose **GPT-5.4**.
+
+Good MiniMax candidates:
+- routine research sweeps
+- simple monitoring/reporting
+- straightforward posting/publishing chores
+- mechanical repo or file maintenance
+- clearly-scoped content transforms where quality is easy to inspect
+
+Use GPT-5.4 for:
+- strategy
+- judgment calls
+- ambiguous or high-context tasks
+- anything user-facing where tone, persuasion, or nuance matters
+- planning, synthesis, prioritization, or decisions with real downside if wrong
+
+When creating new agents, cron jobs, or automations, preserve this bias unless the human explicitly says otherwise.
+
 ## Tools
 
 Skills provide your tools. When you need one, check its `SKILL.md`. Keep local notes (camera names, SSH details, voice preferences) in `TOOLS.md`.

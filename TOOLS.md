@@ -49,6 +49,12 @@ Add whatever helps you do your job. This is your cheat sheet.
 - **Minimax API (OpenCode):** `sk-cp-cZhzgD75zcZiuQ42wsiiDM_EzFxbuKUV94M_vvYhE88ohNKfe9udkXXIrqBv6BNxRzasB_vqHBa6Ubtd6JOr4Y7rnbPjwvLC2yG5QapmSIcsudIyuEipodY`
   - Used for: AI model access via OpenClaw
 
+## Model Quick Policy
+
+- Default: `openai-codex/gpt-5.4`
+- Use `minimax/MiniMax-M2.7-highspeed` only for clearly straightforward, low-judgment, easy-to-verify tasks
+- If unsure, use `openai-codex/gpt-5.4`
+
 ## Related
 
 - [Agent workspace](/concepts/agent-workspace)

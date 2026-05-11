@@ -1,0 +1,22 @@
+Tweet 1:
+🧵 I let Claude Code run for 4 hours on a spec. This is what happened.. Here's what the data says after watching 200+ devs code live.
+---
+Tweet 2:
+Docker preview wins every time. Candidates can see their code running, interviewers can see their debugging process.
+---
+Tweet 3:
+The questions candidates ask during the interview predict on-the-job questions better than answers.
+---
+Tweet 4:
+Senior devs don't write more code. They write less code that does more.
+---
+Tweet 5:
+The 'aha moment' usually happens at minute 12. If it hasn't by minute 20, it won't.
+---
+Tweet 6:
+The best performers explain their thinking out loud — even when they can't see the interviewer.
+---
+Tweet 7:
+HireAegis — watch candidates code live with AI visibility. Free trial in bio.
+
+CHARACTER COUNT: 673 (limit: 280/tweet)

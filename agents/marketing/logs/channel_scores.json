@@ -8,6 +8,12 @@
           "total_views": 0,
           "num_posts": 0,
           "score": 0
+        },
+        {
+          "date": "2026-05-11",
+          "total_views": 0,
+          "num_posts": 0,
+          "score": 0
         }
       ]
     },
@@ -16,6 +22,11 @@
       "history": [
         {
           "date": "2026-05-09",
+          "total_stars": 0,
+          "score": 0.0
+        },
+        {
+          "date": "2026-05-11",
           "total_stars": 0,
           "score": 0.0
         }
@@ -27,11 +38,15 @@
         {
           "date": "2026-05-09",
           "note": "No live SEO API - using site health as proxy"
+        },
+        {
+          "date": "2026-05-11",
+          "note": "No live SEO API - using site health as proxy"
         }
       ]
     }
   },
-  "last_update": "2026-05-09T11:05:30.780130",
+  "last_update": "2026-05-11T10:02:53.368062",
   "last_data": {
     "writeas": [],
     "github": [
