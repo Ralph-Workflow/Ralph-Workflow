@@ -8,8 +8,9 @@ use by the MCP bridge. Alias collisions raise ``RegistryCollisionError`` immedia
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from loguru import logger
 
@@ -22,17 +23,11 @@ from ralph.mcp.upstream.client import (
     make_upstream_client,
     normalize_upstream_content_blocks,
 )
+from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 
-if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
-
-    from ralph.mcp.upstream.config import UpstreamMcpServer
-
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
-
-if TYPE_CHECKING:
-    UpstreamClientFactory = Callable[[UpstreamMcpServer], _AnyUpstreamClient]
+UpstreamClientFactory = Callable[[UpstreamMcpServer], _AnyUpstreamClient]
 
 
 class RegistryCollisionError(ValueError):

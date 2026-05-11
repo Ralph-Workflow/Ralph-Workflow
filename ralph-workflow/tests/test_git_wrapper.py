@@ -1,9 +1,9 @@
 """Tests for git wrapper helpers."""
-# pyright: reportAttributeAccessIssue=false
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 from git import GitCommandError, Repo
@@ -18,7 +18,7 @@ from ralph.git import (
 def read_hooks_path(repo: Repo) -> str:
     """Return the configured hooksPath value for the repository."""
 
-    return repo.git.config("--local", "--get", "core.hooksPath").strip()
+    return cast("str", repo.git.config("--local", "--get", "core.hooksPath")).strip()
 
 
 def test_start_agent_phase_sets_hooks_path(tmp_git_repo: Path) -> None:

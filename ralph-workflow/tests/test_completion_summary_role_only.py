@@ -152,7 +152,7 @@ class TestRenderCompletionSummaryRoleOnly:
             snapshot, display_context=ctx, pipeline_policy=policy, include_context_sections=True
         )
         console.print(group, markup=False, highlight=False)
-        output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        output = console.file.getvalue()
         assert "Pipeline Complete" in output
         assert "Design phase plan" in output
 
@@ -166,7 +166,7 @@ class TestRenderCompletionSummaryRoleOnly:
             snapshot, display_context=ctx, pipeline_policy=policy
         )
         console.print(group, markup=False, highlight=False)
-        output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        output = console.file.getvalue()
         assert "Pipeline Complete" in output
 
     def test_renders_without_policy(self) -> None:
@@ -176,7 +176,7 @@ class TestRenderCompletionSummaryRoleOnly:
         ctx = make_display_context(console=console)
         group = render_completion_summary_group(snapshot, display_context=ctx)
         console.print(group, markup=False, highlight=False)
-        output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        output = console.file.getvalue()
         assert "Pipeline" in output
 
     def test_failed_summary_uses_terminal_failure_style(self) -> None:
@@ -191,5 +191,5 @@ class TestRenderCompletionSummaryRoleOnly:
             snapshot, display_context=ctx, pipeline_policy=policy
         )
         console.print(group, markup=False, highlight=False)
-        output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        output = console.file.getvalue()
         assert "Pipeline Failed" in output

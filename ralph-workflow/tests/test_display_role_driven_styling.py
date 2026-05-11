@@ -151,7 +151,7 @@ class TestCompletionSummaryRoleDrivenStyling:
         )
         # Just verifying it renders without exception
         console.print(group, markup=False, highlight=False)
-        output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        output = console.file.getvalue()
         assert "Pipeline" in output
 
     def test_renders_without_error_without_policy(self) -> None:
@@ -162,5 +162,5 @@ class TestCompletionSummaryRoleDrivenStyling:
 
         group = render_completion_summary_group(snapshot, display_context=ctx)
         console.print(group, markup=False, highlight=False)
-        output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        output = console.file.getvalue()
         assert "Pipeline" in output

@@ -73,7 +73,7 @@ class _FakeDisplay:
         return self
 
     def __exit__(self, *args: object) -> None:
-        pass
+        return None
 
 
 def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
@@ -157,10 +157,8 @@ class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
         on_output: Callable[[str], None],
         on_status: Callable[[WorkerStatus], None],
     ) -> WorkerResult:
-        # Create artifacts in the worker namespace (simulating agent output)
         worker_ns = self._tmp_path / ".agent" / "workers" / unit.unit_id
 
-        # Create artifacts directory and plan.json
         artifacts_dir = worker_ns / "artifacts"
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         (artifacts_dir / "plan.json").write_text(
@@ -176,7 +174,6 @@ class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
             )
         )
 
-        # Create handoffs directory and DEVELOPMENT_RESULT.md
         handoffs_dir = worker_ns / "handoffs"
         handoffs_dir.mkdir(parents=True, exist_ok=True)
         (handoffs_dir / "DEVELOPMENT_RESULT.md").write_text(
@@ -204,8 +201,6 @@ def _run_fan_out_sync(
     captured = _CapturedContext()
     units = effect.work_units
 
-    # Fake executor that "succeeds" for each unit and creates artifacts
-    # in the worker namespace (simulating what a real agent would do)
     runs = {
         unit.unit_id: FakeRun(
             outputs=[f"done-{unit.unit_id}"], exit_code=0, duration_ms=10
@@ -223,19 +218,16 @@ def _run_fan_out_sync(
     state = PipelineState(
         phase="development",
         work_units=units,
-        phase_chains={"development": AgentChainState(agents=["claude"])},
+        phase_chains={"development": AgentChainState(agents=["claude"])} ,
     )
     policy_bundle = _make_mock_policy_bundle(max_workers=effect.max_workers)
     workspace_scope = WorkspaceScope(tmp_path)
 
-    # Patch signal handlers to avoid issues in test environment
     monkeypatch.setattr(
         "ralph.interrupt.asyncio_bridge.install_signal_handlers",
         lambda *args: None,
     )
 
-    # Patch build_session_mcp_plan to return controlled values from the contract
-    # so we can verify the session contract propagation
     def _fake_build_session_mcp_plan(**kwargs: object) -> SessionMcpPlan:
         del kwargs
         return SessionMcpPlan(
@@ -249,9 +241,6 @@ def _run_fan_out_sync(
         _fake_build_session_mcp_plan,
     )
 
-    # We need to actually call _run_worker to create artifacts, so we need to
-    # set up the worker context and call it directly. We patch run_fan_out to
-    # invoke _run_worker for each unit with the proper context.
     async def _fake_run_fan_out(**kwargs: object) -> list[Event]:
         ctx = cast("_WorkerContext | None", kwargs.get("ctx"))
         if ctx is not None and ctx.same_workspace is not None:
@@ -262,11 +251,9 @@ def _run_fan_out_sync(
                 ctx.same_workspace.session_capability_profile
             )
 
-        # Actually call _run_worker for each unit to create artifacts
-        completion_queue: asyncio.Queue = asyncio.Queue()
+        completion_queue: asyncio.Queue[WorkerResult] = asyncio.Queue()
 
         for unit in units:
-            # Create the worker namespace directories (same as _prepare_executor)
             same_workspace = ctx.same_workspace if ctx is not None else None
             if same_workspace is not None:
                 ns_root = same_workspace.worker_namespace_root or (
@@ -276,7 +263,6 @@ def _run_fan_out_sync(
                 for subdir in ("artifacts", "tmp", "logs", "handoffs"):
                     (worker_namespace / subdir).mkdir(parents=True, exist_ok=True)
 
-            # Call _run_worker directly
             await coordinator._run_worker(
                 unit,
                 cast("AgentExecutor", fake_executor),
@@ -285,7 +271,6 @@ def _run_fan_out_sync(
                 ctx,
             )
 
-        # Now drain the completion queue and return proper events
         events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
         for _ in units:
             result = await completion_queue.get()
@@ -305,17 +290,13 @@ def _run_fan_out_sync(
     final_state = runner_module._execute_fan_out_sync(
         effect=effect,
         state=state,
-        display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        display=cast("ParallelDisplay", _FakeDisplay()),
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
     )
 
     return final_state, captured
 
-
-# ---------------------------------------------------------------------------
-# Tests (black-box observables only)
-# ---------------------------------------------------------------------------
 
 _TWO_WORKERS_EXPECTED = 2
 _THREE_WORKERS_EXPECTED = 3
@@ -350,15 +331,16 @@ def test_workers_complete_successfully_with_multimodal_session_contract(
         monkeypatch=monkeypatch,
     )
 
-    # Verify both workers completed successfully
+    completed_workers = 0
     for unit_id in ("unit-a", "unit-b"):
         worker_state = final_state.worker_states.get(unit_id)
         assert worker_state is not None, f"Worker {unit_id} missing from final state"
         assert worker_state.status == WorkerStatus.SUCCEEDED, (
             f"Worker {unit_id} expected SUCCEEDED, got {worker_state.status}"
         )
+        completed_workers += 1
 
-    # Verify session contract was propagated correctly to the coordinator
+    assert completed_workers == _TWO_WORKERS_EXPECTED
     assert captured.session_drain == "development"
     assert captured.session_capabilities == frozenset({"media.read", "workspace.edit"})
     assert captured.session_model_identity == identity
@@ -389,11 +371,9 @@ def test_worker_namespaces_created_with_correct_structure(
         monkeypatch=monkeypatch,
     )
 
-    # Verify worker namespace structure was created by the runtime
     worker_ns = tmp_path / ".agent" / "workers" / "unit-workspace"
-    assert (worker_ns / "artifacts").is_dir(), "Expected artifacts/ to exist"
-    assert (worker_ns / "handoffs").is_dir(), "Expected handoffs/ to exist"
-    # Note: tmp/ and logs/ are created by the coordinator during execution
+    for subdir in ("artifacts", "tmp", "logs", "handoffs"):
+        assert (worker_ns / subdir).is_dir(), f"Expected {subdir}/ to exist"
 
 
 @pytest.mark.integration
@@ -425,15 +405,16 @@ def test_multiple_workers_each_get_unique_session_ids(
         monkeypatch=monkeypatch,
     )
 
-    # All workers should be SUCCEEDED
+    completed_workers = 0
     for unit_id in ("unit-multi-a", "unit-multi-b", "unit-multi-c"):
         worker_state = final_state.worker_states.get(unit_id)
         assert worker_state is not None, f"Worker {unit_id} missing from final state"
         assert worker_state.status == WorkerStatus.SUCCEEDED, (
             f"Worker {unit_id} expected SUCCEEDED, got {worker_state.status}"
         )
+        completed_workers += 1
 
-    # Verify session contract was propagated
+    assert completed_workers == _THREE_WORKERS_EXPECTED
     assert captured.session_drain == "development"
     assert captured.session_capabilities == frozenset({"media.read"})
     assert captured.session_model_identity == identity
@@ -470,7 +451,6 @@ def test_claude_worker_completes_with_inline_image_capability(
     assert worker_state is not None
     assert worker_state.status == WorkerStatus.SUCCEEDED
 
-    # Verify Claude-specific model identity was propagated
     assert captured.session_model_identity == identity
     assert captured.session_model_identity is not None
     assert captured.session_model_identity.provider == "claude"
@@ -505,7 +485,6 @@ def test_gemini_worker_completes_with_typed_block_capability(
     assert worker_state is not None
     assert worker_state.status == WorkerStatus.SUCCEEDED
 
-    # Verify Gemini-specific model identity was propagated
     assert captured.session_model_identity == identity
     assert captured.session_model_identity is not None
     assert captured.session_model_identity.provider == "gemini"
@@ -526,7 +505,7 @@ def test_unknown_provider_worker_completes_with_replay_fallback(
     contract = _SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
-        model_identity=UNKNOWN_IDENTITY,  # Unknown provider triggers replay fallback
+        model_identity=UNKNOWN_IDENTITY,
     )
     final_state, captured = _run_fan_out_sync(
         effect,
@@ -539,7 +518,6 @@ def test_unknown_provider_worker_completes_with_replay_fallback(
     assert worker_state is not None
     assert worker_state.status == WorkerStatus.SUCCEEDED
 
-    # Verify unknown-provider identity was propagated
     assert captured.session_model_identity == UNKNOWN_IDENTITY
     assert captured.session_model_identity is not None
     assert captured.session_model_identity.provider == "unknown"
@@ -572,7 +550,6 @@ def test_worker_handoff_contains_multimodal_artifacts(
         monkeypatch=monkeypatch,
     )
 
-    # Verify handoff was created by the runtime (not pre-seeded)
     worker_handoffs = tmp_path / ".agent" / "workers" / "unit-handoff" / "handoffs"
     handoff_path = worker_handoffs / "DEVELOPMENT_RESULT.md"
     assert handoff_path.is_file(), (
@@ -608,7 +585,6 @@ def test_worker_artifacts_contain_plan_json(
         monkeypatch=monkeypatch,
     )
 
-    # Verify plan.json was created by the runtime (not pre-seeded)
     worker_artifacts = tmp_path / ".agent" / "workers" / "unit-artifacts" / "artifacts"
     plan_path = worker_artifacts / "plan.json"
     assert plan_path.is_file(), (

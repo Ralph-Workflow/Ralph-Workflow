@@ -15,7 +15,7 @@ def test_fan_out_effect_frozen() -> None:
     effect = effects.FanOutEffect(work_units=(), max_workers=2)
 
     with pytest.raises(FrozenInstanceError):
-        effect.max_workers = 3  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        effect.max_workers = 3
 
 
 def test_fan_out_effect_fields() -> None:

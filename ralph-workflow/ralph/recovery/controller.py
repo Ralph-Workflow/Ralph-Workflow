@@ -29,7 +29,9 @@ def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
     Returns:
         Delay in milliseconds, capped at max_ms.
     """
-    return min(base_ms * (2 ** attempt), max_ms)  # type: ignore[misc, no-any-return]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    exponent_factor: int = 2 ** attempt
+    delay: int = base_ms * exponent_factor
+    return min(delay, max_ms)
 
 
 class RecoveryController:

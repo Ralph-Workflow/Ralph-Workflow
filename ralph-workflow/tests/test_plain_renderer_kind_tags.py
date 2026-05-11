@@ -623,7 +623,7 @@ def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
     snapshot_a = PipelineSnapshot(
         active_agent="claude/sonnet",
         last_activity_line=None,
-        **base_kwargs,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        **base_kwargs,
     )
     renderer.emit_snapshot(snapshot_a)
     out_a = buf.getvalue()
@@ -639,7 +639,7 @@ def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
         active_agent="claude/sonnet",
         active_tool="mcp__ralph__read_file",
         last_activity_line="claude/sonnet tool: mcp__ralph__read_file (path=x.py)",
-        **base_kwargs,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        **base_kwargs,
     )
     renderer.emit_snapshot(snapshot_b)
     out_b = buf.getvalue()

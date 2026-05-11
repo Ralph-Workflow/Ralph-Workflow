@@ -44,7 +44,7 @@ def test_chain_exhaustion_with_two_agents() -> None:
     """Two agents each exhausted → "failed", recovery_cycle_count==1, two fallover records."""
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
-    bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
 
     registry = _registry_with_one_retry("claude", "opencode")
     controller = RecoveryController(

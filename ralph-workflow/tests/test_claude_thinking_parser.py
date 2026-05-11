@@ -27,9 +27,9 @@ def test_thinking_delta_emits_thinking_type() -> None:
         '{"type":"message_stop"}',
     ]
     results = _parse(lines)
-    thinking = [r for r in results if r.type == "thinking"]  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    thinking = [r for r in results if r.type == "thinking"]
     assert len(thinking) == 1
-    assert thinking[0].content == "I consider this carefully"  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    assert thinking[0].content == "I consider this carefully"
 
 
 def test_thinking_and_text_deltas_produce_distinct_types() -> None:
@@ -53,12 +53,12 @@ def test_thinking_and_text_deltas_produce_distinct_types() -> None:
         '{"type":"message_stop"}',
     ]
     results = _parse(lines)
-    thinking = [r for r in results if r.type == "thinking"]  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    text = [r for r in results if r.type == "text"]  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    thinking = [r for r in results if r.type == "thinking"]
+    text = [r for r in results if r.type == "text"]
     assert len(thinking) == 1
     assert len(text) == 1
-    assert thinking[0].content == "My reasoning"  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    assert text[0].content == "My answer"  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    assert thinking[0].content == "My reasoning"
+    assert text[0].content == "My answer"
 
 
 def test_thinking_paragraph_boundary_flushes() -> None:
@@ -84,10 +84,10 @@ def test_thinking_paragraph_boundary_flushes() -> None:
         '{"type":"message_stop"}',
     ]
     results = _parse(lines)
-    thinking = [r for r in results if r.type == "thinking"]  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    thinking = [r for r in results if r.type == "thinking"]
     assert len(thinking) == _EXPECTED_TWO
-    assert thinking[0].content == "Para 1"  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    assert thinking[1].content == "Para 2"  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    assert thinking[0].content == "Para 1"
+    assert thinking[1].content == "Para 2"
 
 
 def test_existing_text_parsing_unaffected() -> None:
@@ -99,9 +99,9 @@ def test_existing_text_parsing_unaffected() -> None:
         '{"type":"message_stop"}',
     ]
     results = _parse(lines)
-    text = [r for r in results if r.type == "text"]  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    text = [r for r in results if r.type == "text"]
     assert len(text) == 1
-    assert text[0].content == "Hello"  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    assert text[0].content == "Hello"
 
 
 def test_fallback_thinking_without_message_context() -> None:
@@ -112,6 +112,6 @@ def test_fallback_thinking_without_message_context() -> None:
         ),
     ]
     results = _parse(lines)
-    thinking = [r for r in results if r.type == "thinking"]  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    thinking = [r for r in results if r.type == "thinking"]
     assert len(thinking) == 1
-    assert thinking[0].content == "orphan thought"  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    assert thinking[0].content == "orphan thought"

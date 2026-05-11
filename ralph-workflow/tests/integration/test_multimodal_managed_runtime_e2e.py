@@ -36,7 +36,7 @@ from ralph.mcp.server.runtime import (
 )
 from ralph.mcp.tools.names import RalphToolName
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -286,7 +286,7 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
 
     registry = UpstreamRegistry.build(
         [server],
-        client_factory=lambda _srv: _FakeClient(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        client_factory=cast("UpstreamClientFactory", lambda _srv: _FakeClient()),
     )
 
     result = registry.call_tool(
@@ -344,7 +344,7 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
 
     registry = UpstreamRegistry.build(
         [server],
-        client_factory=lambda _srv: _FakeClient(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        client_factory=cast("UpstreamClientFactory", lambda _srv: _FakeClient()),
     )
 
     result = registry.call_tool(

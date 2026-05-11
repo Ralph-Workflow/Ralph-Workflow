@@ -466,7 +466,7 @@ class TestUpstreamRegistry:
     def _make_tools_caller(self, tools: list[dict[str, object]]) -> object:
         def caller(method: str, params: dict[str, object]) -> dict[str, object]:
             if method == "tools/list":
-                return {"tools": tools}  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                return {"tools": tools}
             return {}
 
         return caller
@@ -484,12 +484,12 @@ class TestUpstreamRegistry:
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "filesystem":
-                return HttpUpstreamClient(server, caller=fs_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-            return HttpUpstreamClient(server, caller=gh_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                return HttpUpstreamClient(server, caller=fs_caller)
+            return HttpUpstreamClient(server, caller=gh_caller)
 
         registry = UpstreamRegistry.build(
             [fs_server, gh_server],
-            client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=client_factory,
         )
         aliases = {t.alias for t in registry.tool_definitions()}
 
@@ -511,8 +511,8 @@ class TestUpstreamRegistry:
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "a__b":
-                return HttpUpstreamClient(server, caller=ab_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-            return HttpUpstreamClient(server, caller=a_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                return HttpUpstreamClient(server, caller=ab_caller)
+            return HttpUpstreamClient(server, caller=a_caller)
 
         with pytest.raises(RegistryCollisionError, match="alias collision"):
             UpstreamRegistry.build(
@@ -520,7 +520,7 @@ class TestUpstreamRegistry:
                     server_producing_ralph_upstream__a__b__c_via_server,
                     server_producing_ralph_upstream__a__b__c_via_tool,
                 ],
-                client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                client_factory=client_factory,
             )
 
     def test_upstream_registry_skips_unhealthy_server(self) -> None:
@@ -536,12 +536,12 @@ class TestUpstreamRegistry:
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "good":
-                return HttpUpstreamClient(server, caller=good_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                return HttpUpstreamClient(server, caller=good_caller)
             return HttpUpstreamClient(server, caller=failing_caller)
 
         registry = UpstreamRegistry.build(
             [healthy, unhealthy],
-            client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=client_factory,
             on_unreachable="warn_and_skip",
         )
         aliases = {t.alias for t in registry.tool_definitions()}

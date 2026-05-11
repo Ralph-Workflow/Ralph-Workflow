@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import psutil
 
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 from ralph.agents.executor import WorkerResult
 from ralph.agents.subprocess_executor import agent_process_label
+from ralph.display.parallel_display import ParallelDisplay  # noqa: TC001
 from ralph.pipeline import checkpoint
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.parallel import coordinator
@@ -98,7 +99,7 @@ async def _run_with_cancel(
         coordinator.run_fan_out(
             effect=effect,
             executor=executor,
-            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            display=cast("ParallelDisplay", _FakeDisplay()),
             ctx=coordinator._WorkerContext(
                 log=coordinator._WorkerLog(
                     log_dir=checkpoint_path.parent / "logs",

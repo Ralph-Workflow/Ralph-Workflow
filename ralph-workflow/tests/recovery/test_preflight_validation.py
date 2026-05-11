@@ -65,7 +65,7 @@ def test_validate_agent_chains_satisfiable_passes_with_known_agents() -> None:
     )
     registry = _FakeAgentRegistry(known_agents={"claude"})
     # Should not raise
-    validate_agent_chains_satisfiable(bundle, registry)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    validate_agent_chains_satisfiable(bundle, registry)
 
 
 def test_validate_agent_chains_satisfiable_fails_with_unknown_agent() -> None:
@@ -78,7 +78,7 @@ def test_validate_agent_chains_satisfiable_fails_with_unknown_agent() -> None:
     registry = _FakeAgentRegistry(known_agents={"claude"})
 
     with pytest.raises(PolicyValidationError, match="unknown agent"):
-        validate_agent_chains_satisfiable(bundle, registry)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        validate_agent_chains_satisfiable(bundle, registry)
 
 
 def test_validate_recovery_config_passes_with_valid_config() -> None:
@@ -89,7 +89,7 @@ def test_validate_recovery_config_passes_with_valid_config() -> None:
         phases={},
     )
     # Should not raise
-    validate_recovery_config(bundle)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    validate_recovery_config(bundle)
 
 
 def test_validate_recovery_config_fails_with_negative_retries() -> None:
@@ -101,12 +101,12 @@ def test_validate_recovery_config_fails_with_negative_retries() -> None:
     )
 
     with pytest.raises(PolicyValidationError, match="max_retries"):
-        validate_recovery_config(bundle)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        validate_recovery_config(bundle)
 
 
 def test_validate_checkpoint_against_policy_passes_when_phase_exists() -> None:
     """Checkpoint validation passes when phase is in the current policy."""
-    state = PipelineState(phase="planning")  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    state = PipelineState(phase="planning")
     bundle = _FakeBundle(
         chains={},
         drains={},
@@ -114,7 +114,7 @@ def test_validate_checkpoint_against_policy_passes_when_phase_exists() -> None:
     )
 
     # Should not raise
-    validate_checkpoint_against_policy(state, bundle)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    validate_checkpoint_against_policy(state, bundle)
 
 
 def test_validate_checkpoint_against_policy_fails_when_phase_missing() -> None:
@@ -127,7 +127,7 @@ def test_validate_checkpoint_against_policy_fails_when_phase_missing() -> None:
     )
 
     with pytest.raises(CheckpointPolicyMismatchError):
-        validate_checkpoint_against_policy(state, bundle)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        validate_checkpoint_against_policy(state, bundle)
 
 
 def test_validation_error_message_is_actionable() -> None:
@@ -140,7 +140,7 @@ def test_validation_error_message_is_actionable() -> None:
     registry = _FakeAgentRegistry(known_agents={"claude"})
 
     with pytest.raises(PolicyValidationError) as exc_info:
-        validate_agent_chains_satisfiable(bundle, registry)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        validate_agent_chains_satisfiable(bundle, registry)
 
     error_msg = str(exc_info.value)
     # Should mention the unknown agent

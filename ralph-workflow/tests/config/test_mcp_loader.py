@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import textwrap
 import tomllib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from loguru import logger
@@ -20,6 +20,7 @@ from ralph.config.mcp_loader import (
     load_mcp_config,
 )
 from ralph.config.mcp_models import McpConfig
+from ralph.workspace.scope import WorkspaceScope  # noqa: TC001
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -75,7 +76,7 @@ def test_global_mcp_config_path_respects_xdg(
 
 def test_local_mcp_config_path(tmp_path: Path) -> None:
     scope = _FakeScope(tmp_path)
-    path = _local_mcp_config_path(scope)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    path = _local_mcp_config_path(cast("WorkspaceScope", scope))
     assert path == tmp_path / ".agent" / "mcp.toml"
 
 
@@ -171,7 +172,7 @@ def test_load_mcp_config_workspace_scope_local_path(
         encoding="utf-8",
     )
     scope = _FakeScope(tmp_path)
-    config = load_mcp_config(workspace_scope=scope)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    config = load_mcp_config(workspace_scope=cast("WorkspaceScope", scope))
     assert config.web_search.enabled is False
 
 

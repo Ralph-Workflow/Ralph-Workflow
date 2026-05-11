@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from io import StringIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -14,7 +14,7 @@ from ralph.mcp.multimodal.resources import MediaManifest, parse_media_uri
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError
-from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
 from ralph.mcp.upstream.validation import UpstreamValidationError
 
 
@@ -29,7 +29,7 @@ class TestUpstreamRegistryWarningBehavior:
     def _make_tools_caller(self, tools: list[dict[str, object]]) -> object:
         def caller(method: str, params: dict[str, object]) -> dict[str, object]:
             if method == "tools/list":
-                return {"tools": tools}  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                return {"tools": cast("object", tools)}
             return {}
 
         return caller
@@ -47,7 +47,7 @@ class TestUpstreamRegistryWarningBehavior:
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "healthy":
-                return HttpUpstreamClient(server, caller=good_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                return cast("Any", HttpUpstreamClient(server, caller=good_caller))
             return HttpUpstreamClient(server, caller=bad_caller)
 
         stream = StringIO()
@@ -55,7 +55,7 @@ class TestUpstreamRegistryWarningBehavior:
         try:
             registry = UpstreamRegistry.build(
                 [healthy, broken],
-                client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                client_factory=cast("UpstreamClientFactory", client_factory),
                 on_unreachable="warn_and_skip",
             )
         finally:
@@ -88,7 +88,7 @@ class TestUpstreamRegistryWarningBehavior:
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "healthy":
-                return HttpUpstreamClient(server, caller=good_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                return cast("Any", HttpUpstreamClient(server, caller=good_caller))
             return HttpUpstreamClient(server, caller=bad_caller)
 
         stream = StringIO()
@@ -96,7 +96,7 @@ class TestUpstreamRegistryWarningBehavior:
         try:
             UpstreamRegistry.build(
                 [healthy, broken],
-                client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                client_factory=cast("UpstreamClientFactory", client_factory),
                 on_unreachable="warn_and_skip",
             )
         finally:
@@ -122,12 +122,12 @@ class TestUpstreamRegistryWarningBehavior:
             raise UpstreamCallError("server unreachable")
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
-            return HttpUpstreamClient(server, caller=bad_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            return cast("Any", HttpUpstreamClient(server, caller=bad_caller))
 
         with pytest.raises(UpstreamValidationError) as excinfo:
             UpstreamRegistry.build(
                 [broken],
-                client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                client_factory=cast("UpstreamClientFactory", client_factory),
             )
 
         message = str(excinfo.value)
@@ -190,7 +190,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         class _FakeSession:
@@ -228,7 +228,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         class _FakeSession:
@@ -267,7 +267,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         class _FakeSession:
@@ -305,7 +305,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         class _FakeSession:
@@ -346,7 +346,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         class _FakeSession:
@@ -384,7 +384,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         result = registry.call_tool("ralph_upstream__uri_server__screenshot", {})
@@ -416,7 +416,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         class _FakeSession:
@@ -456,7 +456,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:
@@ -483,7 +483,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:
@@ -512,7 +512,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:
@@ -540,7 +540,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         class _FakeSession:
@@ -582,7 +582,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         class _FakeSession:
@@ -613,7 +613,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         result = registry.call_tool("ralph_upstream__text_server__echo", {})
@@ -638,7 +638,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         result = registry.call_tool("ralph_upstream__minimal_server__ping", {})
@@ -657,7 +657,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         result = registry.call_tool("ralph_upstream__empty_server__noop", {})
@@ -693,7 +693,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         class _FakeSession:
@@ -740,7 +740,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            client_factory=cast("UpstreamClientFactory", lambda srv: client),
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:
@@ -777,7 +777,7 @@ def _make_single_response_client(
             return responses_copy[idx]
         return {}
 
-    return HttpUpstreamClient(server, caller=caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    return cast("Any", HttpUpstreamClient(server, caller=caller))
 
 
 def test_upstream_embedded_audio_is_stored_in_session_manifest() -> None:
@@ -796,7 +796,7 @@ def test_upstream_embedded_audio_is_stored_in_session_manifest() -> None:
 
     registry = UpstreamRegistry.build(
         [server],
-        client_factory=lambda _srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        client_factory=cast("UpstreamClientFactory", lambda _srv: client),
     )
 
     class _FakeSession:
@@ -840,7 +840,7 @@ def test_upstream_embedded_video_is_stored_in_session_manifest() -> None:
 
     registry = UpstreamRegistry.build(
         [server],
-        client_factory=lambda _srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        client_factory=cast("UpstreamClientFactory", lambda _srv: client),
     )
 
     class _FakeSession:
@@ -895,7 +895,7 @@ def test_upstream_mixed_modalities_preserve_order_and_modality_metadata() -> Non
         index["value"] += 1
         return responses_copy[idx] if idx < len(responses_copy) else {}
 
-    client = HttpUpstreamClient(server, caller=caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    client = cast("Any", HttpUpstreamClient(server, caller=caller))
 
     class _FakeSession:
         media_manifest = MediaManifest()
@@ -903,7 +903,7 @@ def test_upstream_mixed_modalities_preserve_order_and_modality_metadata() -> Non
     session = _FakeSession()
     registry = UpstreamRegistry.build(
         [server],
-        client_factory=lambda _srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        client_factory=cast("UpstreamClientFactory", lambda _srv: client),
     )
 
     result = registry.call_tool("ralph_upstream__mix_srv__multi", {}, session=session)

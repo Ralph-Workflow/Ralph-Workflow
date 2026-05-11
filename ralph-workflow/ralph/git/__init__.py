@@ -5,8 +5,6 @@ including staging/commit helpers, managed hook installation, and rebase support.
 Implementation uses GitPython rather than the retired Rust/libgit2 stack.
 """
 
-# pyright: reportMissingImports=false
-
 from ralph.git.hooks import (
     HOOK_MARKER,
     RALPH_HOOK_NAMES,

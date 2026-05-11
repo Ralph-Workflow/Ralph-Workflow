@@ -353,3 +353,179 @@ def test_mcp_servers_doc_describes_resolved_capability_profile() -> None:
         "docs/mcp/mcp-servers.md must mention ResolvedCapabilityProfile as the "
         "mechanism for per-modality delivery selection"
     )
+
+
+# Maintained type checking and tooling docs enforcement
+_CODE_STYLE_PATH = REPO_ROOT.parent / "CODE_STYLE.md"
+_CODE_STYLE_INDEX_PATH = REPO_ROOT.parent / "docs" / "code-style" / "index.md"
+_TOOLING_GUIDE_PATH = REPO_ROOT.parent / "docs" / "tooling" / "python-tooling.md"
+
+
+def test_code_style_md_mentions_strict_mypy_config() -> None:
+    """CODE_STYLE.md must mention strict mypy with ralph-workflow/mypy.ini."""
+    content = _CODE_STYLE_PATH.read_text(encoding="utf-8")
+    assert "ralph-workflow/mypy.ini" in content, (
+        "CODE_STYLE.md must reference the exact maintained mypy config path ralph-workflow/mypy.ini"
+    )
+    assert "strict" in content.lower(), (
+        "CODE_STYLE.md must mention strict type checking"
+    )
+
+
+def test_code_style_md_mentions_type_ignore_policy() -> None:
+    """CODE_STYLE.md must mention docs/agents/type-ignore-policy.md."""
+    content = _CODE_STYLE_PATH.read_text(encoding="utf-8")
+    assert "docs/agents/type-ignore-policy.md" in content, (
+        "CODE_STYLE.md must reference the type-ignore policy document"
+    )
+
+
+def test_code_style_md_mentions_zero_test_suppressions() -> None:
+    """CODE_STYLE.md must state test files have zero suppressions."""
+    content = _CODE_STYLE_PATH.read_text(encoding="utf-8")
+    content_lower = content.lower()
+    marker = "type:" + " ignore"
+    assert (
+        "test files must not" in content_lower
+        or ("zero" in content_lower and "test" in content_lower)
+        or (marker in content and "test" in content)
+    ), "CODE_STYLE.md must explicitly state that test files have zero suppressions"
+
+
+def test_code_style_md_mentions_make_verify() -> None:
+    """CODE_STYLE.md must mention the canonical make verify workflow."""
+    content = _CODE_STYLE_PATH.read_text(encoding="utf-8")
+    assert "make verify" in content, (
+        "CODE_STYLE.md must reference the canonical `make verify` verification command"
+    )
+
+
+def test_code_style_index_mentions_strict_mypy_config() -> None:
+    """docs/code-style/index.md must mention strict mypy with ralph-workflow/mypy.ini."""
+    content = _CODE_STYLE_INDEX_PATH.read_text(encoding="utf-8")
+    assert "ralph-workflow/mypy.ini" in content, (
+        "docs/code-style/index.md must reference the exact maintained mypy config path"
+    )
+    assert "strict" in content.lower(), (
+        "docs/code-style/index.md must mention strict type checking"
+    )
+
+
+def test_code_style_index_mentions_type_ignore_policy() -> None:
+    """docs/code-style/index.md must mention docs/agents/type-ignore-policy.md."""
+    content = _CODE_STYLE_INDEX_PATH.read_text(encoding="utf-8")
+    assert "docs/agents/type-ignore-policy.md" in content, (
+        "docs/code-style/index.md must reference the type-ignore policy document"
+    )
+
+
+def test_code_style_index_mentions_zero_test_suppressions() -> None:
+    """docs/code-style/index.md must state test files have zero suppressions."""
+    content = _CODE_STYLE_INDEX_PATH.read_text(encoding="utf-8")
+    content_lower = content.lower()
+    marker = "type:" + " ignore"
+    assert (
+        "test files must not" in content_lower
+        or ("zero" in content_lower and "test" in content_lower)
+        or (marker in content and "test" in content)
+    ), "docs/code-style/index.md must explicitly state that test files have zero suppressions"
+
+
+def test_code_style_index_mentions_make_verify() -> None:
+    """docs/code-style/index.md must mention the canonical make verify workflow."""
+    content = _CODE_STYLE_INDEX_PATH.read_text(encoding="utf-8")
+    assert "make verify" in content, (
+        "docs/code-style/index.md must reference the canonical `make verify` verification command"
+    )
+
+
+def test_tooling_guide_mentions_strict_mypy_config() -> None:
+    """docs/tooling/python-tooling.md must mention strict mypy with ralph-workflow/mypy.ini."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    assert "ralph-workflow/mypy.ini" in content, (
+        "docs/tooling/python-tooling.md must reference the exact maintained mypy config path"
+    )
+    assert "strict" in content.lower(), (
+        "docs/tooling/python-tooling.md must mention strict type checking"
+    )
+
+
+def test_tooling_guide_mentions_type_ignore_policy() -> None:
+    """docs/tooling/python-tooling.md must mention docs/agents/type-ignore-policy.md."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    assert "docs/agents/type-ignore-policy.md" in content, (
+        "docs/tooling/python-tooling.md must reference the type-ignore policy document"
+    )
+
+
+def test_tooling_guide_mentions_zero_test_suppressions() -> None:
+    """docs/tooling/python-tooling.md must state test files have zero suppressions."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    content_lower = content.lower()
+    marker = "type:" + " ignore"
+    assert (
+        "test files must not" in content_lower
+        or (
+            "zero" in content_lower
+            and ("test" in content_lower or "suppression" in content_lower)
+        )
+        or (marker in content and "test" in content)
+    ), (
+        "docs/tooling/python-tooling.md must explicitly state "
+        "that test files have zero suppressions"
+    )
+
+
+def test_tooling_guide_mentions_make_verify() -> None:
+    """docs/tooling/python-tooling.md must mention the canonical make verify workflow."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    assert "make verify" in content, (
+        "docs/tooling/python-tooling.md must reference the canonical "
+        "`make verify` verification command"
+    )
+
+
+def test_tooling_guide_does_not_reference_nonexistent_ruff_toml() -> None:
+    """docs/tooling/python-tooling.md must not reference nonexistent ruff.toml."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    # The file should not reference ruff.toml as a config source (it doesn't exist in the repo)
+    # It may be acceptable to mention it in passing, but not as the primary configuration source
+    lines = content.splitlines()
+    ruff_config_lines = [
+        (i, line) for i, line in enumerate(lines)
+        if "ruff.toml" in line and (
+            "config" in line.lower() or "configuration" in line.lower()
+        )
+    ]
+    assert not ruff_config_lines, (
+        f"docs/tooling/python-tooling.md references nonexistent ruff.toml as config at lines: "
+        f"{[(i+1, line) for i, line in ruff_config_lines]}"
+    )
+
+
+
+def test_tooling_guide_does_not_claim_stale_python_version() -> None:
+    """docs/tooling/python-tooling.md must not claim python_version = 3.12."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    assert "python_version = 3.12" not in content, (
+        "docs/tooling/python-tooling.md must not document python_version = 3.12; "
+        "the actual config in ralph-workflow/mypy.ini uses python_version = 3.14"
+    )
+
+
+def test_tooling_guide_does_not_claim_pydantic_mypy_plugin() -> None:
+    """docs/tooling/python-tooling.md must not claim pydantic.mypy plugin is used."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    assert "plugins = pydantic.mypy" not in content, (
+        "docs/tooling/python-tooling.md must not document plugins = pydantic.mypy; "
+        "the actual config in ralph-workflow/mypy.ini has no plugins entry"
+    )
+
+
+def test_tooling_guide_uses_ini_style_overrides_not_toml() -> None:
+    """docs/tooling/python-tooling.md must not show TOML [[overrides]] syntax."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    assert "[[overrides]]" not in content, (
+        "docs/tooling/python-tooling.md must not show TOML [[overrides]] syntax; "
+        "ralph-workflow/mypy.ini uses INI-style [mypy-...] override sections"
+    )

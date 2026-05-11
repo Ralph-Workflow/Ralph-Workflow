@@ -84,7 +84,7 @@ class _CaptureConsole(Console):
             force_terminal=False,
             theme=RALPH_THEME,
         )
-        self._string_io = self.file  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        self._string_io = self.file
         self.lines: list[str] = []
 
     def print(self, *args: object, **kwargs: object) -> None:

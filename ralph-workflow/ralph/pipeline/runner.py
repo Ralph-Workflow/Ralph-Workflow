@@ -1456,9 +1456,10 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                 with suppress(Exception):
                     from ralph.display.plain_renderer import RunStartOrientation  # noqa: PLC0415
 
-                    _prompt_path: str | None = None
-                    if effective_pipeline_subscriber is not None:
-                        _prompt_path = getattr(effective_pipeline_subscriber, "_prompt_path", None)
+                    _prompt_path_raw: object = getattr(
+                        effective_pipeline_subscriber, "_prompt_path", None
+                    )
+                    _prompt_path: str | None = cast("str | None", _prompt_path_raw)
                     _dev_para = next(
                         (
                             p.parallelization
@@ -1473,10 +1474,12 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                     _plan_present = (
                         workspace_scope.root / ".agent" / "artifacts" / "plan.json"
                     ).exists()
+                    _dev_agent_raw: object = getattr(config, "developer_agent", None)
+                    _dev_model_raw: object = getattr(config, "developer_model", None)
                     _orientation = RunStartOrientation(
                         prompt_path=_prompt_path,
-                        developer_agent=getattr(config, "developer_agent", None),  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                        developer_model=getattr(config, "developer_model", None),  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        developer_agent=cast("str | None", _dev_agent_raw),
+                        developer_model=cast("str | None", _dev_model_raw),
                         developer_iters=config.general.developer_iters,
                         parallel_max_workers=_parallel_max_workers,
                         plan_present=_plan_present,
@@ -1559,7 +1562,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                 exit_code = 1
             if not is_quiet and hasattr(active_display, "emit_run_end"):
                 with suppress(Exception):
-                    total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    total_agent_calls = cast("int", getattr(state.metrics, "total_agent_calls", 0))
                     _exit_trigger = "completed" if exit_code == 0 else "failed"
                     _outer_dev = next(
                         (
@@ -1572,7 +1575,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                     )
                     cast("_RunEndDisplay", active_display).emit_run_end(
                         phase=state.phase,
-                        total_agent_calls=total_agent_calls,  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        total_agent_calls=total_agent_calls,
                         pr_url=state.pr_url,
                         exit_trigger=_exit_trigger,
                         outer_dev_iteration=_outer_dev,
@@ -1694,7 +1697,7 @@ def _build_session_mcp_plan_for_phase(
     # else fall back to phase_def.drain (for proper phase mapping),
     # else effect.phase, with "development" as final fallback for FanOutEffect
     # where phase="" by default.
-    _effect_drain = getattr(effect, "drain", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    _effect_drain = cast("str | None", getattr(effect, "drain", None))
     drain: str = (
         cast("str", _effect_drain)
         or (phase_def.drain if phase_def and hasattr(phase_def, "drain") else None)
@@ -1726,9 +1729,9 @@ def _build_session_mcp_plan_for_phase(
         registry = AgentRegistry.from_config(config)
         agent_config = registry.get(agent_name)
 
-    _transport_raw = getattr(agent_config, "transport", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    _transport_raw = cast("object", getattr(agent_config, "transport", None))
     transport = cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
-    _model_flag_raw = getattr(agent_config, "model_flag", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    _model_flag_raw = cast("object", getattr(agent_config, "model_flag", None))
     model_flag = cast("str | None", _model_flag_raw) if agent_config is not None else None
 
     # Use the same effective_agents_policy resolution as serial path.
@@ -2896,14 +2899,15 @@ def _render_success_artifact(  # noqa: PLR0913
             issues_path = workspace_root / ra.json_path
             if issues_path.exists():
                 try:
-                    issues_data = json.loads(issues_path.read_text(encoding="utf-8"))  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    issues_text = issues_path.read_text(encoding="utf-8")
+                    issues_data = cast("object", json.loads(issues_text))
                     content_obj = (
-                        issues_data.get("content")
-                        if isinstance(issues_data, dict)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                        else issues_data  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        cast("dict[str, object]", issues_data).get("content")
+                        if isinstance(issues_data, dict)
+                        else issues_data
                     )
                     issues_list = (
-                        content_obj.get("issues")
+                        cast("dict[str, object]", content_obj).get("issues")
                         if isinstance(content_obj, dict)
                         else content_obj
                     )

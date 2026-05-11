@@ -56,8 +56,8 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
     dev_phase.parallelization = para
     bundle.pipeline.phases = {"development": dev_phase}
     # Raise AttributeError if old parallel_execution path is accessed
-    type(bundle.pipeline).parallel_execution = property(  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        lambda self: (_ for _ in ()).throw(  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    type(bundle.pipeline).parallel_execution = property(
+        lambda self: (_ for _ in ()).throw(
             AttributeError("parallel_execution removed — use phases[phase].parallelization")
         )
     )
