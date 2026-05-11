@@ -10,7 +10,7 @@ instead.
 ## What lives here
 
 - [Configuration](configuration.md) — runtime config files, precedence, and policy knobs
-- [Concepts](concepts.md) — agents, chains, drains, phases, and execution strategy
+- [Concepts](concepts.md) — operator-facing glossary for the small set of workflow terms users need first
 - [Agents Architecture](agents.md) — registry, drain-to-chain binding, execution strategies, parser selection, and watchdogs
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
@@ -20,7 +20,6 @@ instead.
 ```{toctree}
 :maxdepth: 1
 
-concepts
 agents
 mcp-architecture
 artifacts

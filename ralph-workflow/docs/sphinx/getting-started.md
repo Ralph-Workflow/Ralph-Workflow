@@ -10,6 +10,10 @@ Ralph Workflow is a vendor-neutral AI coding workflow orchestrator for implement
 You describe what you want built in a file called `PROMPT.md`, and Ralph Workflow
 routes AI coding agents to plan and implement the work for you.
 
+It is designed for substantial work in **existing repositories** just as much as for brand-new
+projects. A common use case is pointing it at an already-active codebase and asking it to
+handle a meaningful feature, refactor, test expansion, or documentation pass.
+
 Under the hood, Ralph Workflow runs your agents through a sequence of phases declared in
 `.agent/pipeline.toml`. The runtime is a generic policy interpreter — all routing,
 retry rules, analysis loops, and recovery behavior come from that file, not from
@@ -55,13 +59,14 @@ python -m pipx ensurepath
 
 ## Your First Run
 
-### 1. Navigate to a git repository
+### 1. Navigate to your git repository
 
 ```bash
 cd /path/to/your/project
 ```
 
-Ralph Workflow must run inside a git repository. If you do not have one, create one:
+Most teams use Ralph Workflow inside an **existing** git repository they already care about.
+If you are trying it in a scratch repo instead, create one first:
 
 ```bash
 git init my-project && cd my-project

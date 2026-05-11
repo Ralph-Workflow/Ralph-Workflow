@@ -6,9 +6,9 @@ Ralph Workflow
    <section class="hero">
      <h1 class="hero-headline">Unattended, vendor-neutral AI coding workflows</h1>
      <p class="hero-subtitle">Ralph Workflow routes AI coding agents through a structured
-     planning → development loop. Describe what you want built in
-     <code>PROMPT.md</code>, keep the workflow configuration in your repo, and let Ralph Workflow handle the rest —
-     unattended, with checkpoint, recovery, and verification built in.</p>
+     planning → development loop. It is built for real work in existing repositories as well as brand-new ones:
+     describe the change you want in <code>PROMPT.md</code>, keep the workflow configuration in your repo,
+     and let Ralph Workflow handle the rest — unattended, with checkpoint, recovery, and verification built in.</p>
      <a class="hero-cta" href="getting-started.html">Get started →</a>
    </section>
 
@@ -24,13 +24,13 @@ Ralph Workflow
       :link: getting-started
       :link-type: doc
 
-      Install, initialise, write your first ``PROMPT.md``, and run the pipeline.
+      Install, point Ralph Workflow at an existing repo or a new one, write ``PROMPT.md``, and run the pipeline.
 
    .. grid-item-card:: Learn the concepts
       :link: concepts
       :link-type: doc
 
-      Phases, drains, agents, MCP artifacts, checkpoints, and recovery cycles.
+      The small set of terms you need to understand runs, recovery, and workflow setup.
 
    .. grid-item-card:: Look up the CLI
       :link: cli
@@ -59,7 +59,6 @@ Ralph Workflow
    recovery
    parallel-mode
    policy-explanation
-   policy-driven-overhaul-migration
 
 .. toctree::
    :maxdepth: 2

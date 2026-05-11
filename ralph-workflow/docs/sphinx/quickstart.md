@@ -2,7 +2,7 @@
 
 > **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
 
-Get Ralph Workflow running in a new project in five minutes.
+Get Ralph Workflow running in an existing project — or a new one — in five minutes.
 
 ## Install
 
@@ -16,7 +16,7 @@ Verify the install:
 ralph --version
 ```
 
-## Initialize a Project
+## Initialize Ralph Workflow in a Repository
 
 Navigate to your project directory (must be a git repository), then run:
 
@@ -86,8 +86,8 @@ Ralph Workflow runs the pipeline in phases. At a high level:
 Custom policies declared in `.agent/pipeline.toml` can add review, fix, or any other phase.
 The default bundled policy is a clean planning → development loop.
 
-Progress is shown inline. If interrupted, Ralph Workflow saves a checkpoint and resumes
-from the last completed phase on the next run.
+Progress is shown inline. If interrupted, Ralph Workflow saves a checkpoint automatically.
+When you want to continue from that saved state, run `ralph --resume`.
 
 See [Concepts](concepts.md) for the full phase graph and terminology.
 

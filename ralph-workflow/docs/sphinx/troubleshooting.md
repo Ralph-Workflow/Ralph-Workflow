@@ -121,9 +121,9 @@ Key fields:
 
 | Flag | When to use |
 |------|------------|
-| `--resume` | You interrupted a run and want to continue from the last completed phase |
-| `--no-resume` | The checkpoint is stale or from a different task; start fresh |
-| (neither) | Default: Ralph Workflow uses a checkpoint if one exists, otherwise starts fresh |
+| `--resume` | You interrupted a run and want Ralph Workflow to continue from the saved checkpoint |
+| `--no-resume` | You want to ignore any saved checkpoint and start fresh |
+| (neither) | Default: Ralph Workflow starts a fresh run without loading checkpoint state |
 
 Use `ralph --inspect-checkpoint` to see what the current checkpoint contains before deciding.
 
