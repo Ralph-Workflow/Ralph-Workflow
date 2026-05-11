@@ -155,8 +155,8 @@ On first run, Ralph Workflow creates the standard project and user config files 
 **User-global (created once, reused across projects):**
 - `~/.config/ralph-workflow.toml` — main Ralph Workflow configuration
 - `~/.config/ralph-workflow-mcp.toml` — MCP servers, web search, and web visit configuration
-- `~/.config/pipeline.toml` — user-global pipeline defaults for new workspaces and no-local-override runs
-- `~/.config/artifacts.toml` — user-global artifact-contract defaults for new workspaces and no-local-override runs
+- `~/.config/ralph-workflow-pipeline.toml` — user-global pipeline defaults for new workspaces and no-local-override runs
+- `~/.config/ralph-workflow-artifacts.toml` — user-global artifact-contract defaults for new workspaces and no-local-override runs
 
 **Project-local support files (created by `ralph --init`, live in your project directory):**
 - `.agent/mcp.toml` — project-local MCP override copied from the user-global MCP config when present

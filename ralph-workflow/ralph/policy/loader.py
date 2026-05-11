@@ -5,6 +5,10 @@ config directory, falling back to the packaged defaults when files are absent.
 
 All loading goes through Pydantic validation so any malformed config surfaces
 as a PolicyValidationError with field-level detail.
+
+User-global policy overrides prefer branded filenames
+(`ralph-workflow-pipeline.toml`, `ralph-workflow-artifacts.toml`) while
+still accepting the legacy unprefixed names for backward compatibility.
 """
 
 from __future__ import annotations
@@ -85,6 +89,10 @@ def _load_toml(path: Path) -> dict[str, object]:
 
 ValidationErrorDetail = Mapping[str, object]
 ValidationErrorDetails = Sequence[ValidationErrorDetail]
+_GLOBAL_POLICY_FILENAME_MAP = {
+    "pipeline.toml": "ralph-workflow-pipeline.toml",
+    "artifacts.toml": "ralph-workflow-artifacts.toml",
+}
 PIPELINE_POLICY_FIELDS = frozenset(
     {
         "phases",
@@ -455,11 +463,19 @@ def _default_dir() -> Path:
 
 
 def _global_policy_path(filename: str) -> Path:
-    """Return the user-global policy file path for a runtime policy TOML."""
-    xdg = getenv("XDG_CONFIG_HOME")
-    if xdg:
-        return Path(xdg) / filename
-    return Path.home() / ".config" / filename
+    """Return the effective user-global policy path for a runtime policy TOML."""
+    xdg_config_home = getenv("XDG_CONFIG_HOME")
+    base_dir = Path(xdg_config_home) if xdg_config_home else Path.home() / ".config"
+    preferred_name = _GLOBAL_POLICY_FILENAME_MAP.get(filename, filename)
+    preferred_path = base_dir / preferred_name
+    if preferred_path.exists():
+        return preferred_path
+
+    legacy_path = base_dir / filename
+    if legacy_path.exists():
+        return legacy_path
+
+    return preferred_path
 
 
 def load_policy_or_die(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:

@@ -20,8 +20,8 @@ Ralph Workflow manages a standard first-run config set across two scopes.
 |------|---------|
 | `~/.config/ralph-workflow.toml` | Global defaults: agent selection, iteration counts, verbosity |
 | `~/.config/ralph-workflow-mcp.toml` | MCP server definitions shared across all projects |
-| `~/.config/pipeline.toml` | Global pipeline defaults used when a workspace has no local pipeline override |
-| `~/.config/artifacts.toml` | Global artifact-contract defaults used when a workspace has no local artifacts override |
+| `~/.config/ralph-workflow-pipeline.toml` | Global pipeline defaults used when a workspace has no local pipeline override |
+| `~/.config/ralph-workflow-artifacts.toml` | Global artifact-contract defaults used when a workspace has no local artifacts override |
 
 ### Project-Local (created per project in `.agent/`)
 

@@ -238,8 +238,8 @@ def test_cli_init_does_not_create_local_main_config_when_global_exists(
 
     assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
     assert (tmp_path / ".config" / "ralph-workflow.toml").exists()
-    assert (tmp_path / ".config" / "pipeline.toml").exists()
-    assert (tmp_path / ".config" / "artifacts.toml").exists()
+    assert (tmp_path / ".config" / "ralph-workflow-pipeline.toml").exists()
+    assert (tmp_path / ".config" / "ralph-workflow-artifacts.toml").exists()
     assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
     assert (tmp_path / ".agent" / "mcp.toml").exists()
     assert (tmp_path / ".agent" / "pipeline.toml").exists()
@@ -291,10 +291,10 @@ def test_cli_init_local_config_copies_global_configs_into_project(
         tmp_path / ".config" / "ralph-workflow-mcp.toml"
     ).read_text(encoding="utf-8")
     assert (tmp_path / ".agent" / "pipeline.toml").read_text(encoding="utf-8") == (
-        tmp_path / ".config" / "pipeline.toml"
+        tmp_path / ".config" / "ralph-workflow-pipeline.toml"
     ).read_text(encoding="utf-8")
     assert (tmp_path / ".agent" / "artifacts.toml").read_text(encoding="utf-8") == (
-        tmp_path / ".config" / "artifacts.toml"
+        tmp_path / ".config" / "ralph-workflow-artifacts.toml"
     ).read_text(encoding="utf-8")
 
 
@@ -365,11 +365,11 @@ def test_cli_init_local_config_in_linked_worktree_targets_main_checkout(
         (defaults_dir / "mcp.toml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    (config_dir / "pipeline.toml").write_text(
+    (config_dir / "ralph-workflow-pipeline.toml").write_text(
         (defaults_dir / "pipeline.toml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    (config_dir / "artifacts.toml").write_text(
+    (config_dir / "ralph-workflow-artifacts.toml").write_text(
         (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
