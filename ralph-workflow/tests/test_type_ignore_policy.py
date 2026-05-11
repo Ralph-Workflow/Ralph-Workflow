@@ -190,4 +190,19 @@ def test_external_library_policy_document_exists() -> None:
     assert policy_path.is_file(), f"Missing policy document: {EXTERNAL_LIBRARY_POLICY_REF}"
 
 
+@pytest.mark.timeout_seconds(5)
+def test_zero_runtime_pyright_directives() -> None:
+    """Runtime code must have zero runtime directives from pyright."""
+    runtime_pyright_directives: list[str] = []
+    for rel_path, line_number, line in _repo_type_ignore_lines():
+        if "tests/" in rel_path or "tests\\" in rel_path:
+            continue
+        if "# py" + "right:" in line:
+            runtime_pyright_directives.append(f"{rel_path}:{line_number}")
+    assert runtime_pyright_directives == [], (
+        "Runtime code must not contain directives from py" + "right. "
+        "Use # type:" + " ignore[...] with reason comments instead. "
+        f"Found {len(runtime_pyright_directives)}: {runtime_pyright_directives}"
+    )
+
 

@@ -501,3 +501,31 @@ def test_tooling_guide_does_not_reference_nonexistent_ruff_toml() -> None:
         f"docs/tooling/python-tooling.md references nonexistent ruff.toml as config at lines: "
         f"{[(i+1, line) for i, line in ruff_config_lines]}"
     )
+
+
+
+def test_tooling_guide_does_not_claim_stale_python_version() -> None:
+    """docs/tooling/python-tooling.md must not claim python_version = 3.12."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    assert "python_version = 3.12" not in content, (
+        "docs/tooling/python-tooling.md must not document python_version = 3.12; "
+        "the actual config in ralph-workflow/mypy.ini uses python_version = 3.14"
+    )
+
+
+def test_tooling_guide_does_not_claim_pydantic_mypy_plugin() -> None:
+    """docs/tooling/python-tooling.md must not claim pydantic.mypy plugin is used."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    assert "plugins = pydantic.mypy" not in content, (
+        "docs/tooling/python-tooling.md must not document plugins = pydantic.mypy; "
+        "the actual config in ralph-workflow/mypy.ini has no plugins entry"
+    )
+
+
+def test_tooling_guide_uses_ini_style_overrides_not_toml() -> None:
+    """docs/tooling/python-tooling.md must not show TOML [[overrides]] syntax."""
+    content = _TOOLING_GUIDE_PATH.read_text(encoding="utf-8")
+    assert "[[overrides]]" not in content, (
+        "docs/tooling/python-tooling.md must not show TOML [[overrides]] syntax; "
+        "ralph-workflow/mypy.ini uses INI-style [mypy-...] override sections"
+    )

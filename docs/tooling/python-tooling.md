@@ -80,8 +80,7 @@ uv run python -m mypy ralph/
 
 The `ralph-workflow/mypy.ini` file configures:
 - **strict = true**: Enable all strict checks (non-negotiable)
-- **python_version = 3.12**: Target version
-- **plugins = pydantic.mypy**: Pydantic v2 plugin support
+- **python_version = 3.14**: Target version
 - **enable_error_code = ignore-without-code**: Require error codes on suppressions
 
 ### Type Ignore Policy
@@ -96,8 +95,7 @@ See `docs/agents/type-ignore-policy.md` for the full policy on type suppressions
 Third-party libraries without type stubs are handled via per-module overrides in `ralph-workflow/mypy.ini`:
 
 ```ini
-[[overrides]]
-module = "git.*"
+[mypy-git.*]
 ignore_missing_imports = true
 ```
 
