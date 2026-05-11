@@ -12,6 +12,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.config.enums import AgentTransport
 from ralph.process.child_liveness import classify_child_snapshot
 
 if TYPE_CHECKING:
@@ -228,8 +229,6 @@ def strategy_for_transport(
     registry: ChildLivenessRegistry | None = None,
 ) -> GenericExecutionStrategy | OpenCodeExecutionStrategy:
     """Return the appropriate ExecutionStrategy for an agent transport."""
-    from ralph.config.enums import AgentTransport  # noqa: PLC0415
-
     if transport == AgentTransport.OPENCODE:
         return OpenCodeExecutionStrategy(label_scope=label_scope, registry=registry)
     if transport == AgentTransport.CLAUDE:
@@ -300,7 +299,7 @@ def _route_opencode_line_to_registry(
         return
     if event_type in _OPENCODE_CHILD_SPAWN_TYPES:
         pid_raw = obj.get("pid")
-        pid = int(pid_raw) if isinstance(pid_raw, (int, float)) else None
+        pid = int(pid_raw) if isinstance(pid_raw, int | float) else None
         registry.register_child(child_id, scope_prefix, pid=pid)
     elif event_type in _OPENCODE_CHILD_PROGRESS_TYPES:
         phase = str(obj.get("phase")) if obj.get("phase") is not None else None

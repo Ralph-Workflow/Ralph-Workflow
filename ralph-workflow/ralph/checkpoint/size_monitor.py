@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 
@@ -38,7 +38,7 @@ class SizeThresholds:
 class CheckpointSizeMonitor:
     """Check serialized checkpoint sizes against configured thresholds."""
 
-    thresholds: SizeThresholds = SizeThresholds()
+    thresholds: SizeThresholds = field(default_factory=SizeThresholds)
 
     @classmethod
     def new(cls) -> CheckpointSizeMonitor:

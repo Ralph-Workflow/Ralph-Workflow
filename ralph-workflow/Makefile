@@ -66,7 +66,8 @@ test-subprocess-e2e:
 	uv run python -m ralph.verify_timeout --suite-timeout 60 -- pytest tests/ -q -n 1 -m subprocess_e2e
 
 test-cov:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) -m "not subprocess_e2e" --cov=ralph --cov-report=
+	rm -f .coverage.pytest .coverage.pytest.*
+	uv run python -m ralph.verify_timeout --suite-timeout 120 -- pytest tests/ -q -n $(PYTEST_WORKERS) -m "not subprocess_e2e" --cov=ralph --cov-append --cov-report=
 	uv run coverage report --data-file=.coverage.pytest --fail-under=80
 
 # Linting

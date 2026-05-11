@@ -7,7 +7,7 @@ plain-text rendering. Both dependencies are optional ([web-visit] extras).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 from urllib.parse import urljoin, urlparse
 
 _MAX_LINKS = 100
@@ -37,11 +37,11 @@ class _HTMLParserProtocol(Protocol):
 _ReadabilityDocument: type[_ReadabilityDocumentProtocol] | None = None
 _HTMLParser: type[_HTMLParserProtocol] | None = None
 try:
-    from readability import Document as _RawDocument
+    from readability import Document as _RawDocument  # noqa: I001  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     from selectolax.parser import HTMLParser as _RawHTMLParser
 
-    _ReadabilityDocument = _RawDocument
-    _HTMLParser = _RawHTMLParser  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    _ReadabilityDocument = cast('type[_ReadabilityDocumentProtocol]', _RawDocument)
+    _HTMLParser = cast('type[_HTMLParserProtocol]', _RawHTMLParser)
 except ImportError:
     pass
 
