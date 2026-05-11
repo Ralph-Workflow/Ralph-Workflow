@@ -527,16 +527,16 @@ The Universal Prompt includes this explicit example:
 # Code Review Issues
 
 ## Critical Issues
-- [ ] [src/main.rs:42] Null pointer dereference risk
+- [ ] [src/main.py:42] Null pointer dereference risk
 
 ## High Priority
-- [ ] [src/auth.rs:15] Missing input validation
+- [ ] [src/auth.py:15] Missing input validation
 
 ## Medium Priority
-- [ ] [src/utils.rs:78] Function may return null
+- [ ] [src/utils.py:78] Function may return null
 
 ## Low Priority
-- [ ] [src/config.rs:10] Missing documentation
+- [ ] [src/config.py:10] Missing documentation
 ```
 
 And specifies: "If no issues found, write exactly: `No issues found.`"

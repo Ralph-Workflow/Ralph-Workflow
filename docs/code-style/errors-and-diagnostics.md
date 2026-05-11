@@ -1,5 +1,7 @@
 # Errors And Diagnostics
 
+> **Historical Rust-era documentation** — This file describes the retired Rust implementation's error handling patterns. The current Python package under `ralph-workflow/` follows different patterns. Treat this file as archival background only.
+
 This document defines how the project should model failures, warnings, and domain diagnostics.
 
 ## Core rule

@@ -27,16 +27,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
 from ralph.mcp.session_plan import SessionMcpPlan
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect
-from ralph.pipeline.events import PipelineEvent, WorkerCompletedEvent
+from ralph.pipeline.events import Event, PipelineEvent, WorkerCompletedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -49,7 +49,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from ralph.agents.executor import WorkerResult
+    from ralph.agents.executor import AgentExecutor, WorkerResult
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.pipeline.parallel.coordinator import _WorkerContext
 
 
 def _make_work_unit(uid: str) -> WorkUnit:
@@ -96,7 +98,7 @@ class _SessionContract(NamedTuple):
 
     drain: str
     capabilities: frozenset[str]
-    model_identity: MultimodalModelIdentity | None
+    model_identity: MultimodalModelIdentity
 
 
 class _CapturedContext:
@@ -148,7 +150,7 @@ class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
         super().__init__(runs)
         self._tmp_path = tmp_path
 
-    def run(
+    async def run(
         self,
         unit: WorkUnit,
         *,
@@ -181,7 +183,7 @@ class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
             f"# Development Result for {unit.unit_id}\n\nCompleted successfully.\n"
         )
 
-        return super().run(unit, on_output=on_output, on_status=on_status)
+        return await super().run(unit, on_output=on_output, on_status=on_status)
 
 
 def _run_fan_out_sync(
@@ -193,7 +195,7 @@ def _run_fan_out_sync(
     """Run fan-out via the public _execute_fan_out_sync seam.
 
     This exercises the same path that the real runner uses, including the
-    SameWorkspaceContext propagation into worker sessions.
+    same-workspace session contract propagation into worker sessions.
 
     Returns:
         A tuple of (final_state, captured_context). The captured_context
@@ -235,6 +237,7 @@ def _run_fan_out_sync(
     # Patch build_session_mcp_plan to return controlled values from the contract
     # so we can verify the session contract propagation
     def _fake_build_session_mcp_plan(**kwargs: object) -> SessionMcpPlan:
+        del kwargs
         return SessionMcpPlan(
             capabilities=contract.capabilities,
             model_identity=contract.model_identity,
@@ -249,8 +252,8 @@ def _run_fan_out_sync(
     # We need to actually call _run_worker to create artifacts, so we need to
     # set up the worker context and call it directly. We patch run_fan_out to
     # invoke _run_worker for each unit with the proper context.
-    async def _fake_run_fan_out(**kwargs: object) -> list:
-        ctx = kwargs.get("ctx")
+    async def _fake_run_fan_out(**kwargs: object) -> list[Event]:
+        ctx = cast("_WorkerContext | None", kwargs.get("ctx"))
         if ctx is not None and ctx.same_workspace is not None:
             captured.session_drain = ctx.same_workspace.session_drain
             captured.session_capabilities = ctx.same_workspace.session_capabilities
@@ -276,14 +279,14 @@ def _run_fan_out_sync(
             # Call _run_worker directly
             await coordinator._run_worker(
                 unit,
-                fake_executor,
-                _FakeDisplay(),
+                cast("AgentExecutor", fake_executor),
+                cast("ParallelDisplay", _FakeDisplay()),
                 completion_queue,
                 ctx,
             )
 
         # Now drain the completion queue and return proper events
-        events = [PipelineEvent.FAN_OUT_STARTED]
+        events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
         for _ in units:
             result = await completion_queue.get()
             events.append(
@@ -469,6 +472,7 @@ def test_claude_worker_completes_with_inline_image_capability(
 
     # Verify Claude-specific model identity was propagated
     assert captured.session_model_identity == identity
+    assert captured.session_model_identity is not None
     assert captured.session_model_identity.provider == "claude"
 
 
@@ -503,6 +507,7 @@ def test_gemini_worker_completes_with_typed_block_capability(
 
     # Verify Gemini-specific model identity was propagated
     assert captured.session_model_identity == identity
+    assert captured.session_model_identity is not None
     assert captured.session_model_identity.provider == "gemini"
 
 
@@ -521,7 +526,7 @@ def test_unknown_provider_worker_completes_with_replay_fallback(
     contract = _SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
-        model_identity=None,  # Unknown identity triggers replay fallback
+        model_identity=UNKNOWN_IDENTITY,  # Unknown provider triggers replay fallback
     )
     final_state, captured = _run_fan_out_sync(
         effect,
@@ -534,8 +539,10 @@ def test_unknown_provider_worker_completes_with_replay_fallback(
     assert worker_state is not None
     assert worker_state.status == WorkerStatus.SUCCEEDED
 
-    # Verify unknown provider (None) was propagated
-    assert captured.session_model_identity is None
+    # Verify unknown-provider identity was propagated
+    assert captured.session_model_identity == UNKNOWN_IDENTITY
+    assert captured.session_model_identity is not None
+    assert captured.session_model_identity.provider == "unknown"
 
 
 @pytest.mark.integration

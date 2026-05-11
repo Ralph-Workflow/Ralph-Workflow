@@ -1,4 +1,8 @@
-# Performance Optimization Guide
+# Performance Optimization Guide (Historical - Rust Era)
+
+> **This file describes the retired Rust implementation and is kept for archival reference only.**
+> The Python package does not share the same optimization patterns, commands, or code paths.
+> For Python optimization guidance, refer to the package docstrings and Sphinx documentation.
 
 This document describes the performance optimizations applied to the Ralph pipeline
 to improve memory efficiency and reduce unnecessary allocations.

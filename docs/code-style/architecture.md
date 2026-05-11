@@ -1,5 +1,7 @@
 # Architecture
 
+> **Historical Rust-era documentation** — This file describes the retired Rust implementation's architecture. The current Python package under `ralph-workflow/` has a different architecture. Treat this file as archival background only.
+
 This document describes the preferred finished architecture of the project.
 
 All examples here are written to match the repository's lint policy and project architecture.
