@@ -37,8 +37,8 @@ make ruff-fix
 ### Configuration
 
 The ruff configuration is managed in `pyproject.toml` under `[tool.ruff]`:
-- **select**: Enabled lint rules (E, F, W, I, N, UP, ANN, B, C4, SIM, RUF, TCH, PTH, PERF, PL)
-- **ignore**: Disabled rules (ANN101, ANN102 for self/cls annotations)
+- **select**: Enabled lint rules (E, F, W, I, N, UP, ANN, B, C4, SIM, RUF, TCH, PTH, PERF, PL, PGH)
+- **per-file-ignores**: ANN rules disabled in test files, F401 disabled in `ralph/__init__.py`
 - **line-length**: 100 characters
 - **format**: Ruff's own formatter (drop-in black replacement)
 
@@ -136,8 +136,8 @@ tests/
 ├── test_git_operations.py  # Git operations
 ├── test_parsers.py         # Agent output parsers
 ├── test_reducer.py         # Pipeline reducer pure functions
-├── test_policy_validation.py  # Policy validation (to be created)
-├── test_orchestrator.py    # Orchestrator routing (to be created)
+├── test_policy_validation.py  # Policy validation
+├── test_orchestrator.py    # Orchestrator routing
 └── integration/
     ├── __init__.py
     └── test_pipeline_happy_path.py  # Full pipeline integration
@@ -173,7 +173,7 @@ make test-pypi
 ### Configuration
 
 The `[tool.hatch]` section in `pyproject.toml` configures:
-- **version source**: vcs (git tags)
+- **version source**: code (from `ralph/__init__.py`)
 - **build targets**: wheel packages
 - **publish**: PyPI index URL and auth
 
@@ -187,26 +187,21 @@ pyinstaller creates a standalone single-file binary with no Python installation 
 # Install pyinstaller
 pip install pyinstaller
 
-# Build the binary
+# Build the binary (requires ralph-workflow.spec)
 make dist-binary
 
-# Output: dist/ralph-workflow (macOS universal2 binary)
+# Output: dist/ralph-workflow
 ```
 
 ### How It Works
 
-The `ralph-workflow.spec` file configures:
-- **Analysis**: Entry point (`ralph/__main__.py`), hidden imports, excluded modules
-- **datas**: Policy default TOML files via `collect_data_files("ralph.policy.defaults")`
-- **EXE**: One-file binary with `strip=True`, `target_arch="universal2"`
-
-### Binary Contents
-
-The resulting binary includes:
+The binary build process uses PyInstaller to bundle:
 - Python interpreter
 - All ralph package modules
-- Policy default files (agents.toml, pipeline.toml, artifacts.toml)
+- Policy default files
 - Required third-party libraries (pydantic, rich, typer, httpx, loguru, etc.)
+
+See the `Makefile` `dist-binary` target for current build configuration.
 
 ## make verify (Canonical Verification)
 

@@ -25,7 +25,7 @@ Use these instead when working on the maintained package:
 ## Type Checking Requirements
 
 The maintained Python package enforces strict type checking:
-- **Strict mypy**: All code must pass `cd ralph-workflow && mypy ralph/`
+- **Strict mypy**: All code must pass `cd ralph-workflow && uv run python -m mypy ralph/`
 - **Zero test suppressions**: `test_type_ignore_policy.py` validates no `# type: ignore` in tests
 - **Policy-compliant runtime suppressions**: See `docs/agents/type-ignore-policy.md`
 - **Verification**: `cd ralph-workflow && make verify` includes strict type checking
