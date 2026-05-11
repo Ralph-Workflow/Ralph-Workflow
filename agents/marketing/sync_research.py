@@ -17,6 +17,7 @@ from typing import Iterable, Sequence
 
 WORKSPACE = Path("/home/mistlight/.openclaw/workspace")
 SYNC_PATH_SPECS: tuple[str, ...] = (
+    ".gitignore",
     "AGENTS.md",
     "TOOLS.md",
     "outreach-log.md",
