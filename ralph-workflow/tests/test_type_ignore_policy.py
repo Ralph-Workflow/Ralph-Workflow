@@ -206,3 +206,14 @@ def test_zero_runtime_pyright_directives() -> None:
     )
 
 
+def test_config_authority_mypy_ini_only() -> None:
+    """pyproject.toml must not define [tool.mypy]; mypy.ini is the sole source of truth."""
+    pyproject = _load_pyproject()
+    tool = pyproject.get("tool")
+    assert isinstance(tool, dict), "Expected [tool] section in pyproject.toml"
+    mypy_config = tool.get("mypy")
+    assert (
+        mypy_config is None
+    ), f"Found [tool.mypy] in pyproject.toml; mypy.ini is the sole authority. Config: {mypy_config}"
+
+

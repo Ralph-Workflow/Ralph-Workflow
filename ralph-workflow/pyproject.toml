@@ -147,22 +147,6 @@ paths = ["ralph", "tests"]
 min_confidence = 100
 sort_by_size = true
 
-[tool.mypy]
-strict = true
-python_version = "3.12"
-plugins = ["pydantic.mypy"]
-
-[[tool.mypy.overrides]]
-module = ["ddgs", "ddgs.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["readability", "readability.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["selectolax", "selectolax.*"]
-ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["ralph"]
