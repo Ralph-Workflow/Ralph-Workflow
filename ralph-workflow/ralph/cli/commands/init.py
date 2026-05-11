@@ -159,7 +159,7 @@ def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext)
     console.print(
         "\nRalph Workflow orchestrates AI coding agents through a"
         " [theme.phase.planning]planning → development loop[/theme.phase.planning]"
-        " loop driven by PROMPT.md."
+        " driven by PROMPT.md."
     )
     console.print(Text("Docs: ", style="theme.text.muted"))
     console.print(Text(getting_started_pointer_sentence(), style="theme.text.muted"))

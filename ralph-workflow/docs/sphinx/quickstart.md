@@ -28,10 +28,19 @@ ralph --init
 This creates:
 
 - `PROMPT.md` — starter task template in the project root
-- `.agent/` — local config files (`ralph-workflow.toml`, `mcp.toml`,
-  `pipeline.toml`, `artifacts.toml`)
+- `.agent/` — project-local support files (`mcp.toml`, `pipeline.toml`, `artifacts.toml`)
 - `~/.config/ralph-workflow.toml` and `~/.config/ralph-workflow-mcp.toml` — user-global
   defaults (created once; shared across projects)
+
+If this repository also needs its own optional project-local copy of the main Ralph Workflow
+config, create it explicitly:
+
+```bash
+ralph --init-local-config
+```
+
+That command adds `.agent/ralph-workflow.toml` as a local override without changing the default
+`ralph --init` contract.
 
 ## Edit PROMPT.md
 

@@ -524,6 +524,30 @@ def test_cli_init_fallback_next_steps_includes_getting_started(
     )
 
 
+def test_cli_init_fallback_no_duplicated_loop_wording(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Second `ralph --init` output must not contain duplicated 'loop' in fallback guidance."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # First init creates everything
+    result1 = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result1.exit_code == 0
+
+    # Second init hits the fallback path
+    result2 = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result2.exit_code == 0
+
+    # The fallback message describes the planning → development loop driven by PROMPT.md
+    # It must NOT say "loop loop" or similar duplicated wording
+    assert "loop loop" not in result2.output, (
+        f"Fallback output contains duplicated 'loop': {result2.output}"
+    )
+
+
 def test_cli_run_in_fresh_dir_shows_init_hint(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

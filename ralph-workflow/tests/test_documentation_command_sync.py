@@ -15,6 +15,7 @@ WORKSPACE_ROOT = REPO_ROOT.parent
 CODE_STYLE_PATH = WORKSPACE_ROOT / "CODE_STYLE.md"
 CODE_STYLE_INDEX_PATH = WORKSPACE_ROOT / "docs" / "code-style" / "index.md"
 PYTHON_TOOLING_PATH = WORKSPACE_ROOT / "docs" / "tooling" / "python-tooling.md"
+QUICKSTART_PATH = REPO_ROOT / "docs" / "sphinx" / "quickstart.md"
 
 _STALE_FLAGS = [
     "--cov-report=term-missing",
@@ -75,6 +76,24 @@ def test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin() -> None:
             or "first-party typed helper" in content
             or "typed helper" in content
         ), f"{path} must describe the maintained no-plugin Pydantic typing contract."
+
+
+def test_quickstart_documents_init_local_config_as_explicit_opt_in() -> None:
+    """Quickstart must keep `--init` and `--init-local-config` contracts aligned with runtime."""
+    content = QUICKSTART_PATH.read_text(encoding="utf-8")
+    assert "ralph --init-local-config" in content, (
+        "docs/sphinx/quickstart.md must document `ralph --init-local-config` as the explicit "
+        "project-local override path."
+    )
+    assert ".agent/ralph-workflow.toml" in content, (
+        "docs/sphinx/quickstart.md must explain that `.agent/ralph-workflow.toml` belongs to the "
+        "explicit local override flow."
+    )
+    forbidden_claim = "local config files (`ralph-workflow.toml`, `mcp.toml`,"
+    assert forbidden_claim not in content, (
+        "docs/sphinx/quickstart.md must not claim `ralph --init` creates "
+        "`.agent/ralph-workflow.toml` by default."
+    )
 
 
 _MCP_SERVERS_DOC = REPO_ROOT / "docs" / "mcp" / "mcp-servers.md"
