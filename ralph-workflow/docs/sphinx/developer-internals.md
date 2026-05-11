@@ -11,7 +11,7 @@ instead.
 
 - [Configuration](configuration.md) — runtime config files, precedence, and policy knobs
 - [Concepts](concepts.md) — operator-facing glossary for the small set of workflow terms users need first
-- [Agents Architecture](agents.md) — registry, drain-to-chain binding, execution strategies, parser selection, and watchdogs
+- [Agents Architecture](agents.md) — registry, drain-to-chain binding, execution strategies, bounded-summary parser guarantees, `ResolvedCapabilityProfile`, and watchdogs
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialisation

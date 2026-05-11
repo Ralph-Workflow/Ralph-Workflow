@@ -40,6 +40,7 @@ from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.display.context import DisplayContext
 from ralph.display.context import make_display_context as _make_display_context
+from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -500,13 +501,7 @@ def main(  # noqa: PLR0913
         str | None,
         typer.Option(
             "--init",
-            help=(
-                "Initialize Ralph Workflow in the current directory (scaffolds PROMPT.md plus"
-                " project-local MCP/pipeline/artifact files copied from the user-global"
-                " config set). Use `--init-local-config` when you also want a full"
-                " project-local override copy. Labels are deprecated and ignored; use"
-                " `--init` without a label."
-            ),
+            help=init_help_text(),
         ),
     ] = None,
     regenerate_config: Annotated[
@@ -522,10 +517,7 @@ def main(  # noqa: PLR0913
         typer.Option(
             "--init-local-config",
             "--generate-local-config",
-            help=(
-                "Create .agent/ config files as explicit project-local copies of the"
-                " user-global Ralph Workflow config set"
-            ),
+            help=init_local_config_help_text(),
         ),
     ] = False,
     generate_commit_msg: Annotated[

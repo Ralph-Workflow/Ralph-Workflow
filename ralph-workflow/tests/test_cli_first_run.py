@@ -529,7 +529,7 @@ def test_cli_run_in_fresh_dir_shows_init_hint(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Bare `ralph` in a directory with no PROMPT.md and no .agent shows a friendly init hint."""
+    """Bare `ralph` in a fresh workspace should show the minimal init → edit → run path."""
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
@@ -542,14 +542,36 @@ def test_cli_run_in_fresh_dir_shows_init_hint(
     assert result.exit_code == 2, (  # noqa: PLR2004
         f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
     )
-    assert "not initialized" in result.output.lower(), (
-        f"Expected 'not initialized' in output, got: {result.output}"
+    assert "Ralph Workflow is not initialized here yet" in result.output, (
+        f"Expected exact fresh-workspace panel title, got: {result.output}"
     )
     assert "ralph --init" in result.output, (
         f"Expected 'ralph --init' in output, got: {result.output}"
     )
+    assert "PROMPT.md" in result.output, (
+        f"Expected 'PROMPT.md' in output, got: {result.output}"
+    )
+    assert "ralph" in result.output, (
+        f"Expected 'ralph' run guidance in output, got: {result.output}"
+    )
     assert "getting-started" in result.output, (
         f"Expected 'getting-started' in output, got: {result.output}"
+    )
+
+    panel_start = result.output.index("Ralph Workflow is not initialized here yet")
+    panel_output = result.output[panel_start:]
+    next_steps_output = panel_output[panel_output.index("Next steps:") :]
+    normalized_output = " ".join(next_steps_output.split())
+    init_pos = normalized_output.index("ralph --init")
+    prompt_pos = normalized_output.index("PROMPT.md")
+    run_pos = normalized_output.rindex("ralph")
+    assert init_pos < prompt_pos < run_pos, (
+        "Expected minimal ordered next steps 'ralph --init' before 'PROMPT.md' before 'ralph'; "
+        f"got: {normalized_output}"
+    )
+    assert "ralph --diagnose" not in normalized_output, (
+        "Fresh-state panel should stay minimal and must not require 'ralph --diagnose'; "
+        f"got: {normalized_output}"
     )
 
 

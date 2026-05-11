@@ -22,6 +22,12 @@ from ralph.git.operations import find_repo_root, is_repo_clean
 from ralph.mcp.transport.common import mcp_toml_as_upstreams
 from ralph.mcp.upstream.agent_probe import probe_agent_transports
 from ralph.mcp.upstream.validation import validate_upstream_mcp_servers
+from ralph.onboarding import (
+    GETTING_STARTED_DOC,
+    INIT_COMMAND,
+    RUN_COMMAND,
+    starter_prompt_validation_hint,
+)
 from ralph.policy.loader import (
     PolicyValidationError,
     load_policy,
@@ -140,12 +146,9 @@ def _build_next_steps(
     steps: list[str] = []
 
     if not prompt_exists:
-        steps.append("Run `ralph --init` to scaffold PROMPT.md and project config files.")
+        steps.append(f"Run `{INIT_COMMAND}` to scaffold PROMPT.md and project config files.")
     elif prompt_has_sentinel:
-        steps.append(
-            "Edit PROMPT.md to remove the `<!-- ralph:starter-prompt ... -->` marker "
-            "and describe your task."
-        )
+        steps.append(starter_prompt_validation_hint())
 
     if agent_missing:
         steps.append(
@@ -161,7 +164,7 @@ def _build_next_steps(
         )
 
     if not steps:
-        steps.append("Run `ralph` to start the pipeline.")
+        steps.append(f"Run `{RUN_COMMAND}` to start the pipeline.")
 
     return steps
 
@@ -176,7 +179,7 @@ def _print_next_steps_panel(steps: list[str], *, display_context: DisplayContext
         content.append(f"  • {step}")
     content.append("\n\n")
     content.append("New to Ralph Workflow? ", style="theme.text.muted")
-    content.append("docs/sphinx/getting-started.md", style="theme.text.muted")
+    content.append(GETTING_STARTED_DOC, style="theme.text.muted")
     content.append(" — step-by-step walkthrough.", style="theme.text.muted")
     c.print(Panel(content, title="Next steps", border_style="theme.phase.planning", padding=(1, 2)))
 

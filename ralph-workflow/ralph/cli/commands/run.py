@@ -17,6 +17,7 @@ from rich.text import Text
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity  # noqa: TC001
 from ralph.config.loader import load_config
+from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import PipelineState  # noqa: TC001
 from ralph.policy.loader import (
@@ -166,17 +167,10 @@ def _print_not_initialized_panel(*, display_context: DisplayContext) -> None:
         "driven by your PROMPT.md.\n\n"
     )
     content.append("Next steps:\n", style="theme.banner.title")
-    content.append("  1. Run ")
-    content.append("ralph --init", style="theme.cat.meta")
-    content.append(" to scaffold PROMPT.md and .agent/ configs\n")
-    content.append("  2. Edit ")
-    content.append("PROMPT.md", style="theme.cat.meta")
-    content.append(" with your task\n")
-    content.append("  3. Run ")
-    content.append("ralph", style="theme.cat.meta")
-    content.append(" to start the pipeline\n\n")
-    content.append("Docs: ", style="theme.text.muted")
-    content.append("docs/sphinx/getting-started.md", style="theme.text.muted")
+    for index, line in enumerate(fresh_workspace_next_steps(), start=1):
+        content.append(f"  {index}. {line}\n")
+    content.append("\nDocs: ", style="theme.text.muted")
+    content.append(GETTING_STARTED_DOC, style="theme.text.muted")
     content.append(" — step-by-step walkthrough for new users", style="theme.text.muted")
     panel = Panel(
         content,

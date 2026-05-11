@@ -11,6 +11,7 @@ from rich.text import Text
 from ralph.agents.availability import HasListAgents, check_agent_availability
 from ralph.banner import SupportsPrint, show_banner
 from ralph.display.context import DisplayContext
+from ralph.onboarding import getting_started_pointer_sentence, welcome_panel_next_steps
 
 if TYPE_CHECKING:
     from ralph.config.bootstrap import BootstrapResult
@@ -105,22 +106,11 @@ def _append_file_section(content: list[RenderableType], heading: str, files: lis
 def _build_next_steps_text() -> Text:
     """Build the welcome panel next-steps block."""
     next_steps = Text("Next steps:\n", style="theme.banner.title")
-    next_steps.append("  1. Edit ")
-    next_steps.append("PROMPT.md", style="theme.cat.meta")
-    next_steps.append(" with your implementation task\n")
-    next_steps.append("  2. Install AI agents if missing (e.g., `claude`, `opencode`)\n")
-    next_steps.append("  3. (Optional) Run ")
-    next_steps.append("ralph --init-local-config", style="theme.cat.meta")
-    next_steps.append(" if this repo needs project-local config copies\n")
-    next_steps.append("  4. (Optional) Run ")
-    next_steps.append("ralph --diagnose", style="theme.cat.meta")
-    next_steps.append(" to verify agents, MCP servers, and config\n")
-    next_steps.append("  5. Run ")
-    next_steps.append("ralph", style="theme.cat.meta")
-    next_steps.append(" to start the pipeline\n")
-    next_steps.append("  6. Run ")
-    next_steps.append("ralph --regenerate-config", style="theme.cat.meta")
-    next_steps.append(" to reset configs")
+    lines = welcome_panel_next_steps()
+    for index, line in enumerate(lines, start=1):
+        next_steps.append(f"  {index}. {line}")
+        if index < len(lines):
+            next_steps.append("\n")
     return next_steps
 
 
@@ -158,9 +148,7 @@ def emit_first_run_welcome(
     intro.append(" driven by your PROMPT.md.")
     content.append(intro)
 
-    docs_line1 = Text("New to Ralph Workflow? Read ", style="theme.text.muted")
-    docs_line1.append("docs/sphinx/getting-started.md", style="theme.cat.meta")
-    docs_line1.append(" for a step-by-step walkthrough.", style="theme.text.muted")
+    docs_line1 = Text(getting_started_pointer_sentence(), style="theme.text.muted")
     content.append(docs_line1)
 
     docs_line2 = Text("Offline docs: ", style="theme.text.muted")

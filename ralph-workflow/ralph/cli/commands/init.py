@@ -22,6 +22,14 @@ from ralph.config.bootstrap import (
     ensure_local_support_configs,
 )
 from ralph.config.welcome import emit_first_run_welcome
+from ralph.onboarding import (
+    STARTER_PROMPT_SENTINEL as _STARTER_PROMPT_SENTINEL,
+)
+from ralph.onboarding import (
+    fallback_next_steps,
+    getting_started_pointer_sentence,
+    starter_prompt_template,
+)
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -33,7 +41,7 @@ if TYPE_CHECKING:
 from ralph.display.context import make_display_context
 from ralph.workspace.scope import resolve_workspace_scope
 
-STARTER_PROMPT_SENTINEL = "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
+STARTER_PROMPT_SENTINEL = _STARTER_PROMPT_SENTINEL
 
 
 class _LoadConfigFn(Protocol):
@@ -100,36 +108,7 @@ def init_command(
 
     prompt_path = target / "PROMPT.md"
     if not prompt_path.exists():
-        prompt_path.write_text(
-            STARTER_PROMPT_SENTINEL + "\n\n"
-            "PROMPT.md is the goal and acceptance-criteria document that Ralph Workflow reads "
-            "as its task input. Replace the example content below with YOUR task description, "
-            "then remove the sentinel comment at the top before running `ralph`.\n\n"
-            "# Goal\n\n"
-            "Add a /health endpoint to the example API that returns HTTP 200 with a JSON body"
-            ' `{"status": "ok"}`.\n'
-            "This endpoint should be unauthenticated and return a Content-Type of"
-            " application/json.\n"
-            "It is used by load balancers and uptime monitors to verify the service is"
-            " running.\n\n"
-            "## Context\n\n"
-            "- Main API entry point: `src/api/app.py`\n"
-            "- Existing route examples: `src/api/routes/`\n"
-            "- Dependencies and external services: see `README.md`\n\n"
-            "## Acceptance criteria\n\n"
-            "- GET /health returns HTTP 200\n"
-            "- Response body is valid JSON with `status` == `ok`\n"
-            "- A new test in `tests/` covers the new endpoint\n\n"
-            "## Notes\n\n"
-            "- Keep the prompt scoped — one user-visible outcome per run works best.\n"
-            "- Describe constraints (language, framework, test style) in Context above.\n\n"
-            "---\n\n"
-            "**Next steps**\n\n"
-            "1. Edit the sections above to describe YOUR task and remove the sentinel comment.\n"
-            "2. Run `ralph --diagnose` to verify agents, MCP servers, and config.\n"
-            "3. Run `ralph` to start the planning → development pipeline.\n",
-            encoding="utf-8",
-        )
+        prompt_path.write_text(starter_prompt_template(), encoding="utf-8")
         console.print(_status_text("Created", str(prompt_path), "theme.status.success"))
 
     bundled_defaults = Path(ralph.policy.__file__).parent / "defaults"
@@ -183,40 +162,10 @@ def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext)
         " loop driven by PROMPT.md."
     )
     console.print(Text("Docs: ", style="theme.text.muted"))
-    console.print(
-        "[theme.text.muted]New to Ralph Workflow?[/theme.text.muted] Start with"
-        " [theme.cat.meta]docs/sphinx/getting-started.md[/theme.cat.meta]"
-        " for a step-by-step walkthrough."
-    )
+    console.print(Text(getting_started_pointer_sentence(), style="theme.text.muted"))
     console.print(Text("\nNext steps:", style="theme.text.muted"))
-    console.print(
-        "  1. Edit [theme.cat.meta]PROMPT.md[/theme.cat.meta] with your implementation task"
-    )
-    console.print(
-        "  2. (Optional) Read"
-        " [theme.cat.meta]docs/sphinx/getting-started.md[/theme.cat.meta]"
-        " for a step-by-step first-run walkthrough"
-    )
-    console.print(
-        "  3. (Optional) Copy the user-global config set into this repo with"
-        " [theme.cat.meta]ralph --init-local-config[/theme.cat.meta]"
-        " when this repo needs project-local overrides"
-    )
-    console.print(
-        "  4. (Optional) Configure MCP servers in"
-        " [theme.cat.meta].agent/mcp.toml[/theme.cat.meta]"
-        " or [theme.cat.meta]~/.config/ralph-workflow-mcp.toml[/theme.cat.meta]"
-    )
-    console.print(
-        "  5. (Optional) Review [theme.cat.meta].agent/pipeline.toml[/theme.cat.meta] and"
-        " [theme.cat.meta].agent/artifacts.toml[/theme.cat.meta]"
-        " if you need advanced workflow overrides"
-    )
-    console.print(
-        "  6. (Optional) Run [theme.cat.meta]ralph --diagnose[/theme.cat.meta]"
-        " to verify agents, MCP servers, and config"
-    )
-    console.print("  7. Run [theme.cat.meta]ralph[/theme.cat.meta] to start the pipeline")
+    for index, line in enumerate(fallback_next_steps(), start=1):
+        console.print(f"  {index}. {line}")
     console.print(
         "\n[theme.text.muted]To reset configs later:"
         " [theme.cat.meta]ralph --regenerate-config[/theme.cat.meta][/theme.text.muted]"

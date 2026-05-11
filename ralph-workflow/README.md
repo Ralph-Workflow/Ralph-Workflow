@@ -137,7 +137,8 @@ ralph --version
 ```bash
 cd /path/to/your/project
 ralph --init
-# edit PROMPT.md
+# edit PROMPT.md and remove the starter sentinel
+ralph --diagnose
 ralph
 ```
 
@@ -176,7 +177,7 @@ To reset configs from the bundled defaults (existing files are backed up to `<na
 ralph --regenerate-config
 ```
 
-Before your first real run, it is a good idea to validate your environment:
+Before your first real run, use the recommended verification step:
 
 ```bash
 ralph --diagnose

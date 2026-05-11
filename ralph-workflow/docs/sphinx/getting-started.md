@@ -80,8 +80,9 @@ ralph --init
 
 This creates `PROMPT.md` with a starter template plus the project-local `.agent/`
 support files (`mcp.toml`, `pipeline.toml`, and `artifacts.toml`) copied from the
-user-global config set. You will see a welcome panel listing what was created. If this
-repository needs its own full local copy of the user-global config set, generate it explicitly:
+user-global config set. You will see a welcome panel listing what was created. `ralph --init`
+is the canonical first-run command. If this repository needs its own optional full
+project-local override copy of the user-global config set, generate it explicitly:
 
 ```bash
 ralph --init-local-config
@@ -113,7 +114,7 @@ safety guard so you cannot accidentally run the placeholder task.
 ralph --diagnose
 ```
 
-This prints a status table. Fix any ❌ rows before running the pipeline. Common issues:
+This prints a status table. Treat it as a recommended verification step before the first real run. Fix any ❌ rows before running the pipeline. Common issues:
 
 - No agent on PATH → install `claude` or `opencode` (links above)
 - Config errors → run `ralph --regenerate-config` to reset from defaults

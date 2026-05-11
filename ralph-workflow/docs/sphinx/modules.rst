@@ -35,6 +35,13 @@ ralph.logging
    :members:
    :show-inheritance:
 
+ralph.onboarding
+~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.onboarding
+   :members:
+   :show-inheritance:
+
 ralph.install
 ~~~~~~~~~~~~~
 

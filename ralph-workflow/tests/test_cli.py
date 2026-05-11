@@ -105,6 +105,22 @@ def test_app_help_mentions_init_label_deprecation(cli_runner: CliRunner) -> None
     assert "deprecated" in result.stdout.lower()
 
 
+def test_app_help_describes_init_local_config_as_optional_project_override(
+    cli_runner: CliRunner,
+) -> None:
+    """Top-level help should describe --init-local-config as an optional local override copy."""
+    result = cli_runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    normalized = " ".join(result.stdout.split()).lower()
+
+    assert "--init-local-config" in result.stdout
+    assert "optional" in normalized
+    assert "project-local" in normalized
+    assert "override" in normalized
+    assert "copy" in normalized
+    assert "user-global" in normalized
+
+
 def test_app_help_mentions_checkpoint_json_output(cli_runner: CliRunner) -> None:
     """Top-level help should make checkpoint inspection JSON output explicit."""
     result = cli_runner.invoke(app, ["--help"])

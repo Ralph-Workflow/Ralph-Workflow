@@ -11,6 +11,11 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.onboarding import (
+    STARTER_PROMPT_SENTINEL,
+    missing_prompt_validation_hint,
+    starter_prompt_validation_hint,
+)
 from ralph.policy.models import PhaseDefinition, PipelinePolicy, PolicyBundle
 
 if TYPE_CHECKING:
@@ -27,12 +32,6 @@ class _WorkUnitsModule(Protocol):
 
     WorkUnitsValidationError: type[Exception]
     validate_for_same_workspace: Callable[[object], object]
-
-
-class _InitCommandModule(Protocol):
-    """Typed accessor for the lazily imported init command module."""
-
-    STARTER_PROMPT_SENTINEL: str
 
 
 class CheckpointPolicyMismatchError(Exception):
@@ -997,12 +996,7 @@ def validate_required_inputs(
     prompt_path = workspace_scope.root / "PROMPT.md"
     if not prompt_path.exists():
         raise PolicyValidationError(
-            f"Required input file not found: {prompt_path}. "
-            "PROMPT.md is the goal/acceptance-criteria document "
-            "Ralph Workflow reads as its task input. "
-            "Run `ralph --init` to scaffold PROMPT.md and project config files, "
-            "then edit PROMPT.md with the task you want Ralph Workflow to run. "
-            "New to Ralph Workflow? See docs/sphinx/getting-started.md for a walkthrough."
+            f"Required input file not found: {prompt_path}. " + missing_prompt_validation_hint()
         )
     if not prompt_path.is_file():
         raise PolicyValidationError(f"Required input is not a file: {prompt_path}")
@@ -1011,15 +1005,9 @@ def validate_required_inputs(
             f"Required input file is empty: {prompt_path}. "
             "Run `ralph --init` to scaffold a starter template, then edit it with your task."
         )
-    init_module = cast("_InitCommandModule", import_module("ralph.cli.commands.init"))
-    starter_prompt_sentinel = init_module.STARTER_PROMPT_SENTINEL
-
     content = prompt_path.read_text(encoding="utf-8")
-    if starter_prompt_sentinel in content:
+    if STARTER_PROMPT_SENTINEL in content:
         raise PolicyValidationError(
             f"PROMPT.md at {prompt_path} is still the `ralph --init` starter template. "
-            "Edit it to describe YOUR task (remove the `<!-- ralph:starter-prompt ... -->` "
-            "marker at the top once you have replaced the example content), then re-run `ralph`. "
-            "New to Ralph Workflow? See docs/sphinx/getting-started.md for a walkthrough, "
-            "or docs/sphinx/concepts.md for what a good PROMPT.md should contain."
+            + starter_prompt_validation_hint()
         )
