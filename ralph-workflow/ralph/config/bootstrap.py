@@ -1,11 +1,15 @@
 """Bootstrap helpers for creating user-global and project-local config files.
 
-Auto-creates ~/.config/ralph-workflow.toml and ~/.config/ralph-workflow-mcp.toml
-from the bundled, fully-commented templates on first run. Also supports
-regenerating configs with .bak backups via --regenerate-config.
+Auto-creates the user-global Ralph config set on first run, including
+~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-mcp.toml,
+~/.config/ralph-workflow-pipeline.toml, and
+~/.config/ralph-workflow-artifacts.toml from bundled templates.
+Also supports regenerating configs with .bak backups via --regenerate-config.
 
 Bootstrap creates the standard first-run config set:
-  - User-global: ~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-mcp.toml
+  - User-global: ~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-mcp.toml,
+                 ~/.config/ralph-workflow-pipeline.toml,
+                 ~/.config/ralph-workflow-artifacts.toml
   - Project-local: .agent/ralph-workflow.toml, .agent/mcp.toml,
                    .agent/pipeline.toml, .agent/artifacts.toml
   - Advanced optional: .agent/agents.toml (only regenerated when already present)
@@ -29,9 +33,15 @@ if TYPE_CHECKING:
 
 _GLOBAL_CONFIG_FILENAME = "ralph-workflow.toml"
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
+_GLOBAL_PIPELINE_FILENAME = "ralph-workflow-pipeline.toml"
+_GLOBAL_ARTIFACTS_FILENAME = "ralph-workflow-artifacts.toml"
 _LOCAL_CONFIG_FILENAME = "ralph-workflow.toml"
 _LOCAL_MCP_FILENAME = "mcp.toml"
 _LOCAL_POLICY_FILENAMES = ("pipeline.toml", "artifacts.toml")
+_GLOBAL_POLICY_FILENAME_MAP = {
+    "pipeline.toml": _GLOBAL_PIPELINE_FILENAME,
+    "artifacts.toml": _GLOBAL_ARTIFACTS_FILENAME,
+}
 _ADVANCED_LOCAL_POLICY_FILENAMES = ("agents.toml",)
 _LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
 _DEFAULT_GITIGNORE_PATTERNS = (".agent/", "/PROMPT*", "wt-*/")
@@ -129,6 +139,30 @@ def ensure_global_mcp_config(
     return _copy_with_backup(source, target, force)
 
 
+def ensure_global_policy_configs(
+    global_dir: Path | None = None, *, force: bool = False
+) -> list[BootstrapResult]:
+    """Ensure the user-global policy defaults exist.
+
+    Args:
+        global_dir: Override the global config directory. Defaults to resolve_global_config_dir().
+        force: When True, overwrite existing files (backs them up first).
+
+    Returns:
+        List of BootstrapResult, one per global policy file.
+    """
+    if global_dir is None:
+        global_dir = resolve_global_config_dir()
+    return [
+        _copy_with_backup(
+            _resolve_global_policy_source(global_dir, policy_filename, force=force),
+            global_dir / _global_policy_target_name(policy_filename),
+            force,
+        )
+        for policy_filename in _LOCAL_POLICY_FILENAMES
+    ]
+
+
 def ensure_local_main_config(agent_dir: Path, *, force: bool = False) -> BootstrapResult:
     """Ensure the project-local main override exists.
 
@@ -140,8 +174,14 @@ def ensure_local_main_config(agent_dir: Path, *, force: bool = False) -> Bootstr
         BootstrapResult describing the action taken for `.agent/ralph-workflow.toml`.
     """
     agent_dir.mkdir(parents=True, exist_ok=True)
+    global_source = resolve_global_config_dir() / _GLOBAL_CONFIG_FILENAME
+    source = (
+        global_source
+        if global_source.exists()
+        else _get_bundled_defaults_dir() / _LOCAL_CONFIG_SOURCE
+    )
     return _copy_with_backup(
-        _get_bundled_defaults_dir() / _LOCAL_CONFIG_SOURCE,
+        source,
         agent_dir / _LOCAL_CONFIG_FILENAME,
         force,
     )
@@ -161,16 +201,23 @@ def ensure_local_support_configs(agent_dir: Path, *, force: bool = False) -> lis
         List of BootstrapResult, one per support file.
     """
     agent_dir.mkdir(parents=True, exist_ok=True)
+    global_dir = resolve_global_config_dir()
+    global_mcp_source = global_dir / _GLOBAL_MCP_FILENAME
+    mcp_source = (
+        global_mcp_source
+        if global_mcp_source.exists()
+        else _get_bundled_defaults_dir() / "mcp.toml"
+    )
     results: list[BootstrapResult] = [
         _copy_with_backup(
-            _get_bundled_defaults_dir() / "mcp.toml",
+            mcp_source,
             agent_dir / _LOCAL_MCP_FILENAME,
             force,
         )
     ]
     results.extend(
         _copy_with_backup(
-            _get_bundled_defaults_dir() / policy_filename,
+            _resolve_global_policy_source(global_dir, policy_filename, force=False),
             agent_dir / policy_filename,
             force,
         )
@@ -233,6 +280,7 @@ def regenerate_all(
     results: list[BootstrapResult] = [
         ensure_global_config(global_dir, force=True),
         ensure_global_mcp_config(global_dir, force=True),
+        *ensure_global_policy_configs(global_dir, force=True),
     ]
     if agent_dir is not None:
         results.extend(ensure_local_configs(agent_dir, force=True))
@@ -242,6 +290,27 @@ def regenerate_all(
 
 def _backup_path(target: Path) -> Path:
     return target.with_suffix(target.suffix + ".bak")
+
+
+def _global_policy_target_name(local_policy_filename: str) -> str:
+    return _GLOBAL_POLICY_FILENAME_MAP.get(local_policy_filename, local_policy_filename)
+
+
+def _resolve_global_policy_source(
+    global_dir: Path, local_policy_filename: str, *, force: bool
+) -> Path:
+    if force:
+        return _get_bundled_defaults_dir() / local_policy_filename
+
+    preferred_global_path = global_dir / _global_policy_target_name(local_policy_filename)
+    if preferred_global_path.exists():
+        return preferred_global_path
+
+    legacy_global_path = global_dir / local_policy_filename
+    if legacy_global_path.exists():
+        return legacy_global_path
+
+    return _get_bundled_defaults_dir() / local_policy_filename
 
 
 def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:

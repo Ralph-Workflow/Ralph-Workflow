@@ -13,6 +13,7 @@ import ralph.policy
 from ralph.config.bootstrap import (
     ensure_global_config,
     ensure_global_mcp_config,
+    ensure_global_policy_configs,
     ensure_local_configs,
     regenerate_all,
     resolve_global_config_dir,
@@ -26,7 +27,7 @@ from ralph.policy.loader import (
 from ralph.workspace.scope import WorkspaceScope
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
-_EXPECTED_REGENERATE_COUNT = 7
+_EXPECTED_REGENERATE_COUNT = 9
 _EXPECTED_DEFAULT_GITIGNORE_LINES = (".agent/", "/PROMPT*", "wt-*/")
 _EXPECTED_IGNORED_LOCAL_PATHS = (
     ".agent/mcp.toml",
@@ -85,6 +86,40 @@ def test_ensure_global_mcp_config_creates(tmp_path: Path) -> None:
     assert isinstance(tomllib.loads(target.read_text()), dict)
 
 
+def test_ensure_global_policy_configs_create_branded_global_policy_files(tmp_path: Path) -> None:
+    results = ensure_global_policy_configs(tmp_path)
+
+    expected_files = (
+        "ralph-workflow-pipeline.toml",
+        "ralph-workflow-artifacts.toml",
+    )
+    for fname in expected_files:
+        target = tmp_path / fname
+        assert target.exists(), f"{fname} should exist"
+        assert isinstance(tomllib.loads(target.read_text()), dict)
+
+    assert [result.path.name for result in results] == list(expected_files)
+
+
+def test_ensure_global_policy_configs_migrate_legacy_global_policy_files(tmp_path: Path) -> None:
+    legacy_pipeline = tmp_path / "pipeline.toml"
+    legacy_artifacts = tmp_path / "artifacts.toml"
+    legacy_pipeline.write_text("# legacy pipeline\n", encoding="utf-8")
+    legacy_artifacts.write_text("# legacy artifacts\n", encoding="utf-8")
+
+    results = ensure_global_policy_configs(tmp_path)
+
+    assert (
+        (tmp_path / "ralph-workflow-pipeline.toml").read_text(encoding="utf-8")
+        == "# legacy pipeline\n"
+    )
+    assert (
+        (tmp_path / "ralph-workflow-artifacts.toml").read_text(encoding="utf-8")
+        == "# legacy artifacts\n"
+    )
+    assert all(result.action == "created" for result in results)
+
+
 def test_ensure_local_configs_creates_all_five(tmp_path: Path) -> None:
     agent_dir = tmp_path / ".agent"
     results = ensure_local_configs(agent_dir)
@@ -130,6 +165,8 @@ def test_regenerate_all_force_creates_backups(tmp_path: Path) -> None:
     sentinel = "# SENTINEL"
     (global_dir / "ralph-workflow.toml").write_text(sentinel, encoding="utf-8")
     (global_dir / "ralph-workflow-mcp.toml").write_text(sentinel, encoding="utf-8")
+    (global_dir / "ralph-workflow-pipeline.toml").write_text(sentinel, encoding="utf-8")
+    (global_dir / "ralph-workflow-artifacts.toml").write_text(sentinel, encoding="utf-8")
     (agent_dir / "ralph-workflow.toml").write_text(sentinel, encoding="utf-8")
     (agent_dir / "mcp.toml").write_text(sentinel, encoding="utf-8")
     (agent_dir / "agents.toml").write_text(sentinel, encoding="utf-8")

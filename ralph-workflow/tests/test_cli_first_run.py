@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
+import ralph.policy
 from ralph.banner import WELCOME_MESSAGE
 from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL
 from ralph.cli.main import app
@@ -237,6 +238,8 @@ def test_cli_init_does_not_create_local_main_config_when_global_exists(
 
     assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
     assert (tmp_path / ".config" / "ralph-workflow.toml").exists()
+    assert (tmp_path / ".config" / "ralph-workflow-pipeline.toml").exists()
+    assert (tmp_path / ".config" / "ralph-workflow-artifacts.toml").exists()
     assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
     assert (tmp_path / ".agent" / "mcp.toml").exists()
     assert (tmp_path / ".agent" / "pipeline.toml").exists()
@@ -262,25 +265,35 @@ def test_cli_init_adds_default_gitignore_entries(
     assert "wt-*/" in content
 
 
-def test_cli_generate_local_config_creates_local_main_override(
+def test_cli_init_local_config_copies_global_configs_into_project(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """An explicit local-config command should create `.agent/ralph-workflow.toml`."""
+    """`ralph --init-local-config` should copy the seeded global configs into `.agent/`."""
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
-    init_result = runner.invoke(app, ["--init"], catch_exceptions=False)
-    assert init_result.exit_code == 0, (
-        f"Expected init exit 0, got {init_result.exit_code}: {init_result.output}"
+    bootstrap_result = runner.invoke(app, ["--check-config"], catch_exceptions=False)
+    assert bootstrap_result.exit_code == 0, (
+        f"Expected bootstrap exit 0, got {bootstrap_result.exit_code}: {bootstrap_result.output}"
     )
-    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
 
-    result = runner.invoke(app, ["--generate-local-config"], catch_exceptions=False)
+    result = runner.invoke(app, ["--init-local-config"], catch_exceptions=False)
 
     assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
-    assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+    assert (tmp_path / ".agent" / "ralph-workflow.toml").read_text(encoding="utf-8") == (
+        tmp_path / ".config" / "ralph-workflow.toml"
+    ).read_text(encoding="utf-8")
+    assert (tmp_path / ".agent" / "mcp.toml").read_text(encoding="utf-8") == (
+        tmp_path / ".config" / "ralph-workflow-mcp.toml"
+    ).read_text(encoding="utf-8")
+    assert (tmp_path / ".agent" / "pipeline.toml").read_text(encoding="utf-8") == (
+        tmp_path / ".config" / "ralph-workflow-pipeline.toml"
+    ).read_text(encoding="utf-8")
+    assert (tmp_path / ".agent" / "artifacts.toml").read_text(encoding="utf-8") == (
+        tmp_path / ".config" / "ralph-workflow-artifacts.toml"
+    ).read_text(encoding="utf-8")
 
 
 def test_cli_init_in_linked_worktree_reuses_main_worktree_config_root(
@@ -316,12 +329,12 @@ def test_cli_init_in_linked_worktree_reuses_main_worktree_config_root(
     assert not (linked_worktree / ".agent" / "mcp.toml").exists()
 
 
-def test_cli_generate_local_config_in_linked_worktree_targets_main_checkout(
+def test_cli_init_local_config_in_linked_worktree_targets_main_checkout(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """`ralph --generate-local-config` in a linked worktree should write to the main checkout."""
+    """`ralph --init-local-config` in a linked worktree should write to the main checkout."""
     runner = CliRunner()
     main_repo = tmp_path / "main"
     linked_worktree = tmp_path / "feature-worktree"
@@ -337,10 +350,33 @@ def test_cli_generate_local_config_in_linked_worktree_targets_main_checkout(
         lambda _start=None: main_repo,
     )
 
-    result = runner.invoke(app, ["--generate-local-config"], catch_exceptions=False)
+    defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
+    config_dir = tmp_path / ".config"
+    config_dir.mkdir(exist_ok=True)
+    (config_dir / "ralph-workflow.toml").write_text(
+        (defaults_dir / "ralph-workflow.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (config_dir / "ralph-workflow-mcp.toml").write_text(
+        (defaults_dir / "mcp.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (config_dir / "ralph-workflow-pipeline.toml").write_text(
+        (defaults_dir / "pipeline.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (config_dir / "ralph-workflow-artifacts.toml").write_text(
+        (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["--init-local-config"], catch_exceptions=False)
 
     assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
     assert (main_repo / ".agent" / "ralph-workflow.toml").exists()
+    assert (main_repo / ".agent" / "mcp.toml").exists()
+    assert (main_repo / ".agent" / "pipeline.toml").exists()
+    assert (main_repo / ".agent" / "artifacts.toml").exists()
     assert not (linked_worktree / ".agent" / "ralph-workflow.toml").exists()
 
 

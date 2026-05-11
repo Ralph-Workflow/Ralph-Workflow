@@ -1,0 +1,69 @@
+{# Route the Sphinx auto-generated General Index through page.html so it
+   inherits the ralph-docs three-panel layout. We re-implement the basic theme's
+   body markup here (a few lines of jinja over Sphinx-provided variables) so
+   we can wrap it in our own `<section class="ralph-genindex">`. #}
+{%- extends "page.html" %}
+{%- set title = _('Index') -%}
+
+{%- macro indexentries(firstname, links) -%}
+  {%- if links -%}
+    <a href="{{ links[0][1] }}">
+    {%- if links[0][0] %}<strong>{% endif -%}
+    {{ firstname|e }}
+    {%- if links[0][0] %}</strong>{% endif -%}
+    </a>
+    {%- for ismain, link in links[1:] -%}
+      , <a href="{{ link }}">{% if ismain %}<strong>{% endif -%}
+      [{{ loop.index }}]
+      {%- if ismain %}</strong>{% endif -%}
+      </a>
+    {%- endfor %}
+  {%- else -%}
+    {{ firstname|e }}
+  {%- endif -%}
+{%- endmacro -%}
+
+{%- block body %}
+<section class="ralph-genindex">
+  <h1 id="index" class="ralph-genindex-title">{{ _('General Index') }}</h1>
+
+  <nav class="ralph-genindex-jumpbox" aria-label="{{ _('Jump to letter') }}">
+    {%- for key, dummy in genindexentries -%}
+      <a href="#{{ key }}">{{ key }}</a>
+    {%- endfor -%}
+  </nav>
+
+  {%- if split_index %}
+  <p class="ralph-genindex-split">
+    {%- for key, dummy in genindexentries -%}
+      <a href="{{ pathto('genindex-' + key) }}">{{ key }}</a>
+      {% if not loop.last %} · {% endif %}
+    {%- endfor -%}
+    · <a href="{{ pathto('genindex-all') }}">{{ _('All on one page') }}</a>
+  </p>
+  {%- endif %}
+
+  {%- for key, entries in genindexentries %}
+  <h2 id="{{ key }}" class="ralph-genindex-letter">{{ key }}</h2>
+  <table class="indextable genindextable">
+    <tr>
+      {%- for column in entries|slice_index(2) if column %}
+      <td><ul>
+        {%- for entryname, (links, subitems, _) in column %}
+          <li>{{ indexentries(entryname, links) }}
+            {%- if subitems %}
+            <ul>
+              {%- for subentryname, subentrylinks in subitems %}
+                <li>{{ indexentries(subentryname, subentrylinks) }}</li>
+              {%- endfor %}
+            </ul>
+            {%- endif -%}
+          </li>
+        {%- endfor %}
+      </ul></td>
+      {%- endfor %}
+    </tr>
+  </table>
+  {%- endfor %}
+</section>
+{%- endblock %}

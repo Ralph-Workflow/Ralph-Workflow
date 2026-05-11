@@ -2,9 +2,13 @@
 
 > **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
 
-Ralph Workflow treats failure recovery as a first-class concern. The pipeline is designed
-to keep running through transient failures, preserve enough context to resume cleanly, and
-only terminate on user intent or pre-flight validation errors.
+Ralph Workflow treats failure recovery as a first-class concern. Most recovery behavior is
+built in and automatic: the pipeline retries transient failures, pauses safely during
+connectivity problems, and keeps checkpoint state up to date as it runs.
+
+In normal use, you do **not** need to do anything special to "turn on" recovery. The main
+manual choice is whether to resume from a saved checkpoint with `ralph --resume` or start
+fresh instead.
 
 ## Failure categories
 
@@ -191,6 +195,9 @@ This reroute applies **only** inside the `failed_route` recovery path. If a non-
 Ralph Workflow saves a checkpoint after each phase completes so the pipeline can resume
 from exactly where it left off after an interruption or crash.
 
+Checkpoint **writing** is automatic. **Using** a saved checkpoint is an explicit operator
+choice: pass `ralph --resume` when you want to continue from the saved state.
+
 ### Where the checkpoint lives
 
 ```
@@ -215,6 +222,16 @@ The checkpoint contains:
 A checkpoint is written after every successful phase transition. If the pipeline is
 interrupted mid-phase, the checkpoint reflects the last *completed* phase, not the
 in-progress one — the interrupted phase is retried from scratch on resume.
+
+### Resuming from the checkpoint
+
+```bash
+ralph --resume
+```
+
+This tells Ralph Workflow to load `.agent/checkpoint.json` and continue from the last
+completed phase. If no checkpoint exists, Ralph Workflow prints a warning and starts a
+fresh run instead.
 
 ### Inspecting the checkpoint
 

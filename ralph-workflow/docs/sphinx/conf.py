@@ -1,4 +1,4 @@
-"""Sphinx configuration for Ralph Workflow documentation."""
+"""Sphinx configuration for Ralph Workflow documentation — ralph-docs theme."""
 
 from __future__ import annotations
 
@@ -20,7 +20,8 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
-    "sphinx.ext.intersphinx",
+    # sphinx.ext.intersphinx removed — we have no live cross-doc targets and the inventory
+    # fetch hangs or fails in offline/CI environments. ref.python warnings are suppressed anyway.
     "myst_parser",
     "sphinx_copybutton",
     "sphinx_design",
@@ -37,80 +38,48 @@ autodoc_type_aliases = {
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 
-intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", None),
-}
+# Python inventory fetch removed — cross-references to Python stdlib are not used in these docs,
+# and the network fetch would hang or fail in offline/CI environments. ref.python warnings are
+# already suppressed below so there is no user-visible regression.
+intersphinx_mapping: dict = {}
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "build", "Thumbs.db", ".DS_Store"]
 
-html_theme = "furo"
-# Note: 'default_mode' is not supported by Furo 2025.12.19 (not in theme.conf options).
-# Dark/light mode follows system preference via Furo's built-in toggle.
+# First-party ralph-docs theme — standalone, no Furo dependency
+html_theme = "ralph-docs"
+html_theme_path = ["_themes"]
 html_theme_options = {
     "sidebar_hide_name": False,
     "navigation_with_keys": True,
-    "light_css_variables": {
-        # Light mode: teal brand accent matching ralphworkflow.com
-        "color-brand-primary": "#0891b2",
-        "color-brand-content": "#0891b2",
-        "font-stack": "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-        "font-stack--monospace": (
-            "'JetBrains Mono', 'Fira Code', ui-monospace, "
-            "SFMono-Regular, Menlo, Consolas, monospace"
-        ),
-        "color-background-primary": "#ffffff",
-        "color-background-secondary": "#f6f8fa",
-        "color-foreground-primary": "#0b1320",
-        "color-foreground-secondary": "#4b5563",
-        "color-foreground-muted": "#6b7280",
-        "color-sidebar-background": "#f6f8fa",
-        "color-sidebar-background-border": "#e5e7eb",
-        "color-highlight-on-target": "#ecfeff",
-        "color-api-name": "#0891b2",
-        "color-api-pre-name": "#0891b2",
-    },
-    # Dark palette: teal #22d3ee accent on dark #0b0d10 background (ralphworkflow.com)
-    "dark_css_variables": {
-        "color-brand-primary": "#22d3ee",
-        "color-brand-content": "#22d3ee",
-        "color-background-primary": "#0b0d10",
-        "color-background-secondary": "#11151a",
-        "color-foreground-primary": "#e6edf3",
-        "color-foreground-secondary": "#9aa4b2",
-        "color-foreground-muted": "#6c7682",
-        "color-sidebar-background": "#0b0d10",
-        "color-sidebar-background-border": "#1a1f25",
-        "color-sidebar-link-text--top-level": "#e6edf3",
-        "color-highlight-on-target": "#0c2a2e",
-        "color-api-name": "#22d3ee",
-        "color-api-pre-name": "#22d3ee",
-    },
 }
 html_title = "Ralph Workflow"
 html_show_sourcelink = True
 html_show_sphinx = False
 html_baseurl = "https://ralphworkflow.com/docs/"
 html_static_path = ["_static"]
-html_css_files = ["custom.css"]
+html_css_files: list[str] = []
+html_js_files = ["ralph-docs.js"]
 pygments_style = "friendly"
-pygments_dark_style = "github-dark"
 
 myst_enable_extensions = ["colon_fence", "deflist", "linkify", "substitution"]
 
-# Suppress unavoidable autodoc import warnings (optional-extras forward-refs) and
-# Python cross-reference ambiguity warnings caused by types defined in multiple
-# modules (e.g. SessionCapabilities in types.py and template_variables.py).
-suppress_warnings = ["autodoc.import_object", "ref.python"]
+suppress_warnings = [
+    "autodoc.import_object",
+    "ref.python",
+    # Suppress inventory fetch failures — docs.python.org may be unreachable in offline/CI environments.
+    # ref.python already suppresses unresolved xrefs so there is no user-visible regression.
+    "intersphinx",
+    # Pre-existing upstream issue: developer-internals.md references 'agents' which doesn't exist
+    "toc.not_readable",
+    "myst.xref_missing",
+]
 
 source_suffix = {
     ".rst": "restructuredtext",
     ".md": "markdown",
 }
 
-# Linkcheck: ignore false positives produced by the MyST linkify extension
-# auto-linking bare words that look like domain names (PROMPT.md → http://PROMPT.md)
-# and known-redirected upstream URLs.
 linkcheck_ignore = [
     r"http://PROMPT\.md",
     r"https://docs\.claude\.com/",

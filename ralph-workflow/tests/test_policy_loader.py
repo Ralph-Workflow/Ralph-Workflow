@@ -22,11 +22,15 @@ from ralph.policy.loader import (
     _format_validation_message,
     build_agents_policy_from_config,
     load_policy,
+    load_policy_for_workspace_scope,
     load_policy_or_die,
 )
 from ralph.policy.validation import PolicyValidationError as PolicyContractValidationError
+from ralph.workspace.scope import WorkspaceScope
 
 PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 5
+_GLOBAL_POLICY_MAX_PARALLEL_WORKERS = 3
+_LEGACY_GLOBAL_POLICY_MAX_PARALLEL_WORKERS = 4
 
 
 class _DummyValidationError:
@@ -321,6 +325,73 @@ def test_load_policy_wraps_validate_drain_contracts_error(
         load_policy(config_dir)
     assert excinfo.value.message == "drain contract failure"
     assert excinfo.value.source == "agents"
+
+
+def test_load_policy_for_workspace_scope_uses_global_policy_when_local_override_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    global_dir = tmp_path / "xdg"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    (global_dir / "ralph-workflow-pipeline.toml").write_text(
+        (defaults_dir / "pipeline.toml")
+        .read_text(encoding="utf-8")
+        .replace(
+            "max_parallel_workers = 8",
+            f"max_parallel_workers = {_GLOBAL_POLICY_MAX_PARALLEL_WORKERS}",
+        ),
+        encoding="utf-8",
+    )
+    (global_dir / "ralph-workflow-artifacts.toml").write_text(
+        (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+
+    bundle = load_policy_for_workspace_scope(WorkspaceScope(workspace_root))
+
+    assert bundle.pipeline.phases["development"].parallelization is not None
+    assert (
+        bundle.pipeline.phases["development"].parallelization.max_parallel_workers
+        == _GLOBAL_POLICY_MAX_PARALLEL_WORKERS
+    )
+
+
+def test_load_policy_for_workspace_scope_accepts_legacy_global_policy_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    global_dir = tmp_path / "xdg"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    (global_dir / "pipeline.toml").write_text(
+        (defaults_dir / "pipeline.toml")
+        .read_text(encoding="utf-8")
+        .replace(
+            "max_parallel_workers = 8",
+            f"max_parallel_workers = {_LEGACY_GLOBAL_POLICY_MAX_PARALLEL_WORKERS}",
+        ),
+        encoding="utf-8",
+    )
+    (global_dir / "artifacts.toml").write_text(
+        (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+
+    bundle = load_policy_for_workspace_scope(WorkspaceScope(workspace_root))
+
+    assert bundle.pipeline.phases["development"].parallelization is not None
+    assert (
+        bundle.pipeline.phases["development"].parallelization.max_parallel_workers
+        == _LEGACY_GLOBAL_POLICY_MAX_PARALLEL_WORKERS
+    )
+
 
 
 def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> None:
