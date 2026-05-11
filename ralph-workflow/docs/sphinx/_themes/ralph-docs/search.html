@@ -1,0 +1,40 @@
+{%- extends "page.html" %}
+
+{%- set title = _('Search') -%}
+
+{%- block scripts %}
+    {{ super() }}
+    <script src="{{ pathto('_static/searchtools.js', 1) }}"></script>
+    <script src="{{ pathto('_static/language_data.js', 1) }}"></script>
+{%- endblock %}
+
+{%- block extrahead %}
+    <script src="{{ pathto('searchindex.js', 1) }}" defer="defer"></script>
+    <meta name="robots" content="noindex">
+    {{ super() }}
+{%- endblock %}
+
+{# Override the body block: fill it with the search markup, but
+   inside our .ralph-document layout from page.html. #}
+{%- block body %}
+<section class="ralph-search">
+  <h1 class="ralph-search-title" id="search-documentation">{{ _('Search the docs') }}</h1>
+  <p class="ralph-search-hint">{{ _('Tip: search results only include pages that contain all of the keywords you enter.') }}</p>
+
+  <noscript>
+    <div class="admonition warning">
+      <p class="admonition-title">{{ _('JavaScript required') }}</p>
+      <p>{% trans %}Please activate JavaScript to enable the search functionality.{% endtrans %}</p>
+    </div>
+  </noscript>
+
+  <form class="ralph-search-form" action="" method="get">
+    <input type="text" name="q" id="q" aria-labelledby="search-documentation" placeholder="{{ _('Type a keyword…') }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" autofocus>
+    <input type="submit" value="{{ _('Search') }}">
+  </form>
+
+  <div id="search-progress" class="ralph-search-progress"></div>
+
+  <div id="search-results" class="ralph-search-results"></div>
+</section>
+{%- endblock %}

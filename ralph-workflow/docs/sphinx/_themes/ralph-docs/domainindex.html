@@ -1,0 +1,43 @@
+{# Route Sphinx domain indices (e.g. py-modindex.html) through page.html.
+   Re-implements the basic theme's body markup over the same variables. #}
+{%- extends "page.html" %}
+{%- set title = indextitle -%}
+
+{%- block extrahead %}
+{{ super() }}
+{%- if not embedded and collapse_index %}
+<script>DOCUMENTATION_OPTIONS.COLLAPSE_INDEX = true;</script>
+{%- endif %}
+{%- endblock %}
+
+{%- block body %}
+<section class="ralph-domainindex">
+  <h1 class="ralph-genindex-title">{{ indextitle }}</h1>
+
+  <nav class="ralph-genindex-jumpbox" aria-label="{{ _('Jump to letter') }}">
+    {%- for (letter, entries) in content %}
+      <a href="#cap-{{ letter }}">{{ letter }}</a>
+    {%- endfor %}
+  </nav>
+
+  {%- set groupid = idgen() %}
+  <table class="indextable modindextable">
+    {%- for letter, entries in content %}
+    <tr class="cap" id="cap-{{ letter }}"><td></td><td><strong>{{ letter }}</strong></td><td></td></tr>
+    {%- for (name, grouptype, page, anchor, extra, qualifier, description) in entries %}
+    <tr{% if grouptype == 2 %} class="cg-{{ groupid.current() }}"{% endif %}>
+      <td>{%- if grouptype == 1 %}<img src="{{ pathto('_static/minus.png', 1) }}" class="toggler" id="toggle-{{ groupid.next() }}" style="display: none" alt="-">{%- endif %}</td>
+      <td>{%- if grouptype == 2 %}&#160;&#160;&#160;{%- endif -%}
+        {%- if page %}<a href="{{ pathto(page)|e }}#{{ anchor }}">{%- endif -%}
+        <code class="xref">{{ name|e }}</code>
+        {%- if page %}</a>{%- endif -%}
+        {%- if extra %} <em>({{ extra|e }})</em>{%- endif -%}
+      </td>
+      <td>{%- if qualifier %}<strong>{{ qualifier|e }}:</strong>{%- endif %}
+        <em>{{ description|e }}</em></td>
+    </tr>
+    {%- endfor %}
+    {%- endfor %}
+  </table>
+</section>
+{%- endblock %}

@@ -1,0 +1,117 @@
+{%- extends "layout.html" -%}
+
+{# Suppress all Sphinx basic-theme chrome that we replace with our own layout #}
+{%- block relbar1 %}{%- endblock %}
+{%- block relbar2 %}{%- endblock %}
+{%- block header %}{%- endblock %}
+{%- block footer %}{%- endblock %}
+{%- block sidebar1 %}{%- endblock %}
+{%- block sidebar2 %}{%- endblock %}
+{%- block sidebarsourcelink %}{%- endblock %}
+{%- block sidebartop %}{%- endblock %}
+{%- block sidebarbottom %}{%- endblock %}
+{%- block sidebarrel %}{%- endblock %}
+{%- block sidebarlogo %}{%- endblock %}
+{%- block sidebartoc %}{%- endblock %}
+{%- block sidebarsearch %}{%- endblock %}
+
+{%- block document %}
+<input type="checkbox" id="__navigation" class="ralph-nav-toggle" aria-hidden="true">
+<a class="ralph-skip-link" href="#ralph-content">Skip to content</a>
+
+{%- if theme_announcement %}
+<div class="ralph-announcement">
+  <div class="ralph-announcement-body">
+    {%- block announcement %}{{ theme_announcement }}{%- endblock %}
+  </div>
+</div>
+{%- endif %}
+
+<label for="__navigation" class="ralph-sidebar-overlay" aria-hidden="true"></label>
+
+<div class="ralph-page-layout">
+  <aside class="ralph-sidebar" id="ralph-sidebar" aria-label="{{ _('Navigation') }}">
+    <div class="ralph-sidebar-scroll">
+      {%- if not (theme_sidebar_hide_name | string | lower == 'true') %}
+      <div class="ralph-sidebar-brand">
+        <a class="ralph-sidebar-brand-link" href="{{ pathto(master_doc) }}">
+          <span class="ralph-sidebar-brand-mark" aria-hidden="true"></span>
+          <span class="ralph-sidebar-brand-text">{{ docstitle }}</span>
+        </a>
+        <label for="__navigation" class="ralph-sidebar-close" aria-label="{{ _('Close navigation') }}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </label>
+      </div>
+      {%- endif %}
+      <div class="ralph-sidebar-search">
+        {%- include "searchbox.html" %}
+      </div>
+      <nav class="ralph-sidebar-nav" aria-label="{{ _('Document navigation') }}">
+        {{ toctree(collapse=True, maxdepth=4, includehidden=True) }}
+      </nav>
+    </div>
+  </aside>
+
+  <div class="ralph-page-main">
+    <div class="ralph-content-column">
+      <div class="ralph-content-actions{% if not pagename or pagename == 'index' %} ralph-content-actions-bare{% endif %}">
+        {%- if pagename and pagename != 'index' %}
+        {#- Prefer the actual page title (matches the h1) over a slugified
+            fallback. Title is title-case ("Getting Started"), pagename slugs
+            are kebab-case lower ("getting-started"). The whole .ralph-content-meta
+            element is omitted when there's no breadcrumb so the dashed underline
+            doesn't render with an empty left side. -#}
+        {%- set _crumb = title or pagename.split('/')[-1].replace('-', ' ').replace('_', ' ').title() -%}
+        <span class="ralph-content-meta">
+          <span class="ralph-content-crumb">{{ _crumb|striptags }}</span>
+        </span>
+        {%- endif %}
+        <a class="ralph-back-to-top" href="#ralph-content" aria-label="{{ _('Back to top') }}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"/>
+          </svg>
+          <span>{%- trans %}Top{% endtrans %}</span>
+        </a>
+      </div>
+
+      <main id="ralph-content" class="ralph-document" role="main">
+        {%- block body %}{{ body }}{%- endblock body %}
+      </main>
+
+      <footer class="ralph-page-footer">
+        <nav class="ralph-related-pages" aria-label="{{ _('Page navigation') }}">
+          {%- if next %}
+          <a class="ralph-nav-page ralph-nav-next" href="{{ next.link }}">
+            <div class="ralph-nav-info">
+              <span class="ralph-nav-label">{{ _("Next") }}</span>
+              <span class="ralph-nav-title">{{ next.title }}</span>
+            </div>
+            <span class="ralph-nav-icon" aria-hidden="true">&#8594;</span>
+          </a>
+          {%- endif %}
+          {%- if prev %}
+          <a class="ralph-nav-page ralph-nav-prev" href="{{ prev.link }}">
+            <span class="ralph-nav-icon" aria-hidden="true">&#8592;</span>
+            <div class="ralph-nav-info">
+              <span class="ralph-nav-label">{{ _("Previous") }}</span>
+              <span class="ralph-nav-title">
+                {%- if prev.link == pathto(master_doc) %}{{ _("Home") }}
+                {%- else %}{{ prev.title }}
+                {%- endif %}
+              </span>
+            </div>
+          </a>
+          {%- endif %}
+        </nav>
+      </footer>
+    </div>
+
+    <aside class="ralph-page-toc" id="ralph-toc" aria-label="{{ _('Table of contents') }}">
+      <div class="ralph-toc-inner">
+        <p class="ralph-toc-title">{{ _("On this page") }}</p>
+        <div class="ralph-toc-tree">{{ toc }}</div>
+      </div>
+    </aside>
+  </div>
+</div>
+{%- endblock document %}
