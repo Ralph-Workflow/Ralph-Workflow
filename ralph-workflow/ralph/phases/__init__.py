@@ -19,15 +19,17 @@ phases to work without hardcoded handler registration.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from loguru import logger
-from pydantic import BaseModel
 
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event
 
 if TYPE_CHECKING:
+    from typing import TypedDict, Unpack
+
     from rich.console import Console
 
     from ralph.agents.chain import ChainManager
@@ -41,7 +43,20 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
-class PhaseContext(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+if TYPE_CHECKING:
+    class _PhaseContextArgs(TypedDict):
+        workspace: Workspace
+        registry: AgentRegistry
+        chain_manager: ChainManager
+        pipeline_policy: PipelinePolicy
+        agents_policy: AgentsPolicy
+        artifacts_policy: ArtifactsPolicy
+        config: UnifiedConfig | None
+        console: Console | None
+
+
+@dataclass(frozen=True)
+class PhaseContext:
     """Context passed to every phase handler.
 
     Attributes:
@@ -55,8 +70,6 @@ class PhaseContext(BaseModel):  # type: ignore[explicit-any]  # reason: external
         console: Rich console for output (optional).
     """
 
-    model_config = {"frozen": True}
-
     workspace: Workspace
     registry: AgentRegistry
     chain_manager: ChainManager
@@ -65,6 +78,14 @@ class PhaseContext(BaseModel):  # type: ignore[explicit-any]  # reason: external
     artifacts_policy: ArtifactsPolicy
     config: UnifiedConfig | None = None
     console: Console | None = None
+
+    @classmethod
+    def construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
+        return cls(**kwargs)
+
+    @classmethod
+    def model_construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
+        return cls.construct(**kwargs)
 
 
 class PhaseHandlerNotFoundError(Exception):
@@ -193,7 +214,7 @@ def handle_phase(
     """
     # The effect may be a PreparePromptEffect or InvokeAgentEffect
     # Extract the phase name from the effect
-    if isinstance(effect, (InvokeAgentEffect, PreparePromptEffect)):
+    if isinstance(effect, InvokeAgentEffect | PreparePromptEffect):
         phase_name = effect.phase
     else:
         phase_name = "unknown"

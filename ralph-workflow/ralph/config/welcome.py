@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from rich.console import Group
+from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.text import Text
 
 from ralph.agents.availability import HasListAgents, check_agent_availability
-from ralph.banner import show_banner
+from ralph.banner import SupportsPrint, show_banner
 from ralph.display.context import DisplayContext
 
 if TYPE_CHECKING:
@@ -24,9 +24,9 @@ _KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
 
 def _build_agent_availability_content(
     agent_registry: HasListAgents | None,
-) -> list[object]:
+) -> list[RenderableType]:
     """Build agent availability content or generic PATH message."""
-    content: list[object] = []
+    content: list[RenderableType] = []
     if agent_registry is not None:
         try:
             availability = check_agent_availability(agent_registry)
@@ -96,7 +96,7 @@ def _partition_config_files(results: list[BootstrapResult]) -> tuple[list[str], 
     return global_files, local_files
 
 
-def _append_file_section(content: list[object], heading: str, files: list[str]) -> None:
+def _append_file_section(content: list[RenderableType], heading: str, files: list[str]) -> None:
     """Append a headed bullet list of config files when present."""
     if not files:
         return
@@ -152,9 +152,10 @@ def emit_first_run_welcome(
     if not has_new_or_regenerated:
         return
 
-    show_banner(display_context=display_context, console=console)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    rich_console = cast("SupportsPrint", console)
+    show_banner(display_context=display_context, console=rich_console)
 
-    content: list[object] = []
+    content: list[RenderableType] = []
 
     intro = Text("Ralph Workflow orchestrates AI coding agents through a ")
     intro.append("planning → development loop", style="theme.phase.planning")
@@ -194,9 +195,9 @@ def emit_first_run_welcome(
     content.append(_build_next_steps_text())
 
     panel = Panel(
-        Group(*content),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        Group(*content),
         title="Ralph Workflow first-run setup",
         border_style="theme.banner.border",
         padding=(1, 2),
     )
-    console.print(panel)  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    rich_console.print(panel)

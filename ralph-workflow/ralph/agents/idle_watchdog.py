@@ -473,9 +473,9 @@ class IdleWatchdog:
         ws_delta = diag.get("workspace_event_delta")
         oldest = diag.get("oldest_child_seconds")
         if (
-            isinstance(ws_delta, (int, float))
+            isinstance(ws_delta, int | float)
             and ws_delta == 0
-            and isinstance(oldest, (int, float))
+            and isinstance(oldest, int | float)
             and suspect is not None
             and oldest >= suspect
         ):

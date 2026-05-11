@@ -15,7 +15,7 @@ from __future__ import annotations
 import tomllib
 from os import getenv
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 from pydantic import ValidationError
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
 _LOCAL_MCP_FILENAME = "mcp.toml"
+_TOML_DECODE_ERROR = cast("type[ValueError]", tomllib.TOMLDecodeError)
 
 
 def _bundled_default_mcp_config_path() -> Path:
@@ -55,7 +56,7 @@ def _load_mcp_toml(path: Path) -> dict[str, object]:
     with path.open("rb") as fh:
         try:
             data: dict[str, object] = tomllib.load(fh)
-        except tomllib.TOMLDecodeError as exc:  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        except _TOML_DECODE_ERROR as exc:
             logger.error("MCP config parse error at {}: {}", path, exc)
             raise SystemExit(1) from exc
     return data

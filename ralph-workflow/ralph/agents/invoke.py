@@ -185,18 +185,6 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, GeneralConfig
     from ralph.phases.required_artifacts import RequiredArtifact
 
-# Runtime imports with graceful fallback when watchdog is not available
-try:
-    from watchdog.events import FileSystemEventHandler as _WatchdogFileSystemEventHandlerClass
-    from watchdog.observers import Observer as _WatchdogObserverClass
-
-    _WATCHDOG_EVENTS_AVAILABLE = True
-except ImportError:
-    _WatchdogObserverClass = None  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    _WatchdogFileSystemEventHandlerClass = None  # type: ignore[assignment,misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    _WATCHDOG_EVENTS_AVAILABLE = False
-
-
 class _HasStop(Protocol):
     """Protocol for watchdog Observer-like objects that have a stop method."""
 
@@ -216,6 +204,15 @@ class _ObserverProtocol(_HasStop, Protocol):
 
     def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None: ...
     def start(self) -> None: ...
+
+
+def _create_watchdog_observer() -> _ObserverProtocol | None:
+    """Construct a watchdog observer when the optional dependency is installed."""
+    try:
+        from watchdog.observers import Observer  # noqa: PLC0415
+    except ImportError:
+        return None
+    return cast("_ObserverProtocol", Observer())
 
 
 class _IdleStreamTimeoutError(RuntimeError):
@@ -416,23 +413,23 @@ class WorkspaceMonitor:
 
     def start(self) -> None:
         """Start monitoring the workspace for file changes."""
-        if (
-            _WatchdogObserverClass is None
-            or _WatchdogFileSystemEventHandlerClass is None
-            or not _WATCHDOG_EVENTS_AVAILABLE
-        ):
+        observer = _create_watchdog_observer()
+        if observer is None:
             return
 
-        class ChangeTracker(_WatchdogFileSystemEventHandlerClass):
+        class ChangeTracker:
             def __init__(self, monitor: WorkspaceMonitor) -> None:
                 self._monitor = monitor
+
+            def dispatch(self, event: object) -> None:
+                self.on_any_event(event)
 
             def on_any_event(self, event: object) -> None:
                 if isinstance(event, _HasSrcPath):
                     self._monitor.record_event(event.src_path)
 
         handler = ChangeTracker(self)
-        self._observer = cast("_ObserverProtocol", _WatchdogObserverClass())
+        self._observer = observer
         self._observer.schedule(handler, str(self._workspace), recursive=True)
         self._observer.start()
         logger.debug("Started workspace monitoring: {}", self._workspace)

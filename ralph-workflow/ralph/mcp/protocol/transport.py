@@ -149,7 +149,7 @@ class StdioTransport(MCPTransport):
                     else None
                 )
                 msg_id_value = msg_dict.get("id")
-                msg_id = msg_id_value if isinstance(msg_id_value, (str, int)) else None
+                msg_id = msg_id_value if isinstance(msg_id_value, str | int) else None
                 msg = MCPMessage(
                     method=method,
                     params=params,

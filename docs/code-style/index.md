@@ -26,8 +26,9 @@ Use these instead when working on the maintained package:
 
 The maintained Python package enforces strict type checking:
 - **Strict mypy**: All code must pass `cd ralph-workflow && uv run python -m mypy ralph/`
+- **No implicit Any escape hatches**: `ralph-workflow/mypy.ini` keeps `disallow_any_explicit`, `disallow_any_decorated`, `disallow_any_unimported`, and `disallow_any_expr` enabled
 - **Zero test suppressions**: `test_type_ignore_policy.py` validates no `# type: ignore` in tests
-- **Policy-compliant runtime suppressions**: See `docs/agents/type-ignore-policy.md`
+- **Policy-compliant runtime suppressions**: See `docs/agents/type-ignore-policy.md`; first prefer a typed helper, guard, or `cast(...)`
 - **Verification**: `cd ralph-workflow && make verify` includes strict type checking
 
 These requirements are non-negotiable and enforced by CI/CD gates.

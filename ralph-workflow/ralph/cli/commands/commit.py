@@ -878,15 +878,17 @@ def _metadata_summary(metadata: dict[str, object]) -> str:
 
 
 def _format_metadata_value(value: object) -> str:
-    if isinstance(value, str):
-        return value.strip()
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, (dict, list, tuple)):
-        return json.dumps(value, default=str, sort_keys=True)
-    return ""
+    match value:
+        case str():
+            return value.strip()
+        case bool():
+            return "true" if value else "false"
+        case int() | float():
+            return str(value)
+        case dict() | list() | tuple():
+            return json.dumps(value, default=str, sort_keys=True)
+        case _:
+            return ""
 
 
 def _invocation_error_with_output(

@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path as RuntimePath
-from typing import TYPE_CHECKING, Annotated, Protocol, TypedDict
+from typing import TYPE_CHECKING, Annotated, Protocol, TypedDict, cast
 
 import rich_click as click
 import typer
@@ -42,7 +42,7 @@ from ralph.pipeline import checkpoint as ckpt
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from rich.console import Console
 
@@ -113,7 +113,6 @@ def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
       inline prompt can be passed without conflicting with subcommand dispatch.
     """
     if args is None:
-        import sys  # noqa: PLC0415
         args = sys.argv[1:]
 
     normalized_args: list[str] = list(args)
@@ -184,6 +183,18 @@ class _CommandMain(Protocol):
     ) -> object: ...
 
 
+def _set_command_main(command: click.Command, callback: _CommandMain) -> None:
+    cast("dict[str, object]", command.__dict__)["main"] = callback
+
+
+
+def _set_typer_testing_get_command(
+    callback: Callable[[typer.Typer], click.Command],
+) -> None:
+    cast("dict[str, object]", typer.testing.__dict__)["_get_command"] = callback
+
+
+
 def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Command:
     command = _typer_get_command(typer_instance)
     if typer_instance is app:
@@ -205,12 +216,12 @@ def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Comman
                 windows_expand_args=windows_expand_args,
             )
 
-        command.main = patched_main  # type: ignore[assignment,method-assign]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        _set_command_main(command, patched_main)
     return command
 
 
 typer.main.get_command = _get_command_with_optional_init
-typer.testing._get_command = _get_command_with_optional_init  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+_set_typer_testing_get_command(_get_command_with_optional_init)
 
 
 def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
@@ -339,12 +350,10 @@ def _handle_early_exit_flags(
     if version:
         version_callback(version)
     if explain_policy:
-        from pathlib import Path as _Path  # noqa: PLC0415
-        policy_dir = _Path(explain_policy_dir) if explain_policy_dir else None
+        policy_dir = RuntimePath(explain_policy_dir) if explain_policy_dir else None
         raise typer.Exit(code=explain_command(policy_dir))
     if check_policy:
-        from pathlib import Path as _Path  # noqa: PLC0415
-        policy_dir = _Path(explain_policy_dir) if explain_policy_dir else None
+        policy_dir = RuntimePath(explain_policy_dir) if explain_policy_dir else None
         raise typer.Exit(code=check_policy_command(policy_dir, counter_overrides=counter_overrides))
 
 

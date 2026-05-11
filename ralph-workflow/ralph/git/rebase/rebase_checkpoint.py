@@ -80,14 +80,16 @@ def _string_list(data: Mapping[str, object], key: str) -> list[str]:
 
 def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
     value = data.get(key, default)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, (str, bytes, bytearray)):
-        try:
-            return int(value)
-        except ValueError:
+    match value:
+        case int():
+            return value
+        case str() | bytes() | bytearray():
+            try:
+                return int(value)
+            except ValueError:
+                return default
+        case _:
             return default
-    return default
 
 
 class RebasePhase(StrEnum):

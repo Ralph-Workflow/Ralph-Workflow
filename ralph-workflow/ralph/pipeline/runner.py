@@ -3069,7 +3069,7 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             pipeline_policy=policy_bundle.pipeline,
         )
 
-    from ralph.agents.idle_watchdog import WaitingStatusEvent  # noqa: PLC0415,TC001
+    from ralph.agents.idle_watchdog import WaitingStatusEvent  # noqa: TC001,PLC0415
     from ralph.agents.invoke import (  # noqa: PLC0415
         AgentInactivityTimeoutError,
         build_invoke_options_from_config,

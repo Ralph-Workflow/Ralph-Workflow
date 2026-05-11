@@ -225,11 +225,12 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         The entry phase is derived from policy.entry_phase so no workflow
         entry semantics are embedded in this class.
         """
-        return cls(
-            phase=policy.entry_phase,
-            policy_entry_phase=policy.entry_phase,
-            **overrides,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        )
+        payload: dict[str, object] = {
+            "phase": policy.entry_phase,
+            "policy_entry_phase": policy.entry_phase,
+            **overrides,
+        }
+        return cls.model_validate(payload)
 
     @model_validator(mode="before")
     @classmethod

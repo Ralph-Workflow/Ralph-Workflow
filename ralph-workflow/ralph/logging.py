@@ -20,12 +20,14 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 if TYPE_CHECKING:
-    from loguru import Logger, Record
+    from collections.abc import Mapping
+
+    from loguru import Logger
 
 # Verbosity level to loguru minimum level
 _VERBOSITY_LEVELS = {
@@ -211,10 +213,13 @@ def bind_worker_sink(
     worker_log_dir.mkdir(parents=True, exist_ok=True)
     log_path = worker_log_dir / f"unit-{unit_id}.log"
 
-    def worker_filter(record: Record) -> bool:
-        return record["extra"].get("unit_id") == unit_id  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    def worker_filter(record: object) -> bool:
+        record_mapping = cast("Mapping[str, object]", record)
+        extra = cast("Mapping[str, object]", record_mapping["extra"])
+        unit_id_value = extra.get("unit_id")
+        return isinstance(unit_id_value, str) and unit_id_value == unit_id
 
-    sink_id = logger.add(log_path, filter=worker_filter, format="{time} {level} {message}")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    sink_id = logger.add(log_path, filter=worker_filter, format="{time} {level} {message}")
     return WorkerSinkHandle(sink_id=sink_id, log_path=log_path)
 
 

@@ -33,7 +33,7 @@ _DECISION_LOG_MAX = 16
 
 def _format_waiting_status_line(event: object) -> str:
     """Build the human-readable line for a WaitingStatusEvent."""
-    from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: PLC0415,I001
+    from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: PLC0415
 
     assert isinstance(event, WaitingStatusEvent)
     cum = f"{event.cumulative_seconds:.0f}"
@@ -255,7 +255,7 @@ class PipelineSubscriber:
         agent_name: str | None = None,
     ) -> None:
         """Record a waiting-status event from IdleWatchdog and push a fresh snapshot."""
-        from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: PLC0415,I001
+        from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: I001,PLC0415
 
         if not isinstance(event, WaitingStatusEvent):
             return
