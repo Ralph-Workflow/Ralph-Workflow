@@ -59,14 +59,11 @@ def test_no_direct_subprocess_calls_outside_process_manager() -> None:
             continue
         content = py_file.read_text(encoding="utf-8")
         violations.extend(
-            f"{rel}: contains '{pattern}'"
-            for pattern in FORBIDDEN_PATTERNS
-            if pattern in content
+            f"{rel}: contains '{pattern}'" for pattern in FORBIDDEN_PATTERNS if pattern in content
         )
 
     assert not violations, (
-        "Direct subprocess calls found outside ralph/process/manager.py:\n"
-        + "\n".join(violations)
+        "Direct subprocess calls found outside ralph/process/manager.py:\n" + "\n".join(violations)
     )
 
 
@@ -86,9 +83,7 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
         content = py_file.read_text(encoding="utf-8")
         rel = py_file.relative_to(TESTS_ROOT).as_posix()
         violations.extend(
-            f"{rel}: contains '{pattern}'"
-            for pattern in all_patterns
-            if pattern in content
+            f"{rel}: contains '{pattern}'" for pattern in all_patterns if pattern in content
         )
 
     assert not violations, (
@@ -100,7 +95,6 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
 def test_mcp_fixtures_no_longer_allowlisted() -> None:
     """Assert that the migrated MCP fixture files are not in TESTS_ALLOWLIST."""
     regressions = _MCP_FIXTURE_FILES & TESTS_ALLOWLIST
-    assert not regressions, (
-        "MCP fixture files were re-added to TESTS_ALLOWLIST:\n"
-        + "\n".join(sorted(regressions))
+    assert not regressions, "MCP fixture files were re-added to TESTS_ALLOWLIST:\n" + "\n".join(
+        sorted(regressions)
     )

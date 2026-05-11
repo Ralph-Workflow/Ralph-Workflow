@@ -208,7 +208,6 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
     assert saved_states[-1].phase == "complete"
 
 
-
 def test_development_phase_receives_multimodal_handoff_metadata(
     tmp_git_repo,
     monkeypatch,
@@ -471,7 +470,8 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
 
     # (c) the unsupported entry is read through the handoff seam — not silently dropped.
     unsupported_entries = [
-        e for e in captured_entries
+        e
+        for e in captured_entries
         if hasattr(e, "delivery") and e.delivery == DeliveryMode.UNSUPPORTED.value
     ]
     assert len(unsupported_entries) == 1, (

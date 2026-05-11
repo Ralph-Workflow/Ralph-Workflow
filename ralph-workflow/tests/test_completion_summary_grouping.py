@@ -446,6 +446,7 @@ def test_compact_context_prefix_with_outer_dev() -> None:
 
 # --- Budget Progress section tests ---
 
+
 def _make_snapshot_with_budget_bp(budget_progress: dict) -> PipelineSnapshot:
     return PipelineSnapshot(
         phase="complete",
@@ -470,11 +471,13 @@ def _make_snapshot_with_budget_bp(budget_progress: dict) -> PipelineSnapshot:
 
 def test_wide_budget_progress_never_shown() -> None:
     """Wide mode never shows 'Budget Progress' or 'remaining' budget wording."""
-    snap = _make_snapshot_with_budget_bp({
-        "dev_cycles": BudgetProgress(
-            completed=2, cap=8, description="Dev Cycles", tracks_budget=True
-        ),
-    })
+    snap = _make_snapshot_with_budget_bp(
+        {
+            "dev_cycles": BudgetProgress(
+                completed=2, cap=8, description="Dev Cycles", tracks_budget=True
+            ),
+        }
+    )
     out = _render_group_full(snap)
     assert "Budget Progress" not in out
     assert "remaining" not in out
@@ -482,22 +485,26 @@ def test_wide_budget_progress_never_shown() -> None:
 
 def test_wide_budget_progress_absent_when_no_tracked_counters() -> None:
     """Wide mode omits 'Budget Progress' section when no budget-tracked counters exist."""
-    snap = _make_snapshot_with_budget_bp({
-        "dev_cycles": BudgetProgress(
-            completed=2, cap=8, description="Dev Cycles", tracks_budget=False
-        ),
-    })
+    snap = _make_snapshot_with_budget_bp(
+        {
+            "dev_cycles": BudgetProgress(
+                completed=2, cap=8, description="Dev Cycles", tracks_budget=False
+            ),
+        }
+    )
     out = _render_group_full(snap)
     assert "Budget Progress" not in out
 
 
 def test_compact_budget_never_shown() -> None:
     """Compact mode never shows 'BUDGET:' or 'remaining' budget wording."""
-    snap = _make_snapshot_with_budget_bp({
-        "dev_cycles": BudgetProgress(
-            completed=4, cap=10, description="Dev Cycles", tracks_budget=True
-        ),
-    })
+    snap = _make_snapshot_with_budget_bp(
+        {
+            "dev_cycles": BudgetProgress(
+                completed=4, cap=10, description="Dev Cycles", tracks_budget=True
+            ),
+        }
+    )
     out = _render_compact_full(snap)
     assert "BUDGET:" not in out
     assert "remaining" not in out

@@ -29,9 +29,7 @@ def test_repo_root_contributing_points_to_ralph_workflow():
     """Repo-root CONTRIBUTING must point contributors to the maintained Python workflow."""
     content = REPO_ROOT_CONTRIBUTING.read_text()
     # Should reference the maintained package
-    assert "ralph-workflow" in content, (
-        "Repo-root CONTRIBUTING.md must reference ralph-workflow"
-    )
+    assert "ralph-workflow" in content, "Repo-root CONTRIBUTING.md must reference ralph-workflow"
     # Should reference canonical verification
     assert "make verify" in content or "verify" in content.lower(), (
         "Repo-root CONTRIBUTING.md should reference canonical verification"
@@ -58,9 +56,7 @@ def test_repo_root_readme_has_no_stale_rust_references():
     assert "cargo" not in content, (
         "Repo-root README.md should not reference Rust-era cargo workflow"
     )
-    assert "xtask" not in content, (
-        "Repo-root README.md should not reference Rust-era xtask"
-    )
+    assert "xtask" not in content, "Repo-root README.md should not reference Rust-era xtask"
 
 
 def test_contributing_has_no_stale_verification_flags():

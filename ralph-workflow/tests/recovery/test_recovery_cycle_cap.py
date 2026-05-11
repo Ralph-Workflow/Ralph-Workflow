@@ -19,6 +19,7 @@ def _minimal_policy_bundle():
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
 
+
 _CYCLE_CAP = 3
 _EXPECTED_CYCLE_COUNT = 2
 _MIN_REASON_LEN = 20

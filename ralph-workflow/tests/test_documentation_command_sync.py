@@ -74,9 +74,7 @@ def test_repo_root_typing_docs_do_not_claim_pydantic_mypy_plugin() -> None:
             "no-plugin" in content
             or "first-party typed helper" in content
             or "typed helper" in content
-        ), (
-            f"{path} must describe the maintained no-plugin Pydantic typing contract."
-        )
+        ), f"{path} must describe the maintained no-plugin Pydantic typing contract."
 
 
 _MCP_SERVERS_DOC = REPO_ROOT / "docs" / "mcp" / "mcp-servers.md"
@@ -212,8 +210,7 @@ def test_readme_provider_matrix_gemini_typed_blocks() -> None:
     )
     # Must not claim Gemini delivers all media as resource references
     assert (
-        "PDFs, documents, audio, and video are all delivered as resource references"
-        not in content
+        "PDFs, documents, audio, and video are all delivered as resource references" not in content
     ), (
         "README.md must not claim Gemini delivers all non-image media as resource_reference; "
         "Gemini uses typed blocks for PDF/document/audio/video"
@@ -225,12 +222,8 @@ def test_readme_provider_matrix_openai_explicitly_unsupported() -> None:
     content = _README_PATH.read_text(encoding="utf-8")
     # Must say PDFs/docs/audio/video are unsupported for OpenAI
     assert (
-        "explicitly unsupported" in content
-        or "unsupported via the chat completion API" in content
-    ), (
-        "README.md must describe PDF/document/audio/video as explicitly unsupported"
-        " for OpenAI/Codex"
-    )
+        "explicitly unsupported" in content or "unsupported via the chat completion API" in content
+    ), "README.md must describe PDF/document/audio/video as explicitly unsupported for OpenAI/Codex"
     # Must not say OpenAI non-image media falls back to resource_reference
     assert "other models fall back to resource reference" not in content, (
         "README.md must not claim OpenAI non-image media falls back to resource_reference; "
@@ -392,9 +385,7 @@ def test_code_style_md_mentions_strict_mypy_config() -> None:
     assert "ralph-workflow/mypy.ini" in content, (
         "CODE_STYLE.md must reference the exact maintained mypy config path ralph-workflow/mypy.ini"
     )
-    assert "strict" in content.lower(), (
-        "CODE_STYLE.md must mention strict type checking"
-    )
+    assert "strict" in content.lower(), "CODE_STYLE.md must mention strict type checking"
 
 
 def test_code_style_md_mentions_type_ignore_policy() -> None:
@@ -431,9 +422,7 @@ def test_code_style_index_mentions_strict_mypy_config() -> None:
     assert "ralph-workflow/mypy.ini" in content, (
         "docs/code-style/index.md must reference the exact maintained mypy config path"
     )
-    assert "strict" in content.lower(), (
-        "docs/code-style/index.md must mention strict type checking"
-    )
+    assert "strict" in content.lower(), "docs/code-style/index.md must mention strict type checking"
 
 
 def test_code_style_index_mentions_type_ignore_policy() -> None:
@@ -490,15 +479,9 @@ def test_tooling_guide_mentions_zero_test_suppressions() -> None:
     marker = "type:" + " ignore"
     assert (
         "test files must not" in content_lower
-        or (
-            "zero" in content_lower
-            and ("test" in content_lower or "suppression" in content_lower)
-        )
+        or ("zero" in content_lower and ("test" in content_lower or "suppression" in content_lower))
         or (marker in content and "test" in content)
-    ), (
-        "docs/tooling/python-tooling.md must explicitly state "
-        "that test files have zero suppressions"
-    )
+    ), "docs/tooling/python-tooling.md must explicitly state that test files have zero suppressions"
 
 
 def test_tooling_guide_mentions_make_verify() -> None:
@@ -517,16 +500,14 @@ def test_tooling_guide_does_not_reference_nonexistent_ruff_toml() -> None:
     # It may be acceptable to mention it in passing, but not as the primary configuration source
     lines = content.splitlines()
     ruff_config_lines = [
-        (i, line) for i, line in enumerate(lines)
-        if "ruff.toml" in line and (
-            "config" in line.lower() or "configuration" in line.lower()
-        )
+        (i, line)
+        for i, line in enumerate(lines)
+        if "ruff.toml" in line and ("config" in line.lower() or "configuration" in line.lower())
     ]
     assert not ruff_config_lines, (
         f"docs/tooling/python-tooling.md references nonexistent ruff.toml as config at lines: "
-        f"{[(i+1, line) for i, line in ruff_config_lines]}"
+        f"{[(i + 1, line) for i, line in ruff_config_lines]}"
     )
-
 
 
 def test_tooling_guide_does_not_claim_stale_python_version() -> None:

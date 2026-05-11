@@ -32,9 +32,7 @@ if TYPE_CHECKING:
 from ralph.display.context import make_display_context
 from ralph.workspace.scope import resolve_workspace_scope
 
-STARTER_PROMPT_SENTINEL = (
-    "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
-)
+STARTER_PROMPT_SENTINEL = "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
 
 
 class _LoadConfigFn(Protocol):
@@ -50,11 +48,9 @@ class _AgentRegistryFactory(Protocol):
     def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
 
 
-
 def _module_attr(module: ModuleType, attribute: str) -> object:
     namespace = cast("dict[str, object]", module.__dict__)
     return namespace[attribute]
-
 
 
 def _load_config_loader() -> _LoadConfigFn:
@@ -64,13 +60,11 @@ def _load_config_loader() -> _LoadConfigFn:
     )
 
 
-
 def _load_agent_registry_factory() -> _AgentRegistryFactory:
     return cast(
         "_AgentRegistryFactory",
         _module_attr(import_module("ralph.agents.registry"), "AgentRegistry"),
     )
-
 
 
 def init_command(
@@ -106,8 +100,7 @@ def init_command(
     prompt_path = target / "PROMPT.md"
     if not prompt_path.exists():
         prompt_path.write_text(
-            STARTER_PROMPT_SENTINEL
-            + "\n\n"
+            STARTER_PROMPT_SENTINEL + "\n\n"
             "PROMPT.md is the goal and acceptance-criteria document that Ralph Workflow reads "
             "as its task input. Replace the example content below with YOUR task description, "
             "then remove the sentinel comment at the top before running `ralph`.\n\n"
@@ -187,9 +180,7 @@ def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext)
         " [theme.phase.planning]planning → development loop[/theme.phase.planning]"
         " loop driven by PROMPT.md."
     )
-    console.print(
-        Text("Docs: ", style="theme.text.muted")
-    )
+    console.print(Text("Docs: ", style="theme.text.muted"))
     console.print(
         "[theme.text.muted]New to Ralph Workflow?[/theme.text.muted] Start with"
         " [theme.cat.meta]docs/sphinx/getting-started.md[/theme.cat.meta]"

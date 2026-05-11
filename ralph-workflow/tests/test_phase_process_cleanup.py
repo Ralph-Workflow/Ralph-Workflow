@@ -40,9 +40,7 @@ def _reset_pm():
 
 def test_phase_scope_kills_labeled_processes() -> None:
     """All processes labeled 'phase:review' are killed when the scope exits."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     handles = [
         pm.spawn(
@@ -66,9 +64,7 @@ def test_phase_scope_kills_labeled_processes() -> None:
 
 def test_phase_scope_does_not_kill_other_labels() -> None:
     """Processes with non-matching labels are not affected by the phase scope."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     target = pm.spawn(
         [sys.executable, "-c", "pass"],
@@ -95,9 +91,7 @@ def test_phase_scope_does_not_kill_other_labels() -> None:
 
 def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Path) -> None:
     """run_git with phase= creates a 'phase:<phase>:git:<label>' record label."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=0
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     original_singleton = _mgr._singleton
     _mgr._singleton = pm
@@ -119,9 +113,7 @@ def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Pat
 
 def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
     """run_git without phase= uses the label as-is."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=0
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     original_singleton = _mgr._singleton
     _mgr._singleton = pm
@@ -135,6 +127,4 @@ def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
         _mgr._singleton = original_singleton
 
     labels = [r.label for r in pm._records.values()]
-    assert "git:rev-parse" in labels, (
-        f"Expected 'git:rev-parse' in labels, got: {labels}"
-    )
+    assert "git:rev-parse" in labels, f"Expected 'git:rev-parse' in labels, got: {labels}"

@@ -156,9 +156,7 @@ class WorkspaceScope:
             p = canonical_root / ad
             resolved = p.resolve()
             if not str(resolved).startswith(str(canonical_root)):
-                raise ValueError(
-                    f"allowed_directory {ad!r} escapes repo_root {canonical_root}"
-                )
+                raise ValueError(f"allowed_directory {ad!r} escapes repo_root {canonical_root}")
             allowed_roots.append(resolved)
 
         allowed_roots.append(canonical_ns)
@@ -169,9 +167,7 @@ class WorkspaceScope:
         scope = object.__new__(cls)
         object.__setattr__(scope, "root", canonical_root)
         object.__setattr__(scope, "allowed_roots", cast("tuple[Path, ...]", tuple(allowed_roots)))
-        object.__setattr__(
-            scope, "local_config_path", _default_local_config_path(canonical_root)
-        )
+        object.__setattr__(scope, "local_config_path", _default_local_config_path(canonical_root))
         object.__setattr__(scope, "propagated_config_paths", ())
         return scope
 

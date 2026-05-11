@@ -17,9 +17,7 @@ pytestmark = pytest.mark.subprocess_e2e
 PYTHON = sys.executable
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _STUBBORN_CHILD = (
-    "import signal, time; "
-    "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-    "time.sleep(30)"
+    "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)"
 )
 
 

@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 from queue import Queue
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.worker_state import WorkerStatus
+
+if TYPE_CHECKING:
+    from ralph.display.snapshot import PipelineSnapshot
 
 
 def test_no_args_constructs_in_non_tty_env() -> None:

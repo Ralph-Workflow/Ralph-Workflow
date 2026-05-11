@@ -254,6 +254,7 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "workspace.delete": McpCapability.WORKSPACE_DELETE,
 }
 
+
 def _policy_validation_error_type() -> type[Exception]:
     return cast(
         "type[Exception]",

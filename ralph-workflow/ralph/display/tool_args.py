@@ -18,7 +18,7 @@ def friendly_tool_name(name: str) -> str:
     Only the rendered display string is affected; metadata is untouched.
     """
     if name.startswith(_MCP_RALPH_PREFIX):
-        return _FRIENDLY_PREFIX + name[len(_MCP_RALPH_PREFIX):]
+        return _FRIENDLY_PREFIX + name[len(_MCP_RALPH_PREFIX) :]
     return name
 
 

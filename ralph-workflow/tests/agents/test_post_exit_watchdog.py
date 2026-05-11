@@ -56,6 +56,7 @@ def _resumable() -> AgentExecutionState:
 # wait_for_process_exit tests
 # ---------------------------------------------------------------------------
 
+
 def test_wait_for_process_exit_returns_immediately_when_already_exited() -> None:
     """Predicate True on first call -> CONTINUE without consuming clock budget."""
     _watchdog, clock = _make_post_exit()
@@ -104,6 +105,7 @@ def test_wait_for_process_exit_fires_at_deadline() -> None:
 # ---------------------------------------------------------------------------
 # wait_parent_exit_grace tests
 # ---------------------------------------------------------------------------
+
 
 def test_wait_parent_exit_grace_signals_present_immediately() -> None:
     """Classifier returns TERMINAL_COMPLETE on first call -> SIGNALS_PRESENT."""
@@ -170,6 +172,7 @@ def test_wait_parent_exit_grace_quiesces_no_signals() -> None:
 # wait_descendant_quiesce tests
 # ---------------------------------------------------------------------------
 
+
 def test_wait_descendant_quiesce_signals_present() -> None:
     """TERMINAL_COMPLETE seen during polling -> SIGNALS_PRESENT."""
     watchdog, clock = _make_post_exit(descendant_wait=30.0, descendant_poll=0.5)
@@ -221,6 +224,7 @@ def test_wait_descendant_quiesce_fires_when_persistent_waiting() -> None:
 # Integration / correctness tests
 # ---------------------------------------------------------------------------
 
+
 def test_post_exit_watchdog_uses_clock_only() -> None:
     """Assert no time.monotonic / time.sleep calls leak in (uses FakeClock)."""
     original_monotonic = real_time.monotonic
@@ -238,8 +242,8 @@ def test_post_exit_watchdog_uses_clock_only() -> None:
     _watchdog, clock = _make_post_exit(parent_exit_grace=5.0, descendant_poll=0.5)
 
     # Patch the clock's monotonic/sleep to detect any direct real-time usage
-    object.__setattr__(clock, '_orig_monotonic', clock.monotonic)
-    object.__setattr__(clock, '_orig_sleep', clock.sleep)
+    object.__setattr__(clock, "_orig_monotonic", clock.monotonic)
+    object.__setattr__(clock, "_orig_sleep", clock.sleep)
 
     # We trust FakeClock to not call real time - the real test is that
     # all advances are via clock.sleep() / clock.monotonic() on the injected clock.
@@ -281,17 +285,15 @@ def test_post_exit_watchdog_logs_with_correct_component() -> None:
         filter=lambda r: r["extra"].get("component") == "post_exit_watchdog",
     )
     try:
-        watchdog, _clock = _make_post_exit(
-            descendant_poll=0.5, process_exit_wait=1.0
-        )
+        watchdog, _clock = _make_post_exit(descendant_poll=0.5, process_exit_wait=1.0)
         # Trigger a FIRE_PROCESS_EXIT_HANG verdict
         watchdog.wait_for_process_exit(lambda: False)
     finally:
         logger.remove(sink_id)
 
-    assert any(
-        "post_exit_watchdog" in msg for msg in captured_messages
-    ), f"Expected log from post_exit_watchdog component, got: {captured_messages}"
+    assert any("post_exit_watchdog" in msg for msg in captured_messages), (
+        f"Expected log from post_exit_watchdog component, got: {captured_messages}"
+    )
 
 
 def test_descendant_hang_logs_distinct_reason() -> None:
@@ -318,9 +320,9 @@ def test_descendant_hang_logs_distinct_reason() -> None:
     finally:
         logger.remove(sink_id)
 
-    assert any(
-        "descendant_hang" in msg for msg in captured_messages
-    ), f"Expected 'descendant_hang' in log, got: {captured_messages}"
-    assert not any(
-        "children_persist_too_long" in msg for msg in captured_messages
-    ), f"Must not log 'children_persist_too_long' from PostExitWatchdog, got: {captured_messages}"
+    assert any("descendant_hang" in msg for msg in captured_messages), (
+        f"Expected 'descendant_hang' in log, got: {captured_messages}"
+    )
+    assert not any("children_persist_too_long" in msg for msg in captured_messages), (
+        f"Must not log 'children_persist_too_long' from PostExitWatchdog, got: {captured_messages}"
+    )

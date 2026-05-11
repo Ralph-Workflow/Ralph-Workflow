@@ -37,17 +37,14 @@ def test_no_stale_rust_workflow_references():
 
         # If file properly labels itself as historical/archival, it may contain these refs
         is_historical = any(
-            label in content_lower
-            for label in ["historical", "rust-era", "archival", "legacy"]
+            label in content_lower for label in ["historical", "rust-era", "archival", "legacy"]
         )
 
         if not is_historical:
             assert "cargo" not in content_lower, (
                 f"{guide} should not reference Rust-era cargo workflow"
             )
-            assert "xtask" not in content_lower, (
-                f"{guide} should not reference Rust-era xtask"
-            )
+            assert "xtask" not in content_lower, f"{guide} should not reference Rust-era xtask"
             assert "src/main.rs" not in content_lower, (
                 f"{guide} should not reference Rust source paths"
             )
@@ -64,9 +61,7 @@ def test_python_tooling_guide_is_current():
         "python-tooling.md should be Python-focused guidance"
     )
     # Should not be Rust-focused
-    assert "cargo" not in content, (
-        "python-tooling.md should not reference Rust-era cargo"
-    )
+    assert "cargo" not in content, "python-tooling.md should not reference Rust-era cargo"
 
 
 def test_quick_reference_has_current_commands():
@@ -89,12 +84,9 @@ def test_agent_compatibility_has_current_provider_info():
     content = path.read_text().lower()
     # Should reference current providers
     has_provider_info = any(
-        provider in content
-        for provider in ["claude", "gemini", "openai", "codex"]
+        provider in content for provider in ["claude", "gemini", "openai", "codex"]
     )
-    assert has_provider_info, (
-        "agent-compatibility.md should contain current provider information"
-    )
+    assert has_provider_info, "agent-compatibility.md should contain current provider information"
 
 
 def test_template_guide_is_python_focused():

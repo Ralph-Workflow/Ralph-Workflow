@@ -50,9 +50,7 @@ def test_config_idle_timeout_flows_to_invoke_options(
     """UnifiedConfig.general.agent_idle_timeout_seconds is passed to InvokeOptions."""
     custom_timeout = 7.0
     config = _make_config(custom_timeout)
-    effect = InvokeAgentEffect(
-        agent_name="dev", phase="development", prompt_file="dev.md"
-    )
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
     captured: dict[str, object] = {}
 
     class FakeBridge:
@@ -203,7 +201,6 @@ def test_runner_sets_agent_label_scope_to_run_id(
     extra_env = getattr(options, "extra_env", None)
     assert isinstance(extra_env, dict)
     assert extra_env[str(AGENT_LABEL_SCOPE_ENV)] == extra_env[str(MCP_RUN_ID_ENV)]
-
 
 
 def test_config_drain_window_seconds_flows_to_invoke_options(
@@ -543,8 +540,7 @@ def test_check_mcp_bridge_health_called_per_retry_attempt(
     )
 
     assert len(health_check_calls) == 2, (  # noqa: PLR2004
-        "health check must fire on each attempt; got "
-        f"{len(health_check_calls)} call(s)"
+        f"health check must fire on each attempt; got {len(health_check_calls)} call(s)"
     )
 
 
@@ -642,9 +638,7 @@ def test_record_mcp_restart_forwarded_to_subscriber(
         display=cast("runner_module.ParallelDisplay", _FakeDisplay()),
     )
 
-    assert recorded == [1], (
-        f"expected record_mcp_restart([1]); got {recorded}"
-    )
+    assert recorded == [1], f"expected record_mcp_restart([1]); got {recorded}"
 
 
 def test_supervision_interval_from_env_flows_to_mcp_supervisor(
@@ -689,9 +683,7 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
         def agent_endpoint_uri(self) -> str:
             return "http://127.0.0.1:9999/mcp"
 
-    monkeypatch.setattr(
-        runner_module, "start_mcp_server", lambda *_a, **_kw: FakeBridge()
-    )
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: FakeBridge())
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _b: None)
     monkeypatch.setattr(
         runner_module,

@@ -135,7 +135,10 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ANN"]
+# Tests are exempt from ANN (annotations) and PLC0415 (import-outside-top-level)
+# because pytest fixtures and parametrize patterns require importing inside test
+# functions to isolate module-load side effects between cases.
+"tests/**" = ["ANN", "PLC0415"]
 "ralph/__init__.py" = ["F401"]
 
 [tool.ruff.format]

@@ -84,9 +84,7 @@ class PostExitWatchdog:
         self.last_verdict_reason = None
         self._log = logger.bind(component="post_exit_watchdog")
 
-    def wait_for_process_exit(
-        self, predicate_exit_observed: Callable[[], bool]
-    ) -> PostExitVerdict:
+    def wait_for_process_exit(self, predicate_exit_observed: Callable[[], bool]) -> PostExitVerdict:
         """Wait for the subprocess to exit within process_exit_wait_seconds.
 
         Checks the predicate BEFORE the first sleep so an already-exited process

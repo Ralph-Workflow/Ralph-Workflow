@@ -778,10 +778,12 @@ class TestPreflightRejection:
             allowed_directories=["src/sub"],  # 'src' is a prefix of 'src/sub' → overlap
         )
         effect = FanOutEffect(work_units=(unit_a, unit_b), max_workers=2)
-        executor = FakeAgentExecutor({
-            "unit-a": FakeRun(outputs=[], exit_code=0, duration_ms=1),
-            "unit-b": FakeRun(outputs=[], exit_code=0, duration_ms=1),
-        })
+        executor = FakeAgentExecutor(
+            {
+                "unit-a": FakeRun(outputs=[], exit_code=0, duration_ms=1),
+                "unit-b": FakeRun(outputs=[], exit_code=0, duration_ms=1),
+            }
+        )
         display = RecordingDisplay()
 
         events = await run_fan_out(
@@ -791,8 +793,7 @@ class TestPreflightRejection:
         )
 
         assert any(
-            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
-            for e in events
+            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__" for e in events
         ), f"Expected __preflight__ failure event, got: {events}"
         preflight_event = next(
             e for e in events if isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
@@ -809,9 +810,11 @@ class TestPreflightRejection:
             allowed_directories=[],  # missing required edit area
         )
         effect = FanOutEffect(work_units=(unit_no_dirs,), max_workers=1)
-        executor = FakeAgentExecutor({
-            "unit-nodirs": FakeRun(outputs=[], exit_code=0, duration_ms=1),
-        })
+        executor = FakeAgentExecutor(
+            {
+                "unit-nodirs": FakeRun(outputs=[], exit_code=0, duration_ms=1),
+            }
+        )
         display = RecordingDisplay()
 
         events = await run_fan_out(
@@ -821,8 +824,7 @@ class TestPreflightRejection:
         )
 
         assert any(
-            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
-            for e in events
+            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__" for e in events
         ), f"Expected __preflight__ failure event, got: {events}"
         assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"
 
@@ -835,9 +837,11 @@ class TestPreflightRejection:
             allowed_directories=[".agent"],  # reserved path
         )
         effect = FanOutEffect(work_units=(unit_reserved,), max_workers=1)
-        executor = FakeAgentExecutor({
-            "unit-reserved": FakeRun(outputs=[], exit_code=0, duration_ms=1),
-        })
+        executor = FakeAgentExecutor(
+            {
+                "unit-reserved": FakeRun(outputs=[], exit_code=0, duration_ms=1),
+            }
+        )
         display = RecordingDisplay()
 
         events = await run_fan_out(
@@ -847,8 +851,7 @@ class TestPreflightRejection:
         )
 
         assert any(
-            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
-            for e in events
+            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__" for e in events
         ), f"Expected __preflight__ failure event, got: {events}"
         preflight_event = next(
             e for e in events if isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"

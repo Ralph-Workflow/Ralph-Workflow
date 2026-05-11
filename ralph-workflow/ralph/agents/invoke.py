@@ -186,6 +186,7 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, GeneralConfig
     from ralph.phases.required_artifacts import RequiredArtifact
 
+
 class _HasStop(Protocol):
     """Protocol for watchdog Observer-like objects that have a stop method."""
 
@@ -733,8 +734,7 @@ def resolve_invocation_runtime(
         if not endpoint:
             return ResolvedInvocationRuntime(agent_env=runtime_env or None)
         provider_config, upstreams = build_opencode_provider_config(
-            runtime_env.get("OPENCODE_CONFIG_CONTENT")
-            or os.environ.get("OPENCODE_CONFIG_CONTENT"),
+            runtime_env.get("OPENCODE_CONFIG_CONTENT") or os.environ.get("OPENCODE_CONFIG_CONTENT"),
             endpoint,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
@@ -924,8 +924,7 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             if (
                 _effective_max is not None
                 and _base.max_waiting_on_child_no_progress_seconds is not None
-                and _base.max_waiting_on_child_no_progress_seconds
-                <= _effective_max
+                and _base.max_waiting_on_child_no_progress_seconds <= _effective_max
             )
             else None  # No max set or constraint would be violated; disable
         ),
@@ -999,9 +998,7 @@ def _read_lines_from_process(  # noqa: PLR0912,PLR0913,PLR0915
                     getattr(strategy, "_active_label_prefix", lambda: None)(),
                 )
                 reg_snap = reg.snapshot(label_prefix or "")
-                verdict = classify_child_snapshot(
-                    reg_snap, has_os_descendants=bool(scoped_active)
-                )
+                verdict = classify_child_snapshot(reg_snap, has_os_descendants=bool(scoped_active))
                 alive_by = verdict.alive_by
             except Exception:
                 logger.debug("corroborator: registry snapshot failed (suppressed)")
@@ -1067,9 +1064,7 @@ def _read_lines_from_process(  # noqa: PLR0912,PLR0913,PLR0915
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
         if verdict != WatchdogVerdict.FIRE:
             return None
-        assert (
-            policy.idle_timeout_seconds is not None or policy.max_session_seconds is not None
-        )
+        assert policy.idle_timeout_seconds is not None or policy.max_session_seconds is not None
         fire_reason = watchdog.last_fire_reason
         assert fire_reason is not None
         timeout_val = (
@@ -1166,9 +1161,7 @@ def _read_lines_from_process(  # noqa: PLR0912,PLR0913,PLR0915
                     if policy.idle_timeout_seconds is None:
                         break
                     # Advance clock and re-evaluate
-                    clock.wait_for_event(
-                        lines_event, policy.idle_poll_interval_seconds
-                    )
+                    clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
                 break
 
             fire_result = _handle_fire_verdict(
@@ -1211,9 +1204,7 @@ class _CompletionCheckOptions:
     liveness_probe: LivenessProbe | None = None
     # TimeoutPolicy governs all post-exit timeout dimensions (parent grace, descendant wait).
     # Uses a factory default so callers that don't need timeouts can omit it.
-    policy: TimeoutPolicy = field(
-        default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None)
-    )
+    policy: TimeoutPolicy = field(default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None))
     required_artifact: RequiredArtifact | None = None
 
 
@@ -1552,10 +1543,10 @@ def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:
         reason = entry.get("reason", "")
         failure_kind = entry.get("failure_kind", "")
         lines.append(f"- [{modality}] {title}")
-        lines.append(f'  path={uri}')
-        lines.append(f'  Delivery: {delivery}')
+        lines.append(f"  path={uri}")
+        lines.append(f"  Delivery: {delivery}")
         if block_type:
-            lines.append(f'  Block-type: {block_type}')
+            lines.append(f"  Block-type: {block_type}")
         if failure_kind == "unsupported_runtime_seam":
             reason_suffix = f" Reason: {reason}" if reason else ""
             lines.append(

@@ -118,12 +118,11 @@ def test_cleanup_does_not_touch_worktrees_directory(tmp_path: Path) -> None:
 
 def test_cleanup_outside_git_repo_exits_1(tmp_path: Path) -> None:
     """Running cleanup in a non-git directory must exit with code 1 and an error message."""
+
     def _raise_not_in_git() -> None:
         raise RuntimeError("not a git repository")
 
-    with patch(
-        "ralph.cli.commands.cleanup.find_repo_root", side_effect=_raise_not_in_git
-    ):
+    with patch("ralph.cli.commands.cleanup.find_repo_root", side_effect=_raise_not_in_git):
         result = runner.invoke(_app, [])
 
     assert result.exit_code == 1, f"Expected exit 1 for non-git dir, got {result.exit_code}"
@@ -133,9 +132,7 @@ def test_cleanup_outside_git_repo_exits_1(tmp_path: Path) -> None:
 class TestCleanupNeverInvokesGit:
     """Regression guardrails: cleanup must never shell out to git."""
 
-    def test_cleanup_does_not_shell_out_to_git(
-        self, tmp_path: Path, monkeypatch: object
-    ) -> None:
+    def test_cleanup_does_not_shell_out_to_git(self, tmp_path: Path, monkeypatch: object) -> None:
         """cleanup --force must remove worker dirs without invoking any git process.
 
         Monkeypatches all subprocess entry points and asserts none were called.

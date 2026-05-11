@@ -111,9 +111,7 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
         "AgentRegistry",
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
-    monkeypatch.setattr(
-        runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
     monkeypatch.setattr(runner_module, "_execute_effect_with_optional_display", _fake_execute)
@@ -216,9 +214,7 @@ def test_offline_window_produces_no_failure_events(
             super().__init__()
             self.subscribe(
                 lambda evt: (
-                    captured_failure_events.append(evt)
-                    if isinstance(evt, FailureEvent)
-                    else None
+                    captured_failure_events.append(evt) if isinstance(evt, FailureEvent) else None
                 )
             )
 
@@ -238,9 +234,7 @@ def test_offline_window_produces_no_failure_events(
         "AgentRegistry",
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
-    monkeypatch.setattr(
-        runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
     monkeypatch.setattr(runner_module, "_execute_effect_with_optional_display", _fake_execute)

@@ -1501,6 +1501,7 @@ def test_diagnose_uses_display_context_console(
     ctx = make_display_context(env={"COLUMNS": "120"})
     # Override the context's console with our recording one
     import dataclasses
+
     recording_ctx = dataclasses.replace(ctx, console=console)
 
     # Stub out external dependencies so the command finishes quickly
@@ -1731,8 +1732,13 @@ class TestCheckPolicyCommand:
         check_policy_command(tmp_path)
         out = capsys.readouterr().out
         # All count lines are present
-        for label in ("phases:", "drains:", "artifact contracts:",
-                      "loop counters:", "budget counters:"):
+        for label in (
+            "phases:",
+            "drains:",
+            "artifact contracts:",
+            "loop counters:",
+            "budget counters:",
+        ):
             assert label in out
 
     def test_missing_directory_returns_one(

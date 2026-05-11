@@ -100,9 +100,7 @@ class ParallelCoordinator:
         # tests, future tooling) are protected by this check too.
         if effect.work_units:
             try:
-                validate_for_same_workspace(
-                    WorkUnitsPlan(work_units=list(effect.work_units))
-                )
+                validate_for_same_workspace(WorkUnitsPlan(work_units=list(effect.work_units)))
             except WorkUnitsValidationError as exc:
                 logger.error("coordinator preflight rejected plan: {}", exc)
                 return [

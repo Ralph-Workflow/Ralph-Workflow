@@ -138,9 +138,7 @@ def _parse_exec_command_tokens(params: Mapping[str, object]) -> list[str]:
     if isinstance(argv_value, list):
         return _coerce_argv_tokens(argv_value, field_name="argv")
     if argv_value is not None:
-        raise InvalidParamsError(
-            "'argv' must be a string or string array. " + _EXEC_USAGE_EXAMPLES
-        )
+        raise InvalidParamsError("'argv' must be a string or string array. " + _EXEC_USAGE_EXAMPLES)
 
     raise InvalidParamsError("Missing 'command' or 'argv' parameter. " + _EXEC_USAGE_EXAMPLES)
 
@@ -184,6 +182,7 @@ def _parse_shell_words(value: str, *, field_name: str) -> list[str]:
             "Pass a plain command and arguments instead."
         )
     return tokens
+
 
 def check_command(command: str, args: list[str]) -> str | None:
     """Return a denial reason when a command matches the blacklist policy."""

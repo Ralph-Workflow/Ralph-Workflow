@@ -184,8 +184,7 @@ def test_display_style_contracts() -> None:
 
     assert not style_violations, (
         "Bare literal Rich style= strings found"
-        " — replace with 'theme.*' keys or add to allowlist:\n"
-        + "\n".join(style_violations)
+        " — replace with 'theme.*' keys or add to allowlist:\n" + "\n".join(style_violations)
     )
     assert not append_violations, (
         "Bare literal style as second positional arg to .append() found"
@@ -194,6 +193,5 @@ def test_display_style_contracts() -> None:
     )
     assert not markup_violations, (
         "Bare markup color tags in console.print() strings found"
-        " — use Text objects with 'theme.*' keys instead:\n"
-        + "\n".join(markup_violations)
+        " — use Text objects with 'theme.*' keys instead:\n" + "\n".join(markup_violations)
     )

@@ -114,7 +114,9 @@ def test_prune_stale_drops_records_whose_progress_age_exceeds_progress_ttl() -> 
     assert snap.active_count == 0
 
 
-def test_prune_stale_drops_records_whose_label_age_exceeds_stale_label_ttl_with_no_progress() -> None:  # noqa: E501
+def test_prune_stale_drops_records_whose_label_age_exceeds_stale_label_ttl_with_no_progress() -> (
+    None
+):
     reg, t = _registry()
     t[0] = 0.0
     reg.register_child("c1", "scope/a")

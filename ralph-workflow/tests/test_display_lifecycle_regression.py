@@ -84,9 +84,7 @@ def test_prompt_md_sequence_produces_no_lifecycle_noise(tmp_path: Path) -> None:
 
     # The error line must appear exactly once (it's a real error, not lifecycle noise)
     error_count = out.count("unsupported content block type 'thinking'")
-    assert error_count == 1, (
-        f"Expected exactly 1 error occurrence, got {error_count}:\n{out}"
-    )
+    assert error_count == 1, f"Expected exactly 1 error occurrence, got {error_count}:\n{out}"
 
 
 def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> None:

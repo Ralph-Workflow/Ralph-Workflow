@@ -8,13 +8,14 @@ complete for policy-driven orchestration.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.policy.models import PhaseDefinition, PipelinePolicy, PolicyBundle
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.agents.registry import AgentRegistry
     from ralph.pipeline.state import PipelineState
     from ralph.pipeline.work_units import WorkUnitsPlan
@@ -232,8 +233,7 @@ def _validate_analysis_phase(
 
     if phase_def.loop_policy is None:
         errors.append(
-            f"phases.{phase_name}: role='analysis' requires loop_policy "
-            f"(iteration_state_field)"
+            f"phases.{phase_name}: role='analysis' requires loop_policy (iteration_state_field)"
         )
     else:
         field = phase_def.loop_policy.iteration_state_field
@@ -574,9 +574,7 @@ def _validate_post_commit_routes_complete(
             continue
 
         declared_states = {
-            r.when.budget_state
-            for r in policy.post_commit_routes
-            if r.when.phase == phase_name
+            r.when.budget_state for r in policy.post_commit_routes if r.when.phase == phase_name
         }
         missing = required_states - declared_states
         if missing:
@@ -809,8 +807,7 @@ def validate_policy_completeness(
 
     if errors:
         raise PolicyValidationError(
-            "Policy completeness validation failed:\n"
-            + "\n".join(f"  {e}" for e in errors),
+            "Policy completeness validation failed:\n" + "\n".join(f"  {e}" for e in errors),
             source="completeness",
         )
 
@@ -1008,9 +1005,7 @@ def validate_required_inputs(
             "New to Ralph Workflow? See docs/sphinx/getting-started.md for a walkthrough."
         )
     if not prompt_path.is_file():
-        raise PolicyValidationError(
-            f"Required input is not a file: {prompt_path}"
-        )
+        raise PolicyValidationError(f"Required input is not a file: {prompt_path}")
     if not prompt_path.stat().st_size > 0:
         raise PolicyValidationError(
             f"Required input file is empty: {prompt_path}. "

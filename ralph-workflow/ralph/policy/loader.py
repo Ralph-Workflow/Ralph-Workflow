@@ -205,7 +205,6 @@ def _validate_artifacts(data: dict[str, object]) -> ArtifactsPolicy:
         ) from exc
 
 
-
 def _merge_mapping_defaults(
     defaults: Mapping[str, object], overrides: Mapping[str, object]
 ) -> dict[str, object]:
@@ -296,7 +295,6 @@ def _cached_default_agents_policy() -> AgentsPolicy:
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
 
 
-
 def _load_agents_policy_from_path(
     agents_path: Path,
     config: UnifiedConfig | None = None,
@@ -318,7 +316,6 @@ def _load_agents_policy_from_path(
     return _validate_agents(agents_data)
 
 
-
 def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) -> AgentsPolicy:
     """Load only the agents policy, using config synthesis when available.
 
@@ -326,7 +323,6 @@ def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) ->
     full pipeline/artifact bundle.
     """
     return _load_agents_policy_from_path(config_dir / "agents.toml", config=config)
-
 
 
 def load_agents_policy_for_workspace_scope(
@@ -338,7 +334,6 @@ def load_agents_policy_for_workspace_scope(
         workspace_scope.resolve_agent_file("agents.toml"),
         config=config,
     )
-
 
 
 def _load_policy_from_paths(
@@ -412,7 +407,6 @@ def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> Policy
         artifacts_path=config_dir / "artifacts.toml",
         config=config,
     )
-
 
 
 def load_policy_for_workspace_scope(

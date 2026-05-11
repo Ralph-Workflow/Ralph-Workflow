@@ -300,9 +300,7 @@ def test_resource_templates_list_includes_media_template_when_media_read_is_gran
     """resources/templates/list exposes ralph://media/{artifact_id} when media.read is granted."""
     server = _build_multimodal_server()
     state = _initialize_with_multimodal_caps(server)
-    req = JsonRpcRequest(
-        jsonrpc="2.0", method="resources/templates/list", params={}, msg_id=5
-    )
+    req = JsonRpcRequest(jsonrpc="2.0", method="resources/templates/list", params={}, msg_id=5)
     resp, _ = server.handle_request(req, state)
     assert resp is not None and resp.result is not None, f"resource templates/list failed: {resp}"
     result = cast("dict[str, Any]", resp.result)

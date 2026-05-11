@@ -3,6 +3,7 @@
 Tests the full chain from mcp.toml parsing through _validate_custom_mcp_servers
 without spawning real subprocess servers or waiting on real sockets.
 """
+
 from __future__ import annotations
 
 from io import StringIO

@@ -31,6 +31,7 @@ def _minimal_policy() -> PipelinePolicy:
         terminal_phase="complete",
     )
 
+
 _EXIT_CODE_VERIFY_FAIL = 2
 
 if TYPE_CHECKING:
@@ -109,9 +110,7 @@ class TestVerificationSkippedWhenWorkerFails:
         if effect.run_post_fanout_verification and not any_worker_failed:
             verify_called = True
 
-        assert not verify_called, (
-            "Verification must NOT run when any_worker_failed=True"
-        )
+        assert not verify_called, "Verification must NOT run when any_worker_failed=True"
 
     def test_verification_runs_when_no_worker_failed(self) -> None:
         """When all workers succeeded and flag=True, verification block must run."""
@@ -203,8 +202,12 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=True, verify_passed=False, verify_exit_code=_EXIT_CODE_VERIFY_FAIL,
+            scope,
+            effect,
+            state,
+            verify_ran=True,
+            verify_passed=False,
+            verify_exit_code=_EXIT_CODE_VERIFY_FAIL,
         )
 
         summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"

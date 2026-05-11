@@ -110,12 +110,8 @@ ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE = (
 ANALYSIS_OMISSION_GUIDANCE = (
     "3. **Cite concrete evidence.** File paths, function names, test names, command output,"
 )
-ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE = (
-    "Do not stop after the first problem."
-)
-ANALYSIS_EVALUATABLE_ONLY_GUIDANCE = (
-    "## ONLY JUDGE WHAT YOU CAN EVALUATE"
-)
+ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE = "Do not stop after the first problem."
+ANALYSIS_EVALUATABLE_ONLY_GUIDANCE = "## ONLY JUDGE WHAT YOU CAN EVALUATE"
 ANALYSIS_NO_ASSUMED_HUMAN_BEHAVIOR_GUIDANCE = (
     "You MUST NOT judge what the agent, developer, or reviewer did or did not do."
 )
@@ -124,9 +120,7 @@ ANALYSIS_NO_AGENT_LOG_GUIDANCE = (
     "You MUST NOT rely on agent logs, transcripts, or inferred process history "
     "as evaluation evidence."
 )
-ANALYSIS_CODE_DIFF_ONLY_GUIDANCE = (
-    "Evaluation evidence may come ONLY from: (1) code and diff"
-)
+ANALYSIS_CODE_DIFF_ONLY_GUIDANCE = "Evaluation evidence may come ONLY from: (1) code and diff"
 ANALYSIS_CONTEXT_ONLY_ARTIFACT_GUIDANCE = "context only"
 ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE = (
     "If an artifact makes a claim, verify that claim against the code, diff, or command output"
@@ -170,8 +164,7 @@ PLANNING_EDIT_GET_DRAFT_GUIDANCE = (
     "or staged draft before editing."
 )
 PLANNING_EDIT_SECTION_REPLACE_GUIDANCE = (
-    "Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace only the sections "
-    "that need revision."
+    "Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace only the sections that need revision."
 )
 PLANNING_EDIT_FINALIZE_GUIDANCE = (
     "Use `{{FINALIZE_PLAN_TOOL_NAME}}` after revising the affected sections so "
@@ -187,8 +180,7 @@ PLANNING_EDIT_RISK_COVERAGE_GUIDANCE = (
     "- Risk coverage: concrete risks, mitigations, and edge cases are represented"
 )
 PLANNING_EDIT_PARALLELIZATION_GUIDANCE = (
-    "- Parallelization safety: any parallel work remains disjoint, realistic, "
-    "and policy-compliant"
+    "- Parallelization safety: any parallel work remains disjoint, realistic, and policy-compliant"
 )
 PLANNING_EDIT_MAINTAINABILITY_GUIDANCE = (
     "- Maintainability and handoff quality: the plan stays concise, "
@@ -325,7 +317,6 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     _assert_shared_analysis_guidance(planning_analysis, review_analysis)
 
 
-
 def test_planning_fallback_templates_reference_artifact_history_location() -> None:
     planning_fallback = (TEMPLATES_ROOT / "planning_fallback.jinja").read_text(encoding="utf-8")
     planning_edit_fallback = (TEMPLATES_ROOT / "planning_edit_fallback.jinja").read_text(
@@ -344,7 +335,6 @@ def test_planning_prompt_requires_verified_low_research_executor_handoff() -> No
     assert PLANNING_DISCOVERY_PREFLIGHT_GUIDANCE in planning
     assert PLANNING_NO_VAGUE_PATTERN_GUIDANCE in planning
     assert PLANNING_LOW_RESEARCH_EXECUTOR_GUIDANCE in planning
-
 
 
 def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_patching() -> None:
@@ -374,7 +364,7 @@ def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_pat
     assert PLANNING_EDIT_NOT_LOCAL_PATCH_GUIDANCE in planning_edit
     assert PLANNING_EDIT_SELF_ANALYSIS_GUIDANCE in planning_edit
     assert PLANNING_EDIT_ISSUE_MAPPING_GUIDANCE in planning_edit
-    assert "artifact_type=\"plan\"" not in planning_edit
+    assert 'artifact_type="plan"' not in planning_edit
     assert "Not submitting the revised plan is a FAILURE." in planning_edit
 
 
@@ -445,7 +435,6 @@ def test_development_analysis_prompt_taught_variants_submit_successfully(tmp_pat
         assert result.is_error is False, f"payload #{index} should submit successfully"
 
 
-
 def test_review_analysis_prompt_taught_variants_submit_successfully(tmp_path: Path) -> None:
     session = _ApprovedSession(drain="review_analysis")
     workspace = _Workspace(tmp_path)
@@ -477,7 +466,6 @@ def test_review_analysis_prompt_taught_variants_submit_successfully(tmp_path: Pa
         assert result.is_error is False, f"payload #{index} should submit successfully"
 
 
-
 def test_planning_analysis_prompt_taught_variants_submit_successfully(tmp_path: Path) -> None:
     session = _ApprovedSession(drain="planning_analysis")
     workspace = _Workspace(tmp_path)
@@ -489,16 +477,12 @@ def test_planning_analysis_prompt_taught_variants_submit_successfully(tmp_path: 
             "what_came_up_short": [
                 "Critical files do not identify the real execution touchpoints."
             ],
-            "how_to_fix": [
-                "Update critical_files and add exact verification commands."
-            ],
+            "how_to_fix": ["Update critical_files and add exact verification commands."],
         },
         {
             "status": "failed",
             "summary": "The planning analysis could not approve this plan.",
-            "what_came_up_short": [
-                "The plan is missing executable implementation steps."
-            ],
+            "what_came_up_short": ["The plan is missing executable implementation steps."],
             "how_to_fix": [
                 "Rewrite the steps so a weaker unattended agent can execute them literally."
             ],
@@ -515,7 +499,6 @@ def test_planning_analysis_prompt_taught_variants_submit_successfully(tmp_path: 
             },
         )
         assert result.is_error is False, f"payload #{index} should submit successfully"
-
 
 
 def test_commit_prompt_taught_variants_submit_successfully(tmp_path: Path) -> None:
@@ -621,6 +604,4 @@ def test_worker_developer_template_contains_same_workspace_contract(tmp_path: Pa
 
     # Must not contain banned worktree-era phrases
     violations = [phrase for phrase in _WORKER_TEMPLATE_BANNED_PHRASES if phrase in rendered]
-    assert violations == [], (
-        f"worker prompt must not contain banned phrases: {violations}"
-    )
+    assert violations == [], f"worker prompt must not contain banned phrases: {violations}"

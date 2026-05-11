@@ -99,8 +99,11 @@ def _multimodal_block_summary(block: dict[str, object]) -> str | None:
     if block_type == "image":
         source = block.get("source") or block.get("data") or {}
         mime = (
-            source.get("media_type") if isinstance(source, dict) else None
-        ) or block.get("mimeType") or block.get("mime_type") or "image"
+            (source.get("media_type") if isinstance(source, dict) else None)
+            or block.get("mimeType")
+            or block.get("mime_type")
+            or "image"
+        )
         return f"[image: {mime}]"
     if block_type == "resource_reference":
         uri = block.get("uri", "")

@@ -491,9 +491,7 @@ def test_summary_disabled_env_suppresses_summary_line() -> None:
     renderer, buf = _make_renderer()
     long_text = "First sentence. " * 300  # well above 4000 chars
     with patch.dict(os.environ, {"RALPH_LONG_CONTENT_SUMMARY": "0"}):
-        visible, condensed, summary_line, _ai = condense_content(
-            long_text, summary=True
-        )
+        visible, condensed, summary_line, _ai = condense_content(long_text, summary=True)
     assert condensed is True
     assert summary_line is None
     renderer.emit_activity_line(
@@ -707,8 +705,7 @@ def test_activity_does_not_double_append_path_when_already_present() -> None:
         created_at=datetime.now(UTC),
         active_path="ralph-workflow/ralph/x.py",
         last_activity_line=(
-            "claude/sonnet tool: mcp__ralph__read_file"
-            " (path=ralph-workflow/ralph/x.py)"
+            "claude/sonnet tool: mcp__ralph__read_file (path=ralph-workflow/ralph/x.py)"
         ),
     )
     renderer.emit_snapshot(snapshot)

@@ -47,17 +47,79 @@ if TYPE_CHECKING:
 # Byte constants for in-memory artifacts — no external files needed
 # ---------------------------------------------------------------------------
 
-_TINY_PNG_BYTES = bytes([
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-    0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-    0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-    0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
-    0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
-    0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC,
-    0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
-    0x44, 0xAE, 0x42, 0x60, 0x82,
-])
+_TINY_PNG_BYTES = bytes(
+    [
+        0x89,
+        0x50,
+        0x4E,
+        0x47,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
+        0x00,
+        0x00,
+        0x00,
+        0x0D,
+        0x49,
+        0x48,
+        0x44,
+        0x52,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x08,
+        0x02,
+        0x00,
+        0x00,
+        0x00,
+        0x90,
+        0x77,
+        0x53,
+        0xDE,
+        0x00,
+        0x00,
+        0x00,
+        0x0C,
+        0x49,
+        0x44,
+        0x41,
+        0x54,
+        0x08,
+        0xD7,
+        0x63,
+        0xF8,
+        0xCF,
+        0xC0,
+        0x00,
+        0x00,
+        0x00,
+        0x02,
+        0x00,
+        0x01,
+        0xE2,
+        0x21,
+        0xBC,
+        0x33,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x49,
+        0x45,
+        0x4E,
+        0x44,
+        0xAE,
+        0x42,
+        0x60,
+        0x82,
+    ]
+)
 
 _TINY_PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
 
@@ -265,9 +327,11 @@ def test_unknown_provider_preserves_supported_modalities_as_replayable_resources
 
 def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
     """Upstream mixed text+image+audio must preserve all blocks without silent dropping."""
+
     class _FakeClient:
         def list_tools(self) -> list[object]:
             from ralph.mcp.upstream.models import UpstreamTool
+
             return [UpstreamTool(name="mix", description="mixed content tool")]
 
         def call_tool(self, _name: str, _args: object) -> dict[str, object]:
@@ -289,9 +353,7 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
         client_factory=cast("UpstreamClientFactory", lambda _srv: _FakeClient()),
     )
 
-    result = registry.call_tool(
-        "ralph_upstream__mix_server__mix", {}, session=_FakeSession()
-    )
+    result = registry.call_tool("ralph_upstream__mix_server__mix", {}, session=_FakeSession())
 
     content = result.get("content", [])
     # All three input blocks must produce output blocks — no silent loss
@@ -321,9 +383,11 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
     URI-backed blocks preserve an external URI and are NOT Ralph-owned artifacts.
     They should NOT be replayed via read_media — the agent can access the URI directly.
     """
+
     class _FakeClient:
         def list_tools(self) -> list[object]:
             from ralph.mcp.upstream.models import UpstreamTool
+
             return [UpstreamTool(name="pdf_tool", description="returns a PDF URI")]
 
         def call_tool(self, _name: str, _args: object) -> dict[str, object]:
@@ -347,9 +411,7 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
         client_factory=cast("UpstreamClientFactory", lambda _srv: _FakeClient()),
     )
 
-    result = registry.call_tool(
-        "ralph_upstream__pdf_server__pdf_tool", {}, session=_FakeSession()
-    )
+    result = registry.call_tool("ralph_upstream__pdf_server__pdf_tool", {}, session=_FakeSession())
 
     content = result.get("content", [])
     assert len(content) == 1
@@ -364,9 +426,7 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
     )
     # URI-backed blocks must NOT create manifest entries
     session = _FakeSession()
-    registry.call_tool(
-        "ralph_upstream__pdf_server__pdf_tool", {}, session=session
-    )
+    registry.call_tool("ralph_upstream__pdf_server__pdf_tool", {}, session=session)
     assert session.media_manifest.is_empty(), (
         "URI-backed upstream blocks must NOT store entries in the session manifest"
     )
@@ -378,51 +438,53 @@ def test_prompt_sidecar_preserves_mixed_modality_metadata_for_runner_handoff() -
     from ralph.prompts.materialize import collect_media_entries_for_phase
 
     workspace = MemoryWorkspace()
-    mixed_payload = json.dumps({
-        "schema_version": "2",
-        "phase": "development",
-        "artifacts": [
-            {
-                "artifact_id": "img-001",
-                "uri": "ralph://media/img-001",
-                "mime_type": "image/png",
-                "title": "screenshot.png",
-                "modality": "image",
-                "delivery": "inline_image",
-                "reason": "Claude supports inline image delivery",
-                "source_path": "screenshots/cap.png",
-                "cache_path": "",
-                "source_uri": "",
-                "block_type": "",
-            },
-            {
-                "artifact_id": "pdf-002",
-                "uri": "ralph://media/pdf-002",
-                "mime_type": "application/pdf",
-                "title": "report.pdf",
-                "modality": "pdf",
-                "delivery": "typed_block",
-                "reason": "'pdf' delivered as typed block 'pdf' for provider 'claude'",
-                "source_path": "reports/report.pdf",
-                "cache_path": ".agent/tmp/media/report.pdf",
-                "source_uri": "",
-                "block_type": "pdf",
-            },
-            {
-                "artifact_id": "aud-003",
-                "uri": "ralph://media/aud-003",
-                "mime_type": "audio/mpeg",
-                "title": "clip.mp3",
-                "modality": "audio",
-                "delivery": "resource_reference_replay",
-                "reason": "unknown provider — defaulting to resource_reference_replay delivery",
-                "source_path": "audio/clip.mp3",
-                "cache_path": "",
-                "source_uri": "",
-                "block_type": "",
-            },
-        ],
-    })
+    mixed_payload = json.dumps(
+        {
+            "schema_version": "2",
+            "phase": "development",
+            "artifacts": [
+                {
+                    "artifact_id": "img-001",
+                    "uri": "ralph://media/img-001",
+                    "mime_type": "image/png",
+                    "title": "screenshot.png",
+                    "modality": "image",
+                    "delivery": "inline_image",
+                    "reason": "Claude supports inline image delivery",
+                    "source_path": "screenshots/cap.png",
+                    "cache_path": "",
+                    "source_uri": "",
+                    "block_type": "",
+                },
+                {
+                    "artifact_id": "pdf-002",
+                    "uri": "ralph://media/pdf-002",
+                    "mime_type": "application/pdf",
+                    "title": "report.pdf",
+                    "modality": "pdf",
+                    "delivery": "typed_block",
+                    "reason": "'pdf' delivered as typed block 'pdf' for provider 'claude'",
+                    "source_path": "reports/report.pdf",
+                    "cache_path": ".agent/tmp/media/report.pdf",
+                    "source_uri": "",
+                    "block_type": "pdf",
+                },
+                {
+                    "artifact_id": "aud-003",
+                    "uri": "ralph://media/aud-003",
+                    "mime_type": "audio/mpeg",
+                    "title": "clip.mp3",
+                    "modality": "audio",
+                    "delivery": "resource_reference_replay",
+                    "reason": "unknown provider — defaulting to resource_reference_replay delivery",
+                    "source_path": "audio/clip.mp3",
+                    "cache_path": "",
+                    "source_uri": "",
+                    "block_type": "",
+                },
+            ],
+        }
+    )
     workspace.write(media_session_path("development"), mixed_payload)
 
     entries = collect_media_entries_for_phase(workspace, "development")
@@ -598,8 +660,7 @@ def test_openai_pdf_returns_explicit_unsupported_error(tmp_path: Path) -> None:
     result = _tool_call(server, state, str(RalphToolName.READ_MEDIA), {"path": "report.pdf"})
 
     assert result.get("isError") is True, (
-        f"read_media must return isError=True for OpenAI PDF (unsupported modality), "
-        f"got: {result}"
+        f"read_media must return isError=True for OpenAI PDF (unsupported modality), got: {result}"
     )
     content = cast("list[dict[str, Any]]", result.get("content", []))
     assert len(content) >= 1
@@ -621,12 +682,8 @@ def test_openai_unsupported_modality_verdicts_are_explicit() -> None:
         assert verdict.delivery == DeliveryMode.UNSUPPORTED, (
             f"OpenAI {modality!r} must be UNSUPPORTED, got {verdict.delivery!r}"
         )
-        assert not verdict.is_supported(), (
-            f"OpenAI {modality!r} must not be marked as supported"
-        )
-        assert verdict.reason, (
-            f"OpenAI {modality!r} unsupported verdict must include a reason"
-        )
+        assert not verdict.is_supported(), f"OpenAI {modality!r} must not be marked as supported"
+        assert verdict.reason, f"OpenAI {modality!r} unsupported verdict must include a reason"
 
 
 # ---------------------------------------------------------------------------

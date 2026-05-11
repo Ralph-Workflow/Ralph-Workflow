@@ -96,7 +96,7 @@ class TestRenderExplanationAscii:
 
         # New loopback format uses left-pointing arrows so it cannot be
         # mistaken for a forward arrow.
-        assert "<<==[loopback]=="  in output
+        assert "<<==[loopback]==" in output
         assert "returns to '" in output
         # Old formats must NOT be present
         assert "<--[loopback]--" not in output
@@ -139,9 +139,8 @@ class TestRenderExplanationAscii:
             elif "review_commit" in line and "|" in line:
                 in_review_commit = True
                 in_development_commit = False
-            elif (
-                ("development_analysis" in line and "|" in line)
-                or ("review" in line and "|" in line and "review_analysis" not in line)
+            elif ("development_analysis" in line and "|" in line) or (
+                "review" in line and "|" in line and "review_analysis" not in line
             ):
                 in_development_commit = False
                 in_review_commit = False
@@ -168,8 +167,7 @@ class TestRenderExplanationAscii:
         # Phase boxes are lines that contain '|' with phase name content
         # e.g., "|    planning    |"
         boxed_lines = [
-            line for line in lines
-            if "|" in line and ("planning" in line or "development" in line)
+            line for line in lines if "|" in line and ("planning" in line or "development" in line)
         ]
         assert len(boxed_lines) > 0, "Expected at least one boxed phase line"
 
@@ -225,9 +223,7 @@ class TestRenderExplanationAscii:
             phases=[start_phase, done_phase],
             loop_counters=[],
             budget_counters=[],
-            terminal_outcomes=[
-                TerminalOutcomeExplanation(phase="done", outcome="success")
-            ],
+            terminal_outcomes=[TerminalOutcomeExplanation(phase="done", outcome="success")],
             parallel_execution=None,
             recovery=RecoveryExplanation(
                 cycle_cap=10,
@@ -246,8 +242,7 @@ class TestRenderExplanationAscii:
         # The box border line contains '+' and the content line contains 'start' and '|'
         lines = output.split("\n")
         has_start_box = any(
-            "start" in line and (line.strip().startswith("+") or "|" in line)
-            for line in lines
+            "start" in line and (line.strip().startswith("+") or "|" in line) for line in lines
         )
         assert has_start_box, f"Expected boxed phase name 'start' in output, got: {output}"
 
@@ -282,8 +277,7 @@ class TestRenderExplanationAscii:
         assert any("[failed]" in line and "-->" in line and "development" in line for line in lines)
         # failed should not route to 'failed' (terminal) — it should route to a rework phase
         assert not any(
-            "[failed]" in line and line.rstrip().endswith("--> failed")
-            for line in lines
+            "[failed]" in line and line.rstrip().endswith("--> failed") for line in lines
         )
 
     def test_parallel_fanout_rejoin_shape_visible(self) -> None:
@@ -354,9 +348,7 @@ class TestRenderExplanationAscii:
             phases=[phase, done_phase],
             loop_counters=[],
             budget_counters=[],
-            terminal_outcomes=[
-                TerminalOutcomeExplanation(phase="complete", outcome="success")
-            ],
+            terminal_outcomes=[TerminalOutcomeExplanation(phase="complete", outcome="success")],
             parallel_execution=None,
             recovery=RecoveryExplanation(
                 cycle_cap=10,
@@ -417,6 +409,7 @@ class TestVerificationAsciiAnnotation:
             PipelinePolicy,
             PolicyBundle,
         )
+
         return PolicyBundle(
             agents=AgentsPolicy(
                 agent_chains={"c": AgentChainConfig(agents=["claude"])},

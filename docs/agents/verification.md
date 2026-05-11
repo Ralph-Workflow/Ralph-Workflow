@@ -36,8 +36,8 @@ make dead-code
 
 ```bash
 cd ralph-workflow
-ruff check ralph/ tests/
-ruff format --check ralph/ tests/
+uv run ruff check ralph/ tests/
+uv run ruff format --check ralph/ tests/
 uv run python -m mypy ralph/
 make test
 make test-unit
@@ -48,7 +48,7 @@ python -m ralph --help
 python -m ralph --version
 ```
 
-`make test` runs the full suite without coverage. `make test-unit` excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` is the single authoritative covered suite used by `make verify`. `make docs` builds the Sphinx HTML docs into `docs/sphinx/_build/html` with warnings treated as errors.
+`make test` runs the full suite without coverage. `make test-unit` excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` is the single authoritative covered suite used by `make verify`. Use `uv run ruff ...` for direct Ruff repro commands so manual lint/format checks match the same uv-managed Ruff toolchain that `make verify` uses. `make docs` builds the Sphinx HTML docs into `docs/sphinx/_build/html` with warnings treated as errors.
 
 ---
 

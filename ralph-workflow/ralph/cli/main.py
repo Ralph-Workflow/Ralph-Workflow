@@ -150,12 +150,16 @@ def _inject_quick_prompt(args: list[str]) -> list[str]:
             continue
         # Options with values consume the next arg; skip it to avoid treating it as a prompt.
         if arg in {
-            "--config", "-c",
-            "--developer-iters", "-D",
+            "--config",
+            "-c",
+            "--developer-iters",
+            "-D",
             "--counter",
-            "--developer-agent", "-a",
+            "--developer-agent",
+            "-a",
             "--developer-model",
-            "--verbosity", "-v",
+            "--verbosity",
+            "-v",
             "--init",
             "--git-user-name",
             "--git-user-email",
@@ -194,11 +198,9 @@ class _ValidateCustomMcpServersFn(Protocol):
     def __call__(self, workspace_root: RuntimePath) -> int: ...
 
 
-
 def _module_attr(module: ModuleType, attribute: str) -> object:
     namespace = cast("dict[str, object]", module.__dict__)
     return namespace[attribute]
-
 
 
 def _load_agent_registry_factory() -> _AgentRegistryFactory:
@@ -208,7 +210,6 @@ def _load_agent_registry_factory() -> _AgentRegistryFactory:
     )
 
 
-
 def _load_validate_custom_mcp_servers() -> _ValidateCustomMcpServersFn:
     return cast(
         "_ValidateCustomMcpServersFn",
@@ -216,17 +217,14 @@ def _load_validate_custom_mcp_servers() -> _ValidateCustomMcpServersFn:
     )
 
 
-
 def _set_command_main(command: click.Command, callback: _CommandMain) -> None:
     cast("dict[str, object]", command.__dict__)["main"] = callback
-
 
 
 def _set_typer_testing_get_command(
     callback: Callable[[typer.Typer], click.Command],
 ) -> None:
     cast("dict[str, object]", typer.testing.__dict__)["_get_command"] = callback
-
 
 
 def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Command:
@@ -344,7 +342,6 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
             c.print(Text(msg, style="theme.text.muted"))
     else:
         c.print(Text("No configs found to regenerate", style="theme.text.muted"))
-
 
 
 def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
@@ -529,9 +526,7 @@ def main(  # noqa: PLR0913
         bool,
         typer.Option(
             "--generate-local-config",
-            help=(
-                "Create .agent/ralph-workflow.toml as an explicit project-local main override"
-            ),
+            help=("Create .agent/ralph-workflow.toml as an explicit project-local main override"),
         ),
     ] = False,
     generate_commit_msg: Annotated[
@@ -708,8 +703,7 @@ app.command()(cleanup)
 def _validate_prompt_flags(prompt: str | None, quick: bool) -> None:
     if prompt is not None and not quick:
         raise click.UsageError(
-            "--prompt requires --quick/-Q. "
-            "Usage: ralph -Q --prompt 'your prompt here'"
+            "--prompt requires --quick/-Q. Usage: ralph -Q --prompt 'your prompt here'"
         )
 
 
@@ -842,11 +836,7 @@ def _handle_commit_plumbing(
     Returns:
         Exit code or None to continue.
     """
-    if not (
-        options.generate_commit_msg
-        or options.generate_commit
-        or options.show_commit_msg
-    ):
+    if not (options.generate_commit_msg or options.generate_commit or options.show_commit_msg):
         return None
 
     commit_plumbing(options=options, display_context=display_context)
@@ -946,15 +936,11 @@ def _parse_counter_overrides(raw_entries: list[str]) -> dict[str, int]:
     result: dict[str, int] = {}
     for entry in raw_entries:
         if "=" not in entry:
-            raise click.UsageError(
-                f"--counter: invalid format {entry!r} — expected NAME=VALUE"
-            )
+            raise click.UsageError(f"--counter: invalid format {entry!r} — expected NAME=VALUE")
         name, _, raw_value = entry.partition("=")
         name = name.strip()
         if not name:
-            raise click.UsageError(
-                f"--counter: blank counter name in {entry!r}"
-            )
+            raise click.UsageError(f"--counter: blank counter name in {entry!r}")
         try:
             value = int(raw_value)
         except ValueError:

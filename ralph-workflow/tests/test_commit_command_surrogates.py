@@ -34,9 +34,7 @@ def test_working_tree_diff_strips_lone_surrogates(monkeypatch, tmp_path: Path) -
     diff.encode("utf-8")  # must not raise
 
 
-def test_working_tree_diff_strips_surrogates_when_head_invalid(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_working_tree_diff_strips_surrogates_when_head_invalid(monkeypatch, tmp_path: Path) -> None:
     surrogate_diff = "diff cached\n+\udca4\n"
 
     class _FakeGit:

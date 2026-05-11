@@ -29,7 +29,7 @@ def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
     Returns:
         Delay in milliseconds, capped at max_ms.
     """
-    exponent_factor: int = 2 ** attempt
+    exponent_factor: int = 2**attempt
     delay: int = base_ms * exponent_factor
     return min(delay, max_ms)
 
@@ -89,7 +89,8 @@ class RecoveryController:
         Returns:
             Tuple of (new_state, effects, failure_event).
         """
-        from ralph.pipeline.effects import ExitFailureEffect
+        # Lazy import: ralph.pipeline.effects depends transitively on recovery types.
+        from ralph.pipeline.effects import ExitFailureEffect  # noqa: PLC0415
 
         failure = self._classifier.classify(raw_failure, phase=phase, agent=agent)
 
@@ -151,9 +152,11 @@ class RecoveryController:
                 phase,
                 failure.reason[:200],
             )
-            return self._enter_phase_failed(
-                new_state, failure.reason, failure.category
-            ), [], failure_evt
+            return (
+                self._enter_phase_failed(new_state, failure.reason, failure.category),
+                [],
+                failure_evt,
+            )
 
         # AGENT category: debit budget and handle chain progression
         if failure.reset_session:
@@ -187,7 +190,11 @@ class RecoveryController:
             )
             logger.error("Recovery cycle cap exceeded: {}", exit_reason)
             # Cycle exceeded: no retry delay
-            return new_state.copy_with(last_retry_delay_ms=0), [ExitFailureEffect(reason=exit_reason)], failure_evt  # noqa: E501
+            return (
+                new_state.copy_with(last_retry_delay_ms=0),
+                [ExitFailureEffect(reason=exit_reason)],
+                failure_evt,
+            )
 
         return new_state, effects, failure_evt
 
@@ -259,9 +266,10 @@ class RecoveryController:
             phase: Pipeline phase where the failure occurred.
             failure: Classified failure with stale-session detail.
         """
-        from pathlib import Path
+        # Lazy imports: ralph.phases depends transitively on ralph.recovery.
+        from pathlib import Path  # noqa: PLC0415
 
-        from ralph.phases.required_artifacts import (
+        from ralph.phases.required_artifacts import (  # noqa: PLC0415
             build_retry_hint,
             retry_hint_path,
         )
@@ -288,7 +296,8 @@ class RecoveryController:
         retry_in_session: bool = False,
     ) -> tuple[PipelineState, list[Effect]]:
         """Handle agent failure with budget debit and chain progression."""
-        from ralph.pipeline.state import FalloverRecord
+        # Lazy import: ralph.pipeline.state depends transitively on recovery types.
+        from ralph.pipeline.state import FalloverRecord  # noqa: PLC0415
 
         chain = state.chain_for_phase(phase)
         if chain is None:
@@ -312,9 +321,7 @@ class RecoveryController:
         )
         if should_retry_in_chain:
             return (
-                self._apply_chain_retry(
-                    state, phase, chain, retry_in_session=retry_in_session
-                ),
+                self._apply_chain_retry(state, phase, chain, retry_in_session=retry_in_session),
                 [],
             )
 
@@ -345,9 +352,7 @@ class RecoveryController:
         new_state = state.copy_with(
             recovery_cycle_count=state.recovery_cycle_count + 1,
         )
-        failed_state = self._enter_phase_failed(
-            new_state, failure.reason, failure.category
-        )
+        failed_state = self._enter_phase_failed(new_state, failure.reason, failure.category)
         return failed_state, []
 
     def _get_max_retries_for_chain(self, phase: str) -> int:

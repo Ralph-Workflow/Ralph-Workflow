@@ -35,11 +35,7 @@ class TestFanOutEffectIsPhaseAgnostic:
     def test_effects_module_has_no_fanout_development_class(self) -> None:
         source = EFFECTS_PATH.read_text(encoding="utf-8")
         tree = ast.parse(source)
-        class_names = [
-            node.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ClassDef)
-        ]
+        class_names = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
         assert "FanOutDevelopmentEffect" not in class_names, (
             "FanOutDevelopmentEffect must not be a class definition in effects.py; "
             "it must only exist as a backward-compat alias via __getattr__."

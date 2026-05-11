@@ -125,7 +125,6 @@ def test_record_waiting_status_kind_specific_lines(tmp_path: Path) -> None:
     assert "oldest_child_seconds=" in line
 
 
-
 def test_decision_log_only_for_suspected_frozen_and_hard_stop(tmp_path: Path) -> None:
     """Decision log entries are appended only for SUSPECTED_FROZEN and HARD_STOP."""
     sub = _make_subscriber(tmp_path)
@@ -261,8 +260,6 @@ def test_waiting_status_line_property_returns_current_value(tmp_path: Path) -> N
     """PipelineSubscriber.waiting_status_line property returns the internal status line."""
     sub = _make_subscriber(tmp_path)
     assert sub.waiting_status_line is None
-    sub.record_waiting_status(
-        _event(WaitingStatusKind.PROGRESS)
-    )
+    sub.record_waiting_status(_event(WaitingStatusKind.PROGRESS))
     assert sub.waiting_status_line is not None
     assert "still active" in sub.waiting_status_line

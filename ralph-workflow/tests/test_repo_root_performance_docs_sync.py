@@ -65,8 +65,7 @@ def test_performance_docs_have_historical_labeling():
 
         has_marker = any(marker in content for marker in HISTORICAL_MARKERS)
         assert has_marker, (
-            f"{guide} must contain historical/archival labeling "
-            f"(one of: {HISTORICAL_MARKERS})"
+            f"{guide} must contain historical/archival labeling (one of: {HISTORICAL_MARKERS})"
         )
 
 
@@ -82,10 +81,7 @@ def test_performance_docs_contain_rust_content():
 
         # At least one Rust pattern should be present in these historical docs
         # Look for cargo commands, Rust source paths, or Rust code patterns
-        has_rust = any(
-            re.search(pattern, content, re.IGNORECASE)
-            for pattern in RUST_PATTERNS
-        )
+        has_rust = any(re.search(pattern, content, re.IGNORECASE) for pattern in RUST_PATTERNS)
         # Also check for code blocks with rust language specifier
         has_rust_block = "```rust" in content or "```RUST" in content
 
@@ -106,9 +102,7 @@ def test_performance_readme_not_python_current():
         "README.md should not claim to be current Python guidance"
     )
     # Should contain historical markers
-    assert any(m in content for m in HISTORICAL_MARKERS), (
-        "README.md must be labeled as historical"
-    )
+    assert any(m in content for m in HISTORICAL_MARKERS), "README.md must be labeled as historical"
 
 
 def test_memory_budget_has_historical_label():

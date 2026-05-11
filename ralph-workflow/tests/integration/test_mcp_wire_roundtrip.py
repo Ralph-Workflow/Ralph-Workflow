@@ -154,9 +154,7 @@ class TestHttpMcpServer:
         """
         _seed_extended_workspace(temp_workspace)
 
-        server = _build_server(
-            temp_workspace, session_id="test-new-tools", drain="development"
-        )
+        server = _build_server(temp_workspace, session_id="test-new-tools", drain="development")
         state = _do_initialize(server)
         tools = _do_tools_list(server, state)
         _assert_new_workspace_tools_present(tools)
@@ -443,8 +441,7 @@ def _assert_tool_descriptions(tools: list[dict[str, Any]]) -> None:
             f"Tool {tool['name']} description too long: {desc!r}"
         )
         assert tool.get("inputSchema", {}).get("type") == "object", (
-            f"Tool {tool['name']} inputSchema type is not 'object': "
-            f"{tool.get('inputSchema')}"
+            f"Tool {tool['name']} inputSchema type is not 'object': {tool.get('inputSchema')}"
         )
 
 
@@ -521,17 +518,79 @@ class TestStdioUpstreamClient:
 # ---------------------------------------------------------------------------
 
 # Minimal valid 1x1 PNG (67 bytes) — no external file needed.
-_TINY_PNG_BYTES = bytes([
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  # PNG signature
-    0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,  # IHDR chunk length + type
-    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,  # width=1, height=1
-    0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,  # bit depth, color type, etc.
-    0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,  # IDAT chunk
-    0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
-    0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC,
-    0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,  # IEND chunk
-    0x44, 0xAE, 0x42, 0x60, 0x82,
-])
+_TINY_PNG_BYTES = bytes(
+    [
+        0x89,
+        0x50,
+        0x4E,
+        0x47,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,  # PNG signature
+        0x00,
+        0x00,
+        0x00,
+        0x0D,
+        0x49,
+        0x48,
+        0x44,
+        0x52,  # IHDR chunk length + type
+        0x00,
+        0x00,
+        0x00,
+        0x01,
+        0x00,
+        0x00,
+        0x00,
+        0x01,  # width=1, height=1
+        0x08,
+        0x02,
+        0x00,
+        0x00,
+        0x00,
+        0x90,
+        0x77,
+        0x53,  # bit depth, color type, etc.
+        0xDE,
+        0x00,
+        0x00,
+        0x00,
+        0x0C,
+        0x49,
+        0x44,
+        0x41,  # IDAT chunk
+        0x54,
+        0x08,
+        0xD7,
+        0x63,
+        0xF8,
+        0xCF,
+        0xC0,
+        0x00,
+        0x00,
+        0x00,
+        0x02,
+        0x00,
+        0x01,
+        0xE2,
+        0x21,
+        0xBC,
+        0x33,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x49,
+        0x45,
+        0x4E,  # IEND chunk
+        0x44,
+        0xAE,
+        0x42,
+        0x60,
+        0x82,
+    ]
+)
 
 # Minimal PDF header bytes — sufficient to pass MIME routing.
 _TINY_PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
@@ -588,9 +647,7 @@ def _initialize_multimodal(server: McpServer) -> ServerState:
 class TestMultimodalToolRoundtrip:
     """Black-box multimodal tool/resource roundtrips via McpServer.handle_request()."""
 
-    def test_read_media_png_with_claude_session_returns_inline_image(
-        self, tmp_path: Path
-    ) -> None:
+    def test_read_media_png_with_claude_session_returns_inline_image(self, tmp_path: Path) -> None:
         """PNG file with Claude model identity delivers an inline image block."""
         png_file = tmp_path / "screenshot.png"
         png_file.write_bytes(_TINY_PNG_BYTES)
@@ -641,9 +698,7 @@ class TestMultimodalToolRoundtrip:
         assert block.get("modality") == "pdf"
 
         # Artifact must appear in resources/list
-        list_req = JsonRpcRequest(
-            jsonrpc="2.0", method="resources/list", params={}, msg_id=20
-        )
+        list_req = JsonRpcRequest(jsonrpc="2.0", method="resources/list", params={}, msg_id=20)
         list_resp, _ = server.handle_request(list_req, state)
         assert list_resp is not None and list_resp.result is not None
         resources = cast(
@@ -670,17 +725,12 @@ class TestMultimodalToolRoundtrip:
         assert contents[0].get("mimeType") == "application/pdf"
         assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0
 
-
-    def test_read_media_audio_resource_reference_is_retrievable(
-        self, tmp_path: Path
-    ) -> None:
+    def test_read_media_audio_resource_reference_is_retrievable(self, tmp_path: Path) -> None:
         """Audio from unknown provider stored as resource_reference fetchable via resources/read."""
         import tempfile
 
         mp3_bytes = b"ID3" + b"\x00" * 50
-        with tempfile.NamedTemporaryFile(
-            suffix=".mp3", dir=tmp_path, delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", dir=tmp_path, delete=False) as f:
             f.write(mp3_bytes)
             audio_name = Path(f.name).name
 
@@ -724,16 +774,12 @@ class TestMultimodalToolRoundtrip:
         assert contents[0].get("uri") == uri
         assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0
 
-    def test_read_media_video_resource_reference_is_retrievable(
-        self, tmp_path: Path
-    ) -> None:
+    def test_read_media_video_resource_reference_is_retrievable(self, tmp_path: Path) -> None:
         """Video from unknown provider stored as resource_reference fetchable via resources/read."""
         import tempfile
 
         mp4_bytes = b"\x00\x00\x00\x20ftyp" + b"\x00" * 40
-        with tempfile.NamedTemporaryFile(
-            suffix=".mp4", dir=tmp_path, delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", dir=tmp_path, delete=False) as f:
             f.write(mp4_bytes)
             video_name = Path(f.name).name
 

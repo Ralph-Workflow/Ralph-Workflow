@@ -175,8 +175,7 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
 
         ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
         artifact_path = (
-            ra.json_path if ra is not None
-            else f".agent/artifacts/{drain_name}_decision.json"
+            ra.json_path if ra is not None else f".agent/artifacts/{drain_name}_decision.json"
         )
 
         if not ctx.workspace.exists(artifact_path):

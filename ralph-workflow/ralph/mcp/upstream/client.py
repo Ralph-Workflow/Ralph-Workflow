@@ -171,9 +171,9 @@ def _json_rpc_result(raw: object, context: str) -> JsonObject:
     return {}
 
 
-_UPSTREAM_MEDIA_BLOCK_TYPES: frozenset[str] = frozenset({
-    "image", "audio", "video", "pdf", "document"
-})
+_UPSTREAM_MEDIA_BLOCK_TYPES: frozenset[str] = frozenset(
+    {"image", "audio", "video", "pdf", "document"}
+)
 
 _MAX_EXTENSION_LEN = 6
 

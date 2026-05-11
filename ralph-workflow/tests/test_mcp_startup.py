@@ -200,9 +200,7 @@ def test_mcp_preflight_timeout_from_mapping_is_injectable() -> None:
 
 
 def test_heartbeat_policy_from_mapping_is_injectable() -> None:
-    policy = startup.heartbeat_policy_from_env(
-        {"RALPH_MCP_SUPERVISION_INTERVAL_MS": "1500"}
-    )
+    policy = startup.heartbeat_policy_from_env({"RALPH_MCP_SUPERVISION_INTERVAL_MS": "1500"})
 
     assert policy.interval == datetime.timedelta(milliseconds=1500)
 

@@ -72,19 +72,19 @@ test-cov:
 
 # Linting
 lint:
-	ruff check ralph/ tests/
+	uv run ruff check ralph/ tests/
 
 typecheck:
 	uv run python -m mypy ralph/
 
 fmt:
-	ruff format ralph/ tests/
+	uv run ruff format ralph/ tests/
 
 format-check:
-	ruff format --check ralph/ tests/
+	uv run ruff format --check ralph/ tests/
 
 ruff-fix:
-	ruff check --fix ralph/ tests/
+	uv run ruff check --fix ralph/ tests/
 
 mypy-fix:
 	uv run python -m mypy ralph/

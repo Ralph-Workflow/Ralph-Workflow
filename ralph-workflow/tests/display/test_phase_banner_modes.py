@@ -81,6 +81,7 @@ def _make_execution_to_analysis_policy() -> PipelinePolicy:
 
 # --- Compact mode ---
 
+
 def test_compact_major_transition_no_leading_blank() -> None:
     """Compact: major transition emits no leading blank line."""
     ctx = _make_ctx("compact")
@@ -102,6 +103,7 @@ def test_compact_major_transition_one_rule() -> None:
 
 
 # --- Wide mode ---
+
 
 def test_wide_major_transition_has_one_rule() -> None:
     """Wide: major transition emits exactly one Rule (same as compact)."""
@@ -126,6 +128,7 @@ def test_wide_major_transition_no_leading_blank() -> None:
 
 
 # --- ASCII glyph fallbacks ---
+
 
 def test_arrow_glyph_is_unicode_by_default() -> None:
     """Without ASCII override, arrow glyph is the Unicode arrow."""
@@ -155,6 +158,7 @@ def test_start_glyph_swaps_to_ascii_with_force_ascii() -> None:
 
 # --- Phase-start ordering tests ---
 
+
 def test_phase_start_outer_dev_appears_before_inner_analysis() -> None:
     """Dev label must appear before Analysis label in phase-start output."""
     ctx = _make_ctx("wide")
@@ -171,8 +175,7 @@ def test_phase_start_outer_dev_appears_before_inner_analysis() -> None:
     assert dev_pos != -1, f"Expected 'Dev #3' in output, got: {output!r}"
     assert analysis_pos != -1, f"Expected 'Analysis 2/5' in output, got: {output!r}"
     assert dev_pos < analysis_pos, (
-        f"Dev #3 must appear before Analysis 2/5, "
-        f"but dev_pos={dev_pos} analysis_pos={analysis_pos}"
+        f"Dev #3 must appear before Analysis 2/5, but dev_pos={dev_pos} analysis_pos={analysis_pos}"
     )
 
 
@@ -746,12 +749,8 @@ def test_phase_start_compact_mode_omits_analysis_budget_indicator() -> None:
     )
     show_phase_start_from_entry(entry, display_context=ctx)
     output = _export(ctx)
-    assert "left" not in output, (
-        f"Compact mode must not show '[N left]' indicator: {output!r}"
-    )
-    assert "last" not in output, (
-        f"Compact mode must not show '[last]' indicator: {output!r}"
-    )
+    assert "left" not in output, f"Compact mode must not show '[N left]' indicator: {output!r}"
+    assert "last" not in output, f"Compact mode must not show '[last]' indicator: {output!r}"
 
 
 # --- Wide mode non-redundancy tests ---
@@ -824,9 +823,7 @@ def test_phase_close_banner_shows_routing_note_all_modes() -> None:
         )
         show_phase_close_banner(exit_model, display_context=ctx)
         output = _export(ctx)
-        assert "cap reached" in output, (
-            f"routing_note not shown in {mode} mode: {output!r}"
-        )
+        assert "cap reached" in output, f"routing_note not shown in {mode} mode: {output!r}"
 
 
 def test_phase_close_banner_omits_routing_note_when_none() -> None:
@@ -855,9 +852,5 @@ def test_phase_close_wide_mode_trailing_rule_is_titled_with_elapsed_and_trigger(
     rule_lines = [ln for ln in output.split("\n") if "─" in ln or "─" in ln]
     assert len(rule_lines) >= 1, "Expected trailing Rule in wide mode"
     rule_text = " ".join(rule_lines)
-    assert "completed" in rule_text, (
-        f"Trailing Rule title must contain exit trigger: {rule_text!r}"
-    )
-    assert "12" in rule_text, (
-        f"Trailing Rule title must contain elapsed time: {rule_text!r}"
-    )
+    assert "completed" in rule_text, f"Trailing Rule title must contain exit trigger: {rule_text!r}"
+    assert "12" in rule_text, f"Trailing Rule title must contain elapsed time: {rule_text!r}"

@@ -40,8 +40,8 @@ try:
     from readability import Document as _RawDocument  # noqa: I001  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     from selectolax.parser import HTMLParser as _RawHTMLParser
 
-    _ReadabilityDocument = cast('type[_ReadabilityDocumentProtocol]', _RawDocument)
-    _HTMLParser = cast('type[_HTMLParserProtocol]', _RawHTMLParser)
+    _ReadabilityDocument = cast("type[_ReadabilityDocumentProtocol]", _RawDocument)
+    _HTMLParser = cast("type[_HTMLParserProtocol]", _RawHTMLParser)
 except ImportError:
     pass
 
@@ -55,9 +55,7 @@ class ExtractedPage:
     links: tuple[str, ...]
 
 
-def _require_deps() -> (
-    tuple[type[_ReadabilityDocumentProtocol], type[_HTMLParserProtocol]]
-):
+def _require_deps() -> tuple[type[_ReadabilityDocumentProtocol], type[_HTMLParserProtocol]]:
     if _ReadabilityDocument is None or _HTMLParser is None:
         raise ImportError(
             "Web visit text extraction requires optional dependencies. "

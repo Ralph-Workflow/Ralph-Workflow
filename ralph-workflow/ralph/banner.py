@@ -54,9 +54,7 @@ def _module_attr(module: ModuleType, attribute: str) -> object:
     return namespace[attribute]
 
 
-def _load_rich_components() -> tuple[
-    _RichGroupProto, _RichPanelProto, _RichTextProto
-]:
+def _load_rich_components() -> tuple[_RichGroupProto, _RichPanelProto, _RichTextProto]:
     """Load rich classes lazily so static analysis does not depend on local env setup."""
     console_module = import_module("rich.console")
     panel_module = import_module("rich.panel")

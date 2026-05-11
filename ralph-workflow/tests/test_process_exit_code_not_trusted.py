@@ -178,6 +178,5 @@ async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path) -> Non
     )
     assert display.statuses["unit-a"][-1] is WorkerStatus.FAILED
     assert any(
-        isinstance(event, WorkerFailedEvent) and event.unit_id == "unit-a"
-        for event in events
+        isinstance(event, WorkerFailedEvent) and event.unit_id == "unit-a" for event in events
     )

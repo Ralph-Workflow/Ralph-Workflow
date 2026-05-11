@@ -324,8 +324,7 @@ def _check_signals_terminal(completion_signals: CompletionSignals) -> bool:
         pass
     try:
         return bool(
-            completion_signals.explicit_complete
-            or completion_signals.required_artifact_present
+            completion_signals.explicit_complete or completion_signals.required_artifact_present
         )
     except Exception:
         return False

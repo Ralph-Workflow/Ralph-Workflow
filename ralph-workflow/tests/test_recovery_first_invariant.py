@@ -66,7 +66,11 @@ class TestRecoveryFirstBehavior:
         # State with a 2-agent phase chain
         state = PipelineState(
             phase="development",
-            phase_chains={"development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)},  # noqa: E501
+            phase_chains={
+                "development": AgentChainState(
+                    agents=["claude", "opencode"], current_index=0, retries=0
+                )
+            },
         )
 
         # PhaseFailureEvent that simulates a handler crash
@@ -120,7 +124,9 @@ class TestRecoveryFirstBehavior:
         """PhaseFailureEvent with empty reason must still produce a descriptive last_error."""
         state = PipelineState(
             phase="development",
-            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
+            phase_chains={
+                "development": AgentChainState(agents=["claude"], current_index=0, retries=3)
+            },
         )
         event = PhaseFailureEvent(phase="development", reason="", recoverable=True)
 
@@ -140,7 +146,9 @@ class TestRecoveryFirstBehavior:
         """Whitespace-only reason must still produce a descriptive last_error."""
         state = PipelineState(
             phase="development",
-            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
+            phase_chains={
+                "development": AgentChainState(agents=["claude"], current_index=0, retries=3)
+            },
         )
         event = PhaseFailureEvent(phase="development", reason="   ", recoverable=True)
 
@@ -208,7 +216,9 @@ def test_phase_failure_recoverable_empty_reason_produces_descriptive_error() -> 
     """PhaseFailureEvent with empty reason must still produce a descriptive last_error."""
     state = PipelineState(
         phase="development",
-        phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
+        phase_chains={
+            "development": AgentChainState(agents=["claude"], current_index=0, retries=3)
+        },
     )
     event = PhaseFailureEvent(phase="development", reason="", recoverable=True)
 
@@ -227,7 +237,9 @@ def test_phase_failure_recoverable_whitespace_reason_produces_descriptive_error(
     """Whitespace-only reason must still produce a descriptive last_error."""
     state = PipelineState(
         phase="development",
-        phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
+        phase_chains={
+            "development": AgentChainState(agents=["claude"], current_index=0, retries=3)
+        },
     )
     event = PhaseFailureEvent(phase="development", reason="   ", recoverable=True)
 

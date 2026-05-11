@@ -160,8 +160,7 @@ def test_materialize_format_doc_returns_none_for_unsupported() -> None:
     assert materialize_format_doc(workspace_root, "plan", backend=backend) is None
     assert materialize_format_doc(workspace_root, "bogus", backend=backend) is None
     assert not any(
-        str(p).endswith("plan.md") or str(p).endswith("bogus.md")
-        for p in backend._files
+        str(p).endswith("plan.md") or str(p).endswith("bogus.md") for p in backend._files
     )
 
 
@@ -230,9 +229,7 @@ def test_format_doc_mentions_required_fields() -> None:
         doc = load_bundled_format_doc(artifact_type)
         assert doc is not None
         for field in fields:
-            assert field in doc, (
-                f"Doc for {artifact_type!r} missing required field name {field!r}"
-            )
+            assert field in doc, f"Doc for {artifact_type!r} missing required field name {field!r}"
 
 
 def test_format_doc_workspace_path_returns_correct_relative_path() -> None:
@@ -283,9 +280,7 @@ def test_every_supported_artifact_type_redirects_on_bad_payload(
     assert "Field required" not in message
     assert "model_validate" not in message
     # Format doc was materialized
-    doc_path = (
-        tmp_path / artifact_type / ".agent" / "artifact-formats" / f"{artifact_type}.md"
-    )
+    doc_path = tmp_path / artifact_type / ".agent" / "artifact-formats" / f"{artifact_type}.md"
     assert doc_path.exists()
 
 
@@ -370,15 +365,9 @@ def test_analysis_decision_without_drain_points_to_index(tmp_path: Path) -> None
     message = str(exc_info.value)
     assert ".agent/artifact-formats/artifact_formats_index.md" in message
     # All analysis decision docs should be materialized
-    assert (
-        tmp_path / ".agent" / "artifact-formats" / "development_analysis_decision.md"
-    ).exists()
-    assert (
-        tmp_path / ".agent" / "artifact-formats" / "planning_analysis_decision.md"
-    ).exists()
-    assert (
-        tmp_path / ".agent" / "artifact-formats" / "review_analysis_decision.md"
-    ).exists()
+    assert (tmp_path / ".agent" / "artifact-formats" / "development_analysis_decision.md").exists()
+    assert (tmp_path / ".agent" / "artifact-formats" / "planning_analysis_decision.md").exists()
+    assert (tmp_path / ".agent" / "artifact-formats" / "review_analysis_decision.md").exists()
     assert (tmp_path / ".agent" / "artifact-formats" / "artifact_formats_index.md").exists()
 
 
@@ -474,6 +463,6 @@ def test_every_format_doc_has_dumb_proof_checklist(artifact_type: str) -> None:
         for line in checklist_content.split("\n")
         if line.strip().startswith(("* ", "- "))
     ]
-    assert (
-        len(bullet_lines) >= MIN_CHECKLIST_BULLETS
-    ), f"Doc {artifact_type!r} checklist has fewer than {MIN_CHECKLIST_BULLETS} bullets"
+    assert len(bullet_lines) >= MIN_CHECKLIST_BULLETS, (
+        f"Doc {artifact_type!r} checklist has fewer than {MIN_CHECKLIST_BULLETS} bullets"
+    )

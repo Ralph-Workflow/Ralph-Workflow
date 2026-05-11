@@ -20,7 +20,6 @@ Main entry points:
 Use ``ralph --inspect-checkpoint`` on the CLI to display the current checkpoint.
 """
 
-
 from .builder import CheckpointBuilder, CheckpointPayload
 from .execution_history import ExecutionHistory, ExecutionStep, StepOutcome
 from .run_context import RunContext

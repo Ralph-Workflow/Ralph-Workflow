@@ -12,10 +12,6 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.config.mcp_models import WebSearchConfig
-from ralph.mcp.websearch.backends.brave import BraveBackend
-from ralph.mcp.websearch.backends.exa import ExaBackend
-from ralph.mcp.websearch.backends.searxng import SearxngBackend
-from ralph.mcp.websearch.backends.tavily import TavilyBackend
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -26,7 +22,11 @@ from ralph.mcp.tools.coordination import (
 )
 from ralph.mcp.tools.workspace import required_string_param
 from ralph.mcp.websearch.backends.base import SearchResult, WebSearchBackend, WebSearchError
+from ralph.mcp.websearch.backends.brave import BraveBackend
 from ralph.mcp.websearch.backends.ddgs import DdgsBackend
+from ralph.mcp.websearch.backends.exa import ExaBackend
+from ralph.mcp.websearch.backends.searxng import SearxngBackend
+from ralph.mcp.websearch.backends.tavily import TavilyBackend
 from ralph.mcp.websearch.secrets import resolve_secret
 
 if TYPE_CHECKING:

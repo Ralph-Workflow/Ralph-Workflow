@@ -12,7 +12,6 @@ These tests verify that:
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable
 from typing import TYPE_CHECKING, NamedTuple, cast
 from unittest.mock import PropertyMock, patch
 
@@ -41,6 +40,7 @@ from ralph.display.tables import show_agents, show_providers
 
 if TYPE_CHECKING:
     import pathlib
+    from collections.abc import Callable
 
 
 class DIResult(NamedTuple):
@@ -165,7 +165,9 @@ class TestRenderersRequireDisplayContext:
     def test_render_analysis_decision_rejects_missing_context(self, tmp_path: pathlib.Path) -> None:
         """render_analysis_decision() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
-            cast("Callable[..., object]", render_analysis_decision)(tmp_path, "development_analysis")
+            cast("Callable[..., object]", render_analysis_decision)(
+                tmp_path, "development_analysis"
+            )
 
     def test_render_commit_message_rejects_missing_context(self, tmp_path: pathlib.Path) -> None:
         """render_commit_message() must fail when called without display_context."""
@@ -211,9 +213,7 @@ class TestCompactModeLimits:
         ctx = make_display_context(console=console, env={"COLUMNS": "50"})
         assert ctx.mode == "compact"
 
-        show_phase_transition(
-            "planning", "development", display_context=ctx
-        )
+        show_phase_transition("planning", "development", display_context=ctx)
 
         output = console.export_text()
         lines = output.strip().split("\n")
@@ -228,9 +228,7 @@ class TestCompactModeLimits:
         ctx = make_display_context(console=console, env={"COLUMNS": "120"})
         assert ctx.mode == "wide"
 
-        show_phase_transition(
-            "planning", "development", display_context=ctx
-        )
+        show_phase_transition("planning", "development", display_context=ctx)
 
         output = console.export_text()
         # In wide mode there should be Rule characters (──)
@@ -272,5 +270,3 @@ class TestRefreshedPicksUpNewWidth:
 
         assert refreshed.theme is original_theme
         assert refreshed.color_enabled == original_color
-
-

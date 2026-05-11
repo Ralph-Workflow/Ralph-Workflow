@@ -19,6 +19,8 @@ REVIEW_FRESH_SUBMIT_EXAMPLE = (
     '"artifact_type":"review_analysis_decision",'
     '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"'
 )
+
+
 class _ApprovedSession:
     session_id = "session-1"
 

@@ -29,9 +29,7 @@ def _wu(unit_id: str, allowed: list[str] | None = None) -> WorkUnit:
 
 
 class TestOldCheckpointCompatibility:
-    def test_old_checkpoint_without_parallel_fields_loads_cleanly(
-        self, tmp_path: Path
-    ) -> None:
+    def test_old_checkpoint_without_parallel_fields_loads_cleanly(self, tmp_path: Path) -> None:
         """Legacy checkpoint JSON without work_units/worker_states loads with empty defaults."""
         state = PipelineState(
             phase="planning",
@@ -51,9 +49,7 @@ class TestOldCheckpointCompatibility:
         assert loaded.work_units == ()
         assert loaded.worker_states == {}
 
-    def test_work_units_round_trip_preserves_order_and_dependencies(
-        self, tmp_path: Path
-    ) -> None:
+    def test_work_units_round_trip_preserves_order_and_dependencies(self, tmp_path: Path) -> None:
         """work_units tuple order and dependencies survive a save/load cycle."""
         unit_a = _wu("task-a")
         unit_b = WorkUnit(

@@ -809,8 +809,11 @@ def test_gemini_all_lifecycle_event_types_suppressed_before_real_content() -> No
     text_results = [r for r in results if r.type == "text"]
     assert len(text_results) == 1
     assert text_results[0].content == "real output"
-    leaking = [r for r in results if r.type in {"thread.started", "turn.started", "heartbeat",
-                                                  "ping", "ready", "start"}]
+    leaking = [
+        r
+        for r in results
+        if r.type in {"thread.started", "turn.started", "heartbeat", "ping", "ready", "start"}
+    ]
     assert leaking == [], f"Lifecycle events leaked: {leaking}"
 
 
@@ -1047,20 +1050,25 @@ def test_claude_parser_tool_result_with_image_block_emits_placeholder() -> None:
 
     parser = ClaudeParser()
     # tool_result blocks appear in assistant message content
-    line = json.dumps({
-        "type": "assistant",
-        "message": {
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": "toolu_123",
-                    "content": [
-                        {"type": "image", "source": {"media_type": "image/png", "data": "abc123"}},
-                    ],
-                },
-            ],
-        },
-    })
+    line = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_123",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {"media_type": "image/png", "data": "abc123"},
+                            },
+                        ],
+                    },
+                ],
+            },
+        }
+    )
     results = list(parser.parse(iter([line])))
     # Must yield a tool_result, not an error
     assert any(r.type == "tool_result" for r in results), (
@@ -1081,24 +1089,26 @@ def test_claude_parser_tool_result_with_resource_reference_emits_placeholder() -
     import json
 
     parser = ClaudeParser()
-    line = json.dumps({
-        "type": "assistant",
-        "message": {
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": "toolu_456",
-                    "content": [
-                        {
-                            "type": "resource_reference",
-                            "uri": "ralph://media/abc123",
-                            "modality": "pdf",
-                        },
-                    ],
-                },
-            ],
-        },
-    })
+    line = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_456",
+                        "content": [
+                            {
+                                "type": "resource_reference",
+                                "uri": "ralph://media/abc123",
+                                "modality": "pdf",
+                            },
+                        ],
+                    },
+                ],
+            },
+        }
+    )
     results = list(parser.parse(iter([line])))
     assert any(r.type == "tool_result" for r in results)
     assert not any(r.type == "error" for r in results)
@@ -1113,21 +1123,26 @@ def test_claude_parser_tool_result_with_mixed_text_and_image_preserves_text() ->
     import json
 
     parser = ClaudeParser()
-    line = json.dumps({
-        "type": "assistant",
-        "message": {
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": "toolu_789",
-                    "content": [
-                        {"type": "text", "text": "Analysis complete."},
-                        {"type": "image", "source": {"media_type": "image/jpeg", "data": "xyz"}},
-                    ],
-                },
-            ],
-        },
-    })
+    line = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_789",
+                        "content": [
+                            {"type": "text", "text": "Analysis complete."},
+                            {
+                                "type": "image",
+                                "source": {"media_type": "image/jpeg", "data": "xyz"},
+                            },
+                        ],
+                    },
+                ],
+            },
+        }
+    )
     results = list(parser.parse(iter([line])))
     assert any(r.type == "tool_result" for r in results)
     assert not any(r.type == "error" for r in results)
@@ -1151,25 +1166,27 @@ def test_claude_parser_tool_result_with_audio_resource_reference_emits_placehold
     import json as _json
 
     parser = ClaudeParser()
-    line = _json.dumps({
-        "type": "assistant",
-        "message": {
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": "toolu_audio",
-                    "content": [
-                        {
-                            "type": "resource_reference",
-                            "uri": "ralph://media/audio-abc",
-                            "modality": "audio",
-                            "mimeType": "audio/mpeg",
-                        },
-                    ],
-                },
-            ],
-        },
-    })
+    line = _json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_audio",
+                        "content": [
+                            {
+                                "type": "resource_reference",
+                                "uri": "ralph://media/audio-abc",
+                                "modality": "audio",
+                                "mimeType": "audio/mpeg",
+                            },
+                        ],
+                    },
+                ],
+            },
+        }
+    )
     results = list(parser.parse(iter([line])))
     assert any(r.type == "tool_result" for r in results), (
         f"Expected tool_result, got: {[r.type for r in results]}"
@@ -1189,25 +1206,27 @@ def test_claude_parser_tool_result_with_video_resource_reference_emits_placehold
     import json as _json
 
     parser = ClaudeParser()
-    line = _json.dumps({
-        "type": "assistant",
-        "message": {
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": "toolu_video",
-                    "content": [
-                        {
-                            "type": "resource_reference",
-                            "uri": "ralph://media/video-xyz",
-                            "modality": "video",
-                            "mimeType": "video/mp4",
-                        },
-                    ],
-                },
-            ],
-        },
-    })
+    line = _json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_video",
+                        "content": [
+                            {
+                                "type": "resource_reference",
+                                "uri": "ralph://media/video-xyz",
+                                "modality": "video",
+                                "mimeType": "video/mp4",
+                            },
+                        ],
+                    },
+                ],
+            },
+        }
+    )
     results = list(parser.parse(iter([line])))
     assert any(r.type == "tool_result" for r in results)
     assert not any(r.type == "error" for r in results)
@@ -1229,19 +1248,21 @@ def test_opencode_parser_tool_result_with_resource_reference_emits_placeholder()
 
     parser = OpenCodeParser()
     lines = [
-        _json.dumps({
-            "type": "tool_result",
-            "tool": "read_media",
-            "result": [
-                {
-                    "type": "resource_reference",
-                    "uri": "ralph://media/aud-001",
-                    "modality": "audio",
-                    "mimeType": "audio/mpeg",
-                }
-            ],
-            "part": {"tool": "read_media", "input": {"path": "clip.mp3"}},
-        })
+        _json.dumps(
+            {
+                "type": "tool_result",
+                "tool": "read_media",
+                "result": [
+                    {
+                        "type": "resource_reference",
+                        "uri": "ralph://media/aud-001",
+                        "modality": "audio",
+                        "mimeType": "audio/mpeg",
+                    }
+                ],
+                "part": {"tool": "read_media", "input": {"path": "clip.mp3"}},
+            }
+        )
     ]
     results = list(parser.parse(_make_lines(lines)))
     assert any(r.type == "tool_result" for r in results), (

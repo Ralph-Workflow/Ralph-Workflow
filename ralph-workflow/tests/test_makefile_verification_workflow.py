@@ -52,6 +52,13 @@ def test_test_cov_runs_pytest_once_with_coverage() -> None:
     assert "-n $(PYTEST_WORKERS)" in pytest_lines[0]
 
 
+def test_lint_targets_use_uv_managed_ruff() -> None:
+    assert _target_body("lint") == ["uv run ruff check ralph/ tests/"]
+    assert _target_body("fmt") == ["uv run ruff format ralph/ tests/"]
+    assert _target_body("format-check") == ["uv run ruff format --check ralph/ tests/"]
+    assert _target_body("ruff-fix") == ["uv run ruff check --fix ralph/ tests/"]
+
+
 def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     unit_body = _target_body("test-unit")
     integration_body = _target_body("test-integration")

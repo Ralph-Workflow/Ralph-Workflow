@@ -144,9 +144,7 @@ def _write_minimal_plan_artifacts(
                         "reference_files": [],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                     "work_units": [],
                 },
             }
@@ -232,7 +230,6 @@ def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_pl
     assert "PLANNING EDIT MODE" not in rendered
 
 
-
 def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_analysis_loopback(
     tmp_path: Path,
 ) -> None:
@@ -259,9 +256,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
                         "reference_files": [],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "revise"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                     "work_units": [],
                 },
             }
@@ -651,9 +646,7 @@ class TestDetermineEffect:
             registry,
         )
 
-        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(
-            encoding="utf-8"
-        )
+        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "You are in PLANNING MODE" in rendered
         assert "prepared edit prompt" not in rendered
         assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists() is False
@@ -931,9 +924,7 @@ def test_phase_output_artifact_paths_use_policy_drains_for_custom_phases() -> No
         "feature_commit",
         drain="development_commit",
         policy_bundle=policy_bundle,
-    ) == (
-        ".agent/tmp/commit_message.json",
-    )
+    ) == (".agent/tmp/commit_message.json",)
 
 
 class TestCommitEffect:
@@ -981,7 +972,6 @@ def test_build_agent_recovery_plan_uses_retry_prompt_when_same_session_has_conte
     assert "captured context line" in retry_prompt
 
 
-
 def test_build_agent_recovery_plan_falls_back_to_original_prompt_when_context_missing(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -1016,7 +1006,6 @@ def test_build_agent_recovery_plan_falls_back_to_original_prompt_when_context_mi
     assert plan is not None
     assert plan.session_id == "session-123"
     assert plan.prompt_file == str(prompt_file)
-
 
 
 def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: MonkeyPatch) -> None:
@@ -1147,9 +1136,7 @@ class TestPipelineRunnerLoop:
                                 {"text": "three"},
                             ],
                         },
-                        "steps": [
-                            {"number": 1, "title": "Revise", "content": "keep context"}
-                        ],
+                        "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
                         "critical_files": {
                             "primary_files": [{"path": "src/plan.py", "action": "modify"}],
                             "reference_files": [],
@@ -1664,7 +1651,9 @@ class TestPipelineRunnerLoop:
     ) -> None:
         planning_state = PipelineState(
             phase="planning",
-            phase_chains={"planning": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
+            phase_chains={
+                "planning": AgentChainState(agents=["claude"], current_index=0, retries=3)
+            },
         )
         failed_state = planning_state.copy_with(
             phase="failed",
@@ -2140,9 +2129,7 @@ class TestExecuteAgentEffect:
             state,
         )
 
-        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(
-            encoding="utf-8"
-        )
+        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "PLANNING EDIT MODE" in rendered
         assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
         assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
@@ -2182,9 +2169,7 @@ class TestExecuteAgentEffect:
             registry,
         )
 
-        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(
-            encoding="utf-8"
-        )
+        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
         assert "PLANNING EDIT MODE" in rendered
         assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
         assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
@@ -2748,7 +2733,6 @@ def test_determine_effect_does_not_early_skip_after_agent_already_invoked(
     assert isinstance(effect, CommitEffect)
 
 
-
 def test_determine_effect_auto_skips_exhausted_planning_analysis_without_invoking_agent() -> None:
     policy_bundle = load_policy(
         Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -2765,9 +2749,9 @@ def test_determine_effect_auto_skips_exhausted_planning_analysis_without_invokin
     assert effect.phase == "planning_analysis"
 
 
-
-def test_determine_effect_auto_skips_exhausted_development_analysis_without_invoking_agent(
-) -> None:
+def test_determine_effect_auto_skips_exhausted_development_analysis_without_invoking_agent() -> (
+    None
+):
     policy_bundle = load_policy(
         Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     )
@@ -2785,9 +2769,7 @@ def test_determine_effect_auto_skips_exhausted_development_analysis_without_invo
 
 
 class TestAutoAnalysisSuccessEffectExecution:
-    def test_execute_returns_analysis_success_without_invoking_agent(
-        self, tmp_path: Path
-    ) -> None:
+    def test_execute_returns_analysis_success_without_invoking_agent(self, tmp_path: Path) -> None:
         config = MagicMock()
         workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
 
@@ -3222,8 +3204,16 @@ class TestExecuteEffect:
         captured: dict[str, bool] = {}
 
         def stub_commit(  # noqa: PLR0913
-            effect, create_commit, stage_all, repo_root, display=None, *, verbosity=None,
-            phase_name="commit", state=None, pipeline_policy=None
+            effect,
+            create_commit,
+            stage_all,
+            repo_root,
+            display=None,
+            *,
+            verbosity=None,
+            phase_name="commit",
+            state=None,
+            pipeline_policy=None,
         ) -> PipelineEvent:
             del create_commit, stage_all, repo_root, display, verbosity, phase_name
             del state, pipeline_policy
@@ -3588,9 +3578,7 @@ class TestStartCommitCapture:
 
         runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
-        assert not written, (
-            "run() must not overwrite an existing .agent/start_commit"
-        )
+        assert not written, "run() must not overwrite an existing .agent/start_commit"
 
 
 def test_run_returns_1_when_mcp_validation_fails_in_strict_mode(
@@ -3731,7 +3719,9 @@ class TestPhaseHandlerExceptionGuard:
         """PhaseFailureEvent(recoverable=True) should route through reducer retry."""
         state = PipelineState(
             phase="development",
-            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=0)},  # noqa: E501
+            phase_chains={
+                "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
+            },
         )
         event = PhaseFailureEvent(
             phase="development",
@@ -3895,9 +3885,7 @@ class TestCycleBaselineLifecycle:
 
         runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
-        assert cleared, (
-            "run() must call clear_cycle_baseline in its finally/teardown block"
-        )
+        assert cleared, "run() must call clear_cycle_baseline in its finally/teardown block"
 
     def test_run_pipeline_step_clears_baseline_after_development_commit_success(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
@@ -3930,9 +3918,7 @@ class TestCycleBaselineLifecycle:
         state.copy_with = MagicMock(return_value=state)
         state.session_preserve_retry_pending = False
 
-        monkeypatch.setattr(
-            runner_module, "_determine_effect_from_policy", _fake_determine_effect
-        )
+        monkeypatch.setattr(runner_module, "_determine_effect_from_policy", _fake_determine_effect)
         monkeypatch.setattr(
             runner_module,
             "resolve_workspace_scope",
@@ -3978,7 +3964,9 @@ class TestSkippedExhaustedAnalysisInfo:
                     role="analysis",
                     transitions=PhaseTransition(on_success="development", on_loopback="planning"),
                     decisions={},
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="planning_analysis_iteration"
+                    ),
                 ),
                 "development": PhaseDefinition(
                     drain="development",
@@ -4028,7 +4016,9 @@ class TestSkippedExhaustedAnalysisInfo:
                         on_success="development_commit", on_loopback="development"
                     ),
                     decisions={},
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="development_analysis_iteration"
+                    ),
                 ),
                 "development_commit": PhaseDefinition(
                     drain="development_commit",
@@ -4219,11 +4209,13 @@ def _write_media_session(tmp_path: Path, phase: str, artifacts: list[dict[str, o
     path = tmp_path / ".agent" / "tmp" / f"{normalized}_media_session.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        _json.dumps({
-            "schema_version": "1",
-            "phase": phase,
-            "artifacts": artifacts,
-        }),
+        _json.dumps(
+            {
+                "schema_version": "1",
+                "phase": phase,
+                "artifacts": artifacts,
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -4298,11 +4290,13 @@ def test_materialize_agent_prompt_clears_sidecar_when_no_session_index(
     stale_sidecar = tmp_path / ".agent" / "tmp" / "development_multimodal_handoff.json"
     stale_sidecar.parent.mkdir(parents=True, exist_ok=True)
     stale_sidecar.write_text(
-        json.dumps({
-            "schema_version": "1",
-            "phase": "development",
-            "artifacts": [_SAMPLE_SESSION_IMAGE],
-        }),
+        json.dumps(
+            {
+                "schema_version": "1",
+                "phase": "development",
+                "artifacts": [_SAMPLE_SESSION_IMAGE],
+            }
+        ),
         encoding="utf-8",
     )
     assert stale_sidecar.exists()

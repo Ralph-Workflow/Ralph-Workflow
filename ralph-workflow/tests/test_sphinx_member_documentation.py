@@ -35,14 +35,12 @@ def _parse_members_modules(modules_rst_text: str) -> set[str]:
         option_block = match.group(2)
 
         has_members = bool(re.search(r"^\s+:members:", option_block, re.MULTILINE))
-        has_no_members = bool(
-            re.search(r"^\s+:no-members:", option_block, re.MULTILINE)
-        )
+        has_no_members = bool(re.search(r"^\s+:no-members:", option_block, re.MULTILINE))
 
         if has_members and not has_no_members:
             # Normalise to relative form (strip "ralph." prefix)
             if module_name.startswith("ralph."):
-                rel = module_name[len("ralph."):]
+                rel = module_name[len("ralph.") :]
             elif module_name == "ralph":
                 rel = ""
             else:

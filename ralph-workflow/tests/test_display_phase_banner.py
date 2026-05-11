@@ -110,7 +110,8 @@ def test_major_transition_analysis_to_commit_with_policy() -> None:
     policy = _make_two_phase_policy("analysis", "commit", "dev_analysis", "dev_commit")
     console = Console(record=True, width=120)
     show_phase_transition(
-        "dev_analysis", "dev_commit",
+        "dev_analysis",
+        "dev_commit",
         pipeline_policy=policy,
         display_context=_ctx_from_console(console),
     )
@@ -126,7 +127,8 @@ def test_major_transition_analysis_loopback_with_policy() -> None:
     policy = _make_two_phase_policy("analysis", "execution", "check", "work")
     console = Console(record=True, width=120)
     show_phase_transition(
-        "check", "work",
+        "check",
+        "work",
         pipeline_policy=policy,
         display_context=_ctx_from_console(console),
     )
@@ -160,7 +162,8 @@ def test_major_transition_review_to_terminal_with_policy() -> None:
     )
     console = Console(record=True, width=120)
     show_phase_transition(
-        "review_phase", terminal_name,
+        "review_phase",
+        terminal_name,
         pipeline_policy=policy,
         display_context=_ctx_from_console(console),
     )
@@ -173,7 +176,8 @@ def test_unknown_transition_renders_gracefully() -> None:
     """Unknown transition pair should still render without crashing."""
     console = Console(record=True, width=120)
     show_phase_transition(
-        "unknown_phase", "another_unknown",
+        "unknown_phase",
+        "another_unknown",
         display_context=_ctx_from_console(console),
     )
     output = console.export_text()
@@ -191,7 +195,8 @@ def test_major_role_pairs_transition_shows_no_duplicated_description() -> None:
         policy = _make_two_phase_policy(from_role, to_role, "phase_a", "phase_b")
         console = Console(record=True, width=120)
         show_phase_transition(
-            "phase_a", "phase_b",
+            "phase_a",
+            "phase_b",
             pipeline_policy=policy,
             display_context=_ctx_from_console(console),
         )
@@ -206,7 +211,8 @@ def test_transition_without_policy_renders_as_minor_no_description() -> None:
     """Without policy, transitions are always minor with no description."""
     console = Console(record=True, width=120)
     show_phase_transition(
-        "development", "development_analysis",
+        "development",
+        "development_analysis",
         display_context=_ctx_from_console(console),
     )
     output = console.export_text()
@@ -325,9 +331,7 @@ def test_show_phase_transition_medium_mode_has_one_rule_no_description() -> None
     assert "Development" in output
     lines = output.split("\n")
     rule_lines = [line for line in lines if "─" in line or "━" in line]
-    assert len(rule_lines) == 1, (
-        f"Expected 1 rule line for medium mode, got: {rule_lines}"
-    )
+    assert len(rule_lines) == 1, f"Expected 1 rule line for medium mode, got: {rule_lines}"
     # Must NOT contain duplicated transition description prose
     assert "Work complete" not in output
     assert "analyzing results" not in output
@@ -349,9 +353,7 @@ def test_show_phase_transition_wide_mode_has_one_rule_no_description() -> None:
     assert "Development" in output
     lines = output.split("\n")
     rule_lines = [line for line in lines if "─" in line or "━" in line]
-    assert len(rule_lines) == 1, (
-        f"Expected 1 rule line for wide mode, got: {rule_lines}"
-    )
+    assert len(rule_lines) == 1, f"Expected 1 rule line for wide mode, got: {rule_lines}"
     # Must NOT contain duplicated transition description prose
     assert "Work complete" not in output
     assert "analyzing results" not in output
@@ -455,6 +457,7 @@ class TestPolicyDrivenPhaseBanner:
         output = console.export_text()
         assert "My Work" in output
 
+
 class TestAnalysisExecutionTransitionBannerContext:
     """Verify analysis → execution banners render decision and analysis_status context items.
 
@@ -481,9 +484,7 @@ class TestAnalysisExecutionTransitionBannerContext:
         assert "final, skipping next" in output, (
             f"Final-skip indicator missing from banner. Output:\n{output}"
         )
-        assert "→ needs changes" in output, (
-            f"Decision missing from banner. Output:\n{output}"
-        )
+        assert "→ needs changes" in output, f"Decision missing from banner. Output:\n{output}"
 
     def test_analysis_to_execution_banner_without_final_skip_shows_decision(self) -> None:
         """Analysis → execution transition shows decision even without final-skip."""
@@ -500,9 +501,7 @@ class TestAnalysisExecutionTransitionBannerContext:
             display_context=_ctx_from_console(console),
         )
         output = console.export_text()
-        assert "→ needs changes" in output, (
-            f"Decision missing from banner. Output:\n{output}"
-        )
+        assert "→ needs changes" in output, f"Decision missing from banner. Output:\n{output}"
         assert "final, skipping next" not in output
 
     def test_analysis_to_commit_banner_shows_approved_decision(self) -> None:
@@ -520,9 +519,7 @@ class TestAnalysisExecutionTransitionBannerContext:
             display_context=_ctx_from_console(console),
         )
         output = console.export_text()
-        assert "→ approved" in output, (
-            f"Approved decision missing from banner. Output:\n{output}"
-        )
+        assert "→ approved" in output, f"Approved decision missing from banner. Output:\n{output}"
 
 
 # --- Tests for show_phase_close_banner ---

@@ -35,7 +35,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def _make_custom_bundle() -> PolicyBundle:
     """Return a PolicyBundle with fully custom phase names: design/build/audit/done/aborted."""
     agents = AgentsPolicy(
@@ -122,9 +121,7 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
     ) -> None:
         """Audit phase (analysis role) with contract calls render_analysis_decision."""
         ctx = MagicMock()
-        with patch(
-            "ralph.pipeline.runner.render_analysis_decision"
-        ) as mock_render:
+        with patch("ralph.pipeline.runner.render_analysis_decision") as mock_render:
             _render_phase_artifact_handoff(
                 "audit",
                 PipelineEvent.AGENT_SUCCESS,
@@ -300,9 +297,8 @@ class TestEntryModelFlowsToRenderSuccessArtifact:
         """
         outer_completed = 2
         bundle = _make_bundle_with_dev_result_contract()
-        state = (
-            PipelineState.from_policy(bundle.pipeline)
-            .with_outer_progress("dev_iter", outer_completed)
+        state = PipelineState.from_policy(bundle.pipeline).with_outer_progress(
+            "dev_iter", outer_completed
         )
 
         display = MagicMock()

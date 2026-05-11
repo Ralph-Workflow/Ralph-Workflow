@@ -78,9 +78,7 @@ class _FakeDisplay:
 
 def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
     bundle = MagicMock()
-    para = PhaseParallelization(
-        max_parallel_workers=max_workers, post_fanout_verification=False
-    )
+    para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=False)
     dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
     dev_phase.parallelization = para
     bundle.pipeline.phases = {"development": dev_phase}
@@ -202,9 +200,7 @@ def _run_fan_out_sync(
     units = effect.work_units
 
     runs = {
-        unit.unit_id: FakeRun(
-            outputs=[f"done-{unit.unit_id}"], exit_code=0, duration_ms=10
-        )
+        unit.unit_id: FakeRun(outputs=[f"done-{unit.unit_id}"], exit_code=0, duration_ms=10)
         for unit in units
     }
     fake_executor = _FakeAgentExecutorWithArtifacts(runs, tmp_path)
@@ -218,7 +214,7 @@ def _run_fan_out_sync(
     state = PipelineState(
         phase="development",
         work_units=units,
-        phase_chains={"development": AgentChainState(agents=["claude"])} ,
+        phase_chains={"development": AgentChainState(agents=["claude"])},
     )
     policy_bundle = _make_mock_policy_bundle(max_workers=effect.max_workers)
     workspace_scope = WorkspaceScope(tmp_path)
@@ -247,9 +243,7 @@ def _run_fan_out_sync(
             captured.session_drain = ctx.same_workspace.session_drain
             captured.session_capabilities = ctx.same_workspace.session_capabilities
             captured.session_model_identity = ctx.same_workspace.session_model_identity
-            captured.session_capability_profile = (
-                ctx.same_workspace.session_capability_profile
-            )
+            captured.session_capability_profile = ctx.same_workspace.session_capability_profile
 
         completion_queue: asyncio.Queue[WorkerResult] = asyncio.Queue()
 
@@ -274,11 +268,7 @@ def _run_fan_out_sync(
         events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
         for _ in units:
             result = await completion_queue.get()
-            events.append(
-                WorkerCompletedEvent(
-                    unit_id=result.unit_id, exit_code=result.exit_code
-                )
-            )
+            events.append(WorkerCompletedEvent(unit_id=result.unit_id, exit_code=result.exit_code))
         events.append(PipelineEvent.ALL_WORKERS_COMPLETE)
         return events
 
@@ -316,9 +306,7 @@ def test_workers_complete_successfully_with_multimodal_session_contract(
     )
     effect = FanOutEffect(work_units=units, max_workers=2)
 
-    identity = MultimodalModelIdentity(
-        provider="claude", model_id="claude-3-5-sonnet-20241022"
-    )
+    identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
     contract = _SessionContract(
         drain="development",
         capabilities=frozenset({"media.read", "workspace.edit"}),
@@ -432,9 +420,7 @@ def test_claude_worker_completes_with_inline_image_capability(
     unit = _make_work_unit("unit-claude")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
-    identity = MultimodalModelIdentity(
-        provider="claude", model_id="claude-3-5-sonnet-20241022"
-    )
+    identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
     contract = _SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
@@ -535,9 +521,7 @@ def test_worker_handoff_contains_multimodal_artifacts(
     unit = _make_work_unit("unit-handoff")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
-    identity = MultimodalModelIdentity(
-        provider="claude", model_id="claude-3-5-sonnet-20241022"
-    )
+    identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
     contract = _SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
@@ -553,8 +537,7 @@ def test_worker_handoff_contains_multimodal_artifacts(
     worker_handoffs = tmp_path / ".agent" / "workers" / "unit-handoff" / "handoffs"
     handoff_path = worker_handoffs / "DEVELOPMENT_RESULT.md"
     assert handoff_path.is_file(), (
-        f"Expected DEVELOPMENT_RESULT.md in worker handoffs, "
-        f"got: {list(worker_handoffs.iterdir())}"
+        f"Expected DEVELOPMENT_RESULT.md in worker handoffs, got: {list(worker_handoffs.iterdir())}"
     )
     content = handoff_path.read_text()
     assert "unit-handoff" in content
@@ -588,8 +571,7 @@ def test_worker_artifacts_contain_plan_json(
     worker_artifacts = tmp_path / ".agent" / "workers" / "unit-artifacts" / "artifacts"
     plan_path = worker_artifacts / "plan.json"
     assert plan_path.is_file(), (
-        f"Expected plan.json in worker artifacts, "
-        f"got: {list(worker_artifacts.iterdir())}"
+        f"Expected plan.json in worker artifacts, got: {list(worker_artifacts.iterdir())}"
     )
     plan_data = json.loads(plan_path.read_text())
     assert plan_data["type"] == "plan"

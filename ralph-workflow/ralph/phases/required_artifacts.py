@@ -88,7 +88,6 @@ def resolve_required_artifact(
         return None
 
 
-
 def resolve_phase_required_artifact(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy,

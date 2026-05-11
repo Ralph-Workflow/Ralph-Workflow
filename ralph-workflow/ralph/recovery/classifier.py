@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import errno
 import socket
+import urllib.error
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -88,13 +89,8 @@ def _is_environmental_exc(exc: BaseException) -> bool:
         return True
     if isinstance(exc, socket.gaierror):
         return True
-    try:
-        import urllib.error
-
-        if isinstance(exc, urllib.error.URLError):
-            return True
-    except ImportError:
-        pass
+    if isinstance(exc, urllib.error.URLError):
+        return True
     return isinstance(exc, OSError) and exc.errno in _ENV_ERRNOS
 
 
@@ -232,9 +228,7 @@ class FailureClassifier:
                 return FailureCategory.AGENT, True, True
             msg_lower = raw_message.lower()
             if not _message_looks_environmental(raw_message) and (
-                "empty" in msg_lower
-                or "no output" in msg_lower
-                or "timed out" in msg_lower
+                "empty" in msg_lower or "no output" in msg_lower or "timed out" in msg_lower
             ):
                 return FailureCategory.AGENT, True, False
         return None

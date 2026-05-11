@@ -16,6 +16,7 @@ def _minimal_policy_bundle():
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
 
+
 _MIN_ERROR_LEN = 10
 
 
@@ -48,7 +49,9 @@ def test_chain_exhaustion_with_two_agents() -> None:
 
     registry = _registry_with_one_retry("claude", "opencode")
     controller = RecoveryController(
-        cycle_cap=10, budget_registry=registry, event_bus=bus,
+        cycle_cap=10,
+        budget_registry=registry,
+        event_bus=bus,
         policy_bundle=_minimal_policy_bundle(),
     )
     state = _make_state(["claude", "opencode"])

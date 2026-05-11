@@ -158,10 +158,7 @@ def explain_command(policy_dir: Path | None = None) -> int:
             resolved_dir, is_bundled = _resolve_policy_dir()
             bundle = load_policy_for_workspace_scope(scope, config=config)
         if is_bundled:
-            print(
-                "INFO: Using bundled default policy — "
-                "no project-local .agent/*.toml files found"
-            )
+            print("INFO: Using bundled default policy — no project-local .agent/*.toml files found")
         print(f"Policy source: {resolved_dir}")
         explanation = explain_policy(bundle)
 

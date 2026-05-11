@@ -65,16 +65,12 @@ _VALID_CONTENT: dict[str, str] = {
             "how_to_fix": [],
         }
     ),
-    "fix_result": json.dumps(
-        {"summary": "Fixed the regression", "files_changed": "- src/b.py"}
-    ),
+    "fix_result": json.dumps({"summary": "Fixed the regression", "files_changed": "- src/b.py"}),
     "commit_message": json.dumps({"type": "commit", "subject": "feat: add per-type tests"}),
     "development_analysis_decision": json.dumps(
         {"status": "completed", "summary": "Analysis complete"}
     ),
-    "review_analysis_decision": json.dumps(
-        {"status": "completed", "summary": "Review approved"}
-    ),
+    "review_analysis_decision": json.dumps({"status": "completed", "summary": "Review approved"}),
 }
 
 # Invalid content (wrong type / missing required field) for each artifact type
@@ -319,9 +315,7 @@ class TestPerArtifactTypeSubmission:
     """
 
     @pytest.mark.parametrize("artifact_type", _ALL_ARTIFACT_TYPES)
-    def test_valid_submit_produces_json_artifact(
-        self, artifact_type: str, tmp_path: Path
-    ) -> None:
+    def test_valid_submit_produces_json_artifact(self, artifact_type: str, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         workspace = _Workspace(tmp_path)
@@ -412,9 +406,7 @@ class TestPerArtifactTypeSubmission:
         )
 
     @pytest.mark.parametrize("artifact_type", _ALL_ARTIFACT_TYPES)
-    def test_resubmit_after_failure_succeeds(
-        self, artifact_type: str, tmp_path: Path
-    ) -> None:
+    def test_resubmit_after_failure_succeeds(self, artifact_type: str, tmp_path: Path) -> None:
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         workspace = _Workspace(tmp_path)
@@ -452,9 +444,7 @@ class TestAnalysisDecisionValidationContract:
     """Tests that AnalysisDecision enforces the documented artifact contract."""
 
     def test_completed_without_remediation_is_valid(self) -> None:
-        result = normalize_analysis_decision_content(
-            {"status": "completed", "summary": "All good"}
-        )
+        result = normalize_analysis_decision_content({"status": "completed", "summary": "All good"})
         assert result["status"] == "completed"
 
     def test_request_changes_requires_what_came_up_short(self) -> None:
@@ -496,16 +486,12 @@ class TestAnalysisDecisionValidationContract:
 
     def test_unknown_status_rejected(self) -> None:
         with pytest.raises(TypedArtifactValidationError):
-            normalize_analysis_decision_content(
-                {"status": "unknown_status", "summary": "test"}
-            )
+            normalize_analysis_decision_content({"status": "unknown_status", "summary": "test"})
 
     def test_legacy_synonyms_rejected_at_submission(self) -> None:
         for status in ("loopback", "retry", "approve", "approved", "reject"):
             with pytest.raises(TypedArtifactValidationError, match="status"):
-                normalize_analysis_decision_content(
-                    {"status": status, "summary": "test"}
-                )
+                normalize_analysis_decision_content({"status": status, "summary": "test"})
 
 
 class TestInvalidContentRollback:
@@ -635,9 +621,7 @@ class TestHistoryIntegrationInSubmitOps:
 
         hist_dir = history_dir_for_artifact(artifact_dir, "planning_analysis_decision")
         json_archives = sorted(hist_dir.glob("*.json"))
-        md_archives = sorted(
-            path for path in hist_dir.glob("*.md") if path.name != "index.md"
-        )
+        md_archives = sorted(path for path in hist_dir.glob("*.md") if path.name != "index.md")
         assert len(json_archives) == _EXPECTED_IMMEDIATE_HISTORY_SNAPSHOTS
         assert len(md_archives) == _EXPECTED_IMMEDIATE_HISTORY_SNAPSHOTS
         assert json_archives[0].name != json_archives[1].name

@@ -161,7 +161,9 @@ def reduce(  # noqa: PLR0911
     # Handle PostFanoutVerificationEvent before worker events.
     if isinstance(event, PostFanoutVerificationEvent):
         if not event.success:
-            error_msg = event.error or f"workspace verification failed (exit code {event.exit_code})"  # noqa: E501
+            error_msg = (
+                event.error or f"workspace verification failed (exit code {event.exit_code})"
+            )
             recovered, _ = _enter_failed_recovery(state, error_msg, pipeline_policy)
             return _restore_work_units(state, recovered), []
         return state, []
@@ -282,9 +284,7 @@ def _enter_failed_recovery(
     """Transition to the policy-declared terminal failure route."""
     target = _terminal_failure_route(policy)
     logger.bind(component="policy.routing").info(
-        explain_routing_decision(
-            state.phase, target, "failure", reason, recovery=True
-        )
+        explain_routing_decision(state.phase, target, "failure", reason, recovery=True)
     )
     new_state = state.copy_with(
         phase=target,
@@ -610,9 +610,7 @@ def _handle_analysis_decision(
 
     advanced_state, advanced_target = _prepare_phase_advance(progress_state, route.target, policy)
     logger.bind(component="policy.routing").info(
-        explain_routing_decision(
-            event.phase, advanced_target, "decision", event.decision
-        )
+        explain_routing_decision(event.phase, advanced_target, "decision", event.decision)
     )
     new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
     return _restore_work_units(state, new_state), []
@@ -721,9 +719,7 @@ def _handle_commit_success(
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for commit success routing", policy)
     try:
-        progress_state = progress.apply_commit_outcome(
-            state, state, skipped=False, policy=policy
-        )
+        progress_state = progress.apply_commit_outcome(state, state, skipped=False, policy=policy)
         next_phase = resolve_post_commit_phase(progress_state, policy)
         new_state, effects = _advance_phase(progress_state, next_phase, policy)
         return new_state, effects
@@ -746,9 +742,7 @@ def _handle_commit_skipped(
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for commit skipped routing", policy)
     try:
-        progress_state = progress.apply_commit_outcome(
-            state, state, skipped=True, policy=policy
-        )
+        progress_state = progress.apply_commit_outcome(state, state, skipped=True, policy=policy)
         next_phase = resolve_post_commit_phase(progress_state, policy)
         new_state, effects = _advance_phase(progress_state, next_phase, policy)
         return new_state, effects

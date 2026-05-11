@@ -75,7 +75,6 @@ def _argv(args: tuple[object, ...]) -> list[str]:
     return list(args[0])
 
 
-
 def test_invoke_agent_passes_idle_timeout_to_subprocess(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -339,6 +338,7 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
         del args, kwargs
         yield "idle line\n"
         from ralph.agents.idle_watchdog import WatchdogFireReason
+
         raise invoke_module._IdleStreamTimeoutError(0.05, WatchdogFireReason.NO_OUTPUT_DEADLINE)
 
     monkeypatch.setattr(
@@ -769,9 +769,9 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -817,7 +817,6 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
             options=InvokeOptions(
                 show_progress=False, extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"}
             ),
-
         )
     )
 
@@ -993,9 +992,9 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1070,9 +1069,9 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1338,9 +1337,9 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1445,9 +1444,9 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1555,9 +1554,9 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1739,13 +1738,13 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
 
     with pytest.raises(AgentInvocationError) as exc_info:
         list(
-        invoke_agent(
-            config,
-            str(prompt_file),
-            options=InvokeOptions(show_progress=False),
-            _clock=FakeClock(),
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False),
+                _clock=FakeClock(),
+            )
         )
-    )
 
     api_error = '{"type":"error","error":{"type":"api_error","message":"Internal server error"}}'
     assert "Internal server error" in str(exc_info.value)
@@ -1771,9 +1770,9 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1846,9 +1845,9 @@ def test_invoke_agent_merges_existing_opencode_config_content(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1917,9 +1916,9 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -2009,9 +2008,9 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -2830,9 +2829,9 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -3004,9 +3003,9 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter([
-                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
-            ])
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -3485,9 +3484,7 @@ def test_termination_uses_nonzero_grace_period(
 
     terminate_calls: list[float] = []
 
-    def _recording_terminate(
-        _self: object, grace_period_s: float | None = None
-    ) -> None:
+    def _recording_terminate(_self: object, grace_period_s: float | None = None) -> None:
         terminate_calls.append(grace_period_s or 0.0)
         fake_process.returncode = -15
 
@@ -3509,11 +3506,9 @@ def test_termination_uses_nonzero_grace_period(
         )
 
     assert terminate_calls, "terminate was not called"
-    assert all(
-        gp > 0 for gp in terminate_calls
-    ), f"Expected all grace_period_s > 0, got {terminate_calls}"
-
-
+    assert all(gp > 0 for gp in terminate_calls), (
+        f"Expected all grace_period_s > 0, got {terminate_calls}"
+    )
 
 
 class _CallbackFakeClock(FakeClock):
@@ -3959,7 +3954,8 @@ def test_invoke_agent_yields_lines_with_minimal_latency_under_system_clock(
 
 
 def test_process_exit_hang_raises_via_post_exit_watchdog(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """PROCESS_EXIT_HANG fires via PostExitWatchdog when stdout yields one line then closes.
 
@@ -4095,7 +4091,8 @@ def test_invoke_agent_raises_session_ceiling_despite_continuous_output(
 
 
 def test_process_exit_observed_before_deadline_does_not_fire(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Process exits cleanly before deadline — normal completion, no AgentInactivityTimeoutError.
 
@@ -4435,17 +4432,14 @@ def test_multimodal_appendix_includes_replay_guidance_for_non_image_media(
 
     # Appendix must include the audio artifact with replay handle wording
     assert "path=ralph://media/aud789" in full_prompt, (
-        f"Expected 'path=ralph://media/aud789' in prompt, not found.\n"
-        f"Full prompt:\n{full_prompt}"
+        f"Expected 'path=ralph://media/aud789' in prompt, not found.\nFull prompt:\n{full_prompt}"
     )
     # The appendix must mention read_media for replay guidance
     assert "read_media" in full_prompt, (
         "Expected 'read_media' in appendix to guide agents toward replay handles"
     )
     # The audio title should appear in the appendix
-    assert "meeting.mp3" in full_prompt, (
-        "Expected audio title 'meeting.mp3' in appendix"
-    )
+    assert "meeting.mp3" in full_prompt, "Expected audio title 'meeting.mp3' in appendix"
 
 
 # ---------------------------------------------------------------------------
@@ -4498,9 +4492,7 @@ def test_multimodal_appendix_includes_block_type_when_set(tmp_path: Path) -> Non
         f"Expected 'Block-type: pdf' in appendix for typed_block PDF, not found.\n"
         f"Prompt:\n{full_prompt}"
     )
-    assert "Delivery: typed_block" in full_prompt, (
-        "Expected 'Delivery: typed_block' in appendix"
-    )
+    assert "Delivery: typed_block" in full_prompt, "Expected 'Delivery: typed_block' in appendix"
 
 
 def test_multimodal_appendix_includes_explicit_reason_for_unsupported_modality(
@@ -4532,8 +4524,7 @@ def test_multimodal_appendix_includes_explicit_reason_for_unsupported_modality(
         "Expected 'unsupported_modality' failure reference in appendix"
     )
     assert "Claude does not accept this modality" in full_prompt, (
-        f"Expected the capability-profile reason in appendix, not found.\n"
-        f"Prompt:\n{full_prompt}"
+        f"Expected the capability-profile reason in appendix, not found.\nPrompt:\n{full_prompt}"
     )
 
 
@@ -4574,9 +4565,7 @@ def test_multimodal_appendix_surfaces_unsupported_runtime_seam_without_replay_gu
     full_prompt = cmd[-1]
 
     # The appendix must mention the video artifact
-    assert "recording.mp4" in full_prompt, (
-        "Expected artifact title 'recording.mp4' in appendix"
-    )
+    assert "recording.mp4" in full_prompt, "Expected artifact title 'recording.mp4' in appendix"
     # The appendix must mention the runtime seam failure
     assert "runtime seam" in full_prompt.lower(), (
         f"Expected runtime seam failure explanation in appendix, not found.\n"

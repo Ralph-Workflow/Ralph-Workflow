@@ -482,9 +482,7 @@ def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None
         '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
     )
 
-    effect = InvokeAgentEffect(
-        agent_name="planner", phase="planning", prompt_file="planning.txt"
-    )
+    effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
 
     assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
     workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
@@ -503,9 +501,7 @@ def test_handle_planning_invalid_plan_schema_emits_retry_in_session() -> None:
         '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
     )
 
-    effect = InvokeAgentEffect(
-        agent_name="planner", phase="planning", prompt_file="planning.txt"
-    )
+    effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
 
     result = handle_execution_phase(effect, ctx)
     assert len(result) == 1
@@ -522,9 +518,7 @@ def test_handle_planning_accepts_noop_plan() -> None:
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
     workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
 
-    effect = InvokeAgentEffect(
-        agent_name="planner", phase="planning", prompt_file="planning.txt"
-    )
+    effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt")
 
     assert handle_execution_phase(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
@@ -544,10 +538,13 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
         '{"type":"development_result","content":{"status":"completed",'
         '"summary":"Done.","files_changed":"- src/a.py"}}'
     )
-    workspace.exists.side_effect = lambda path: path in {
-        ".agent/artifacts/plan.json",
-        ".agent/artifacts/development_result.json",
-    }
+    workspace.exists.side_effect = lambda path: (
+        path
+        in {
+            ".agent/artifacts/plan.json",
+            ".agent/artifacts/development_result.json",
+        }
+    )
     workspace.read.side_effect = lambda path: (
         dev_result_json if path == ".agent/artifacts/development_result.json" else plan_json
     )

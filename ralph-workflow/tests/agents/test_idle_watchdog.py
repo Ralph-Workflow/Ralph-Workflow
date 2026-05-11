@@ -279,9 +279,7 @@ def test_drain_window_defers_when_children_reappear() -> None:
     This tests the false-positive fix: children that appear during the drain window
     must prevent the timeout from firing.
     """
-    watchdog, clock = _make_watchdog(
-        idle_timeout=10, drain_window=0.5, max_waiting=1800.0
-    )
+    watchdog, clock = _make_watchdog(idle_timeout=10, drain_window=0.5, max_waiting=1800.0)
 
     # (a) Advance 10s -> at idle deadline. classify=ACTIVE -> enter drain window.
     clock.advance(10.0)
@@ -1109,9 +1107,7 @@ def test_no_progress_ceiling_fires_on_fresh_heartbeat_only() -> None:
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
 
-    watchdog = IdleWatchdog(
-        watchdog._config, clock, corroborator=_corroborator
-    )
+    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
 
     # Advance past idle deadline to enter WAITING_ON_CHILD.
     clock.advance(1.5)
@@ -1139,9 +1135,7 @@ def test_no_progress_ceiling_fires_on_stale_label_only() -> None:
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(alive_by="stale_label_only", scoped_child_active=True)
 
-    watchdog = IdleWatchdog(
-        watchdog._config, clock, corroborator=_corroborator
-    )
+    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -1169,9 +1163,7 @@ def test_no_progress_ceiling_fires_on_os_descendant_only() -> None:
         )
         return snap
 
-    watchdog = IdleWatchdog(
-        watchdog._config, clock, corroborator=_corroborator
-    )
+    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -1201,9 +1193,7 @@ def test_full_ceiling_preserved_with_fresh_progress() -> None:
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(alive_by="fresh_progress", scoped_child_active=True)
 
-    watchdog = IdleWatchdog(
-        watchdog._config, clock, corroborator=_corroborator
-    )
+    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -1236,9 +1226,7 @@ def test_full_ceiling_preserved_when_no_progress_ceiling_disabled() -> None:
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
 
-    watchdog = IdleWatchdog(
-        watchdog._config, clock, corroborator=_corroborator
-    )
+    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -1267,9 +1255,7 @@ def test_full_ceiling_preserved_when_alive_by_is_none() -> None:
         # alive_by=None means we can't determine progress — use full ceiling.
         return CorroborationSnapshot(scoped_child_active=True)
 
-    watchdog = IdleWatchdog(
-        watchdog._config, clock, corroborator=_corroborator
-    )
+    watchdog = IdleWatchdog(watchdog._config, clock, corroborator=_corroborator)
 
     clock.advance(1.5)
     result = watchdog.evaluate(classify_quiet=_waiting)
@@ -1479,9 +1465,7 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
     )
     clock = FakeClock(start=0.0)
     events: list[WaitingStatusEvent] = []
-    watchdog = IdleWatchdog(
-        config, clock, listener=events.append, corroborator=_flaky_corroborator
-    )
+    watchdog = IdleWatchdog(config, clock, listener=events.append, corroborator=_flaky_corroborator)
 
     # T1: ENTER WAITING at t=1.5
     clock.advance(1.5)

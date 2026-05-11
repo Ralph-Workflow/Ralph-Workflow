@@ -150,14 +150,15 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
         session,
         workspace,
         deps=deps,
-        extra_env={"RALPH_UPSTREAM_MCP_CONFIG": '[{"name":"docs","transport":"http","url":"http://docs"}]'},
+        extra_env={
+            "RALPH_UPSTREAM_MCP_CONFIG": '[{"name":"docs","transport":"http","url":"http://docs"}]'
+        },
     )
 
     env = cast("dict[str, str]", seen["env"])
     assert env["RALPH_UPSTREAM_MCP_CONFIG"] == (
         '[{"name":"docs","transport":"http","url":"http://docs"}]'
     )
-
 
 
 def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path) -> None:
@@ -311,8 +312,12 @@ def test_check_mcp_bridge_health_noop_for_non_restart_bridge() -> None:
 
     class FakeBridge:
         def start(self) -> None: ...
-        def agent_endpoint_uri(self) -> str: return "http://x"
-        def endpoint_uri(self) -> str: return "http://x"
+        def agent_endpoint_uri(self) -> str:
+            return "http://x"
+
+        def endpoint_uri(self) -> str:
+            return "http://x"
+
         def shutdown(self) -> None: ...
 
     fake: Any = FakeBridge()
@@ -638,6 +643,7 @@ def test_session_payload_json_omits_model_identity_when_unknown() -> None:
 
 def test_session_payload_json_omits_model_identity_for_sessions_without_attribute() -> None:
     """_session_payload_json is safe when session lacks model_identity attribute."""
+
     class _MinimalSession:
         session_id = "sid-min"
         run_id = "run-min"

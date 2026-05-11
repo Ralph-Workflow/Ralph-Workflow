@@ -369,8 +369,7 @@ class McpServer:
     ) -> tuple[JsonRpcResponse, ServerState]:
         resources: list[dict[str, object]] = []
         resources.extend(
-            entry.resource_list_entry()
-            for entry in self._session.media_manifest.list_entries()
+            entry.resource_list_entry() for entry in self._session.media_manifest.list_entries()
         )
         return (
             JsonRpcResponse(jsonrpc="2.0", result={"resources": resources}, msg_id=request.msg_id),
@@ -418,8 +417,7 @@ class McpServer:
             error = {
                 "code": -32602,
                 "message": (
-                    f"Unsupported resource URI: '{uri}'. "
-                    "Expected ralph://media/<artifact_id>"
+                    f"Unsupported resource URI: '{uri}'. Expected ralph://media/<artifact_id>"
                 ),
             }
             return (
@@ -705,7 +703,6 @@ class FileBackedSession:
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
         self._media_manifest = MediaManifest()
-
 
     def _load(self) -> dict[str, object]:
         return self._loader(self._path)

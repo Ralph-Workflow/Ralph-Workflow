@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
 _UNSET_PHASE: Final[str] = "__unset__"
 
+
 def _migrate_counter_field(
     d: dict[str, object],
     target: dict[str, object],

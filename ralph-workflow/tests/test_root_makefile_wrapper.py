@@ -32,6 +32,4 @@ def test_root_makefile_forwards_publish_and_twine_targets() -> None:
     assert _target_body("publish") == ["$(MAKE) -C $(PY_DIR) publish"]
     assert _target_body("twine-upload") == ["$(MAKE) -C $(PY_DIR) twine-upload"]
     assert _target_body("test-pypi") == ["$(MAKE) -C $(PY_DIR) test-pypi"]
-    assert _target_body("twine-upload-testpypi") == [
-        "$(MAKE) -C $(PY_DIR) twine-upload-testpypi"
-    ]
+    assert _target_body("twine-upload-testpypi") == ["$(MAKE) -C $(PY_DIR) twine-upload-testpypi"]

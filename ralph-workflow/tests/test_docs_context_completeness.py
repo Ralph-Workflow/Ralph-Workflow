@@ -34,13 +34,8 @@ class TestRepoRootCompleteness:
         """Repo-root README should have install/run instructions."""
         content = REPO_ROOT_README.read_text().lower()
         # Should mention installation
-        has_install = any(
-            phrase in content
-            for phrase in ["install", "pip", "uv", "pipx", "clone"]
-        )
-        assert has_install, (
-            "Repo-root README should have install instructions"
-        )
+        has_install = any(phrase in content for phrase in ["install", "pip", "uv", "pipx", "clone"])
+        assert has_install, "Repo-root README should have install instructions"
 
     def test_readme_has_verify_reference(self):
         """Repo-root README should reference verification."""
@@ -65,9 +60,7 @@ class TestSphinxPageCompleteness:
         path = PACKAGE_DOCS_SPHINX_DIR / page
         content = path.read_text()
         # Should have substantial content (at least 200 chars beyond frontmatter)
-        assert len(content) > _MIN_CONTENT_CHARS, (
-            f"{page} appears to lack substantive content"
-        )
+        assert len(content) > _MIN_CONTENT_CHARS, f"{page} appears to lack substantive content"
 
 
 def test_getting_started_has_install_run_verify():
@@ -77,9 +70,9 @@ def test_getting_started_has_install_run_verify():
         pytest.skip("getting-started.md may not exist")
     content = path.read_text().lower()
     # Must have install, run, and verify
-    assert any(
-        phrase in content for phrase in ["install", "pip", "uv", "setup"]
-    ), "getting-started.md should have install instructions"
+    assert any(phrase in content for phrase in ["install", "pip", "uv", "setup"]), (
+        "getting-started.md should have install instructions"
+    )
     assert "run" in content or "execute" in content, (
         "getting-started.md should have run instructions"
     )
@@ -115,8 +108,7 @@ def test_reference_is_operator_reference():
     # Should reference CLI or commands
     content_lower = content.lower()
     has_commands = any(
-        cmd in content_lower
-        for cmd in ["ralph", "command", "cli", "flag", "option"]
+        cmd in content_lower for cmd in ["ralph", "command", "cli", "flag", "option"]
     )
     assert has_commands, "reference.md should cover CLI/commands"
 
@@ -130,8 +122,7 @@ def test_developer_reference_points_to_internals():
     # Should point to internal API surfaces
     content_lower = content.lower()
     points_to_internals = any(
-        indicator in content_lower
-        for indicator in ["api", "internal", "module", "ralph."]
+        indicator in content_lower for indicator in ["api", "internal", "module", "ralph."]
     )
     assert points_to_internals, (
         "developer-reference.md should point developers to internal API surfaces"

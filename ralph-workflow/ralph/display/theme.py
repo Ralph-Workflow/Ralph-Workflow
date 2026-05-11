@@ -92,6 +92,7 @@ def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
     term = env.get("TERM", "")
     return term != "dumb"
 
+
 STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
     "success": (f"bold {BLUISH_GREEN}", "✓", "PASS"),
     "running": (SKY_BLUE, "◐", "RUN"),

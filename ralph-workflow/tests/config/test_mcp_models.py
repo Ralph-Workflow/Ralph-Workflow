@@ -165,8 +165,7 @@ class TestMediaConfig:
             f"not image-only.\nActual docstring: {doc!r}"
         )
         assert "multimodal" in doc.lower(), (
-            "MediaConfig.__doc__ must mention multimodal support. "
-            f"Actual docstring: {doc!r}"
+            f"MediaConfig.__doc__ must mention multimodal support. Actual docstring: {doc!r}"
         )
 
 

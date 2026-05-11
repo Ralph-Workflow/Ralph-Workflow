@@ -1,4 +1,5 @@
 """Round-trip integration test: a fresh mcp.toml entry surfaces to every agent."""
+
 from __future__ import annotations
 
 import json
@@ -96,9 +97,7 @@ def test_probe_agent_transports_sees_server_as_reachable(
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.setattr("ralph.mcp.upstream.agent_probe._http_handshake", lambda _endpoint: None)
-    monkeypatch.setattr(
-        "ralph.mcp.upstream.agent_probe._server_handshake", lambda _server: None
-    )
+    monkeypatch.setattr("ralph.mcp.upstream.agent_probe._server_handshake", lambda _server: None)
 
     server = UpstreamMcpServer(name="angular-docs", transport="http", url=_FAKE_URL)
     reports = probe_agent_transports(

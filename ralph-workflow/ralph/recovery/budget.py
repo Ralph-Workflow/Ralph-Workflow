@@ -48,9 +48,7 @@ class FailureBudget:
 
     def reset(self) -> FailureBudget:
         """Return a fresh budget with the same max_retries."""
-        return FailureBudget(
-            state=BudgetState(max_retries=self.state.max_retries)
-        )
+        return FailureBudget(state=BudgetState(max_retries=self.state.max_retries))
 
     @property
     def exhausted(self) -> bool:

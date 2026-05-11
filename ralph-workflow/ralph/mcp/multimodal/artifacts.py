@@ -15,13 +15,15 @@ MODALITY_DOCUMENT = "document"
 MODALITY_AUDIO = "audio"
 MODALITY_VIDEO = "video"
 
-SUPPORTED_MODALITIES: frozenset[str] = frozenset({
-    MODALITY_IMAGE,
-    MODALITY_PDF,
-    MODALITY_DOCUMENT,
-    MODALITY_AUDIO,
-    MODALITY_VIDEO,
-})
+SUPPORTED_MODALITIES: frozenset[str] = frozenset(
+    {
+        MODALITY_IMAGE,
+        MODALITY_PDF,
+        MODALITY_DOCUMENT,
+        MODALITY_AUDIO,
+        MODALITY_VIDEO,
+    }
+)
 
 # MIME types for each file extension, with associated modality.
 MIME_TYPE_MAP: dict[str, tuple[str, str]] = {
@@ -62,12 +64,14 @@ MIME_TYPE_MAP: dict[str, tuple[str, str]] = {
 }
 
 # Inline-capable image MIME types (supported by read_image compatibility tool).
-INLINE_IMAGE_MIME_TYPES: frozenset[str] = frozenset({
-    "image/png",
-    "image/jpeg",
-    "image/gif",
-    "image/webp",
-})
+INLINE_IMAGE_MIME_TYPES: frozenset[str] = frozenset(
+    {
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+    }
+)
 
 
 def infer_modality_and_mime(extension: str) -> tuple[str, str] | None:

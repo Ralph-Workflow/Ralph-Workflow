@@ -109,9 +109,8 @@ def test_no_console_construction_outside_theme() -> None:
         for line in _scan_lines(path)
         if "Console(" in line
     ]
-    assert not violations, (
-        "Console( found outside theme.py (DI violation):\n"
-        + "\n".join(violations)
+    assert not violations, "Console( found outside theme.py (DI violation):\n" + "\n".join(
+        violations
     )
 
 
@@ -124,10 +123,7 @@ def test_no_theme_construction_outside_theme() -> None:
         for line in _scan_lines(path)
         if "Theme(" in line
     ]
-    assert not violations, (
-        "Theme( found outside theme.py (DI violation):\n"
-        + "\n".join(violations)
-    )
+    assert not violations, "Theme( found outside theme.py (DI violation):\n" + "\n".join(violations)
 
 
 def test_no_env_reads_outside_allowed_modules() -> None:

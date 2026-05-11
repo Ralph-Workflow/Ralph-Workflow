@@ -20,9 +20,7 @@ def _make_work_unit(unit_id: str) -> WorkUnit:
 
 def _make_state_with_workers(unit_ids: list[str]) -> PipelineState:
     work_units = tuple(_make_work_unit(uid) for uid in unit_ids)
-    worker_states = {
-        uid: WorkerState(unit_id=uid, status=WorkerStatus.RUNNING) for uid in unit_ids
-    }
+    worker_states = {uid: WorkerState(unit_id=uid, status=WorkerStatus.RUNNING) for uid in unit_ids}
     return PipelineState(
         phase="development",
         work_units=work_units,
@@ -33,9 +31,7 @@ def _make_state_with_workers(unit_ids: list[str]) -> PipelineState:
 def _make_state_with_workers_and_chain(unit_ids: list[str], agents: list[str]) -> PipelineState:
     """Create state with workers and an agent chain for RecoveryController."""
     work_units = tuple(_make_work_unit(uid) for uid in unit_ids)
-    worker_states = {
-        uid: WorkerState(unit_id=uid, status=WorkerStatus.RUNNING) for uid in unit_ids
-    }
+    worker_states = {uid: WorkerState(unit_id=uid, status=WorkerStatus.RUNNING) for uid in unit_ids}
     return PipelineState(
         phase="development",
         phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
@@ -79,9 +75,7 @@ def test_worker_failure_routes_through_recovery_controller() -> None:
     collected: list[FailureEvent] = []
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
-    registry = AgentBudgetRegistry().set_budget(
-        "development", "claude", max_retries=3
-    )
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
 
     state = _make_state_with_workers_and_chain(["w1", "w2"], agents=["claude"])
@@ -107,9 +101,7 @@ def test_worker_failure_with_agent_timeout_routes_through_recovery() -> None:
     collected: list[FailureEvent] = []
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
-    registry = AgentBudgetRegistry().set_budget(
-        "development", "claude", max_retries=3
-    )
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
 
     state = _make_state_with_workers_and_chain(["w1"], agents=["claude"])

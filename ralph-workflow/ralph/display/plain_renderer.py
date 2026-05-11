@@ -447,10 +447,17 @@ class PlainLogRenderer:
             return []
         self._last_activity_signature = activity_signature
 
-        all_none = all(v is None for v in (
-            snapshot.active_agent, snapshot.active_tool, snapshot.active_path,
-            snapshot.active_workdir, snapshot.active_command, snapshot.active_pattern,
-        ))
+        all_none = all(
+            v is None
+            for v in (
+                snapshot.active_agent,
+                snapshot.active_tool,
+                snapshot.active_path,
+                snapshot.active_workdir,
+                snapshot.active_command,
+                snapshot.active_pattern,
+            )
+        )
         if all_none and not snapshot.last_activity_line and not self._emitted_empty_activity:
             self._emitted_empty_activity = True
             return [self._build_line(timestamp, "INFO", "META", "[activity] (no active agent yet)")]
@@ -589,9 +596,7 @@ class PlainLogRenderer:
         else:
             self._emit_run_start_wide(timestamp, orientation)
 
-    def _emit_run_start_compact(
-        self, timestamp: str, orientation: RunStartOrientation
-    ) -> None:
+    def _emit_run_start_compact(self, timestamp: str, orientation: RunStartOrientation) -> None:
         """Compact layout: max 4 [run-start] lines (milestone + up to 3 content)."""
         # prompt+workspace combined
         prompt_ws_parts: list[str] = []
@@ -657,9 +662,7 @@ class PlainLogRenderer:
             parts.append(f"model={_sanitize(orientation.developer_model)}")
         return parts
 
-    def _emit_run_start_wide(
-        self, timestamp: str, orientation: RunStartOrientation
-    ) -> None:
+    def _emit_run_start_wide(self, timestamp: str, orientation: RunStartOrientation) -> None:
         """Medium/wide layout: grouped fields on shared lines."""
         # prompt+workspace on one line
         pw_parts: list[str] = []
@@ -783,9 +786,7 @@ class PlainLogRenderer:
                 if counter_overrides.tool_calls
                 else counters.tool_calls
             )
-            err = (
-                counter_overrides.errors if counter_overrides.errors else counters.errors
-            )
+            err = counter_overrides.errors if counter_overrides.errors else counters.errors
         else:
             cb = counters.content_blocks
             tb = counters.thinking_blocks
@@ -809,8 +810,7 @@ class PlainLogRenderer:
             )
         if clean_produced:
             line_suffix = (
-                f"[phase-close] {glyph_prefix}phase={phase}{iter_labels}"
-                f" {clean_produced}{suffix}"
+                f"[phase-close] {glyph_prefix}phase={phase}{iter_labels} {clean_produced}{suffix}"
             )
         else:
             line_suffix = f"[phase-close] {glyph_prefix}phase={phase}{iter_labels}{suffix}"
@@ -1230,9 +1230,7 @@ class PlainLogRenderer:
                                     f" ({seq} fragments, {total_chars} chars) {headline}"
                                 )
                                 self._console.print(
-                                    self._build_line(
-                                        timestamp, "INFO", "CONT", cp_suffix
-                                    ),
+                                    self._build_line(timestamp, "INFO", "CONT", cp_suffix),
                                     markup=False,
                                     highlight=False,
                                     no_wrap=True,
@@ -1243,13 +1241,10 @@ class PlainLogRenderer:
                                         max_chars=self._ctx.headline_max_chars,
                                     )
                                     preview_suffix = (
-                                        f"[{cp_tag}][{unit_id}] ↳ preview: "
-                                        f"{_sanitize(preview)}"
+                                        f"[{cp_tag}][{unit_id}] ↳ preview: {_sanitize(preview)}"
                                     )
                                     self._console.print(
-                                        self._build_line(
-                                            timestamp, "INFO", "CONT", preview_suffix
-                                        ),
+                                        self._build_line(timestamp, "INFO", "CONT", preview_suffix),
                                         markup=False,
                                         highlight=False,
                                         no_wrap=True,

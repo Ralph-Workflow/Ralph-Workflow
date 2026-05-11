@@ -97,9 +97,7 @@ def _install_runner_stubs(
                 display.emit_phase_close(effect.phase, f"{effect.phase}: done")
         return PipelineEvent.AGENT_SUCCESS
 
-    captured_console = Console(
-        record=True, force_terminal=False, width=300, color_system=None
-    )
+    captured_console = Console(record=True, force_terminal=False, width=300, color_system=None)
     monkeypatch.setattr(
         runner_module,
         "make_display_context",
@@ -220,9 +218,9 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     run_end_block = out[run_end_idx:]
     assert any("phase=" in ln for ln in run_end_block.splitlines()), "[run-end] missing phase="
     assert any("elapsed=" in ln for ln in run_end_block.splitlines()), "[run-end] missing elapsed="
-    assert any(
-        "content_blocks=" in ln for ln in run_end_block.splitlines()
-    ), "[run-end] missing content_blocks="
+    assert any("content_blocks=" in ln for ln in run_end_block.splitlines()), (
+        "[run-end] missing content_blocks="
+    )
 
     # --- Assert completion summary ---
     assert "Pipeline Complete" in out or "Pipeline Failed" in out

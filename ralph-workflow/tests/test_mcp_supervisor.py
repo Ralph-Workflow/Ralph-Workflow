@@ -1,4 +1,5 @@
 """Tests for McpSupervisor active MCP health monitoring."""
+
 from __future__ import annotations
 
 import pathlib

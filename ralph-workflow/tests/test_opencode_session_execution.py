@@ -116,9 +116,7 @@ class TestOpenCodeSessionReuse:
         options = _BuildCommandOptions(session_id="sess-x", workspace_path=tmp_path)
         cmd = _build_opencode_command(config, "PROMPT.md", options=options)
 
-        assert "--session" in cmd or "-s" in cmd, (
-            f"Session flag must appear in command: {cmd}"
-        )
+        assert "--session" in cmd or "-s" in cmd, f"Session flag must appear in command: {cmd}"
         assert "sess-x" in cmd, f"Session ID must appear in command: {cmd}"
         assert cmd.index("sess-x") > 0, "Session ID must follow the session flag"
 
@@ -251,9 +249,7 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
         """Unrelated agent:other-session worker does not keep scoped run alive."""
         strategy = OpenCodeExecutionStrategy(label_scope="my-session")
         # Probe: only an unrelated worker with a different session label is active.
-        probe = FakeLivenessProbe(
-            active_labels=frozenset({"agent:other-session:worker1"})
-        )
+        probe = FakeLivenessProbe(active_labels=frozenset({"agent:other-session:worker1"}))
         handle = _FakeHandle(has_descendants=False)
 
         state = strategy.classify_quiet(handle, probe)
@@ -267,9 +263,7 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
     def test_related_agent_worker_keeps_scoped_run_alive(self) -> None:
         """Related agent:my-session: worker keeps the scoped run in WAITING_ON_CHILD."""
         strategy = OpenCodeExecutionStrategy(label_scope="my-session")
-        probe = FakeLivenessProbe(
-            active_labels=frozenset({"agent:my-session:worker1"})
-        )
+        probe = FakeLivenessProbe(active_labels=frozenset({"agent:my-session:worker1"}))
         handle = _FakeHandle(has_descendants=False)
 
         state = strategy.classify_quiet(handle, probe)
@@ -368,9 +362,7 @@ class TestRunnerSessionContinuation:
         )
         agent_config = _opencode_agent_config()
         registry = _registry_factory_for(agent_config)
-        monkeypatch.setattr(
-            runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge()
-        )
+        monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge())
 
         seen_session_ids: list[str | None] = []
 
@@ -422,9 +414,7 @@ class TestRunnerSessionContinuation:
         )
         agent_config = _opencode_agent_config()
         registry = _registry_factory_for(agent_config)
-        monkeypatch.setattr(
-            runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge()
-        )
+        monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge())
 
         def fake_invoke_agent(
             config: AgentConfig,
@@ -640,9 +630,7 @@ class TestCheckProcessResultCompletionSeam:
         )
         # No exception raised means required_artifact_present=True → TERMINAL_COMPLETE
 
-    def test_neither_signal_nor_artifact_raises_resumable_exit(
-        self, tmp_path: Path
-    ) -> None:
+    def test_neither_signal_nor_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
         """No explicit completion and no artifact -> OpenCodeResumableExitError."""
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
@@ -871,9 +859,7 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
             def __init__(self) -> None:
                 self.call_count = 0
 
-            def classify_quiet(
-                self, handle: object, liveness_probe: object
-            ) -> AgentExecutionState:
+            def classify_quiet(self, handle: object, liveness_probe: object) -> AgentExecutionState:
                 self.call_count += 1
                 if self.call_count == 1:
                     return AgentExecutionState.WAITING_ON_CHILD
@@ -902,9 +888,7 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
             )
 
         # Handle was terminated exactly once (on ACTIVE fire, not on WAITING_ON_CHILD deferral).
-        assert handle.terminate_count == 1, (
-            f"Expected 1 termination; got {handle.terminate_count}"
-        )
+        assert handle.terminate_count == 1, f"Expected 1 termination; got {handle.terminate_count}"
 
 
 # ---------------------------------------------------------------------------
@@ -970,9 +954,7 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
             def __init__(self) -> None:
                 self.call_count = 0
 
-            def classify_quiet(
-                self, handle: object, liveness_probe: object
-            ) -> AgentExecutionState:
+            def classify_quiet(self, handle: object, liveness_probe: object) -> AgentExecutionState:
                 self.call_count += 1
                 output_ready.set()
                 return AgentExecutionState.WAITING_ON_CHILD
@@ -986,9 +968,7 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
         monotonic_vals = chain([0.0, 1.1, 1.1], repeat(1.5))
 
         with (
-            patch.object(
-                _time_module, "monotonic", side_effect=lambda: next(monotonic_vals)
-            ),
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
         ):
             collected = list(
                 _read_lines_from_process(
@@ -1202,9 +1182,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=True)
@@ -1261,9 +1239,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             evaluate_calls[0] += 1
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)
@@ -1321,9 +1297,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=True)
@@ -1395,9 +1369,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 return CompletionSignals(False, True, ("development_result",))
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
         _check_process_result(
@@ -1438,9 +1410,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 return CompletionSignals(True, False, ())
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → explicit_complete (call 3) → TERMINAL_COMPLETE
         _check_process_result(
@@ -1540,9 +1510,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 return CompletionSignals(False, True, ("development_result",))
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         # t[0]=0.0: deadline = 0.5; t[1]=0.0: loop check True -> poll (call 1, no signals);
         # t[2]=0.5: loop check False -> final recheck (call 2) -> artifact -> TERMINAL_COMPLETE
@@ -1594,9 +1562,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 return CompletionSignals(False, False, ())
             return CompletionSignals(False, True, ("development_result",))
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         monotonic_vals = iter([0.0, 0.5, 1.0])
 
@@ -1635,9 +1601,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         monotonic_vals = iter([0.0, 0.5, 1.0])
 
@@ -1710,9 +1674,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         # [0] grace deadline calc; [1] grace loop check -> probe call 2 -> WAITING_ON_CHILD
         # [2] descendant deadline calc; [3] descendant loop check -> WAITING_ON_CHILD -> sleep
@@ -1758,9 +1720,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             f"Expected >2 probe calls proving descendant wait engaged; got {probe.call_count}"
         )
 
-    def test_artifact_present_at_exit_with_live_children_is_terminal(
-        self, tmp_path: Path
-    ) -> None:
+    def test_artifact_present_at_exit_with_live_children_is_terminal(self, tmp_path: Path) -> None:
         """Artifact already present at exit time is TERMINAL_COMPLETE even with live children.
 
         Regression for wt-97: an agent that exits rc=0 with children still alive must not
@@ -2137,9 +2097,7 @@ class TestOptionalArtifactCompletion:
             ),
         )
 
-    def test_optional_artifact_absent_without_evidence_is_terminal(
-        self, tmp_path: Path
-    ) -> None:
+    def test_optional_artifact_absent_without_evidence_is_terminal(self, tmp_path: Path) -> None:
         """Optional artifact absent with no evidence must be terminal (not resumable).
 
         The development_result artifact is optional context for the analysis agent.
@@ -2175,9 +2133,7 @@ class TestOptionalArtifactCompletion:
             ),
         )
 
-    def test_optional_artifact_malformed_present_does_not_raise(
-        self, tmp_path: Path
-    ) -> None:
+    def test_optional_artifact_malformed_present_does_not_raise(self, tmp_path: Path) -> None:
         """Optional artifact present but malformed must not raise OpenCodeResumableExitError.
 
         _check_process_result is not responsible for validating artifact content.
@@ -2233,9 +2189,7 @@ class TestOptionalArtifactCompletion:
         def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
+        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)

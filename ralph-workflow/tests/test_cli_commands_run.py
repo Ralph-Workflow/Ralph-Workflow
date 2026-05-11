@@ -36,7 +36,6 @@ if TYPE_CHECKING:
 _EXIT_PREFLIGHT = 2
 
 
-
 def _policy_bundle_for_testing() -> PolicyBundle:
     return PolicyBundle(
         agents=AgentsPolicy(
@@ -195,7 +194,6 @@ def test_run_pipeline_without_resume_ignores_existing_checkpoint(
     assert seen["initial_state"] is None
 
 
-
 def test_run_pipeline_resume_without_checkpoint_prints_notice(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -275,11 +273,7 @@ def test_run_pipeline_preflight_uses_loaded_policy_bundle_even_when_it_is_not_a_
             "agents": type(
                 "_Agents",
                 (),
-                {
-                    "agent_chains": {
-                        "development": type("_Chain", (), {"agents": ["ghost"]})()
-                    }
-                },
+                {"agent_chains": {"development": type("_Chain", (), {"agents": ["ghost"]})()}},
             )(),
             "pipeline": type(
                 "_Pipeline",

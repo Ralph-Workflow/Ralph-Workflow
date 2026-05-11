@@ -53,9 +53,7 @@ class McpSupervisor:
         self._on_error = on_error
         self._mcp_error: McpServerError | None = None
         self._done = threading.Event()
-        self._thread = threading.Thread(
-            target=self._run, daemon=True, name="mcp-supervisor"
-        )
+        self._thread = threading.Thread(target=self._run, daemon=True, name="mcp-supervisor")
 
     def _do_check_once(self) -> bool:
         """Execute one health check. Returns True if a restart occurred.
@@ -74,8 +72,7 @@ class McpSupervisor:
             if self._on_error is not None:
                 self._on_error(exc)
             logger.error(
-                "MCP server restart budget exhausted during active agent run; "
-                "restart_count={}: {}",
+                "MCP server restart budget exhausted during active agent run; restart_count={}: {}",
                 exc.restart_count,
                 exc,
             )

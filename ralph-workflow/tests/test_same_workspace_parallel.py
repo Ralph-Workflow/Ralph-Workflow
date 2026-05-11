@@ -87,55 +87,69 @@ def _make_same_workspace_context(
 
 class TestValidateForSameWorkspace:
     def test_two_safe_disjoint_workers_passes(self) -> None:
-        plan = WorkUnitsPlan(work_units=[
-            _make_unit("a", ["src/api"]),
-            _make_unit("b", ["src/frontend"]),
-        ])
+        plan = WorkUnitsPlan(
+            work_units=[
+                _make_unit("a", ["src/api"]),
+                _make_unit("b", ["src/frontend"]),
+            ]
+        )
         validate_for_same_workspace(plan)  # should not raise
 
     def test_overlapping_directories_rejected(self) -> None:
-        plan = WorkUnitsPlan(work_units=[
-            _make_unit("a", ["src/api"]),
-            _make_unit("b", ["src/api/auth"]),
-        ])
+        plan = WorkUnitsPlan(
+            work_units=[
+                _make_unit("a", ["src/api"]),
+                _make_unit("b", ["src/api/auth"]),
+            ]
+        )
         with pytest.raises(WorkUnitsValidationError, match="overlaps"):
             validate_for_same_workspace(plan)
 
     def test_missing_allowed_directories_rejected(self) -> None:
-        plan = WorkUnitsPlan(work_units=[
-            WorkUnit(unit_id="a", description="missing dirs", allowed_directories=[]),
-        ])
+        plan = WorkUnitsPlan(
+            work_units=[
+                WorkUnit(unit_id="a", description="missing dirs", allowed_directories=[]),
+            ]
+        )
         with pytest.raises(
             WorkUnitsValidationError, match="does not declare any allowed_directories"
         ):
             validate_for_same_workspace(plan)
 
     def test_reserved_path_dot_agent_rejected(self) -> None:
-        plan = WorkUnitsPlan(work_units=[
-            _make_unit("a", [".agent/custom"]),
-        ])
+        plan = WorkUnitsPlan(
+            work_units=[
+                _make_unit("a", [".agent/custom"]),
+            ]
+        )
         with pytest.raises(WorkUnitsValidationError, match="reserved path"):
             validate_for_same_workspace(plan)
 
     def test_reserved_path_dot_git_rejected(self) -> None:
-        plan = WorkUnitsPlan(work_units=[
-            _make_unit("a", [".git/hooks"]),
-        ])
+        plan = WorkUnitsPlan(
+            work_units=[
+                _make_unit("a", [".git/hooks"]),
+            ]
+        )
         with pytest.raises(WorkUnitsValidationError, match="reserved path"):
             validate_for_same_workspace(plan)
 
     def test_no_prefix_overlap_different_second_segment(self) -> None:
-        plan = WorkUnitsPlan(work_units=[
-            _make_unit("a", ["src/api"]),
-            _make_unit("b", ["src/api2"]),
-        ])
+        plan = WorkUnitsPlan(
+            work_units=[
+                _make_unit("a", ["src/api"]),
+                _make_unit("b", ["src/api2"]),
+            ]
+        )
         validate_for_same_workspace(plan)  # should not raise
 
     def test_exact_match_overlap_rejected(self) -> None:
-        plan = WorkUnitsPlan(work_units=[
-            _make_unit("a", ["src/shared"]),
-            _make_unit("b", ["src/shared"]),
-        ])
+        plan = WorkUnitsPlan(
+            work_units=[
+                _make_unit("a", ["src/shared"]),
+                _make_unit("b", ["src/shared"]),
+            ]
+        )
         with pytest.raises(WorkUnitsValidationError, match="overlaps"):
             validate_for_same_workspace(plan)
 
@@ -410,14 +424,16 @@ class TestArtifactsOnlySuccess:
         artifact_dir.mkdir(parents=True)
         # Write a valid artifact
         (artifact_dir / "plan.json").write_text(
-            json.dumps({
-                "name": "plan",
-                "type": "plan",
-                "content": {"summary": "done"},
-                "created_at": "2024-01-01T00:00:00+00:00",
-                "updated_at": "2024-01-01T00:00:00+00:00",
-                "metadata": {},
-            })
+            json.dumps(
+                {
+                    "name": "plan",
+                    "type": "plan",
+                    "content": {"summary": "done"},
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                    "updated_at": "2024-01-01T00:00:00+00:00",
+                    "metadata": {},
+                }
+            )
         )
         # The artifact check passes
         assert list_artifacts(artifact_dir) != []
@@ -430,12 +446,18 @@ class TestArtifactsOnlySuccess:
         # Write artifact for unit-a
         dir_a = tmp_path / ".agent" / "workers" / "unit-a" / "artifacts"
         dir_a.mkdir(parents=True)
-        (dir_a / "plan.json").write_text(json.dumps({
-            "name": "plan", "type": "plan", "content": {"summary": "a-done"},
-            "created_at": "2024-01-01T00:00:00+00:00",
-            "updated_at": "2024-01-01T00:00:00+00:00",
-            "metadata": {},
-        }))
+        (dir_a / "plan.json").write_text(
+            json.dumps(
+                {
+                    "name": "plan",
+                    "type": "plan",
+                    "content": {"summary": "a-done"},
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                    "updated_at": "2024-01-01T00:00:00+00:00",
+                    "metadata": {},
+                }
+            )
+        )
 
         # unit-b's artifact_dir is separate — has no artifact
         dir_b = tmp_path / ".agent" / "workers" / "unit-b" / "artifacts"
@@ -557,8 +579,8 @@ class TestConcurrentWorkerArtifactIsolation:
         assert artifact_a.parent != artifact_b.parent
 
         # unit-A's artifact does NOT appear in unit-B's directory.
-        assert not (ns_b / "artifacts" / "result.json").read_text().startswith(
-            '{"unit_id": "unit-A"}'
+        assert (
+            not (ns_b / "artifacts" / "result.json").read_text().startswith('{"unit_id": "unit-A"}')
         )
 
 
@@ -611,9 +633,7 @@ class TestRunnerNoMergeStep:
             f"Runner fan-out must not issue git branch/merge/checkout/worktree: {banned_calls}"
         )
 
-    def test_runner_event_stream_has_no_merge_or_worktree_events(
-        self, tmp_path: Path
-    ) -> None:
+    def test_runner_event_stream_has_no_merge_or_worktree_events(self, tmp_path: Path) -> None:
         """Event stream from runner fan-out must not contain merge, worktree, or branch events."""
         import asyncio
 

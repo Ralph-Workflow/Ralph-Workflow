@@ -189,7 +189,6 @@ class TestDecisionVocabularyFullCoverage:
             )
 
 
-
 class TestParseAnalysisDecisionPhaseNameParameter:
     """parse_analysis_decision uses phase_name for policy lookup, drain_name for artifact path."""
 
@@ -204,7 +203,9 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                         on_loopback="development",
                         on_failure=None,
                     ),
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="development_analysis_iteration"
+                    ),
                     decisions={
                         "completed": PhaseDecisionRoute(
                             target="development_commit", reset_loop=True
@@ -212,9 +213,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                         "request_changes": PhaseDecisionRoute(
                             target="development", reset_loop=False
                         ),
-                        "failed": PhaseDecisionRoute(
-                            target="failed_terminal", reset_loop=False
-                        ),
+                        "failed": PhaseDecisionRoute(target="failed_terminal", reset_loop=False),
                     },
                 ),
                 "development_commit": PhaseDefinition(
@@ -306,11 +305,11 @@ class TestRegisterRoleHandlers:
                         on_loopback="complete",
                         on_failure=None,
                     ),
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="development_analysis_iteration"
+                    ),
                     decisions={
-                        "completed": PhaseDecisionRoute(
-                            target="complete", reset_loop=True
-                        ),
+                        "completed": PhaseDecisionRoute(target="complete", reset_loop=True),
                     },
                 ),
                 "complete": PhaseDefinition(

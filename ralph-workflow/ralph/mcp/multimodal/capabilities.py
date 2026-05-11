@@ -269,8 +269,7 @@ class ResolvedCapabilityProfile:
 def resolve_capability_profile(identity: MultimodalModelIdentity) -> ResolvedCapabilityProfile:
     """Build a pre-computed capability profile for all supported modalities."""
     verdicts = {
-        modality: get_delivery_mode(identity, modality)
-        for modality in SUPPORTED_MODALITIES
+        modality: get_delivery_mode(identity, modality) for modality in SUPPORTED_MODALITIES
     }
     return ResolvedCapabilityProfile(identity=identity, verdicts=verdicts)
 

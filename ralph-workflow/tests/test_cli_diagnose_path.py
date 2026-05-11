@@ -95,8 +95,7 @@ def test_diagnose_alias_with_different_display_name_shows_correct_path_status(
         f"Expected 'my-alias' (registry key) in availability results, got: {list(result_map)}"
     )
     assert result_map["my-alias"] == "available", (
-        f"Expected 'my-alias' to be 'available' (python on PATH), "
-        f"got: {result_map['my-alias']}"
+        f"Expected 'my-alias' to be 'available' (python on PATH), got: {result_map['my-alias']}"
     )
     assert "My Python Agent" not in result_map, (
         "display_name 'My Python Agent' must not be used as key in availability results"
@@ -140,9 +139,7 @@ def test_diagnose_alias_path_status_rendered_in_cli(
     lines = output.splitlines()
 
     alias_lines = [line for line in lines if "my-alias" in line]
-    assert alias_lines, (
-        f"Expected 'my-alias' row in diagnose output.\nFull output:\n{output}"
-    )
+    assert alias_lines, f"Expected 'my-alias' row in diagnose output.\nFull output:\n{output}"
 
     alias_line = alias_lines[0]
     assert "on PATH" in alias_line or "missing" in alias_line, (
@@ -256,8 +253,7 @@ def test_diagnose_next_steps_panel_rendered_in_cli(
         f"Expected 'Next steps' panel in --diagnose output, got: {result.output}"
     )
     assert "getting-started" in result.output, (
-        "Expected 'getting-started' pointer in --diagnose Next steps panel, "
-        f"got: {result.output}"
+        f"Expected 'getting-started' pointer in --diagnose Next steps panel, got: {result.output}"
     )
 
 

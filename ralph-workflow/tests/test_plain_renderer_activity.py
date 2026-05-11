@@ -61,9 +61,7 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
     renderer.emit_snapshot(snap_n)
 
     # Snapshot N+1: same structured fields, now with last_activity_line
-    activity_line = (
-        "claude/sonnet tool: mcp__ralph__read_file (path=ralph/pipeline/runner.py)"
-    )
+    activity_line = "claude/sonnet tool: mcp__ralph__read_file (path=ralph/pipeline/runner.py)"
     snap_n1 = _base_snapshot(
         active_agent="claude/sonnet",
         active_tool="mcp__ralph__read_file",

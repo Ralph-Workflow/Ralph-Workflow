@@ -44,9 +44,7 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
         "development": MagicMock(
             chain="developer", drain_class="development", capability_class=None
         ),
-        "planning": MagicMock(
-            chain="planner", drain_class="planning", capability_class=None
-        ),
+        "planning": MagicMock(chain="planner", drain_class="planning", capability_class=None),
     }
     bundle.agents.agent_chains = {
         "developer": MagicMock(agents=["developer"]),
@@ -154,11 +152,9 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
         coordinator_calls.append(kwargs)
         return []
 
-    monkeypatch.setattr("ralph.interrupt.asyncio_bridge.install_signal_handlers", _fake_install)
-    monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
-    monkeypatch.setattr(
-        "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
-    )
+    monkeypatch.setattr(runner_module, "install_signal_handlers", _fake_install)
+    monkeypatch.setattr(runner_module, "SubprocessAgentExecutor", _FakeExecutor)
+    monkeypatch.setattr(runner_module, "DynamicBindingMcpServerFactory", _FakeMcpFactory)
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
@@ -406,9 +402,8 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
 
     assert notified_phases == reduced_phases
 
-def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
-    monkeypatch, tmp_path
-) -> None:
+
+def test_materialize_prepared_prompt_uses_worker_namespace_from_env(monkeypatch, tmp_path) -> None:
     """When RALPH_WORKER_NAMESPACE is set, prompt payloads land in the worker's namespace."""
     from ralph.pipeline import runner as runner_module
     from ralph.pipeline.effects import PreparePromptEffect
@@ -431,6 +426,7 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     # Patch dump to avoid writing files
     import ralph.prompts.materialize
+
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", _fake_dump)
 
     policy = load_policy(tmp_path / ".agent")
@@ -450,9 +446,7 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     )
 
 
-def test_materialize_prepared_prompt_no_namespace_without_env(
-    monkeypatch, tmp_path
-) -> None:
+def test_materialize_prepared_prompt_no_namespace_without_env(monkeypatch, tmp_path) -> None:
     """Without RALPH_WORKER_NAMESPACE, worker_namespace is None (shared path used)."""
     from ralph.pipeline import runner as runner_module
     from ralph.pipeline.effects import PreparePromptEffect
@@ -466,6 +460,7 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
         return "rendered-prompt"
 
     import ralph.prompts.materialize
+
     monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", lambda *a, **k: "/p")
 

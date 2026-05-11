@@ -166,10 +166,7 @@ def _resolve_history_enabled(
         for phase_def in bundle.pipeline.phases.values():
             if drain is not None and phase_def.drain != drain:
                 continue
-            if (
-                phase_def.artifact_history is not None
-                and phase_def.artifact_history.enabled
-            ):
+            if phase_def.artifact_history is not None and phase_def.artifact_history.enabled:
                 return True
     except Exception:  # policy load errors must not surface to agents
         pass
@@ -332,7 +329,6 @@ def _iso_timestamp(value: object) -> datetime | None:
     return None
 
 
-
 def _load_finalized_plan_response(
     artifact_dir: Path,
     *,
@@ -353,7 +349,6 @@ def _load_finalized_plan_response(
         "source": "finalized_plan",
         "updated_at": updated_at,
     }
-
 
 
 def _current_plan_draft_response(
@@ -392,7 +387,6 @@ def _current_plan_draft_response(
         "draft": sections,
         "source": "draft",
     }
-
 
 
 def handle_get_plan_draft(
@@ -528,9 +522,7 @@ def _prepare_artifact_submission(
         if base_path is not None:
             if raw_artifact_type == "analysis_decision":
                 # Materialize the relevant docs and index before raising
-                materialize_format_doc(
-                    base_path, "development_analysis_decision", backend=backend
-                )
+                materialize_format_doc(base_path, "development_analysis_decision", backend=backend)
                 materialize_format_doc(base_path, "planning_analysis_decision", backend=backend)
                 materialize_format_doc(base_path, "review_analysis_decision", backend=backend)
                 materialize_format_index(base_path, backend=backend)
@@ -797,9 +789,7 @@ def _normalize_development_result_payload(
         return normalize_development_result_content(parsed_content)
     except DevelopmentResultValidationError as exc:
         if workspace_root is not None:
-            _raise_format_doc_error(
-                DEVELOPMENT_RESULT_ARTIFACT_TYPE, workspace_root, backend, exc
-            )
+            _raise_format_doc_error(DEVELOPMENT_RESULT_ARTIFACT_TYPE, workspace_root, backend, exc)
         raise InvalidParamsError(str(exc)) from exc
 
 
@@ -836,9 +826,7 @@ def _raise_format_doc_error(
     original_exc: Exception,
 ) -> NoReturn:
     try:
-        relative_path = materialize_format_doc(
-            workspace_root, artifact_type, backend=backend
-        )
+        relative_path = materialize_format_doc(workspace_root, artifact_type, backend=backend)
         if relative_path is not None:
             msg = (
                 f"Artifact '{artifact_type}' failed validation. "
@@ -876,34 +864,38 @@ def _submit_ops_for_artifact(
 
     if artifact_type == COMMIT_MESSAGE_TYPE:
         _content = parsed_content
-        ops.append(_SubmitOp(
-            run=lambda: write_commit_message_artifact(
-                workspace_root, _content, backend=deps.backend, now_iso=deps.now_iso
-            ),
-            undo=lambda: delete_commit_message_artifacts(workspace_root, backend=deps.backend),
-        ))
+        ops.append(
+            _SubmitOp(
+                run=lambda: write_commit_message_artifact(
+                    workspace_root, _content, backend=deps.backend, now_iso=deps.now_iso
+                ),
+                undo=lambda: delete_commit_message_artifacts(workspace_root, backend=deps.backend),
+            )
+        )
 
     _options = ArtifactSubmitOptions(overwrite=True, persistence=deps.artifact_persistence)
     _at = artifact_type
     _content2 = parsed_content
-    ops.append(_SubmitOp(
-        run=lambda: submit_artifact(
-            artifact_dir,
-            name=_at,
-            artifact_type=_at,
-            content=_content2,
-            options=_options,
-        ),
-        undo=lambda: delete_artifact(artifact_dir, _at, backend=deps.backend),
-    ))
+    ops.append(
+        _SubmitOp(
+            run=lambda: submit_artifact(
+                artifact_dir,
+                name=_at,
+                artifact_type=_at,
+                content=_content2,
+                options=_options,
+            ),
+            undo=lambda: delete_artifact(artifact_dir, _at, backend=deps.backend),
+        )
+    )
 
     _content3 = parsed_content
-    ops.append(_SubmitOp(
-        run=lambda: sync_markdown_handoff(
-            workspace_root, _at, _content3, backend=deps.backend
-        ),
-        undo=lambda: delete_markdown_handoff(workspace_root, _at, backend=deps.backend),
-    ))
+    ops.append(
+        _SubmitOp(
+            run=lambda: sync_markdown_handoff(workspace_root, _at, _content3, backend=deps.backend),
+            undo=lambda: delete_markdown_handoff(workspace_root, _at, backend=deps.backend),
+        )
+    )
 
     if deps.history_enabled:
         _snapshotted_paths: list[Path] = []
@@ -929,14 +921,14 @@ def _submit_ops_for_artifact(
         ops.append(_SubmitOp(run=_run_history_snapshot, undo=_undo_history_snapshot))
 
     if artifact_type == PLAN_ARTIFACT_TYPE:
-        ops.append(_SubmitOp(
-            run=lambda: delete_plan_draft(artifact_dir, backend=deps.backend),
-            undo=lambda: None,
-        ))
+        ops.append(
+            _SubmitOp(
+                run=lambda: delete_plan_draft(artifact_dir, backend=deps.backend),
+                undo=lambda: None,
+            )
+        )
 
     return ops
-
-
 
 
 __all__ = [

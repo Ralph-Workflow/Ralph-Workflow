@@ -42,7 +42,6 @@ def _module_attr_or_none(module: ModuleType, attribute: str) -> object | None:
     return namespace.get(attribute)
 
 
-
 def _get_bundled_defaults_dir() -> Path:
     """Return the path to the bundled default policy files.
 
@@ -148,7 +147,6 @@ def ensure_local_main_config(agent_dir: Path, *, force: bool = False) -> Bootstr
     )
 
 
-
 def ensure_local_support_configs(agent_dir: Path, *, force: bool = False) -> list[BootstrapResult]:
     """Ensure the standard project-local policy and MCP files exist.
 
@@ -180,7 +178,6 @@ def ensure_local_support_configs(agent_dir: Path, *, force: bool = False) -> lis
     )
     _ensure_default_gitignore(agent_dir.parent)
     return results
-
 
 
 def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[BootstrapResult]:
@@ -247,7 +244,6 @@ def _backup_path(target: Path) -> Path:
     return target.with_suffix(target.suffix + ".bak")
 
 
-
 def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
     try:
         text = target.read_text(encoding="utf-8")
@@ -261,9 +257,7 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
     raw_drains = cast("Mapping[str, object]", raw_drains_obj)
 
     drains: dict[str, object] = {
-        key: value
-        for key, value in raw_drains.items()
-        if isinstance(key, str)
+        key: value for key, value in raw_drains.items() if isinstance(key, str)
     }
     missing: list[tuple[str, str]] = []
     analysis_chain: object = drains.get("analysis")
@@ -293,7 +287,6 @@ def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
     shutil.copy2(str(target), str(backup))
     target.write_text(text[:insert_at] + insert_lines + text[insert_at:], encoding="utf-8")
     return BootstrapResult(target, "regenerated", backup)
-
 
 
 def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResult:

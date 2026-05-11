@@ -25,7 +25,7 @@ def test_default_probe_child_snapshot_returns_no_fresh_progress_when_registry_em
     assert snap.active_count == 0
 
 
-def test_default_probe_child_snapshot_reports_fresh_label_only_when_registered_but_no_heartbeat() -> None:  # noqa: E501
+def test_default_probe_child_snapshot_fresh_label_when_registered_without_heartbeat() -> None:
     t = [0.0]
     reg = _registry(t)
     reg.register_child("c1", "scope/a")

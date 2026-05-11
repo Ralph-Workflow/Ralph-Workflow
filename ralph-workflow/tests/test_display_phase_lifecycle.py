@@ -279,7 +279,6 @@ class TestRunCompletionModel:
         assert "untracked" not in model.budget_progress
         assert "zero_cap" not in model.budget_progress
 
-
     def test_analysis_decisions_defaults_empty(self) -> None:
         m = RunCompletionModel(final_phase="done", is_failure=False)
         assert m.analysis_decisions == ()
@@ -362,9 +361,7 @@ class TestRunCompletionModel:
         snap.last_activity_line = None
         snap.waiting_status_line = None
         snap.last_failure_category = None
-        snap.decision_log = (
-            ("commit", "complete", "committed", "2026-01-01T00:01:00"),
-        )
+        snap.decision_log = (("commit", "complete", "committed", "2026-01-01T00:01:00"),)
         snap.budget_progress = {}
 
         model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")

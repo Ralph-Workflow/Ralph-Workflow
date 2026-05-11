@@ -24,11 +24,9 @@ class _AgentEntry(Protocol):
 class HasListAgents(Protocol):
     """Protocol for agent registries used in availability checks."""
 
-    def list_agents(self) -> list[str]:
-        ...
+    def list_agents(self) -> list[str]: ...
 
-    def get(self, name: str) -> _AgentEntry | None:
-        ...
+    def get(self, name: str) -> _AgentEntry | None: ...
 
 
 def check_agent_availability(

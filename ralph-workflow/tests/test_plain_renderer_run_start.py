@@ -149,9 +149,6 @@ def _filter_run_start_content(lines: list[str]) -> list[str]:
     ]
 
 
-
-
-
 def test_emit_run_start_plan_verbosity_grouped_on_one_line() -> None:
     """Wide mode: plan and verbosity share one [run-start] line."""
     renderer, buf = _make_renderer()
@@ -165,9 +162,7 @@ def test_emit_run_start_plan_verbosity_grouped_on_one_line() -> None:
 
 def _make_compact_renderer() -> tuple[PlainLogRenderer, StringIO]:
     buf = StringIO()
-    console = Console(
-        file=buf, force_terminal=False, highlight=False, color_system=None, width=200
-    )
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
     return (
         PlainLogRenderer(make_display_context(console=console, env={}, force_mode="compact")),
         buf,
@@ -194,7 +189,6 @@ def test_emit_run_start_compact_mode_max_four_lines() -> None:
         f"compact mode must emit <={_COMPACT_MAX_RUN_START_LINES} [run-start] lines,"
         f" got {len(run_start_lines)}: {run_start_lines}"
     )
-
 
 
 def test_emit_run_start_compact_mode_legend_omitted() -> None:

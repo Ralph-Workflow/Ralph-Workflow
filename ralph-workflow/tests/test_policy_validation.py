@@ -285,12 +285,8 @@ class TestForbidSiblingDrainInference:
                 "review_commit": AgentChainConfig(agents=["claude"]),
             },
             agent_drains={
-                "planning": AgentDrainConfig(
-                    chain="planning", drain_class="planning"
-                ),
-                "development": AgentDrainConfig(
-                    chain="development", drain_class="development"
-                ),
+                "planning": AgentDrainConfig(chain="planning", drain_class="planning"),
+                "development": AgentDrainConfig(chain="development", drain_class="development"),
                 "development_analysis": AgentDrainConfig(
                     chain="development_analysis", drain_class="analysis"
                 ),
@@ -302,9 +298,7 @@ class TestForbidSiblingDrainInference:
                     chain="review_analysis", drain_class="analysis"
                 ),
                 "fix": AgentDrainConfig(chain="fix", drain_class="fix"),
-                "review_commit": AgentDrainConfig(
-                    chain="review_commit", drain_class="commit"
-                ),
+                "review_commit": AgentDrainConfig(chain="review_commit", drain_class="commit"),
             },
         )
 
@@ -898,9 +892,6 @@ class TestValidateWorkUnitsAgainstPolicy:
 
         validate_work_units_against_policy(work_units, pipeline, phase="planning")  # must not raise
 
-
-
-
     def test_reserved_path_at_policy_load_raises_policy_validation_error(self) -> None:
         """Work units declaring reserved paths raise PolicyValidationError at policy load time."""
         pipeline = self._minimal_pipeline(
@@ -935,6 +926,7 @@ class TestValidateWorkUnitsAgainstPolicy:
 
         with pytest.raises(PolicyValidationError, match="does not declare parallelization"):
             validate_work_units_against_policy(work_units, pipeline, phase="planning")
+
 
 class TestValidateRequiredInputs:
     """Tests for validate_required_inputs."""
@@ -1108,7 +1100,9 @@ class TestValidatePolicyCompletenessNewRules:
                         on_failure=None,
                         on_loopback="development_analysis",
                     ),
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="development_analysis_iteration"
+                    ),
                     decisions={
                         "completed": PhaseDecisionRoute(target="complete", reset_loop=True),
                     },
@@ -1189,7 +1183,8 @@ class TestValidatePolicyCompletenessNewRules:
         pipeline = PipelinePolicy(
             phases={
                 "development_analysis": self._minimal_analysis_phase(
-                    "development_analysis", "development_analysis_iteration",
+                    "development_analysis",
+                    "development_analysis_iteration",
                     on_success="development_commit",
                     failure_target="failed_terminal",
                 ),
@@ -1240,7 +1235,8 @@ class TestValidatePolicyCompletenessNewRules:
         pipeline = PipelinePolicy(
             phases={
                 "development_analysis": self._minimal_analysis_phase(
-                    "development_analysis", "development_analysis_iteration",
+                    "development_analysis",
+                    "development_analysis_iteration",
                     on_success="development_commit",
                     failure_target="failed_terminal",
                 ),
@@ -1296,7 +1292,9 @@ class TestValidatePolicyCompletenessNewRules:
                         on_success="development_commit",
                         on_loopback="development_analysis",
                     ),
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="development_analysis_iteration"
+                    ),
                     decisions=dev_analysis_decisions,
                 ),
                 "development_commit": PhaseDefinition(
@@ -1353,7 +1351,9 @@ class TestValidatePolicyCompletenessNewRules:
                         on_success="development_commit",
                         on_loopback="development_analysis",
                     ),
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="development_analysis_iteration"
+                    ),
                     decisions=dev_analysis_decisions,
                 ),
                 "development_commit": PhaseDefinition(
@@ -1396,11 +1396,13 @@ class TestValidatePolicyCompletenessNewRules:
     def test_recovery_terminal_recovery_route_field_rejected(self) -> None:
         """terminal_recovery_route is deprecated; the model validator rejects it."""
         with pytest.raises(ValidationError, match="deprecated"):
-            RecoveryPolicy.model_validate({
-                "cycle_cap": 200,
-                "terminal_recovery_route": "some_phase",
-                "preserve_session_on_categories": ("agent",),
-            })
+            RecoveryPolicy.model_validate(
+                {
+                    "cycle_cap": 200,
+                    "terminal_recovery_route": "some_phase",
+                    "preserve_session_on_categories": ("agent",),
+                }
+            )
 
     def test_recovery_failed_route_unknown_phase_raises_policy_error(self) -> None:
         """failed_route referencing an undeclared phase fails completeness validation.
@@ -1489,7 +1491,6 @@ class TestValidatePolicyCompletenessNewRules:
                 failed_route="exit_failure",
                 preserve_session_on_categories=("agent",),
             )
-
 
     def test_review_role_requires_issues_outcome(self) -> None:
         """role='review' without issues_outcome fails validate_policy_completeness."""
@@ -1739,7 +1740,9 @@ class TestValidatePolicyCompletenessReachability:
                         on_success="complete",
                         on_loopback="analysis",
                     ),
-                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="development_analysis_iteration"
+                    ),
                     decisions={
                         "completed": PhaseDecisionRoute(target="complete", reset_loop=True),
                         "needs_work": PhaseDecisionRoute(target="alt_path", reset_loop=False),
@@ -2444,9 +2447,7 @@ class TestValidatePostCommitAllBudgetStatesCovered:
             transitions=PhaseTransition(on_success="crashed", on_loopback="crashed"),
         )
 
-    def _bundle_with_routes(
-        self, routes: list[tuple[str, str]]
-    ) -> PolicyBundle:
+    def _bundle_with_routes(self, routes: list[tuple[str, str]]) -> PolicyBundle:
         agents = self._agents(["work", "commit", "complete", "crashed"])
         post_commit = [
             PostCommitRoute(
@@ -2489,41 +2490,49 @@ class TestValidatePostCommitAllBudgetStatesCovered:
 
     def test_missing_remaining_state_raises(self) -> None:
         """Only exhausted+no_review present: remaining missing → validation fails."""
-        bundle = self._bundle_with_routes([
-            ("exhausted", "complete"),
-            ("no_review", "complete"),
-        ])
+        bundle = self._bundle_with_routes(
+            [
+                ("exhausted", "complete"),
+                ("no_review", "complete"),
+            ]
+        )
         with pytest.raises(PolicyValidationError) as exc_info:
             validate_policy_completeness(bundle)
         assert "remaining" in str(exc_info.value)
 
     def test_missing_exhausted_state_raises(self) -> None:
         """Only remaining+no_review present: exhausted missing → validation fails."""
-        bundle = self._bundle_with_routes([
-            ("remaining", "work"),
-            ("no_review", "complete"),
-        ])
+        bundle = self._bundle_with_routes(
+            [
+                ("remaining", "work"),
+                ("no_review", "complete"),
+            ]
+        )
         with pytest.raises(PolicyValidationError) as exc_info:
             validate_policy_completeness(bundle)
         assert "exhausted" in str(exc_info.value)
 
     def test_missing_no_review_state_raises(self) -> None:
         """Only remaining+exhausted present: no_review missing → validation fails."""
-        bundle = self._bundle_with_routes([
-            ("remaining", "work"),
-            ("exhausted", "complete"),
-        ])
+        bundle = self._bundle_with_routes(
+            [
+                ("remaining", "work"),
+                ("exhausted", "complete"),
+            ]
+        )
         with pytest.raises(PolicyValidationError) as exc_info:
             validate_policy_completeness(bundle)
         assert "no_review" in str(exc_info.value)
 
     def test_all_three_budget_states_passes(self) -> None:
         """All three budget states declared: validation passes."""
-        bundle = self._bundle_with_routes([
-            ("remaining", "work"),
-            ("exhausted", "complete"),
-            ("no_review", "complete"),
-        ])
+        bundle = self._bundle_with_routes(
+            [
+                ("remaining", "work"),
+                ("exhausted", "complete"),
+                ("no_review", "complete"),
+            ]
+        )
         validate_policy_completeness(bundle)  # must not raise
 
 
@@ -2540,11 +2549,13 @@ class TestOptionalArtifactPolicy:
     def test_artifact_contract_rejects_phase_owned_artifact_required(self) -> None:
         """ArtifactContract must reject artifact_required because it belongs to pipeline.toml."""
         with pytest.raises(ValueError, match=r"pipeline\.toml"):
-            ArtifactContract.model_validate({
-                "drain": "development",
-                "artifact_type": "development_result",
-                "artifact_required": False,
-            })
+            ArtifactContract.model_validate(
+                {
+                    "drain": "development",
+                    "artifact_type": "development_result",
+                    "artifact_required": False,
+                }
+            )
 
     def test_phase_required_artifact_uses_pipeline_owned_optional_flag(
         self, tmp_path: Path

@@ -34,14 +34,16 @@ def _write_fake_artifact(tmp_path: Path, unit_id: str) -> None:
     artifact_dir = tmp_path / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "result.json").write_text(
-        json.dumps({
-            "name": "development_result",
-            "type": "development_result",
-            "content": {"summary": f"done by {unit_id}"},
-            "created_at": "2024-01-01T00:00:00+00:00",
-            "updated_at": "2024-01-01T00:00:00+00:00",
-            "metadata": {},
-        })
+        json.dumps(
+            {
+                "name": "development_result",
+                "type": "development_result",
+                "content": {"summary": f"done by {unit_id}"},
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {},
+            }
+        )
     )
 
 
@@ -72,8 +74,12 @@ class TestCombinedSummaryHonesty:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=False, verify_passed=None, verify_exit_code=None,
+            scope,
+            effect,
+            state,
+            verify_ran=False,
+            verify_passed=None,
+            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -105,8 +111,12 @@ class TestCombinedSummaryHonesty:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=False, verify_passed=None, verify_exit_code=None,
+            scope,
+            effect,
+            state,
+            verify_ran=False,
+            verify_passed=None,
+            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -136,8 +146,12 @@ class TestCombinedSummaryHonesty:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=False, verify_passed=None, verify_exit_code=None,
+            scope,
+            effect,
+            state,
+            verify_ran=False,
+            verify_passed=None,
+            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -174,8 +188,12 @@ class TestCombinedSummaryHonesty:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=False, verify_passed=None, verify_exit_code=None,
+            scope,
+            effect,
+            state,
+            verify_ran=False,
+            verify_passed=None,
+            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -199,8 +217,12 @@ class TestCombinedSummaryHonesty:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=False, verify_passed=None, verify_exit_code=None,
+            scope,
+            effect,
+            state,
+            verify_ran=False,
+            verify_passed=None,
+            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -220,8 +242,12 @@ class TestCombinedSummaryHonesty:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=True, verify_passed=False, verify_exit_code=_EXIT_CODE_VERIFY_FAIL,
+            scope,
+            effect,
+            state,
+            verify_ran=True,
+            verify_passed=False,
+            verify_exit_code=_EXIT_CODE_VERIFY_FAIL,
         )
 
         summary = _read_summary(tmp_path)
@@ -254,8 +280,12 @@ class TestAnalysisHandoffWiring:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=False, verify_passed=None, verify_exit_code=None,
+            scope,
+            effect,
+            state,
+            verify_ran=False,
+            verify_passed=None,
+            verify_exit_code=None,
         )
 
         handoff_path = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
@@ -285,8 +315,12 @@ class TestAnalysisHandoffWiring:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=False, verify_passed=None, verify_exit_code=None,
+            scope,
+            effect,
+            state,
+            verify_ran=False,
+            verify_passed=None,
+            verify_exit_code=None,
         )
 
         handoff_path = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
@@ -299,11 +333,13 @@ class TestAnalysisHandoffWiring:
         """The normal development_result.json is NOT overwritten by the parallel summary."""
         dev_result_path = tmp_path / ".agent" / "artifacts" / "development_result.json"
         dev_result_path.parent.mkdir(parents=True, exist_ok=True)
-        original_content = json.dumps({
-            "name": "development_result",
-            "type": "development_result",
-            "content": {"summary": "original serial development"},
-        })
+        original_content = json.dumps(
+            {
+                "name": "development_result",
+                "type": "development_result",
+                "content": {"summary": "original serial development"},
+            }
+        )
         dev_result_path.write_text(original_content)
 
         effect = _make_effect(("unit-a", ["src/a"]))
@@ -317,8 +353,12 @@ class TestAnalysisHandoffWiring:
         )
         scope = _make_scope(tmp_path)
         _write_parallel_development_summary(
-            scope, effect, state,
-            verify_ran=False, verify_passed=None, verify_exit_code=None,
+            scope,
+            effect,
+            state,
+            verify_ran=False,
+            verify_passed=None,
+            verify_exit_code=None,
         )
 
         # parallel_development_summary.json exists separately

@@ -230,13 +230,12 @@ class TestBannedPhrasesAcrossAllDocs:
     def test_no_banned_phrase_in_doc(self, doc_path: Path) -> None:
         """Each checked .md file must not contain any banned worktree/merge-back phrases."""
         content = doc_path.read_text(encoding="utf-8").lower()
-        violations = [
-            phrase for phrase in _EXTENDED_BANNED_PHRASES if phrase.lower() in content
-        ]
+        violations = [phrase for phrase in _EXTENDED_BANNED_PHRASES if phrase.lower() in content]
         assert violations == [], (
             f"{doc_path} contains banned phrase(s): {violations!r}. "
             "Rewrite to describe same-workspace v1 truthfully."
         )
+
 
 class TestNamespacedPayloadDocs:
     def test_parallel_mode_doc_mentions_worker_namespaced_payloads(self) -> None:
@@ -270,9 +269,7 @@ def readme_doc() -> str:
 
 
 class TestReadmeParallelContract:
-    def test_readme_parallel_mode_section_describes_same_workspace(
-        self, readme_doc: str
-    ) -> None:
+    def test_readme_parallel_mode_section_describes_same_workspace(self, readme_doc: str) -> None:
         lower = readme_doc.lower()
         assert "same git checkout" in lower or "same-workspace" in lower, (
             "README.md Parallel Mode section must describe same-workspace execution "

@@ -73,9 +73,7 @@ def _apply_runner_stubs(
     fake_execute_agent_effect: object,
 ) -> None:
     complete_state = PipelineState(phase="complete")
-    monkeypatch.setattr(
-        runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
-    )
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
     monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
     _mock_bundle = MagicMock()
@@ -86,15 +84,11 @@ def _apply_runner_stubs(
         runner_module, "_determine_effect_from_policy", _stub_determine_effect(effects)
     )
     monkeypatch.setattr(runner_module, "_execute_agent_effect", fake_execute_agent_effect)
-    monkeypatch.setattr(
-        runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(
         runner_module, "_phase_event_after_agent_run", lambda **kw: PipelineEvent.AGENT_SUCCESS
     )
-    monkeypatch.setattr(
-        runner_module, "reducer_reduce", lambda *a, **kw: (complete_state, [])
-    )
+    monkeypatch.setattr(runner_module, "reducer_reduce", lambda *a, **kw: (complete_state, []))
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _: None)
 
 
@@ -107,9 +101,7 @@ def test_runner_phase_scope_kills_phase_labeled_child(
     A process spawned inside _execute_agent_effect with label 'phase:<phase>:worker'
     must be dead after runner.run() exits, because the phase scope tears it down.
     """
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     spawned_pid: list[int] = []
 
@@ -161,9 +153,7 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     tmp_path: Path,
 ) -> None:
     """process_phase_scope only kills processes whose label starts with 'phase:<phase_name>'."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     spawned: dict[str, int] = {}
 
@@ -230,9 +220,7 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     under ``phase:<phase>`` and therefore cannot rely on ``process_phase_scope``
     prefix cleanup alone.
     """
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     spawned_pid: list[int] = []
 

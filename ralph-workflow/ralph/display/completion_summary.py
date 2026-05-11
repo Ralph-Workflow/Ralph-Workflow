@@ -407,10 +407,8 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
         for phase, decision, reason, _ts in snapshot.decision_log:
             badge = _DECISION_LABELS.get(decision.lower(), "INFO")
             reason_part = f": {decision}" + (f" \u2014 {reason}" if reason else "")
-            phase_title = phase.replace('_', ' ').title()
-            renderables.append(
-                _make_badge_text(badge, f" DECISIONS: {phase_title}{reason_part}")
-            )
+            phase_title = phase.replace("_", " ").title()
+            renderables.append(_make_badge_text(badge, f" DECISIONS: {phase_title}{reason_part}"))
     else:
         renderables.append(Text("DECISIONS: (none recorded)"))
 
@@ -586,7 +584,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
         renderables.append(Rule("Analysis Decisions", style=analysis_style))
         for phase, decision, reason in analysis_decisions:
             reason_part = f": {decision}" + (f" — {reason}" if reason else "")
-            phase_title = phase.replace('_', ' ').title()
+            phase_title = phase.replace("_", " ").title()
             # Determine badge based on decision
             if decision == "proceed":
                 decision_badge = "PASS"
@@ -594,9 +592,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
                 decision_badge = "WARN"
             else:
                 decision_badge = "INFO"
-            renderables.append(
-                _make_badge_text(decision_badge, f" {phase_title}{reason_part}")
-            )
+            renderables.append(_make_badge_text(decision_badge, f" {phase_title}{reason_part}"))
 
     # Iteration Context section (outer dev cycle)
     if _has_iteration_context(snapshot):

@@ -17,12 +17,12 @@ _INCLUDE_TEMPLATE = (
 
 def _load_partials() -> dict[str, str]:
     return {
-        _PAYLOAD_SECTION_NAME: (
-            _TEMPLATES_DIR / "shared" / "_payload_section.jinja"
-        ).read_text(encoding="utf-8"),
-        _ANALYSIS_CONTEXT_NAME: (
-            _TEMPLATES_DIR / "shared" / "_analysis_context.jinja"
-        ).read_text(encoding="utf-8"),
+        _PAYLOAD_SECTION_NAME: (_TEMPLATES_DIR / "shared" / "_payload_section.jinja").read_text(
+            encoding="utf-8"
+        ),
+        _ANALYSIS_CONTEXT_NAME: (_TEMPLATES_DIR / "shared" / "_analysis_context.jinja").read_text(
+            encoding="utf-8"
+        ),
     }
 
 

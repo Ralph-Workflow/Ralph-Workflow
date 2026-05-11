@@ -167,9 +167,7 @@ class TestSameWorkspaceFanOutE2E:
         """A single work unit must NOT produce fan-out; it falls to the normal dev path."""
         from ralph.config.models import UnifiedConfig
 
-        state = PipelineState(
-            phase="development", work_units=(_make_work_unit("unit-a"),)
-        )
+        state = PipelineState(phase="development", work_units=(_make_work_unit("unit-a"),))
         policy_bundle = _make_policy_bundle(max_workers=4)
 
         effect = runner_module._determine_effect_from_policy(
@@ -240,8 +238,7 @@ class TestSameWorkspaceFanOutE2E:
         for uid in ("unit-a", "unit-b"):
             unit_events = [e for e in completed if e.unit_id == uid]
             assert len(unit_events) == 1, (
-                f"unit {uid!r} must have exactly one WorkerCompletedEvent, "
-                f"got {len(unit_events)}"
+                f"unit {uid!r} must have exactly one WorkerCompletedEvent, got {len(unit_events)}"
             )
 
     def test_no_merge_step_required_for_supported_path(self) -> None:
@@ -274,10 +271,7 @@ class TestSameWorkspaceFanOutE2E:
         # Phase advanced to development_analysis — no merge/worktree event in the chain
         assert reduced_state.phase == "development_analysis"
         # Verify there are no merge-related intermediate phases
-        git_merge_events = [
-            e for e in events
-            if hasattr(e, "name") and "merge" in str(e).lower()
-        ]
+        git_merge_events = [e for e in events if hasattr(e, "name") and "merge" in str(e).lower()]
         assert git_merge_events == [], (
             f"Supported path must not emit merge events, got: {git_merge_events}"
         )
@@ -289,12 +283,8 @@ class TestSameWorkspaceFanOutE2E:
         artifact directory is pre-seeded with evidence. Asserts no cross-namespace
         contamination and correct phase transition.
         """
-        unit_a = WorkUnit(
-            unit_id="unit-a", description="Unit A", allowed_directories=["src/a"]
-        )
-        unit_b = WorkUnit(
-            unit_id="unit-b", description="Unit B", allowed_directories=["src/b"]
-        )
+        unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
+        unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])
         units = (unit_a, unit_b)
 
         # Pre-seed per-worker artifact evidence
@@ -302,9 +292,7 @@ class TestSameWorkspaceFanOutE2E:
         _seed_artifact(tmp_path, "unit-b")
 
         mcp_factory = _RecordingMcpFactory()
-        ctx_module = __import__(
-            "ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"]
-        )
+        ctx_module = __import__("ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"])
         ctx = ctx_module._WorkerContext(
             same_workspace=SameWorkspaceContext(
                 repo_root=tmp_path,
@@ -339,9 +327,7 @@ class TestSameWorkspaceFanOutE2E:
             "ALL_WORKERS_COMPLETE must be emitted after both workers succeed"
         )
         # No merge/worktree events
-        merge_events = [
-            e for e in events if hasattr(e, "name") and "merge" in str(e).lower()
-        ]
+        merge_events = [e for e in events if hasattr(e, "name") and "merge" in str(e).lower()]
         assert merge_events == [], f"No merge events expected, got {merge_events}"
 
         # Reducer advances to development_analysis
@@ -376,15 +362,11 @@ class TestSameWorkspaceFanOutE2E:
         the coordinator wraps it in a WorkerFailedEvent, and no forbidden file
         is created on disk.
         """
-        unit_a = WorkUnit(
-            unit_id="unit-a", description="Unit A", allowed_directories=["src/a"]
-        )
+        unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
         units = (unit_a,)
 
         mcp_factory = _RecordingMcpFactory()
-        ctx_module = __import__(
-            "ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"]
-        )
+        ctx_module = __import__("ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"])
         ctx = ctx_module._WorkerContext(
             same_workspace=SameWorkspaceContext(
                 repo_root=tmp_path,
@@ -437,16 +419,12 @@ class TestSameWorkspaceFanOutE2E:
 
         # Forbidden file must not exist on disk
         forbidden = tmp_path / "src" / "b" / "forbidden.txt"
-        assert not forbidden.exists(), (
-            f"Forbidden file must not have been written: {forbidden}"
-        )
+        assert not forbidden.exists(), f"Forbidden file must not have been written: {forbidden}"
 
         # No success completion
         assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
 
-    def test_repo_dirtiness_does_not_satisfy_missing_artifacts(
-        self, tmp_path: Path
-    ) -> None:
+    def test_repo_dirtiness_does_not_satisfy_missing_artifacts(self, tmp_path: Path) -> None:
         """Repo-wide dirtiness from another worker CANNOT satisfy a worker's success check.
 
         Scenario:
@@ -459,12 +437,8 @@ class TestSameWorkspaceFanOutE2E:
         dirty due to unit-a's (simulated) edits. Repo-wide git status is never
         a fallback success signal in same-workspace mode.
         """
-        unit_a = WorkUnit(
-            unit_id="unit-a", description="Unit A", allowed_directories=["src/a"]
-        )
-        unit_b = WorkUnit(
-            unit_id="unit-b", description="Unit B", allowed_directories=["src/b"]
-        )
+        unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
+        unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])
         units = (unit_a, unit_b)
 
         # Only seed artifacts for unit-a; unit-b gets none on purpose.
@@ -477,9 +451,7 @@ class TestSameWorkspaceFanOutE2E:
         dirty_file.write_text("# simulated edit by worker-b\n")
 
         mcp_factory = _RecordingMcpFactory()
-        ctx_module = __import__(
-            "ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"]
-        )
+        ctx_module = __import__("ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"])
         ctx = ctx_module._WorkerContext(
             same_workspace=SameWorkspaceContext(
                 repo_root=tmp_path,

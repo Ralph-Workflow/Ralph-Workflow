@@ -71,5 +71,3 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         expected_iteration = state.get_outer_progress("iteration") + 1
         assert new_state.get_outer_progress("iteration") == expected_iteration
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
-
-

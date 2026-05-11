@@ -52,9 +52,7 @@ def _visible_tool_names(registry: ToolBridge) -> set[str]:
 
 def test_disabled_web_search_omits_tool() -> None:
     config = McpConfig(web_search=WebSearchConfig(enabled=False))
-    registry = build_ralph_tool_registry(
-        _make_session(), MemoryWorkspace(), mcp_config=config
-    )
+    registry = build_ralph_tool_registry(_make_session(), MemoryWorkspace(), mcp_config=config)
     registry.set_client_capabilities(set())
     assert WEB_SEARCH_TOOL not in _visible_tool_names(registry)
 
@@ -73,9 +71,7 @@ def test_text_only_client_does_not_see_read_image_by_default() -> None:
 
 def test_explicit_media_disabled_removes_read_image() -> None:
     config = McpConfig(media=MediaConfig(enabled=False))
-    registry = build_ralph_tool_registry(
-        _make_session(), MemoryWorkspace(), mcp_config=config
-    )
+    registry = build_ralph_tool_registry(_make_session(), MemoryWorkspace(), mcp_config=config)
     registry.set_client_capabilities({"image", "media"})
     assert "read_image" not in _visible_tool_names(registry)
 

@@ -248,24 +248,19 @@ def _builtin_agents_policy() -> AgentsPolicy:
 
 class TestDrainClassForSession:
     def test_planning(self) -> None:
-        assert drain_class_for_session(
-            "planning", _builtin_agents_policy()
-        ) == DrainClass.PLANNING
+        assert drain_class_for_session("planning", _builtin_agents_policy()) == DrainClass.PLANNING
 
     def test_development(self) -> None:
-        assert drain_class_for_session(
-            "development", _builtin_agents_policy()
-        ) == DrainClass.DEVELOPMENT
+        assert (
+            drain_class_for_session("development", _builtin_agents_policy())
+            == DrainClass.DEVELOPMENT
+        )
 
     def test_analysis(self) -> None:
-        assert drain_class_for_session(
-            "analysis", _builtin_agents_policy()
-        ) == DrainClass.ANALYSIS
+        assert drain_class_for_session("analysis", _builtin_agents_policy()) == DrainClass.ANALYSIS
 
     def test_review(self) -> None:
-        assert drain_class_for_session(
-            "review", _builtin_agents_policy()
-        ) == DrainClass.REVIEW
+        assert drain_class_for_session("review", _builtin_agents_policy()) == DrainClass.REVIEW
 
     def test_fix(self) -> None:
         assert drain_class_for_session("fix", _builtin_agents_policy()) == DrainClass.FIX
@@ -280,9 +275,9 @@ class TestDrainClassForSession:
 
 class TestDrainToAccessMode:
     def test_development_allows_write(self) -> None:
-        assert drain_to_access_mode(
-            "development", _builtin_agents_policy()
-        ) == AccessMode.READ_WRITE
+        assert (
+            drain_to_access_mode("development", _builtin_agents_policy()) == AccessMode.READ_WRITE
+        )
 
     def test_fix_allows_write(self) -> None:
         assert drain_to_access_mode("fix", _builtin_agents_policy()) == AccessMode.READ_WRITE
@@ -299,9 +294,9 @@ class TestDrainToAccessMode:
 
 class TestDrainToPolicyMode:
     def test_development(self) -> None:
-        assert drain_to_policy_mode(
-            "development", _builtin_agents_policy()
-        ) == PolicyMode.DEVELOPMENT
+        assert (
+            drain_to_policy_mode("development", _builtin_agents_policy()) == PolicyMode.DEVELOPMENT
+        )
 
     def test_fix(self) -> None:
         assert drain_to_policy_mode("fix", _builtin_agents_policy()) == PolicyMode.FIX
@@ -682,7 +677,6 @@ class TestWebVisitCapability:
         )
         assert result.is_allowed() is False
 
-
     @pytest.mark.parametrize(
         "drain",
         [d for d in SessionDrain if d not in _COMMIT_DRAINS],
@@ -722,8 +716,7 @@ class TestWorkspaceNewCapabilities:
 
     def test_workspace_edit_in_mcp_to_ralph_map(self) -> None:
         assert (
-            MCP_TO_RALPH_CAPABILITY_MAP[McpCapability.WORKSPACE_EDIT]
-            == Capability.WORKSPACE_EDIT
+            MCP_TO_RALPH_CAPABILITY_MAP[McpCapability.WORKSPACE_EDIT] == Capability.WORKSPACE_EDIT
         )
 
     def test_lookup_ralph_capability_workspace_edit(self) -> None:
@@ -854,8 +847,7 @@ class TestWorkspaceNewCapabilities:
 
     def test_coerce_mcp_capability_workspace_metadata_read_string(self) -> None:
         assert (
-            _coerce_mcp_capability("WorkspaceMetadataRead")
-            == McpCapability.WORKSPACE_METADATA_READ
+            _coerce_mcp_capability("WorkspaceMetadataRead") == McpCapability.WORKSPACE_METADATA_READ
         )
 
     def test_workspace_metadata_read_policy_allowed(self) -> None:

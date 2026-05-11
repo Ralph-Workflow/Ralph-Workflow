@@ -60,9 +60,7 @@ def test_docs_readme_covers_tooling_family():
     path = REPO_ROOT_DOCS_DIR / "README.md"
     content = path.read_text()
     # Must reference tooling family
-    assert "tooling" in content.lower(), (
-        "docs/README.md should cover docs/tooling family"
-    )
+    assert "tooling" in content.lower(), "docs/README.md should cover docs/tooling family"
 
 
 def test_docs_readme_covers_performance_family():
@@ -70,6 +68,4 @@ def test_docs_readme_covers_performance_family():
     path = REPO_ROOT_DOCS_DIR / "README.md"
     content = path.read_text()
     # Must reference performance family
-    assert "performance" in content.lower(), (
-        "docs/README.md should cover docs/performance family"
-    )
+    assert "performance" in content.lower(), "docs/README.md should cover docs/performance family"

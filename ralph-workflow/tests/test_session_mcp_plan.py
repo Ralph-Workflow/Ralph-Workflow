@@ -26,7 +26,6 @@ def isolated_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     return home
 
 
-
 _DEFAULT_AGENTS_POLICY = AgentsPolicy(
     agent_chains={
         "planning": AgentChainConfig(agents=["claude"], max_retries=2, retry_delay_ms=1000),
@@ -40,14 +39,10 @@ _DEFAULT_AGENTS_POLICY = AgentsPolicy(
             agents=["claude"], max_retries=2, retry_delay_ms=500
         ),
         "review": AgentChainConfig(agents=["claude"], max_retries=3, retry_delay_ms=1000),
-        "review_analysis": AgentChainConfig(
-            agents=["claude"], max_retries=2, retry_delay_ms=500
-        ),
+        "review_analysis": AgentChainConfig(agents=["claude"], max_retries=2, retry_delay_ms=500),
         "analysis": AgentChainConfig(agents=["claude"], max_retries=2, retry_delay_ms=500),
         "fix": AgentChainConfig(agents=["claude"], max_retries=3, retry_delay_ms=1000),
-        "review_commit": AgentChainConfig(
-            agents=["claude"], max_retries=2, retry_delay_ms=500
-        ),
+        "review_commit": AgentChainConfig(agents=["claude"], max_retries=2, retry_delay_ms=500),
         "commit": AgentChainConfig(agents=["claude"], max_retries=2, retry_delay_ms=500),
     },
     agent_drains={
@@ -76,13 +71,7 @@ def test_session_mcp_plan_derives_web_and_upstream_capabilities_from_live_config
     tmp_path: Path,
 ) -> None:
     (isolated_home / ".claude.json").write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "github": {"command": "npx", "args": ["-y", "github-mcp"]}
-                }
-            }
-        ),
+        json.dumps({"mcpServers": {"github": {"command": "npx", "args": ["-y", "github-mcp"]}}}),
         encoding="utf-8",
     )
     agent_dir = tmp_path / ".agent"
@@ -555,9 +544,7 @@ class TestMediaReadExplicitOptOut:
 class TestModelFlagResolutionInBuildSessionMcpPlan:
     """build_session_mcp_plan owns model identity resolution via model_flag."""
 
-    def test_model_flag_resolves_claude_identity(
-        self, isolated_home: Path, tmp_path: Path
-    ) -> None:
+    def test_model_flag_resolves_claude_identity(self, isolated_home: Path, tmp_path: Path) -> None:
         del isolated_home
         plan = build_session_mcp_plan(
             transport=AgentTransport.CLAUDE,
@@ -571,9 +558,7 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
         assert plan.model_identity.model_id == "claude-opus-4-7"
         assert plan.model_identity.transport == "claude"
 
-    def test_model_flag_resolves_codex_identity(
-        self, isolated_home: Path, tmp_path: Path
-    ) -> None:
+    def test_model_flag_resolves_codex_identity(self, isolated_home: Path, tmp_path: Path) -> None:
         del isolated_home
         plan = build_session_mcp_plan(
             transport=AgentTransport.CODEX,

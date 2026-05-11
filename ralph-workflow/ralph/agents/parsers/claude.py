@@ -447,7 +447,7 @@ class ClaudeParser:
         if m is None:
             return None
 
-        remainder = raw[m.end():]
+        remainder = raw[m.end() :]
 
         # "claude: text" or "claude/<model>: text"
         if remainder.startswith(": "):
@@ -466,7 +466,7 @@ class ClaudeParser:
         for role in ("user", "assistant"):
             role_prefix = f" {role}: message="
             if remainder.startswith(role_prefix):
-                return self._parse_prefixed_message_line(raw, remainder[len(role_prefix):])
+                return self._parse_prefixed_message_line(raw, remainder[len(role_prefix) :])
 
         # "claude message_delta:..." (old bare format) → suppress
         if remainder.startswith(" message_delta") or remainder.startswith(" system: status="):

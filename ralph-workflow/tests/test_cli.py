@@ -748,9 +748,7 @@ class TestInjectQuickPrompt:
 class TestQuickModeSemantics:
     """Tests for --quick/-Q flag behavior."""
 
-    def test_quick_mode_forces_developer_iters_1(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_quick_mode_forces_developer_iters_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
             "ralph.cli.main.run_pipeline",
@@ -817,7 +815,9 @@ class TestQuickModeSemantics:
     def test_prompt_without_quick_raises_usage_error(self, cli_runner: CliRunner) -> None:
         result = cli_runner.invoke(app, ["--prompt", "some text"])
         assert result.exit_code == 2  # noqa: PLR2004
-        assert "--prompt requires --quick/-Q" in result.stderr or "--prompt requires" in result.stdout  # noqa: E501
+        assert (
+            "--prompt requires --quick/-Q" in result.stderr or "--prompt requires" in result.stdout
+        )
 
 
 class TestRemovedReviewFlags:

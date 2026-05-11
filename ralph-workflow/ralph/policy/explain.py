@@ -271,9 +271,7 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
     )
 
     for phase_name, phase_def in pipeline.phases.items():
-        explanation.phases.append(
-            _explain_phase(phase_name, phase_def, pipeline, agents)
-        )
+        explanation.phases.append(_explain_phase(phase_name, phase_def, pipeline, agents))
 
     # Terminal outcomes — all phases with role='terminal' and a declared outcome
     for phase_name, phase_def in pipeline.phases.items():

@@ -72,9 +72,7 @@ def _make_pm(
 
 def test_spawn_tracks_lifecycle_to_exited() -> None:
     """spawn() creates a RUNNING record; wait() transitions to EXITED."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=0
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
     events: list[ProcessEvent] = []
     pm.register_listener(events.append)
@@ -100,9 +98,7 @@ def test_spawn_tracks_lifecycle_to_exited() -> None:
 
 def test_terminate_escalates_to_sigkill() -> None:
     """terminate() marks KILLED when the fake process ignores terminate()."""
-    never_die_factory = make_sync_process_factory(
-        itertools.count(1), returncode=-9
-    )
+    never_die_factory = make_sync_process_factory(itertools.count(1), returncode=-9)
     pm = _make_pm(sync_factory=never_die_factory)
 
     handle = pm.spawn([sys.executable, "-c", "pass"])
@@ -159,9 +155,7 @@ def test_list_active_unlabeled_processes_not_included_when_filtering_labels() ->
 @pytest.mark.asyncio
 async def test_spawn_async_captures_output() -> None:
     """spawn_async() fake process can communicate output."""
-    async_factory = make_async_process_factory(
-        itertools.count(1), returncode=0
-    )
+    async_factory = make_async_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(async_factory=async_factory)
     events: list[ProcessEvent] = []
     pm.register_listener(events.append)
@@ -185,15 +179,10 @@ async def test_spawn_async_captures_output() -> None:
 
 def test_shutdown_all_kills_multiple_children() -> None:
     """shutdown_all() marks all tracked processes as KILLED."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory)
 
-    handles = [
-        pm.spawn([sys.executable, "-c", "pass"])
-        for _ in range(3)
-    ]
+    handles = [pm.spawn([sys.executable, "-c", "pass"]) for _ in range(3)]
     pids = [h.record.pid for h in handles]
 
     # All should be running
@@ -217,9 +206,7 @@ def test_shutdown_all_kills_multiple_children() -> None:
 
 def test_listener_receives_one_event_per_transition_and_unsubscribe_works() -> None:
     """register_listener() delivers events; unsubscribe() stops them."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=0
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
     events_a: list[ProcessEvent] = []
     events_b: list[ProcessEvent] = []
@@ -275,9 +262,7 @@ def test_failed_exec_emits_failed_event() -> None:
 
 def test_shutdown_all_for_label_kills_only_matching() -> None:
     """shutdown_all_for_label() only kills records with matching label prefix."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
     pm = _make_pm(sync_factory=sync_factory)
 
     target = pm.spawn(
@@ -302,9 +287,7 @@ def test_shutdown_all_for_label_kills_only_matching() -> None:
 
 def test_raising_listener_does_not_break_lifecycle() -> None:
     """A listener that raises does not prevent other listeners or lifecycle updates."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=0
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
     good_events: list[ProcessEvent] = []
 
@@ -329,9 +312,7 @@ def test_raising_listener_does_not_break_lifecycle() -> None:
 def test_log_events_false_suppresses_loguru_output() -> None:
     """log_events=False produces no process log lines; True produces them."""
     records: list[str] = []
-    sink_id = logger.add(
-        lambda msg: records.append(str(msg)), level="DEBUG", format="{message}"
-    )
+    sink_id = logger.add(lambda msg: records.append(str(msg)), level="DEBUG", format="{message}")
     try:
         # No log events when disabled
         pm_silent = ProcessManager(
@@ -340,16 +321,12 @@ def test_log_events_false_suppresses_loguru_output() -> None:
                 kill_followup_timeout_s=0.2,
                 log_events=False,
             ),
-            sync_process_factory=make_sync_process_factory(
-                itertools.count(1), returncode=0
-            ),
+            sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=0),
         )
         handle = pm_silent.spawn([sys.executable, "-c", "pass"])
         handle.wait()
         pid_str = str(handle.record.pid)
-        process_lines_silent = [
-            r for r in records if "process " in r and pid_str in r
-        ]
+        process_lines_silent = [r for r in records if "process " in r and pid_str in r]
         assert process_lines_silent == [], (
             f"Expected no process log lines with log_events=False, got: {process_lines_silent}"
         )
@@ -363,16 +340,12 @@ def test_log_events_false_suppresses_loguru_output() -> None:
                 kill_followup_timeout_s=0.2,
                 log_events=True,
             ),
-            sync_process_factory=make_sync_process_factory(
-                itertools.count(1), returncode=0
-            ),
+            sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=0),
         )
         handle2 = pm_loud.spawn([sys.executable, "-c", "pass"])
         handle2.wait()
         pid2_str = str(handle2.record.pid)
-        process_lines_loud = [
-            r for r in records if "process " in r and pid2_str in r
-        ]
+        process_lines_loud = [r for r in records if "process " in r and pid2_str in r]
         assert len(process_lines_loud) >= 1, (
             f"Expected process log lines with log_events=True, got none. records={records}"
         )
@@ -388,18 +361,14 @@ def test_log_events_false_suppresses_loguru_output() -> None:
 def test_process_phase_scope_warns_on_termination_error() -> None:
     """process_phase_scope emits a loguru warning when cleanup fails, but exits cleanly."""
 
-    def _raise_termination_error(
-        label_prefix: str, *, grace_period_s: float | None = None
-    ) -> None:
+    def _raise_termination_error(label_prefix: str, *, grace_period_s: float | None = None) -> None:
         raise ProcessTerminationError(pid=99999, pgid=99999)
 
     pm = get_process_manager()
 
     warning_messages: list[str] = []
     sink_id = logger.add(
-        lambda msg: warning_messages.append(str(msg))
-        if "WARNING" in str(msg)
-        else None,
+        lambda msg: warning_messages.append(str(msg)) if "WARNING" in str(msg) else None,
         level="WARNING",
         format="{level} {message}",
     )
@@ -424,18 +393,12 @@ def test_process_phase_scope_warns_on_termination_error() -> None:
 
 def test_descendant_snapshot_excludes_zombies() -> None:
     """descendant_snapshot() excludes zombie processes and returns only live count."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     # Set up fake psutil with a process that has children: one live, one zombie
     parent_pid = 1
-    live_child = FakePsutilProcess(
-        pid=1001, _running=True, _status="sleeping", _create_time=0.0
-    )
-    zombie_child = FakePsutilProcess(
-        pid=1002, _running=True, _status="zombie", _create_time=0.0
-    )
+    live_child = FakePsutilProcess(pid=1001, _running=True, _status="sleeping", _create_time=0.0)
+    zombie_child = FakePsutilProcess(pid=1002, _running=True, _status="zombie", _create_time=0.0)
 
     class _RootWithChildren(FakePsutilProcess):
         def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
@@ -463,9 +426,7 @@ def test_descendant_snapshot_excludes_zombies() -> None:
 
 def test_descendant_snapshot_returns_oldest_age() -> None:
     """descendant_snapshot() returns the oldest live descendant age in seconds."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     now = _time.monotonic()
     older_age = 20.0
@@ -506,13 +467,9 @@ def test_descendant_snapshot_returns_oldest_age() -> None:
 
     expected_count = 2
     min_oldest_age = older_age - 1.0
-    assert (
-        count == expected_count
-    ), f"Expected {expected_count} live descendants; got {count}"
+    assert count == expected_count, f"Expected {expected_count} live descendants; got {count}"
     assert oldest is not None
-    assert oldest >= min_oldest_age, (
-        f"Expected oldest age >= {min_oldest_age}s; got {oldest}"
-    )
+    assert oldest >= min_oldest_age, f"Expected oldest age >= {min_oldest_age}s; got {oldest}"
 
 
 # ---------------------------------------------------------------------------
@@ -522,14 +479,10 @@ def test_descendant_snapshot_returns_oldest_age() -> None:
 
 def test_has_live_descendants_excludes_zombies() -> None:
     """has_live_descendants() returns False when only zombies remain."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
-    zombie_child = FakePsutilProcess(
-        pid=3001, _running=True, _status="zombie", _create_time=0.0
-    )
+    zombie_child = FakePsutilProcess(pid=3001, _running=True, _status="zombie", _create_time=0.0)
 
     class _RootWithChildren(FakePsutilProcess):
         def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
@@ -557,14 +510,10 @@ def test_has_live_descendants_excludes_zombies() -> None:
 
 def test_terminate_with_live_descendants() -> None:
     """terminate() kills the process and its descendants via the injected psutil."""
-    sync_factory = make_sync_process_factory(
-        itertools.count(1), returncode=None
-    )
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
 
     parent_pid = 1
-    child = FakePsutilProcess(
-        pid=4001, _running=True, _status="sleeping", _create_time=0.0
-    )
+    child = FakePsutilProcess(pid=4001, _running=True, _status="sleeping", _create_time=0.0)
 
     class _RootWithChildren(FakePsutilProcess):
         def children(self, recursive: bool = False) -> list[FakePsutilProcess]:

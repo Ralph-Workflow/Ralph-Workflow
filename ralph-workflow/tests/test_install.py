@@ -142,7 +142,6 @@ def test_install_module_imports_without_process_manager_dependency(
     assert callable(loaded_module.main)
 
 
-
 def test_main_uses_repo_directory_and_path_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
@@ -168,7 +167,6 @@ def test_main_uses_repo_directory_and_path_lookup(monkeypatch: pytest.MonkeyPatc
     }
 
 
-
 def _run_subprocess(
     command: Sequence[str],
     *,
@@ -185,14 +183,12 @@ def _run_subprocess(
     )
 
 
-
 def _build_wheel(repo_root: Path) -> Path:
     build = _run_subprocess(("uv", "run", "hatch", "build", "--target", "wheel"), cwd=repo_root)
     assert build.returncode == 0, build.stderr or build.stdout
     wheels = sorted((repo_root / "dist").glob("ralph_workflow-*.whl"))
     assert wheels, "Expected hatch build to produce a wheel in dist/"
     return wheels[-1]
-
 
 
 @pytest.mark.subprocess_e2e
@@ -214,7 +210,6 @@ def test_built_wheel_includes_policy_default_tomls(tmp_path: Path) -> None:
     }
     missing = expected - names
     assert not missing, f"Built wheel is missing bundled defaults: {sorted(missing)}"
-
 
 
 @pytest.mark.subprocess_e2e

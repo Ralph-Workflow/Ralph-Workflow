@@ -49,12 +49,15 @@ def test_explicit_unknown_provider_is_not_known() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("delivery,expected_inline,expected_rr,expected_typed,expected_supported", [
-    (DeliveryMode.INLINE_IMAGE, True, False, False, True),
-    (DeliveryMode.RESOURCE_REFERENCE_REPLAY, False, True, False, True),
-    (DeliveryMode.UNSUPPORTED, False, False, False, False),
-    (DeliveryMode.TYPED_BLOCK, False, False, True, True),
-])
+@pytest.mark.parametrize(
+    "delivery,expected_inline,expected_rr,expected_typed,expected_supported",
+    [
+        (DeliveryMode.INLINE_IMAGE, True, False, False, True),
+        (DeliveryMode.RESOURCE_REFERENCE_REPLAY, False, True, False, True),
+        (DeliveryMode.UNSUPPORTED, False, False, False, False),
+        (DeliveryMode.TYPED_BLOCK, False, False, True, True),
+    ],
+)
 def test_capability_verdict_helpers(
     delivery: DeliveryMode,
     expected_inline: bool,
@@ -62,9 +65,7 @@ def test_capability_verdict_helpers(
     expected_typed: bool,
     expected_supported: bool,
 ) -> None:
-    verdict = CapabilityVerdict(
-        modality="image", delivery=delivery, provider="test"
-    )
+    verdict = CapabilityVerdict(modality="image", delivery=delivery, provider="test")
     assert verdict.is_inline() == expected_inline
     assert verdict.is_resource_reference() == expected_rr
     assert verdict.is_typed_block() == expected_typed
@@ -113,9 +114,7 @@ def test_claude_image_is_inline(model_id: str | None) -> None:
     assert verdict.is_supported()
 
 
-@pytest.mark.parametrize(
-    "modality", [MODALITY_PDF, MODALITY_DOCUMENT]
-)
+@pytest.mark.parametrize("modality", [MODALITY_PDF, MODALITY_DOCUMENT])
 def test_claude_pdf_and_document_are_typed_block(modality: str) -> None:
     """Claude supports PDF and document modalities via typed document blocks."""
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
@@ -126,9 +125,7 @@ def test_claude_pdf_and_document_are_typed_block(modality: str) -> None:
     assert verdict.block_type == modality
 
 
-@pytest.mark.parametrize(
-    "modality", [MODALITY_AUDIO, MODALITY_VIDEO]
-)
+@pytest.mark.parametrize("modality", [MODALITY_AUDIO, MODALITY_VIDEO])
 def test_claude_av_modalities_are_unsupported(modality: str) -> None:
     """Claude's API does not accept audio or video input."""
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
@@ -148,17 +145,20 @@ def test_claude_anthropic_alias_also_supports_inline_image() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("provider,model_id", [
-    ("openai", "gpt-4o"),
-    ("openai", "gpt-4o-mini"),
-    ("openai", "gpt-4-vision-preview"),
-    ("openai", "gpt-4-turbo"),
-    ("openai", "gpt-4-0125-preview"),
-    ("openai", "o1-preview"),
-    ("openai", "o3-mini"),
-    ("codex", "gpt-4o"),
-    ("codex", None),  # unknown model defaults to inline
-])
+@pytest.mark.parametrize(
+    "provider,model_id",
+    [
+        ("openai", "gpt-4o"),
+        ("openai", "gpt-4o-mini"),
+        ("openai", "gpt-4-vision-preview"),
+        ("openai", "gpt-4-turbo"),
+        ("openai", "gpt-4-0125-preview"),
+        ("openai", "o1-preview"),
+        ("openai", "o3-mini"),
+        ("codex", "gpt-4o"),
+        ("codex", None),  # unknown model defaults to inline
+    ],
+)
 def test_openai_vision_model_image_is_inline(provider: str, model_id: str | None) -> None:
     identity = MultimodalModelIdentity(provider=provider, model_id=model_id)
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
@@ -173,9 +173,7 @@ def test_openai_non_vision_model_image_is_resource_reference_replay() -> None:
     assert verdict.is_resource_reference()
 
 
-@pytest.mark.parametrize(
-    "modality", [MODALITY_AUDIO, MODALITY_VIDEO]
-)
+@pytest.mark.parametrize("modality", [MODALITY_AUDIO, MODALITY_VIDEO])
 def test_openai_av_modalities_are_unsupported(modality: str) -> None:
     identity = MultimodalModelIdentity(provider="openai", model_id="gpt-4o")
     verdict = get_delivery_mode(identity, modality)
@@ -183,9 +181,7 @@ def test_openai_av_modalities_are_unsupported(modality: str) -> None:
     assert not verdict.is_supported()
 
 
-@pytest.mark.parametrize(
-    "modality", [MODALITY_PDF, MODALITY_DOCUMENT]
-)
+@pytest.mark.parametrize("modality", [MODALITY_PDF, MODALITY_DOCUMENT])
 def test_openai_pdf_and_document_are_unsupported(modality: str) -> None:
     """OpenAI chat API cannot process PDFs or documents as raw bytes.
 
@@ -198,9 +194,7 @@ def test_openai_pdf_and_document_are_unsupported(modality: str) -> None:
     assert not verdict.is_supported()
 
 
-@pytest.mark.parametrize(
-    "modality", [MODALITY_PDF, MODALITY_DOCUMENT]
-)
+@pytest.mark.parametrize("modality", [MODALITY_PDF, MODALITY_DOCUMENT])
 def test_codex_pdf_and_document_are_unsupported(modality: str) -> None:
     identity = MultimodalModelIdentity(provider="codex", model_id="gpt-4o")
     verdict = get_delivery_mode(identity, modality)
@@ -289,6 +283,7 @@ def test_multimodal_failure_kinds_are_importable() -> None:
         MultimodalFailure,
         MultimodalFailureKind,
     )
+
     assert MultimodalFailureKind.UNSUPPORTED_MODALITY == "unsupported_modality"
     assert MultimodalFailureKind.UNSUPPORTED_RUNTIME_SEAM == "unsupported_runtime_seam"
     assert MultimodalFailureKind.UNSUPPORTED_MIME_TYPE == "unsupported_mime_type"
@@ -311,6 +306,7 @@ def test_multimodal_failure_kinds_are_importable() -> None:
 
 def test_multimodal_failure_is_exported_from_package() -> None:
     from ralph.mcp.multimodal import MultimodalFailure, MultimodalFailureKind
+
     assert MultimodalFailure is not None
     assert MultimodalFailureKind is not None
 
@@ -320,6 +316,7 @@ def test_multimodal_failure_user_message_without_optional_fields() -> None:
         MultimodalFailure,
         MultimodalFailureKind,
     )
+
     f = MultimodalFailure(
         kind=MultimodalFailureKind.FILE_READ_ERROR,
         message="file not found",
@@ -435,15 +432,18 @@ def test_resolve_capability_profile_unknown_provider_all_resource_reference() ->
         )
 
 
-@pytest.mark.parametrize("provider,model_id,modality,expected_delivery", [
-    ("claude", "claude-opus-4-7", MODALITY_IMAGE, DeliveryMode.INLINE_IMAGE),
-    ("claude", "claude-opus-4-7", MODALITY_PDF, DeliveryMode.TYPED_BLOCK),
-    ("claude", "claude-opus-4-7", MODALITY_AUDIO, DeliveryMode.UNSUPPORTED),
-    ("openai", "gpt-4o", MODALITY_IMAGE, DeliveryMode.INLINE_IMAGE),
-    ("openai", "gpt-4o", MODALITY_PDF, DeliveryMode.UNSUPPORTED),
-    ("gemini", "gemini-2.0-flash", MODALITY_AUDIO, DeliveryMode.TYPED_BLOCK),
-    ("gemini", "gemini-2.0-flash", MODALITY_VIDEO, DeliveryMode.TYPED_BLOCK),
-])
+@pytest.mark.parametrize(
+    "provider,model_id,modality,expected_delivery",
+    [
+        ("claude", "claude-opus-4-7", MODALITY_IMAGE, DeliveryMode.INLINE_IMAGE),
+        ("claude", "claude-opus-4-7", MODALITY_PDF, DeliveryMode.TYPED_BLOCK),
+        ("claude", "claude-opus-4-7", MODALITY_AUDIO, DeliveryMode.UNSUPPORTED),
+        ("openai", "gpt-4o", MODALITY_IMAGE, DeliveryMode.INLINE_IMAGE),
+        ("openai", "gpt-4o", MODALITY_PDF, DeliveryMode.UNSUPPORTED),
+        ("gemini", "gemini-2.0-flash", MODALITY_AUDIO, DeliveryMode.TYPED_BLOCK),
+        ("gemini", "gemini-2.0-flash", MODALITY_VIDEO, DeliveryMode.TYPED_BLOCK),
+    ],
+)
 def test_resolve_capability_profile_provider_modality_coverage(
     provider: str,
     model_id: str,

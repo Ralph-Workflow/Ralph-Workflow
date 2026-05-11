@@ -62,16 +62,13 @@ def _format_waiting_status_line(event: object) -> str:
     scoped = event.diagnostic.get("scoped_child_active", "?")
     oldest_val = event.diagnostic.get("oldest_child_seconds")
     oldest_part = (
-        f", oldest_child_seconds={float(oldest_val):.0f}s"
-        if oldest_val is not None
-        else ""
+        f", oldest_child_seconds={float(oldest_val):.0f}s" if oldest_val is not None else ""
     )
     return (
         f"Background child work hit hard ceiling"
         f" (cumulative={cum}s, ceiling={ceil}s,"
         f" scoped_child_active={scoped}{oldest_part})"
     )
-
 
 
 def _now_iso() -> str:
@@ -435,9 +432,7 @@ class PipelineSubscriber:
             decision_log=tuple(self._decision_log),
             mcp_restart_count=self._mcp_restart_count,
             active_process_labels=tuple(
-                r.label
-                for r in get_process_manager().list_active()
-                if r.label is not None
+                r.label for r in get_process_manager().list_active() if r.label is not None
             ),
         )
 

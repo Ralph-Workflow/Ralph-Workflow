@@ -554,8 +554,7 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
     assert match is not None, f"Could not find cumulative value in: {err_msg}"
     cumulative = float(match.group(1))
     assert cumulative < max_waiting, (
-        f"Expected to fire before full ceiling ({max_waiting}s), "
-        f"but cumulative={cumulative}s"
+        f"Expected to fire before full ceiling ({max_waiting}s), but cumulative={cumulative}s"
     )
     assert cumulative >= no_progress_ceiling, (
         f"Expected to fire at or after no-progress ceiling ({no_progress_ceiling}s), "

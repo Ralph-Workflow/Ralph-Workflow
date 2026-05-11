@@ -40,7 +40,7 @@ class _FakeUpstreamClientFactory:
 
     def __call__(self, server: UpstreamMcpServer) -> MagicMock:
         mock = MagicMock()
-        object.__setattr__(mock.list_tools, 'return_value', self._tools)
+        object.__setattr__(mock.list_tools, "return_value", self._tools)
         return mock
 
 

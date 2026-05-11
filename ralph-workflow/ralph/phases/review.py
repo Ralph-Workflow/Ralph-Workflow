@@ -165,6 +165,3 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []
-
-
-

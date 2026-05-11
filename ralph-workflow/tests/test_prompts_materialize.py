@@ -108,7 +108,6 @@ def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
     assert history_file.exists() is False
 
 
-
 def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enabled(
     tmp_path: Path,
 ) -> None:

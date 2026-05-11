@@ -446,11 +446,7 @@ class TestUpstreamMultimodalBoundary:
             server,
             [
                 {"tools": [{"name": "bad_tool", "description": "Bad", "inputSchema": {}}]},
-                {
-                    "content": [
-                        {"type": "binary_blob", "data": "SGVsbG8="}
-                    ]
-                },
+                {"content": [{"type": "binary_blob", "data": "SGVsbG8="}]},
             ],
         )
 
@@ -473,11 +469,7 @@ class TestUpstreamMultimodalBoundary:
             server,
             [
                 {"tools": [{"name": "bad_tool", "description": "Bad", "inputSchema": {}}]},
-                {
-                    "content": [
-                        {"type": "image", "mimeType": "image/png"}
-                    ]
-                },
+                {"content": [{"type": "image", "mimeType": "image/png"}]},
             ],
         )
 
@@ -816,9 +808,7 @@ def test_upstream_embedded_audio_is_stored_in_session_manifest() -> None:
     artifact_id = parse_media_uri(uri)
     assert artifact_id is not None, f"Expected valid ralph://media/ URI, got: {uri!r}"
     entry = session.media_manifest.get(artifact_id)
-    assert entry is not None, (
-        f"Session manifest must store the audio artifact; URI={uri!r}"
-    )
+    assert entry is not None, f"Session manifest must store the audio artifact; URI={uri!r}"
     assert entry.modality == "audio", (
         f"Manifest entry modality must be 'audio', got: {entry.modality!r}"
     )
@@ -859,9 +849,7 @@ def test_upstream_embedded_video_is_stored_in_session_manifest() -> None:
     artifact_id = parse_media_uri(uri)
     assert artifact_id is not None
     entry = session.media_manifest.get(artifact_id)
-    assert entry is not None, (
-        f"Session manifest must store the video artifact; URI={uri!r}"
-    )
+    assert entry is not None, f"Session manifest must store the video artifact; URI={uri!r}"
     assert entry.modality == "video", (
         f"Manifest entry modality must be 'video', got: {entry.modality!r}"
     )

@@ -21,9 +21,9 @@ from ralph.workspace.scope import WorkspaceScope
 
 _MAX_AGENT_RETRIES = 3
 
+
 def _legacy_display() -> runner_module._LegacyConsoleDisplay:
     return runner_module._LegacyConsoleDisplay(make_display_context())
-
 
 
 def _make_work_unit(unit_id: str) -> WorkUnit:
@@ -96,7 +96,7 @@ class TestSerializedPostFanoutVerification:
             "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
         runner_module._execute_fan_out_sync(
@@ -152,7 +152,7 @@ class TestSerializedPostFanoutVerification:
             "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
         runner_module._execute_fan_out_sync(
@@ -208,7 +208,7 @@ class TestSerializedPostFanoutVerification:
             "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
         runner_module._execute_fan_out_sync(
@@ -282,7 +282,7 @@ class TestSerializedPostFanoutVerification:
         monkeypatch.setattr(
             "ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out_with_failure
         )
-        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
         runner_module._execute_fan_out_sync(
@@ -351,7 +351,7 @@ class TestSerializedPostFanoutVerification:
             "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
         final_state = runner_module._execute_fan_out_sync(
@@ -431,7 +431,7 @@ class TestSerializedPostFanoutVerification:
             "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
         )
         monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
         runner_module._execute_fan_out_sync(

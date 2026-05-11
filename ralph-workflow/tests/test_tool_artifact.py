@@ -456,9 +456,7 @@ def test_handle_submit_artifact_normalizes_commit_alias_type_to_commit_message(
 
 
 def test_legacy_commit_message_payload_points_to_format_doc(tmp_path: Path) -> None:
-    with pytest.raises(
-        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
-    ):
+    with pytest.raises(InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -471,9 +469,7 @@ def test_legacy_commit_message_payload_points_to_format_doc(tmp_path: Path) -> N
 
 
 def test_handle_submit_artifact_rejects_commit_payload_without_subject(tmp_path: Path) -> None:
-    with pytest.raises(
-        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
-    ):
+    with pytest.raises(InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -485,9 +481,7 @@ def test_handle_submit_artifact_rejects_commit_payload_without_subject(tmp_path:
 
 
 def test_handle_submit_artifact_rejects_body_and_detailed_fields_together(tmp_path: Path) -> None:
-    with pytest.raises(
-        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
-    ):
+    with pytest.raises(InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -508,9 +502,7 @@ def test_handle_submit_artifact_rejects_body_and_detailed_fields_together(tmp_pa
 def test_handle_submit_artifact_rejects_commit_payload_with_non_conventional_subject(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(
-        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
-    ):
+    with pytest.raises(InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -527,9 +519,7 @@ def test_handle_submit_artifact_rejects_commit_payload_with_non_conventional_sub
 
 
 def test_handle_submit_artifact_rejects_non_object_excluded_files_entries(tmp_path: Path) -> None:
-    with pytest.raises(
-        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
-    ):
+    with pytest.raises(InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -946,9 +936,7 @@ def test_handle_submit_artifact_invalid_development_analysis_decision_points_to_
                 "content": _content({"garbage": "value"}),
             },
         )
-    assert (
-        tmp_path / ".agent" / "artifact-formats" / "development_analysis_decision.md"
-    ).exists()
+    assert (tmp_path / ".agent" / "artifact-formats" / "development_analysis_decision.md").exists()
     content = (
         tmp_path / ".agent" / "artifact-formats" / "development_analysis_decision.md"
     ).read_text(encoding="utf-8")
@@ -971,9 +959,9 @@ def test_handle_submit_artifact_invalid_review_analysis_decision_points_to_forma
             },
         )
     assert (tmp_path / ".agent" / "artifact-formats" / "review_analysis_decision.md").exists()
-    content = (
-        tmp_path / ".agent" / "artifact-formats" / "review_analysis_decision.md"
-    ).read_text(encoding="utf-8")
+    content = (tmp_path / ".agent" / "artifact-formats" / "review_analysis_decision.md").read_text(
+        encoding="utf-8"
+    )
     assert content.startswith("# review_analysis_decision artifact format")
 
 
@@ -1024,9 +1012,7 @@ def test_handle_submit_artifact_invalid_planning_analysis_decision_points_to_for
                 "content": _content({"garbage": "value"}),
             },
         )
-    assert (
-        tmp_path / ".agent" / "artifact-formats" / "planning_analysis_decision.md"
-    ).exists()
+    assert (tmp_path / ".agent" / "artifact-formats" / "planning_analysis_decision.md").exists()
     content = (
         tmp_path / ".agent" / "artifact-formats" / "planning_analysis_decision.md"
     ).read_text(encoding="utf-8")
@@ -1279,7 +1265,6 @@ def test_get_plan_draft_hydrates_from_existing_plan_artifact(tmp_path: Path) -> 
     ]
     assert payload["source"] == "finalized_plan"
     assert draft_summary["context"] == plan_summary["context"]
-
 
 
 def test_get_plan_draft_prefers_newer_finalized_plan_over_older_draft(tmp_path: Path) -> None:

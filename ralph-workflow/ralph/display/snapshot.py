@@ -146,8 +146,7 @@ def snapshot_from_state(  # noqa: PLR0913
 
     # Convert fallover_history to tuple of tuples for frozen dataclass
     fallover_tuples = tuple(
-        (fo.phase, fo.from_agent, fo.to_agent, fo.timestamp_iso)
-        for fo in state.fallover_history
+        (fo.phase, fo.from_agent, fo.to_agent, fo.timestamp_iso) for fo in state.fallover_history
     )
 
     is_terminal_success = False
@@ -159,9 +158,7 @@ def snapshot_from_state(  # noqa: PLR0913
     if pipeline_policy is not None:
         phase_def = pipeline_policy.phases.get(state.phase)
         prev_def = (
-            pipeline_policy.phases.get(state.previous_phase)
-            if state.previous_phase
-            else None
+            pipeline_policy.phases.get(state.previous_phase) if state.previous_phase else None
         )
         if phase_def is not None:
             current_phase_role = phase_def.role

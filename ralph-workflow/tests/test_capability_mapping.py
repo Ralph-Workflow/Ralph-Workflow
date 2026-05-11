@@ -25,7 +25,6 @@ def test_drain_class_requires_policy_for_canonical_drains() -> None:
         drain_class_for_session(SessionDrain.PLANNING)
 
 
-
 def test_drain_class_preserves_analysis_identity() -> None:
     """Analysis must not collapse to planning drain class."""
 
@@ -117,9 +116,7 @@ class TestDrainClassForSessionWithPolicy:
     def _agents(self, drain: str, drain_class: str) -> AgentsPolicy:
         return AgentsPolicy(
             agent_chains={"default": AgentChainConfig(agents=["agent"])},
-            agent_drains={
-                drain: AgentDrainConfig(chain="default", drain_class=drain_class)
-            },
+            agent_drains={drain: AgentDrainConfig(chain="default", drain_class=drain_class)},
         )
 
     def test_explicit_drain_class_resolves_correctly(self) -> None:
@@ -136,9 +133,7 @@ class TestDrainClassForSessionWithPolicy:
         """Custom drain with no explicit drain_class and no substring match raises."""
         policy = AgentsPolicy(
             agent_chains={"default": AgentChainConfig(agents=["agent"])},
-            agent_drains={
-                "ambiguous": AgentDrainConfig(chain="default", drain_class=None)
-            },
+            agent_drains={"ambiguous": AgentDrainConfig(chain="default", drain_class=None)},
         )
         with pytest.raises(PolicyValidationError):
             drain_class_for_session("ambiguous", policy)

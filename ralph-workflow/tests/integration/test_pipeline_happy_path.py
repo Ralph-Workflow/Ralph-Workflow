@@ -161,9 +161,8 @@ class TestPipelineHappyPath:
         agents_policy, pipeline_policy, _ = default_policy
 
         # Set state to development_commit phase with exhausted budget
-        state = (
-            initial_state.copy_with(phase="development_commit")
-            .with_outer_progress("iteration", initial_state.get_budget_cap("iteration"))
+        state = initial_state.copy_with(phase="development_commit").with_outer_progress(
+            "iteration", initial_state.get_budget_cap("iteration")
         )
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)

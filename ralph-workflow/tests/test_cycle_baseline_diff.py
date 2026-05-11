@@ -49,9 +49,7 @@ class TestWriteCycleBaselineForceParam:
         write_cycle_baseline(root, "sha-second", force=True)
         assert read_cycle_baseline(root) == "sha-second"
 
-    def test_write_baseline_no_force_when_absent_writes(
-        self, git_repo: tuple[Path, Repo]
-    ) -> None:
+    def test_write_baseline_no_force_when_absent_writes(self, git_repo: tuple[Path, Repo]) -> None:
         root, _ = git_repo
         assert read_cycle_baseline(root) is None
         write_cycle_baseline(root, "sha-new", force=False)
@@ -72,9 +70,7 @@ class TestWriteCycleBaselineForceParam:
 
 
 class TestCycleBaselineDiff:
-    def test_cumulative_diff_spans_baseline_to_head(
-        self, git_repo: tuple[Path, Repo]
-    ) -> None:
+    def test_cumulative_diff_spans_baseline_to_head(self, git_repo: tuple[Path, Repo]) -> None:
         root, repo = git_repo
         baseline_sha = str(repo.head.commit.hexsha)
         write_cycle_baseline(root, baseline_sha, force=True)
@@ -137,9 +133,7 @@ class TestRunnerCycleStartUsesForceTrue:
             "Cycle-start path must always call write_cycle_baseline with force=True"
         )
 
-    def test_runner_does_not_overwrite_existing_baseline(
-        self, git_repo: tuple[Path, Repo]
-    ) -> None:
+    def test_runner_does_not_overwrite_existing_baseline(self, git_repo: tuple[Path, Repo]) -> None:
         root, _ = git_repo
         existing_sha = str(Repo(root).head.commit.hexsha)
         write_cycle_baseline(root, existing_sha, force=True)

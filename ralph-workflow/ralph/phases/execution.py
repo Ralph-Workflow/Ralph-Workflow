@@ -181,9 +181,7 @@ def _validate_plan_output(
     return [PipelineEvent.AGENT_SUCCESS]
 
 
-def _validate_plan_input(
-    effect: InvokeAgentEffect, ctx: PhaseContext
-) -> list[Event] | None:
+def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[Event] | None:
     """Validate the plan INPUT for development-type phases.
 
     Returns a list of failure events on error, an empty list to signal noop
@@ -254,14 +252,10 @@ def _validate_output_artifact(
             f"Missing required artifact at {ra.json_path}; "
             f"the agent must submit {ra.artifact_type} before declaring completion"
         )
-        logger.warning(
-            "Execution phase '{}' missing required artifact at {}", phase, ra.json_path
-        )
+        logger.warning("Execution phase '{}' missing required artifact at {}", phase, ra.json_path)
         _write_retry_hint(ctx, phase, detail)
         return [
-            PhaseFailureEvent(
-                phase=phase, reason=detail, recoverable=True, retry_in_session=True
-            )
+            PhaseFailureEvent(phase=phase, reason=detail, recoverable=True, retry_in_session=True)
         ]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)

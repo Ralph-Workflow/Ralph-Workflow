@@ -91,9 +91,7 @@ def _compute_bfs_order(exp: PolicyExplanation) -> list[str]:
             next_phases.append(phase.on_failure)
         if phase.on_loopback and phase.on_loopback not in bfs_visited:
             next_phases.append(phase.on_loopback)
-        next_phases.extend(
-            t for t in phase.decisions.values() if t and t not in bfs_visited
-        )
+        next_phases.extend(t for t in phase.decisions.values() if t and t not in bfs_visited)
         next_phases.sort()
         for np_hop in next_phases:
             if np_hop not in bfs_visited:
@@ -133,9 +131,7 @@ def _render_loop_annotation(lines: list[str], phase: PhaseExplanation) -> None:
     """Render loop annotation line if applicable."""
     if phase.loop_policy is not None:
         lp = phase.loop_policy
-        lines.append(
-            f"[loop: counter={lp.iteration_state_field}, max={lp.max_iterations}]"
-        )
+        lines.append(f"[loop: counter={lp.iteration_state_field}, max={lp.max_iterations}]")
 
 
 def _render_verification_annotation(lines: list[str], phase: PhaseExplanation) -> None:
@@ -227,12 +223,7 @@ def _render_happy_path_arrow(
     lines: list[str], phase: PhaseExplanation, next_phase: str | None
 ) -> None:
     """Render happy path arrow to next phase if applicable."""
-    if (
-        phase.on_success
-        and next_phase
-        and not phase.is_terminal
-        and next_phase == phase.on_success
-    ):
+    if phase.on_success and next_phase and not phase.is_terminal and next_phase == phase.on_success:
         lines.append("    |")
         lines.append("    v")
 
@@ -545,9 +536,7 @@ def _render_recovery_text(exp: PolicyExplanation, lines: list[str]) -> None:
     lines.append("-" * 70)
     lines.append(f"  Max recovery cycles : {r.cycle_cap}")
     lines.append(f"  Terminal failure route: {r.terminal_recovery_route}")
-    lines.append(
-        f"  Session preserved on: {', '.join(r.preserve_session_on_categories) or 'none'}"
-    )
+    lines.append(f"  Session preserved on: {', '.join(r.preserve_session_on_categories) or 'none'}")
 
 
 def _render_phase_routing(phase: PhaseExplanation, lines: list[str]) -> None:
@@ -613,17 +602,13 @@ def _render_phase_verification(phase: PhaseExplanation, lines: list[str]) -> Non
         on_fail_str = f"on_failure_route='{v.on_failure_route}'"
     else:
         on_fail_str = "no on_failure_route (pipeline fails)"
-    lines.append(
-        f"    Verification: kind={v.kind}, gates={v.gate_for}, {on_fail_str}"
-    )
+    lines.append(f"    Verification: kind={v.kind}, gates={v.gate_for}, {on_fail_str}")
     if v.kind == "artifact":
         lines.append(
             "               An artifact file must be present and non-empty before advancement."
         )
     elif v.kind == "none":
-        lines.append(
-            "               Declarative gate — always passes; use for documentation."
-        )
+        lines.append("               Declarative gate — always passes; use for documentation.")
 
 
 def _render_phase_text(phase: object, lines: list[str]) -> None:

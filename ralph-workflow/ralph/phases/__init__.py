@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 
 
 if TYPE_CHECKING:
+
     class _PhaseContextArgs(TypedDict):
         workspace: Workspace
         registry: AgentRegistry

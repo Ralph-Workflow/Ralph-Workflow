@@ -501,10 +501,8 @@ def test_default_planning_capabilities_do_not_warn_when_policy_is_available(
 
     assert observed == expected
     assert not any(
-        "drain_class_for_session called without agents_policy" in warning
-        for warning in warnings
+        "drain_class_for_session called without agents_policy" in warning for warning in warnings
     )
-
 
 
 def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_it(
@@ -1415,7 +1413,9 @@ class TestFileBackedSessionCapabilityProfile:
             "drain": "development",
             "capabilities": ["WorkspaceRead"],
             "model_identity": {
-                "provider": "gemini", "model_id": "gemini-2.0-flash", "transport": None
+                "provider": "gemini",
+                "model_id": "gemini-2.0-flash",
+                "transport": None,
             },
         }
         session_file = tmp_path / "session-fb.json"
@@ -1427,9 +1427,7 @@ class TestFileBackedSessionCapabilityProfile:
         assert profile.identity.provider == "gemini"
         assert profile.verdict_for("audio").delivery == DeliveryMode.TYPED_BLOCK
 
-    def test_lifecycle_payload_roundtrip_preserves_capability_profile(
-        self, tmp_path: Path
-    ) -> None:
+    def test_lifecycle_payload_roundtrip_preserves_capability_profile(self, tmp_path: Path) -> None:
         """_session_payload_json + FileBackedSession preserves the full capability profile."""
         from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
         from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity

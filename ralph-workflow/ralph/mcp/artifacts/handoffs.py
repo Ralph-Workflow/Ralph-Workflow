@@ -162,13 +162,15 @@ def _render_parallel_summary_markdown(content: Mapping[str, object]) -> str:
 
     any_failed = content.get("any_failed", False)
     all_succeeded = content.get("all_succeeded", False)
-    lines.extend([
-        "",
-        "## Status",
-        "",
-        f"- any_failed: {str(any_failed).lower()}",
-        f"- all_succeeded: {str(all_succeeded).lower()}",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Status",
+            "",
+            f"- any_failed: {str(any_failed).lower()}",
+            f"- all_succeeded: {str(all_succeeded).lower()}",
+        ]
+    )
 
     verification = content.get("verification")
     if isinstance(verification, dict):

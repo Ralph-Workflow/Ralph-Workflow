@@ -204,7 +204,6 @@ def test_load_policy_ignores_invalid_agents_toml_when_unified_config_is_provided
     assert bundle.agents.agent_drains["planning"].chain == "planning"
 
 
-
 def test_load_policy_synthesizes_drain_class_from_unified_config_builtin_drains() -> None:
     config = UnifiedConfig(
         agent_chains={
@@ -295,7 +294,6 @@ def test_load_policy_rejects_artifact_required_in_artifacts_toml(tmp_path: Path)
 
     with pytest.raises(LoaderPolicyValidationError, match="artifact_required"):
         load_policy(tmp_path)
-
 
 
 def test_load_policy_supports_phase_owned_artifact_required_in_pipeline_toml(
@@ -391,6 +389,7 @@ def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -
 
     with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
         load_policy(config_dir, config=config)
+
 
 def test_terminal_recovery_route_rejected(tmp_path: Path) -> None:
     """Loading a pipeline.toml with the deprecated terminal_recovery_route field raises an error."""
@@ -522,9 +521,7 @@ def test_default_policy_has_artifact_history_enabled_on_planning() -> None:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     bundle = load_policy(defaults_dir)
     planning = bundle.pipeline.phases["planning"]
-    assert planning.artifact_history is not None, (
-        "planning phase must declare artifact_history"
-    )
+    assert planning.artifact_history is not None, "planning phase must declare artifact_history"
     assert planning.artifact_history.enabled is True
 
 

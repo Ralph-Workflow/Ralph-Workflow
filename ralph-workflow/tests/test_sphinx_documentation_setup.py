@@ -98,19 +98,13 @@ def test_getting_started_file_exists_and_has_required_content() -> None:
     )
 
     # Must contain a PROMPT.md example with '# Goal'
-    assert "# Goal" in content, (
-        "getting-started.md must contain a '# Goal' example for PROMPT.md"
-    )
+    assert "# Goal" in content, "getting-started.md must contain a '# Goal' example for PROMPT.md"
 
     # Must link to concepts.md
-    assert "concepts.md" in content, (
-        "getting-started.md must link to concepts.md"
-    )
+    assert "concepts.md" in content, "getting-started.md must link to concepts.md"
 
     # Must link to troubleshooting.md
-    assert "troubleshooting.md" in content, (
-        "getting-started.md must link to troubleshooting.md"
-    )
+    assert "troubleshooting.md" in content, "getting-started.md must link to troubleshooting.md"
 
 
 def test_sphinx_pages_link_to_getting_started() -> None:
@@ -128,8 +122,7 @@ def test_sphinx_pages_link_to_getting_started() -> None:
 
     assert not missing, (
         "The following Sphinx pages are missing a 'getting-started.md' link "
-        "in the first 1000 characters:\n"
-        + "\n".join(f"  docs/sphinx/{p}" for p in missing)
+        "in the first 1000 characters:\n" + "\n".join(f"  docs/sphinx/{p}" for p in missing)
     )
 
 
@@ -163,10 +156,7 @@ def test_index_toctree_entries_resolve_to_real_sphinx_pages() -> None:
     missing = [
         docname
         for docname in _index_toctree_docnames(content)
-        if not (
-            (sphinx_dir / f"{docname}.md").exists()
-            or (sphinx_dir / f"{docname}.rst").exists()
-        )
+        if not ((sphinx_dir / f"{docname}.md").exists() or (sphinx_dir / f"{docname}.rst").exists())
     ]
 
     assert not missing, (
@@ -207,10 +197,7 @@ def test_developer_internals_toctree_entries_resolve_to_real_sphinx_pages() -> N
     missing = [
         docname
         for docname in _md_toctree_docnames(content)
-        if not (
-            (SPHINX_DIR / f"{docname}.md").exists()
-            or (SPHINX_DIR / f"{docname}.rst").exists()
-        )
+        if not ((SPHINX_DIR / f"{docname}.md").exists() or (SPHINX_DIR / f"{docname}.rst").exists())
     ]
 
     assert not missing, (
@@ -257,9 +244,7 @@ def test_readme_has_developer_reference_and_modules_rst_pointers() -> None:
     """README.md must link to developer-reference.md and modules.rst."""
     readme = README_PATH.read_text(encoding="utf-8")
     missing = [
-        needle
-        for needle in ("developer-reference.md", "modules.rst")
-        if needle not in readme
+        needle for needle in ("developer-reference.md", "modules.rst") if needle not in readme
     ]
     assert not missing, (
         "README.md is missing pointers to the maintained developer/API pages:\n"

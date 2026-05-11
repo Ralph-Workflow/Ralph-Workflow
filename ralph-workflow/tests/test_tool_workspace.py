@@ -61,13 +61,13 @@ from ralph.mcp.tools.workspace import (
     handle_list_directory_recursive,
     handle_move_file,
     handle_read_file,
-    persist_upstream_media_artifacts,
     handle_read_image,
     handle_read_media,
     handle_read_multiple_files,
     handle_search_files,
     handle_stat,
     handle_write_file,
+    persist_upstream_media_artifacts,
     required_string_param,
 )
 from ralph.workspace.fs import FsWorkspace
@@ -403,9 +403,7 @@ class TestHandleReadFile:
         ws = MagicMock()
         ws.read.return_value = "file contents"
 
-        result = handle_read_file(
-            MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"}
-        )
+        result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"})
         assert "file contents" in cast("ToolContent", result.content[0]).text
         assert result.is_error is False
 
@@ -426,9 +424,7 @@ class TestHandleReadFile:
         ws.read.side_effect = FileNotFoundError("not found")
 
         with pytest.raises(ToolError):
-            handle_read_file(
-                MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "missing.txt"}
-            )
+            handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "missing.txt"})
 
 
 class TestHandleReadFilePartial:
@@ -660,9 +656,7 @@ class TestHandleReadFileNonUtf8:
         ws.read.side_effect = RuntimeError("unexpected disk error")
 
         with pytest.raises(ToolError):
-            handle_read_file(
-                MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"}
-            )
+            handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"})
 
 
 class TestHandleReadFileFullReadTruncation:
@@ -673,9 +667,7 @@ class TestHandleReadFileFullReadTruncation:
         ws.stat.return_value = {"type": "file", "size_bytes": 100}
         ws.read.return_value = "small content"
 
-        result = handle_read_file(
-            MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "small.txt"}
-        )
+        result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "small.txt"})
         assert result.is_error is False
         assert cast("ToolContent", result.content[0]).text == "small content"
 
@@ -687,9 +679,7 @@ class TestHandleReadFileFullReadTruncation:
             {"total_lines": 50000, "returned_lines": 19531, "truncated": True},
         )
 
-        result = handle_read_file(
-            MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "large.txt"}
-        )
+        result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "large.txt"})
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["truncated"] is True
@@ -722,9 +712,7 @@ class TestHandleReadFileFullReadTruncation:
         ws.read.side_effect = IsADirectoryError("is a directory")
 
         with pytest.raises(ToolError):
-            handle_read_file(
-                MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "somedir"}
-            )
+            handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "somedir"})
 
 
 # =============================================================================
@@ -831,9 +819,7 @@ class TestHandleListAllowedRoots:
         ws = MagicMock()
         ws.allowed_roots.return_value = ["/workspace", "/project"]
 
-        result = handle_list_allowed_roots(
-            MockSession(WORKSPACE_READ_CAPABILITY), ws, {}
-        )
+        result = handle_list_allowed_roots(MockSession(WORKSPACE_READ_CAPABILITY), ws, {})
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["allowed_roots"] == ["/workspace", "/project"]
@@ -856,9 +842,7 @@ class TestHandleListDirectory:
         ws.list_dir.return_value = ["a.txt", "b.txt"]
         ws.is_dir.side_effect = lambda p: False
 
-        result = handle_list_directory(
-            MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "."}
-        )
+        result = handle_list_directory(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "."})
         assert result.is_error is False
         assert "Directory:" in cast("ToolContent", result.content[0]).text
 
@@ -1455,9 +1439,7 @@ class TestHandleDeletePath:
         ws.delete.return_value = None
 
         with pytest.raises(CapabilityDeniedError):
-            handle_delete_path(
-                MockSession(WORKSPACE_EDIT_CAPABILITY), ws, {"path": "file.txt"}
-            )
+            handle_delete_path(MockSession(WORKSPACE_EDIT_CAPABILITY), ws, {"path": "file.txt"})
 
     def test_missing_capability_raises(self) -> None:
         ws = MagicMock()
@@ -1831,9 +1813,7 @@ class TestHandleReadMedia:
             ws.absolute_path.return_value = temp_path
             session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
-            result = handle_read_media(
-                session, ws, {"path": "large.png"}, max_inline_bytes=10
-            )
+            result = handle_read_media(session, ws, {"path": "large.png"}, max_inline_bytes=10)
 
             assert result.is_error is False
             content = result.content[0]
@@ -1857,7 +1837,6 @@ class TestHandleReadMedia:
         assert d["title"] == "report.pdf"
         assert d["modality"] == "pdf"
         assert d["delivery"] == "resource_reference"
-
 
     def test_resource_reference_persists_to_session_index(self, tmp_path: Path) -> None:
         """handle_read_media must write artifact metadata to the session media index."""
@@ -1920,6 +1899,7 @@ class TestHandleReadMedia:
 
     def test_resource_reference_accumulates_entries_in_session_index(self, tmp_path: Path) -> None:
         """Multiple read_media calls must append entries to the session index."""
+
         @dataclass
         class SessionWithDrain:
             allowed_capability: str | None = None
@@ -2125,6 +2105,7 @@ class TestHandleReadMedia:
 
     def test_cross_session_replay_from_persisted_cache(self, tmp_path: Path) -> None:
         """A replay handle must work across sessions using the persisted registry."""
+
         @dataclass
         class SessionWithDrain:
             allowed_capability: str | None = None
@@ -2168,6 +2149,7 @@ class TestHandleReadMedia:
 
     def test_cross_session_replay_fails_when_cache_deleted(self, tmp_path: Path) -> None:
         """Replay returns missing_replay_source when cache bytes are gone."""
+
         @dataclass
         class SessionWithDrain:
             allowed_capability: str | None = None
@@ -2437,9 +2419,7 @@ def test_unknown_provider_media_preserves_delivery_metadata() -> None:
         assert block.uri.startswith("ralph://media/"), (
             f"URI must be a ralph://media/ handle: {block.uri!r}"
         )
-        assert block.mime_type == "audio/mpeg", (
-            f"MIME type must be preserved: {block.mime_type!r}"
-        )
+        assert block.mime_type == "audio/mpeg", f"MIME type must be preserved: {block.mime_type!r}"
     finally:
         Path(temp_path).unlink()
 
@@ -2451,6 +2431,7 @@ def test_persist_media_session_entry_stores_failure_kind(tmp_path: Path) -> None
     unsupported_runtime_seam remains distinct from unsupported_modality through
     sidecar persistence and invoke-time rendering.
     """
+
     @dataclass
     class _Session:
         allowed_capability: str | None = None

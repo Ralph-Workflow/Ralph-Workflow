@@ -56,7 +56,6 @@ def _load_default_artifact_registry() -> dict:
         return build_required_artifacts(policy.artifacts)
 
 
-
 def _load_default_optional_artifact_phases() -> set[str]:
     with tempfile.TemporaryDirectory() as tmp:
         policy_dir = Path(tmp) / ".agent"
@@ -71,19 +70,24 @@ def _load_default_optional_artifact_phases() -> set[str]:
 
 REQUIRED_ARTIFACTS = _load_default_artifact_registry()
 
+
 def _analysis_handler_for(phase_name: str):
     """Return a wrapper around handle_generic_analysis_phase with phase/drain pre-set."""
+
     def _handler(effect, ctx):
         real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
         return handle_generic_analysis_phase(real_effect, ctx)
+
     return _handler
 
 
 def _execution_handler_for(phase_name: str):
     """Return a wrapper around handle_execution_phase with the correct phase set."""
+
     def _handler(effect, ctx):
         real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
         return handle_execution_phase(real_effect, ctx)
+
     return _handler
 
 
@@ -95,56 +99,60 @@ _PHASE_TO_HANDLER = {
 
 # Legacy plan format: no "summary" key → _is_legacy_work_units_payload returns True,
 # skipping full PlanArtifact pydantic validation in the development handler.
-_VALID_PLAN_JSON_LEGACY = json.dumps({
-    "work_units": [
-        {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]}
-    ]
-})
+_VALID_PLAN_JSON_LEGACY = json.dumps(
+    {"work_units": [{"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]}]}
+)
 
 # Full PlanArtifact-compliant JSON for use in tests that also call materialize_prompt,
 # which triggers plan markdown handoff rendering via normalize_plan_artifact_content.
-_VALID_PLAN_JSON_FULL = json.dumps({
-    "type": "plan",
-    "content": {
-        "summary": {
-            "context": "test context",
-            "scope_items": [
-                {"text": "item one"},
-                {"text": "item two"},
-                {"text": "item three"},
+_VALID_PLAN_JSON_FULL = json.dumps(
+    {
+        "type": "plan",
+        "content": {
+            "summary": {
+                "context": "test context",
+                "scope_items": [
+                    {"text": "item one"},
+                    {"text": "item two"},
+                    {"text": "item three"},
+                ],
+            },
+            "steps": [
+                {"number": 1, "title": "test step", "content": "do something"},
+            ],
+            "critical_files": {
+                "primary_files": [{"path": "src/a.py", "action": "modify"}],
+            },
+            "risks_mitigations": [
+                {"risk": "test risk", "mitigation": "test mitigation"},
+            ],
+            "verification_strategy": [
+                {"method": "run tests", "expected_outcome": "tests pass"},
+            ],
+            "work_units": [
+                {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]},
             ],
         },
-        "steps": [
-            {"number": 1, "title": "test step", "content": "do something"},
-        ],
-        "critical_files": {
-            "primary_files": [{"path": "src/a.py", "action": "modify"}],
+    }
+)
+
+_VALID_DEV_RESULT_JSON = json.dumps(
+    {
+        "type": "development_result",
+        "content": {
+            "status": "completed",
+            "summary": "Done.",
+            "files_changed": "- src/a.py",
         },
-        "risks_mitigations": [
-            {"risk": "test risk", "mitigation": "test mitigation"},
-        ],
-        "verification_strategy": [
-            {"method": "run tests", "expected_outcome": "tests pass"},
-        ],
-        "work_units": [
-            {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]},
-        ],
-    },
-})
+    }
+)
 
-_VALID_DEV_RESULT_JSON = json.dumps({
-    "type": "development_result",
-    "content": {
-        "status": "completed",
-        "summary": "Done.",
-        "files_changed": "- src/a.py",
-    },
-})
-
-_VALID_DEV_ANALYSIS_JSON = json.dumps({
-    "type": "development_analysis_decision",
-    "content": {"status": "completed"},
-})
+_VALID_DEV_ANALYSIS_JSON = json.dumps(
+    {
+        "type": "development_analysis_decision",
+        "content": {"status": "completed"},
+    }
+)
 
 _PHASE_VALID_ARTIFACT: dict[str, str] = {
     "planning": json.dumps({"type": "plan", "content": {"summary": "x"}}),
@@ -283,7 +291,6 @@ def test_development_missing_dev_result_succeeds_optional() -> None:
     )
 
 
-
 def test_development_missing_dev_result_uses_pipeline_owned_optional_policy(
     tmp_path: Path,
 ) -> None:
@@ -417,7 +424,8 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
     ctx2 = _make_ctx(workspace, policy)
     events2 = handler(_invoke_effect(), ctx2)
     success_events = [
-        e for e in events2
+        e
+        for e in events2
         if e in (PipelineEvent.AGENT_SUCCESS, PipelineEvent.ANALYSIS_SUCCESS)
         or isinstance(e, AnalysisDecisionEvent)
     ]

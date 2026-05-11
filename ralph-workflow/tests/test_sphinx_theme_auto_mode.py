@@ -14,7 +14,7 @@ def test_light_code_block_background_does_not_treat_auto_mode_as_light() -> None
     css = _custom_css()
 
     assert '[data-theme="light"] div[class*="highlight"]' in css
-    assert '@media (prefers-color-scheme: light)' in css
+    assert "@media (prefers-color-scheme: light)" in css
     assert 'body:not([data-theme]) div[class*="highlight"]' in css
     assert 'body:not([data-theme="dark"]) div[class*="highlight"]' not in css
 
@@ -23,6 +23,6 @@ def test_light_card_hover_does_not_treat_auto_mode_as_light() -> None:
     css = _custom_css()
 
     assert '[data-theme="light"] .sd-card:hover' in css
-    assert '@media (prefers-color-scheme: light)' in css
-    assert 'body:not([data-theme]) .sd-card:hover' in css
+    assert "@media (prefers-color-scheme: light)" in css
+    assert "body:not([data-theme]) .sd-card:hover" in css
     assert 'body:not([data-theme="dark"]) .sd-card:hover' not in css

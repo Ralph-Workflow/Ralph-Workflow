@@ -61,9 +61,7 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
 
     bus = FailureEventBus()
     bus.subscribe(
-        lambda evt: collected_fallovers.append(evt)
-        if isinstance(evt, FalloverEvent)
-        else None
+        lambda evt: collected_fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
     )
 
     controller = RecoveryController(cycle_cap=10, budget_registry=registry, event_bus=bus)
@@ -111,9 +109,7 @@ def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
     assert new_state.phase == "failed_terminal"
     assert new_state.recovery_cycle_count == 1
     assert new_state.last_error is not None
-    assert (
-        "agent" in new_state.last_error.lower() or "timeout" in new_state.last_error.lower()
-    )
+    assert "agent" in new_state.last_error.lower() or "timeout" in new_state.last_error.lower()
 
 
 def test_empty_output_message_classified_as_agent_fault() -> None:

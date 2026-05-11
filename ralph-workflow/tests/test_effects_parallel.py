@@ -40,9 +40,7 @@ def test_fan_out_effect_run_post_fanout_verification_defaults_false() -> None:
 
 
 def test_fan_out_effect_run_post_fanout_verification_settable() -> None:
-    effect = effects.FanOutEffect(
-        work_units=(), max_workers=1, run_post_fanout_verification=True
-    )
+    effect = effects.FanOutEffect(work_units=(), max_workers=1, run_post_fanout_verification=True)
     assert effect.run_post_fanout_verification is True
 
 
@@ -52,6 +50,7 @@ def test_merge_integration_effect_not_in_effects() -> None:
 
 def test_effect_union_does_not_include_merge_integration() -> None:
     import typing
+
     args = typing.get_args(effects.Effect)
     names = [getattr(t, "__name__", str(t)) for t in args]
     assert "MergeIntegrationEffect" not in names

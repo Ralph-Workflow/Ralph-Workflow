@@ -34,9 +34,7 @@ def _build_agent_availability_content(
             for registry_name, status in availability:
                 agent = agent_registry.get(registry_name)
                 label = (
-                    (agent.display_name or registry_name)
-                    if agent is not None
-                    else registry_name
+                    (agent.display_name or registry_name) if agent is not None else registry_name
                 )
                 if status == "available":
                     t = Text(f"  • {label}: ")
@@ -104,7 +102,6 @@ def _append_file_section(content: list[RenderableType], heading: str, files: lis
     content.extend(Text(f"  • {name}") for name in files)
 
 
-
 def _build_next_steps_text() -> Text:
     """Build the welcome panel next-steps block."""
     next_steps = Text("Next steps:\n", style="theme.banner.title")
@@ -125,7 +122,6 @@ def _build_next_steps_text() -> Text:
     next_steps.append("ralph --regenerate-config", style="theme.cat.meta")
     next_steps.append(" to reset configs")
     return next_steps
-
 
 
 def emit_first_run_welcome(

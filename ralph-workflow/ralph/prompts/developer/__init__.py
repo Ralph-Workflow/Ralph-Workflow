@@ -203,8 +203,7 @@ def prompt_planning_xml_with_context(
             "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
             "PLAN_PATH": inputs.plan_path
             or str(
-                Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
-                / "planning_plan.txt"
+                Path(workspace.absolute_path(".agent/tmp/prompt_payloads")) / "planning_plan.txt"
             ),
             "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
             or str(

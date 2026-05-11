@@ -47,8 +47,7 @@ PLANNING_EDIT_RISK_COVERAGE_TEXT = (
     "- Risk coverage: concrete risks, mitigations, and edge cases are represented"
 )
 PLANNING_EDIT_PARALLELIZATION_TEXT = (
-    "- Parallelization safety: any parallel work remains disjoint, realistic, "
-    "and policy-compliant"
+    "- Parallelization safety: any parallel work remains disjoint, realistic, and policy-compliant"
 )
 PLANNING_EDIT_MAINTAINABILITY_TEXT = (
     "- Maintainability and handoff quality: the plan stays concise, "
@@ -173,7 +172,6 @@ def test_fresh_planning_prompt_does_not_include_artifact_history_even_if_history
     assert history_file.exists() is False
 
 
-
 def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -197,9 +195,7 @@ def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path)
                         "primary_files": [{"path": "src/old.py", "action": "modify"}],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "delete it"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                 },
             }
         ),
@@ -375,9 +371,7 @@ def test_planning_loopback_entry_preserves_plan_and_analysis_artifacts(
                         "primary_files": [{"path": "src/keep.py", "action": "modify"}],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                 },
             }
         ),
@@ -430,8 +424,7 @@ def test_repeated_planning_loopback_never_renders_fresh_template(
                 "content": {
                     "summary": {
                         "context": (
-                            "Existing plan preserved for loopback iteration "
-                            f"{analysis_iteration}."
+                            f"Existing plan preserved for loopback iteration {analysis_iteration}."
                         ),
                         "scope_items": [
                             {"text": "one"},
@@ -449,12 +442,8 @@ def test_repeated_planning_loopback_never_renders_fresh_template(
                     "critical_files": {
                         "primary_files": [{"path": "src/plan.py", "action": "modify"}],
                     },
-                    "risks_mitigations": [
-                        {"risk": "drift", "mitigation": "revise carefully"}
-                    ],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "revise carefully"}],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                 },
             }
         ),
@@ -503,9 +492,7 @@ def test_planning_loopback_prompt_includes_artifact_history_path_when_history_ex
                         "primary_files": [{"path": "src/plan.py", "action": "modify"}],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "revise carefully"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                 },
             }
         ),
@@ -529,7 +516,6 @@ def test_planning_loopback_prompt_includes_artifact_history_path_when_history_ex
     assert str(history_file) in rendered
 
 
-
 def test_materialize_planning_retry_preserves_current_plan_context_when_last_retry_error_exists(
     tmp_path: Path,
 ) -> None:
@@ -550,16 +536,12 @@ def test_materialize_planning_retry_preserves_current_plan_context_when_last_ret
                             {"text": "three"},
                         ],
                     },
-                    "steps": [
-                        {"number": 1, "title": "Revise", "content": "preserve current work"}
-                    ],
+                    "steps": [{"number": 1, "title": "Revise", "content": "preserve current work"}],
                     "critical_files": {
                         "primary_files": [{"path": "src/plan.py", "action": "modify"}],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                 },
             }
         ),
@@ -586,7 +568,6 @@ def test_materialize_planning_retry_preserves_current_plan_context_when_last_ret
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
     assert workspace.exists(".agent/artifacts/plan.json") is True
     assert workspace.exists(".agent/PLAN.md") is True
-
 
 
 def test_materialize_resumed_planning_with_draft_only_uses_draft_context(
@@ -633,7 +614,6 @@ def test_materialize_resumed_planning_with_draft_only_uses_draft_context(
     assert workspace.exists(".agent/artifacts/.plan_draft.json") is True
 
 
-
 def test_materialize_resumed_planning_preserves_existing_plan_context(
     tmp_path: Path,
 ) -> None:
@@ -659,9 +639,7 @@ def test_materialize_resumed_planning_preserves_existing_plan_context(
                         "primary_files": [{"path": "src/plan.py", "action": "modify"}],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                 },
             }
         ),
@@ -706,7 +684,6 @@ def test_materialize_resumed_planning_preserves_existing_plan_context(
     assert workspace.exists(".agent/PLAN.md") is True
 
 
-
 def test_planning_retry_prompt_includes_artifact_history_path_when_history_exists(
     tmp_path: Path,
 ) -> None:
@@ -734,9 +711,7 @@ def test_planning_retry_prompt_includes_artifact_history_path_when_history_exist
                         "primary_files": [{"path": "src/plan.py", "action": "modify"}],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                 },
             }
         ),
@@ -765,7 +740,6 @@ def test_planning_retry_prompt_includes_artifact_history_path_when_history_exist
     assert str(history_file) in rendered
 
 
-
 def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(
     tmp_path: Path,
 ) -> None:
@@ -791,9 +765,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
                         "primary_files": [{"path": "src/plan.py", "action": "modify"}],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "revise carefully"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                 },
             }
         ),
@@ -901,9 +873,7 @@ def test_materialize_review_phase_references_plan_handoff_when_plan_exists(
                         "primary_files": [{"path": "src/app.py", "action": "modify"}],
                     },
                     "risks_mitigations": [{"risk": "regression", "mitigation": "run tests"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                 },
             }
         ),
@@ -1137,7 +1107,6 @@ def test_repeated_development_loopback_never_renders_fresh_template(
     assert "continuing a DEVELOPMENT iteration" in rendered
     assert "You are in IMPLEMENTATION MODE" not in rendered
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
-
 
 
 def test_materialize_development_analysis_uses_markdown_result_handoff(
@@ -1374,6 +1343,7 @@ def test_git_diff_cumulative_across_multiple_mid_cycle_commits(tmp_git_repo: Pat
     assert "file_b.py" in diff
     assert "file_c.py" in diff
 
+
 def test_git_diff_zero_mid_cycle_commits_only_uncommitted(tmp_git_repo: Path) -> None:
     with GitRepo(tmp_git_repo) as repo:
         baseline_sha = repo.head.commit.hexsha
@@ -1529,26 +1499,28 @@ def test_development_analysis_prompt_renders_without_development_result(
     workspace.write("PROMPT.md", "implement the feature")
     workspace.write(
         ".agent/artifacts/plan.json",
-        json.dumps({
-            "type": "plan",
-            "content": {
-                "summary": {
-                    "context": "ctx",
-                    "scope_items": [
-                        {"text": "item one"},
-                        {"text": "item two"},
-                        {"text": "item three"},
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "ctx",
+                        "scope_items": [
+                            {"text": "item one"},
+                            {"text": "item two"},
+                            {"text": "item three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "step", "content": "do it"}],
+                    "critical_files": {"primary_files": [{"path": "src/a.py", "action": "modify"}]},
+                    "risks_mitigations": [{"risk": "r", "mitigation": "m"}],
+                    "verification_strategy": [{"method": "run tests", "expected_outcome": "pass"}],
+                    "work_units": [
+                        {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]}
                     ],
                 },
-                "steps": [{"number": 1, "title": "step", "content": "do it"}],
-                "critical_files": {"primary_files": [{"path": "src/a.py", "action": "modify"}]},
-                "risks_mitigations": [{"risk": "r", "mitigation": "m"}],
-                "verification_strategy": [{"method": "run tests", "expected_outcome": "pass"}],
-                "work_units": [
-                    {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]}
-                ],
-            },
-        }),
+            }
+        ),
     )
     # Intentionally do NOT write development_result.json
 
@@ -1653,11 +1625,21 @@ def test_planning_loopback_from_analysis_preserves_history(
                 "context": "ctx",
                 "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
             },
-            "steps": [{"number": 1, "title": "t", "content": "c", "step_type": "file_change",
-                        "priority": "high", "targets": [{"path": "f.py", "action": "modify"}],
-                        "depends_on": []}],
-            "critical_files": {"primary_files": [{"path": "f.py", "action": "modify"}],
-                               "reference_files": []},
+            "steps": [
+                {
+                    "number": 1,
+                    "title": "t",
+                    "content": "c",
+                    "step_type": "file_change",
+                    "priority": "high",
+                    "targets": [{"path": "f.py", "action": "modify"}],
+                    "depends_on": [],
+                }
+            ],
+            "critical_files": {
+                "primary_files": [{"path": "f.py", "action": "modify"}],
+                "reference_files": [],
+            },
             "risks_mitigations": [{"risk": "r", "mitigation": "m", "severity": "low"}],
             "verification_strategy": [{"method": "make test", "expected_outcome": "green"}],
         },
@@ -1735,6 +1717,7 @@ def test_missing_history_does_not_break_fresh_planning(
 # Multimodal sidecar contract tests
 # ---------------------------------------------------------------------------
 
+
 def _make_sidecar_entry(  # noqa: PLR0913
     *,
     artifact_id: str = "abc123",
@@ -1766,21 +1749,11 @@ def _make_sidecar_entry(  # noqa: PLR0913
 
 def test_multimodal_sidecar_path_is_deterministic_from_phase() -> None:
     assert (
-        multimodal_sidecar_path("development")
-        == ".agent/tmp/development_multimodal_handoff.json"
+        multimodal_sidecar_path("development") == ".agent/tmp/development_multimodal_handoff.json"
     )
-    assert (
-        multimodal_sidecar_path("planning")
-        == ".agent/tmp/planning_multimodal_handoff.json"
-    )
-    assert (
-        multimodal_sidecar_path("foo/bar")
-        == ".agent/tmp/foo_bar_multimodal_handoff.json"
-    )
-    assert (
-        multimodal_sidecar_path("foo bar")
-        == ".agent/tmp/foo_bar_multimodal_handoff.json"
-    )
+    assert multimodal_sidecar_path("planning") == ".agent/tmp/planning_multimodal_handoff.json"
+    assert multimodal_sidecar_path("foo/bar") == ".agent/tmp/foo_bar_multimodal_handoff.json"
+    assert multimodal_sidecar_path("foo bar") == ".agent/tmp/foo_bar_multimodal_handoff.json"
 
 
 def test_materialize_with_no_multimodal_entries_does_not_create_sidecar(
@@ -1951,22 +1924,25 @@ def test_v1_sidecar_is_read_with_defaults_for_new_fields(
 ) -> None:
     """v1 sidecars (no source_path/cache_path/source_uri/block_type) must load without error."""
     workspace = MemoryWorkspace(root=str(tmp_path))
-    v1_payload = json.dumps({
-        "schema_version": "1",
-        "phase": "development",
-        "artifacts": [
-            {
-                "artifact_id": "old-id",
-                "uri": "ralph://media/old-id",
-                "mime_type": "image/png",
-                "title": "old.png",
-                "modality": "image",
-                "delivery": "resource_reference",
-                "reason": "prior run",
-            }
-        ],
-    })
+    v1_payload = json.dumps(
+        {
+            "schema_version": "1",
+            "phase": "development",
+            "artifacts": [
+                {
+                    "artifact_id": "old-id",
+                    "uri": "ralph://media/old-id",
+                    "mime_type": "image/png",
+                    "title": "old.png",
+                    "modality": "image",
+                    "delivery": "resource_reference",
+                    "reason": "prior run",
+                }
+            ],
+        }
+    )
     from ralph.prompts.debug_dump import media_session_path
+
     workspace.write(media_session_path("development"), v1_payload)
 
     entries = collect_media_entries_for_phase(workspace, "development")
@@ -1985,26 +1961,29 @@ def test_v2_sidecar_persists_all_new_fields(
 ) -> None:
     """v2 entries must round-trip all new metadata fields through sidecar."""
     workspace = MemoryWorkspace(root=str(tmp_path))
-    v2_payload = json.dumps({
-        "schema_version": "2",
-        "phase": "development",
-        "artifacts": [
-            {
-                "artifact_id": "new-id",
-                "uri": "ralph://media/new-id",
-                "mime_type": "application/pdf",
-                "title": "doc.pdf",
-                "modality": "pdf",
-                "delivery": "typed_block",
-                "reason": "Claude typed PDF",
-                "source_path": "reports/doc.pdf",
-                "cache_path": ".agent/tmp/media/doc.pdf",
-                "source_uri": "",
-                "block_type": "pdf",
-            }
-        ],
-    })
+    v2_payload = json.dumps(
+        {
+            "schema_version": "2",
+            "phase": "development",
+            "artifacts": [
+                {
+                    "artifact_id": "new-id",
+                    "uri": "ralph://media/new-id",
+                    "mime_type": "application/pdf",
+                    "title": "doc.pdf",
+                    "modality": "pdf",
+                    "delivery": "typed_block",
+                    "reason": "Claude typed PDF",
+                    "source_path": "reports/doc.pdf",
+                    "cache_path": ".agent/tmp/media/doc.pdf",
+                    "source_uri": "",
+                    "block_type": "pdf",
+                }
+            ],
+        }
+    )
     from ralph.prompts.debug_dump import media_session_path
+
     workspace.write(media_session_path("development"), v2_payload)
 
     entries = collect_media_entries_for_phase(workspace, "development")
@@ -2016,8 +1995,9 @@ def test_v2_sidecar_persists_all_new_fields(
     assert entry.block_type == "pdf"
 
 
-def test_materialize_sidecar_preserves_delivery_reason_and_block_type_for_mixed_modalities(
-) -> None:
+def test_materialize_sidecar_preserves_delivery_reason_and_block_type_for_mixed_modalities() -> (
+    None
+):
     """Sidecar round-trip must preserve delivery, reason, and block_type for all modality classes.
 
     The managed-runtime path carries these fields from the MCP session index through
@@ -2027,51 +2007,53 @@ def test_materialize_sidecar_preserves_delivery_reason_and_block_type_for_mixed_
     from ralph.prompts.debug_dump import media_session_path
 
     workspace = MemoryWorkspace()
-    payload = json.dumps({
-        "schema_version": "2",
-        "phase": "development",
-        "artifacts": [
-            {
-                "artifact_id": "img-rr",
-                "uri": "ralph://media/img-rr",
-                "mime_type": "image/png",
-                "title": "capture.png",
-                "modality": "image",
-                "delivery": "resource_reference_replay",
-                "reason": "unknown provider — defaulting to resource_reference_replay delivery",
-                "source_path": "",
-                "cache_path": "",
-                "source_uri": "",
-                "block_type": "",
-            },
-            {
-                "artifact_id": "pdf-tb",
-                "uri": "ralph://media/pdf-tb",
-                "mime_type": "application/pdf",
-                "title": "spec.pdf",
-                "modality": "pdf",
-                "delivery": "typed_block",
-                "reason": "'pdf' delivered as typed block 'pdf' for provider 'claude'",
-                "source_path": "docs/spec.pdf",
-                "cache_path": ".agent/tmp/media/spec.pdf",
-                "source_uri": "",
-                "block_type": "pdf",
-            },
-            {
-                "artifact_id": "aud-rr",
-                "uri": "ralph://media/aud-rr",
-                "mime_type": "audio/mpeg",
-                "title": "meeting.mp3",
-                "modality": "audio",
-                "delivery": "resource_reference_replay",
-                "reason": "unknown provider — defaulting to resource_reference_replay delivery",
-                "source_path": "audio/meeting.mp3",
-                "cache_path": "",
-                "source_uri": "",
-                "block_type": "",
-            },
-        ],
-    })
+    payload = json.dumps(
+        {
+            "schema_version": "2",
+            "phase": "development",
+            "artifacts": [
+                {
+                    "artifact_id": "img-rr",
+                    "uri": "ralph://media/img-rr",
+                    "mime_type": "image/png",
+                    "title": "capture.png",
+                    "modality": "image",
+                    "delivery": "resource_reference_replay",
+                    "reason": "unknown provider — defaulting to resource_reference_replay delivery",
+                    "source_path": "",
+                    "cache_path": "",
+                    "source_uri": "",
+                    "block_type": "",
+                },
+                {
+                    "artifact_id": "pdf-tb",
+                    "uri": "ralph://media/pdf-tb",
+                    "mime_type": "application/pdf",
+                    "title": "spec.pdf",
+                    "modality": "pdf",
+                    "delivery": "typed_block",
+                    "reason": "'pdf' delivered as typed block 'pdf' for provider 'claude'",
+                    "source_path": "docs/spec.pdf",
+                    "cache_path": ".agent/tmp/media/spec.pdf",
+                    "source_uri": "",
+                    "block_type": "pdf",
+                },
+                {
+                    "artifact_id": "aud-rr",
+                    "uri": "ralph://media/aud-rr",
+                    "mime_type": "audio/mpeg",
+                    "title": "meeting.mp3",
+                    "modality": "audio",
+                    "delivery": "resource_reference_replay",
+                    "reason": "unknown provider — defaulting to resource_reference_replay delivery",
+                    "source_path": "audio/meeting.mp3",
+                    "cache_path": "",
+                    "source_uri": "",
+                    "block_type": "",
+                },
+            ],
+        }
+    )
     workspace.write(media_session_path("development"), payload)
 
     entries = collect_media_entries_for_phase(workspace, "development")
@@ -2130,51 +2112,53 @@ def test_sidecar_entries_built_from_capability_profile_verdicts_preserve_all_met
 
     # Write the media session index in the same format the MCP workspace tool uses.
     # This simulates what _write_media_session_entry produces after a read_media call.
-    index_payload = json.dumps({
-        "schema_version": "2",
-        "phase": "development",
-        "artifacts": [
-            {
-                "artifact_id": "cap-img-001",
-                "uri": "ralph://media/cap-img-001",
-                "mime_type": "image/png",
-                "title": "cap.png",
-                "modality": "image",
-                "delivery": image_v.delivery.value,
-                "reason": image_v.reason,
-                "source_path": "screens/cap.png",
-                "cache_path": "",
-                "source_uri": "",
-                "block_type": image_v.block_type or "",
-            },
-            {
-                "artifact_id": "cap-pdf-002",
-                "uri": "ralph://media/cap-pdf-002",
-                "mime_type": "application/pdf",
-                "title": "spec.pdf",
-                "modality": "pdf",
-                "delivery": pdf_v.delivery.value,
-                "reason": pdf_v.reason,
-                "source_path": "docs/spec.pdf",
-                "cache_path": ".agent/tmp/media/spec.pdf",
-                "source_uri": "",
-                "block_type": pdf_v.block_type or "",
-            },
-            {
-                "artifact_id": "cap-aud-003",
-                "uri": "ralph://media/cap-aud-003",
-                "mime_type": "audio/mpeg",
-                "title": "clip.mp3",
-                "modality": "audio",
-                "delivery": audio_v.delivery.value,
-                "reason": audio_v.reason,
-                "source_path": "",
-                "cache_path": "",
-                "source_uri": "",
-                "block_type": audio_v.block_type or "",
-            },
-        ],
-    })
+    index_payload = json.dumps(
+        {
+            "schema_version": "2",
+            "phase": "development",
+            "artifacts": [
+                {
+                    "artifact_id": "cap-img-001",
+                    "uri": "ralph://media/cap-img-001",
+                    "mime_type": "image/png",
+                    "title": "cap.png",
+                    "modality": "image",
+                    "delivery": image_v.delivery.value,
+                    "reason": image_v.reason,
+                    "source_path": "screens/cap.png",
+                    "cache_path": "",
+                    "source_uri": "",
+                    "block_type": image_v.block_type or "",
+                },
+                {
+                    "artifact_id": "cap-pdf-002",
+                    "uri": "ralph://media/cap-pdf-002",
+                    "mime_type": "application/pdf",
+                    "title": "spec.pdf",
+                    "modality": "pdf",
+                    "delivery": pdf_v.delivery.value,
+                    "reason": pdf_v.reason,
+                    "source_path": "docs/spec.pdf",
+                    "cache_path": ".agent/tmp/media/spec.pdf",
+                    "source_uri": "",
+                    "block_type": pdf_v.block_type or "",
+                },
+                {
+                    "artifact_id": "cap-aud-003",
+                    "uri": "ralph://media/cap-aud-003",
+                    "mime_type": "audio/mpeg",
+                    "title": "clip.mp3",
+                    "modality": "audio",
+                    "delivery": audio_v.delivery.value,
+                    "reason": audio_v.reason,
+                    "source_path": "",
+                    "cache_path": "",
+                    "source_uri": "",
+                    "block_type": audio_v.block_type or "",
+                },
+            ],
+        }
+    )
 
     workspace = MemoryWorkspace()
     workspace.write(media_session_path("development"), index_payload)
@@ -2215,40 +2199,42 @@ def test_collect_media_entries_preserves_failure_kind_through_sidecar_round_trip
     from ralph.prompts.materialize import collect_media_entries_for_phase
     from ralph.workspace.memory import MemoryWorkspace
 
-    payload = json.dumps({
-        "schema_version": "2",
-        "phase": "development",
-        "artifacts": [
-            {
-                "artifact_id": "seam-fail-001",
-                "uri": "ralph://media/seam-fail-001",
-                "mime_type": "video/mp4",
-                "title": "clip.mp4",
-                "modality": "video",
-                "delivery": "unsupported",
-                "reason": "Active runtime seam cannot carry video through the handoff path",
-                "source_path": "",
-                "cache_path": "",
-                "source_uri": "",
-                "block_type": "",
-                "failure_kind": "unsupported_runtime_seam",
-            },
-            {
-                "artifact_id": "modality-fail-002",
-                "uri": "ralph://media/modality-fail-002",
-                "mime_type": "audio/mpeg",
-                "title": "clip.mp3",
-                "modality": "audio",
-                "delivery": "unsupported",
-                "reason": "Provider does not support audio",
-                "source_path": "",
-                "cache_path": "",
-                "source_uri": "",
-                "block_type": "",
-                "failure_kind": "unsupported_modality",
-            },
-        ],
-    })
+    payload = json.dumps(
+        {
+            "schema_version": "2",
+            "phase": "development",
+            "artifacts": [
+                {
+                    "artifact_id": "seam-fail-001",
+                    "uri": "ralph://media/seam-fail-001",
+                    "mime_type": "video/mp4",
+                    "title": "clip.mp4",
+                    "modality": "video",
+                    "delivery": "unsupported",
+                    "reason": "Active runtime seam cannot carry video through the handoff path",
+                    "source_path": "",
+                    "cache_path": "",
+                    "source_uri": "",
+                    "block_type": "",
+                    "failure_kind": "unsupported_runtime_seam",
+                },
+                {
+                    "artifact_id": "modality-fail-002",
+                    "uri": "ralph://media/modality-fail-002",
+                    "mime_type": "audio/mpeg",
+                    "title": "clip.mp3",
+                    "modality": "audio",
+                    "delivery": "unsupported",
+                    "reason": "Provider does not support audio",
+                    "source_path": "",
+                    "cache_path": "",
+                    "source_uri": "",
+                    "block_type": "",
+                    "failure_kind": "unsupported_modality",
+                },
+            ],
+        }
+    )
 
     workspace = MemoryWorkspace()
     workspace.write(media_session_path("development"), payload)

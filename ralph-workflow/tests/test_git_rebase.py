@@ -287,9 +287,7 @@ def test_verify_rebase_completed_at_rejects_detached_head(tmp_git_repo: Path) ->
 
 def _assert_full_lifecycle(events: list, label_prefix: str) -> None:
     """Assert each PID with the given label prefix emitted SPAWNED->RUNNING->EXITED."""
-    labeled = [
-        e for e in events if e.record.label and e.record.label.startswith(label_prefix)
-    ]
+    labeled = [e for e in events if e.record.label and e.record.label.startswith(label_prefix)]
     assert labeled, f"Expected events with label prefix '{label_prefix}'"
 
     pids = dict.fromkeys(e.record.pid for e in labeled)
@@ -299,12 +297,10 @@ def _assert_full_lifecycle(events: list, label_prefix: str) -> None:
         pid_events = [e for e in labeled if e.record.pid == pid]
         transitions = [(e.previous_status, e.new_status) for e in pid_events]
         assert (ProcessStatus.SPAWNED, ProcessStatus.RUNNING) in transitions, (
-            f"Process {pid} (label {label_prefix!r}) missing SPAWNED->RUNNING; "
-            f"got {transitions}"
+            f"Process {pid} (label {label_prefix!r}) missing SPAWNED->RUNNING; got {transitions}"
         )
         assert (ProcessStatus.RUNNING, ProcessStatus.EXITED) in transitions, (
-            f"Process {pid} (label {label_prefix!r}) missing RUNNING->EXITED; "
-            f"got {transitions}"
+            f"Process {pid} (label {label_prefix!r}) missing RUNNING->EXITED; got {transitions}"
         )
 
 

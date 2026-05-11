@@ -243,7 +243,6 @@ def test_cli_init_does_not_create_local_main_config_when_global_exists(
     assert (tmp_path / ".agent" / "artifacts.toml").exists()
 
 
-
 def test_cli_init_adds_default_gitignore_entries(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -261,7 +260,6 @@ def test_cli_init_adds_default_gitignore_entries(
     assert ".agent/" in content
     assert "/PROMPT*" in content
     assert "wt-*/" in content
-
 
 
 def test_cli_generate_local_config_creates_local_main_override(
@@ -283,7 +281,6 @@ def test_cli_generate_local_config_creates_local_main_override(
 
     assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
     assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
-
 
 
 def test_cli_init_in_linked_worktree_reuses_main_worktree_config_root(
@@ -317,7 +314,6 @@ def test_cli_init_in_linked_worktree_reuses_main_worktree_config_root(
     assert not (linked_worktree / ".agent" / "pipeline.toml").exists()
     assert not (linked_worktree / ".agent" / "artifacts.toml").exists()
     assert not (linked_worktree / ".agent" / "mcp.toml").exists()
-
 
 
 def test_cli_generate_local_config_in_linked_worktree_targets_main_checkout(

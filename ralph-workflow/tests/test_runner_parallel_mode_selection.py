@@ -96,9 +96,7 @@ class TestRunnerBoundaryPreflightRejection:
         bundle = _load_default_policy_bundle()
         state = PipelineState(
             phase="development",
-            work_units=(
-                WorkUnit(unit_id="unit-a", description="A"),
-            ),
+            work_units=(WorkUnit(unit_id="unit-a", description="A"),),
         )
         effect = runner_module._determine_effect_from_policy(state, bundle)
         assert isinstance(effect, InvokeAgentEffect), (

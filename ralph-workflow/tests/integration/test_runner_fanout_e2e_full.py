@@ -68,14 +68,16 @@ def _seed_artifact(repo_root: Path, unit_id: str) -> None:
     artifact_dir = repo_root / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "development_result.json").write_text(
-        json.dumps({
-            "name": "development_result",
-            "type": "development_result",
-            "content": {"summary": f"Worker {unit_id} done", "changes": []},
-            "created_at": "2024-01-01T00:00:00+00:00",
-            "updated_at": "2024-01-01T00:00:00+00:00",
-            "metadata": {},
-        })
+        json.dumps(
+            {
+                "name": "development_result",
+                "type": "development_result",
+                "content": {"summary": f"Worker {unit_id} done", "changes": []},
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {},
+            }
+        )
     )
 
 
@@ -133,7 +135,7 @@ class TestFanoutVerificationAndHandoff:
 
         _patch_infra(monkeypatch)
         monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
         runner_module._execute_fan_out_sync(
@@ -192,7 +194,7 @@ class TestFanoutVerificationAndHandoff:
 
         _patch_infra(monkeypatch)
         monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
         runner_module._execute_fan_out_sync(
@@ -242,7 +244,7 @@ class TestFanoutVerificationAndHandoff:
 
         _patch_infra(monkeypatch)
         monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
-        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
         runner_module._execute_fan_out_sync(

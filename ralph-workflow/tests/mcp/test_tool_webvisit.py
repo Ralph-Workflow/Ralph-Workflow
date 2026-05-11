@@ -67,9 +67,7 @@ def _make_config(**overrides: object) -> WebVisitConfig:
 
 def test_handle_visit_url_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
-    monkeypatch.setattr(
-        tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE
-    )
+    monkeypatch.setattr(tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE)
 
     result = tool_webvisit.handle_visit_url(
         _AllowedSession(),
@@ -89,9 +87,7 @@ def test_handle_visit_url_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_with_links_included_in_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
-    monkeypatch.setattr(
-        tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE
-    )
+    monkeypatch.setattr(tool_webvisit, "extract_readable", lambda *a, **kw: _GOOD_PAGE)
 
     result = tool_webvisit.handle_visit_url(
         _AllowedSession(),

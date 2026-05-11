@@ -39,9 +39,7 @@ class _FakeWorkspace:
 def _get_ralph_tool_specs() -> dict[str, ToolSpec]:
     """Return a name→ToolSpec mapping for all tools in ALL_RALPH_TOOLS."""
     all_specs = _tool_specs(McpConfig())
-    by_name: dict[str, ToolSpec] = {
-        spec.metadata.definition.name: spec for spec in all_specs
-    }
+    by_name: dict[str, ToolSpec] = {spec.metadata.definition.name: spec for spec in all_specs}
     return {name: by_name[name] for name in ALL_RALPH_TOOLS if name in by_name}
 
 
@@ -59,9 +57,8 @@ def test_every_native_tool_declares_required_capability() -> None:
         if not cap:
             violations.append(f"{name}: required_capability is missing or empty")
 
-    assert violations == [], (
-        "Tools missing required_capability declaration:\n"
-        + "\n".join(f"  - {v}" for v in violations)
+    assert violations == [], "Tools missing required_capability declaration:\n" + "\n".join(
+        f"  - {v}" for v in violations
     )
 
 

@@ -17,11 +17,10 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import import_module
-from dataclasses import dataclass
 from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
@@ -44,6 +43,7 @@ from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.cloud.client import CloudClient, CloudClientConfig, ProgressEventType, ProgressUpdate
 from ralph.config.enums import AgentTransport, Verbosity
+from ralph.display import context as display_context_module
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.artifact_renderer import (
     render_analysis_decision,
@@ -53,7 +53,7 @@ from ralph.display.artifact_renderer import (
     render_plan_artifact,
     render_review_artifact,
 )
-from ralph.display.context import DisplayContext, install_width_refresher, make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
     show_phase_close_banner,
     show_phase_start_from_entry,
@@ -86,7 +86,7 @@ from ralph.mcp.server.lifecycle import (
     start_mcp_server,
 )
 from ralph.mcp.session_plan import SessionMcpPlan, build_session_mcp_plan
-from ralph.mcp.transport.common import mcp_toml_as_upstreams
+from ralph.mcp.transport import common as transport_common_module
 from ralph.mcp.upstream.agent_probe import probe_agent_transports
 from ralph.mcp.upstream.validation import (
     UpstreamValidationError,
@@ -142,14 +142,9 @@ from ralph.policy.loader import (
 from ralph.policy.loader import (
     load_policy_or_die as _dir_load_policy_or_die,
 )
+from ralph.policy.validation import PolicyValidationError
 from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.process.mcp_supervisor import McpSupervisor
-from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
-from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS
-from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
-from ralph.recovery.controller import RecoveryController as _RecoveryController
-from ralph.recovery.events import FailureEvent as _FailureEvent
-from ralph.recovery.events import FalloverEvent as _FalloverEvent
 from ralph.prompts.materialize import (
     MissingPlanHandoffError,
     collect_media_entries_for_phase,
@@ -157,14 +152,19 @@ from ralph.prompts.materialize import (
     prompt_file_for_phase,
     tool_name_prefix_for_transport,
 )
-from ralph.policy.validation import PolicyValidationError
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
+from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS
+from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
+from ralph.recovery.controller import RecoveryController as _RecoveryController
+from ralph.recovery.events import FailureEvent as _FailureEvent
+from ralph.recovery.events import FalloverEvent as _FalloverEvent
 from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
     from rich.console import Console
 
@@ -274,7 +274,7 @@ class _ParallelDisplayModule(Protocol):
 class _EmitCompletionSummaryFn(Protocol):
     """Callable signature for the completion summary emitter."""
 
-    def __call__(
+    def __call__(  # noqa: PLR0913
         self,
         snapshot: PipelineSnapshot,
         *,
@@ -375,6 +375,8 @@ def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
     )
     return module.read_plan_artifact
 
+
+install_width_refresher = display_context_module.install_width_refresher
 
 _session_capture_local = _SessionCapture()
 _VERBOSE_LOG_LEVEL = 2
@@ -493,7 +495,7 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     Tests can monkeypatch ``_VALIDATE_MCP`` and ``_PROBE_AGENT_TRANSPORTS`` to
     drive deterministic outcomes without spawning real upstream servers.
     """
-    upstreams = mcp_toml_as_upstreams(workspace_root)
+    upstreams = transport_common_module.mcp_toml_as_upstreams(workspace_root)
     if not upstreams:
         return 0
 
@@ -714,7 +716,9 @@ def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
     policy_bundle: PolicyBundle,
 ) -> Event:
     return _execute_effect_with_optional_display(
-        effect, config, workspace_scope,
+        effect,
+        config,
+        workspace_scope,
         display=display,
         verbosity=verbosity,
         state=state,
@@ -1073,7 +1077,6 @@ class _PhaseChangeRenderData:
     transition_context: dict[str, object] | None
 
 
-
 def _phase_transition_context(
     previous_phase: str,
     current_phase: str,
@@ -1110,7 +1113,6 @@ def _phase_transition_context(
     return context or None
 
 
-
 def _skipped_exhausted_analysis_info(
     previous_phase: str,
     current_phase: str,
@@ -1128,10 +1130,7 @@ def _skipped_exhausted_analysis_info(
     3. That analysis phase's loop counter is at or above its cap (exhausted)
     """
     previous_phase_def = pipeline_policy.phases.get(previous_phase)
-    if (
-        previous_phase_def is None
-        or previous_phase_def.role not in ("execution", "review")
-    ):
+    if previous_phase_def is None or previous_phase_def.role not in ("execution", "review"):
         return None
 
     on_success_target = previous_phase_def.transitions.on_success
@@ -1147,9 +1146,7 @@ def _skipped_exhausted_analysis_info(
 
     iteration_field = target_def.loop_policy.iteration_state_field
     current_iteration = state.get_loop_iteration(iteration_field)
-    max_iter = _resolve_analysis_cap(
-        iteration_field, state, pipeline_policy
-    )
+    max_iter = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
 
     if not progress.should_skip_analysis_reentry(current_iteration, max_iter):
         return None
@@ -1157,7 +1154,6 @@ def _skipped_exhausted_analysis_info(
     skipped_phase_label = on_success_target.replace("_", " ").title()
     info_message = f"{skipped_phase_label} cap reached, skipping"
     return (on_success_target, info_message)
-
 
 
 def _build_phase_change_render_data(
@@ -1169,9 +1165,7 @@ def _build_phase_change_render_data(
 ) -> _PhaseChangeRenderData:
     """Build the canonical render payload for a phase change."""
     elapsed = (
-        0.0
-        if isinstance(display, _LegacyConsoleDisplay)
-        else display.last_phase_elapsed_seconds
+        0.0 if isinstance(display, _LegacyConsoleDisplay) else display.last_phase_elapsed_seconds
     )
     waiting_status_line = (
         None
@@ -1193,9 +1187,7 @@ def _build_phase_change_render_data(
             errors = phase_counters.errors
     artifact_outcome = ""
     if not isinstance(display, _LegacyConsoleDisplay):
-        raw_outcome = cast(
-            "str | None", getattr(display, "last_phase_artifact_outcome", None)
-        )
+        raw_outcome = cast("str | None", getattr(display, "last_phase_artifact_outcome", None))
         artifact_outcome = raw_outcome if raw_outcome else ""
     entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
     prev_phase_def = pipeline_policy.phases.get(previous_phase)
@@ -1235,7 +1227,6 @@ def _build_phase_change_render_data(
     )
 
 
-
 def _emit_phase_change_surfaces(
     display: ParallelDisplay | _LegacyConsoleDisplay,
     render_data: _PhaseChangeRenderData,
@@ -1267,7 +1258,6 @@ def _emit_phase_change_surfaces(
             display_context=display_context,
             pipeline_policy=pipeline_policy,
         )
-
 
 
 def _emit_phase_transition_if_changed(
@@ -1694,8 +1684,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         (
                             state.get_outer_progress(bp_name)
                             for bp_name, bp_cfg in policy_bundle.pipeline.budget_counters.items()
-                            if bp_cfg.tracks_budget
-                            and state.get_outer_progress(bp_name) > 0
+                            if bp_cfg.tracks_budget and state.get_outer_progress(bp_name) > 0
                         ),
                         None,
                     )
@@ -2393,7 +2382,6 @@ def _should_resume_existing_planning_phase_name(
     return bool(required_artifact is not None and required_artifact.artifact_type == "plan")
 
 
-
 def _should_resume_existing_planning_phase(
     *,
     effect: InvokeAgentEffect,
@@ -2495,8 +2483,7 @@ def _create_initial_state(
     )
 
     caps: dict[str, int] = {
-        name: cfg.default_max
-        for name, cfg in pipeline_policy.budget_counters.items()
+        name: cfg.default_max for name, cfg in pipeline_policy.budget_counters.items()
     }
     if "iteration" in caps:
         caps["iteration"] = config.general.developer_iters
@@ -2511,10 +2498,7 @@ def _create_initial_state(
         commit=CommitState(),
         policy_entry_phase=entry_phase,
         current_drain=resolve_phase_drain(entry_phase, pipeline_policy),
-        loop_caps={
-            name: cfg.default_max
-            for name, cfg in pipeline_policy.loop_counters.items()
-        },
+        loop_caps={name: cfg.default_max for name, cfg in pipeline_policy.loop_counters.items()},
     )
 
 
@@ -2583,7 +2567,6 @@ def _should_auto_skip_current_analysis_phase(
     current_iteration = state.get_loop_iteration(iteration_field)
     max_iterations = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
     return progress.should_skip_analysis_reentry(current_iteration, max_iterations)
-
 
 
 def _determine_effect_from_policy(  # noqa: PLR0911
@@ -2954,8 +2937,7 @@ def _render_success_artifact(  # noqa: PLR0913
             read_plan_artifact = _read_plan_artifact_func()
             plan = read_plan_artifact(workspace_root)
             produced = (
-                f"{plan.total_steps} step(s), "
-                f"{len(plan.risks_mitigations)} risk(s)"
+                f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
                 if plan is not None
                 else "(no plan artifact on disk)"
             )
@@ -2965,9 +2947,7 @@ def _render_success_artifact(  # noqa: PLR0913
     if artifact_type == "development_result":
         render_development_artifact(workspace_root, display_context)
         produced = (
-            "result produced"
-            if (workspace_root / ra.json_path).exists()
-            else "no result artifact"
+            "result produced" if (workspace_root / ra.json_path).exists() else "no result artifact"
         )
         _emit_close(produced)
         return

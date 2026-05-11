@@ -83,9 +83,7 @@ def test_specialized_analysis_drain_grants_read_and_exec_defaults() -> None:
 
 
 def test_review_analysis_drain_grants_read_and_exec_defaults() -> None:
-    caps, flags = template_variables.default_caps_and_flags_for_drain(
-        SessionDrain.REVIEW_ANALYSIS
-    )
+    caps, flags = template_variables.default_caps_and_flags_for_drain(SessionDrain.REVIEW_ANALYSIS)
     vars_map = template_variables.capability_template_variables(caps, flags)
 
     # Analysis must NOT grant tracked-write capability.

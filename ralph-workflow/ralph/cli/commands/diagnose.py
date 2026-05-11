@@ -39,11 +39,9 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
 
 
-
 def _module_attr(module: ModuleType, attribute: str) -> object:
     namespace = cast("dict[str, object]", module.__dict__)
     return namespace[attribute]
-
 
 
 def _load_starter_prompt_sentinel() -> str:
@@ -51,7 +49,6 @@ def _load_starter_prompt_sentinel() -> str:
         "str",
         _module_attr(import_module("ralph.cli.commands.init"), "STARTER_PROMPT_SENTINEL"),
     )
-
 
 
 def diagnose_command(
@@ -181,9 +178,7 @@ def _print_next_steps_panel(steps: list[str], *, display_context: DisplayContext
     content.append("New to Ralph Workflow? ", style="theme.text.muted")
     content.append("docs/sphinx/getting-started.md", style="theme.text.muted")
     content.append(" — step-by-step walkthrough.", style="theme.text.muted")
-    c.print(
-        Panel(content, title="Next steps", border_style="theme.phase.planning", padding=(1, 2))
-    )
+    c.print(Panel(content, title="Next steps", border_style="theme.phase.planning", padding=(1, 2)))
 
 
 def _run_preflight_validation(
@@ -265,9 +260,7 @@ def _run_preflight_validation(
         return True
 
     except PolicyValidationError as e:
-        table.add_row(
-            "Policy validation", _status_text("Failed", e.message, "theme.status.error")
-        )
+        table.add_row("Policy validation", _status_text("Failed", e.message, "theme.status.error"))
         c.print(table)
         return False
     except Exception as e:
@@ -375,9 +368,7 @@ def _check_agents(
         registry = AgentRegistry.from_config(config)
         agent_names = registry.list_agents()
         if not agent_names:
-            table.add_row(
-                "(none)", Text("No agents configured", style="theme.status.warning"), "-"
-            )
+            table.add_row("(none)", Text("No agents configured", style="theme.status.warning"), "-")
         else:
             availability = check_agent_availability(registry)
             path_by_name: dict[str, Text] = {}
@@ -390,9 +381,7 @@ def _check_agents(
             for name in agent_names:
                 agent = registry.get(name)
                 cmd = agent.cmd if agent else ""
-                path_status = path_by_name.get(
-                    name, Text("missing", style="theme.status.warning")
-                )
+                path_status = path_by_name.get(name, Text("missing", style="theme.status.warning"))
                 config_cell = _status_text("Configured", cmd, "theme.status.success")
                 table.add_row(name, config_cell, path_status)
     except Exception as e:

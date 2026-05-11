@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Self
 from pydantic import ConfigDict
 
 if TYPE_CHECKING:
+
     class RalphBaseModel:
         """Any-free static facade for ``pydantic.BaseModel`` used by Ralph."""
 
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
             obj: object,
             *,
             strict: bool | None = None,
-            extra: Literal['allow', 'ignore', 'forbid'] | None = None,
+            extra: Literal["allow", "ignore", "forbid"] | None = None,
             from_attributes: bool | None = None,
             context: object | None = None,
             by_alias: bool | None = None,
@@ -51,7 +52,7 @@ if TYPE_CHECKING:
             json_data: str | bytes | bytearray,
             *,
             strict: bool | None = None,
-            extra: Literal['allow', 'ignore', 'forbid'] | None = None,
+            extra: Literal["allow", "ignore", "forbid"] | None = None,
             context: object | None = None,
             by_alias: bool | None = None,
             by_name: bool | None = None,
@@ -70,13 +71,13 @@ if TYPE_CHECKING:
         def model_dump(  # noqa: PLR0913
             self,
             *,
-            mode: Literal['json', 'python'] | str = 'python',
+            mode: Literal["json", "python"] | str = "python",
             by_alias: bool | None = None,
             exclude_unset: bool = False,
             exclude_defaults: bool = False,
             exclude_none: bool = False,
             round_trip: bool = False,
-            warnings: bool | Literal['none', 'warn', 'error'] = True,
+            warnings: bool | Literal["none", "warn", "error"] = True,
         ) -> dict[str, object]: ...
 
         def model_dump_json(  # noqa: PLR0913
@@ -89,7 +90,7 @@ if TYPE_CHECKING:
             exclude_defaults: bool = False,
             exclude_none: bool = False,
             round_trip: bool = False,
-            warnings: bool | Literal['none', 'warn', 'error'] = True,
+            warnings: bool | Literal["none", "warn", "error"] = True,
         ) -> str: ...
 
         def model_copy(
@@ -101,4 +102,4 @@ if TYPE_CHECKING:
 else:
     from pydantic import BaseModel as RalphBaseModel
 
-__all__ = ['RalphBaseModel']
+__all__ = ["RalphBaseModel"]

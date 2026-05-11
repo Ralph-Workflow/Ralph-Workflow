@@ -122,12 +122,7 @@ def test_checkpoint_builder_without_policy_zeroes_progress_mirrors() -> None:
         actual_reviewer_runs=3,
     )
 
-    payload = (
-        CheckpointBuilder.new()
-        .state(state)
-        .run_context(stale_context)
-        .build()
-    )
+    payload = CheckpointBuilder.new().state(state).run_context(stale_context).build()
 
     assert payload.run_context.actual_developer_runs == 0
     assert payload.run_context.actual_reviewer_runs == 0

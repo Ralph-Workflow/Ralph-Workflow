@@ -34,9 +34,7 @@ def _make_effect(
 
 
 class TestBuildAgentRecoveryPlanResumableSession:
-    def test_resumable_session_id_is_threaded_into_recovery_plan(
-        self, tmp_path: Path
-    ) -> None:
+    def test_resumable_session_id_is_threaded_into_recovery_plan(self, tmp_path: Path) -> None:
         """OpenCodeResumableExitError with session_id yields plan.session_id == that id."""
         exc = OpenCodeResumableExitError("opencode", session_id="sess-abc")
         effect = _make_effect()
@@ -107,9 +105,7 @@ class TestOptionalArtifactNeverTriggersRecovery:
     called on their behalf.  This class documents the runner-side contract.
     """
 
-    def test_non_resumable_exception_yields_no_recovery_plan(
-        self, tmp_path: Path
-    ) -> None:
+    def test_non_resumable_exception_yields_no_recovery_plan(self, tmp_path: Path) -> None:
         """Any exception that is not OpenCodeResumableExitError or a timeout
         produces no recovery plan.
 

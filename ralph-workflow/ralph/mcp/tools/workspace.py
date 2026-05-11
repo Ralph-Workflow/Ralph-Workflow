@@ -213,9 +213,7 @@ def _should_recurse_into_directory(workspace: Workspace, entry_path: str) -> boo
     return not workspace.exists(_join_path(entry_path, ".git"))
 
 
-def _append_dir_entry(
-    workspace: Workspace, entry_path: str, output: list[str], depth: int
-) -> None:
+def _append_dir_entry(workspace: Workspace, entry_path: str, output: list[str], depth: int) -> None:
     indent = "  " * depth
     is_dir = workspace.is_dir(entry_path)
     entry_type = "[DIR]" if is_dir else "[FILE]"
@@ -243,9 +241,7 @@ def _list_dir_recursive_output(workspace: Workspace, path: str) -> str:
     return "".join(output_lines)
 
 
-def _match_parts_with_doublestar(
-    path_parts: list[str], pat_parts: list[str]
-) -> bool:
+def _match_parts_with_doublestar(path_parts: list[str], pat_parts: list[str]) -> bool:
     """Recursively match path segments against a pattern with ** segments."""
     if not pat_parts:
         return not path_parts
@@ -259,9 +255,8 @@ def _match_parts_with_doublestar(
         return False
     if not path_parts:
         return False
-    return (
-        fnmatch.fnmatchcase(path_parts[0], pat_parts[0])
-        and _match_parts_with_doublestar(path_parts[1:], pat_parts[1:])
+    return fnmatch.fnmatchcase(path_parts[0], pat_parts[0]) and _match_parts_with_doublestar(
+        path_parts[1:], pat_parts[1:]
     )
 
 
@@ -275,7 +270,7 @@ def _match_glob(rel_path: str, pattern: str) -> bool:
         return any(fnmatch.fnmatchcase(seg, pattern) for seg in path_parts)
     if len(path_parts) < len(pat_parts):
         return False
-    tail = path_parts[-len(pat_parts):]
+    tail = path_parts[-len(pat_parts) :]
     return all(fnmatch.fnmatchcase(p, q) for p, q in zip(tail, pat_parts, strict=False))
 
 
@@ -334,6 +329,7 @@ class _ReadSelector(NamedTuple):
         start-of-file position). Inert zero defaults sent by brokers are
         normalized to None so they do not trigger mode selection.
         """
+
         def _n(v: int | None) -> int | None:
             return None if v == 0 else v
 
@@ -443,9 +439,7 @@ def handle_read_file(
             "max_bytes": max_bytes,
             "reason": "oversize",
         }
-        return ToolResult(
-            content=[ToolContent.text_content(_tool_json(payload))], is_error=False
-        )
+        return ToolResult(content=[ToolContent.text_content(_tool_json(payload))], is_error=False)
 
     try:
         content = workspace.read(normalized)
@@ -456,9 +450,7 @@ def handle_read_file(
             "error": str(exc),
             "byte_offset": exc.start,
         }
-        return ToolResult(
-            content=[ToolContent.text_content(_tool_json(payload))], is_error=True
-        )
+        return ToolResult(content=[ToolContent.text_content(_tool_json(payload))], is_error=True)
     except FileNotFoundError as exc:
         raise ToolError(f"Failed to read file '{path}': {exc}") from exc
     except Exception as exc:
@@ -488,9 +480,7 @@ def handle_read_multiple_files(
             results.append({"path": p, "error": str(exc)})
 
     payload = _tool_json({"files": results})
-    return ToolResult(
-        content=[ToolContent.text_content(payload)], is_error=False
-    )
+    return ToolResult(content=[ToolContent.text_content(payload)], is_error=False)
 
 
 def handle_stat(
@@ -499,18 +489,14 @@ def handle_stat(
     params: dict[str, object],
 ) -> ToolResult:
     """Return file metadata (type, size, timestamps) for a workspace path."""
-    require_capability(
-        session, WORKSPACE_METADATA_READ_CAPABILITY, "Workspace metadata read"
-    )
+    require_capability(session, WORKSPACE_METADATA_READ_CAPABILITY, "Workspace metadata read")
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
     try:
         stat_result = workspace.stat(normalized)
     except Exception as exc:
         raise ToolError(f"Failed to stat '{path}': {exc}") from exc
-    return ToolResult(
-        content=[ToolContent.text_content(_tool_json(stat_result))], is_error=False
-    )
+    return ToolResult(content=[ToolContent.text_content(_tool_json(stat_result))], is_error=False)
 
 
 def handle_list_allowed_roots(
@@ -551,9 +537,7 @@ def handle_list_directory_recursive(
     params: dict[str, object],
 ) -> ToolResult:
     """Return a flat listing of all entries under a workspace directory."""
-    require_capability(
-        session, WORKSPACE_READ_CAPABILITY, "Recursive directory listing"
-    )
+    require_capability(session, WORKSPACE_READ_CAPABILITY, "Recursive directory listing")
     path = required_string_param(params, "path")
     output = _list_dir_recursive_output(workspace, path)
     return ToolResult(content=[ToolContent.text_content(output)], is_error=False)
@@ -574,9 +558,7 @@ def _build_directory_tree(
         if not exclude_patterns:
             return False
         for pat in exclude_patterns:
-            if fnmatch.fnmatchcase(entry_name, pat) or fnmatch.fnmatchcase(
-                entry_path, pat
-            ):
+            if fnmatch.fnmatchcase(entry_name, pat) or fnmatch.fnmatchcase(entry_path, pat):
                 return True
         return False
 
@@ -625,13 +607,9 @@ def handle_directory_tree(
     try:
         tree = _build_directory_tree(workspace, path, 0, max_depth, exclude_patterns)
     except Exception as exc:
-        raise ToolError(
-            f"Failed to build directory tree for '{path}': {exc}"
-        ) from exc
+        raise ToolError(f"Failed to build directory tree for '{path}': {exc}") from exc
 
-    return ToolResult(
-        content=[ToolContent.text_content(_tool_json(tree))], is_error=False
-    )
+    return ToolResult(content=[ToolContent.text_content(_tool_json(tree))], is_error=False)
 
 
 def handle_search_files(
@@ -664,9 +642,7 @@ def handle_search_files(
         "matches": matches,
         "truncated": truncated,
     }
-    return ToolResult(
-        content=[ToolContent.text_content(_tool_json(output))], is_error=False
-    )
+    return ToolResult(content=[ToolContent.text_content(_tool_json(output))], is_error=False)
 
 
 def _compile_grep_pattern(
@@ -728,18 +704,18 @@ def _search_file_content(  # noqa: PLR0913
         if not compiled.search(line):
             continue
         start_idx = max(0, line_no - 1 - context_before)
-        ctx_before = [
-            lines[i].rstrip("\n\r") for i in range(start_idx, line_no - 1)
-        ]
+        ctx_before = [lines[i].rstrip("\n\r") for i in range(start_idx, line_no - 1)]
         end_idx = min(len(lines), line_no + context_after)
         ctx_after = [lines[i].rstrip("\n\r") for i in range(line_no, end_idx)]
-        matches.append({
-            "path": file_path,
-            "line": line_no,
-            "text": line.rstrip("\n\r"),
-            "context_before": ctx_before,
-            "context_after": ctx_after,
-        })
+        matches.append(
+            {
+                "path": file_path,
+                "line": line_no,
+                "text": line.rstrip("\n\r"),
+                "context_before": ctx_before,
+                "context_after": ctx_after,
+            }
+        )
     return matches
 
 
@@ -826,9 +802,7 @@ def handle_grep_files(
         "truncated": truncated,
         "skipped_files": skipped_files,
     }
-    return ToolResult(
-        content=[ToolContent.text_content(_tool_json(result))], is_error=False
-    )
+    return ToolResult(content=[ToolContent.text_content(_tool_json(result))], is_error=False)
 
 
 def handle_write_file(
@@ -844,17 +818,13 @@ def handle_write_file(
     _check_edit_area_restriction(session, normalized)
     is_tracked = _is_path_git_tracked(workspace, normalized)
     capability = (
-        WORKSPACE_WRITE_TRACKED_CAPABILITY
-        if is_tracked
-        else WORKSPACE_WRITE_EPHEMERAL_CAPABILITY
+        WORKSPACE_WRITE_TRACKED_CAPABILITY if is_tracked else WORKSPACE_WRITE_EPHEMERAL_CAPABILITY
     )
     require_capability(session, capability, "Workspace write")
     content = required_string_param(params, "content")
     _write_file_to_workspace(workspace, normalized, content)
     return ToolResult(
-        content=[ToolContent.text_content(
-            f"Successfully wrote {len(content)} bytes to {path}"
-        )],
+        content=[ToolContent.text_content(f"Successfully wrote {len(content)} bytes to {path}")],
         is_error=False,
     )
 
@@ -899,16 +869,20 @@ def handle_edit_file(
                 lineterm="",
             )
             return ToolResult(
-                content=[ToolContent.text_content(_tool_json({
-                    "status": "no_match",
-                    "edit_index": i,
-                    "preview": "".join(diff),
-                }))],
+                content=[
+                    ToolContent.text_content(
+                        _tool_json(
+                            {
+                                "status": "no_match",
+                                "edit_index": i,
+                                "preview": "".join(diff),
+                            }
+                        )
+                    )
+                ],
                 is_error=True,
             )
-        current_content = (
-            current_content[:idx] + new_text + current_content[idx + len(old_text):]
-        )
+        current_content = current_content[:idx] + new_text + current_content[idx + len(old_text) :]
         applied_edits.append({"oldText": old_text, "newText": new_text})
 
     diff = difflib.unified_diff(
@@ -921,11 +895,17 @@ def handle_edit_file(
 
     if dry_run:
         return ToolResult(
-            content=[ToolContent.text_content(_tool_json({
-                "status": "preview",
-                "diff": "".join(diff),
-                "edits_applied": len(applied_edits),
-            }))],
+            content=[
+                ToolContent.text_content(
+                    _tool_json(
+                        {
+                            "status": "preview",
+                            "diff": "".join(diff),
+                            "edits_applied": len(applied_edits),
+                        }
+                    )
+                )
+            ],
             is_error=False,
         )
 
@@ -935,11 +915,17 @@ def handle_edit_file(
         raise ToolError(f"Failed to write file '{path}': {exc}") from exc
 
     return ToolResult(
-        content=[ToolContent.text_content(_tool_json({
-            "status": "applied",
-            "diff": "".join(diff),
-            "bytes_written": len(current_content),
-        }))],
+        content=[
+            ToolContent.text_content(
+                _tool_json(
+                    {
+                        "status": "applied",
+                        "diff": "".join(diff),
+                        "bytes_written": len(current_content),
+                    }
+                )
+            )
+        ],
         is_error=False,
     )
 
@@ -962,10 +948,16 @@ def handle_append_file(
         raise ToolError(f"Failed to append to file '{path}': {exc}") from exc
 
     return ToolResult(
-        content=[ToolContent.text_content(_tool_json({
-            "path": path,
-            "bytes_appended": len(content),
-        }))],
+        content=[
+            ToolContent.text_content(
+                _tool_json(
+                    {
+                        "path": path,
+                        "bytes_appended": len(content),
+                    }
+                )
+            )
+        ],
         is_error=False,
     )
 
@@ -987,10 +979,16 @@ def handle_create_directory(
         raise ToolError(f"Failed to create directory '{path}': {exc}") from exc
 
     return ToolResult(
-        content=[ToolContent.text_content(_tool_json({
-            "path": path,
-            "created": True,
-        }))],
+        content=[
+            ToolContent.text_content(
+                _tool_json(
+                    {
+                        "path": path,
+                        "created": True,
+                    }
+                )
+            )
+        ],
         is_error=False,
     )
 
@@ -1018,10 +1016,16 @@ def handle_move_file(
         raise ToolError(f"Failed to move '{src}' to '{dest}': {exc}") from exc
 
     return ToolResult(
-        content=[ToolContent.text_content(_tool_json({
-            "src": src,
-            "dest": dest,
-        }))],
+        content=[
+            ToolContent.text_content(
+                _tool_json(
+                    {
+                        "src": src,
+                        "dest": dest,
+                    }
+                )
+            )
+        ],
         is_error=False,
     )
 
@@ -1048,10 +1052,16 @@ def handle_copy_file(
         raise ToolError(f"Failed to copy '{src}' to '{dest}': {exc}") from exc
 
     return ToolResult(
-        content=[ToolContent.text_content(_tool_json({
-            "src": src,
-            "dest": dest,
-        }))],
+        content=[
+            ToolContent.text_content(
+                _tool_json(
+                    {
+                        "src": src,
+                        "dest": dest,
+                    }
+                )
+            )
+        ],
         is_error=False,
     )
 
@@ -1072,9 +1082,11 @@ def handle_delete_path(
         workspace.delete(normalized, recursive=recursive)
     except IsADirectoryError:
         return ToolResult(
-            content=[ToolContent.text_content(
-                f"Path '{path}' is a directory, use recursive=True to delete"
-            )],
+            content=[
+                ToolContent.text_content(
+                    f"Path '{path}' is a directory, use recursive=True to delete"
+                )
+            ],
             is_error=True,
         )
     except FileNotFoundError:
@@ -1083,11 +1095,17 @@ def handle_delete_path(
         raise ToolError(f"Failed to delete '{path}': {exc}") from exc
 
     return ToolResult(
-        content=[ToolContent.text_content(_tool_json({
-            "path": path,
-            "deleted": True,
-            "recursive": recursive,
-        }))],
+        content=[
+            ToolContent.text_content(
+                _tool_json(
+                    {
+                        "path": path,
+                        "deleted": True,
+                        "recursive": recursive,
+                    }
+                )
+            )
+        ],
         is_error=False,
     )
 
@@ -1157,9 +1175,7 @@ def _persist_media_registry_entry(
         try:
             data: dict[str, object] = json.loads(workspace.read(path))
             raw_artifacts = data.get("artifacts", [])
-            artifacts = (
-                list(raw_artifacts) if isinstance(raw_artifacts, list) else []
-            )
+            artifacts = list(raw_artifacts) if isinstance(raw_artifacts, list) else []
         except Exception:
             artifacts = []
         artifacts = [a for a in artifacts if a.get("artifact_id") != artifact_id]
@@ -1336,11 +1352,13 @@ def _replay_from_manifest_entry(
             return ToolResult(content=[block], is_error=False)
     if verdict.delivery == DeliveryMode.UNSUPPORTED:
         return ToolResult(
-            content=[ToolContent.text_content(
-                f"Modality '{entry.modality}' is not supported by provider "
-                f"'{verdict.provider}' (model: {verdict.model_id or 'unknown'}). "
-                f"Reason: {verdict.reason}"
-            )],
+            content=[
+                ToolContent.text_content(
+                    f"Modality '{entry.modality}' is not supported by provider "
+                    f"'{verdict.provider}' (model: {verdict.model_id or 'unknown'}). "
+                    f"Reason: {verdict.reason}"
+                )
+            ],
             is_error=True,
         )
     ref = ResourceReferenceContent(
@@ -1371,13 +1389,15 @@ def _replay_from_persisted_entry(
     raw_bytes = _load_artifact_bytes(workspace, cache_path, source_path)
     if raw_bytes is None:
         return ToolResult(
-            content=[ToolContent.text_content(
-                f"{MultimodalFailureKind.MISSING_REPLAY_SOURCE}: "
-                f"Artifact '{original_path}' was found in the registry but its "
-                f"cached bytes are no longer available "
-                f"(cache_path={cache_path!r}, source_path={source_path!r}). "
-                f"The original source may have been modified or removed."
-            )],
+            content=[
+                ToolContent.text_content(
+                    f"{MultimodalFailureKind.MISSING_REPLAY_SOURCE}: "
+                    f"Artifact '{original_path}' was found in the registry but its "
+                    f"cached bytes are no longer available "
+                    f"(cache_path={cache_path!r}, source_path={source_path!r}). "
+                    f"The original source may have been modified or removed."
+                )
+            ],
             is_error=True,
         )
 
@@ -1395,11 +1415,13 @@ def _replay_from_persisted_entry(
             return ToolResult(content=[block], is_error=False)
     if verdict.delivery == DeliveryMode.UNSUPPORTED:
         return ToolResult(
-            content=[ToolContent.text_content(
-                f"Modality '{modality}' is not supported by provider "
-                f"'{verdict.provider}' (model: {verdict.model_id or 'unknown'}). "
-                f"Reason: {verdict.reason}"
-            )],
+            content=[
+                ToolContent.text_content(
+                    f"Modality '{modality}' is not supported by provider "
+                    f"'{verdict.provider}' (model: {verdict.model_id or 'unknown'}). "
+                    f"Reason: {verdict.reason}"
+                )
+            ],
             is_error=True,
         )
     ref = ResourceReferenceContent(
@@ -1420,11 +1442,13 @@ def _handle_replay_uri(
     artifact_id = parse_media_uri(path)
     if artifact_id is None:
         return ToolResult(
-            content=[ToolContent.text_content(
-                f"{MultimodalFailureKind.INVALID_REPLAY_HANDLE}: "
-                f"'{path}' is not a valid ralph://media/{{artifact_id}} handle. "
-                f"Use the URI exactly as returned by a prior read_media call."
-            )],
+            content=[
+                ToolContent.text_content(
+                    f"{MultimodalFailureKind.INVALID_REPLAY_HANDLE}: "
+                    f"'{path}' is not a valid ralph://media/{{artifact_id}} handle. "
+                    f"Use the URI exactly as returned by a prior read_media call."
+                )
+            ],
             is_error=True,
         )
     manifest = _get_media_manifest(session)
@@ -1435,12 +1459,14 @@ def _handle_replay_uri(
     if persisted is not None:
         return _replay_from_persisted_entry(session, workspace, persisted, path)
     return ToolResult(
-        content=[ToolContent.text_content(
-            f"{MultimodalFailureKind.MISSING_REPLAY_SOURCE}: "
-            f"Artifact '{path}' is not available in the current session manifest "
-            f"or the persisted registry. The artifact may be from an earlier session "
-            f"whose cache has been cleared, or it was never created."
-        )],
+        content=[
+            ToolContent.text_content(
+                f"{MultimodalFailureKind.MISSING_REPLAY_SOURCE}: "
+                f"Artifact '{path}' is not available in the current session manifest "
+                f"or the persisted registry. The artifact may be from an earlier session "
+                f"whose cache has been cleared, or it was never created."
+            )
+        ],
         is_error=True,
     )
 
@@ -1455,17 +1481,37 @@ def _handle_workspace_media(
     suffix = PurePosixPath(normalized or path).suffix.lower()
     inferred = infer_modality_and_mime(suffix)
     if inferred is None:
-        supported = sorted({
-            ".png", ".jpg", ".jpeg", ".gif", ".webp",
-            ".pdf", ".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac",
-            ".mp4", ".avi", ".mov", ".mkv", ".webm",
-            ".docx", ".pptx", ".xlsx",
-        })
+        supported = sorted(
+            {
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".gif",
+                ".webp",
+                ".pdf",
+                ".mp3",
+                ".wav",
+                ".ogg",
+                ".m4a",
+                ".flac",
+                ".aac",
+                ".mp4",
+                ".avi",
+                ".mov",
+                ".mkv",
+                ".webm",
+                ".docx",
+                ".pptx",
+                ".xlsx",
+            }
+        )
         return ToolResult(
-            content=[ToolContent.text_content(
-                f"Unsupported media format '{suffix or '(none)'}'. "
-                f"Supported: {', '.join(supported)}"
-            )],
+            content=[
+                ToolContent.text_content(
+                    f"Unsupported media format '{suffix or '(none)'}'. "
+                    f"Supported: {', '.join(supported)}"
+                )
+            ],
             is_error=True,
         )
     modality, mime_type = inferred
@@ -1473,11 +1519,13 @@ def _handle_workspace_media(
     verdict = profile.verdict_for(modality)
     if verdict.delivery == DeliveryMode.UNSUPPORTED:
         return ToolResult(
-            content=[ToolContent.text_content(
-                f"Modality '{modality}' is not supported by provider '{verdict.provider}' "
-                f"(model: {verdict.model_id or 'unknown'}). "
-                f"Accepted forms: typed_block or none. Reason: {verdict.reason}"
-            )],
+            content=[
+                ToolContent.text_content(
+                    f"Modality '{modality}' is not supported by provider '{verdict.provider}' "
+                    f"(model: {verdict.model_id or 'unknown'}). "
+                    f"Accepted forms: typed_block or none. Reason: {verdict.reason}"
+                )
+            ],
             is_error=True,
         )
     abs_path = workspace.absolute_path(normalized or path)
@@ -1501,11 +1549,13 @@ def _handle_workspace_media(
     manifest = _get_media_manifest(session)
     if manifest is None:
         return ToolResult(
-            content=[ToolContent.text_content(
-                f"Media file '{path}' ({modality}, {mime_type}) cannot be delivered: "
-                f"no active session manifest is available. "
-                f"Resource-reference delivery requires an active session."
-            )],
+            content=[
+                ToolContent.text_content(
+                    f"Media file '{path}' ({modality}, {mime_type}) cannot be delivered: "
+                    f"no active session manifest is available. "
+                    f"Resource-reference delivery requires an active session."
+                )
+            ],
             is_error=True,
         )
     entry = manifest.add(title=title, mime_type=mime_type, modality=modality, raw_bytes=raw_bytes)
@@ -1613,10 +1663,7 @@ def _extract_resource_reference_replay_blocks(
     for item in raw_content:
         if not isinstance(item, dict):
             continue
-        block: dict[str, str] = {
-            k: str(v) for k, v in item.items()
-            if isinstance(v, str)
-        }
+        block: dict[str, str] = {k: str(v) for k, v in item.items() if isinstance(v, str)}
         if (
             block.get("type") == "resource_reference"
             and block.get("delivery") == "resource_reference_replay"
@@ -1643,10 +1690,7 @@ def _extract_resource_reference_blocks(
     for item in raw_content:
         if not isinstance(item, dict):
             continue
-        block: dict[str, str] = {
-            k: str(v) for k, v in item.items()
-            if isinstance(v, str)
-        }
+        block: dict[str, str] = {k: str(v) for k, v in item.items() if isinstance(v, str)}
         if (
             block.get("type") == "resource_reference"
             and block.get("delivery") == "resource_reference"

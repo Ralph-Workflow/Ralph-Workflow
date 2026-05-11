@@ -152,16 +152,19 @@ def _default_sync_process_factory(  # noqa: PLR0913
     start_new_session: bool,
     text: bool,
 ) -> subprocess.Popen[bytes]:
-    return cast("subprocess.Popen[bytes]", subprocess.Popen(
-        command,
-        cwd=cwd,
-        env=env,
-        stdin=stdin,
-        stdout=stdout,
-        stderr=stderr,
-        start_new_session=start_new_session,
-        text=text,
-    ))
+    return cast(
+        "subprocess.Popen[bytes]",
+        subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            start_new_session=start_new_session,
+            text=text,
+        ),
+    )
 
 
 async def _default_async_process_factory(  # noqa: PLR0913
@@ -864,21 +867,13 @@ def _loguru_event_listener(event: ProcessEvent) -> None:
     new_status = event.new_status
     bound = logger.bind(component="process", pid=record.pid, label=record.label)
     if new_status in (ProcessStatus.SPAWNED, ProcessStatus.RUNNING):
-        bound.debug(
-            "process {} {} rc={}", record.pid, new_status.name, record.returncode
-        )
+        bound.debug("process {} {} rc={}", record.pid, new_status.name, record.returncode)
     elif new_status == ProcessStatus.EXITED:
-        bound.info(
-            "process {} {} rc={}", record.pid, new_status.name, record.returncode
-        )
+        bound.info("process {} {} rc={}", record.pid, new_status.name, record.returncode)
     elif new_status == ProcessStatus.KILLED:
-        bound.warning(
-            "process {} {} rc={}", record.pid, new_status.name, record.returncode
-        )
+        bound.warning("process {} {} rc={}", record.pid, new_status.name, record.returncode)
     elif new_status == ProcessStatus.FAILED:
-        bound.error(
-            "process {} {} rc={}", record.pid, new_status.name, record.returncode
-        )
+        bound.error("process {} {} rc={}", record.pid, new_status.name, record.returncode)
 
 
 _singleton: ProcessManager | None = None

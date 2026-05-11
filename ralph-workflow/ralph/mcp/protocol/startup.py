@@ -251,9 +251,10 @@ def legacy_sse_jsonrpc_exchange(
     """Send JSON-RPC requests over a legacy SSE MCP endpoint and collect responses."""
     timeout = httpx.Timeout(timeout_s, connect=min(timeout_s, 5.0))
     responses: list[JsonRpcResponse] = []
-    with httpx.Client(timeout=timeout) as client, client.stream(
-        "GET", endpoint, headers={"Accept": "text/event-stream"}
-    ) as stream:
+    with (
+        httpx.Client(timeout=timeout) as client,
+        client.stream("GET", endpoint, headers={"Accept": "text/event-stream"}) as stream,
+    ):
         if stream.status_code != _HTTP_OK:
             raise PermanentPreflightError(
                 f"legacy SSE connect failed with status '{stream.status_code}': {stream.text}"
@@ -284,7 +285,6 @@ def _read_legacy_sse_message_endpoint(endpoint: str, lines: Iterable[str]) -> st
             return _resolve_legacy_sse_message_endpoint(endpoint, data)
 
 
-
 def _resolve_legacy_sse_message_endpoint(endpoint: str, advertised_endpoint: str) -> str:
     if not advertised_endpoint:
         raise PermanentPreflightError("legacy SSE endpoint event missing data")
@@ -299,7 +299,6 @@ def _resolve_legacy_sse_message_endpoint(endpoint: str, advertised_endpoint: str
             "legacy SSE endpoint event advertised cross-origin message URL"
         )
     return resolved.geturl()
-
 
 
 def _read_legacy_sse_jsonrpc_message(lines: Iterable[str]) -> JsonRpcResponse:

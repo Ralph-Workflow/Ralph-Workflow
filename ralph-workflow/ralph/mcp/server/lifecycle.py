@@ -435,9 +435,9 @@ def _session_payload_json(session: SessionLike) -> str:
     if isinstance(raw_profile, ResolvedCapabilityProfile):
         session_payload["capability_profile"] = raw_profile.to_payload()
     elif isinstance(raw_identity, MultimodalModelIdentity) and raw_identity.is_known():
-        session_payload["capability_profile"] = (
-            resolve_capability_profile(raw_identity).to_payload()
-        )
+        session_payload["capability_profile"] = resolve_capability_profile(
+            raw_identity
+        ).to_payload()
     return json.dumps(session_payload)
 
 

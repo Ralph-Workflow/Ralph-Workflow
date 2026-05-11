@@ -37,9 +37,7 @@ class FsWorkspace:
         """
         self._root = Path(root).expanduser().resolve()
         requested_allowed = allowed_roots or (self._root,)
-        self._allowed_roots = tuple(
-            Path(path).expanduser().resolve() for path in requested_allowed
-        )
+        self._allowed_roots = tuple(Path(path).expanduser().resolve() for path in requested_allowed)
 
     def _resolve_candidate(self, path: str) -> Path:
         candidate_path = Path(path)
@@ -201,9 +199,7 @@ class FsWorkspace:
         has_tail = tail is not None
         mode_count = sum(1 for m in (has_range, has_head, has_tail) if m)
         if mode_count > 1:
-            raise ValueError(
-                "Only one of (start/end range), head, or tail may be specified"
-            )
+            raise ValueError("Only one of (start/end range), head, or tail may be specified")
 
         abs_path = self._abs(path)
         with abs_path.open(encoding="utf-8") as fh:
@@ -353,9 +349,7 @@ class FsWorkspace:
         p = self._abs(path)
         if p.is_dir():
             if not recursive:
-                raise IsADirectoryError(
-                    f"Path '{path}' is a directory, use recursive=True"
-                )
+                raise IsADirectoryError(f"Path '{path}' is a directory, use recursive=True")
             shutil.rmtree(str(p))
         else:
             p.unlink()

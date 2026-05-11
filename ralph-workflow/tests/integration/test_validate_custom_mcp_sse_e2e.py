@@ -3,6 +3,7 @@
 Tests the full chain from mcp.toml parsing through _validate_custom_mcp_servers
 for SSE-type server entries, without spawning real subprocess servers.
 """
+
 from __future__ import annotations
 
 from io import StringIO

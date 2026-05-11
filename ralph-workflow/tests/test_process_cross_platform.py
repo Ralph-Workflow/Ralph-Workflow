@@ -40,7 +40,6 @@ def test_no_posix_only_apis_in_process_manager_and_callers() -> None:
         if token in inspect.getsource(mod)
     ]
 
-    assert not violations, (
-        "POSIX-only APIs found — replace with psutil-based logic:\n"
-        + "\n".join(violations)
+    assert not violations, "POSIX-only APIs found — replace with psutil-based logic:\n" + "\n".join(
+        violations
     )

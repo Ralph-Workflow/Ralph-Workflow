@@ -61,8 +61,7 @@ class TestRedirectStubs:
         content = path.read_text().lower()
         # Should indicate redirection
         assert any(
-            keyword in content
-            for keyword in ["redirect", "see instead", "superseded", "moved"]
+            keyword in content for keyword in ["redirect", "see instead", "superseded", "moved"]
         ), f"Stub {stub} should indicate it redirects to canonical guide"
 
 
@@ -73,6 +72,16 @@ def test_verification_guide_references_make_verify():
     assert "make verify" in content or "uv run pytest" in content, (
         "verification.md should reference canonical verification commands"
     )
+
+
+def test_verification_guide_uses_uv_managed_ruff_commands() -> None:
+    """verification.md should document Ruff through `uv run` to match verify's toolchain."""
+    path = REPO_ROOT_DOCS_AGENTS_DIR / "verification.md"
+    content = path.read_text()
+    assert "uv run ruff check ralph/ tests/" in content
+    assert "uv run ruff format --check ralph/ tests/" in content
+    assert "\nruff check ralph/ tests/\n" not in content
+    assert "\nruff format --check ralph/ tests/\n" not in content
 
 
 def test_testing_guide_mentions_ralph_workflow():

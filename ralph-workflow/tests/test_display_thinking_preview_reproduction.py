@@ -561,9 +561,7 @@ class TestMetaActivityDeduplication:
 
         # With proper deduplication, we should see at most one [activity] META line
         # for the tool_use events (the second one should be suppressed)
-        tool_activity_lines = [
-            line for line in activity_lines if "mcp__ralph__read_file" in line
-        ]
+        tool_activity_lines = [line for line in activity_lines if "mcp__ralph__read_file" in line]
 
         # There should be at most one [activity] META line for this tool
         assert len(tool_activity_lines) <= 1, (
@@ -619,9 +617,7 @@ class TestMetaActivityDeduplication:
         # When path differs, the META [activity] should NOT be suppressed
         # So we should see [activity] lines for both tool calls
         # This test passes if we see the tool mentioned with different paths
-        assert "template_registry.py" in out, (
-            f"First path should appear. Output:\n{out}"
-        )
+        assert "template_registry.py" in out, f"First path should appear. Output:\n{out}"
         assert "plain_renderer.py" in out, (
             f"Second path should appear (not suppressed). Output:\n{out}"
         )

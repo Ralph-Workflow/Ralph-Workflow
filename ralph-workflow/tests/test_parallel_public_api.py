@@ -32,8 +32,7 @@ def test_parallel_execution_mode_has_exactly_one_member() -> None:
         "Only 'same_workspace' is supported."
     )
     assert members[0].value == "same_workspace", (
-        f"ParallelExecutionMode's single member must be 'same_workspace', "
-        f"got {members[0].value!r}."
+        f"ParallelExecutionMode's single member must be 'same_workspace', got {members[0].value!r}."
     )
 
 

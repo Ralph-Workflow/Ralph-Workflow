@@ -80,4 +80,3 @@ __all__ = [
     "profile_from_payload",
     "resolve_capability_profile",
 ]
-

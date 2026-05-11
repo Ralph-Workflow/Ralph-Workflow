@@ -216,9 +216,7 @@ def test_plain_renderer_exposes_run_counter_properties() -> None:
     assert renderer.tool_calls_count == 2, (  # noqa: PLR2004
         f"Expected tool_calls_count=2, got {renderer.tool_calls_count}"
     )
-    assert renderer.errors_count == 1, (
-        f"Expected errors_count=1, got {renderer.errors_count}"
-    )
+    assert renderer.errors_count == 1, f"Expected errors_count=1, got {renderer.errors_count}"
 
     elapsed = renderer.run_elapsed_seconds
     assert elapsed is not None, "run_elapsed_seconds should not be None after begin_phase"

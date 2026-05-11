@@ -224,9 +224,7 @@ class MemoryWorkspace:
         has_tail = tail is not None
         mode_count = sum(1 for m in (has_range, has_head, has_tail) if m)
         if mode_count > 1:
-            raise ValueError(
-                "Only one of (start/end range), head, or tail may be specified"
-            )
+            raise ValueError("Only one of (start/end range), head, or tail may be specified")
 
         content = self.read(path)
         all_lines = content.splitlines(keepends=True)
@@ -410,10 +408,20 @@ class MemoryWorkspace:
         if normalized and not normalized.endswith("/"):
             normalized += "/"
 
-        skip_names = frozenset({
-            ".git", ".hg", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-            ".svn", ".venv", "__pycache__", "node_modules", "target",
-        })
+        skip_names = frozenset(
+            {
+                ".git",
+                ".hg",
+                ".mypy_cache",
+                ".pytest_cache",
+                ".ruff_cache",
+                ".svn",
+                ".venv",
+                "__pycache__",
+                "node_modules",
+                "target",
+            }
+        )
 
         results: list[str] = []
         for key in self._storage:

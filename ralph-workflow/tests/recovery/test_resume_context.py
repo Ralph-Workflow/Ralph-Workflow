@@ -27,7 +27,9 @@ def _make_state_with_recovery_context(
     return PipelineState(
         phase="development",
         phase_chains={
-            "development": AgentChainState(agents=["claude", "opencode"], current_index=1, retries=0)  # noqa: E501
+            "development": AgentChainState(
+                agents=["claude", "opencode"], current_index=1, retries=0
+            )
         },
         fallover_history=tuple(fallover_history),
         recovery_cycle_count=recovery_cycle_count,

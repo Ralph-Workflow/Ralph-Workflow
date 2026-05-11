@@ -77,5 +77,3 @@ class TestNoLegacyBudgetFieldsOnPipelineState:
             f"PipelineState declares forbidden legacy budget field(s): {sorted(violations)}. "
             "Remove them and use the generic budget_remaining/outer_progress dicts instead."
         )
-
-

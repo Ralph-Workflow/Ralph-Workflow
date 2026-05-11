@@ -50,18 +50,22 @@ def _make_drain(drain: str, chain: str) -> tuple[str, AgentDrainConfig]:
 def custom_bundle() -> PolicyBundle:
     """Build a fully custom-named PolicyBundle without any disk I/O."""
     agents = AgentsPolicy(
-        agent_chains=dict([
-            _make_chain("design_chain"),
-            _make_chain("build_chain"),
-            _make_chain("audit_chain"),
-            _make_chain("sign_off_chain"),
-        ]),
-        agent_drains=dict([
-            _make_drain("design", "design_chain"),
-            _make_drain("build", "build_chain"),
-            _make_drain("audit", "audit_chain"),
-            _make_drain("sign_off", "sign_off_chain"),
-        ]),
+        agent_chains=dict(
+            [
+                _make_chain("design_chain"),
+                _make_chain("build_chain"),
+                _make_chain("audit_chain"),
+                _make_chain("sign_off_chain"),
+            ]
+        ),
+        agent_drains=dict(
+            [
+                _make_drain("design", "design_chain"),
+                _make_drain("build", "build_chain"),
+                _make_drain("audit", "audit_chain"),
+                _make_drain("sign_off", "sign_off_chain"),
+            ]
+        ),
     )
 
     pipeline = PipelinePolicy(
@@ -166,9 +170,7 @@ class TestCustomPolicyLoadsAndValidates:
 
 
 class TestCustomPolicyExplainRendersCustomNames:
-    def test_custom_policy_explain_renders_custom_names(
-        self, custom_bundle: PolicyBundle
-    ) -> None:
+    def test_custom_policy_explain_renders_custom_names(self, custom_bundle: PolicyBundle) -> None:
         """ASCII and text renders contain custom phase names; default phase names are absent."""
         explanation = explain_policy(custom_bundle)
         ascii_output = render_explanation_ascii(explanation)
@@ -204,9 +206,7 @@ class TestCustomPolicyResolvePostCommit:
         result = resolve_post_commit_phase(state, custom_bundle.pipeline)
         assert result == "design"
 
-    def test_resolve_returns_done_when_cycles_exhausted(
-        self, custom_bundle: PolicyBundle
-    ) -> None:
+    def test_resolve_returns_done_when_cycles_exhausted(self, custom_bundle: PolicyBundle) -> None:
         """resolve_post_commit_phase returns 'done' when cycles budget = 0 (no_review)."""
         state = PipelineState(
             phase="sign_off",
@@ -230,9 +230,7 @@ class TestCustomPolicyLoopCounterDict:
 class TestRunWithFullyRenamedPhases:
     """All custom-named phases get role-correct handler dispatch without built-in name knowledge."""
 
-    def test_run_with_fully_renamed_phases(
-        self, custom_bundle: PolicyBundle
-    ) -> None:
+    def test_run_with_fully_renamed_phases(self, custom_bundle: PolicyBundle) -> None:
         """register_role_handlers maps all custom phase names to role-based handlers.
 
         Verifies that the runtime has zero built-in phase name knowledge:
@@ -293,9 +291,7 @@ class TestCustomNamedPipelineHandlerDispatch:
             if before_sign_off is not None:
                 HANDLERS["sign_off"] = before_sign_off
 
-    def test_handle_phase_dispatches_custom_commit_phase(
-        self, custom_bundle: PolicyBundle
-    ) -> None:
+    def test_handle_phase_dispatches_custom_commit_phase(self, custom_bundle: PolicyBundle) -> None:
         """handle_phase dispatches sign_off (commit-role) via the generic commit handler."""
         from unittest.mock import MagicMock
 
@@ -321,6 +317,7 @@ class TestCustomNamedPipelineHandlerDispatch:
             # No diff check fails gracefully → COMMIT_SKIPPED not emitted;
             # missing commit_message artifact → PhaseFailureEvent emitted.
             from ralph.pipeline.events import PhaseFailureEvent
+
             assert any(isinstance(e, PhaseFailureEvent) for e in events), (
                 "Expected PhaseFailureEvent for missing commit_message artifact"
             )

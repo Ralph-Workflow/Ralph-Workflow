@@ -488,9 +488,7 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
         # Capture the routing line that was printed
         routing_notes.append(str(routing_line))
 
-    console_print_patch = patch(
-        "rich.console.Console.print", side_effect=_capture_print
-    )
+    console_print_patch = patch("rich.console.Console.print", side_effect=_capture_print)
     with console_print_patch:
         runner_module._emit_phase_transition_if_changed(
             cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
@@ -503,9 +501,7 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
     # Verify that among all printed lines, at least one is the routing note
     # explaining why analysis was skipped. (Other lines come from the rich
     # close banner which is also printed via the same Console.print path.)
-    assert any(
-        "skipped" in note.lower() or "cap" in note.lower() for note in routing_notes
-    ), (
+    assert any("skipped" in note.lower() or "cap" in note.lower() for note in routing_notes), (
         f"No routing note about skipped/cap found among prints: {routing_notes}"
     )
 
@@ -552,6 +548,7 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
     display = _StubDisplay()
     # State with review_outcome set to issues-found (not "clean")
     from ralph.pipeline.state import PipelineState as ReviewState
+
     state = ReviewState(
         phase="done",
         previous_phase="review",

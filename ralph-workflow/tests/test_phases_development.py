@@ -17,20 +17,20 @@ from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffec
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
 
-_VALID_PLAN_JSON = json.dumps({
-    "work_units": [
-        {"unit_id": "u1", "description": "A", "allowed_directories": ["src"]}
-    ]
-})
+_VALID_PLAN_JSON = json.dumps(
+    {"work_units": [{"unit_id": "u1", "description": "A", "allowed_directories": ["src"]}]}
+)
 
-_VALID_DEV_RESULT_JSON = json.dumps({
-    "type": "development_result",
-    "content": {
-        "status": "completed",
-        "summary": "Done.",
-        "files_changed": "- src/a.py",
-    },
-})
+_VALID_DEV_RESULT_JSON = json.dumps(
+    {
+        "type": "development_result",
+        "content": {
+            "status": "completed",
+            "summary": "Done.",
+            "files_changed": "- src/a.py",
+        },
+    }
+)
 
 
 class TestHandleDevelopment:
@@ -93,10 +93,13 @@ class TestHandleDevelopment:
 
     def test_invoke_agent_effect_with_valid_work_units_returns_agent_success(self) -> None:
         workspace = MagicMock()
-        workspace.exists.side_effect = lambda path: path in {
-            ".agent/artifacts/plan.json",
-            ".agent/artifacts/development_result.json",
-        }
+        workspace.exists.side_effect = lambda path: (
+            path
+            in {
+                ".agent/artifacts/plan.json",
+                ".agent/artifacts/development_result.json",
+            }
+        )
         workspace.read.side_effect = lambda path: (
             _VALID_DEV_RESULT_JSON
             if path == ".agent/artifacts/development_result.json"
@@ -110,10 +113,13 @@ class TestHandleDevelopment:
 
     def test_invoke_agent_effect_succeeds_even_when_console_is_present(self) -> None:
         workspace = MagicMock()
-        workspace.exists.side_effect = lambda path: path in {
-            ".agent/artifacts/plan.json",
-            ".agent/artifacts/development_result.json",
-        }
+        workspace.exists.side_effect = lambda path: (
+            path
+            in {
+                ".agent/artifacts/plan.json",
+                ".agent/artifacts/development_result.json",
+            }
+        )
         workspace.read.side_effect = lambda path: (
             _VALID_DEV_RESULT_JSON
             if path == ".agent/artifacts/development_result.json"
@@ -143,10 +149,13 @@ class TestHandleDevelopment:
         self,
     ) -> None:
         workspace = MagicMock()
-        workspace.exists.side_effect = lambda path: path in {
-            ".agent/artifacts/plan.json",
-            ".agent/artifacts/development_result.json",
-        }
+        workspace.exists.side_effect = lambda path: (
+            path
+            in {
+                ".agent/artifacts/plan.json",
+                ".agent/artifacts/development_result.json",
+            }
+        )
         workspace.read.side_effect = lambda path: (
             '{"type": "wrong_type", "content": {}}'
             if path == ".agent/artifacts/development_result.json"

@@ -42,8 +42,7 @@ def _check_artifact_gate(
     registry = build_required_artifacts(ctx.artifacts_policy)
     ra = registry.get(phase_def.drain)
     artifact_path = (
-        ra.json_path if ra is not None
-        else f".agent/artifacts/{phase_def.drain}_verification.json"
+        ra.json_path if ra is not None else f".agent/artifacts/{phase_def.drain}_verification.json"
     )
     if not ctx.workspace.exists(artifact_path):
         return False, (
@@ -60,10 +59,7 @@ def _check_artifact_gate(
             f"the artifact must contain verification evidence"
         )
     except Exception as exc:
-        return False, (
-            f"Verification artifact at '{artifact_path}' could not be read: {exc}"
-        )
-
+        return False, (f"Verification artifact at '{artifact_path}' could not be read: {exc}")
 
 
 def handle_verification_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
@@ -146,8 +142,7 @@ def _emit_verification_failure(
     reason = failure_reason or "verification gate failed"
     if on_failure_route:
         logger.warning(
-            "Verification gate failed for phase '{}': {}. "
-            "Routing to on_failure_route='{}'",
+            "Verification gate failed for phase '{}': {}. Routing to on_failure_route='{}'",
             phase_name,
             failure_reason,
             on_failure_route,

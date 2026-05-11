@@ -16,24 +16,26 @@ _EXCLUDED: dict[str, str] = {
     "testing.fake_process": "test infrastructure, not public API",
 }
 
-_TOP_LEVEL_SECTION_HEADERS = frozenset({
-    "Top-Level",
-    "CLI",
-    "Config",
-    "Policy",
-    "Pipeline",
-    "Phases",
-    "Agents",
-    "MCP",
-    "Git",
-    "Workspace",
-    "Recovery",
-    "Runtime",
-    "Process",
-    "API",
-    "Utilities",
-    "Testing",
-})
+_TOP_LEVEL_SECTION_HEADERS = frozenset(
+    {
+        "Top-Level",
+        "CLI",
+        "Config",
+        "Policy",
+        "Pipeline",
+        "Phases",
+        "Agents",
+        "MCP",
+        "Git",
+        "Workspace",
+        "Recovery",
+        "Runtime",
+        "Process",
+        "API",
+        "Utilities",
+        "Testing",
+    }
+)
 
 
 def _walk_public_modules_and_packages(root: Path, prefix: str = "") -> list[str]:
@@ -74,9 +76,7 @@ def _extract_documented_modules(modules_rst_text: str) -> set[str]:
     documented: set[str] = set()
 
     # 1. Explicit automodule directives
-    for directive in re.findall(
-        r"^\.\. automodule:: (.+)$", modules_rst_text, re.MULTILINE
-    ):
+    for directive in re.findall(r"^\.\. automodule:: (.+)$", modules_rst_text, re.MULTILINE):
         module_name = directive.strip()
         # Normalise ralph.mcp -> mcp, ralph.mcp.server -> mcp.server
         if module_name.startswith("ralph."):
@@ -128,10 +128,7 @@ def test_all_public_modules_and_packages_covered_in_modules_rst() -> None:
 
     # Filter out excluded namespaces
     def is_excluded(name: str) -> bool:
-        return any(
-            name == excluded or name.startswith(excluded + ".")
-            for excluded in _EXCLUDED
-        )
+        return any(name == excluded or name.startswith(excluded + ".") for excluded in _EXCLUDED)
 
     public_names = [n for n in all_names if not is_excluded(n)]
 
@@ -141,8 +138,7 @@ def test_all_public_modules_and_packages_covered_in_modules_rst() -> None:
         # Check both the top-level package and any nested modules
         if excluded_name in documented:
             policy_disagreements.append(
-                f"  ralph.{excluded_name} is documented in modules.rst "
-                f"but _EXCLUDED says: {reason}"
+                f"  ralph.{excluded_name} is documented in modules.rst but _EXCLUDED says: {reason}"
             )
         # Also check nested modules of excluded packages
         policy_disagreements.extend(
@@ -161,10 +157,7 @@ def test_all_public_modules_and_packages_covered_in_modules_rst() -> None:
     )
 
     # Find undocumented public modules
-    missing = [
-        name for name in sorted(public_names)
-        if name not in documented
-    ]
+    missing = [name for name in sorted(public_names) if name not in documented]
 
     assert not missing, (
         "The following public modules/packages are missing from "
@@ -221,10 +214,7 @@ def _documented_public_targets() -> list[str]:
     all_names = _walk_public_modules_and_packages(_RALPH_ROOT)
 
     def is_excluded(name: str) -> bool:
-        return any(
-            name == excluded or name.startswith(excluded + ".")
-            for excluded in _EXCLUDED
-        )
+        return any(name == excluded or name.startswith(excluded + ".") for excluded in _EXCLUDED)
 
     public_names = {n for n in all_names if not is_excluded(n)}
     return sorted(documented & public_names)
@@ -269,9 +259,7 @@ def test_all_documented_autodoc_targets_resolve_to_real_source() -> None:
     """
     modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
     phantom: list[str] = []
-    for directive in re.findall(
-        r"^\.\.\s+automodule::\s+(.+)$", modules_rst_text, re.MULTILINE
-    ):
+    for directive in re.findall(r"^\.\.\s+automodule::\s+(.+)$", modules_rst_text, re.MULTILINE):
         module_name = directive.strip()
         if not module_name.startswith("ralph."):
             continue

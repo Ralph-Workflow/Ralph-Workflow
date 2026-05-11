@@ -15,7 +15,6 @@ from typing import Literal
 from loguru import logger
 
 from ralph.mcp.tools.names import upstream_proxy_tool_name
-from ralph.mcp.upstream.validation import UpstreamValidationError
 from ralph.mcp.upstream.client import (
     HasMediaManifest,
     HttpUpstreamClient,
@@ -26,6 +25,7 @@ from ralph.mcp.upstream.client import (
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
+from ralph.mcp.upstream.validation import UpstreamValidationError
 
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
 UpstreamClientFactory = Callable[[UpstreamMcpServer], _AnyUpstreamClient]

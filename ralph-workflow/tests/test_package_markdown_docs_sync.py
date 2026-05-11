@@ -4,6 +4,7 @@ Ensures that maintained package Markdown docs outside Sphinx
 (ralph-workflow/README.md, ralph-workflow/CONTRIBUTING.md,
 ralph-workflow/docs/mcp/*.md) remain aligned with current Python behavior.
 """
+
 import pytest
 
 from tests.doc_roots import PACKAGE_ROOT
@@ -64,9 +65,7 @@ def test_mcp_servers_doc_has_provider_matrix():
         pytest.skip("mcp-servers.md may not exist")
     content = path.read_text().lower()
     # Should reference current providers
-    has_providers = any(
-        p in content for p in ["claude", "gemini", "openai", "codex"]
-    )
+    has_providers = any(p in content for p in ["claude", "gemini", "openai", "codex"])
     assert has_providers, "mcp-servers.md should list current providers"
 
 
@@ -87,8 +86,5 @@ def test_web_search_doc_describes_backends():
         pytest.skip("web-search.md may not exist")
     content = path.read_text().lower()
     # Should reference current backends
-    has_backends = any(
-        b in content
-        for b in ["brave", "ddgs", "exa", "searxng", "tavily"]
-    )
+    has_backends = any(b in content for b in ["brave", "ddgs", "exa", "searxng", "tavily"])
     assert has_backends, "web-search.md should describe current search backends"

@@ -84,7 +84,8 @@ class ActivityRouter:
         parser_factory: Callable[[ActivityProvider], AgentParser] | None = None,
         buffer_factory: Callable[[], RingBuffer] | None = None,
         on_event: (
-            Callable[[str, ActivityEventKind, str | None, str | None, dict[str, object]], None] | None  # noqa: E501
+            Callable[[str, ActivityEventKind, str | None, str | None, dict[str, object]], None]
+            | None
         ) = None,
         raw_overflow_callback: Callable[[str, str], None] | None = None,
     ) -> None:

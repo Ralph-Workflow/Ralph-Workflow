@@ -26,13 +26,35 @@ Use these instead when working on the maintained package:
 
 The maintained Python package enforces strict type checking:
 - **Strict mypy**: All code must pass `cd ralph-workflow && uv run python -m mypy ralph/`
-- **No implicit Any escape hatches**: `ralph-workflow/mypy.ini` keeps `disallow_any_explicit`, `disallow_any_decorated`, `disallow_any_unimported`, and `disallow_any_expr` enabled
+- **No implicit Any escape hatches**: `ralph-workflow/mypy.ini` keeps `disallow_any_explicit`, `disallow_any_decorated`, `disallow_any_unimported`, `disallow_any_expr`, `strict_equality`, `warn_return_any`, `warn_unused_ignores`, `warn_unused_configs`, and `enable_error_code = ignore-without-code` enabled
 - **Zero test suppressions**: `test_type_ignore_policy.py` validates no `# type: ignore` in tests
 - **No-plugin Pydantic contract**: `ralph-workflow/mypy.ini` intentionally does not enable the upstream Pydantic mypy plugin; solve Pydantic Any leaks with first-party typed helpers/adapters instead
 - **Policy-compliant runtime suppressions**: See `docs/agents/type-ignore-policy.md`; first prefer a typed helper, guard, adapter, or `cast(...)`
-- **Verification**: `cd ralph-workflow && make verify` includes strict type checking
+- **Verification**: `cd ralph-workflow && make verify` runs strict type checking as one of five stages (`make lint`, `make typecheck`, `make docs`, `make test-cov`, `make test-subprocess-e2e`)
 
 These requirements are non-negotiable and enforced by CI/CD gates.
+
+## Suppression Policy
+
+- Test files must contain **zero** `# type: ignore` or `# pyright:` comment suppressions. Runtime code may carry a suppression only with the exact policy reason suffix from `docs/agents/type-ignore-policy.md`.
+- `# noqa: PLW0603` at `ralph/cli/commands/run.py:_get_run_func` is the sanctioned mutation pattern for the typed `run_module._run_func` test seam (used by `tests/test_cli_commands_run.py`, `tests/test_interrupt.py`, `tests/test_display_no_module_globals.py`, and `tests/recovery/test_preflight_validation.py`). It is a Ruff-rule suppression, not a type-checker suppression, carries a same-line rationale, and is therefore not counted by the maintained-tree suppression inventory.
+- `[tool.ruff.lint.per-file-ignores]` in `ralph-workflow/pyproject.toml` exempts `"tests/**" = ["ANN", "PLC0415"]`. Tests can omit annotations (Ruff `ANN` family) and import inside test functions (`PLC0415`) because pytest fixtures and parametrize patterns require importing inside test functions to isolate module-load side effects between cases. Production code under `ralph/` does not get either exemption.
+
+## Canonical Verification Commands
+
+Always prefix Ruff/mypy/pytest with `uv run` so the uv-managed binary matches what `make verify` actually executes. The `--no-cache` qualifier on Ruff is mandatory because cached runs may undercount errors:
+
+```bash
+cd ralph-workflow
+uv run ruff check ralph/ tests/ --no-cache
+uv run ruff format --check ralph/ tests/
+uv run python -m mypy ralph/
+uv run pytest -q tests/test_type_ignore_policy.py
+uv run pytest -q tests/test_documentation_command_sync.py
+make verify
+```
+
+The maintained-tree suppression policy is additionally enforced by a tokenize-based inventory that walks `ralph-workflow/**/*.py` (excluding `.venv`) at the COMMENT-token level and flags any `# type: ignore` or `# pyright:` comment. Required output: `No maintained-tree suppression comments found.` with exit code 0. Because the inventory inspects comment tokens only, string-literal occurrences inside test data or assertion messages are not flagged. See `CODE_STYLE.md` for the runnable script.
 
 ## Legacy status
 

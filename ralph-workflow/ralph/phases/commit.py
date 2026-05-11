@@ -112,6 +112,3 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
 
     logger.info("{}: deferring commit execution to runner", phase_name)
     return []
-
-
-

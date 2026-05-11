@@ -82,9 +82,7 @@ class TestArchiveArtifactBeforeOverwrite:
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "plan.json").write_text('{"type":"plan"}', encoding="utf-8")
 
-        archive_artifact_before_overwrite(
-            artifact_dir, tmp_path, "plan", now_iso=_now_iso
-        )
+        archive_artifact_before_overwrite(artifact_dir, tmp_path, "plan", now_iso=_now_iso)
 
         index = history_index_path(artifact_dir, "plan")
         assert index.exists()

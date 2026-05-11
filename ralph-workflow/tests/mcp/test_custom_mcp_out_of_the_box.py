@@ -3,6 +3,7 @@
 This test verifies that adding a single server block to .agent/mcp.toml is
 sufficient to expose it through the UpstreamRegistry without any extra setup.
 """
+
 from __future__ import annotations
 
 import json
@@ -53,9 +54,7 @@ def test_single_server_entry_produces_non_empty_tool_definitions(
     assert len(tool_defs) > 0
     expected_alias = upstream_proxy_tool_name("my-custom-server", FAKE_TOOL.name)
     aliases = {t.alias for t in tool_defs}
-    assert expected_alias in aliases, (
-        f"Expected alias {expected_alias!r} not found in {aliases}"
-    )
+    assert expected_alias in aliases, f"Expected alias {expected_alias!r} not found in {aliases}"
 
 
 def test_single_server_entry_appears_in_ralph_transport_configs(

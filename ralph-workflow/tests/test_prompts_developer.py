@@ -34,8 +34,7 @@ PLANNING_EDIT_RISK_COVERAGE_TEXT = (
     "- Risk coverage: concrete risks, mitigations, and edge cases are represented"
 )
 PLANNING_EDIT_PARALLELIZATION_TEXT = (
-    "- Parallelization safety: any parallel work remains disjoint, realistic, "
-    "and policy-compliant"
+    "- Parallelization safety: any parallel work remains disjoint, realistic, and policy-compliant"
 )
 PLANNING_EDIT_MAINTAINABILITY_TEXT = (
     "- Maintainability and handoff quality: the plan stays concise, "
@@ -224,7 +223,7 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path):
     assert PLANNING_EDIT_SELF_ANALYSIS_TEXT in prompt
     assert PLANNING_EDIT_ISSUE_MAPPING_TEXT in prompt
     assert "Use `ralph_discard_plan_draft` only when the existing plan is unsalvageable" in prompt
-    assert "artifact_type=\"plan\"" not in prompt
+    assert 'artifact_type="plan"' not in prompt
     assert workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md") in prompt
 
 

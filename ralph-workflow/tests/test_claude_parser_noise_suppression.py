@@ -86,12 +86,12 @@ def test_claude_assistant_message_with_thinking_block_does_not_emit_error() -> N
     import json
 
     parser = ClaudeParser()
-    line = json.dumps({
-        "type": "assistant",
-        "message": {
-            "content": [{"type": "thinking", "thinking": "weighing options"}]
-        },
-    })
+    line = json.dumps(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "thinking", "thinking": "weighing options"}]},
+        }
+    )
     results = list(parser.parse(iter([line])))
     errors = [r for r in results if r.type == "error"]
     assert errors == [], f"Unexpected error results: {errors}"
@@ -159,12 +159,12 @@ def test_whitespace_only_thinking_in_assistant_message_is_suppressed() -> None:
     import json
 
     parser = ClaudeParser()
-    line = json.dumps({
-        "type": "assistant",
-        "message": {
-            "content": [{"type": "thinking", "thinking": "   "}]
-        },
-    })
+    line = json.dumps(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "thinking", "thinking": "   "}]},
+        }
+    )
     results = list(parser.parse(iter([line])))
     thinking = [r for r in results if r.type == "thinking"]
     assert thinking == [], f"Expected no thinking for whitespace content, got: {thinking}"

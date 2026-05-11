@@ -105,12 +105,8 @@ async def test_stdio_transport_default_factory_tracks_process_in_manager() -> No
     reset_process_manager()
     try:
         # Build a ProcessManager with fake process factories
-        sync_factory = make_sync_process_factory(
-            itertools.count(1), returncode=0
-        )
-        async_factory = make_async_process_factory(
-            itertools.count(1), returncode=0
-        )
+        sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
+        async_factory = make_async_process_factory(itertools.count(1), returncode=0)
         pm = ProcessManager(
             policy=_FAST_POLICY,
             sync_process_factory=sync_factory,
@@ -126,9 +122,7 @@ async def test_stdio_transport_default_factory_tracks_process_in_manager() -> No
             transport.start()
 
             # ProcessManager.spawn() registers the record synchronously before returning
-            active = [
-                r for r in pm.list_active() if r.label and r.label.startswith("mcp-stdio:")
-            ]
+            active = [r for r in pm.list_active() if r.label and r.label.startswith("mcp-stdio:")]
 
             assert len(active) == 1, f"Expected 1 mcp-stdio record, got {active}"
             assert active[0].status == ProcessStatus.RUNNING
@@ -149,9 +143,7 @@ async def test_stdio_transport_default_factory_tracks_process_in_manager() -> No
 
 
 def test_http_upstream_client_lists_tools() -> None:
-    server = UpstreamMcpServer(
-        name="filesystem", transport="http", url="http://localhost:9999"
-    )
+    server = UpstreamMcpServer(name="filesystem", transport="http", url="http://localhost:9999")
 
     def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
         assert method == "tools/list"
@@ -181,9 +173,7 @@ def test_http_upstream_client_lists_tools() -> None:
 
 
 def test_http_upstream_client_calls_tool() -> None:
-    server = UpstreamMcpServer(
-        name="filesystem", transport="http", url="http://localhost:9999"
-    )
+    server = UpstreamMcpServer(name="filesystem", transport="http", url="http://localhost:9999")
     captured: dict[str, object] = {}
 
     def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
@@ -203,9 +193,7 @@ def test_http_upstream_client_calls_tool() -> None:
 
 
 def test_http_upstream_client_raises_upstream_call_error_on_backend_failure() -> None:
-    server = UpstreamMcpServer(
-        name="filesystem", transport="http", url="http://localhost:9999"
-    )
+    server = UpstreamMcpServer(name="filesystem", transport="http", url="http://localhost:9999")
 
     def failing_caller(method: str, params: dict[str, object]) -> dict[str, object]:
         raise ConnectionRefusedError("connection refused")

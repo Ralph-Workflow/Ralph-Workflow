@@ -174,10 +174,7 @@ def _build_policy_bundle(
                 )
                 for name, agents in chains.items()
             },
-            agent_drains={
-                drain: AgentDrainConfig(chain=chain)
-                for drain, chain in drains.items()
-            },
+            agent_drains={drain: AgentDrainConfig(chain=chain) for drain, chain in drains.items()},
         ),
         pipeline=PipelinePolicy(
             phases={
@@ -252,11 +249,11 @@ def test_run_pipeline_returns_2_on_checkpoint_phase_mismatch(
     # Policy only defines 'development' phase (not 'planning')
     agents_toml = agent_dir / "agents.toml"
     agents_toml.write_text(
-        '[agent_chains.development]\n'
+        "[agent_chains.development]\n"
         'agents = ["claude"]\n'
-        'max_retries = 3\n'
-        '\n'
-        '[agent_drains.development]\n'
+        "max_retries = 3\n"
+        "\n"
+        "[agent_drains.development]\n"
         'chain = "development"\n'
     )
 
@@ -264,12 +261,12 @@ def test_run_pipeline_returns_2_on_checkpoint_phase_mismatch(
     pipeline_toml.write_text(
         'entry_phase = "development"\n'
         'terminal_phase = "complete"\n'
-        '\n'
-        '[phases.development]\n'
+        "\n"
+        "[phases.development]\n"
         'drain = "development"\n'
         'transitions.on_success = "complete"\n'
-        '\n'
-        '[phases.complete]\n'
+        "\n"
+        "[phases.complete]\n"
         'drain = "complete"\n'
         'transitions.on_success = "complete"\n'
         'transitions.on_loopback = "complete"\n'

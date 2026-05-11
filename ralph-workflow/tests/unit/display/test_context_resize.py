@@ -111,9 +111,7 @@ class TestDisplayContextRefreshed:
         """refreshed() must preserve the COLUMNS env override after refresh."""
         forced_narrow_width = self.NARROW_WIDTH
         console = Console(width=120, force_terminal=True)
-        ctx = make_display_context(
-            console=console, env={"COLUMNS": str(forced_narrow_width)}
-        )
+        ctx = make_display_context(console=console, env={"COLUMNS": str(forced_narrow_width)})
         assert ctx.mode == "compact"
         assert ctx.width == forced_narrow_width
 
@@ -126,9 +124,7 @@ class TestDisplayContextRefreshed:
         """refreshed() must preserve force_width override after refresh."""
         forced_narrow_width = self.NARROW_WIDTH
         console = Console(width=120, force_terminal=True)
-        ctx = make_display_context(
-            console=console, env={}, force_width=forced_narrow_width
-        )
+        ctx = make_display_context(console=console, env={}, force_width=forced_narrow_width)
         assert ctx.mode == "compact"
         assert ctx.width == forced_narrow_width
 
@@ -159,9 +155,7 @@ class TestInstallSigwinchRefresher:
         if sys.platform == "win32":
             pytest.skip("Windows behaves differently with threads and signals")
 
-        ctx_holder: list[DisplayContext] = [
-            make_display_context(env={"COLUMNS": "80"})
-        ]
+        ctx_holder: list[DisplayContext] = [make_display_context(env={"COLUMNS": "80"})]
         result: list[Exception | None] = [None]
 
         def install_from_thread() -> None:
@@ -182,9 +176,7 @@ class TestInstallSigwinchRefresher:
         if sys.platform == "win32":
             pytest.skip("SIGWINCH not available on Windows")
 
-        ctx_holder: list[DisplayContext] = [
-            make_display_context(env={"COLUMNS": "80"})
-        ]
+        ctx_holder: list[DisplayContext] = [make_display_context(env={"COLUMNS": "80"})]
 
         # Install the handler
         install_sigwinch_refresher(ctx_holder)

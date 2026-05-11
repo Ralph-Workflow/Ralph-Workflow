@@ -371,15 +371,9 @@ class TestPartialFailureHandoffContent:
         )
         content = handoff_path.read_text()
 
-        assert "unit-a" in content, (
-            "DEVELOPMENT_RESULT.md must name unit-a (the successful worker)"
-        )
-        assert "unit-b" in content, (
-            "DEVELOPMENT_RESULT.md must name unit-b (the failed worker)"
-        )
-        assert "any_failed: true" in content, (
-            "DEVELOPMENT_RESULT.md must report any_failed: true"
-        )
+        assert "unit-a" in content, "DEVELOPMENT_RESULT.md must name unit-a (the successful worker)"
+        assert "unit-b" in content, "DEVELOPMENT_RESULT.md must name unit-b (the failed worker)"
+        assert "any_failed: true" in content, "DEVELOPMENT_RESULT.md must report any_failed: true"
         assert "all_succeeded: false" in content, (
             "DEVELOPMENT_RESULT.md must report all_succeeded: false"
         )

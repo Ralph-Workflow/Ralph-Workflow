@@ -305,9 +305,7 @@ class TestAsciiWorkflowFallbackContract:
             entry_phase="work",
             terminal_phase="done",
             phases=[work, done, fallback_phase],
-            terminal_outcomes=[
-                TerminalOutcomeExplanation(phase="done", outcome="success")
-            ],
+            terminal_outcomes=[TerminalOutcomeExplanation(phase="done", outcome="success")],
             recovery=_minimal_recovery(),
         )
 
@@ -391,9 +389,9 @@ class TestAsciiDecisionAlignment:
         lines = output.split("\n")
         # Diagram decision lines are indented with 4 spaces; legend lines have 2-space indent
         decision_lines = [
-            line for line in lines
-            if line.startswith("    +--[") and "-->" in line
-            and "workflow_fallback" not in line
+            line
+            for line in lines
+            if line.startswith("    +--[") and "-->" in line and "workflow_fallback" not in line
         ]
         assert len(decision_lines) >= 2  # noqa: PLR2004
         # Find the position of '-->' in each line

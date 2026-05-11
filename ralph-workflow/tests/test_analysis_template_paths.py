@@ -27,9 +27,7 @@ _MINIMAL_DEV_RESULT = json.dumps(
 )
 
 
-_TEMPLATES_DIR = (
-    Path(__file__).parent.parent / "ralph" / "prompts" / "templates"
-)
+_TEMPLATES_DIR = Path(__file__).parent.parent / "ralph" / "prompts" / "templates"
 _MIN_EXPECTED_ANALYSIS_TEMPLATES = 2
 
 
@@ -64,7 +62,6 @@ def _render_development_analysis(
     return workspace.read(path)
 
 
-
 class TestDevelopmentAnalysisNeverInlinesPromptOrPlan:
     def test_tiny_prompt_is_not_inlined(self, tmp_path: Path) -> None:
         rendered = _render_development_analysis(tmp_path, prompt_content=_TINY_PROMPT)
@@ -93,7 +90,6 @@ class TestDevelopmentAnalysisNeverInlinesPromptOrPlan:
         assert has_inline or has_path, "LATEST ARTIFACT must be present (inline or path ref)"
 
 
-
 class TestAnalysisTemplatesStructuralInvariants:
     """Verify analysis template source never uses render_payload_section for PROMPT or PLAN.
 
@@ -116,12 +112,9 @@ class TestAnalysisTemplatesStructuralInvariants:
         for template in self._analysis_templates():
             source = template.read_text(encoding="utf-8")
             uses_path = (
-                "render_payload_path('PROMPT'" in source
-                or 'render_payload_path("PROMPT"' in source
+                "render_payload_path('PROMPT'" in source or 'render_payload_path("PROMPT"' in source
             )
-            assert uses_path, (
-                f"{template.name}: PROMPT must use render_payload_path"
-            )
+            assert uses_path, f"{template.name}: PROMPT must use render_payload_path"
             assert "render_payload_section('PROMPT'" not in source, (
                 f"{template.name}: render_payload_section('PROMPT' is forbidden"
             )
@@ -133,12 +126,9 @@ class TestAnalysisTemplatesStructuralInvariants:
         for template in self._analysis_templates():
             source = template.read_text(encoding="utf-8")
             uses_path = (
-                "render_payload_path('PLAN'" in source
-                or 'render_payload_path("PLAN"' in source
+                "render_payload_path('PLAN'" in source or 'render_payload_path("PLAN"' in source
             )
-            assert uses_path, (
-                f"{template.name}: PLAN must use render_payload_path"
-            )
+            assert uses_path, f"{template.name}: PLAN must use render_payload_path"
             assert "render_payload_section('PLAN'" not in source, (
                 f"{template.name}: render_payload_section('PLAN' is forbidden"
             )

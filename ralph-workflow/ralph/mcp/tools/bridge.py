@@ -627,9 +627,7 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                     "properties": {
                         "pattern": {
                             "type": "string",
-                            "description": (
-                                "Search pattern (regex if regex=True, else literal)."
-                            ),
+                            "description": ("Search pattern (regex if regex=True, else literal)."),
                         },
                         "path": {
                             "type": "string",
@@ -1052,8 +1050,8 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                     "argv as a string or string array, plus optional args and timeout_ms. "
                     "Shell-style strings are tokenized, but shell control operators are "
                     "rejected because exec does not run a shell. Returns stdout, stderr, "
-                    "and exit_code. Example: {\"command\": \"python -m pytest\", "
-                    '\"args\": [\"-q\"], \"timeout_ms\": 5000}. '
+                    'and exit_code. Example: {"command": "python -m pytest", '
+                    '"args": ["-q"], "timeout_ms": 5000}. '
                     "Some commands may still be blacklisted; prefer structured tools "
                     "when available."
                 ),
@@ -1561,9 +1559,7 @@ def build_ralph_tool_registry(
 ) -> ToolBridge:
     """Build the default Ralph MCP tool registry."""
 
-    mcp_config_cls = cast(
-        "type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig
-    )
+    mcp_config_cls = cast("type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig)
     mcp_cfg = mcp_config or mcp_config_cls()
     bridge = ToolBridge(session=session)
     for spec in _tool_specs(mcp_cfg):

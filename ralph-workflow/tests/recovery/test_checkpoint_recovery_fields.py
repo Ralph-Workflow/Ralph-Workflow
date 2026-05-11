@@ -16,7 +16,9 @@ def _make_state_with_recovery_fields() -> PipelineState:
     return PipelineState(
         phase="development",
         phase_chains={
-            "development": AgentChainState(agents=["claude", "opencode"], current_index=1, retries=2)  # noqa: E501
+            "development": AgentChainState(
+                agents=["claude", "opencode"], current_index=1, retries=2
+            )
         },
         recovery_cycle_count=3,
         fallover_history=(

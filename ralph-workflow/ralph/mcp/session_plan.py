@@ -11,8 +11,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ralph.api.opencode import get_model_by_id
-from ralph.policy.validation import PolicyValidationError
-
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.multimodal.capabilities import (
@@ -28,6 +26,7 @@ from ralph.mcp.transport.common import (
     merge_mcp_toml_into_upstreams,
     set_upstream_mcp_config,
 )
+from ralph.policy.validation import PolicyValidationError
 
 _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
     "planning": frozenset(),
@@ -127,9 +126,7 @@ def build_session_mcp_plan(  # noqa: PLR0913
     capabilities = _base_capabilities_for_drain(drain, agents_policy)
     mcp_config = load_mcp_config(
         config_path=(
-            (workspace_path / ".agent" / "mcp.toml")
-            if workspace_path is not None
-            else None
+            (workspace_path / ".agent" / "mcp.toml") if workspace_path is not None else None
         )
     )
 
@@ -193,15 +190,17 @@ def _resolve_capability_cls(
     return drain_class
 
 
-_DEVELOPMENT_EXTRA: frozenset[str] = frozenset({
-    "workspace.write_ephemeral",
-    "workspace.write_tracked",
-    "workspace.edit",
-    "workspace.delete",
-    "process.exec_bounded",
-    "run.report_progress",
-    "env.read",
-})
+_DEVELOPMENT_EXTRA: frozenset[str] = frozenset(
+    {
+        "workspace.write_ephemeral",
+        "workspace.write_tracked",
+        "workspace.edit",
+        "workspace.delete",
+        "process.exec_bounded",
+        "run.report_progress",
+        "env.read",
+    }
+)
 
 
 def _base_capabilities_for_drain(

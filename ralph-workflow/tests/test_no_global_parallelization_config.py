@@ -83,9 +83,7 @@ def _walk_model_fields(
 def test_unified_config_has_no_forbidden_parallel_fields() -> None:
     """UnifiedConfig and nested models must not expose forbidden global parallel fields."""
     all_fields = _walk_model_fields(UnifiedConfig)
-    violations = [
-        name for name in all_fields if _FORBIDDEN_TOP_LEVEL_KEYS.match(name)
-    ]
+    violations = [name for name in all_fields if _FORBIDDEN_TOP_LEVEL_KEYS.match(name)]
     assert violations == [], (
         f"UnifiedConfig (or a nested model) contains forbidden global parallel field(s): "
         f"{violations!r}. "

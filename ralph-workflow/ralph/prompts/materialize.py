@@ -149,20 +149,22 @@ def collect_media_entries_for_phase(
             if not isinstance(item, dict):
                 continue
             try:
-                entries.append(MultimodalSidecarEntry(
-                    artifact_id=str(item.get("artifact_id", "")),
-                    uri=str(item.get("uri", "")),
-                    mime_type=str(item.get("mime_type", "")),
-                    title=str(item.get("title", "")),
-                    modality=str(item.get("modality", "")),
-                    delivery=str(item.get("delivery", "resource_reference_replay")),
-                    reason=str(item.get("reason", "")),
-                    source_path=str(item.get("source_path", "")),
-                    cache_path=str(item.get("cache_path", "")),
-                    source_uri=str(item.get("source_uri", "")),
-                    block_type=str(item.get("block_type", "")),
-                    failure_kind=str(item.get("failure_kind", "")),
-                ))
+                entries.append(
+                    MultimodalSidecarEntry(
+                        artifact_id=str(item.get("artifact_id", "")),
+                        uri=str(item.get("uri", "")),
+                        mime_type=str(item.get("mime_type", "")),
+                        title=str(item.get("title", "")),
+                        modality=str(item.get("modality", "")),
+                        delivery=str(item.get("delivery", "resource_reference_replay")),
+                        reason=str(item.get("reason", "")),
+                        source_path=str(item.get("source_path", "")),
+                        cache_path=str(item.get("cache_path", "")),
+                        source_uri=str(item.get("source_uri", "")),
+                        block_type=str(item.get("block_type", "")),
+                        failure_kind=str(item.get("failure_kind", "")),
+                    )
+                )
             except Exception:
                 continue
         return entries
@@ -517,10 +519,7 @@ def _resolve_required_plan_handoff(
                 sections = cast("dict[str, object]", parsed["sections"])
                 return _format_plan_for_execution(json.dumps(sections)), ""
     plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
-    msg = (
-        f"Template '{template_name}' requires an existing plan handoff at "
-        f"{plan_handoff_path}"
-    )
+    msg = f"Template '{template_name}' requires an existing plan handoff at {plan_handoff_path}"
     raise MissingPlanHandoffError(msg)
 
 
@@ -628,9 +627,7 @@ def _resolve_and_clear_dev_artifact_history(
         return ""
     if not is_loopback and phase_def.artifact_history.clear_on_fresh_entry:
         artifact_dir = workspace_root / ".agent" / "artifacts"
-        clear_artifact_history(
-            artifact_dir, drain_artifact_type, backend=DEFAULT_FILE_BACKEND
-        )
+        clear_artifact_history(artifact_dir, drain_artifact_type, backend=DEFAULT_FILE_BACKEND)
     return _resolve_artifact_history_path(workspace_root, drain_artifact_type)
 
 
@@ -988,9 +985,7 @@ def _find_work_artifact(
         if pdef is None:
             continue
         role = pdef.role
-        skip = role in ("commit", "analysis") or (
-            role == "execution" and pdef.skip_invocation
-        )
+        skip = role in ("commit", "analysis") or (role == "execution" and pdef.skip_invocation)
         if skip:
             queue.extend(_predecessors(current, pipeline_policy))
         else:

@@ -88,16 +88,14 @@ def test_stale_session_writes_retry_hint_file(
     )
     controller.handle(state, exc, phase="development", agent="claude")
 
-    hint_file = tmp_path / ".agent" / "tmp" / f"last_retry_error_{"development"}.txt"
+    hint_file = tmp_path / ".agent" / "tmp" / f"last_retry_error_{'development'}.txt"
     assert hint_file.exists(), "Retry hint file should be written on stale-session failure"
     content = hint_file.read_text(encoding="utf-8")
     assert "session" in content.lower()
     assert "No conversation found with session ID" in content
 
 
-def test_stale_session_debits_budget(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_stale_session_debits_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Stale-session failure still decrements the agent retry budget."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
@@ -117,9 +115,7 @@ def test_stale_session_debits_budget(
     assert budget.consumed == 1
 
 
-def test_stale_session_allows_retry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_stale_session_allows_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """After stale-session failure, the pipeline remains in the current phase for retry."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
@@ -131,9 +127,7 @@ def test_stale_session_allows_retry(
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: stale-id"
     )
-    new_state, effects, _ = controller.handle(
-        state, exc, phase="development", agent="claude"
-    )
+    new_state, effects, _ = controller.handle(state, exc, phase="development", agent="claude")
 
     assert new_state.phase == "development"
     assert effects == []

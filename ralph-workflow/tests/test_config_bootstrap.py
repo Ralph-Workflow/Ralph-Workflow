@@ -242,7 +242,7 @@ def test_local_template_does_not_expose_review_era_drain_bindings() -> None:
 def test_local_template_mentions_ccs_alternative() -> None:
     template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
     content = template.read_text(encoding="utf-8")
-    assert 'ccs/work' in content
+    assert "ccs/work" in content
 
 
 def test_generated_local_template_validates_against_bundled_policy(
@@ -282,8 +282,10 @@ def test_generated_local_template_missing_required_drain_fails_policy_validation
     defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
-    broken = (defaults_dir / "ralph-workflow-local.toml").read_text(encoding="utf-8").replace(
-        'development_commit = "commit"\n', ''
+    broken = (
+        (defaults_dir / "ralph-workflow-local.toml")
+        .read_text(encoding="utf-8")
+        .replace('development_commit = "commit"\n', "")
     )
     (agent_dir / "ralph-workflow.toml").write_text(broken, encoding="utf-8")
     (agent_dir / "pipeline.toml").write_text(
@@ -366,7 +368,6 @@ def test_regenerate_all_bootstraps_a_valid_policy_bundle(tmp_path: Path) -> None
     assert bundle.pipeline.phases["development"].parallelization is not None
 
 
-
 def test_global_template_bootstraps_first_run_policy_without_local_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -403,7 +404,6 @@ def test_global_template_bootstraps_first_run_policy_without_local_override(
     )
 
 
-
 def test_global_template_missing_active_drain_breaks_first_run_startup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -419,7 +419,7 @@ def test_global_template_missing_active_drain_breaks_first_run_startup(
     created = ensure_global_config(global_dir)
     config_path = created.path
     config_path.write_text(
-        config_path.read_text(encoding="utf-8").replace('development_commit = "commit"\n', ''),
+        config_path.read_text(encoding="utf-8").replace('development_commit = "commit"\n', ""),
         encoding="utf-8",
     )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))

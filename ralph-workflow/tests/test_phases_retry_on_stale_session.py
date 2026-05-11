@@ -42,7 +42,9 @@ def _make_state(
 ) -> PipelineState:
     return PipelineState(
         phase="development",
-        phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=0)},  # noqa: E501
+        phase_chains={
+            "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
+        },
         last_agent_session_id=last_session_id,
         session_preserve_retry_pending=session_preserve,
     )
@@ -187,8 +189,7 @@ def test_runner_stale_session_internal_retry_succeeds(
         f"Retry prompt must contain retry context, got: {retry_content[:200]!r}"
     )
     assert (
-        "fresh session required" in retry_content.lower()
-        or "session" in retry_content.lower()
+        "fresh session required" in retry_content.lower() or "session" in retry_content.lower()
     ), f"Retry prompt must contain stale-session context, got: {retry_content[:200]!r}"
 
 
@@ -262,7 +263,6 @@ def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
     assert "inactivity timeout" in retry_content
 
 
-
 def test_runner_stale_session_with_parsed_session_id_retries_fresh(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -326,7 +326,6 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
     assert result == PipelineEvent.AGENT_SUCCESS
     assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
     assert captured_calls[1] is None
-
 
 
 def test_runner_stale_session_exhausts_retries_returns_failure(
@@ -581,7 +580,7 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
 
     assert new_state.phase == "development"
 
-    hint_file = tmp_path / ".agent" / "tmp" / f"last_retry_error_{"development"}.txt"
+    hint_file = tmp_path / ".agent" / "tmp" / f"last_retry_error_{'development'}.txt"
     assert hint_file.exists()
     hint_content = hint_file.read_text(encoding="utf-8")
     assert "session" in hint_content.lower()

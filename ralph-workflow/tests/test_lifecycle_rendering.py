@@ -143,9 +143,7 @@ class TestShowPhaseStartFromEntry:
         """In force_glyphs=ascii mode, glyphs are ASCII safe."""
         console, buf = _make_console()
         ctx = make_display_context(console=console, env={}, force_glyphs="ascii")
-        entry = PhaseEntryModel(
-            phase_name="development", outer_dev_iteration=1, inner_analysis=2
-        )
+        entry = PhaseEntryModel(phase_name="development", outer_dev_iteration=1, inner_analysis=2)
         show_phase_start_from_entry(entry, display_context=ctx)
         out = buf.getvalue()
         # ASCII fallback should not emit multi-byte unicode glyphs for iteration context
@@ -417,11 +415,15 @@ class TestRichCloseArtifactOutcome:
     ) -> str:
         buf = StringIO()
         console = Console(
-            file=buf, record=True, force_terminal=False, color_system=None,
+            file=buf,
+            record=True,
+            force_terminal=False,
+            color_system=None,
             width={"compact": 50, "medium": 80, "wide": 120}[mode],
         )
         ctx = make_display_context(console=console, env={}, force_mode=mode)
         from ralph.display.phase_banner import show_phase_close_banner
+
         show_phase_close_banner(exit_model, display_context=ctx)
         return console.export_text()
 
@@ -531,9 +533,7 @@ class TestSymmetricStartCloseTranscriptOrdering:
         # Phase-close transcript
         renderer, close_buf = _make_renderer()
         renderer.begin_phase("development")
-        exit_model = PhaseExitModel.from_entry_model(
-            entry, exit_trigger="produced"
-        )
+        exit_model = PhaseExitModel.from_entry_model(entry, exit_trigger="produced")
         renderer.emit_phase_close_from_exit(exit_model)
 
         start_out = start_buf.getvalue()

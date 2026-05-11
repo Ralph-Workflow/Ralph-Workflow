@@ -226,9 +226,7 @@ def test_emit_first_run_welcome_banner_printed_before_panel() -> None:
     ctx = make_display_context(env={})
     emit_first_run_welcome(_RecordingConsole(), results, display_context=ctx)
 
-    assert len(printed) >= _MIN_PRINT_CALLS, (
-        "Expected at least two print calls (banner + panel)"
-    )
+    assert len(printed) >= _MIN_PRINT_CALLS, "Expected at least two print calls (banner + panel)"
     # First call is the banner renderable — show_banner emits a rich Group
     assert isinstance(printed[0], Group), (
         f"First printed object should be a Rich Group (banner), got: {type(printed[0])}"
@@ -446,9 +444,7 @@ def test_emit_first_run_welcome_includes_pitch_sentence() -> None:
     assert "development" in output, (
         f"Expected 'development' (part of pipeline loop pitch) in output, got: {output!r}"
     )
-    assert "PROMPT.md" in output, (
-        f"Expected 'PROMPT.md' in pitch output, got: {output!r}"
-    )
+    assert "PROMPT.md" in output, f"Expected 'PROMPT.md' in pitch output, got: {output!r}"
     _assert_no_raw_markup(output)
 
 

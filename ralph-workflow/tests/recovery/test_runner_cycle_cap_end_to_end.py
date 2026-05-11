@@ -84,9 +84,7 @@ def _common_monkeypatches(
         "AgentRegistry",
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
-    monkeypatch.setattr(
-        runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", save_fn if save_fn is not None else MagicMock())
     monkeypatch.setattr(runner_module, "_execute_effect_with_optional_display", fake_execute)
@@ -114,7 +112,9 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     initial_state = PipelineState(
         phase="development",
         phase_chains={
-            "development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)  # noqa: E501
+            "development": AgentChainState(
+                agents=["claude", "opencode"], current_index=0, retries=0
+            )
         },
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
@@ -171,7 +171,9 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     initial_state = PipelineState(
         phase="development",
         phase_chains={
-            "development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)  # noqa: E501
+            "development": AgentChainState(
+                agents=["claude", "opencode"], current_index=0, retries=0
+            )
         },
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
@@ -229,8 +231,7 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
 
     # 1 FalloverEvent per cycle (claude → opencode)
     assert len(captured_fallover_events) == _CYCLE_CAP, (
-        f"Expected {_CYCLE_CAP} FalloverEvents (one per cycle), "
-        f"got {len(captured_fallover_events)}"
+        f"Expected {_CYCLE_CAP} FalloverEvents (one per cycle), got {len(captured_fallover_events)}"
     )
     for evt in captured_fallover_events:
         assert evt.from_agent == "claude"
@@ -248,7 +249,9 @@ def test_runner_fallover_history_reflects_agent_transitions(
     initial_state = PipelineState(
         phase="development",
         phase_chains={
-            "development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)  # noqa: E501
+            "development": AgentChainState(
+                agents=["claude", "opencode"], current_index=0, retries=0
+            )
         },
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
@@ -302,7 +305,9 @@ def test_runner_recovery_cycle_count_reaches_cap(
     initial_state = PipelineState(
         phase="development",
         phase_chains={
-            "development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)  # noqa: E501
+            "development": AgentChainState(
+                agents=["claude", "opencode"], current_index=0, retries=0
+            )
         },
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
@@ -326,11 +331,7 @@ def test_runner_recovery_cycle_count_reaches_cap(
     )
 
     assert exit_code == 1
-    cycle_counts = [
-        s.recovery_cycle_count
-        for s in saved_states
-        if isinstance(s, PipelineState)
-    ]
+    cycle_counts = [s.recovery_cycle_count for s in saved_states if isinstance(s, PipelineState)]
     assert max(cycle_counts, default=0) >= _CYCLE_CAP - 1, (
         f"Expected recovery_cycle_count to reach at least {_CYCLE_CAP - 1} "
         f"in saved states; got max={max(cycle_counts, default=0)}"

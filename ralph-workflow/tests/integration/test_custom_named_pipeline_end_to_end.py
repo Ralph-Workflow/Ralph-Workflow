@@ -47,11 +47,20 @@ from ralph.policy.validation import validate_policy_completeness
 _AUDIT_MAX = 2
 _CYCLE_CAP = 5
 
-CANONICAL_PHASE_NAMES = frozenset({
-    "planning", "development", "development_analysis",
-    "development_commit", "review", "review_analysis",
-    "review_commit", "fix", "complete", "failed",
-})
+CANONICAL_PHASE_NAMES = frozenset(
+    {
+        "planning",
+        "development",
+        "development_analysis",
+        "development_commit",
+        "review",
+        "review_analysis",
+        "review_commit",
+        "fix",
+        "complete",
+        "failed",
+    }
+)
 
 
 def _build_custom_bundle() -> PolicyBundle:
@@ -284,9 +293,14 @@ class TestCustomNamedPipelineExplainPolicy:
         output = render_explanation_ascii(explanation)
 
         canonical_box_names = {
-            "planning", "development", "review", "fix",
-            "development_analysis", "development_commit",
-            "review_analysis", "review_commit",
+            "planning",
+            "development",
+            "review",
+            "fix",
+            "development_analysis",
+            "development_commit",
+            "review_analysis",
+            "review_commit",
         }
         for name in canonical_box_names:
             assert f"| {name}" not in output, (

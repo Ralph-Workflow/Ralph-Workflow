@@ -231,9 +231,7 @@ class TestCliCounterOverrides:
     def test_unknown_counter_override_raises(self) -> None:
         bundle = self._bundle_with_budget_counter("my_counter")
         with pytest.raises(PolicyValidationError, match="unknown_counter"):
-            validate_policy_completeness(
-                bundle, cli_counter_overrides={"unknown_counter": 3}
-            )
+            validate_policy_completeness(bundle, cli_counter_overrides={"unknown_counter": 3})
 
     def test_declared_counter_override_passes(self) -> None:
         bundle = self._bundle_with_budget_counter("my_counter")
@@ -252,9 +250,7 @@ class TestCliCounterOverrides:
     def test_error_message_lists_declared_counters(self) -> None:
         bundle = self._bundle_with_budget_counter("declared_counter")
         with pytest.raises(PolicyValidationError) as exc_info:
-            validate_policy_completeness(
-                bundle, cli_counter_overrides={"bad_counter": 1}
-            )
+            validate_policy_completeness(bundle, cli_counter_overrides={"bad_counter": 1})
         error_msg = str(exc_info.value)
         assert "bad_counter" in error_msg
         assert "declared_counter" in error_msg

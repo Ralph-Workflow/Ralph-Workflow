@@ -80,9 +80,7 @@ class PlanningAnalysisRequestChangesOnceInvoker(MockAgentInvoker):
         if phase == "planning_analysis":
             self._planning_analysis_calls += 1
             if self._planning_analysis_calls == 1:
-                return AnalysisDecisionEvent(
-                    phase="planning_analysis", decision="request_changes"
-                )
+                return AnalysisDecisionEvent(phase="planning_analysis", decision="request_changes")
             return AnalysisDecisionEvent(phase="planning_analysis", decision="completed")
         return PipelineEvent.ANALYSIS_SUCCESS
 
@@ -150,7 +148,9 @@ def _run_pipeline(  # noqa: PLR0913
     _install_runner_display_context(monkeypatch)
 
     result = runner.run(
-        config, initial_state=initial_state, verbosity=Verbosity.QUIET,
+        config,
+        initial_state=initial_state,
+        verbosity=Verbosity.QUIET,
         counter_overrides=counter_overrides,
     )
     return result, saved_states
@@ -453,8 +453,7 @@ def test_development_analysis_runs_exactly_up_to_cap_then_skips_reentry(
         if state.phase == "development" and state.previous_phase == "development_analysis"
     ]
     assert [
-        state.get_loop_iteration("development_analysis_iteration")
-        for state in loopback_states
+        state.get_loop_iteration("development_analysis_iteration") for state in loopback_states
     ] == expected_loopback_counters
     development_commit_state = next(
         state for state in saved_states if state.phase == "development_commit"
@@ -507,15 +506,11 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                             "targets": [{"path": "foo.py", "action": "modify"}],
                         }
                     ],
-                    "critical_files": {
-                        "primary_files": [{"path": "foo.py", "action": "modify"}]
-                    },
+                    "critical_files": {"primary_files": [{"path": "foo.py", "action": "modify"}]},
                     "risks_mitigations": [
                         {"risk": "minimal risk", "mitigation": "covered by test"}
                     ],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                     "work_units": [],
                 },
             }
@@ -564,8 +559,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 )
                 return PipelineEvent.AGENT_SUCCESS
             raise AssertionError(
-                "Unexpected invoke phase before development_commit exit: "
-                f"{effect.phase}"
+                f"Unexpected invoke phase before development_commit exit: {effect.phase}"
             )
         if isinstance(effect, CommitEffect):
             raise AssertionError("Should not reach commit before stopping at development_commit")
@@ -601,8 +595,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
         for state in saved_states
         if state.phase == "development"
         and state.previous_phase == "development_analysis"
-        and state.get_loop_iteration("development_analysis_iteration")
-        == DEVELOPMENT_CYCLES_THREE
+        and state.get_loop_iteration("development_analysis_iteration") == DEVELOPMENT_CYCLES_THREE
     )
     assert loopback_development_state.get_budget_remaining("iteration") == 1
     development_commit_state = next(

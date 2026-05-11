@@ -754,11 +754,7 @@ class PipelinePolicy(_FrozenPolicyModel):
                 ("on_failure", t.on_failure),
                 ("on_loopback", t.on_loopback),
             ]:
-                if (
-                    target is not None
-                    and target not in ts
-                    and target not in self.phases
-                ):
+                if target is not None and target not in ts and target not in self.phases:
                     raise ValueError(
                         f"Phase '{phase_name}' transitions.{label} references "
                         f"unknown phase '{target}'"
@@ -1058,9 +1054,7 @@ class PolicyBundle(_FrozenPolicyModel):
     def analysis_decision_vocabulary_present(self) -> PolicyBundle:
         """Ensure analysis phases have decision_vocabulary defined."""
         analysis_phases = {
-            name: defn
-            for name, defn in self.pipeline.phases.items()
-            if defn.role == "analysis"
+            name: defn for name, defn in self.pipeline.phases.items() if defn.role == "analysis"
         }
         for phase_name, phase_def in analysis_phases.items():
             matching_artifacts = [

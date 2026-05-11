@@ -11,7 +11,9 @@ import uuid
 from dataclasses import dataclass, field
 
 _RALPH_MEDIA_PREFIX = "ralph://media/"
-_URI_PATTERN = re.compile(r"^ralph://media/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$")
+_URI_PATTERN = re.compile(
+    r"^ralph://media/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"
+)
 
 MEDIA_URI_TEMPLATE = "ralph://media/{artifact_id}"
 

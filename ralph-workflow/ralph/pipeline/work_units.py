@@ -166,8 +166,10 @@ def _check_no_overlap(units: list[WorkUnit]) -> None:
     """Detect prefix-overlap between any two units' allowed_directories."""
     # Build a flat list of (unit_id, path_parts) sorted for deterministic errors
     all_dirs: list[tuple[str, str, tuple[str, ...]]] = []
+
     def sort_key(unit: WorkUnit) -> str:
         return unit.unit_id
+
     for unit in sorted(units, key=sort_key):
         for d in sorted(unit.allowed_directories):
             parts = PurePosixPath(d).parts

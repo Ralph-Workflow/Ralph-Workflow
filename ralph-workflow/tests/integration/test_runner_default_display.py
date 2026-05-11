@@ -16,7 +16,6 @@ from unittest.mock import MagicMock
 import pytest
 from rich.console import Console
 
-import ralph.display.context as display_context_module
 import ralph.display.parallel_display as pd_module
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
@@ -197,9 +196,7 @@ def test_width_refresher_updates_live_display_context(
 
     stop_called: list[bool] = []
 
-    def fake_install_width_refresher(
-        ctx_holder: list[object], on_refresh: object = None
-    ) -> object:
+    def fake_install_width_refresher(ctx_holder: list[object], on_refresh: object = None) -> object:
         ctx_holder[0] = compact_ctx
         if callable(on_refresh):
             on_refresh(compact_ctx)
@@ -210,7 +207,7 @@ def test_width_refresher_updates_live_display_context(
         return stop
 
     monkeypatch.setattr(
-        display_context_module,
+        runner_module,
         "install_width_refresher",
         fake_install_width_refresher,
     )

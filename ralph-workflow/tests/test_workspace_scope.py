@@ -152,7 +152,6 @@ def test_resolve_workspace_scope_prefers_nearest_ralph_workspace(
     assert scope.allowed_roots == (package_root.resolve(),)
 
 
-
 def test_resolve_workspace_scope_inherits_main_worktree_config_by_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -170,10 +169,10 @@ def test_resolve_workspace_scope_inherits_main_worktree_config_by_default(
 
     assert scope.root == child_worktree.resolve()
     assert scope.local_config_path == (main_repo / ".agent" / "ralph-workflow.toml").resolve()
-    assert scope.resolve_agent_file("pipeline.toml") == (
-        main_repo / ".agent" / "pipeline.toml"
-    ).resolve()
-
+    assert (
+        scope.resolve_agent_file("pipeline.toml")
+        == (main_repo / ".agent" / "pipeline.toml").resolve()
+    )
 
 
 def test_resolve_workspace_scope_prefers_worktree_local_policy_override_per_file(
@@ -193,7 +192,7 @@ def test_resolve_workspace_scope_prefers_worktree_local_policy_override_per_file
     )
     (child_worktree / ".agent").mkdir(parents=True)
     (child_worktree / ".agent" / "pipeline.toml").write_text(
-        "entry_phase = \"development\"\n", encoding="utf-8"
+        'entry_phase = "development"\n', encoding="utf-8"
     )
 
     monkeypatch.setattr("ralph.workspace.scope.find_repo_root", lambda _start: child_worktree)
@@ -202,9 +201,10 @@ def test_resolve_workspace_scope_prefers_worktree_local_policy_override_per_file
     scope = resolve_workspace_scope(child_worktree)
 
     assert scope.local_config_path == (main_repo / ".agent" / "ralph-workflow.toml").resolve()
-    assert scope.resolve_agent_file("pipeline.toml") == (
-        child_worktree / ".agent" / "pipeline.toml"
-    ).resolve()
+    assert (
+        scope.resolve_agent_file("pipeline.toml")
+        == (child_worktree / ".agent" / "pipeline.toml").resolve()
+    )
 
 
 class TestSameWorkspaceWorkerScopeFencing:

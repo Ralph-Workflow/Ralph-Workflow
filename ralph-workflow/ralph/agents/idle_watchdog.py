@@ -627,11 +627,13 @@ class IdleWatchdog:
         return WatchdogVerdict.FIRE
 
     # Non-progress alive_by values — child is alive but not making forward progress.
-    _NON_PROGRESS_ALIVE_BY_VALUES = frozenset([
-        AliveBy.FRESH_HEARTBEAT_ONLY,
-        AliveBy.STALE_LABEL_ONLY,
-        AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
-    ])
+    _NON_PROGRESS_ALIVE_BY_VALUES = frozenset(
+        [
+            AliveBy.FRESH_HEARTBEAT_ONLY,
+            AliveBy.STALE_LABEL_ONLY,
+            AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+        ]
+    )
 
     def _effective_waiting_ceiling(
         self,

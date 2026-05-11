@@ -85,7 +85,6 @@ def _phase_label(phase: str) -> str:
     return phase.replace("_", " ").title()
 
 
-
 def _resolve_transition_meta(
     from_phase: str,
     to_phase: str,
@@ -276,16 +275,20 @@ def show_phase_start_from_entry(  # noqa: PLR0912
         if entry.outer_dev_iteration is not None:
             rule_title.append(
                 _build_outer_iteration_suffix(
-                    entry.outer_dev_iteration, entry.outer_dev_cap,
-                    od_glyph=od_glyph, qualifier="(outer)",
+                    entry.outer_dev_iteration,
+                    entry.outer_dev_cap,
+                    od_glyph=od_glyph,
+                    qualifier="(outer)",
                 ),
                 style="theme.outer_dev",
             )
         if entry.inner_analysis is not None:
             rule_title.append(
                 _build_inner_analysis_suffix(
-                    entry.inner_analysis, entry.inner_analysis_cap,
-                    ia_glyph=ia_glyph, qualifier="(inner)",
+                    entry.inner_analysis,
+                    entry.inner_analysis_cap,
+                    ia_glyph=ia_glyph,
+                    qualifier="(inner)",
                 ),
                 style="theme.inner_analysis",
             )
@@ -317,15 +320,19 @@ def show_phase_start_from_entry(  # noqa: PLR0912
 
     if entry.outer_dev_iteration is not None:
         suffix = _build_outer_iteration_suffix(
-            entry.outer_dev_iteration, entry.outer_dev_cap,
-            od_glyph=od_glyph, qualifier=outer_qualifier,
+            entry.outer_dev_iteration,
+            entry.outer_dev_cap,
+            od_glyph=od_glyph,
+            qualifier=outer_qualifier,
         )
         line.append(suffix, style="theme.outer_dev")
 
     if entry.inner_analysis is not None:
         suffix = _build_inner_analysis_suffix(
-            entry.inner_analysis, entry.inner_analysis_cap,
-            ia_glyph=ia_glyph, qualifier=inner_qualifier,
+            entry.inner_analysis,
+            entry.inner_analysis_cap,
+            ia_glyph=ia_glyph,
+            qualifier=inner_qualifier,
         )
         line.append(suffix, style="theme.inner_analysis")
 
@@ -490,15 +497,19 @@ def show_phase_close_banner(
 
     if exit_model.outer_dev_iteration is not None:
         suffix = _build_outer_iteration_suffix(
-            exit_model.outer_dev_iteration, exit_model.outer_dev_cap,
-            od_glyph=od_glyph, qualifier=outer_qualifier,
+            exit_model.outer_dev_iteration,
+            exit_model.outer_dev_cap,
+            od_glyph=od_glyph,
+            qualifier=outer_qualifier,
         )
         line.append(suffix, style="theme.outer_dev")
 
     if exit_model.inner_analysis is not None:
         suffix = _build_inner_analysis_suffix(
-            exit_model.inner_analysis, exit_model.inner_analysis_cap,
-            ia_glyph=ia_glyph, qualifier=inner_qualifier,
+            exit_model.inner_analysis,
+            exit_model.inner_analysis_cap,
+            ia_glyph=ia_glyph,
+            qualifier=inner_qualifier,
         )
         line.append(suffix, style="theme.inner_analysis")
 
@@ -543,7 +554,8 @@ def show_phase_close_banner(
     # The title mirrors the header so the section footer is readable when scrolling.
     if mode == "wide":
         _print_wide_close_rule(
-            style, c,
+            style,
+            c,
             elapsed_seconds=exit_model.elapsed_seconds,
             exit_trigger=exit_model.exit_trigger,
             arrow=arrow,

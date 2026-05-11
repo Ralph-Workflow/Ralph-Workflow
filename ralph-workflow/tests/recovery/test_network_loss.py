@@ -173,7 +173,9 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     collected_events: list[FailureEvent] = []
 
     bus = FailureEventBus()
-    bus.subscribe(lambda evt: collected_events.append(evt) if isinstance(evt, FailureEvent) else None)  # noqa: E501
+    bus.subscribe(
+        lambda evt: collected_events.append(evt) if isinstance(evt, FailureEvent) else None
+    )
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)

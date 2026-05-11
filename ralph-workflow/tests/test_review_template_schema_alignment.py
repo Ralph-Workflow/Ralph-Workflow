@@ -58,8 +58,7 @@ class TestReviewTemplateStatusValues:
     def test_template_has_no_clean_status_reference(self) -> None:
         text = _load_review_template()
         assert '"clean"' not in text, (
-            'review.jinja must not reference status="clean"; '
-            'use status="no_issues" instead'
+            'review.jinja must not reference status="clean"; use status="no_issues" instead'
         )
 
     def test_all_example_statuses_are_valid_schema_values(self) -> None:

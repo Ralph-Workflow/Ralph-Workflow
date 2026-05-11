@@ -158,8 +158,8 @@ def test_backoff_attempts_tracked_per_agent() -> None:
     )
 
     # Verify backoff attempts
-    assert controller._backoff_attempts.get(f"{"development"}:claude") == 2  # noqa: PLR2004
-    assert controller._backoff_attempts.get(f"{"development"}:opencode") == 1
+    assert controller._backoff_attempts.get(f"{'development'}:claude") == 2  # noqa: PLR2004
+    assert controller._backoff_attempts.get(f"{'development'}:opencode") == 1
 
 
 def test_backoff_resets_on_fallover() -> None:
@@ -186,7 +186,7 @@ def test_backoff_resets_on_fallover() -> None:
 
     # Backoff for claude should still be 1, but when we fail opencode,
     # the backoff attempts should reflect the new agent
-    assert controller._backoff_attempts.get(f"{"development"}:claude") == 1
+    assert controller._backoff_attempts.get(f"{'development'}:claude") == 1
 
 
 def test_retry_delay_ms_from_policy_bundle() -> None:
@@ -276,7 +276,7 @@ def test_retry_delay_ms_caps_at_max_backoff() -> None:
 
     # The backoff_attempts key for this agent should have count=10
     # compute_backoff_ms(1000, 10, 30000) = min(1000 * 2^10, 30000) = 30000
-    key = f"{"development"}:claude"
+    key = f"{'development'}:claude"
     assert controller._backoff_attempts.get(key) == 10  # noqa: PLR2004
     assert compute_backoff_ms(1000, 10, 30_000) == 30_000  # noqa: PLR2004
 
@@ -297,7 +297,7 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
     controller.handle(state, _AgentTimeoutError("idle 2"), phase="development", agent="claude")
 
     # Verify backoff is at attempt 2
-    key = f"{"development"}:claude"
+    key = f"{'development'}:claude"
     assert controller._backoff_attempts.get(key) == 2  # noqa: PLR2004
 
     # Reset backoff (simulate successful invocation)

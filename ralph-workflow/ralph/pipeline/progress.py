@@ -237,15 +237,12 @@ def _tracked_budget_counters_in_commit_order(policy: PipelinePolicy) -> list[str
 
         t = phase_def.transitions
         next_phases: list[str] = [
-            ph for ph in [t.on_success, t.on_failure, t.on_loopback]
-            if ph and ph not in visited
+            ph for ph in [t.on_success, t.on_failure, t.on_loopback] if ph and ph not in visited
         ]
         next_phases.extend(
             dr.target for dr in phase_def.decisions.values() if dr.target not in visited
         )
-        next_phases.extend(
-            tgt for tgt in phase_def.bypass_routes.values() if tgt not in visited
-        )
+        next_phases.extend(tgt for tgt in phase_def.bypass_routes.values() if tgt not in visited)
         queue.extend(next_phases)
 
     return result

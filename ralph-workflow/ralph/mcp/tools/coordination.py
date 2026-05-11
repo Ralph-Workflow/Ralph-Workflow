@@ -138,9 +138,7 @@ def format_progress_text(status: str, note: str, timestamp: int) -> str:
     )
 
 
-def require_capability(
-    session: CoordinationSessionLike, capability: str, action: str
-) -> None:
+def require_capability(session: CoordinationSessionLike, capability: str, action: str) -> None:
     """Require a capability, raising a capability-denied error when missing."""
     outcome = session.check_capability(capability)
     if _is_approved(outcome):

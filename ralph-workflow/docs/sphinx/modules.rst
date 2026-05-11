@@ -1929,13 +1929,6 @@ ralph.prompts.types
    :show-inheritance:
    :exclude-members: CapabilitySet,PolicyFlag,PolicyFlagSet
 
-ralph.pydantic_compat
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pydantic_compat
-   :members:
-   :show-inheritance:
-
 ----
 
 Testing

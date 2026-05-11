@@ -56,9 +56,7 @@ class TestArchivalTooling:
                     "no longer maintained",
                 ]
             )
-            assert has_historical_label, (
-                f"{tool} should be labeled as historical/archival"
-            )
+            assert has_historical_label, f"{tool} should be labeled as historical/archival"
 
 
 class TestCodeStyleIndex:
@@ -109,6 +107,4 @@ class TestCodeStyleLeaves:
                 "legacy rust",
             ]
         )
-        assert has_marker, (
-            f"{leaf} must contain an in-body historical Rust-era marker"
-        )
+        assert has_marker, f"{leaf} must contain an in-body historical Rust-era marker"

@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from ralph.process.child_liveness import ChildActivitySnapshot
+from ralph.process.manager import get_process_manager
+
 if TYPE_CHECKING:
-    from ralph.process.child_liveness import ChildActivitySnapshot, ChildLivenessRegistry
+    from ralph.process.child_liveness import ChildLivenessRegistry
 
 
 @runtime_checkable
@@ -37,17 +40,12 @@ class DefaultLivenessProbe:
         self._registry = registry
 
     def any_agent_active(self, label_prefix: str) -> bool:
-        from ralph.process.manager import get_process_manager
-
         return any(
             r.label is not None and r.label.startswith(label_prefix)
             for r in get_process_manager().list_active()
         )
 
     def child_snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
-        from ralph.process.child_liveness import ChildActivitySnapshot
-        from ralph.process.manager import get_process_manager
-
         # Only scan ProcessManager labels when we have a meaningful (non-empty) prefix.
         # An empty prefix would match ALL active processes including the parent itself.
         has_process = False
@@ -113,8 +111,6 @@ class FakeLivenessProbe:
         return self._active
 
     def child_snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
-        from ralph.process.child_liveness import ChildActivitySnapshot
-
         if self._snapshot is not None:
             return self._snapshot
         # For empty prefix with label-based matching, don't scan labels.

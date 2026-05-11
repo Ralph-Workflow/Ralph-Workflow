@@ -104,14 +104,16 @@ def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path: Path) -> N
         workspace_root=tmp_path,
     )
 
-    event = json.dumps({
-        "type": "content_block_start",
-        "content_block": {
-            "type": "tool_use",
-            "name": "mcp__ralph__read_file",
-            "input": {"path": "ralph-workflow/ralph/x.py"},
-        },
-    })
+    event = json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_use",
+                "name": "mcp__ralph__read_file",
+                "input": {"path": "ralph-workflow/ralph/x.py"},
+            },
+        }
+    )
     pd.activity_router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
     out = buf.getvalue()
 
@@ -144,14 +146,16 @@ def test_tool_use_metadata_preserves_original_name() -> None:
 
     router = ActivityRouter(on_event=capture_event)
 
-    event = json.dumps({
-        "type": "content_block_start",
-        "content_block": {
-            "type": "tool_use",
-            "name": "mcp__ralph__read_file",
-            "input": {"path": "x.py"},
-        },
-    })
+    event = json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_use",
+                "name": "mcp__ralph__read_file",
+                "input": {"path": "x.py"},
+            },
+        }
+    )
     router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
 
     assert len(received) == 1, f"Expected 1 TOOL_USE event, got {len(received)}"

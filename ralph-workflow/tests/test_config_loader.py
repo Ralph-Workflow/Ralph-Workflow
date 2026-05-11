@@ -72,7 +72,6 @@ def _assert_validation_error(action: Callable[[], object]) -> None:
     assert exc_info.type.__name__ == "ValidationError"
 
 
-
 def test_deep_merge_simple() -> None:
     """Test basic dictionary merge."""
     base: dict[str, object] = {"a": 1, "b": 2}
@@ -110,7 +109,6 @@ def test_load_config_without_agent_policy_tables_leaves_agent_policy_empty(
     assert config.agent_chains == {}
     assert config.agent_drains == {}
     assert config.general.workflow.checkpoint_enabled is True
-
 
 
 def test_load_config_supports_xdg_config_home(
@@ -454,6 +452,5 @@ def test_timeout_policy_defaults_match_timeout_defaults_constants() -> None:
     assert policy.waiting_status_interval_seconds == WAITING_STATUS_INTERVAL_SECONDS
     assert policy.suspect_waiting_on_child_seconds == SUSPECT_WAITING_ON_CHILD_SECONDS
     assert (
-        policy.max_waiting_on_child_no_progress_seconds
-        == MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
+        policy.max_waiting_on_child_no_progress_seconds == MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
     )

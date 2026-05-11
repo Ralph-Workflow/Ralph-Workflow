@@ -6,7 +6,6 @@ This module implements the main pipeline execution command.
 from __future__ import annotations
 
 import pathlib  # noqa: TC003
-from functools import lru_cache
 from importlib import import_module
 from inspect import signature
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
@@ -61,12 +60,30 @@ class _RunnerModule(Protocol):
     run: _RunnerFunc
 
 
-@lru_cache(maxsize=1)
+_RUN_FUNC_UNSET: object = object()
+_run_func: _RunnerFunc | None | object = _RUN_FUNC_UNSET
+
+
 def _get_run_func() -> _RunnerFunc | None:
+    """Return the pipeline runner callable, importing it lazily on first call.
+
+    The module-level ``_run_func`` is exposed so tests can inject a fake runner
+    via ``monkeypatch.setattr``. A sentinel distinguishes "not yet loaded" from
+    the genuine ``None`` produced by an ImportError, ensuring repeated calls do
+    not retry the import after a failure.
+    """
+    global _run_func  # noqa: PLW0603
+
+    if _run_func is not _RUN_FUNC_UNSET:
+        return cast("_RunnerFunc | None", _run_func)
+
     try:
         module = cast("_RunnerModule", import_module("ralph.pipeline.runner"))
     except ImportError:
+        _run_func = None
         return None
+
+    _run_func = module.run
     return module.run
 
 
@@ -129,9 +146,7 @@ def _load_configuration(
     if resume:
         initial_state = ckpt.load()
         if initial_state is None:
-            console.print(
-                Text("No checkpoint found to resume from", style="theme.status.warning")
-            )
+            console.print(Text("No checkpoint found to resume from", style="theme.status.warning"))
 
     return _LoadResult(
         config=config,
@@ -280,9 +295,7 @@ def _print_dry_run(
     """Print dry-run information."""
     console = display_context.console
     console.print(Text("Dry run mode", style="theme.cat.meta"))
-    fallback_phase = (
-        policy_bundle.pipeline.entry_phase if policy_bundle is not None else "unknown"
-    )
+    fallback_phase = policy_bundle.pipeline.entry_phase if policy_bundle is not None else "unknown"
     phase = initial_state.phase if initial_state else fallback_phase
     console.print(_detail_text("Phase", phase))
     console.print(_detail_text("Iterations", str(config.general.developer_iters)))
@@ -422,9 +435,7 @@ def run_pipeline(  # noqa: PLR0913
         current_prompt_path.write_text(inline_prompt, encoding="utf-8")
 
     # Phase 1: Load configuration
-    load_result = _load_configuration(
-        config_path, cli_overrides or {}, resume, display_context=ctx
-    )
+    load_result = _load_configuration(config_path, cli_overrides or {}, resume, display_context=ctx)
     if isinstance(load_result, int):
         return load_result
 
