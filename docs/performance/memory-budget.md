@@ -1,4 +1,8 @@
-# Memory Budget and Performance Baselines
+# Memory Budget and Performance Baselines (Historical - Rust Era)
+
+> **This file describes the retired Rust implementation and is kept for archival reference only.**
+> The Python package does not share the same memory management, commands, or code paths.
+> For Python performance guidance, refer to the package docstrings and Sphinx documentation.
 
 This document establishes memory budget expectations and performance baselines for the Ralph workflow pipeline based on comprehensive benchmarking and testing.
 
@@ -13,7 +17,7 @@ The Ralph pipeline implements bounded memory growth through a configurable execu
 
 ## Execution History Bounded Growth
 
-**Implementation:** `src/reducer/state/pipeline/core_state.rs:395-403`
+**Historical Implementation:** `src/reducer/state/pipeline/core_state.rs:395-403` (Rust)
 
 The `add_execution_step` method enforces bounded growth with configurable limits:
 

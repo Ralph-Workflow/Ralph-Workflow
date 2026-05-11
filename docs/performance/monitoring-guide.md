@@ -1,4 +1,8 @@
-# Production Memory Monitoring Guide
+# Production Memory Monitoring Guide (Historical - Rust Era)
+
+> **This file describes the retired Rust implementation and is kept for archival reference only.**
+> The Python package does not share the same monitoring approach, commands, or code paths.
+> For Python monitoring guidance, refer to the package docstrings and Sphinx documentation.
 
 This guide explains how to monitor memory usage in production deployments
 to detect issues early and prevent OOM failures.

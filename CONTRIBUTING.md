@@ -27,11 +27,15 @@ cd ralph-workflow
 make verify
 ```
 
-Verification is clean only when the Python checks pass without unresolved errors:
+Canonical verification is the `make verify` command run from the `ralph-workflow/` directory. It runs clean only when **all** of the following checks pass without unresolved errors:
 
-- `ruff check ralph/ tests/`
-- `mypy ralph/`
-- `pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html`
+- `ruff check ralph/ tests/` — lint and format
+- `mypy ralph/` — type checking
+- `pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html` — unit and integration tests with coverage
+- `make docs` — Sphinx HTML build completes warning-free
+- subprocess E2E smoke tests via the `test-subprocess-e2e` target
+
+Use focused sub-commands (e.g. `uv run ruff check ralph/`) only when narrowing a specific failure. The authoritative gate is always `make verify`.
 
 ## Documentation expectations
 

@@ -1,5 +1,7 @@
 # Module Organization
 
+> **Historical Rust-era documentation** — This file describes the retired Rust implementation's module organization guidance. The current Python package under `ralph-workflow/` follows different patterns. Treat this file as archival background only.
+
 This document describes how finished modules should be shaped once refactoring is complete.
 
 The examples here are normative examples for this codebase.

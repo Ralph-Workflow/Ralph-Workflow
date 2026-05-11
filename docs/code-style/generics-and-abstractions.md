@@ -1,5 +1,7 @@
 # Generics And Abstractions
 
+> **Historical Rust-era documentation** — This file describes the retired Rust implementation's generics and abstractions guidance. The current Python package under `ralph-workflow/` follows different patterns. Treat this file as archival background only.
+
 This document defines when generic techniques are worth using in the project and when explicit code is better.
 
 ## Core rule

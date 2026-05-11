@@ -1,5 +1,7 @@
 # Coding Patterns
 
+> **Historical Rust-era documentation** — This file describes the retired Rust implementation's coding patterns. The current Python package under `ralph-workflow/` follows different patterns. Treat this file as archival background only.
+
 This document shows the preferred coding patterns for ordinary project Rust code.
 
 All code examples here are written to be compatible with the repository's lint and dylint expectations for non-boundary code.

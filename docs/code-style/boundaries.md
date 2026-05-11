@@ -1,5 +1,7 @@
 # Boundaries
 
+> **Historical Rust-era documentation** — This file describes the retired Rust implementation's boundaries guidance. The current Python package under `ralph-workflow/` follows different patterns. Treat this file as archival background only.
+
 This document defines what boundary code is supposed to be in this repository.
 
 It is a normative guide for functional Rust: what belongs in pure domain code,

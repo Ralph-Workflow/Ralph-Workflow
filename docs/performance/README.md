@@ -1,4 +1,8 @@
-# Performance Documentation
+# Performance Documentation (Historical - Rust Era)
+
+> **This file describes the retired Rust implementation and is kept for archival reference only.**
+> The Python package does not share the same performance characteristics, commands, or code paths.
+> For Python performance guidance, refer to the package docstrings and Sphinx documentation.
 
 This directory contains documentation related to performance characteristics,
 resource management, and monitoring for the Ralph pipeline.
@@ -22,7 +26,9 @@ resource management, and monitoring for the Ralph pipeline.
 | Checkpoint (serialized) | 300-400 KB | 2 MB |
 | Total per run | ~1-10 MB | Varies (file snapshots/logging) |
 
-### Verification Commands
+### Verification Commands (Historical - Rust Era)
+
+These commands are from the retired Rust implementation:
 
 ```bash
 # Full verification suite (includes memory safety and performance regression)
@@ -37,24 +43,16 @@ cargo xtask test -p ralph-workflow-tests --test integration_tests \
     memory_safety::bounded_growth::test_execution_history_heap_size_within_baseline
 ```
 
-### Key Implementation Files
+### Key Implementation Files (Historical)
+
+These files are from the retired Rust implementation:
 
 - `ralph-workflow/src/reducer/state/pipeline/core_state.rs:395-403` -
-  Bounded execution history implementation
-- `ralph-workflow/src/benchmarks/` - Performance measurement benchmarks
-- `tests/integration_tests/memory_safety/` - Memory safety verification tests
-
-## Contributing
-
-When making changes that affect memory usage or performance:
-
-1. Run full verification suite (see above)
-2. Update baselines if intentional performance characteristics change
-3. Update this documentation if new patterns are introduced
-4. Ensure CI regression tests pass
+  Bounded execution history implementation (Rust)
+- `ralph-workflow/src/benchmarks/` - Performance measurement benchmarks (Rust)
+- `tests/integration_tests/memory_safety/` - Memory safety verification tests (Rust)
 
 ## See Also
 
 - `AGENTS.md` - General contribution guidelines
-- `docs/agents/verification.md` - Required verification before PR/completion
-- `tests/INTEGRATION_TESTS.md` - Integration test style guide
+- `docs/agents/verification.md` - Required verification before PR/completion (Python)

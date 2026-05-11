@@ -1,5 +1,7 @@
 # Code Shape
 
+> **Historical Rust-era documentation** — This file describes the retired Rust implementation's code shape guidance. The current Python package under `ralph-workflow/` follows different patterns. Treat this file as archival background only.
+
 This document defines what the Ralph codebase should look like.
 
 ## What "done" means

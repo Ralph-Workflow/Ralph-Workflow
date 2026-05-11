@@ -15,7 +15,9 @@ Current style and quality gates come from:
 
 - Keep public APIs typed.
 - Prefer explicit, readable control flow over clever abstractions.
-- Keep public module and package docstrings good enough for `pydoc` to stand on its own.
+- Keep public module and package docstrings self-sufficient for `pydoc` users — external documentation must not be required for local context.
+- Maintain Sphinx/internal API documentation that is comprehensive for developers — all public packages, modules, classes, and functions must have substantive docstrings suitable for autodoc.
+- Keep public-facing Markdown docs current and self-sufficient — readers must not need external documentation to understand maintained workflow docs.
 - Preserve the separation between CLI, orchestration, MCP, Git, and workspace layers.
 - Match the existing `ruff`, `mypy`, and `pytest` workflow.
 

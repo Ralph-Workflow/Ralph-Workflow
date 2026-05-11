@@ -1,5 +1,7 @@
 # Testing
 
+> **Historical Rust-era documentation** — This file describes the retired Rust implementation's testing patterns. The current Python package under `ralph-workflow/` follows different patterns. Treat this file as archival background only.
+
 This document describes what tests should look like in this architecture.
 
 All examples here are written to match the repository's lint expectations for tests too: no `unwrap()`, no hidden global setup, and no boundary leakage into pure tests.
