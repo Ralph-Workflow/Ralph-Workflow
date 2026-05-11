@@ -50,8 +50,8 @@ See [Policy Explanation](policy-explanation.md) for the full policy inspection c
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP/pipeline/artifact files; `ralph --init` (no label) is the recommended form — any label is deprecated and ignored |
-| `--generate-local-config` | | `False` | Create `.agent/ralph-workflow.toml` as an explicit project-local main override |
+| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP/pipeline/artifact files copied from the user-global config set; `ralph --init` (no label) is the recommended form — any label is deprecated and ignored |
+| `--init-local-config` | | `False` | Create `.agent/` config files as explicit project-local copies of the user-global Ralph Workflow config set (`--generate-local-config` remains an alias) |
 | `--regenerate-config` | | `False` | Rewrite all configs from bundled defaults (existing files are backed up to `<name>.bak`) |
 
 ## Quick Mode

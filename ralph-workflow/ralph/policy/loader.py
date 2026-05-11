@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import Mapping, Sequence
+from os import getenv
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -347,20 +348,35 @@ def _load_policy_from_paths(
     pipeline_path: Path,
     artifacts_path: Path,
     config: UnifiedConfig | None = None,
+    global_policy_paths: tuple[Path | None, Path | None] | None = None,
 ) -> PolicyBundle:
     """Load a policy bundle from explicit file paths."""
+    global_pipeline_path, global_artifacts_path = (
+        global_policy_paths if global_policy_paths is not None else (None, None)
+    )
     default_dir = _default_dir()
-    pipeline_data = _load_toml(pipeline_path)
-    artifacts_data = _load_toml(artifacts_path)
-
-    if not pipeline_data:
-        pipeline_data = _load_toml(default_dir / "pipeline.toml")
+    default_pipeline_data = _load_toml(default_dir / "pipeline.toml")
+    local_pipeline_data = _load_toml(pipeline_path)
+    if global_pipeline_path is None:
+        pipeline_data = local_pipeline_data or default_pipeline_data
+    else:
+        global_pipeline_data = _load_toml(global_pipeline_path)
+        pipeline_data = _merge_mapping_defaults(default_pipeline_data, global_pipeline_data)
+        if local_pipeline_data:
+            pipeline_data = _merge_mapping_defaults(pipeline_data, local_pipeline_data)
 
     default_artifacts_data = _load_toml(default_dir / "artifacts.toml")
-    if artifacts_data:
-        artifacts_data = _merge_mapping_defaults(default_artifacts_data, artifacts_data)
+    local_artifacts_data = _load_toml(artifacts_path)
+    if global_artifacts_path is None:
+        if local_artifacts_data:
+            artifacts_data = _merge_mapping_defaults(default_artifacts_data, local_artifacts_data)
+        else:
+            artifacts_data = default_artifacts_data
     else:
-        artifacts_data = default_artifacts_data
+        global_artifacts_data = _load_toml(global_artifacts_path)
+        artifacts_data = _merge_mapping_defaults(default_artifacts_data, global_artifacts_data)
+        if local_artifacts_data:
+            artifacts_data = _merge_mapping_defaults(artifacts_data, local_artifacts_data)
 
     agents_policy = _load_agents_policy_from_path(agents_path, config=config)
     pipeline_policy = _validate_pipeline(pipeline_data)
@@ -425,12 +441,25 @@ def load_policy_for_workspace_scope(
         pipeline_path=workspace_scope.resolve_agent_file("pipeline.toml"),
         artifacts_path=workspace_scope.resolve_agent_file("artifacts.toml"),
         config=config,
+        global_policy_paths=(
+            _global_policy_path("pipeline.toml"),
+            _global_policy_path("artifacts.toml"),
+        ),
     )
 
 
 def _default_dir() -> Path:
     """Return the path to the bundled default policy files."""
     return Path(ralph.policy.__file__).parent / "defaults"
+
+
+
+def _global_policy_path(filename: str) -> Path:
+    """Return the user-global policy file path for a runtime policy TOML."""
+    xdg = getenv("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / filename
+    return Path.home() / ".config" / filename
 
 
 def load_policy_or_die(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:

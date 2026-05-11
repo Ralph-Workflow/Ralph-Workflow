@@ -143,10 +143,10 @@ ralph
 
 `ralph --init` is the canonical form. Compatibility labels such as `default` are deprecated,
 ignored, and no longer recommended in docs or scripts. `ralph --init` scaffolds the project-local
-support files and seeds a small default `.gitignore` policy for Ralph Workflow local artifacts such as
-`.agent/`, the local `PROMPT` file pattern, and default `wt-*` worktree directories; use
-`ralph --generate-local-config` only when this repo needs a main-config override instead of
-inheriting from `~/.config/ralph-workflow.toml`.
+support files from the user-global config set and seeds a small default `.gitignore` policy for Ralph Workflow
+local artifacts such as `.agent/`, the local `PROMPT` file pattern, and default `wt-*`
+worktree directories; use `ralph --init-local-config` only when this repo needs a full project-local
+copy of the user-global config set instead of inheriting those values.
 
 ## First-run configuration
 
@@ -155,14 +155,17 @@ On first run, Ralph Workflow creates the standard project and user config files 
 **User-global (created once, reused across projects):**
 - `~/.config/ralph-workflow.toml` — main Ralph Workflow configuration
 - `~/.config/ralph-workflow-mcp.toml` — MCP servers, web search, and web visit configuration
+- `~/.config/pipeline.toml` — user-global pipeline defaults for new workspaces and no-local-override runs
+- `~/.config/artifacts.toml` — user-global artifact-contract defaults for new workspaces and no-local-override runs
 
 **Project-local support files (created by `ralph --init`, live in your project directory):**
-- `.agent/mcp.toml` — project-local MCP override
-- `.agent/pipeline.toml` — phase graph and orchestration settings
-- `.agent/artifacts.toml` — MCP artifact contracts per drain
+- `.agent/mcp.toml` — project-local MCP override copied from the user-global MCP config when present
+- `.agent/pipeline.toml` — project-local phase graph copied from the user-global pipeline config when present
+- `.agent/artifacts.toml` — project-local artifact contracts copied from the user-global artifacts config when present
 
-**Optional project-local main override (created only when you ask for it):**
-- `.agent/ralph-workflow.toml` — project-specific main config override, including agent chains and drain bindings; generate it with `ralph --generate-local-config`
+**Optional full project-local override copy (created only when you ask for it):**
+- `.agent/ralph-workflow.toml` — project-specific main config override, including agent chains and drain bindings
+- `ralph --init-local-config` also refreshes `.agent/mcp.toml`, `.agent/pipeline.toml`, and `.agent/artifacts.toml` from the user-global config set when they are missing
 
 **Override precedence (highest to lowest):**
 CLI flags → project-local (`.agent/`) → user-global (`~/.config/`) → bundled defaults

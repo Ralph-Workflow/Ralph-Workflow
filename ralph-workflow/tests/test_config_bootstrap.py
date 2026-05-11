@@ -26,7 +26,7 @@ from ralph.policy.loader import (
 from ralph.workspace.scope import WorkspaceScope
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
-_EXPECTED_REGENERATE_COUNT = 7
+_EXPECTED_REGENERATE_COUNT = 9
 _EXPECTED_DEFAULT_GITIGNORE_LINES = (".agent/", "/PROMPT*", "wt-*/")
 _EXPECTED_IGNORED_LOCAL_PATHS = (
     ".agent/mcp.toml",
@@ -130,6 +130,8 @@ def test_regenerate_all_force_creates_backups(tmp_path: Path) -> None:
     sentinel = "# SENTINEL"
     (global_dir / "ralph-workflow.toml").write_text(sentinel, encoding="utf-8")
     (global_dir / "ralph-workflow-mcp.toml").write_text(sentinel, encoding="utf-8")
+    (global_dir / "pipeline.toml").write_text(sentinel, encoding="utf-8")
+    (global_dir / "artifacts.toml").write_text(sentinel, encoding="utf-8")
     (agent_dir / "ralph-workflow.toml").write_text(sentinel, encoding="utf-8")
     (agent_dir / "mcp.toml").write_text(sentinel, encoding="utf-8")
     (agent_dir / "agents.toml").write_text(sentinel, encoding="utf-8")

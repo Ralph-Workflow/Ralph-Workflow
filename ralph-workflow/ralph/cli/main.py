@@ -30,7 +30,8 @@ from ralph.cli.options import display_agents_table, display_providers_table
 from ralph.config.bootstrap import (
     ensure_global_config,
     ensure_global_mcp_config,
-    ensure_local_main_config,
+    ensure_global_policy_configs,
+    ensure_local_configs,
     regenerate_all,
 )
 from ralph.config.enums import Verbosity
@@ -268,7 +269,11 @@ def _try_load_registry() -> AgentRegistry | None:
 
 def _bootstrap_global_configs(*, display_context: DisplayContext) -> None:
     """Create user-global config files from bundled templates if they don't exist."""
-    results = [ensure_global_config(), ensure_global_mcp_config()]
+    results = [
+        ensure_global_config(),
+        ensure_global_mcp_config(),
+        *ensure_global_policy_configs(),
+    ]
     registry = None
     if any(r.action in {"created", "regenerated"} for r in results):
         registry = _try_load_registry()
@@ -304,26 +309,15 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
 
 
 def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
-    """Create the optional project-local main config override."""
+    """Create the full project-local config override set from the global config set."""
     console = display_context.console
     scope = resolve_workspace_scope()
-    result = ensure_local_main_config(scope.local_config_path.parent)
-    if result.action == "created":
-        text = Text("Created local override config: ", style="theme.status.success")
-        text.append(str(result.path))
-        text.append(
-            " (overrides the user-global main config in this repo)",
-            style="theme.text.muted",
-        )
-        console.print(text)
+    results = ensure_local_configs(scope.local_config_path.parent)
+    if any(result.action in {"created", "regenerated"} for result in results):
+        emit_first_run_welcome(console, results, display_context=display_context)
         return
-    if result.action == "regenerated":
-        text = Text("Regenerated local override config: ", style="theme.status.success")
-        text.append(str(result.path))
-        console.print(text)
-        return
-    text = Text("Local override already exists: ", style="theme.text.muted")
-    text.append(str(result.path))
+    text = Text("Local config files already exist in: ", style="theme.text.muted")
+    text.append(str(scope.local_config_path.parent))
     console.print(text)
 
 
@@ -469,9 +463,10 @@ def main(  # noqa: PLR0913
             "--init",
             help=(
                 "Initialize Ralph Workflow in the current directory (scaffolds PROMPT.md plus"
-                " project-local MCP/pipeline/artifact files). Use"
-                " `--generate-local-config` when you also want a project-local main override."
-                " Labels are deprecated and ignored; use `--init` without a label."
+                " project-local MCP/pipeline/artifact files copied from the user-global"
+                " config set). Use `--init-local-config` when you also want a full"
+                " project-local override copy. Labels are deprecated and ignored; use"
+                " `--init` without a label."
             ),
         ),
     ] = None,
@@ -486,9 +481,11 @@ def main(  # noqa: PLR0913
     generate_local_config: Annotated[
         bool,
         typer.Option(
+            "--init-local-config",
             "--generate-local-config",
             help=(
-                "Create .agent/ralph-workflow.toml as an explicit project-local main override"
+                "Create .agent/ config files as explicit project-local copies of the"
+                " user-global Ralph Workflow config set"
             ),
         ),
     ] = False,

@@ -79,12 +79,12 @@ ralph --init
 ```
 
 This creates `PROMPT.md` with a starter template plus the project-local `.agent/`
-support files (`mcp.toml`, `pipeline.toml`, and `artifacts.toml`). You will see a
-welcome panel listing what was created. If this repository needs its own main-config
-override instead of inheriting from `~/.config/ralph-workflow.toml`, generate it explicitly:
+support files (`mcp.toml`, `pipeline.toml`, and `artifacts.toml`) copied from the
+user-global config set. You will see a welcome panel listing what was created. If this
+repository needs its own full local copy of the user-global config set, generate it explicitly:
 
 ```bash
-ralph --generate-local-config
+ralph --init-local-config
 ```
 
 ### 3. Edit PROMPT.md
