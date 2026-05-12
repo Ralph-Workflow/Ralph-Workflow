@@ -258,5 +258,3 @@ class TestNamespacedPayloadDocs:
         assert violations == [], (
             f"parallel-mode.md contains future-tense worktree language: {violations!r}"
         )
-
-

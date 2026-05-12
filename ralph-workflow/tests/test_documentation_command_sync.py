@@ -141,7 +141,6 @@ def test_readme_stays_onboarding_focused_and_points_to_deeper_docs() -> None:
     assert "modules.rst" in content
 
 
-
 def test_contributing_describes_read_media_as_primary_multimodal_tool() -> None:
     """CONTRIBUTING.md must describe read_media as primary tool, not image-only."""
     content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
@@ -191,8 +190,6 @@ def test_sphinx_agents_describes_bounded_summaries_not_first_class_artifacts() -
     assert "bounded" in content or "summaries" in content or "summary" in content
     # Must not claim parsers preserve multimodal as first-class artifacts in event stream
     assert "preserve these blocks as first-class artifacts" not in content
-
-
 
 
 def test_mcp_servers_doc_provider_matrix_typed_blocks() -> None:
