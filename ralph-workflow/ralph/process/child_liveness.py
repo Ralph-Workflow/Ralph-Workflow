@@ -232,9 +232,14 @@ class ChildLivenessRegistry:
         rec.last_ack_at = t
         rec.terminal_state = terminal_state
 
+    def has_records(self, scope_prefix: str) -> bool:
+        """Return True when any record currently matches the given scope prefix."""
+        return any(rec.scope_prefix.startswith(scope_prefix) for rec in self._records.values())
+
     def snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
         """Return an aggregated freshness snapshot for all children matching scope_prefix."""
         now = self._now()
+        self.prune_stale(now)
         active_count = 0
         terminal_count = 0
         has_process = False
@@ -321,12 +326,16 @@ class ChildLivenessRegistry:
                     to_prune.append(child_id)
                 continue
             # Non-terminal: prune if progress is stale (or never happened and label is old)
+            heartbeat_fresh = False
+            if rec.last_heartbeat_at is not None:
+                heartbeat_fresh = (t - rec.last_heartbeat_at) <= self._heartbeat_ttl
             if rec.last_progress_at is not None:
-                if (t - rec.last_progress_at) > self._progress_ttl:
+                progress_stale = (t - rec.last_progress_at) > self._progress_ttl
+                if progress_stale and not heartbeat_fresh:
                     to_prune.append(child_id)
             else:
                 label_age = t - rec.started_at
-                if label_age > self._stale_label_ttl:
+                if label_age > self._stale_label_ttl and not heartbeat_fresh:
                     to_prune.append(child_id)
         for child_id in to_prune:
             del self._records[child_id]

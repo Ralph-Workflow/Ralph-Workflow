@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 __all__ = [
     "SessionBridgeLike",
     "build_fastmcp_server",
+    "factory_impl",
     "run_standalone_server",
     "shutdown_mcp_server",
     "start_mcp_server",
@@ -25,6 +26,8 @@ __all__ = [
 
 
 def __getattr__(name: str) -> object:
+    if name == "factory_impl":
+        return cast("object", import_module("ralph.mcp.server.factory_impl"))
     if name in {"build_fastmcp_server", "run_standalone_server"}:
         return cast("object", getattr(import_module("ralph.mcp.server.runtime"), name))
     msg = f"module {__name__!r} has no attribute {name!r}"

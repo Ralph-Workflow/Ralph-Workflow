@@ -538,3 +538,73 @@ def test_terminate_with_live_descendants() -> None:
 
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
+
+
+# ---------------------------------------------------------------------------
+# 14. Public terminal-history contract
+# ---------------------------------------------------------------------------
+
+
+def test_get_record_returns_terminal_history_after_exit() -> None:
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
+    pm = _make_pm(sync_factory=sync_factory)
+
+    handle = pm.spawn([sys.executable, "-c", "pass"], label="phase:test")
+    pid = handle.pid
+    handle.wait()
+
+    record = pm.get_record(pid)
+    assert record is not None
+    assert record.status == ProcessStatus.EXITED
+    assert pm.get_record(pid, include_terminal=False) is None
+
+
+def test_list_records_filters_active_and_terminal_by_label_prefix() -> None:
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
+    pm = _make_pm(sync_factory=sync_factory)
+
+    active = pm.spawn([sys.executable, "-c", "pass"], label="phase:keep")
+    terminal = pm.spawn([sys.executable, "-c", "pass"], label="phase:done")
+    terminal.wait()
+
+    active_records = pm.list_records(
+        include_active=True,
+        include_terminal=False,
+        label_prefix="phase:",
+    )
+    terminal_records = pm.list_records(
+        include_active=False,
+        include_terminal=True,
+        label_prefix="phase:",
+    )
+
+    assert [r.pid for r in active_records] == [active.pid]
+    assert [r.pid for r in terminal_records] == [terminal.pid]
+
+
+def test_terminal_history_limit_evicts_oldest_terminal_records_first() -> None:
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.3,
+            kill_followup_timeout_s=0.5,
+            log_events=False,
+            terminal_history_limit=2,
+        ),
+        sync_process_factory=sync_factory,
+        async_process_factory=make_async_process_factory(itertools.count(100)),
+    )
+
+    handles = [pm.spawn([sys.executable, "-c", "pass"], label=f"phase:{idx}") for idx in range(3)]
+    for handle in handles:
+        handle.wait()
+
+    terminal_records = pm.list_records(
+        include_active=False,
+        include_terminal=True,
+        label_prefix="phase:",
+    )
+    terminal_pids = [record.pid for record in terminal_records]
+
+    assert terminal_pids == [handles[1].pid, handles[2].pid]
+    assert pm.get_record(handles[0].pid) is None

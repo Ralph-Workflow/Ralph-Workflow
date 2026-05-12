@@ -105,7 +105,7 @@ def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Pat
     finally:
         _mgr._singleton = original_singleton
 
-    labels = [r.label for r in pm._records.values()]
+    labels = [r.label for r in pm.list_records(include_terminal=True)]
     assert "phase:development:git:rev-parse" in labels, (
         f"Expected 'phase:development:git:rev-parse' in labels, got: {labels}"
     )
@@ -126,5 +126,5 @@ def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
     finally:
         _mgr._singleton = original_singleton
 
-    labels = [r.label for r in pm._records.values()]
+    labels = [r.label for r in pm.list_records(include_terminal=True)]
     assert "git:rev-parse" in labels, f"Expected 'git:rev-parse' in labels, got: {labels}"

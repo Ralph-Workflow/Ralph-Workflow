@@ -15,10 +15,16 @@ from rich.text import Text
 from ralph.agents.invoke import build_invoke_options_from_config
 from ralph.agents.parsers import AgentOutputLine
 from ralph.cli.commands import commit as commit_module
-from ralph.cli.commands.commit import CommitAttemptContext, _invoke_commit_agent_attempt
+from ralph.cli.commands.commit import (
+    CommitAttemptContext,
+    _collect_commit_agent_output,
+    _invoke_commit_agent_attempt,
+)
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig
 from ralph.display.context import make_display_context
+
+_OUTPUT_BATCH = 400
 
 
 def _claude_commit_agent() -> AgentConfig:
@@ -172,3 +178,22 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
         opts.max_waiting_on_child_no_progress_seconds
         == general_config.agent_idle_no_progress_waiting_on_child_seconds
     )
+
+
+
+def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() -> None:
+    display_context = make_display_context()
+    session_line = '{"session_id":"sess-early"}'
+    filler = ['x' * 8192 for _ in range(_OUTPUT_BATCH)]
+
+    parsed_output, raw_output, resume_session_id = _collect_commit_agent_output(
+        [session_line, *filler],
+        parser_type="generic",
+        agent_name="claude",
+        verbose=False,
+        display_context=display_context,
+    )
+
+    assert resume_session_id == "sess-early"
+    assert len(raw_output) < _OUTPUT_BATCH
+    assert len(parsed_output) < _OUTPUT_BATCH

@@ -26,6 +26,7 @@ import contextlib
 import os
 import subprocess
 import time as _time
+from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -227,6 +228,7 @@ class ProcessManagerPolicy:
     default_grace_period_s: float = 5.0
     kill_followup_timeout_s: float = 2.0
     log_events: bool = True
+    terminal_history_limit: int = 256
 
 
 class ProcessTerminationError(RuntimeError):
@@ -474,6 +476,7 @@ class ProcessManager:
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
         self._records: dict[int, ProcessRecord] = {}
+        self._terminal_records: OrderedDict[int, ProcessRecord] = OrderedDict()
         self._sync_procs: dict[int, _SyncProcessLike] = {}
         self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
@@ -552,6 +555,7 @@ class ProcessManager:
             status=ProcessStatus.RUNNING,
             label=label,
         )
+        self._terminal_records.pop(pid, None)
         self._records[pid] = record
         self._sync_procs[pid] = proc
         self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.RUNNING)
@@ -613,6 +617,7 @@ class ProcessManager:
             status=ProcessStatus.RUNNING,
             label=label,
         )
+        self._terminal_records.pop(pid, None)
         self._records[pid] = record
         self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.RUNNING)
         return ManagedAsyncProcess(proc, record, self)
@@ -623,6 +628,36 @@ class ProcessManager:
             r
             for r in self._records.values()
             if r.status in (ProcessStatus.SPAWNED, ProcessStatus.RUNNING)
+        ]
+
+    def get_record(self, pid: int, *, include_terminal: bool = True) -> ProcessRecord | None:
+        """Return a tracked record by pid, preferring active records over terminal history."""
+        record = self._records.get(pid)
+        if record is not None:
+            return record
+        if not include_terminal:
+            return None
+        return self._terminal_records.get(pid)
+
+    def list_records(
+        self,
+        *,
+        include_active: bool = True,
+        include_terminal: bool = False,
+        label_prefix: str | None = None,
+    ) -> list[ProcessRecord]:
+        """Return active and/or terminal records with optional label filtering."""
+        records: list[ProcessRecord] = []
+        if include_active:
+            records.extend(self._records.values())
+        if include_terminal:
+            records.extend(self._terminal_records.values())
+        if label_prefix is None:
+            return list(records)
+        return [
+            record
+            for record in records
+            if record.label is not None and record.label.startswith(label_prefix)
         ]
 
     def terminate(
@@ -820,6 +855,17 @@ class ProcessManager:
             logger.error("Process {} still alive after kill", pid)
             raise ProcessTerminationError(record.pid, record.pgid)
 
+    def _record_terminal_state(self, record: ProcessRecord) -> None:
+        self._records.pop(record.pid, None)
+        limit = max(self.policy.terminal_history_limit, 0)
+        if limit == 0:
+            self._terminal_records.clear()
+            return
+        self._terminal_records.pop(record.pid, None)
+        self._terminal_records[record.pid] = record
+        while len(self._terminal_records) > limit:
+            self._terminal_records.popitem(last=False)
+
     def _mark_exited(self, record: ProcessRecord, returncode: int | None) -> None:
         if record.status in _TERMINAL_STATUSES:
             return
@@ -829,6 +875,7 @@ class ProcessManager:
         record.ended_at = datetime.now(tz=UTC)
         record.cause = "exited"
         self._sync_procs.pop(record.pid, None)
+        self._record_terminal_state(record)
         self._emit(record, prev, ProcessStatus.EXITED)
 
     def _mark_killed(self, record: ProcessRecord, returncode: int | None = None) -> None:
@@ -840,6 +887,7 @@ class ProcessManager:
         record.ended_at = datetime.now(tz=UTC)
         record.cause = "killed"
         self._sync_procs.pop(record.pid, None)
+        self._record_terminal_state(record)
         self._emit(record, prev, ProcessStatus.KILLED)
 
     def _emit(

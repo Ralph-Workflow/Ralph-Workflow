@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import uuid
+from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -399,6 +400,8 @@ _LEGACY_EXECUTE_EFFECT_ARITY = 3
 _POLICY_LOADER_CONFIG_ARITY = 2
 load_policy_or_die = _dir_load_policy_or_die
 _RECOVERY_CONTEXT_LINES = 12
+_AGENT_RAW_OUTPUT_TAIL_LINES = 256
+_AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
 _MIN_WORK_UNITS_FOR_PARALLEL_PREFLIGHT = 2
 _TRANSIENT_CONNECTIVITY_MARKERS = (
     "connection refused",
@@ -3403,8 +3406,14 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
         )
 
         for attempt_index in range(max_recovery_attempts + 1):
-            raw_output: list[str] = []
-            rendered_output: list[str] = []
+            raw_output: deque[str] = deque(maxlen=_AGENT_RAW_OUTPUT_TAIL_LINES)
+            rendered_output: deque[str] = deque(maxlen=_AGENT_RENDERED_OUTPUT_TAIL_LINES)
+            extracted_session_id: str | None = None
+
+            def _capture_session_id(session_id: str) -> None:
+                nonlocal extracted_session_id
+                extracted_session_id = session_id
+
             try:
                 check_mcp_bridge_health(bridge)
                 if (
@@ -3459,10 +3468,18 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                             display_context=resolved_display_context,
                             raw_output_sink=raw_output,
                             rendered_output_sink=rendered_output,
+                            session_id_sink=_capture_session_id,
                         )
                     else:
-                        raw_output.extend(str(line) for line in output_lines)
-                _set_last_captured_session_id(extract_session_id(raw_output))
+                        for line in output_lines:
+                            text_line = str(line)
+                            raw_output.append(text_line)
+                            session_id = extract_session_id((text_line,))
+                            if session_id is not None:
+                                extracted_session_id = session_id
+                _set_last_captured_session_id(
+                    extracted_session_id or extract_session_id(tuple(raw_output))
+                )
                 return PipelineEvent.AGENT_SUCCESS
             except McpServerError as exc:
                 logger.error(
@@ -3478,9 +3495,11 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                     max_recovery_attempts=max_recovery_attempts,
                     effect=effect,
                     workspace_root=workspace_scope.root,
-                    raw_output=raw_output,
-                    rendered_output=rendered_output,
-                    extracted_session_id=extract_session_id(raw_output),
+                    raw_output=list(raw_output),
+                    rendered_output=list(rendered_output),
+                    extracted_session_id=(
+                        extracted_session_id or extract_session_id(tuple(raw_output))
+                    ),
                     inactivity_error_type=AgentInactivityTimeoutError,
                 )
                 if recovery_plan is None:
@@ -3885,8 +3904,9 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     *,
     display_context: DisplayContext | None = None,
-    raw_output_sink: list[str] | None = None,
-    rendered_output_sink: list[str] | None = None,
+    raw_output_sink: deque[str] | list[str] | None = None,
+    rendered_output_sink: deque[str] | list[str] | None = None,
+    session_id_sink: Callable[[str], None] | None = None,
 ) -> None:
     parser = _resolve_parser(parser_type)
 
@@ -3895,6 +3915,9 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
             text = str(line)
             if raw_output_sink is not None:
                 raw_output_sink.append(text)
+            session_id = extract_session_id((text,))
+            if session_id is not None and session_id_sink is not None:
+                session_id_sink(session_id)
             yield text
 
     parallel_display_cls = _parallel_display_cls()

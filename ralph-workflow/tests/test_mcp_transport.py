@@ -129,9 +129,7 @@ async def test_stdio_transport_default_factory_tracks_process_in_manager() -> No
 
             await transport.close()
 
-            all_mcp = [
-                r for r in pm._records.values() if r.label and r.label.startswith("mcp-stdio:")
-            ]
+            all_mcp = pm.list_records(include_terminal=True, label_prefix="mcp-stdio:")
             assert len(all_mcp) == 1
             assert all_mcp[0].status in (ProcessStatus.EXITED, ProcessStatus.KILLED)
         finally:
