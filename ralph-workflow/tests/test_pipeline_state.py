@@ -333,3 +333,81 @@ def test_run_metrics_with_continuation_increment_increments_continuations_only()
     assert new_metrics.total_fallbacks == 1
     assert new_metrics.total_retries == 4  # noqa: PLR2004
     assert metrics.total_continuations == 3  # noqa: PLR2004
+
+
+def test_recovery_history_validation_trims_to_newest_cycle_cap_records() -> None:
+    """Model validation trims serialized fallover history to the configured cycle cap."""
+    payload = {
+        "phase": "planning",
+        "recovery_cycle_cap": 3,
+        "fallover_history": [
+            {
+                "phase": "development",
+                "from_agent": "a1",
+                "to_agent": "b1",
+                "timestamp_iso": "2026-04-21T00:00:01Z",
+            },
+            {
+                "phase": "development",
+                "from_agent": "a2",
+                "to_agent": "b2",
+                "timestamp_iso": "2026-04-21T00:00:02Z",
+            },
+            {
+                "phase": "development",
+                "from_agent": "a3",
+                "to_agent": "b3",
+                "timestamp_iso": "2026-04-21T00:00:03Z",
+            },
+            {
+                "phase": "development",
+                "from_agent": "a4",
+                "to_agent": "b4",
+                "timestamp_iso": "2026-04-21T00:00:04Z",
+            },
+            {
+                "phase": "development",
+                "from_agent": "a5",
+                "to_agent": "b5",
+                "timestamp_iso": "2026-04-21T00:00:05Z",
+            },
+        ],
+    }
+
+    state = PipelineState.model_validate(payload)
+
+    assert state.recovery_cycle_cap == 3  # noqa: PLR2004
+    assert [record.from_agent for record in state.fallover_history] == ["a3", "a4", "a5"]
+
+
+def test_copy_with_trims_fallover_history_when_cycle_cap_is_lowered() -> None:
+    """copy_with preserves only the newest records when the cap shrinks."""
+    state = PipelineState(
+        phase="planning",
+        recovery_cycle_cap=5,
+        fallover_history=(
+            FalloverRecord(
+                phase="development",
+                from_agent="a1",
+                to_agent="b1",
+                timestamp_iso="2026-04-21T00:00:01Z",
+            ),
+            FalloverRecord(
+                phase="development",
+                from_agent="a2",
+                to_agent="b2",
+                timestamp_iso="2026-04-21T00:00:02Z",
+            ),
+            FalloverRecord(
+                phase="development",
+                from_agent="a3",
+                to_agent="b3",
+                timestamp_iso="2026-04-21T00:00:03Z",
+            ),
+        ),
+    )
+
+    lowered = state.copy_with(recovery_cycle_cap=2)
+
+    assert lowered.recovery_cycle_cap == 2  # noqa: PLR2004
+    assert [record.from_agent for record in lowered.fallover_history] == ["a2", "a3"]

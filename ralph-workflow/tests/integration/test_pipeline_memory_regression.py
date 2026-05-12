@@ -33,9 +33,12 @@ from ralph.policy.models import (
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
     from pytest import MonkeyPatch
+
+    from ralph.agents.invoke import InvokeOptions
 
 
 _LINE_COUNT = 128
@@ -99,13 +102,15 @@ class _RegistryInstance:
     def __init__(self, agent_config: AgentConfig) -> None:
         self._agent_config = agent_config
 
-    def get(self, _name: str) -> AgentConfig | None:
+    def get(self, name: str) -> AgentConfig | None:
+        del name
         return self._agent_config
 
 
 class _RegistryFactory:
     @classmethod
-    def from_config(cls, _config: UnifiedConfig) -> _RegistryInstance:
+    def from_config(cls, config: UnifiedConfig) -> _RegistryInstance:
+        del cls, config
         return _RegistryInstance(
             AgentConfig(
                 cmd="generic-agent",
@@ -191,12 +196,12 @@ def _install_runner_effect_seams(monkeypatch: MonkeyPatch, tmp_path: Path) -> li
         return PipelineState(phase=next_phase), []
 
     def fake_invoke_agent(
-        _config: AgentConfig,
-        _prompt_file: str,
+        config: AgentConfig,
+        prompt_file: str,
         *,
-        options: object | None = None,
-    ):
-        del options
+        options: InvokeOptions | None = None,
+    ) -> Iterable[object]:
+        del config, prompt_file, options
         phase = consumed_phases[-1]
         session_line = json.dumps({"session_id": f"sess-{phase}"})
         payload = "x" * _LINE_SIZE
@@ -218,6 +223,7 @@ def _install_runner_effect_seams(monkeypatch: MonkeyPatch, tmp_path: Path) -> li
                 deps,
                 workspace_scope,
                 display=kwargs.get("display"),
+                display_context=kwargs.get("display_context"),
                 verbosity=kwargs.get("verbosity", Verbosity.NORMAL),
                 state=kwargs.get("state"),
                 policy_bundle=kwargs.get("policy_bundle"),

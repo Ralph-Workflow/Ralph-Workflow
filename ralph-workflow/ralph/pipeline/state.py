@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import DrainName, PipelinePolicy
 
 _UNSET_PHASE: Final[str] = "__unset__"
+_DEFAULT_RECOVERY_CYCLE_CAP: Final[int] = 200
 
 
 def _migrate_counter_field(
@@ -48,6 +49,43 @@ def _migrate_counter_field(
 ) -> None:
     if counter_name not in target and legacy_field in d:
         target[counter_name] = d[legacy_field]
+
+
+def _resolved_recovery_cycle_cap(raw_cap: object) -> int:
+    if raw_cap is None:
+        return _DEFAULT_RECOVERY_CYCLE_CAP
+    if isinstance(raw_cap, int):
+        cap = raw_cap
+    elif isinstance(raw_cap, str):
+        try:
+            cap = int(raw_cap)
+        except ValueError:
+            return _DEFAULT_RECOVERY_CYCLE_CAP
+    else:
+        return _DEFAULT_RECOVERY_CYCLE_CAP
+    return cap if cap >= 1 else _DEFAULT_RECOVERY_CYCLE_CAP
+
+
+def _normalize_fallover_history_for_cap(
+    history: object,
+    recovery_cycle_cap: object,
+) -> tuple[FalloverRecord, ...]:
+    if history is None:
+        return ()
+    if not isinstance(history, list | tuple):
+        raise TypeError(
+            f"Expected list or tuple for fallover_history, got {type(history).__name__!r}"
+        )
+    records = tuple(
+        FalloverRecord.model_validate(item)
+        if isinstance(item, dict)
+        else cast("FalloverRecord", item)
+        for item in history
+    )
+    cap = _resolved_recovery_cycle_cap(recovery_cycle_cap)
+    if len(records) <= cap:
+        return records
+    return records[-cap:]
 
 
 class _FrozenPipelineStateModel(RalphBaseModel):
@@ -290,6 +328,11 @@ class PipelineState(_FrozenPipelineStateModel):
 
         d["budget_caps"] = budget_caps_data
         d["outer_progress"] = outer_progress_data
+        if "fallover_history" in d:
+            d["fallover_history"] = _normalize_fallover_history_for_cap(
+                d.get("fallover_history"),
+                d.get("recovery_cycle_cap"),
+            )
         # Drop legacy budget_remaining — no longer a field
         d.pop("budget_remaining", None)
 
@@ -501,8 +544,20 @@ class PipelineState(_FrozenPipelineStateModel):
             budget_caps={**self.budget_caps, counter_name: value},
         )
 
+    def with_fallover_record(self, record: FalloverRecord) -> PipelineState:
+        """Return a copy with one additional fallover record, trimmed to cycle cap."""
+        return self.copy_with(fallover_history=(*self.fallover_history, record))
+
     def copy_with(self, **updates: object) -> PipelineState:
         """Return a copy with updates applied in a typed-safe manner."""
         if self.work_units and "work_units" in updates and updates["work_units"] != self.work_units:
             updates = {k: v for k, v in updates.items() if k != "work_units"}
+        if "fallover_history" in updates or "recovery_cycle_cap" in updates:
+            updates = {
+                **updates,
+                "fallover_history": _normalize_fallover_history_for_cap(
+                    updates.get("fallover_history", self.fallover_history),
+                    updates.get("recovery_cycle_cap", self.recovery_cycle_cap),
+                ),
+            }
         return self.model_copy(update=updates)

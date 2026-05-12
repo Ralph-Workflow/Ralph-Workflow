@@ -126,3 +126,23 @@ def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
     )
 
     assert state.recovery_cycle_count == 1
+
+
+def test_single_agent_chain_exhaustion_retains_no_fallover_records() -> None:
+    """A single-agent chain increments recovery count without retaining fallover history."""
+    registry = _registry_with_one_retry("claude")
+    controller = RecoveryController(
+        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+    )
+    state = _make_state(["claude"])
+
+    state, _, _ = controller.handle(
+        state,
+        _AgentInactivityTimeoutError("claude timed out"),
+        phase="development",
+        agent="claude",
+    )
+
+    assert state.phase == "failed_terminal"
+    assert state.recovery_cycle_count == 1
+    assert state.fallover_history == ()

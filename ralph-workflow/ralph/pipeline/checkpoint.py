@@ -47,6 +47,14 @@ class Checkpoint:
         _cleanup_stray_tmp(path)
 
 
+def _normalize_recovery_state(state: PipelineState) -> PipelineState:
+    """Normalize recovery lineage to the configured cap before persistence/use."""
+    return state.copy_with(
+        recovery_cycle_cap=state.recovery_cycle_cap,
+        fallover_history=state.fallover_history,
+    )
+
+
 def _sanitize_last_error(state: PipelineState) -> PipelineState:
     """Drop forbidden sentinel last_error values loaded from old checkpoints.
 
@@ -79,6 +87,7 @@ def save(state: PipelineState, path: Path = CHECKPOINT_PATH) -> None:
         state: The pipeline state to save.
         path: Path to save the checkpoint. Defaults to .agent/checkpoint.json.
     """
+    state = _normalize_recovery_state(state)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     try:
@@ -109,6 +118,7 @@ def load(path: Path = CHECKPOINT_PATH) -> PipelineState | None:
     try:
         data = path.read_text(encoding="utf-8")
         state = PipelineState.model_validate_json(data)
+        state = _normalize_recovery_state(state)
         # Sanitize any stale error sentinel that might have been saved
         # by a pre-fix version of the pipeline.
         state = _sanitize_last_error(state)

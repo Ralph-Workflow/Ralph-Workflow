@@ -10,6 +10,7 @@ from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import (
     AgentChainState,
     CommitState,
+    FalloverRecord,
     PipelineState,
     RebaseState,
     RunMetrics,
@@ -250,3 +251,67 @@ def test_load_preserves_valid_last_error(tmp_path: Path) -> None:
     loaded = ckpt.load(path)
     assert loaded is not None
     assert loaded.last_error == valid_error
+
+
+def test_checkpoint_save_load_preserves_in_window_fallover_history(tmp_path: Path) -> None:
+    """In-window persisted histories round-trip exactly through checkpoint save/load."""
+    path = tmp_path / "checkpoint.json"
+    state = PipelineState(
+        phase="development",
+        recovery_cycle_cap=3,
+        fallover_history=(
+            FalloverRecord(
+                phase="development",
+                from_agent="claude",
+                to_agent="opencode",
+                timestamp_iso="2026-04-21T00:00:01Z",
+            ),
+            FalloverRecord(
+                phase="development",
+                from_agent="opencode",
+                to_agent="claude",
+                timestamp_iso="2026-04-21T00:00:02Z",
+            ),
+        ),
+    )
+
+    ckpt.save(state, path)
+    loaded = ckpt.load(path)
+
+    assert loaded is not None
+    assert loaded.fallover_history == state.fallover_history
+
+
+def test_checkpoint_load_normalizes_over_cap_fallover_history(tmp_path: Path) -> None:
+    """Over-cap persisted histories load back trimmed to the newest records."""
+    path = tmp_path / "checkpoint.json"
+    state = PipelineState(
+        phase="development",
+        recovery_cycle_cap=2,
+        fallover_history=(
+            FalloverRecord(
+                phase="development",
+                from_agent="a1",
+                to_agent="b1",
+                timestamp_iso="2026-04-21T00:00:01Z",
+            ),
+            FalloverRecord(
+                phase="development",
+                from_agent="a2",
+                to_agent="b2",
+                timestamp_iso="2026-04-21T00:00:02Z",
+            ),
+            FalloverRecord(
+                phase="development",
+                from_agent="a3",
+                to_agent="b3",
+                timestamp_iso="2026-04-21T00:00:03Z",
+            ),
+        ),
+    )
+
+    ckpt.save(state, path)
+    loaded = ckpt.load(path)
+
+    assert loaded is not None
+    assert [record.from_agent for record in loaded.fallover_history] == ["a2", "a3"]

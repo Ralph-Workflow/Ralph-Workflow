@@ -342,10 +342,13 @@ class RecoveryController:
             )
             self._bus.publish(fallover_evt)
 
-            new_state = state.with_phase_chain(phase, chain.with_advance()).copy_with(
-                fallover_history=(*state.fallover_history, fallover_record),
-                # Fallover: reset retry delay for new agent
-                last_retry_delay_ms=0,
+            new_state = (
+                state.with_phase_chain(phase, chain.with_advance())
+                .copy_with(
+                    # Fallover: reset retry delay for new agent
+                    last_retry_delay_ms=0,
+                )
+                .with_fallover_record(fallover_record)
             )
             return new_state, []
 

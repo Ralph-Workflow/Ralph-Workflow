@@ -150,3 +150,41 @@ def test_zero_recovery_fields_round_trip(tmp_path: Path) -> None:
     assert loaded.recovery_cycle_cap == 200  # noqa: PLR2004
     assert loaded.last_retry_delay_ms == 0
     assert loaded.fallover_history == ()
+
+
+def test_over_cap_recovery_history_loads_with_newest_records_only(tmp_path: Path) -> None:
+    """An over-cap checkpoint payload loads back with exactly the newest retained records."""
+    ckpt_path = tmp_path / "checkpoint.json"
+    payload = json.dumps(
+        {
+            "phase": "development",
+            "recovery_cycle_cap": 2,
+            "fallover_history": [
+                {
+                    "phase": "development",
+                    "from_agent": "a1",
+                    "to_agent": "b1",
+                    "timestamp_iso": "2026-04-21T00:00:01Z",
+                },
+                {
+                    "phase": "development",
+                    "from_agent": "a2",
+                    "to_agent": "b2",
+                    "timestamp_iso": "2026-04-21T00:00:02Z",
+                },
+                {
+                    "phase": "development",
+                    "from_agent": "a3",
+                    "to_agent": "b3",
+                    "timestamp_iso": "2026-04-21T00:00:03Z",
+                },
+            ],
+        }
+    )
+    ckpt_path.write_text(payload, encoding="utf-8")
+
+    loaded = load(ckpt_path)
+
+    assert loaded is not None
+    assert loaded.recovery_cycle_cap == 2  # noqa: PLR2004
+    assert [record.from_agent for record in loaded.fallover_history] == ["a2", "a3"]
