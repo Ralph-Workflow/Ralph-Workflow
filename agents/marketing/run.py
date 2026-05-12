@@ -3,6 +3,7 @@
 
 Self-improving SEO loop:
 - Runs seo_daily.py for fresh SEO intelligence every day
+- Runs competitor_analysis.py on Mondays
 - Loads prior SEO reports to detect trends (rank changes, score changes)
 - Makes weekly decisions based on what improved / what degraded
 - Feeds insights back into content strategy via STRATEGY.md
@@ -37,6 +38,14 @@ BLOCKED_CHANNELS = {
     "producthunt": "Protected flow / manual launch required",
 }
 
+RALPH_ADVANTAGES = [
+    "Multi-agent phase routing (planning → development → review → fix)",
+    "Cost arbitrage: Claude + Codex + OpenCode in the same pipeline",
+    "Policy-defined orchestration via TOML configuration",
+    "True unattended execution with artifact-based completion",
+    "Vendor-neutral: own your config, not the tool",
+]
+
 
 # ── Run seo_daily.py ──────────────────────────────────────────────────────────
 
@@ -48,15 +57,58 @@ def run_seo_daily() -> dict:
         text=True,
         timeout=120,
     )
-    # seo_daily.py prints a JSON summary to stdout (multi-line, after a log line)
     try:
         text = result.stdout.strip()
-        # Skip the [seo_daily] log line, then parse the JSON block
         if text.startswith("["):
             text = text[text.index("{"):]
         return json.loads(text)
     except (json.JSONDecodeError, ValueError) as exc:
         return {"error": f"Failed to parse seo_daily JSON: {exc}", "stdout": result.stdout[-500:] if result.stdout else "", "stderr": result.stderr[-500:] if result.stderr else ""}
+
+
+def run_competitor_analysis() -> dict:
+    """Run competitor_analysis.py and parse its output."""
+    result = subprocess.run(
+        [sys.executable, str(AGENTS_DIR / "competitor_analysis.py")],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    today = datetime.now().strftime("%Y-%m-%d")
+    report_path = SEO_REPORTS_DIR / f"competitor_analysis_{today}.md"
+    summary = {
+        "ran_ok": result.returncode == 0,
+        "report_path": str(report_path) if report_path.exists() else None,
+        "stdout": result.stdout[:300] if result.stdout else "",
+    }
+
+    # Parse monitoring snapshot
+    snapshot_path = SEO_REPORTS_DIR / "competitors" / f"monitoring_{today}.json"
+    if snapshot_path.exists():
+        try:
+            data = json.loads(snapshot_path.read_text())
+            competitors = data.get("competitors", {})
+            summary["competitor_count"] = len(competitors)
+            summary["competitors"] = {
+                slug: {
+                    "status": c.get("site_status"),
+                    "stars": c.get("github_stars"),
+                    "features_found": c.get("key_features_found", [])[:3],
+                }
+                for slug, c in competitors.items()
+                if not c.get("error")
+            }
+        except Exception:
+            pass
+
+    # Parse comparison page count
+    comparisons_dir = SEO_REPORTS_DIR / "comparisons"
+    if comparisons_dir.exists():
+        pages = list(comparisons_dir.glob("*.md"))
+        summary["comparison_pages"] = len(pages)
+        summary["comparison_pages_list"] = [p.stem for p in pages]
+
+    return summary
 
 
 # ── Load SEO trend data ───────────────────────────────────────────────────────
@@ -80,10 +132,6 @@ def compute_trends(current: dict, history: list[dict]) -> dict:
     """Compute week-over-week deltas for key SEO metrics."""
     if not history:
         return {"note": "Not enough history to compute trends yet."}
-
-    def avg_key(docs: list[dict], key: str, default=0):
-        vals = [d.get(key, default) for d in docs if d.get(key) is not None]
-        return sum(vals) / len(vals) if vals else default
 
     prev_ranks = []
     prev_bl = []
@@ -209,8 +257,9 @@ def build_weekly_decisions(
     seo_trends: dict,
     seo_current: dict,
     seo_actions: list[str],
+    competitor_data: dict | None = None,
 ) -> list[dict]:
-    """Build weekly decisions informed by actual SEO data + content performance."""
+    """Build weekly decisions informed by actual SEO data + content performance + competitor intelligence."""
     decisions: list[dict] = []
 
     # SEO health gate
@@ -284,6 +333,25 @@ def build_weekly_decisions(
         "reason": "Working distribution channel. Track ratio of views per post to gauge platform value.",
     })
 
+    # Competitor-driven decisions
+    if competitor_data:
+        comp_count = competitor_data.get("competitor_count", 0)
+        if comp_count > 0:
+            decisions.append({
+                "priority": "medium",
+                "action": "Leverage competitor comparison pages in content and outreach.",
+                "reason": f"Monitoring {comp_count} competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked.",
+            })
+            # Add competitor stars context
+            competitors = competitor_data.get("competitors", {})
+            if competitors:
+                top_comp = max(competitors.items(), key=lambda x: x[1].get("stars") or 0)
+                decisions.append({
+                    "priority": "info",
+                    "action": f"Note: {top_comp[0]} has {top_comp[1].get('stars', 0)} GitHub stars — lean into Ralph's cost and flexibility advantages.",
+                    "reason": "Competitor intelligence for positioning decisions.",
+                })
+
     if not decisions:
         decisions.append({
             "priority": "info",
@@ -296,7 +364,6 @@ def build_weekly_decisions(
 
 def update_strategy_file(now: datetime, summary: dict, decisions: list[dict], seo_current: dict, seo_trends: dict) -> None:
     """Update STRATEGY.md with a new weekly review section."""
-    # SEO summary block
     seo_block = [
         f"**SEO Score:** {seo_current.get('onpage_score', 'unknown')} | Ranked keywords: {seo_current.get('ranked_keywords', '?')} | Backlinks: {seo_current.get('backlinks_approx', '?')} | DR: {seo_current.get('domain_rating', '?')}",
         f"**Trends:** ranks {seo_trends.get('rank_delta', '?')}",
@@ -365,14 +432,12 @@ def main() -> int:
     seo_current = run_seo_daily()
     seo_error = seo_current.get("error", "")
 
-    # Load SEO history for trend computation — runs every day to accumulate data
+    # Load SEO history for trend computation
     seo_history = load_seo_trends(days=14)
     seo_trends = compute_trends(seo_current, seo_history)
 
-    # Site health (from seo_daily)
+    # Site health
     site_health = seo_current.get("site_health", {}) if not seo_error else {}
-
-    # If seo_daily failed, fall back to basic site checks
     if seo_error or not site_health:
         site_health = {
             "homepage": http_status("https://ralphworkflow.com"),
@@ -389,6 +454,13 @@ def main() -> int:
         "views_last_30d": sum(int(post.get("views", 0)) for post in posts),
     }
 
+    # Run competitor analysis on Mondays
+    competitor_data = None
+    if is_monday:
+        print("[run.py] Monday — running competitor analysis...", flush=True)
+        competitor_data = run_competitor_analysis()
+        print(f"[run.py] Competitor analysis: {competitor_data.get('competitor_count', 0)} competitors tracked", flush=True)
+
     # Weekly decisions
     decisions = []
     if is_monday:
@@ -397,13 +469,14 @@ def main() -> int:
             seo_trends,
             seo_current,
             seo_current.get("priority_actions", []),
+            competitor_data=competitor_data,
         )
         update_strategy_file(now, {
             "content_summary": content_summary,
             "totals": totals,
         }, decisions, seo_current, seo_trends)
 
-    # Always write SEO insights for generate_content.py to read
+    # Always write SEO insights for generate_content.py
     insights_path = write_seo_insights(seo_current, decisions)
     print(f"[run.py] SEO insights written to {insights_path}", flush=True)
 
@@ -438,6 +511,7 @@ def main() -> int:
             "report": seo_current.get("report", ""),
             "seo_daily_error": seo_error,
             "sitemap_urls": (site_health.get("sitemap") or {}).get("url_count", 0) if isinstance(site_health.get("sitemap"), dict) else 0,
+            "competitor_analysis": competitor_data,
         },
     }
 
