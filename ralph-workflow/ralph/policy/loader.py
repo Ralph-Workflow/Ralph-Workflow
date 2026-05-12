@@ -455,7 +455,6 @@ def _default_dir() -> Path:
     return Path(ralph.policy.__file__).parent / "defaults"
 
 
-
 def _global_policy_path(filename: str) -> Path:
     """Return the effective user-global policy path for a runtime policy TOML."""
     xdg_config_home = getenv("XDG_CONFIG_HOME")

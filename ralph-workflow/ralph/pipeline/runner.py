@@ -145,6 +145,7 @@ from ralph.policy.loader import (
 from ralph.policy.validation import PolicyValidationError
 from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.process.mcp_supervisor import McpSupervisor
+from ralph.prompts.debug_dump import multimodal_sidecar_path, prompt_dump_path
 from ralph.prompts.materialize import (
     MissingPlanHandoffError,
     collect_media_entries_for_phase,
@@ -824,7 +825,7 @@ def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -
             restore_force_kill()
 
 
-def _run_pipeline_step(  # noqa: PLR0913
+def _run_pipeline_step(  # noqa: PLR0912,PLR0913
     *,
     state: PipelineState,
     policy_bundle: PolicyBundle,
@@ -924,6 +925,16 @@ def _run_pipeline_step(  # noqa: PLR0913
             policy_bundle.pipeline,
             recovery=recovery_controller,
         )
+        skipped_info: tuple[str, str] | None = None
+        with suppress(TypeError, AttributeError):
+            skipped_info = _skipped_exhausted_analysis_info(
+                state.phase,
+                next_state.phase,
+                state,
+                policy_bundle.pipeline,
+            )
+        if skipped_info is not None:
+            _clear_phase_materialization_outputs(workspace, skipped_info[0])
         _notify_pipeline_subscriber(pipeline_subscriber, next_state)
         _save_checkpoint_or_log(
             next_state,
@@ -1225,6 +1236,13 @@ def _build_phase_change_render_data(
             pipeline_policy,
         ),
     )
+
+
+def _clear_phase_materialization_outputs(workspace: FsWorkspace, phase: str) -> None:
+    """Remove stale prompt-materialization outputs for a phase when it is skipped."""
+    for path in (prompt_dump_path(phase), multimodal_sidecar_path(phase)):
+        with suppress(Exception):
+            workspace.remove(path)
 
 
 def _emit_phase_change_surfaces(
