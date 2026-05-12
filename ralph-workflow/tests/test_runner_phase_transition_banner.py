@@ -570,6 +570,31 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
     )
 
 
+def test_emit_phase_transition_shows_final_skip_and_needs_changes_for_capped_planning_analysis_loopback(  # noqa: E501
+) -> None:
+    """The live runner transition banner must show the capped planning-analysis loopback context."""
+    display = _StubDisplay()
+    state = PipelineState(
+        phase="planning",
+        previous_phase="planning_analysis",
+        loop_iterations={"planning_analysis_iteration": 3},
+        loop_caps={"planning_analysis_iteration": 3},
+    )
+
+    runner_module._emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+        "planning_analysis",
+        state,
+        verbosity=runner_module.Verbosity.VERBOSE,
+        pipeline_policy=_DEFAULT_POLICY.pipeline,
+    )
+
+    output = display._ctx.console.export_text()
+    arrow = display._ctx.glyph_for("arrow")
+    assert "final, skipping next" in output
+    assert f"{arrow} needs changes" in output
+
+
 def test_emit_phase_transition_review_issues_found_none_for_non_review_phase() -> None:
     """review_issues_found must be None when transitioning from a non-review phase."""
     display = _StubDisplay()
