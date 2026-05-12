@@ -1,111 +1,30 @@
 # Ralph Workflow
 
-> **Unattended AI coding pipelines you actually control.** Mix Claude, Codex, OpenCode, and any model you want — at every phase.
+> **Ship reviewable AI coding runs without babysitting the terminal.**
 
 [![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-Most AI coding tools assume you'll pick one vendor and stay there. Ralph Workflow doesn't. You decide which agent runs which phase — Claude Code plans, OpenCode with a cheap model writes the implementation, Codex reviews it, OpenCode fixes what review caught, and Codex re-reviews until it's clean. All unattended. All auditable. All in your git history.
+Ralph Workflow is a repo-native orchestration CLI for developers who want AI to handle bigger coding tasks without constant supervision. You write the spec, Ralph runs planning, coding, and agent review, and you come back to completed work, a run log, and artifacts you can inspect in your normal git workflow.
 
-Everything is configurable: prompts, agent chains, phase routing, retry budgets, recovery rules, and verification rules. Express it in repo-local TOML files. Diff them. Share them. Run them tomorrow exactly the same way you ran them today.
+## Why developers use Ralph Workflow
 
-## A pipeline you actually own
-
-Ralph Workflow's runtime config is split by concern: `ralph-workflow.toml` for agent definitions, chain order, drain bindings, and general workflow settings; `pipeline.toml` for the phase graph; and `artifacts.toml`/`mcp.toml` for the rest. Under the hood, a setup looks more like this:
-
-```toml
-# .agent/ralph-workflow.toml
-[general]
-developer_iters = 5
-reviewer_reviews = 2
-max_retries = 3
-
-[agent_chains]
-planning = ["claude/opus"]
-development = ["opencode/minimax/MiniMax-M2.7-highspeed", "claude/sonnet", "codex"]
-review = ["codex", "claude/sonnet"]
-fix = ["opencode/zai-coding-plan/glm-5"]
-commit = ["claude"]
-
-[agent_drains]
-planning = "planning"
-development = "development"
-analysis = "planning"
-review = "review"
-fix = "fix"
-commit = "commit"
-```
-
-```toml
-# .agent/pipeline.toml
-[phases.planning]
-drain = "planning"
-prompt_template = "planning.jinja"
-[phases.planning.transitions]
-on_success = "planning_analysis"
-
-[phases.planning_analysis]
-drain = "planning_analysis"
-prompt_template = "planning_analysis.jinja"
-[phases.planning_analysis.transitions]
-on_success = "development"
-on_loopback = "planning"
-
-[phases.development]
-drain = "development"
-prompt_template = "developer_iteration.jinja"
-[phases.development.transitions]
-on_success = "review"
-
-[phases.review]
-drain = "review"
-prompt_template = "review.jinja"
-[phases.review.transitions]
-on_loopback = "fix"
-on_success = "complete"
-
-[phases.fix]
-drain = "fix"
-prompt_template = "fix_mode.jinja"
-[phases.fix.transitions]
-on_success = "review"
-
-entry_phase = "planning"
-terminal_phase = "complete"
-```
-
-Frontier models where reasoning matters. Cheap models where they're enough. Loop review and fix until the reviewer signs off. The whole workflow configuration lives in your repo, not in a vendor's cloud.
-
-## Why this exists
-
-**No single vendor will build this for you.** Anthropic isn't going to ship "use Codex for review." OpenAI isn't going to ship "use Claude for planning." Cursor isn't going to optimize for routing work to competitor APIs. The orchestration layer that sits *across* vendors has to come from outside any of them.
-
-**Cost arbitrage is real.** A long unattended run on a single frontier vendor can burn through a meaningful AI budget. Routing planning and review to capable frontier models, but development and fix work to cheaper models, frequently cuts that cost dramatically. You decide where capability matters and where price matters.
-
-**Configurable beats opinionated.** Teams have opinions about how planning should work, what reviewers should check, how fixes should be applied, what counts as "done." Generic agent products force one workflow. Ralph Workflow encodes yours.
-
-## What you get
-
-- **Cost arbitrage you control.** Route frontier models to planning and review; cheap models to development and fix. You decide where capability matters and where price matters.
-- **Vendor-neutral orchestration.** Anthropic, OpenAI, OpenCode + any model it wraps — all behind one config surface.
-- **Real unattended execution.** Walk away. Come back to a clean diff and a review, not a process to babysit.
-- **Auditable by default.** Every iteration commits. Every phase produces structured artifacts. Run history lives in `.agent/logs/`.
-- **Recovery and verification built in.** Checkpoint and resume, failure classification, retry budgets, and evidence-based phase completion — not just exit codes.
-- **Context isolation.** Every iteration starts fresh from `PROMPT.md`. No drift. No accumulating noise.
-- **Parallel work.** Optional same-workspace parallel execution for independent work units. v1 uses a single shared checkout with `allowed_directories` path isolation and per-worker namespaces under `.agent/workers/<unit_id>/`. Workers complete via structured artifacts; the design omits individual git branches, separate filesystem worktrees, and any post-development merge step.
-- **MCP-native.** First-class MCP server support, plus a standalone `ralph-mcp` runtime.
+- **Run longer jobs unattended.** Useful for refactors, test generation, documentation sweeps, and multi-file migrations.
+- **Keep review in the loop.** Ralph uses reviewer agents during the run, then leaves behind output your team can inspect instead of an exhausted chat transcript.
+- **Use the agents you already have.** Point different phases at Claude Code, Codex CLI, OpenCode, or your preferred setup.
+- **Keep the workflow in your repo.** Prompts and runtime config live with the codebase instead of disappearing into a hosted tool.
 
 ## Install
 
-### From PyPI
+### PyPI
 
 ```bash
 pip install ralph-workflow
 ralph --help
 ```
 
-### With pipx (recommended for CLI use)
+### pipx
 
 ```bash
 pipx install ralph-workflow
@@ -115,26 +34,46 @@ ralph --help
 ### From source
 
 ```bash
-git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow
+git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
-pip install -e ".[dev]"
+pip install -e ".[dev]" # or
+make install # alternative to pip install
 ralph --version
 ```
 
 Requires Python 3.12+.
 
-## Quick start
+## Before your first run
+
+Make sure the agent CLIs you want Ralph to call are already installed and authenticated. Ralph Workflow reuses those existing CLIs instead of asking you to re-enter provider credentials into a separate product.
+
+## Get it running
 
 ```bash
 cd /path/to/your/project
-ralph --init                # seeds .agent/ with config templates
-$EDITOR PROMPT.md           # write your task spec
-ralph                       # walk away
+ralph --init
+ralph --diagnose
+$EDITOR PROMPT.md
+ralph
 ```
 
-Ralph Workflow plans, develops, reviews, and commits while you do something else. Pick up from a clean diff when you return.
+What to do in that flow:
 
-### Pipeline depth presets
+1. **`ralph --init`** seeds the project-local `.agent/` files.
+2. **`ralph --diagnose`** checks that your configured agents and MCP setup are reachable before you spend time on a real run.
+3. **`PROMPT.md`** should describe one concrete task with clear acceptance criteria.
+4. **`ralph`** starts the unattended run.
+
+## Good first tasks
+
+Start with boring, bounded work:
+
+- add tests to an existing module
+- fix a known batch of lint failures
+- refactor one narrow subsystem
+- update docs that are backed by existing code
+
+## Depth presets
 
 ```bash
 ralph -Q     # quick: small fixes, single iteration
@@ -142,144 +81,37 @@ ralph        # standard: most features and tasks
 ralph -T     # thorough: complex refactors, ten iterations
 ```
 
-More presets and custom pipelines in the [docs](https://ralphworkflow.com/docs).
-
-## Compatible agents
-
-Ralph Workflow ships with three built-in transport families and several model-qualified naming forms on top of them.
-
-| Identifier form | What it means | Example |
-|---|---|---|
-| `claude` | Claude Code using your currently selected Claude Code model/profile | `planning = ["claude"]` |
-| `claude/<family>` | Force a Claude model family for that chain entry | `planning = ["claude/opus"]` |
-| `codex` | OpenAI Codex CLI transport | `review = ["codex"]` |
-| `opencode` | Base OpenCode transport | `development = ["opencode"]` |
-| `opencode/<provider>/<model>` | OpenCode with an explicit provider/model target | `development = ["opencode/minimax/MiniMax-M2.7-highspeed"]` |
-| `ccs/<alias>` | Claude Code Switch alias resolved dynamically | `planning = ["ccs/work"]` |
-| custom `[agents.*]` name | Your own named agent definition in `ralph-workflow.toml` | `review = ["my-reviewer"]` |
-
-### Built-in transports
-
-| Transport | Strong at | Setup |
-|---|---|---|
-| Claude Code | Planning, complex reasoning, large context | `npm install -g @anthropic/claude-code` |
-| Codex CLI | Structured review, cost-effective analysis | `npm install -g @openai/codex` |
-| OpenCode | Multi-provider execution across OpenCode-supported models | [opencode.ai](https://opencode.ai) |
-| CCS | Profile-based Claude Code switching and aliasing | Use `ccs/<alias>` directly |
-
-### Model-qualified syntax
-
-- `claude` uses whatever Claude Code model/profile you last selected.
-- `claude/opus` or `claude/sonnet` force those model families for a specific phase.
-- `opencode/<provider>/<model>` targets a concrete OpenCode provider/model path, for example:
-  - `opencode/minimax/MiniMax-M2.7-highspeed`
-  - `opencode/zai-coding-plan/glm-5`
-- `ccs/<alias>` resolves dynamically, so names like `ccs/work` or `ccs/personal` work out of the box.
-
-Mix per phase. Mix per repo. Mix per team. Change models when prices shift — change config, not tools.
-
-## How it works
-
-### Layered configuration
-
-```
-bundled defaults  →  user-global  →  project-local  →  CLI flags
-```
-
-The files that matter:
-
-- `~/.config/ralph-workflow.toml` — your user-global runtime defaults
-- `.agent/ralph-workflow.toml` — project-local main config override
-- `.agent/pipeline.toml` — phase graph, transitions, entry/terminal phases, parallel policy
-- `.agent/artifacts.toml` — what each phase must produce
-- `.agent/mcp.toml` — MCP servers, web search, tool access
-
-### Policy-defined orchestration
-
-Ralph Workflow is a **policy-defined orchestration framework**: the workflow shape, routing decisions, retry budgets, analysis loops, commit semantics, recovery paths, and terminal outcomes are all declared in `pipeline.toml`, `agents.toml`, and `artifacts.toml`. The runtime enforces and validates those declarations. There is no hidden built-in knowledge of specific phase names or routing outcomes — every routing decision traces back to the active policy.
-
-To inspect the active policy and see the full workflow as an ASCII diagram, run:
-
-```bash
-ralph --explain-policy
-```
-
-This prints a visual representation of the pipeline — phases, happy-path routing, loopback arrows, decision branches, and terminal outcomes — derived from the active policy files. See [docs/migration/policy-v2.md](docs/migration/policy-v2.md) for a guide to the policy model and how to migrate from older configurations.
-
-### Agent chains with fallback
-
-Each phase has an ordered chain of agents. If the primary fails or hits a retry budget, Ralph Workflow falls over to the next. OpenCode model-qualified agents use `opencode/<provider>/<model>` syntax, so a chain can fall from `opencode/minimax/MiniMax-M2.7-highspeed` to `opencode/zai-coding-plan/glm-5` just like any other ordered fallback. Claude model tags are shorter: `claude` uses whatever Claude Code model/profile you last selected, while `claude/opus` or `claude/sonnet` force those model families for that phase.
-
-### Artifact contracts, not exit codes
-
-Phase success means "the artifact satisfies its contract," not "the process returned 0." Structured JSON artifacts drive orchestration; mirrored Markdown handoffs keep results readable for humans and downstream agents.
-
-### Resume and parallel
-
-Recovery is a first-class part of the framework. Ralph Workflow supports checkpoint/resume flows, failure classification, retry budgets, connectivity-aware pause/resume behavior, and optional same-workspace parallel fan-out when the plan yields multiple work units.
-
-Interrupt anytime. `ralph --resume` picks up from the last checkpoint. Same-workspace parallel execution can run independent work units when the plan supports it.
-
-**Parallel v1 constraints:** Same-workspace v1 uses a single shared checkout. Isolation between workers is enforced by `allowed_directories` path restrictions and per-worker namespaces under `.agent/workers/<unit_id>/`. Worker completion is driven by structured artifacts. The design omits individual git branches, separate filesystem worktrees, and any post-development merge step.
-
 ## When Ralph Workflow fits
 
-- Multi-step coding tasks that don't fit in one prompt
-- Refactors, test suites, docs, or features that take hours of execution
-- Work where you want to walk away and come back to reviewed commits
-- Teams that need cost-controlled, auditable, or workflow-configured agent execution
-- Anyone tired of paying frontier-model rates for grunt work cheaper models handle fine
+- Multi-step coding tasks that do not fit in one prompt
+- Work you want to hand off and review later
+- Teams that want repeatable AI execution in the repo
+- Anyone trying to stop paying top-tier model prices for every phase of a run
 
-## When Ralph Workflow doesn't fit
+## When it does not fit
 
-- One-shot prompts you can answer interactively
-- Pair-programming sessions where you want to steer in real time
-- Tasks that finish manually before setup overhead pays off
-- Workflows that need unpredictable mid-run human input
+- One-shot interactive prompts
+- Pair-programming sessions where you want constant steering
+- Tiny tasks that finish before setup overhead pays off
+- Workflows that depend on unpredictable mid-run human input
 
-## Repository layout
+## Need the deeper technical details?
 
-- `ralph-workflow/` — the maintained Python package (this is the product)
-- `ralph-workflow/README.md` — package-level reference: full CLI, config, API
-- `ralph-workflow/CONTRIBUTING.md` — Python contributor workflow
-- `docs/` — broader documentation; legacy material from the retired Rust implementation is kept for migration history but is not authoritative
+Keep this README for onboarding. Use these when you want the full reference:
 
-For current behavior, prefer (in order):
+- **Product site:** <https://ralphworkflow.com>
+- **Docs:** <https://ralphworkflow.com/docs>
+- **Package reference README:** [`ralph-workflow/README.md`](ralph-workflow/README.md)
+- **Python contributor workflow:** [`ralph-workflow/CONTRIBUTING.md`](ralph-workflow/CONTRIBUTING.md)
 
-1. `ralph-workflow/README.md`
-2. `ralph-workflow/CONTRIBUTING.md`
-3. `docs/agents/verification.md`
-4. Source and docstrings under `ralph-workflow/ralph/`
+## Links
 
-## Verification
-
-```bash
-cd ralph-workflow
-make verify
-```
-
-Runs the full check pipeline:
-
-- `ruff check ralph/ tests/`
-- `mypy ralph/`
-- `sphinx-build -W` for docs
-- `pytest tests/ -q -n 8 --cov=ralph --cov-fail-under=80`
-
-Verification passes only when every required check succeeds with no ERROR/WARNING diagnostics.
-
-Useful narrowing:
-
-- `make docs` — Sphinx HTML, warnings as errors
-- `make test` — full suite without coverage
-- `make test-unit` — `tests/` excluding `tests/integration/`
-- `make test-integration` — integration only
-
-## Mirrors
-
-- **Primary:** [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
-- **Mirror:** [GitHub](https://github.com/mistlight/Ralph-Workflow) *(auto-synced; issues open on Codeberg)*
-- **Package:** [PyPI · ralph-workflow](https://pypi.org/project/ralph-workflow/)
-- **Site:** [ralphworkflow.com](https://ralphworkflow.com)
+- **Homepage:** <https://ralphworkflow.com>
+- **Docs:** <https://ralphworkflow.com/docs>
+- **Issues:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Repository:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/mistlight/Ralph-Workflow>
+- **PyPI package:** <https://pypi.org/project/ralph-workflow/>
 
 ## License
 

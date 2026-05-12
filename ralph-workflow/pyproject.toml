@@ -77,10 +77,10 @@ ralph = "ralph.cli.main:app"
 ralph-mcp = "ralph.mcp.server.runtime:main"
 
 [project.urls]
-Homepage = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
-Documentation = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/README.md"
+Homepage = "https://ralphworkflow.com"
+Documentation = "https://ralphworkflow.com/docs"
 Repository = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
-Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues"
+Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new"
 
 [tool.hatch.version]
 source = "code"
