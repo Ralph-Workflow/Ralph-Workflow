@@ -1,147 +1,172 @@
 #!/usr/bin/env python3
+"""Post scheduled RalphWorkflow drafts to write.as and log outcomes.
+
+Rules:
+- only publish markdown drafts for today
+- never generate filler posts automatically
+- skip a draft if the same content hash already posted successfully
 """
-Marketing Posting Agent — Runs daily
-Posts content to available channels (write.as, and whatever else works).
-Tracks what was posted where.
-"""
-import os, sys, json, subprocess
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import subprocess
 from datetime import datetime
+from pathlib import Path
+from typing import Tuple
 
-AGENTS_DIR = "/home/mistlight/.openclaw/workspace/agents/marketing"
-LOG_DIR = f"{AGENTS_DIR}/logs"
-DRAFTS_DIR = "/home/mistlight/.openclaw/workspace/drafts"
-POSTED_FILE = f"{LOG_DIR}/posted_urls.json"
+AGENTS_DIR = Path("/home/mistlight/.openclaw/workspace/agents/marketing")
+LOG_DIR = AGENTS_DIR / "logs"
+DRAFTS_DIR = Path("/home/mistlight/.openclaw/workspace/drafts")
+POSTED_FILE = LOG_DIR / "posted_urls.json"
 
-os.makedirs(LOG_DIR, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-def load_posted():
-    if os.path.exists(POSTED_FILE):
-        with open(POSTED_FILE) as f:
-            return json.load(f)
+
+def load_posted() -> dict:
+    if POSTED_FILE.exists():
+        return json.loads(POSTED_FILE.read_text(encoding="utf-8"))
     return {"posts": []}
 
-def save_posted(data):
-    with open(POSTED_FILE, "w") as f:
-        json.dump(data, f, indent=2)
 
-def post_writeas(title, body):
+def save_posted(data: dict) -> None:
+    POSTED_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def parse_front_matter(content: str) -> tuple[dict, str]:
+    if not content.startswith("---\n"):
+        return {}, content
+    marker = "\n---\n"
+    end = content.find(marker, 4)
+    if end == -1:
+        return {}, content
+    raw = content[4:end].strip().splitlines()
+    metadata = {}
+    for line in raw:
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        try:
+            metadata[key] = json.loads(value)
+        except json.JSONDecodeError:
+            metadata[key] = value.strip('"')
+    body = content[end + len(marker):]
+    return metadata, body
+
+
+def extract_title_and_body(content: str) -> tuple[str, str, dict]:
+    metadata, body = parse_front_matter(content)
+    title_m = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
+    title = title_m.group(1).strip() if title_m else metadata.get("angle", "Untitled")
+    return title, body.strip(), metadata
+
+
+def digest_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def already_posted_successfully(posted: dict, draft_hash: str, platform: str = "write.as") -> bool:
+    for item in posted.get("posts", []):
+        if item.get("platform") == platform and item.get("ok") and item.get("draft_hash") == draft_hash:
+            return True
+    return False
+
+
+def post_writeas(title: str, body: str) -> Tuple[bool, str]:
     data = json.dumps({"title": title, "body": body, "font": "sans"})
-    r = subprocess.run([
-        "curl", "-s", "-X", "POST",
-        "https://write.as/api/posts",
-        "-H", "Content-Type: application/json",
-        "-d", data
-    ], capture_output=True, text=True, timeout=15)
+    result = subprocess.run(
+        [
+            "curl",
+            "-s",
+            "-X",
+            "POST",
+            "https://write.as/api/posts",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            data,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
     try:
-        result = json.loads(r.stdout)
-        if result.get("code") == 201:
-            return True, f"https://write.as/{result['data']['id']}"
-    except:
-        pass
-    return False, r.stdout[:100]
+        parsed = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False, result.stdout[:200] or result.stderr[:200]
+    if parsed.get("code") == 201:
+        return True, f"https://write.as/{parsed['data']['id']}"
+    return False, json.dumps(parsed)[:200]
 
-def get_latest_draft():
-    """Find the most recent draft file."""
-    if not os.path.exists(DRAFTS_DIR):
-        return None
-    files = sorted(Path(DRAFTS_DIR).glob("*.md"), key=lambda f: -f.stat().st_mtime)
-    return files[0] if files else None
 
-def main():
-    from pathlib import Path
+def find_todays_drafts(today: str) -> list[Path]:
+    if not DRAFTS_DIR.exists():
+        return []
+    return sorted(DRAFTS_DIR.glob(f"{today}_*_draft.md"))
+
+
+def main() -> int:
     now = datetime.now()
     today = now.strftime("%Y-%m-%d")
-    
     posted = load_posted()
-    results = []
-    
-    # Find today's drafts
-    if os.path.exists(DRAFTS_DIR):
-        todays_drafts = list(Path(DRAFTS_DIR).glob(f"{today}_*.md"))
-    else:
-        todays_drafts = []
-    
+    results: list[dict] = []
+
+    todays_drafts = find_todays_drafts(today)
     if not todays_drafts:
-        print(f"[Posting] No drafts found for {today}")
-        # Generate a default post
-        default_post = f"""# Why I Stopped Babysitting My AI Coding Assistant
+        summary = {"timestamp": now.isoformat(), "results": [], "message": "No scheduled drafts for today."}
+        print(json.dumps(summary, indent=2))
+        return 0
 
-After 6 months of using AI coding tools daily, I realized I was spending more time steering them than actually building.
+    for draft in todays_drafts:
+        raw = draft.read_text(encoding="utf-8")
+        title, body, metadata = extract_title_and_body(raw)
+        if len(body) < 300:
+            results.append({"draft": draft.name, "ok": False, "status": "skipped_too_short"})
+            continue
 
-Every few minutes: "wait, that's not quite right." Another few minutes: "actually, we need to handle the error case." Before I knew it, a 30-minute task took 3 hours because I was locked in a back-and-forth with the model.
+        draft_hash = digest_text(body)
+        if already_posted_successfully(posted, draft_hash):
+            results.append({
+                "draft": draft.name,
+                "ok": True,
+                "status": "already_posted",
+                "draft_hash": draft_hash,
+                "experiment_id": metadata.get("experiment_id"),
+            })
+            continue
 
-The solution wasn't a better prompt. It was a better *workflow*.
-
-## The Shift: From Prompting to Orchestrating
-
-Instead of prompting Claude Code or Copilot step by step, I started defining the outcome upfront and letting the agent work.
-
-Write the spec. Set the constraints. Let the model figure out the implementation.
-
-This is what Ralph Workflow does — it's an orchestration layer that runs AI agents through planning, development, review, and fix phases, with a reviewer agent checking each iteration before it commits.
-
-## What Changed
-
-**Before**: 3 hours of back-and-forth, 1 commit  
-**After**: 20 minutes of setup, 4.5 hours unattended, 23 commits
-
-The commits aren't perfect. But they're reviewed, traced to the spec, and committed without me watching.
-
-## The Real Insight
-
-The value isn't in the AI writing code. It's in the AI *iterating* on code with a reviewer catching mistakes before you see them.
-
-That's the difference between "AI-assisted" and "AI-powered." One makes you the bottleneck. The other makes you the quality gate.
-
----
-
-Try it: [Ralph Workflow](https://ralphworkflow.com) — free to install, runs on any project.
-"""
-        title = "Why I Stopped Babysitting My AI Coding Assistant"
-        ok, url = post_writeas(title, default_post)
-        results.append({
+        ok, url_or_error = post_writeas(title, body)
+        record = {
             "date": today,
+            "draft": draft.name,
             "title": title,
             "platform": "write.as",
             "ok": ok,
-            "url": url if ok else None
-        })
-        print(f"{'✅' if ok else '❌'} write.as: {url if ok else 'failed'}")
-    else:
-        for draft in todays_drafts:
-            with open(draft) as f:
-                content = f.read()
-            
-            import re
-            title_m = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
-            title = title_m.group(1) if title_m else draft.stem
-            body = re.sub(r"^#+\s+", "", content, flags=re.MULTILINE)
-            
-            # Skip twitter threads and very short posts
-            if "twitter" in draft.stem.lower() or len(body) < 300:
-                continue
-            
-            ok, url = post_writeas(title, body)
-            results.append({
-                "date": today,
-                "title": title[:80],
-                "platform": "write.as",
-                "ok": ok,
-                "url": url if ok else None
-            })
-            print(f"{'✅' if ok else '❌'} write.as: {url if ok else 'failed'}")
-    
-    # Update posted log
-    posted["posts"].extend(results)
+            "status": "posted" if ok else "failed",
+            "url": url_or_error if ok else None,
+            "error": None if ok else url_or_error,
+            "draft_hash": draft_hash,
+            "experiment_id": metadata.get("experiment_id"),
+            "content_type": metadata.get("content_type"),
+            "keyword": metadata.get("keyword"),
+            "cta": metadata.get("cta"),
+            "hypothesis": metadata.get("hypothesis"),
+        }
+        results.append(record)
+        posted.setdefault("posts", []).append(record)
+
     posted["last_run"] = now.isoformat()
     save_posted(posted)
-    
-    # Log
-    log_file = f"{LOG_DIR}/posting_{today}.json"
-    with open(log_file, "w") as f:
-        json.dump({"timestamp": now.isoformat(), "results": results}, f, indent=2)
-    
-    print(f"\n[Posting] Posted {sum(1 for r in results if r['ok'])}/{len(results)} items")
+
+    log_file = LOG_DIR / f"posting_{today}.json"
+    log_file.write_text(json.dumps({"timestamp": now.isoformat(), "results": results}, indent=2), encoding="utf-8")
+    print(json.dumps({"timestamp": now.isoformat(), "results": results}, indent=2))
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

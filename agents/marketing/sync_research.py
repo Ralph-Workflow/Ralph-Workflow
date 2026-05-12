@@ -25,9 +25,13 @@ SYNC_PATH_SPECS: tuple[str, ...] = (
     "seo-reports",
     "content",
     "drafts",
-    "memory",
+    "memory/*.md",
+    "agents/marketing/CLEANUP_PLAN.md",
     "agents/marketing/STRATEGY.md",
     "agents/marketing/SKILLS_RESEARCH.md",
+    "agents/marketing/generate_content.py",
+    "agents/marketing/run.py",
+    "agents/marketing/run_posting.py",
     "agents/marketing/sync_research.py",
     "agents/marketing/tests",
     "agents/*/logs",
@@ -81,6 +85,13 @@ def has_staged_changes(runner: GitRunner) -> bool:
     return result.returncode != 0
 
 
+def has_uncommitted_changes(runner: GitRunner, paths: Sequence[str]) -> bool:
+    if not paths:
+        return False
+    result = runner.run(["status", "--short", "--", *paths], check=False)
+    return bool(result.stdout.strip())
+
+
 def build_commit_message() -> str:
     result = subprocess.run(["date", "+%Y-%m-%d"], text=True, capture_output=True, check=True)
     return f"Automated research sync - {result.stdout.strip()}"
@@ -98,18 +109,21 @@ def build_sync_plan(workspace: Path, specs: Iterable[str], commit_message: str, 
 
 
 def execute_sync(workspace: Path, specs: Iterable[str], dry_run: bool = False) -> dict:
-    runner = GitRunner(workspace)
     commit_message = build_commit_message()
-    plan = build_sync_plan(workspace, specs, commit_message, runner=runner)
 
     if dry_run:
+        runner = GitRunner(workspace)
+        resolved = resolve_sync_paths(workspace, specs)
         return {
             "ok": True,
             "dry_run": True,
-            "resolved_paths": plan.resolved_paths,
-            "has_changes": plan.has_changes,
-            "commit_message": plan.commit_message,
+            "resolved_paths": resolved,
+            "has_changes": has_uncommitted_changes(runner, resolved),
+            "commit_message": commit_message,
         }
+
+    runner = GitRunner(workspace)
+    plan = build_sync_plan(workspace, specs, commit_message, runner=runner)
 
     if not plan.has_changes:
         return {

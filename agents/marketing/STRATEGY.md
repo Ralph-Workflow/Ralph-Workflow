@@ -1,5 +1,22 @@
 # Ralph Workflow — Marketing Strategy & Reflection Loop
 
+## Active Operating Model — 2026-05-12
+
+The active automation path is now intentionally small:
+
+1. `generate_content.py` creates RalphWorkflow-only drafts with experiment metadata.
+2. `run_posting.py` publishes scheduled markdown drafts to write.as only.
+3. `run.py` measures site health and post performance, then makes weekly content-mix decisions.
+4. Blocked channels stay blocked until credentials/access change.
+
+### Paused from the active loop
+- speculative channel discovery
+- automated outreach to blocked communities
+- broken SEO/backlink scripts
+- mixed-product content generation
+
+This strategy file remains the long-term record, but the current system should follow the cleanup plan in `CLEANUP_PLAN.md`.
+
 ## Product
 - **Name:** Ralph Workflow
 - **URL:** https://ralphworkflow.com

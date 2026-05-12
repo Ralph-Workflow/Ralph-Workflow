@@ -2,7 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agents.marketing.sync_research import SyncPlan, build_sync_plan, resolve_sync_paths
+from unittest.mock import patch
+
+from agents.marketing.sync_research import SyncPlan, build_sync_plan, execute_sync, resolve_sync_paths
 
 
 class FakeRunner:
@@ -81,6 +83,35 @@ class SyncResearchTests(unittest.TestCase):
         runner = FakeRunner(diff_cached_returncode=0)
         plan = build_sync_plan(self.workspace, ["AGENTS.md"], "test commit", runner=runner)
         self.assertFalse(plan.has_changes)
+
+    def test_execute_sync_dry_run_does_not_stage_files(self):
+        runner = FakeRunner(diff_cached_returncode=0)
+        runner_status_output = " M AGENTS.md\n"
+
+        def fake_run(args, check=True):
+            runner.calls.append(list(args))
+
+            class Result:
+                def __init__(self, stdout="", returncode=0):
+                    self.stdout = stdout
+                    self.stderr = ""
+                    self.returncode = returncode
+
+            if args[:2] == ["status", "--short"]:
+                return Result(stdout=runner_status_output)
+            return Result()
+
+        runner.run = fake_run
+
+        with patch("agents.marketing.sync_research.GitRunner", return_value=runner), patch(
+            "agents.marketing.sync_research.build_commit_message", return_value="test commit"
+        ):
+            result = execute_sync(self.workspace, ["AGENTS.md"], dry_run=True)
+
+        self.assertTrue(result["dry_run"])
+        self.assertTrue(result["has_changes"])
+        self.assertIn(["status", "--short", "--", "AGENTS.md"], runner.calls)
+        self.assertNotIn(["add", "AGENTS.md"], runner.calls)
 
 
 if __name__ == "__main__":

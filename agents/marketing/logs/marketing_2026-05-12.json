@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-05-12T01:59:27.914931",
+  "weekly_mode": false,
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "robots": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "sitemap": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    }
+  },
+  "totals": {
+    "posts_last_30d": 5,
+    "views_last_30d": 0
+  },
+  "content_summary": {
+    "unknown": {
+      "posts": 5,
+      "views": 0,
+      "avg_views": 0.0
+    }
+  },
+  "decisions": [],
+  "blocked_channels": {
+    "dev.to": "Needs API key or OAuth",
+    "twitter": "Login/session blocked",
+    "reddit": "Needs account + karma",
+    "hackernews": "Needs account",
+    "lobsters": "Needs invite/account",
+    "producthunt": "Protected flow / manual launch required"
+  }
+}
