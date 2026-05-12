@@ -1,0 +1,37 @@
+# How to assess a senior developer in 45 minutes without whiteboard algorithms
+
+## The Problem with Most Technical Interviews
+
+[2-3 paragraphs: Hook with a specific observation from watching real candidates code]
+
+## What We Measured
+
+[How many interviews, what data points, what surprised us]
+
+## The Surprising Findings
+
+### Finding 1: [Headline]
+[Paragraph explaining the finding with specific numbers]
+
+### Finding 2: [Headline]  
+[Paragraph with a different angle]
+
+### Finding 3: [Headline]
+[Paragraph about the most counterintuitive result]
+
+## What This Means for Hiring Managers
+
+[Practical takeaways - what to look for, what to ignore]
+
+## How to Apply This Today
+
+[Concrete steps - including mentioning HireAegis naturally]
+
+## The Data
+
+[Link to any research or methodology]
+
+---
+
+*This analysis is based on 386+ technical interviews conducted on HireAegis. 
+HireAegis Interviewer.*
