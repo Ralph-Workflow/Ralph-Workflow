@@ -1,21 +1,20 @@
 # CLI Reference
 
-> **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
+> **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) if you want the same flow with more context.
 
-Ralph Workflow is invoked as `ralph` (or `python -m ralph`). All flags are optional;
-running `ralph` with no flags starts the full pipeline.
+Ralph Workflow is invoked as `ralph` (or `python -m ralph`). Running `ralph` with no flags starts the normal workflow.
 
-## Discovery and Diagnostics
+## Discovery and diagnostics
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--list-agents` | | `False` | List all configured agents and their status |
-| `--list-providers` | | `False` | List available AI providers (opencode API) |
-| `--diagnose` | `-d` | `False` | Run full pre-flight diagnostics and print a status table |
-| `--check-config` | `-C` | `False` | Load and validate configuration then exit |
-| `--check-mcp` | | `False` | Validate custom MCP server definitions and exit |
-| `--check-policy` | | `False` | Validate the active pipeline policy and print a summary, then exit |
-| `--inspect-checkpoint` | | `False` | Print the contents of the current checkpoint |
+| `--list-agents` | | `False` | List configured agents and their status |
+| `--list-providers` | | `False` | List available AI providers (OpenCode API) |
+| `--diagnose` | `-d` | `False` | Run pre-flight diagnostics and print a status table |
+| `--check-config` | `-C` | `False` | Load and validate configuration, then exit |
+| `--check-mcp` | | `False` | Validate custom MCP server definitions, then exit |
+| `--check-policy` | | `False` | Validate the active pipeline policy and print a summary |
+| `--inspect-checkpoint` | | `False` | Print the current checkpoint contents |
 
 ### `--check-policy` example
 
@@ -23,55 +22,40 @@ running `ralph` with no flags starts the full pipeline.
 ralph --check-policy
 ```
 
-Validates the active pipeline policy (project-local `.agent/pipeline.toml` when present,
-otherwise the bundled defaults) and prints a structured summary:
+This validates the active pipeline policy and prints a summary of the phases, drains, artifact contracts, and routing limits Ralph will use.
 
-```
-Policy OK: /path/to/.agent
-  phases: 7
-  drains: 11
-  artifact contracts: 5
-  loop counters: 2
-  budget counters: 1
-  workflow fallbacks: 0
-  terminal failure phase: failed_terminal
-```
-
-Exits 0 on success, 2 on `PolicyValidationError`, 1 on any other error.
 Use `--explain-policy-dir` to point at a custom policy directory:
 
 ```bash
 ralph --check-policy --explain-policy-dir /path/to/policy/dir
 ```
 
-See [Policy Explanation](policy-explanation.md) for the full policy inspection command.
+See [Policy Explanation](policy-explanation.md) for the deeper inspection view.
 
 ## Setup
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP/pipeline/artifact files copied from the user-global config set; `ralph --init` (no label) is the recommended form — any label is deprecated and ignored |
-| `--init-local-config` | | `False` | Create `.agent/` config files as explicit project-local copies of the user-global Ralph Workflow config set (`--generate-local-config` remains an alias) |
-| `--regenerate-config` | | `False` | Rewrite all configs from bundled defaults (existing files are backed up to `<name>.bak`) |
+| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP, pipeline, and artifact files copied from the user-global config set. `ralph --init` with no label is the recommended form. |
+| `--init-local-config` | | `False` | Create `.agent/` config files as explicit project-local copies of the main Ralph Workflow config set |
+| `--regenerate-config` | | `False` | Rewrite config files from bundled defaults and keep backups as `<name>.bak` |
 
-## Quick Mode
+## Quick mode
 
-Run a single developer iteration with an inline prompt:
+Run one developer iteration with an inline prompt:
 
 ```bash
 ralph -Q "do a quick change"
 ```
 
-`-Q`/`--quick` forces `developer_iters=1` (equivalent to `-D 1`) and accepts an inline prompt
-as a bare positional argument after the flag. This bypasses `PROMPT.md` preflight validation
-and writes the inline prompt to `.agent/CURRENT_PROMPT.md` instead.
+`-Q` / `--quick` forces `developer_iters=1` and lets you pass an inline prompt instead of using `PROMPT.md`. Ralph writes that inline prompt to `.agent/CURRENT_PROMPT.md` for the run.
 
 ```bash
-ralph -Q "add a /healthz endpoint"       # inline prompt, 1 iteration
-ralph -Q --prompt "add a /healthz endpoint"  # explicit --prompt form
+ralph -Q "add a /healthz endpoint"
+ralph -Q --prompt "add a /healthz endpoint"
 ```
 
-## Thorough Mode
+## Thorough mode
 
 Use the thorough preset when you want a longer unattended run budget:
 
@@ -79,21 +63,20 @@ Use the thorough preset when you want a longer unattended run budget:
 ralph -T
 ```
 
-`-T`/`--thorough` forces `developer_iters=10` (equivalent to `-D 10`). It overrides an explicit
-`-D` value when combined, and it cannot be used together with `-Q`/`--quick`.
+`-T` / `--thorough` forces `developer_iters=10`. It cannot be combined with `-Q`.
 
-## Pipeline Tuning
+## Pipeline tuning
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--counter NAME=VALUE` | | | Override a named budget or loop counter declared in `pipeline.toml` (e.g. `--counter iteration=3`). Repeatable. |
-| `--developer-iters N` | `-D` | `5` | Maximum developer agent iterations per run. Overrides the `default_max` of the `iteration` budget counter. |
-| `--quick` | `-Q` | `False` | Quick mode: run a single developer iteration (equivalent to `-D 1`). Accepts an inline prompt as a bare positional argument. |
-| `--thorough` | `-T` | `False` | Thorough mode: run ten developer iterations (equivalent to `-D 10`). Cannot be combined with `-Q`. |
+| `--counter NAME=VALUE` | | | Override a named budget or loop counter declared in `pipeline.toml` |
+| `--developer-iters N` | `-D` | `5` | Maximum developer iterations per run |
+| `--quick` | `-Q` | `False` | Quick mode: one developer iteration with optional inline prompt |
+| `--thorough` | `-T` | `False` | Thorough mode: ten developer iterations |
 | `--developer-agent <name>` | `-a` | (from config) | Override the developer agent by name |
-| `--developer-model <flag>` | | (from config) | Model flag forwarded to the developer agent binary |
+| `--developer-model <flag>` | | (from config) | Forward a model flag to the developer agent binary |
 
-## Execution Control
+## Execution control
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -102,23 +85,21 @@ ralph -T
 | `--verbosity <level>` | `-v` | `verbose` | Set output verbosity: `quiet`, `normal`, `verbose`, `full`, `debug` |
 | `--resume` | `-r` | `False` | Resume from the saved checkpoint if one exists |
 | `--no-resume` | | `False` | Ignore the checkpoint and restart from the beginning |
-| `--dry-run` | | `False` | Run the pipeline structure without invoking any agents |
+| `--dry-run` | | `False` | Run the pipeline structure without invoking agents |
 
-> **Note:** Verbosity defaults to `verbose` (not `normal`) so Ralph Workflow is visibly
-> active by default. Pass `--quiet` to silence everything except errors in CI.
+> **Note:** Verbosity defaults to `verbose` so the run looks visibly alive by default. Use `--quiet` in CI when you only want errors.
 
-## Commit Plumbing
+## Commit-message helpers
 
-These flags are used by Ralph Workflow's internal commit workflow and by the
-`ralph --generate-commit` alias agents are instructed to call.
+These flags support Ralph Workflow's commit-message generation flow and the `ralph --generate-commit` command that agents may be instructed to call.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--generate-commit-msg` | `False` | Generate a commit message from the current diff |
-| `--generate-commit` | `False` | Generate a commit message and apply it in one step |
+| `--generate-commit-msg` | `False` | Generate a commit message from the current repo changes |
+| `--generate-commit` | `False` | Generate and apply the commit message in one step |
 | `--show-commit-msg` | `False` | Print the most recently generated commit message |
 
-## Git Identity
+## Git identity
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -136,8 +117,7 @@ These flags are used by Ralph Workflow's internal commit workflow and by the
 
 ### `ralph cleanup`
 
-Remove Ralph Workflow-generated working files from the current project (checkpoints,
-MCP sockets, temp artifacts). Does not remove `.agent/` config files or `PROMPT.md`.
+Remove Ralph Workflow-generated working files from the current project, such as checkpoints, MCP sockets, and temporary artifacts. It does not remove `.agent/` config files or `PROMPT.md`.
 
 ```bash
 ralph cleanup
@@ -147,5 +127,5 @@ ralph cleanup
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough
 - [Configuration](configuration.md) — config files, flags, and precedence
-- [Concepts](concepts.md) — pipeline phases, agents, and drains
+- [Concepts](concepts.md) — the key workflow terms
 - [Troubleshooting](troubleshooting.md) — common error messages and fixes

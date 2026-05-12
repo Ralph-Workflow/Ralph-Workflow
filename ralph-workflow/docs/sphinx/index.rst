@@ -4,18 +4,15 @@ Ralph Workflow
 .. raw:: html
 
    <section class="hero">
-     <h1 class="hero-headline">Unattended, vendor-neutral AI coding workflows</h1>
-     <p class="hero-subtitle">Ralph Workflow routes AI coding agents through a structured
-     planning → development loop. It is built for real work in existing repositories as well as brand-new ones:
-     describe the change you want in <code>PROMPT.md</code>, keep the workflow configuration in your repo,
-     and let Ralph Workflow handle the rest — unattended, with checkpoint, recovery, and verification built in.</p>
+     <h1 class="hero-headline">Run bigger AI coding tasks without babysitting the terminal</h1>
+     <p class="hero-subtitle">Ralph Workflow keeps the workflow in your repo: write the task in <code>PROMPT.md</code>, let Ralph run planning, coding, and agent review, then come back to completed work, logs, and artifacts you can inspect in your normal git workflow.</p>
      <a class="hero-cta" href="getting-started.html">Get started →</a>
    </section>
 
 .. note::
 
-   New here? Read :doc:`getting-started` first — it walks you from zero to your first
-   pipeline run in minutes.
+   New here? Read :doc:`getting-started` first — it gets you from install to first run quickly,
+   without making you learn the internals first.
 
 .. grid:: 1 2 2 2
    :gutter: 3
@@ -24,25 +21,25 @@ Ralph Workflow
       :link: getting-started
       :link-type: doc
 
-      Install, point Ralph Workflow at an existing repo or a new one, write ``PROMPT.md``, and run the pipeline.
+      Install Ralph Workflow, point it at a repo, write ``PROMPT.md``, and launch your first unattended run.
 
    .. grid-item-card:: Learn the concepts
       :link: concepts
       :link-type: doc
 
-      The small set of terms you need to understand runs, recovery, and workflow setup.
+      Learn the small set of terms that matter when you run, resume, or customize a workflow.
 
-   .. grid-item-card:: Look up the CLI
+   .. grid-item-card:: Look up commands
       :link: cli
       :link-type: doc
 
-      Every CLI flag, config field, and MCP tool.
+      Find the commands and flags you actually use in day-to-day operation.
 
    .. grid-item-card:: Fix common issues
       :link: troubleshooting
       :link-type: doc
 
-      Common errors and how to fix them.
+      Start with the common failure modes and the shortest path to a fix.
 
 .. toctree::
    :maxdepth: 2
@@ -82,8 +79,9 @@ Ralph Workflow
 Related Links
 =============
 
-- `Source code on Codeberg <https://codeberg.org/RalphWorkflow/Ralph-Workflow.git>`_
 - `Ralph Workflow website <https://ralphworkflow.com>`_
+- `Source code on Codeberg <https://codeberg.org/RalphWorkflow/Ralph-Workflow.git>`_
+- `Issue tracker <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>`_
 - `License (AGPL-3.0) <https://www.gnu.org/licenses/agpl-3.0.html>`_
 
 Indices and tables

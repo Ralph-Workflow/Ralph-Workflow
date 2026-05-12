@@ -1,72 +1,49 @@
 # Getting Started with Ralph Workflow
 
-New to Ralph Workflow? This walkthrough takes you from zero to your first pipeline run
-without assuming any prior knowledge. If you are already familiar with the basics, see
-[Quickstart](quickstart.md) for a concise reference.
+New to Ralph Workflow? This page takes you from install to your first unattended run without assuming you already know the pipeline internals. If you want the same flow in shorter form, use [Quickstart](quickstart.md).
 
-## What is Ralph Workflow?
+## What Ralph Workflow does
 
-Ralph Workflow is a vendor-neutral AI coding workflow orchestrator for implementation work.
-You describe what you want built in a file called `PROMPT.md`, and Ralph Workflow
-routes AI coding agents to plan and implement the work for you.
+Ralph Workflow is a repo-native orchestration CLI for bigger AI coding tasks. You describe the task in `PROMPT.md`, Ralph runs planning, coding, and agent review, and you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
 
-It is designed for substantial work in **existing repositories** just as much as for brand-new
-projects. A common use case is pointing it at an already-active codebase and asking it to
-handle a meaningful feature, refactor, test expansion, or documentation pass.
+It works well for substantial work in **existing repositories** as well as new ones: feature work, refactors, test expansion, documentation passes, and similar multi-file tasks.
 
-Under the hood, Ralph Workflow runs your agents through a sequence of phases declared in
-`.agent/pipeline.toml`. The runtime is a generic policy interpreter — all routing,
-retry rules, analysis loops, and recovery behavior come from that file, not from
-hardcoded logic. The bundled defaults provide a planning → development loop;
-the workflow shape is fully configurable, and custom policies can add review/fix phases.
-
-You do not need to understand phrases like "phase", "drain", or "MCP artifact" to get
-started — those are internal terms described in [Concepts](concepts.md) once you are
-ready for them.
-
-## Before You Start
+## Before you start
 
 You will need:
 
 - **Python 3.12 or newer** — check with `python --version`
-- **A git repository** — Ralph Workflow must run inside a git repo
-- **At least one supported AI agent on PATH** — either `claude` (Claude Code) or
-  `opencode` (OpenCode); see the install links below if you need to set one up
+- **A git repository** — Ralph Workflow runs inside a git repo
+- **At least one supported AI agent on your PATH** — usually `claude` (Claude Code) or `opencode` (OpenCode)
 
 Install links:
 
 - Claude Code: <https://docs.claude.com/claude-code>
 - OpenCode: <https://opencode.ai>
 
-## Install in 60 Seconds
+## Install in 60 seconds
 
 ```bash
 pipx install ralph-workflow
-```
-
-Verify the install:
-
-```bash
 ralph --version
 ```
 
-If `pipx` is not available, install it first:
+If `pipx` is not available yet:
 
 ```bash
 python -m pip install pipx
 python -m pipx ensurepath
 ```
 
-## Your First Run
+## Your first run
 
-### 1. Navigate to your git repository
+### 1. Go to your git repository
 
 ```bash
 cd /path/to/your/project
 ```
 
-Most teams use Ralph Workflow inside an **existing** git repository they already care about.
-If you are trying it in a scratch repo instead, create one first:
+Most teams use Ralph Workflow in an existing repository they already care about. If you are trying it in a scratch repo instead, create one first:
 
 ```bash
 git init my-project && cd my-project
@@ -78,17 +55,15 @@ git init my-project && cd my-project
 ralph --init
 ```
 
-This creates `PROMPT.md` with a starter template plus the project-local `.agent/`
-support files (`mcp.toml`, `pipeline.toml`, and `artifacts.toml`) copied from the
-user-global config set. You will see a welcome panel listing what was created. `ralph --init`
-is the canonical first-run command. If this repository needs its own optional full
-project-local override copy of the user-global config set, generate it explicitly:
+This creates `PROMPT.md` plus the project-local `.agent/` support files Ralph needs to run.
+
+If this repository also needs a project-local copy of the main Ralph Workflow config, create it explicitly:
 
 ```bash
 ralph --init-local-config
 ```
 
-### 3. Edit PROMPT.md
+### 3. Edit `PROMPT.md`
 
 Open `PROMPT.md` and replace the example content with your actual task:
 
@@ -104,89 +79,68 @@ Add a /health endpoint that returns HTTP 200 with {"status": "ok"}.
 - A new test covers the endpoint
 ```
 
-**Important:** Remove the `<!-- ralph:starter-prompt ... -->` comment at the very top
-of the file. Ralph Workflow refuses to run while that sentinel is present — it is a
-safety guard so you cannot accidentally run the placeholder task.
+**Important:** remove the `<!-- ralph:starter-prompt ... -->` comment at the top. Ralph Workflow refuses to run while that sentinel is still present so you do not accidentally launch the placeholder task.
 
-### 4. Verify your environment
+### 4. Verify the environment
 
 ```bash
 ralph --diagnose
 ```
 
-This prints a status table. Treat it as a recommended verification step before the first real run. Fix any ❌ rows before running the pipeline. Common issues:
+This is the recommended pre-flight check before the first real run. Fix any ❌ rows before continuing. Common issues:
 
-- No agent on PATH → install `claude` or `opencode` (links above)
-- Config errors → run `ralph --regenerate-config` to reset from defaults
+- No agent on PATH → install `claude` or `opencode`
+- Config errors → run `ralph --regenerate-config`
 
-### 5. Run the pipeline
+### 5. Start the run
 
 ```bash
 ralph
 ```
 
-Ralph Workflow starts running. Progress is shown inline. When it finishes, a summary
-panel shows the result.
+Ralph Workflow shows progress inline while it runs. When it finishes, you come back to completed work, logs, and artifacts you can inspect before deciding what to do next.
 
-## What Happens During a Run
+## What happens during a run
 
-When you run `ralph`, the pipeline moves through the phases declared in
-`.agent/pipeline.toml`. The bundled default workflow proceeds as follows:
+You do not need the full internal model to operate Ralph Workflow. The short version is:
 
-1. **Planning** — a planning agent reads your `PROMPT.md` and produces a structured
-   implementation plan
-2. **Development** — a developer agent implements the plan and writes code (loops up
-   to `-D`/`--developer-iters` times, default 5)
-3. **Development analysis** — the pipeline evaluates the development output; loops
-   back to development if more iteration is needed, otherwise proceeds
-4. **Development commit** — the changes are committed to the repository
-5. **Complete** — the pipeline ends successfully; if iterations remain (cap minus
-   completed progress), the loop returns to planning for another cycle
+1. **Planning** — Ralph turns your task into a plan
+2. **Development** — an implementation agent works through the plan
+3. **Analysis and review** — Ralph checks the result, decides whether more work is needed, and records review output
+4. **Completion** — the run ends with the resulting changes, logs, and artifacts saved in the repo
 
-This sequence is declared in `.agent/pipeline.toml`. Custom policies can add review
-and fix phases on top of this base workflow. See [Configuration](configuration.md) to
-customize phase routing, retry limits, and recovery behavior. See [Concepts](concepts.md)
-for the formal definitions of each term.
+If you later want the deeper mechanics — phases, drains, loopbacks, policy files, and artifact contracts — see [Concepts](concepts.md) and [Configuration](configuration.md).
 
-## When Something Goes Wrong
+## When something goes wrong
 
-**The sentinel comment is still in PROMPT.md**
+**The sentinel comment is still in `PROMPT.md`**
 
 ```
 PolicyValidationError: PROMPT.md is still the starter template
 ```
 
-Open `PROMPT.md`, replace the example content with your task, and remove the
-`<!-- ralph:starter-prompt ... -->` line at the top. See [Troubleshooting](troubleshooting.md).
+Replace the example task and remove the `<!-- ralph:starter-prompt ... -->` line.
 
 **No agents found on PATH**
 
 ```
-ralph --diagnose  # agents row shows ❌ or missing
+ralph --diagnose
 ```
 
-Install `claude` or `opencode` and ensure the binary is on your `PATH`. See
-[Troubleshooting](troubleshooting.md) for agent-specific install steps.
+Install `claude` or `opencode`, then run the diagnostic again.
 
-**Config errors in ralph --diagnose**
+**Config errors in `ralph --diagnose`**
 
 ```bash
 ralph --regenerate-config
 ```
 
-This rewrites all config files from the bundled defaults. Existing files are backed up
-with a `.bak` suffix. See [Configuration](configuration.md) for the full config reference.
+This rewrites config files from the bundled defaults and keeps backups with a `.bak` suffix.
 
-## Next Steps
+## Next steps
 
-- [Quickstart](quickstart.md) — concise reference for repeat use
-- [Concepts](concepts.md) — terminology: phases, drains, agents, MCP artifacts, checkpoints
-- [CLI Reference](cli.md) — every flag and sub-command
-- [Configuration](configuration.md) — config files, precedence, and FAQ
-
-## Related pages
-
-- [Quickstart](quickstart.md) — concise reference for repeat use
-- [Concepts](concepts.md) — pipeline phases, drains, agents, and MCP artifacts
-- [CLI Reference](cli.md) — every flag and sub-command
-- [Troubleshooting](troubleshooting.md) — common first-run issues and fixes
+- [Quickstart](quickstart.md) — shorter repeat-use reference
+- [Concepts](concepts.md) — the terms you will see most often
+- [CLI Reference](cli.md) — commands and flags
+- [Configuration](configuration.md) — config files and precedence
+- [Troubleshooting](troubleshooting.md) — common first-run problems

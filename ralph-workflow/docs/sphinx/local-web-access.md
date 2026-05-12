@@ -1,114 +1,86 @@
 # Local Web Access
 
-Ralph Workflow provides three distinct web capabilities — search, visit, and crawl — that are designed to be complementary rather than overlapping. Understanding what each does is essential for choosing the right tool.
+Ralph Workflow supports three related web capabilities: **search**, **visit**, and **crawl**. They solve different problems, so the fastest way to stay productive is to pick the smallest tool that fits the job.
 
-## Search vs Visit vs Crawl
+## Search vs. visit vs. crawl
 
-| Concept | Ralph Workflow Tool | What it Returns |
+| Need | Tool | What you get |
 |---|---|---|
-| **Web Search** | `web_search` | Titles, URLs, and snippets for matching pages |
-| **Visit URL** | `visit_url` | Extracted readable text from a single page |
-| **Crawl Site** | `ralph_upstream__crawl4ai__crawl` (via upstream) | Multi-page traversal and structured extraction |
+| Find relevant pages | `web_search` | Titles, URLs, and snippets |
+| Read one page | `visit_url` | Extracted readable text from a single URL |
+| Traverse many pages or scrape a JS-heavy site | upstream crawler | Multi-page traversal and structured extraction |
 
-Ralph Workflow can **search** the web, **visit** a page directly, and, when needed, **delegate crawling** to a stronger local crawler.
+## The default choice: `visit_url`
 
-## Native vs Upstream
+`visit_url` is Ralph Workflow's built-in page reader. It fetches a single URL and returns readable extracted text without any extra setup.
 
-### Native: `visit_url` (built-in)
+Use it when you want to:
 
-The `visit_url` tool is Ralph Workflow's built-in page reader. It fetches a single URL and returns clean, extracted text without requiring any additional services.
+- read one documentation page
+- inspect a changelog, release note, or issue
+- follow up on a URL returned by `web_search`
 
-**When to use it:**
-- Reading a single documentation page
-- Inspecting a changelog, release note, or issue page
-- Extracting content from a URL returned by `web_search`
+It ships with Ralph Workflow and works out of the box.
 
-**No setup required** — it ships with Ralph Workflow and works out of the box.
+## When to use an upstream crawler
 
-### Upstream: Crawl4AI / Firecrawl (local sidecar)
+For multi-page crawls, JavaScript-rendered SPAs, or structured extraction, Ralph Workflow can delegate to a local upstream MCP server.
 
-For multi-page crawls, JavaScript-rendered SPAs, or structured data extraction, Ralph Workflow can delegate to a local upstream MCP server.
+Use an upstream crawler when you need to:
 
-**When to use it:**
-- Crawling an entire documentation site
-- Scraping JavaScript-heavy Single Page Applications
-- Extracting structured data using CSS selectors or JSON-LD schemas
+- crawl an entire docs site
+- scrape a JavaScript-heavy application
+- extract structured content with selectors or schemas
 
-**Configuration required** — you run the crawler locally and register it in `.agent/mcp.toml`. See `docs/mcp/mcp-servers.md` (section "Worked example: Crawl4AI advanced web crawling") for a worked example.
+This path requires extra configuration in `.agent/mcp.toml` because the crawler runs locally as a separate service.
 
-### Choosing between them
+## Choosing between them
 
 | Need | Tool |
 |---|---|
-| Fetch one static HTML page | `visit_url` (built-in) |
+| Fetch one static HTML page | `visit_url` |
 | JavaScript-rendered SPA | `ralph_upstream__crawl4ai__crawl` |
 | Multi-page crawl | `ralph_upstream__crawl4ai__crawl_many` |
-| Structured extraction | `ralph_upstream__crawl4ai__crawl` with extraction schema |
+| Structured extraction | `ralph_upstream__crawl4ai__crawl` with an extraction schema |
 
-## Local-First and Safety Posture
+## Safety posture
 
-### SSRF Guard
+### SSRF guard
 
-The built-in `visit_url` tool implements SSRF (Server-Side Request Forgery) protection. By default, it blocks requests to:
+The built-in `visit_url` tool blocks requests to loopback, private-network, link-local, multicast, and other reserved address ranges by default. That means it will reject `localhost`, `127.0.0.1`, and private IPs unless you explicitly relax the guard.
 
-- Loopback addresses (`127.0.0.0/8`, `::1`)
-- Private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
-- Link-local addresses (`169.254.0.0/16`)
-- Multicast and reserved ranges
+This is intentional: it reduces the risk of exposing internal services by accident.
 
-This means `visit_url` will reject requests to `localhost`, `127.0.0.1`, or any private IP by default. This is intentional — it prevents accidental exposure of internal services.
+### When to enable private-network access
 
-### When to Enable Private Networks
+Set `allow_private_networks = true` in `[web_visit]` only when you understand the trade-off and the environment is appropriately isolated.
 
-Set `allow_private_networks = true` in `[web_visit]` config when:
+Typical cases:
 
-- Ralph Workflow runs in an isolated container or VM with no internal service exposure
-- You explicitly want Ralph Workflow to fetch from local development servers
-- CI runners with dedicated network namespaces
+- Ralph Workflow runs in an isolated container or VM
+- you intentionally want access to local development servers
+- a CI runner has its own dedicated network boundary
 
-**Trade-off:** Enabling private network access removes the SSRF guard. Only enable it when you understand the implications and your environment is appropriately isolated.
-
-### Timeouts and Size Limits
+### Timeouts and size limits
 
 `visit_url` enforces:
-- A 15-second default timeout per request
-- A 2 MiB maximum response body size
 
-These prevent runaway fetch operations from consuming resources.
+- a 15-second default timeout per request
+- a 2 MiB maximum response body size
 
-## Phase Visibility
+These limits keep fetch operations from growing into unbounded background work.
 
-The `WebVisit` capability is granted to **every session drain** by default. This means `visit_url` is visible and callable in:
+## Tool names you will see
 
-- `planning`
-- `development`
-- `development_analysis`
-- `development_commit`
-- `analysis`
-- `review`
-- `review_analysis`
-- `review_commit`
-- `fix`
-- `commit`
+The most important names are:
 
-This default exposure is verified by the regression test `tests/integration/test_web_access_phase_visibility.py`, which confirms both `tools/list` visibility and `tools/call` callability across every drain.
-
-Similarly, `UPSTREAM_TOOL_USE` is now granted to every drain by default, ensuring that upstream proxy tools (such as `ralph_upstream__crawl4ai__crawl`) are visible whenever an upstream crawler is configured.
-
-## Naming Clarity
-
-The canonical tool names exposed through Ralph Workflow's MCP surface are:
-
-- `web_search` — multi-backend web search (ddgs, Tavily)
-- `visit_url` — single-page fetch and extraction
-- `ralph_upstream__crawl4ai__crawl` — Crawl4AI multi-page crawling (when configured)
-- `ralph_upstream__crawl4ai__crawl_many` — Crawl4AI batch crawling (when configured)
-
-Tool aliases are available for clients that use the `mcp__ralph__<tool>` prefix format. See `ralph.mcp.tools.names` for details.
+- `web_search` — search the web
+- `visit_url` — read one page
+- `ralph_upstream__crawl4ai__crawl` — crawl through an upstream crawler when configured
+- `ralph_upstream__crawl4ai__crawl_many` — batch crawling through that upstream crawler
 
 ## Related pages
 
-- [MCP Tools Reference](mcp-tools.md) — full tool list, capability gates, and upstream proxy setup
-- [MCP Architecture](mcp-architecture.md) — how the MCP server is structured
-- [Concepts](concepts.md) — MCP, drains, and local web access terminology
-- [Configuration](configuration.md) — enabling `web.search` and `web.visit` in config
+- [MCP Tools Reference](mcp-tools.md) — broader tool surface and capability gates
+- [Concepts](concepts.md) — MCP and capability terminology
+- [Configuration](configuration.md) — enabling `web.search` and `web.visit`

@@ -1,47 +1,48 @@
 # Prompts
 
-> **New to Ralph Workflow?** See [Getting Started](getting-started.md) first — it introduces the pipeline before these internals.
+> **Most operators do not need this page.** Start with [Getting Started](getting-started.md) unless you are customizing how Ralph builds prompts.
 
-How Ralph Workflow builds the prompts that are sent to agents for each pipeline phase.
+This page explains how Ralph Workflow builds the prompts it sends to agents for each phase.
+
+## The short version
+
+Ralph uses built-in templates to assemble prompts for planning, development, review, fix, commit, and related phases. Projects can override those templates locally when they need custom behavior.
 
 ## Template registry
 
-`ralph.prompts.template_registry` discovers and loads Jinja2 templates from the `ralph/prompts/templates/` directory tree. Templates are keyed by a `(drain, role)` pair — for example `(development, system)` resolves to the system prompt template for the development drain.
+`ralph.prompts.template_registry` discovers and loads Jinja2 templates from `ralph/prompts/templates/`.
 
-The registry supports template overrides: if a project-level template file exists at `.agent/prompts/<drain>/<role>.md.j2`, it takes precedence over the built-in template.
+Templates are keyed by `(drain, role)` pairs. For example, `(development, system)` resolves to the system prompt template for the development drain.
+
+Project-level overrides take precedence when a matching template exists at `.agent/prompts/<drain>/<role>.md.j2`.
 
 ## Template engine
 
-`ralph.prompts.template_engine` wraps the Jinja2 environment with Ralph Workflow-specific filters and globals. It renders a named template against a context dictionary and returns the rendered string. Error handling converts Jinja2 exceptions to `PromptRenderError` so callers get a structured failure.
+`ralph.prompts.template_engine` renders templates against a context dictionary and converts rendering failures into structured prompt errors.
 
 ## System prompt construction
 
-`ralph.prompts.system_prompt` assembles the full system prompt for an agent invocation. It:
+`ralph.prompts.system_prompt` assembles the final system prompt for an invocation. In plain terms, it:
 
-1. Looks up the correct system prompt template for the active drain
-2. Renders it against the session context
-3. Injects shared partials (capability list, workspace scope, phase-specific instructions)
-
-Shared partials live under `ralph/prompts/templates/shared/` and are included by the main templates via Jinja2 `{% include %}`.
+1. picks the right system template for the current drain
+2. renders it against the current session context
+3. includes shared partials such as capability lists and phase-specific instructions
 
 ## Payload refs
 
-`ralph.prompts.payload_refs` handles oversized prompt content by replacing large values with file references. When a template variable exceeds the inline size limit, `build_prompt_payload_variables` replaces the content with a path to a written file. This keeps templates DRY and ensures agents can reference large artifacts via file paths rather than inlining them.
+Large prompt inputs are not always inlined directly. `ralph.prompts.payload_refs` can replace oversized content with file references so prompts stay readable and within size limits.
 
-Key functions:
-- `build_prompt_payload_variables`: Returns template variables with oversized values replaced by file references
-- `prompt_payload_relative_path`: Generates a normalised relative path for a payload file
-- `write_payload_to_directory`: Writes content to a payload file and returns the absolute path
+Key helpers include:
 
-## Prompt materialisation
+- `build_prompt_payload_variables`
+- `prompt_payload_relative_path`
+- `write_payload_to_directory`
 
-`ralph.prompts.materialize` is the main entry point for producing rendered prompts. The top-level function is `materialize_prompt_for_phase`, which:
+## Prompt materialization
 
-1. Resolves payload refs for oversized content
-2. Renders the appropriate template for the given phase
-3. Returns the rendered prompt string
+`ralph.prompts.materialize` is the main entry point for producing rendered prompts.
 
-The function routes to phase-specific rendering logic internally based on the `phase` parameter (planning, development, review, fix, commit, etc.).
+`materialize_prompt_for_phase` resolves payload refs, renders the right template for the phase, and returns the final prompt string.
 
 ## Prompt modules
 
@@ -50,10 +51,10 @@ The function routes to phase-specific rendering logic internally based on the `p
 | `ralph.prompts.template_registry` | Template discovery and loading |
 | `ralph.prompts.template_engine` | Jinja2 rendering engine |
 | `ralph.prompts.system_prompt` | System prompt assembly |
-| `ralph.prompts.payload_refs` | Oversized payload file reference handling |
-| `ralph.prompts.materialize` | Top-level prompt materialisation entry point |
+| `ralph.prompts.payload_refs` | Oversized payload file-reference handling |
+| `ralph.prompts.materialize` | Top-level prompt materialization entry point |
 | `ralph.prompts.developer` | Developer prompt helpers |
-| `ralph.prompts.reviewer` | Reviewer prompt helpers |
+| `ralph.prompts.reviewer` | Review prompt helpers |
 | `ralph.prompts.commit` | Commit prompt helpers |
 | `ralph.prompts.template_context` | Context object passed to templates |
 | `ralph.prompts.template_variables` | Variable definitions for template rendering |
@@ -61,38 +62,16 @@ The function routes to phase-specific rendering logic internally based on the `p
 | `ralph.prompts.types` | Shared type definitions |
 | `ralph.prompts.debug_dump` | Debug helper that dumps rendered prompts to disk |
 
-## Planning prompt variables
+## Planning and development variables
 
-Planning prompts receive a set of template variables assembled by `ralph.prompts.materialize`. Key variables:
+Planning and development prompts receive template variables assembled by `ralph.prompts.materialize`. Those variables can include plan handoffs, analysis feedback, and artifact-history references when the active workflow enables them.
 
-| Variable | Source | Description |
-|---|---|---|
-| `PLAN_MD` | `.agent/PLAN.md` | Full text of the current plan (loopback / edit paths only) |
-| `ANALYSIS_FEEDBACK` | `.agent/PLANNING_ANALYSIS_DECISION.md` | Feedback from the latest planning-analysis decision (edit paths only) |
-| `ARTIFACT_HISTORY_PATH` | `.agent/artifacts/history/plan/index.md` | Absolute path to the artifact history index, or empty string when no history exists |
-| `ARTIFACT_HISTORY_DIR` | `.agent/artifacts/history/plan/` | Absolute path to the artifact history directory, or empty string when no history exists |
+If you are customizing prompt behavior, the most useful starting point is to inspect the built-in templates and the phase-specific materialization logic together.
 
-When `ARTIFACT_HISTORY_PATH` is non-empty, planning templates render an **ARTIFACT HISTORY** section that points agents to both the archive directory and the canonical history index so they can review past plans and avoid repeating already-rejected approaches. When no history exists (first iteration or after `clear_on_fresh_entry` wipes it) the section is omitted entirely.
-
-## Development prompt variables
-
-Development prompts receive a similar set of template variables. When the development phase has `artifact_history.enabled = true` in its `pipeline.toml` policy, the `ARTIFACT_HISTORY_PATH` variable is populated:
-
-| Variable | Source | Description |
-|---|---|---|
-| `PLAN` / `PLAN_PATH` | `.agent/PLAN.md` | Implementation plan content or file reference |
-| `ANALYSIS_FEEDBACK` / `ANALYSIS_FEEDBACK_PATH` | `.agent/DEVELOPMENT_ANALYSIS_DECISION.md` | Feedback from the latest development-analysis decision (loopback paths only) |
-| `ARTIFACT_HISTORY_PATH` | `.agent/artifacts/history/development_result/index.md` | Absolute path to the development artifact history index, or empty string when no history or policy not enabled |
-| `ARTIFACT_HISTORY_DIR` | `.agent/artifacts/history/development_result/` | Absolute path to the development artifact history directory, or empty string when no history or policy not enabled |
-
-When `ARTIFACT_HISTORY_PATH` is non-empty, development templates (`developer_iteration.jinja`, `developer_iteration_continuation.jinja`, `developer_iteration_fallback.jinja`) render an **ARTIFACT HISTORY** section. This lets development agents inspect both the archive directory and the canonical index for prior failed iterations so they do not repeat already-rejected approaches.
-
-`clear_on_fresh_entry` controls whether artifact history is wiped at the start of a new (non-loopback) development entry. On a loopback from `development_analysis`, history is preserved so the agent can reference what was tried before.
-
-See {doc}`artifacts` for how artifact history archival and clearing works.
+See {doc}`artifacts` for how artifact history archival and clearing work.
 
 ## Related pages
 
-- {doc}`concepts` — phase and drain concepts
-- {doc}`artifacts` — artifact history archival and policy
+- {doc}`concepts` — workflow terms used by prompt templates
+- {doc}`artifacts` — artifact history and handoff contracts
 - {py:mod}`ralph.prompts` — full API reference

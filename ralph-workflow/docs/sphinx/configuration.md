@@ -1,147 +1,87 @@
 # Configuration Reference
 
-> **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
+> **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) before diving into config details.
 
-Ralph Workflow uses a layered configuration system. Settings are resolved in this order
-(highest priority first):
+Ralph Workflow uses layered configuration. Settings are resolved in this order, highest priority first:
 
-1. **CLI flags** — override everything
-2. **Project-local config** — `.agent/ralph-workflow.toml` in the workspace root
+1. **CLI flags**
+2. **Project-local config** — `.agent/ralph-workflow.toml`
 3. **User-global config** — `~/.config/ralph-workflow.toml`
-4. **Bundled defaults** — shipped inside the package at `ralph/policy/defaults/`
+4. **Bundled defaults** — shipped in `ralph/policy/defaults/`
 
-## Config Files
+## The files most operators care about
 
-Ralph Workflow manages a standard first-run config set across two scopes.
+Ralph Workflow manages a standard config set across two scopes.
 
-### User-Global (created once, shared across projects)
+### User-global files
 
 | File | Purpose |
 |------|---------|
 | `~/.config/ralph-workflow.toml` | Global defaults: agent selection, iteration counts, verbosity |
-| `~/.config/ralph-workflow-mcp.toml` | MCP server definitions shared across all projects |
-| `~/.config/ralph-workflow-pipeline.toml` | Global pipeline defaults used when a workspace has no local pipeline override |
-| `~/.config/ralph-workflow-artifacts.toml` | Global artifact-contract defaults used when a workspace has no local artifacts override |
+| `~/.config/ralph-workflow-mcp.toml` | MCP server definitions shared across projects |
+| `~/.config/ralph-workflow-pipeline.toml` | Global pipeline defaults when a workspace has no local pipeline override |
+| `~/.config/ralph-workflow-artifacts.toml` | Global artifact defaults when a workspace has no local artifact override |
 
-### Project-Local (created per project in `.agent/`)
+### Project-local files
 
 | File | Purpose |
 |------|---------|
 | `.agent/mcp.toml` | Project-specific MCP server definitions |
-| `.agent/pipeline.toml` | Phase sequence and parallel execution settings |
+| `.agent/pipeline.toml` | Workflow phases, routing, and parallel settings |
 | `.agent/artifacts.toml` | Artifact type schemas and contracts |
-| `.agent/ralph-workflow.toml` | Optional project-specific overrides for the main config, including agent chains and drain bindings |
+| `.agent/ralph-workflow.toml` | Optional project-specific overrides for agents, chains, drains, and main settings |
 
-Run `ralph --init` to create the standard project-local support files. Use `ralph --init-local-config`
-when you explicitly want a project-local copy of the full user-global config set:
+Run `ralph --init` to create the standard project-local support files. Use `ralph --init-local-config` when you explicitly want a project-local copy of the main config.
 
-```bash
-ralph --init-local-config
-```
+## Bundled defaults
 
-## Bundled Default Templates
+The bundled defaults live in `ralph/policy/defaults/`. When in doubt, the files themselves are the most exact reference:
 
-The bundled defaults live in `ralph/policy/defaults/`. Each file contains inline comments
-explaining every field. The canonical reference is the file itself:
+- `ralph-workflow.toml` — main config
+- `mcp.toml` — MCP server config
+- `pipeline.toml` — workflow phases and routing
+- `artifacts.toml` — artifact contracts
 
-- `ralph-workflow.toml` — general config (iterations, verbosity, isolation)
-- `mcp.toml` — empty MCP server list (add custom servers here)
-- `pipeline.toml` — default phase sequence and parallel execution policy
-- `artifacts.toml` — artifact type contracts
+## Common settings in `ralph-workflow.toml`
 
-## `ralph-workflow.toml` Sections
-
-The main config file (`~/.config/ralph-workflow.toml` and `.agent/ralph-workflow.toml`)
-is organized into the following sections. All fields are optional; commented-out fields
-use their documented defaults automatically.
+The main config file is `~/.config/ralph-workflow.toml`, with optional project-level overrides in `.agent/ralph-workflow.toml`.
 
 ### `[general]`
 
-Core workflow settings: verbosity, git identity, and retry behavior.
+Core workflow settings: verbosity, git identity, retry behavior, and liveness limits.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `verbosity` | `2` | Output verbosity: 0=quiet, 1=normal, 2=verbose, 3=full, 4=debug |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
-| `max_retries` | `3` | Global max retries per agent attempt applied when Ralph Workflow synthesizes chain policy from the main config |
-| `retry_delay_ms` | `1000` | Base delay between retries in ms |
+| `max_retries` | `3` | Max retries per agent attempt when synthesized from the main config |
+| `retry_delay_ms` | `1000` | Base delay between retries |
 | `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
-| `max_backoff_ms` | `60000` | Maximum retry backoff delay in ms |
-| `max_cycles` | `3` | Max full fallback cycles through a drain before giving up |
-| `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before killing a stalled agent |
+| `max_backoff_ms` | `60000` | Maximum retry backoff delay |
+| `max_cycles` | `3` | Maximum full fallback cycles through a drain |
+| `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
 
 ### `[general.workflow]`
 
-Workflow automation flags.
-
 | Key | Default | Description |
 |-----|---------|-------------|
-| `checkpoint_enabled` | `true` | Enable checkpoint/resume functionality |
-
-### `[ccs]`
-
-Claude Code Switch (CCS) defaults — controls how Ralph Workflow invokes Claude Code
-agent binaries. These fields mirror the flags that `claude` accepts.
-
-| Key | Description |
-|-----|-------------|
-| `output_flag` | Flag to request JSON streaming output |
-| `yolo_flag` | Flag to set permission mode |
-| `verbose_flag` | Flag for verbose agent output |
-| `print_flag` | Flag for print/non-interactive mode |
-| `streaming_flag` | Flag to include partial messages |
-| `json_parser` | Parser to use: `"claude"` or `"opencode"` |
-| `session_flag` | Flag template for session resume |
-| `can_commit` | Whether this agent type is allowed to make commits |
-
-### `[ccs_aliases]`
-
-Optional per-alias CCS overrides. Ralph Workflow can already resolve `ccs/<alias>` dynamically using the global `[ccs]` defaults, so this section is only needed when a specific alias should behave differently.
-
-Supports two forms:
-
-- **Simple string form** — override the command for a specific alias: `ccs_aliases = { work = "ccs work", personal = "ccs personal" }`
-- **Table form** — override per-alias CCS settings individually:
-
-```toml
-[ccs_aliases.claude]
-cmd = "claude"
-model_flag = "--model claude-sonnet-4"
-can_commit = true
-```
-
-### `[agents.*]`
-
-Per-agent definitions. Each `[agents.<name>]` block defines a named agent with its
-invocation command and flags. Example:
-
-```toml
-[agents.claude]
-cmd = "claude"
-output_flag = "--output-format=stream-json"
-yolo_flag = "--permission-mode auto"
-can_commit = true
-display_name = "Claude"
-```
-
-The canonical field list is in `ralph/policy/defaults/ralph-workflow.toml`.
+| `checkpoint_enabled` | `true` | Enable checkpoint/resume support |
 
 ### `[cloud]`
 
-Optional cloud reporting integration. Leave disabled unless you have an account.
+Optional cloud reporting integration.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `false` | Enable cloud reporting |
-| `api_url` | — | Base URL for cloud API |
-| `api_key` | `""` | API key (prefer `RALPH_CLOUD_API_KEY` env var) |
+| `api_url` | — | Base URL for the cloud API |
+| `api_key` | `""` | API key (prefer `RALPH_CLOUD_API_KEY`) |
 | `timeout_secs` | `30` | Request timeout |
 
-## Agent chains and drains in `ralph-workflow.toml`
+## Agent chains and drains
 
-Normal Ralph Workflow setups define chain order in `[agent_chains]` and drain bindings in
-`[agent_drains]` inside `ralph-workflow.toml`.
+Most operator customization happens in `[agent_chains]` and `[agent_drains]` inside `ralph-workflow.toml`.
 
 ```toml
 [general]
@@ -162,287 +102,46 @@ development_analysis = "analysis"
 development_commit = "commit"
 ```
 
-Ralph Workflow tries agents in order; if one exhausts its retry budget, it falls over to
-the next. OpenCode model-qualified identifiers use `opencode/<provider>/<model>` syntax,
-for example `opencode/minimax/MiniMax-M2.7-highspeed`. Claude model tags are shorter:
-`claude` uses your current Claude Code model/profile, while `claude/opus` and
-`claude/sonnet` force those model families for a specific chain entry.
+In practice:
 
-`[agent_drains]` maps each pipeline drain name (matching a phase's `drain` field in
-`pipeline.toml`) to a chain name from `[agent_chains]`. Multiple drains may share one
-chain — for example, `planning_analysis` and `development_analysis` both use the `analysis`
-chain by default. Custom policies that add review or fix phases simply declare additional
-chains and drain bindings in this section.
+- **chains** define fallback order for one kind of work
+- **drains** map workflow steps to those chains
 
-## `pipeline.toml` Policy Fields
+Multiple drains can point at the same chain. That lets you change agent policy without rewriting the workflow itself.
 
-The `pipeline.toml` file declares all workflow behavior. Ralph Workflow validates the
-complete policy at startup and rejects incomplete configurations with actionable errors.
+## `pipeline.toml` in plain language
 
-### Top-level fields
+`pipeline.toml` defines the workflow shape Ralph uses for a run.
 
-| Field | Description |
-|-------|-------------|
-| `entry_phase` | Phase where every run starts |
-| `terminal_phase` | Phase that marks successful completion |
+The top-level ideas are:
 
-### `[phases.<name>]`
+- `entry_phase` — where the run starts
+- `terminal_phase` — what counts as successful completion
+- `[phases.<name>]` — the individual steps in the workflow
+- transitions — where Ralph goes next on success, failure, or loopback
+- counters and budgets — how Ralph limits iteration and retry behavior
+- post-commit routes — what happens after a commit-producing step
+- parallel execution — whether independent work units can fan out concurrently
 
-Declares a pipeline phase. Required and optional fields:
+## Advanced sections you may not need right away
 
-| Field | Required? | Description |
-|-------|-----------|-------------|
-| `role` | Yes | Phase behavior class: `execution`, `analysis`, `review`, `commit`, `verification`, `terminal`, `fanout_join` |
-| `drain` | Yes (unless terminal) | Agent chain binding name |
-| `prompt_template` | No | Jinja prompt template filename |
-| `skip_invocation` | No | When true, the phase routes without invoking an agent |
-| `terminal_outcome` | Required for `terminal` | `"success"` or `"failure"` |
+The main config also supports deeper transport-specific and workflow-authoring sections such as:
 
-#### `[phases.<name>.transitions]`
+- `[ccs]`
+- `[ccs_aliases]`
+- `[agents.*]`
+- loop counters and budget counters
+- review-role bypass routes
+- recovery policy tuning
+- parallel fan-out controls
 
-| Field | Description |
-|-------|-------------|
-| `on_success` | Phase to advance to on agent success |
-| `on_failure` | Phase to advance to on agent failure |
-| `on_loopback` | Phase to loop back to |
+Those sections are useful when you are customizing Ralph deeply, but many operators never need to touch them.
 
-#### `[phases.<name>.loop_policy]` (analysis-role phases)
+## When to read further
 
-| Field | Description |
-|-------|-------------|
-| `iteration_state_field` | Names the loop counter declared in `[loop_counters.*]`; that counter's `default_max` is the single analysis cap source |
-| `loopback_review_outcome` | (Optional) Review outcome keyword that triggers loopback |
+Use the more detailed docs when you need them:
 
-#### `[phases.<name>.decisions.<key>]` (analysis-role phases)
-
-Maps a decision vocabulary key to a routing target:
-
-| Field | Description |
-|-------|-------------|
-| `target` | Phase to route to when this decision is emitted |
-| `reset_loop` | Whether to reset the loop counter when this decision is taken |
-
-#### `[phases.<name>.commit_policy]` (commit-role phases)
-
-| Field | Description |
-|-------|-------------|
-| `requires_artifact` | Whether a commit message artifact is required |
-| `skipped_advances_progress` | Whether a skipped commit still increments budget |
-| `increments_counter` | Names the budget counter declared in `[budget_counters.*]` |
-| `loop_resets` | List of loop counter names to reset on commit |
-
-#### `[phases.<name>.bypass_routes]` (review-role phases)
-
-Named outcome bypasses. Example: `review_clean = "review_commit"` bypasses the
-analysis phase when the review finds no issues.
-
-### `[loop_counters.<name>]`
-
-Declares a loop iteration counter referenced by `loop_policy.iteration_state_field`.
-
-| Field | Description |
-|-------|-------------|
-| `default_max` | Default cap (can be overridden at runtime with `--counter NAME=VALUE`; `--developer-iters` / `-D` is a shorthand alias for the `iteration` counter) |
-| `description` | Human-readable description |
-
-### `[budget_counters.<name>]`
-
-Declares a budget counter referenced by `commit_policy.increments_counter`.
-
-| Field | Description |
-|-------|-------------|
-| `description` | Human-readable description |
-| `tracks_budget` | When true, participates in post-commit routing (remaining / exhausted / no_review) |
-
-### `[[post_commit_routes]]`
-
-Declares post-commit routing based on the phase that committed and the resulting
-budget state:
-
-```toml
-[[post_commit_routes]]
-target = "review"
-[post_commit_routes.when]
-phase = "development_commit"
-budget_state = "exhausted"  # remaining | exhausted | no_review
-```
-
-### `[parallel_execution]`
-
-| Field | Description |
-|-------|-------------|
-| `source` | Source of work units (`"planning_artifact_work_units"`) |
-| `phase` | Phase eligible for parallel fan-out |
-| `max_parallel_workers` | Maximum concurrent workers |
-| `max_work_units` | Maximum work units in a plan |
-| `require_allowed_directories` | Whether workers must declare edit-area fencing |
-| `post_fanout_verification` | Whether a verification phase runs after fan-out completes |
-
-### `[default_phase_retry_policy]`
-
-Applied to all phases without an explicit `retry_policy` block:
-
-| Field | Description |
-|-------|-------------|
-| `max_retries` | Maximum retries per agent attempt |
-| `retry_delay_ms` | Base delay between retries |
-| `retry_in_session` | Whether retry preserves the agent session |
-
-### `[recovery]`
-
-| Field | Description |
-|-------|-------------|
-| `cycle_cap` | Maximum full recovery cycles before terminal failure |
-| `terminal_recovery_route` | Where terminal failures route: `"failed"`, `"exit_failure"`, or a declared phase name |
-| `preserve_session_on_categories` | Failure categories that allow session-preserving retry |
-
-## Defining a custom workflow
-
-Phase names, drain names, and counter names have **no behavioral meaning** in
-Ralph Workflow — any name works. The runtime reads role declarations from
-`pipeline.toml` and drives behavior from those; it never consults the literal
-name of a phase or drain.
-
-Here is a worked example replacing the bundled defaults with a fully renamed workflow:
-
-```toml
-# .agent/pipeline.toml — custom phase names: design, build, audit, sign_off, done
-
-entry_phase   = "design"
-terminal_phase = "done"
-
-[phases.design]
-role   = "execution"
-drain  = "planner"
-prompt_template = "planning.jinja"
-[phases.design.transitions]
-on_success = "build"
-
-[phases.build]
-role   = "execution"
-drain  = "builder"
-prompt_template = "development.jinja"
-[phases.build.transitions]
-on_success = "audit"
-on_loopback = "build"
-
-[phases.audit]
-role   = "analysis"
-drain  = "auditor"
-prompt_template = "analysis.jinja"
-[phases.audit.loop_policy]
-iteration_state_field = "audit_round"
-[phases.audit.transitions]
-on_success = "sign_off"
-on_loopback = "build"
-[phases.audit.decisions]
-completed       = "sign_off"
-request_changes = "build"
-failed          = "build"
-
-[phases.sign_off]
-role   = "commit"
-drain  = "signer"
-prompt_template = "commit.jinja"
-[phases.sign_off.commit_policy]
-increments_counter = "cycles"
-resets_loop_counters = ["audit_round"]
-[phases.sign_off.transitions]
-on_success = "done"
-on_failure = "done"
-
-[phases.done]
-role             = "terminal"
-terminal_outcome = "success"
-drain            = "done"
-[phases.done.transitions]
-on_success = "done"
-on_loopback = "done"
-
-[loop_counters.audit_round]
-default_max = 3
-description = "Audit iteration counter"
-
-[budget_counters.cycles]
-tracks_budget = true
-description   = "Build cycle counter"
-
-[recovery]
-cycle_cap = 200
-terminal_recovery_route = "done"
-```
-
-This workflow — `design` → `build` → `audit` → `sign_off` → `done` — behaves
-identically to the bundled `planning`/`development`/`development_analysis`/
-`development_commit`/`complete` workflow. No code changes are required; the runtime
-reads the `role` field and applies the same logic regardless of name.
-
-Validate with:
-
-```bash
-ralph --check-policy
-```
-
-And inspect with:
-
-```bash
-ralph --explain-policy
-```
-
-## Inspecting the active policy
-
-After editing `pipeline.toml`, confirm the workflow is complete and valid:
-
-```bash
-ralph --check-policy       # fast pass/fail validation
-ralph --check-config       # validate configuration
-ralph --explain-policy     # print a human-readable policy summary
-```
-
-See [Policy Explanation](policy-explanation.md) for a walkthrough of the explain output.
-
-## Regenerating Configs
-
-```bash
-ralph --regenerate-config
-```
-
-Rewrites all configs from the bundled templates. Existing files are backed up with a
-`.bak` suffix before being overwritten, so no data is lost.
-
-## Frequently Asked Questions
-
-### I have no agents installed
-
-Ralph Workflow will start but will fail when it tries to invoke an agent. Install at
-least one supported agent:
-
-- **Claude Code**: see <https://docs.claude.com/claude-code>
-- **opencode**: see <https://opencode.ai>
-
-Then verify with `ralph --diagnose`.
-
-### I want to use a single agent only
-
-Edit `.agent/ralph-workflow.toml`. Set the relevant `[agent_chains]` entry to just
-`["your-agent"]`, and update `[agent_drains]` only if you need custom drain-to-chain routing.
-
-### How do I add a custom MCP server
-
-Add a `[[servers]]` entry to `.agent/mcp.toml`:
-
-```toml
-[[servers]]
-name = "my-server"
-command = ["npx", "my-mcp-server"]
-```
-
-Validate with `ralph --check-mcp` after editing.
-
-## Related pages
-
-- [Getting Started](getting-started.md) — first-run walkthrough
-- [CLI Reference](cli.md) — all flags and sub-commands
-- [Concepts](concepts.md) — pipeline phases, drains, and agent terminology
-- [Policy Explanation](policy-explanation.md) — `ralph --explain-policy` walkthrough
-- [Policy-Driven Migration](policy-driven-overhaul-migration.md) — upgrading from earlier versions
+- [Concepts](concepts.md) — terms like phase, drain, and artifact
+- [CLI Reference](cli.md) — runtime flags and shortcuts
+- [Policy Explanation](policy-explanation.md) — inspect the active workflow in plain English
+- [Developer Reference](developer-reference.md) — implementation-oriented detail
