@@ -581,6 +581,19 @@ def test_emit_phase_transition_shows_final_skip_and_needs_changes_for_capped_pla
         loop_caps={"planning_analysis_iteration": 3},
     )
 
+    setattr(
+        display,
+        runner_module._PENDING_PHASE_TRANSITION_METADATA_ATTR,
+        runner_module._PendingPhaseTransitionMetadata(
+            previous_phase="planning_analysis",
+            current_phase="planning",
+            transition_context={
+                "analysis_status": "final, skipping next",
+                "decision": "request changes",
+            },
+        ),
+    )
+
     runner_module._emit_phase_transition_if_changed(
         cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
         "planning_analysis",
@@ -592,7 +605,7 @@ def test_emit_phase_transition_shows_final_skip_and_needs_changes_for_capped_pla
     output = display._ctx.console.export_text()
     arrow = display._ctx.glyph_for("arrow")
     assert "final, skipping next" in output
-    assert f"{arrow} needs changes" in output
+    assert f"{arrow} request changes" in output
 
 
 def test_emit_phase_transition_review_issues_found_none_for_non_review_phase() -> None:
@@ -618,3 +631,36 @@ def test_emit_phase_transition_review_issues_found_none_for_non_review_phase() -
     assert exit_model.review_issues_found is None, (
         "review_issues_found must be None when transitioning from a non-review phase"
     )
+
+
+def test_emit_phase_transition_shows_bypass_metadata_without_fake_decision() -> None:
+    display = _StubDisplay()
+    state = PipelineState(
+        phase="development",
+        previous_phase="planning",
+        loop_iterations={"planning_analysis_iteration": 3},
+        loop_caps={"planning_analysis_iteration": 3},
+    )
+    setattr(
+        display,
+        runner_module._PENDING_PHASE_TRANSITION_METADATA_ATTR,
+        runner_module._PendingPhaseTransitionMetadata(
+            previous_phase="planning",
+            current_phase="development",
+            transition_context={"Planning Analysis": "cap reached, skipping"},
+            routing_note="Planning Analysis cap reached, skipping",
+        ),
+    )
+
+    runner_module._emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+        "planning",
+        state,
+        verbosity=runner_module.Verbosity.VERBOSE,
+        pipeline_policy=_DEFAULT_POLICY.pipeline,
+    )
+
+    output = display._ctx.console.export_text()
+    arrow = display._ctx.glyph_for("arrow")
+    assert "Planning Analysis cap reached, skipping" in output
+    assert f"{arrow} request changes" not in output

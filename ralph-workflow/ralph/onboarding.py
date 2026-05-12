@@ -39,11 +39,7 @@ def init_help_text() -> str:
 def init_local_config_help_text() -> str:
     """Return top-level help text for the optional local override command."""
     explanation = init_local_config_override_explanation()
-    return (
-        "Create .agent/ config files as an "
-        f"{explanation} "
-        "for this repo."
-    )
+    return f"Create .agent/ config files as an {explanation} for this repo."
 
 
 def fresh_workspace_next_steps() -> tuple[str, ...]:

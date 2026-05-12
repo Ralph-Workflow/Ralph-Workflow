@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import configparser
-import io
-import tokenize
 import tomllib
 from functools import cache
 from pathlib import Path
@@ -50,28 +48,16 @@ def _repo_python_files() -> tuple[Path, ...]:
 def _repo_type_ignore_lines() -> tuple[tuple[str, int, str], ...]:
     """Find actual inline type ignores and pyright directives, not string literals."""
     matches: list[tuple[str, int, str]] = []
+    type_ignore_marker = "# type:" + " ignore"
+    pyright_marker = "# py" + "right:"
     for path in _repo_python_files():
         text = path.read_text(encoding="utf-8")
-        type_ignore_marker = "# type:" + " ignore"
-        pyright_marker = "# py" + "right:"
         if type_ignore_marker not in text and pyright_marker not in text:
             continue
         rel_path = str(path.relative_to(REPO_ROOT))
-        try:
-            tokens = list(tokenize.tokenize(io.BytesIO(text.encode()).readline))
-            type_ignore_marker = "# type:" + " ignore"
-            pyright_marker = "# py" + "right:"
-            matches.extend(
-                (rel_path, token.start[0], token.line.rstrip())
-                for token in tokens
-                if token.type == tokenize.COMMENT
-                and (type_ignore_marker in token.string or pyright_marker in token.string)
-            )
-        except (tokenize.TokenError, UnicodeDecodeError):
-            # Fallback: parse manually for files with encoding issues
-            for line_number, line in enumerate(text.splitlines(), start=1):
-                if _is_actual_type_ignore_comment(line) or _is_actual_pyright_comment(line):
-                    matches.append((rel_path, line_number, line.rstrip()))
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            if _is_actual_type_ignore_comment(line) or _is_actual_pyright_comment(line):
+                matches.append((rel_path, line_number, line.rstrip()))
     return tuple(matches)
 
 

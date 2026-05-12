@@ -7,7 +7,6 @@ import importlib.util
 import os
 import subprocess
 import sys
-import tempfile
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -183,6 +182,10 @@ def _run_subprocess(
     )
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
 def _build_wheel(repo_root: Path) -> Path:
     build = _run_subprocess(("uv", "run", "hatch", "build", "--target", "wheel"), cwd=repo_root)
     assert build.returncode == 0, build.stderr or build.stdout
@@ -191,11 +194,39 @@ def _build_wheel(repo_root: Path) -> Path:
     return wheels[-1]
 
 
+@pytest.fixture(scope="session")
+def built_wheel_path() -> Path:
+    """Build one wheel per test session for subprocess installation smoke tests."""
+    return _build_wheel(_repo_root())
+
+
+@pytest.fixture(scope="session")
+def installed_wheel_python(
+    tmp_path_factory: pytest.TempPathFactory,
+    built_wheel_path: Path,
+) -> Path:
+    """Create one installed virtualenv per test session for wheel bootstrapping tests."""
+    root = tmp_path_factory.mktemp("installed-wheel")
+    venv = root / "venv"
+    create_venv = _run_subprocess(
+        (sys.executable, "-m", "venv", str(venv)),
+        cwd=_repo_root(),
+    )
+    assert create_venv.returncode == 0, create_venv.stderr or create_venv.stdout
+
+    python_bin = venv / "bin" / "python"
+    install = _run_subprocess(
+        (str(python_bin), "-m", "pip", "install", str(built_wheel_path)),
+        cwd=_repo_root(),
+    )
+    assert install.returncode == 0, install.stderr or install.stdout
+    return python_bin
+
+
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(30)
-def test_built_wheel_includes_policy_default_tomls(tmp_path: Path) -> None:
-    repo_root = Path(__file__).resolve().parents[1]
-    wheel_path = _build_wheel(repo_root)
+def test_built_wheel_includes_policy_default_tomls(built_wheel_path: Path) -> None:
+    wheel_path = built_wheel_path
 
     with zipfile.ZipFile(wheel_path) as wheel:
         names = set(wheel.namelist())
@@ -214,117 +245,85 @@ def test_built_wheel_includes_policy_default_tomls(tmp_path: Path) -> None:
 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(30)
-def test_installed_wheel_plain_ralph_bootstraps_without_unbound_drain_failure() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
-    wheel_path = _build_wheel(repo_root)
+def test_installed_wheel_plain_ralph_bootstraps_without_unbound_drain_failure(
+    tmp_path: Path,
+    installed_wheel_python: Path,
+) -> None:
+    project = tmp_path / "project"
+    xdg = tmp_path / "xdg"
+    home = tmp_path / "home"
+    project.mkdir()
+    xdg.mkdir()
+    home.mkdir()
 
-    with tempfile.TemporaryDirectory(prefix="ralph-installed-wheel-") as tmp_dir:
-        root = Path(tmp_dir)
-        venv = root / "venv"
-        project = root / "project"
-        xdg = root / "xdg"
-        home = root / "home"
-        project.mkdir()
-        xdg.mkdir()
-        home.mkdir()
+    env = os.environ.copy()
+    env["XDG_CONFIG_HOME"] = str(xdg)
+    env["HOME"] = str(home)
 
-        create_venv = _run_subprocess(
-            (sys.executable, "-m", "venv", str(venv)),
-            cwd=repo_root,
-        )
-        assert create_venv.returncode == 0, create_venv.stderr or create_venv.stdout
+    plain = _run_subprocess((str(installed_wheel_python), "-m", "ralph"), cwd=project, env=env)
+    assert plain.returncode == 2, plain.stderr or plain.stdout  # noqa: PLR2004
+    assert "not initialized" in plain.stdout.lower(), plain.stdout
+    assert "Preflight error:" not in plain.stdout, plain.stdout
+    assert "unbound drains" not in plain.stdout, plain.stdout
+    assert "unbound drains" not in plain.stderr, plain.stderr
 
-        python_bin = venv / "bin" / "python"
-        install = _run_subprocess(
-            (str(python_bin), "-m", "pip", "install", str(wheel_path)),
-            cwd=repo_root,
-        )
-        assert install.returncode == 0, install.stderr or install.stdout
-
-        env = os.environ.copy()
-        env["XDG_CONFIG_HOME"] = str(xdg)
-        env["HOME"] = str(home)
-
-        plain = _run_subprocess((str(python_bin), "-m", "ralph"), cwd=project, env=env)
-        assert plain.returncode == 2, plain.stderr or plain.stdout  # noqa: PLR2004
-        assert "not initialized" in plain.stdout.lower(), plain.stdout
-        assert "Preflight error:" not in plain.stdout, plain.stdout
-        assert "unbound drains" not in plain.stdout, plain.stdout
-        assert "unbound drains" not in plain.stderr, plain.stderr
-
-        load = _run_subprocess(
-            (
-                str(python_bin),
-                "-c",
-                "from pathlib import Path; "
-                "from ralph.config.loader import load_config; "
-                "from ralph.policy.loader import load_policy; "
-                "from ralph.workspace.scope import WorkspaceScope; "
-                "scope = WorkspaceScope(Path.cwd()); "
-                "cfg = load_config(workspace_scope=scope); "
-                "bundle = load_policy(Path.cwd() / '.agent', config=cfg); "
-                "print(sorted(bundle.agents.agent_drains))",
-            ),
-            cwd=project,
-            env=env,
-        )
-        assert load.returncode == 0, load.stderr or load.stdout
-        for drain in (
-            "planning",
-            "planning_analysis",
-            "development",
-            "development_analysis",
-            "development_commit",
-        ):
-            assert drain in load.stdout, load.stdout
+    load = _run_subprocess(
+        (
+            str(installed_wheel_python),
+            "-c",
+            "from pathlib import Path; "
+            "from ralph.config.loader import load_config; "
+            "from ralph.policy.loader import load_policy; "
+            "from ralph.workspace.scope import WorkspaceScope; "
+            "scope = WorkspaceScope(Path.cwd()); "
+            "cfg = load_config(workspace_scope=scope); "
+            "bundle = load_policy(Path.cwd() / '.agent', config=cfg); "
+            "print(sorted(bundle.agents.agent_drains))",
+        ),
+        cwd=project,
+        env=env,
+    )
+    assert load.returncode == 0, load.stderr or load.stdout
+    for drain in (
+        "planning",
+        "planning_analysis",
+        "development",
+        "development_analysis",
+        "development_commit",
+    ):
+        assert drain in load.stdout, load.stdout
 
 
 @pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(30)
-def test_installed_wheel_migrates_legacy_global_config_before_plain_ralph() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
-    wheel_path = _build_wheel(repo_root)
+def test_installed_wheel_migrates_legacy_global_config_before_plain_ralph(
+    tmp_path: Path,
+    installed_wheel_python: Path,
+) -> None:
+    project = tmp_path / "project"
+    xdg = tmp_path / "xdg"
+    home = tmp_path / "home"
+    project.mkdir()
+    xdg.mkdir()
+    home.mkdir()
 
-    with tempfile.TemporaryDirectory(prefix="ralph-installed-wheel-legacy-") as tmp_dir:
-        root = Path(tmp_dir)
-        venv = root / "venv"
-        project = root / "project"
-        xdg = root / "xdg"
-        home = root / "home"
-        project.mkdir()
-        xdg.mkdir()
-        home.mkdir()
+    config_path = xdg / "ralph-workflow.toml"
+    config_path.write_text(_LEGACY_GLOBAL_CONFIG, encoding="utf-8")
 
-        create_venv = _run_subprocess(
-            (sys.executable, "-m", "venv", str(venv)),
-            cwd=repo_root,
-        )
-        assert create_venv.returncode == 0, create_venv.stderr or create_venv.stdout
+    env = os.environ.copy()
+    env["XDG_CONFIG_HOME"] = str(xdg)
+    env["HOME"] = str(home)
 
-        python_bin = venv / "bin" / "python"
-        install = _run_subprocess(
-            (str(python_bin), "-m", "pip", "install", str(wheel_path)),
-            cwd=repo_root,
-        )
-        assert install.returncode == 0, install.stderr or install.stdout
+    plain = _run_subprocess((str(installed_wheel_python), "-m", "ralph"), cwd=project, env=env)
+    assert plain.returncode == 2, plain.stderr or plain.stdout  # noqa: PLR2004
+    assert "not initialized" in plain.stdout.lower(), plain.stdout
+    assert "unbound drains" not in plain.stdout, plain.stdout
+    assert "unbound drains" not in plain.stderr, plain.stderr
 
-        config_path = xdg / "ralph-workflow.toml"
-        config_path.write_text(_LEGACY_GLOBAL_CONFIG, encoding="utf-8")
-
-        env = os.environ.copy()
-        env["XDG_CONFIG_HOME"] = str(xdg)
-        env["HOME"] = str(home)
-
-        plain = _run_subprocess((str(python_bin), "-m", "ralph"), cwd=project, env=env)
-        assert plain.returncode == 2, plain.stderr or plain.stdout  # noqa: PLR2004
-        assert "not initialized" in plain.stdout.lower(), plain.stdout
-        assert "unbound drains" not in plain.stdout, plain.stdout
-        assert "unbound drains" not in plain.stderr, plain.stderr
-
-        migrated = config_path.read_text(encoding="utf-8")
-        for line in (
-            'planning_analysis = "developer"',
-            'development_analysis = "developer"',
-            'development_commit = "reviewer"',
-        ):
-            assert line in migrated, migrated
+    migrated = config_path.read_text(encoding="utf-8")
+    for line in (
+        'planning_analysis = "developer"',
+        'development_analysis = "developer"',
+        'development_commit = "reviewer"',
+    ):
+        assert line in migrated, migrated

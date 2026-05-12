@@ -89,14 +89,14 @@ def test_transition_context_analysis_status_renders_as_value_only() -> None:
 
 def test_transition_context_decision_renders_with_arrow() -> None:
     """'decision' key renders as '→ value'."""
-    result = format_transition_context_items({"decision": "approved"})
-    assert result == ["→ approved"]
+    result = format_transition_context_items({"decision": "completed"})
+    assert result == ["→ completed"]
 
 
 def test_transition_context_decision_needs_changes_renders_with_arrow() -> None:
-    """'decision' key with 'needs changes' value renders as '→ needs changes'."""
-    result = format_transition_context_items({"decision": "needs changes"})
-    assert result == ["→ needs changes"]
+    """'decision' key with raw analysis decision renders as '→ request changes'."""
+    result = format_transition_context_items({"decision": "request changes"})
+    assert result == ["→ request changes"]
 
 
 def test_transition_context_multi_word_key_uses_bracket_notation() -> None:
@@ -119,17 +119,17 @@ def test_transition_context_single_word_key_uses_equals_format() -> None:
 
 def test_transition_context_multiple_items_preserve_order() -> None:
     """Multiple context items are returned in insertion order."""
-    context = {
+    context: dict[str, object] = {
         "Planning Analysis": "3/3",
         "analysis_status": "final, skipping next",
-        "decision": "needs changes",
+        "decision": "request changes",
         "iteration": "1/5",
     }
     result = format_transition_context_items(context)
     assert result == [
         "[Planning Analysis 3/3]",
         "final, skipping next",
-        "→ needs changes",
+        "→ request changes",
         "iteration=1/5",
     ]
 

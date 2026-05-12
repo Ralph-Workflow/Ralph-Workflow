@@ -170,13 +170,13 @@ class EarlySkipCommitEffect:
 
 
 @dataclass(frozen=True)
-class AutoAnalysisSuccessEffect:
-    """Effect to synthesize ANALYSIS_SUCCESS without invoking an analysis agent.
+class ExhaustedAnalysisPhaseAdvanceEffect:
+    """Effect to bypass an already exhausted analysis phase through PHASE_ADVANCE.
 
-    Used when the pipeline is already sitting in an exhausted analysis phase.
-    The runner must not invoke the AI agent in this invalid state; instead it
-    emits ANALYSIS_SUCCESS so reducer-owned success/reset logic remains the
-    single source of truth.
+    Used when the runner is already sitting in an exhausted analysis phase. The
+    runner must not invoke the analysis agent again; instead it emits
+    ``PHASE_ADVANCE`` so reducer-owned success routing, loop resets, and phase
+    advancement remain the single source of truth.
     """
 
     phase: PipelinePhase
@@ -224,7 +224,7 @@ Effect = (
     | PreparePromptEffect
     | CommitEffect
     | EarlySkipCommitEffect
-    | AutoAnalysisSuccessEffect
+    | ExhaustedAnalysisPhaseAdvanceEffect
     | PushEffect
     | SaveCheckpointEffect
     | ExitSuccessEffect

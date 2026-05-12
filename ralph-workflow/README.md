@@ -2,7 +2,7 @@
 
 > **Ship reviewable AI coding runs without babysitting the terminal.**
 
-Ralph Workflow is a Python 3.12+ CLI for developers who want AI to handle multi-step coding work without constant supervision. You describe the task in `PROMPT.md`, point Ralph at the agent CLIs you already use, and let it run. When it finishes, you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
+Ralph Workflow is a Python 3.12+ CLI for developers who want AI to handle multi-step coding work without constant supervision. You describe the task in `PROMPT.md`, point Ralph Workflow at the agent CLIs you already use, and let it run. When it finishes, you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
 
 ## What you get
 
@@ -43,7 +43,7 @@ Requires Python 3.12+.
 
 ## Before your first run
 
-1. Install the agent CLIs you want Ralph to call.
+1. Install the agent CLIs you want Ralph Workflow to call.
 2. Authenticate those CLIs normally.
 3. Pick one small, concrete task for the first run.
 
@@ -66,7 +66,7 @@ What happens in that flow:
 - **`PROMPT.md`** becomes the task spec for the run.
 - **`ralph`** starts the unattended workflow.
 
-After `ralph --init`, open `.agent/ralph-workflow.toml` and point the workflow at the agent CLIs you already use for planning, development, and review.
+After `ralph --init`, review the generated `.agent/` support files. If this repository needs a project-local main-config override, run `ralph --init-local-config` to create `.agent/ralph-workflow.toml`, then point the workflow at the agent CLIs you already use for planning, development, and review.
 
 ## Good first tasks
 
@@ -99,12 +99,25 @@ ralph -T     # thorough: complex refactors, ten iterations
 - Tiny tasks where setup overhead is not worth it
 - Workflows that need unpredictable mid-run human input
 
-## Learn more
+## Development and verification
+
+If you are changing Ralph Workflow itself, start with [`CONTRIBUTING.md`](CONTRIBUTING.md) and run the canonical verification command before you finish:
+
+```bash
+make verify
+```
+
+## Documentation
 
 Use the website and docs for the deeper material this README intentionally leaves out:
 
 - **Homepage:** <https://ralphworkflow.com>
 - **Docs:** <https://ralphworkflow.com/docs>
+- **Documentation map:** [`../docs/README.md`](../docs/README.md)
+- **Maintained Sphinx docs:** [`docs/sphinx/`](docs/sphinx/)
+- **Quickstart:** [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md)
+- **Developer reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md)
+- **Python API reference:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst)
 - **Source repository:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Issue tracker:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 

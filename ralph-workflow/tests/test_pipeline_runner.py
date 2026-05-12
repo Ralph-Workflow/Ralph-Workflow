@@ -31,10 +31,10 @@ from ralph.mcp.upstream.validation import UpstreamValidationError
 from ralph.phases import HANDLERS, PhaseContext, handle_phase
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
-    AutoAnalysisSuccessEffect,
     CommitEffect,
     EarlySkipCommitEffect,
     Effect,
+    ExhaustedAnalysisPhaseAdvanceEffect,
     ExitFailureEffect,
     ExitSuccessEffect,
     FanOutEffect,
@@ -2745,7 +2745,7 @@ def test_determine_effect_auto_skips_exhausted_planning_analysis_without_invokin
 
     effect = runner_module._determine_effect_from_policy(state, policy_bundle)
 
-    assert isinstance(effect, AutoAnalysisSuccessEffect)
+    assert isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect)
     assert effect.phase == "planning_analysis"
 
 
@@ -2764,22 +2764,22 @@ def test_determine_effect_auto_skips_exhausted_development_analysis_without_invo
 
     effect = runner_module._determine_effect_from_policy(state, policy_bundle)
 
-    assert isinstance(effect, AutoAnalysisSuccessEffect)
+    assert isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect)
     assert effect.phase == "development_analysis"
 
 
-class TestAutoAnalysisSuccessEffectExecution:
-    def test_execute_returns_analysis_success_without_invoking_agent(self, tmp_path: Path) -> None:
+class TestExhaustedAnalysisPhaseAdvanceEffectExecution:
+    def test_execute_returns_phase_advance_without_invoking_agent(self, tmp_path: Path) -> None:
         config = MagicMock()
         workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
 
         result = runner_module._execute_effect(
-            AutoAnalysisSuccessEffect(phase="planning_analysis"),
+            ExhaustedAnalysisPhaseAdvanceEffect(phase="planning_analysis"),
             config,
             workspace_scope,
         )
 
-        assert result == PipelineEvent.ANALYSIS_SUCCESS
+        assert result == PipelineEvent.PHASE_ADVANCE
 
 
 class TestEarlySkipCommitEffectExecution:

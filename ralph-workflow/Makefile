@@ -52,13 +52,13 @@ install-dev: dev
 
 # Testing
 test:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) -m "not subprocess_e2e"
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 
 test-unit:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --ignore=tests/integration -m "not subprocess_e2e"
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e"
 
 test-integration:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/integration/ -q -n $(PYTEST_WORKERS) -m "not subprocess_e2e"
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
 
 coverage: test-cov
 
@@ -67,7 +67,7 @@ test-subprocess-e2e:
 
 test-cov:
 	rm -f .coverage.pytest .coverage.pytest.*
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) -m "not subprocess_e2e" --cov=ralph --cov-report=
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e" --cov=ralph --cov-report=
 	uv run coverage report --data-file=.coverage.pytest --fail-under=80
 
 # Linting
