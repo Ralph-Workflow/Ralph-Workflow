@@ -3,7 +3,8 @@
 This test walks a set of user-facing source files and asserts that every
 capital-R 'Ralph' occurrence is either:
   - followed by ' Workflow' (correct full project name), or
-  - part of the historical 'Ralph loop' concept reference (explicitly allowed), or
+  - part of one of two explicitly allowed historical references:
+    'original Ralph' or 'Ralph loop', or
   - on an explicitly allowlisted line (e.g. ASCII art, internal CLI command literal).
 """
 
@@ -55,8 +56,10 @@ def _jinja_templates() -> list[Path]:
 # Substrings that make a line acceptable even when it contains bare 'Ralph'.
 # Each entry is a tuple of (substring, reason).
 _ALLOWLIST: list[tuple[str, str]] = [
-    # Historical concept reference — "Ralph loop" as a concept name
+    # Historical concept references — allowed only when describing lineage,
+    # not when using 'Ralph' as the current product name.
     ("Ralph loop", "historical concept reference: the Ralph loop"),
+    ("original Ralph", "historical lineage reference: original Ralph"),
     # ASCII art logo lines — the banner spells out 'Ralph' as visual art
     ("|  _ \\", "ASCII art banner line"),
     ("| |_) /", "ASCII art banner line"),
