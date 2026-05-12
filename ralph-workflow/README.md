@@ -142,6 +142,17 @@ ralph --diagnose
 ralph
 ```
 
+### Pipeline depth presets
+
+```bash
+ralph -Q     # quick: small fixes, single iteration
+ralph        # standard: most features and tasks
+ralph -T     # thorough: complex refactors, ten iterations
+```
+
+`-Q` is a preset for `-D 1`, and `-T` is a preset for `-D 10`. The presets override an explicit
+`-D` value when combined, and `-Q`/`-T` are mutually exclusive.
+
 `ralph --init` is the canonical form. Compatibility labels such as `default` are deprecated,
 ignored, and no longer recommended in docs or scripts. `ralph --init` scaffolds the project-local
 support files from the user-global config set and seeds a small default `.gitignore` policy for Ralph Workflow

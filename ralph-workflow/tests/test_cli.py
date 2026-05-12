@@ -18,6 +18,7 @@ from typer.testing import CliRunner as TyperCliRunner
 import ralph.pipeline.runner as runner_module
 from ralph.cli.commands.commit import CommitPlumbingOptions
 from ralph.cli.main import (
+    _THOROUGH_DEVELOPER_ITERS,
     CLIOverrideInput,
     _build_cli_overrides,
     _configure_logging,
@@ -836,6 +837,92 @@ class TestQuickModeSemantics:
         )
 
 
+class TestThoroughModeSemantics:
+    """Tests for --thorough/-T flag behavior."""
+
+    def test_thorough_mode_forces_developer_iters_10(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(
+            "ralph.cli.main.run_pipeline",
+            lambda **kw: captured.update(kw) or 0,
+        )
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+
+        runner = TyperCliRunner()
+        runner.invoke(app, ["-T", "--dry-run"], catch_exceptions=False)
+
+        cli_overrides = cast("dict[str, object]", captured.get("cli_overrides"))
+        general = cast("dict[str, object]", cli_overrides["general"])
+        assert general["developer_iters"] == _THOROUGH_DEVELOPER_ITERS
+
+    def test_thorough_overrides_developer_iters_when_both_supplied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(
+            "ralph.cli.main.run_pipeline",
+            lambda **kw: captured.update(kw) or 0,
+        )
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+
+        runner = TyperCliRunner()
+        runner.invoke(app, ["-T", "-D", "3", "--dry-run"], catch_exceptions=False)
+
+        cli_overrides = cast("dict[str, object]", captured.get("cli_overrides"))
+        general = cast("dict[str, object]", cli_overrides["general"])
+        assert general["developer_iters"] == _THOROUGH_DEVELOPER_ITERS
+
+    def test_quick_and_thorough_together_raise_usage_error(self, cli_runner: CliRunner) -> None:
+        result = cli_runner.invoke(app, ["-Q", "-T", "--prompt", "task"])
+        assert result.exit_code == 2  # noqa: PLR2004
+        assert "--quick/-Q and --thorough/-T cannot be used together" in (
+            result.stderr or result.stdout
+        )
+
+
+class TestAdditionalShortcutAliases:
+    """Tests for added short aliases on common control flags."""
+
+    def test_short_resume_alias_sets_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(
+            "ralph.cli.main.run_pipeline",
+            lambda **kw: captured.update(kw) or 0,
+        )
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+
+        runner = TyperCliRunner()
+        runner.invoke(app, ["-r", "--dry-run"], catch_exceptions=False)
+
+        assert captured.get("resume") is True
+
+    def test_short_check_config_alias_runs_check_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+        monkeypatch.setattr(
+            "ralph.cli.main._handle_check_config",
+            lambda config, cli_overrides, check_config, *, console: 0 if check_config else None,
+        )
+
+        runner = TyperCliRunner()
+        result = runner.invoke(app, ["-C"], catch_exceptions=False)
+
+        assert result.exit_code == 0
+
+
 class TestRemovedReviewFlags:
     """Verify that review-era CLI flags that no longer exist are absent from help output."""
 
@@ -857,3 +944,14 @@ class TestRemovedReviewFlags:
         result = cli_runner.invoke(app, ["--help"])
         assert result.exit_code == 0
         assert "--quick" in result.stdout or "-Q" in result.stdout
+
+    def test_new_shortcuts_are_in_help(self, cli_runner: CliRunner) -> None:
+        result = cli_runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "--thorough" in result.stdout or "-T" in result.stdout
+        assert "--resume" in result.stdout or "-r" in result.stdout
+        assert "--check-config" in result.stdout or "-C" in result.stdout
+        assert "--dry-run" in result.stdout
+        dry_run_lines = [line for line in result.stdout.splitlines() if "--dry-run" in line]
+        assert dry_run_lines
+        assert all("-n" not in line for line in dry_run_lines)

@@ -107,6 +107,7 @@ def _get_cli_context() -> DisplayContext:
 
 _KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup"})
 _QUICK_FLAGS: frozenset[str] = frozenset({"-Q", "--quick"})
+_THOROUGH_DEVELOPER_ITERS = 10
 
 
 def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
@@ -417,6 +418,17 @@ def main(  # noqa: PLR0913
             help="Quick mode: run a single developer iteration (equivalent to -D 1).",
         ),
     ] = False,
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough",
+            "-T",
+            help=(
+                "Thorough mode: run ten developer iterations "
+                f"(equivalent to -D {_THOROUGH_DEVELOPER_ITERS})."
+            ),
+        ),
+    ] = False,
     counter: Annotated[
         list[str] | None,
         typer.Option(
@@ -460,7 +472,7 @@ def main(  # noqa: PLR0913
     ] = False,
     resume: Annotated[
         bool,
-        typer.Option("--resume", help="Resume from checkpoint"),
+        typer.Option("--resume", "-r", help="Resume from checkpoint"),
     ] = False,
     no_resume: Annotated[
         bool,
@@ -488,7 +500,7 @@ def main(  # noqa: PLR0913
     ] = False,
     check_config: Annotated[
         bool,
-        typer.Option("--check-config", help="Validate configuration"),
+        typer.Option("--check-config", "-C", help="Validate configuration"),
     ] = False,
     check_mcp: Annotated[
         bool,
@@ -586,10 +598,7 @@ def main(  # noqa: PLR0913
         counter_overrides=counter_overrides,
     )
 
-    if resume and no_resume:
-        raise click.UsageError(
-            "Conflicting flags: --resume and --no-resume cannot be used together"
-        )
+    _validate_mode_flags(quick=quick, thorough=thorough, resume=resume, no_resume=no_resume)
 
     verbosity = _resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
 
@@ -603,8 +612,12 @@ def main(  # noqa: PLR0913
 
     _validate_prompt_flags(prompt, quick)
 
-    # quick mode implies developer_iters=1 (overrides -D when both supplied)
-    effective_developer_iters = 1 if quick else developer_iters
+    # Mode presets imply developer iteration counts and override explicit -D when supplied.
+    effective_developer_iters = _resolve_effective_developer_iters(
+        quick=quick,
+        thorough=thorough,
+        developer_iters=developer_iters,
+    )
 
     # Load configuration
     cli_overrides = _build_cli_overrides(
@@ -691,11 +704,32 @@ app.callback(invoke_without_command=True)(main)
 app.command()(cleanup)
 
 
+def _validate_mode_flags(*, quick: bool, thorough: bool, resume: bool, no_resume: bool) -> None:
+    if resume and no_resume:
+        raise click.UsageError(
+            "Conflicting flags: --resume and --no-resume cannot be used together"
+        )
+    if quick and thorough:
+        raise click.UsageError("--quick/-Q and --thorough/-T cannot be used together")
+
+
+
 def _validate_prompt_flags(prompt: str | None, quick: bool) -> None:
     if prompt is not None and not quick:
         raise click.UsageError(
             "--prompt requires --quick/-Q. Usage: ralph -Q --prompt 'your prompt here'"
         )
+
+
+
+def _resolve_effective_developer_iters(
+    *, quick: bool, thorough: bool, developer_iters: int | None
+) -> int | None:
+    if quick:
+        return 1
+    if thorough:
+        return _THOROUGH_DEVELOPER_ITERS
+    return developer_iters
 
 
 def _handle_list_agents(

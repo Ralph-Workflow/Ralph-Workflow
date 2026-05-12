@@ -139,7 +139,7 @@ Ralph Workflow plans, develops, reviews, and commits while you do something else
 ```bash
 ralph -Q     # quick: small fixes, single iteration
 ralph        # standard: most features and tasks
-ralph -T     # thorough: complex refactors, overnight runs
+ralph -T     # thorough: complex refactors, ten iterations
 ```
 
 More presets and custom pipelines in the [docs](https://ralphworkflow.com/docs).

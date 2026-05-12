@@ -12,7 +12,7 @@ running `ralph` with no flags starts the full pipeline.
 | `--list-agents` | | `False` | List all configured agents and their status |
 | `--list-providers` | | `False` | List available AI providers (opencode API) |
 | `--diagnose` | `-d` | `False` | Run full pre-flight diagnostics and print a status table |
-| `--check-config` | | `False` | Load and validate configuration then exit |
+| `--check-config` | `-C` | `False` | Load and validate configuration then exit |
 | `--check-mcp` | | `False` | Validate custom MCP server definitions and exit |
 | `--check-policy` | | `False` | Validate the active pipeline policy and print a summary, then exit |
 | `--inspect-checkpoint` | | `False` | Print the contents of the current checkpoint |
@@ -71,6 +71,17 @@ ralph -Q "add a /healthz endpoint"       # inline prompt, 1 iteration
 ralph -Q --prompt "add a /healthz endpoint"  # explicit --prompt form
 ```
 
+## Thorough Mode
+
+Use the thorough preset when you want a longer unattended run budget:
+
+```bash
+ralph -T
+```
+
+`-T`/`--thorough` forces `developer_iters=10` (equivalent to `-D 10`). It overrides an explicit
+`-D` value when combined, and it cannot be used together with `-Q`/`--quick`.
+
 ## Pipeline Tuning
 
 | Flag | Short | Default | Description |
@@ -78,6 +89,7 @@ ralph -Q --prompt "add a /healthz endpoint"  # explicit --prompt form
 | `--counter NAME=VALUE` | | | Override a named budget or loop counter declared in `pipeline.toml` (e.g. `--counter iteration=3`). Repeatable. |
 | `--developer-iters N` | `-D` | `5` | Maximum developer agent iterations per run. Overrides the `default_max` of the `iteration` budget counter. |
 | `--quick` | `-Q` | `False` | Quick mode: run a single developer iteration (equivalent to `-D 1`). Accepts an inline prompt as a bare positional argument. |
+| `--thorough` | `-T` | `False` | Thorough mode: run ten developer iterations (equivalent to `-D 10`). Cannot be combined with `-Q`. |
 | `--developer-agent <name>` | `-a` | (from config) | Override the developer agent by name |
 | `--developer-model <flag>` | | (from config) | Model flag forwarded to the developer agent binary |
 
@@ -88,7 +100,7 @@ ralph -Q --prompt "add a /healthz endpoint"  # explicit --prompt form
 | `--quiet` | `-q` | `False` | Suppress all output except errors |
 | `--debug` | | `False` | Enable trace-level debug output |
 | `--verbosity <level>` | `-v` | `verbose` | Set output verbosity: `quiet`, `normal`, `verbose`, `full`, `debug` |
-| `--resume` | | `False` | Resume from the saved checkpoint if one exists |
+| `--resume` | `-r` | `False` | Resume from the saved checkpoint if one exists |
 | `--no-resume` | | `False` | Ignore the checkpoint and restart from the beginning |
 | `--dry-run` | | `False` | Run the pipeline structure without invoking any agents |
 
