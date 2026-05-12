@@ -187,3 +187,31 @@ class TestResolveExhaustedAnalysisBypass:
         assert bypass.target_phase == "planning_analysis"
         assert bypass.state == state
         assert bypass.skipped == ()
+
+    def test_exhausted_bypass_is_consumed_exactly_once_on_second_call(self) -> None:
+        policy = _planning_bypass_policy()
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 3},
+            loop_caps={"planning_analysis_iteration": 3},
+            review_outcome="issues",
+        )
+
+        first_bypass = resolve_exhausted_analysis_bypass(state, "planning_analysis", policy)
+
+        assert first_bypass.target_phase == "development"
+        assert first_bypass.state.get_loop_iteration("planning_analysis_iteration") == 0
+        assert first_bypass.state.review_outcome is None
+        assert len(first_bypass.skipped) == 1
+        assert first_bypass.skipped[0].phase == "planning_analysis"
+        assert first_bypass.skipped[0].target_phase == "development"
+
+        second_bypass = resolve_exhausted_analysis_bypass(
+            first_bypass.state,
+            "planning_analysis",
+            policy,
+        )
+
+        assert second_bypass.target_phase == "planning_analysis"
+        assert second_bypass.state == first_bypass.state
+        assert second_bypass.skipped == ()

@@ -4095,6 +4095,152 @@ def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(  #
     assert development_state.get_loop_iteration("planning_analysis_iteration") == 0
 
 
+def test_runner_resumed_planning_success_skips_planning_analysis_after_cap(  # noqa: PLR0915
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    saved_states: list[PipelineState] = []
+    policy_bundle = _load_default_policy_bundle()
+    analysis_cap = 3
+    initial_loop_caps = {
+        name: cfg.default_max for name, cfg in policy_bundle.pipeline.loop_counters.items()
+    }
+    initial_loop_caps["planning_analysis_iteration"] = analysis_cap
+    initial_state = PipelineState.from_policy(
+        policy_bundle.pipeline,
+        phase="planning",
+        previous_phase=None,
+        checkpoint_saved_count=1,
+        budget_caps={"iteration": 1},
+        loop_caps=initial_loop_caps,
+        loop_iterations={"planning_analysis_iteration": analysis_cap},
+        review_outcome="issues",
+    )
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "# Prompt\n\nResume the interrupted planning pass.")
+    _write_minimal_plan_artifacts(tmp_path, context="Resumed plan")
+    _write_minimal_plan_draft(tmp_path, context="Resumed draft")
+
+    planning_analysis_calls = 0
+    planning_prompt_snapshot: str | None = None
+    original_determine = runner_module._call_determine_effect_from_policy
+
+    def stop_after_development_prompt(state, bundle, workspace_scope, config):
+        development_prompt = tmp_path / ".agent" / "tmp" / "development_prompt.md"
+        if state.phase == "development_analysis" and development_prompt.exists():
+            return ExitSuccessEffect()
+        return original_determine(state, bundle, workspace_scope, config)
+
+    def write_artifact(relative_path: str, payload: dict[str, object]) -> None:
+        artifact_path = tmp_path / relative_path
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def fake_execute_effect(effect, _config, _workspace_scope, **_kwargs):
+        nonlocal planning_analysis_calls, planning_prompt_snapshot
+        if isinstance(effect, InvokeAgentEffect):
+            if effect.phase == "planning":
+                prompt_path = tmp_path / ".agent" / "tmp" / "planning_prompt.md"
+                assert prompt_path.exists()
+                planning_prompt_snapshot = prompt_path.read_text(encoding="utf-8")
+                assert "PLANNING EDIT MODE" in planning_prompt_snapshot
+                write_artifact(
+                    ".agent/artifacts/plan.json",
+                    {
+                        "type": "plan",
+                        "content": {
+                            "summary": {
+                                "context": "Updated resumed planning artifact.",
+                                "scope_items": [
+                                    {"text": "one"},
+                                    {"text": "two"},
+                                    {"text": "three"},
+                                ],
+                            },
+                            "steps": [
+                                {
+                                    "number": 1,
+                                    "title": "Revise resumed plan",
+                                    "content": "Keep resumed context intact.",
+                                    "step_type": "file_change",
+                                    "targets": [{"path": "foo.py", "action": "modify"}],
+                                }
+                            ],
+                            "critical_files": {
+                                "primary_files": [{"path": "foo.py", "action": "modify"}],
+                                "reference_files": [],
+                            },
+                            "risks_mitigations": [
+                                {"risk": "minimal risk", "mitigation": "covered by test"}
+                            ],
+                            "verification_strategy": [
+                                {"method": "pytest", "expected_outcome": "passes"}
+                            ],
+                            "work_units": [],
+                        },
+                    },
+                )
+                return PipelineEvent.AGENT_SUCCESS
+            if effect.phase == "planning_analysis":
+                planning_analysis_calls += 1
+                raise AssertionError(
+                    "Resumed planning success should bypass planning_analysis at cap"
+                )
+            if effect.phase == "development":
+                write_artifact(
+                    ".agent/artifacts/development_result.json",
+                    {
+                        "type": "development_result",
+                        "content": {
+                            "status": "completed",
+                            "summary": "Development artifact present.",
+                            "files_changed": "foo.py",
+                        },
+                    },
+                )
+                return PipelineEvent.AGENT_SUCCESS
+            raise AssertionError(f"Unexpected invoke phase before development exit: {effect.phase}")
+        if isinstance(effect, CommitEffect):
+            raise AssertionError("Should not reach commit before stopping after development prompt")
+        raise AssertionError(f"Unexpected effect type: {type(effect)!r}")
+
+    def capture_saved_state(state: PipelineState) -> None:
+        saved_states.append(state)
+
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
+    monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
+    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(
+        runner_module,
+        "_call_determine_effect_from_policy",
+        stop_after_development_prompt,
+    )
+    monkeypatch.setattr(runner_module.ckpt, "save", capture_saved_state)
+    _install_runner_display_context(monkeypatch)
+
+    result = runner_module.run(
+        UnifiedConfig(),
+        initial_state=initial_state,
+        verbosity=Verbosity.QUIET,
+        counter_overrides={"iteration": 1},
+    )
+
+    assert result == 0
+    assert planning_prompt_snapshot is not None
+    assert planning_analysis_calls == 0
+    assert not any(state.phase == "planning_analysis" for state in saved_states)
+    entered_phases = [state.phase for state in saved_states if state.phase != "planning"]
+    assert entered_phases
+    assert entered_phases[0] == "development"
+    development_prompt_path = tmp_path / ".agent" / "tmp" / "development_prompt.md"
+    assert development_prompt_path.exists()
+    development_state = next(state for state in saved_states if state.phase == "development")
+    assert initial_state.get_loop_iteration("planning_analysis_iteration") == analysis_cap
+    assert development_state.previous_phase == "planning"
+    assert development_state.get_loop_iteration("planning_analysis_iteration") == 0
+    assert development_state.review_outcome is None
+
+
 class TestSkippedExhaustedAnalysisInfo:
     def test_detects_planning_analysis_skip(self) -> None:
         policy = PipelinePolicy(

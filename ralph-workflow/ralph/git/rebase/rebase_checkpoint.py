@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -204,9 +205,19 @@ def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
 
     _backup_checkpoint()
 
-    temp_path = Path(f"{path}.tmp")
-    temp_path.write_text(json.dumps(checkpoint.to_dict(), indent=2))
-    temp_path.replace(path)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f"{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    os.close(fd)
+    temp_path = Path(temp_name)
+    try:
+        temp_path.write_text(json.dumps(checkpoint.to_dict(), indent=2), encoding="utf-8")
+        temp_path.replace(path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
     if not checkpoint_existed:
         _backup_checkpoint()
@@ -214,11 +225,23 @@ def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
 
 def _backup_checkpoint() -> None:
     path = _checkpoint_path()
+    if not path.exists():
+        return
+
     backup = _backup_path()
-    if path.exists():
-        if backup.exists():
-            backup.unlink()
-        shutil.copy2(path, backup)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f"{backup.name}.",
+        suffix=".tmp",
+        dir=backup.parent,
+    )
+    os.close(fd)
+    temp_path = Path(temp_name)
+    try:
+        shutil.copy2(path, temp_path)
+        temp_path.replace(backup)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def load_rebase_checkpoint() -> RebaseCheckpoint | None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import threading
 from pathlib import Path
 
 from ralph.git.rebase.rebase_checkpoint import (
@@ -35,6 +36,35 @@ def test_save_and_load_checkpoint_preserves_state(tmp_path, monkeypatch) -> None
     assert loaded.conflicted_files == ["conflict.txt"]
     assert loaded.resolved_files == ["conflict.txt"]
     assert loaded.error_count == checkpoint.error_count
+
+
+def test_save_checkpoint_uses_unique_temp_files_per_writer(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    checkpoints = [_checkpoint_entry("branch-a"), _checkpoint_entry("branch-b")]
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+    original_replace = Path.replace
+
+    def synchronized_replace(self: Path, target: Path) -> Path:
+        barrier.wait(timeout=1)
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", synchronized_replace)
+
+    def worker(checkpoint: RebaseCheckpoint) -> None:
+        try:
+            save_rebase_checkpoint(checkpoint)
+        except BaseException as exc:  # pragma: no cover - assertion consumes failures
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(checkpoint,)) for checkpoint in checkpoints]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert load_rebase_checkpoint() is not None
 
 
 def test_clear_rebase_checkpoint_removes_files(tmp_path, monkeypatch) -> None:

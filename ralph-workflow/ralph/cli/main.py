@@ -713,13 +713,11 @@ def _validate_mode_flags(*, quick: bool, thorough: bool, resume: bool, no_resume
         raise click.UsageError("--quick/-Q and --thorough/-T cannot be used together")
 
 
-
 def _validate_prompt_flags(prompt: str | None, quick: bool) -> None:
     if prompt is not None and not quick:
         raise click.UsageError(
             "--prompt requires --quick/-Q. Usage: ralph -Q --prompt 'your prompt here'"
         )
-
 
 
 def _resolve_effective_developer_iters(
