@@ -22,7 +22,7 @@ Ralph Workflow is invoked as `ralph` (or `python -m ralph`). Running `ralph` wit
 ralph --check-policy
 ```
 
-This validates the active pipeline policy and prints a summary of the phases, drains, artifact contracts, and routing limits Ralph will use.
+This validates the active pipeline policy and prints a summary of the phases, drains, artifact contracts, and routing limits Ralph Workflow will use.
 
 Use `--explain-policy-dir` to point at a custom policy directory:
 
@@ -48,7 +48,7 @@ Run one developer iteration with an inline prompt:
 ralph -Q "do a quick change"
 ```
 
-`-Q` / `--quick` forces `developer_iters=1` and lets you pass an inline prompt instead of using `PROMPT.md`. Ralph writes that inline prompt to `.agent/CURRENT_PROMPT.md` for the run.
+`-Q` / `--quick` forces `developer_iters=1` and lets you pass an inline prompt instead of using `PROMPT.md`. Ralph Workflow writes that inline prompt to `.agent/CURRENT_PROMPT.md` for the run.
 
 ```bash
 ralph -Q "add a /healthz endpoint"

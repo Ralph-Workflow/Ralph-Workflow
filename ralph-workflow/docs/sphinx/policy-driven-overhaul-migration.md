@@ -6,7 +6,7 @@ This guide is for users upgrading from an earlier Ralph Workflow release to the 
 
 Ralph Workflow's pipeline is now **fully policy-driven**. Routing, retry rules, analysis loops, commit semantics, verification gates, recovery routing, and terminal behavior all come from `pipeline.toml`.
 
-Before this change, some workflow behavior still lived implicitly in the runtime. After the change, the runtime follows the declared policy. If a behavior is not expressed in `pipeline.toml`, Ralph does not invent it.
+Before this change, some workflow behavior still lived implicitly in the runtime. After the change, the runtime follows the declared policy. If a behavior is not expressed in `pipeline.toml`, Ralph Workflow does not invent it.
 
 ## Assumptions that no longer hold
 

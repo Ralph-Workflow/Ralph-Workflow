@@ -154,7 +154,7 @@ Four sentence forms are generated:
 | Bypass route | `Explanation: phase 'review' bypasses to 'review_commit' when the configured outcome is 'review_clean'.` |
 | Loopback cap | `Explanation: phase 'development_analysis' loops back to 'development' until 3 attempts are exhausted, after which the run terminates.` |
 
-These sentences make it possible to answer "why did Ralph route here?" from the explanation output alone, without reading `pipeline.toml` or the runtime code.
+These sentences make it possible to answer "why did Ralph Workflow route here?" from the explanation output alone, without reading `pipeline.toml` or the runtime code.
 
 ## Structural breakdown
 

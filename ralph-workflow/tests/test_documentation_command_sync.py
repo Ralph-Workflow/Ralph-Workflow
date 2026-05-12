@@ -131,28 +131,15 @@ _SPHINX_MCP_ARCH_PATH = REPO_ROOT / "docs" / "sphinx" / "mcp-architecture.md"
 _SPHINX_AGENTS_PATH = REPO_ROOT / "docs" / "sphinx" / "agents.md"
 
 
-def test_readme_describes_read_media_as_primary_multimodal_tool() -> None:
-    """README.md must describe read_media as the primary multimodal tool."""
+def test_readme_stays_onboarding_focused_and_points_to_deeper_docs() -> None:
+    """README.md may stay simplified as long as it explicitly routes deeper topics to docs."""
     content = _README_PATH.read_text(encoding="utf-8")
-    assert "read_media" in content
-    assert "compatibility" in content
-    # Old image-only wording must be gone or augmented
-    assert "read_image" in content  # kept as compatibility alias reference
-    # Old reject-all wording must be gone
-    assert "Upstream multimodal rejection" not in content
-    assert "rejects it with a clear error" not in content
+    assert "intentionally leaves out" in content or "deeper material" in content
+    assert "docs/sphinx/" in content
+    assert "quickstart.md" in content
+    assert "developer-reference.md" in content
+    assert "modules.rst" in content
 
-
-def test_readme_describes_broad_modality_support() -> None:
-    """README.md must describe broad modality support (not image-only)."""
-    content = _README_PATH.read_text(encoding="utf-8")
-    assert "resource_reference" in content or "resource-reference" in content
-    # Must mention normalization of upstream content
-    assert (
-        "normalizes it to a" in content
-        or "normalized to a" in content
-        or "Upstream normalization" in content
-    )
 
 
 def test_contributing_describes_read_media_as_primary_multimodal_tool() -> None:
@@ -206,56 +193,6 @@ def test_sphinx_agents_describes_bounded_summaries_not_first_class_artifacts() -
     assert "preserve these blocks as first-class artifacts" not in content
 
 
-def test_readme_provider_matrix_claude_typed_blocks() -> None:
-    """README.md must document Claude PDF/document delivery as typed blocks."""
-    content = _README_PATH.read_text(encoding="utf-8")
-    # Must say Claude PDFs/documents are typed blocks
-    assert "typed block" in content, (
-        "README.md must describe typed block delivery for Claude PDF/document modalities"
-    )
-    # Must not claim Claude delivers PDFs/documents as resource references
-    assert "PDFs and documents as resource references" not in content, (
-        "README.md must not claim Claude delivers PDFs/documents as resource_reference; "
-        "Claude uses typed blocks for PDF/document modalities"
-    )
-
-
-def test_readme_provider_matrix_gemini_typed_blocks() -> None:
-    """README.md must document Gemini image/PDF/document/audio/video correctly."""
-    content = _README_PATH.read_text(encoding="utf-8")
-    # Must say Gemini uses typed blocks for PDFs/documents/audio/video
-    assert "typed block" in content, (
-        "README.md must describe typed block delivery for Gemini modalities"
-    )
-    # Must not claim Gemini delivers all media as resource references
-    assert (
-        "PDFs, documents, audio, and video are all delivered as resource references" not in content
-    ), (
-        "README.md must not claim Gemini delivers all non-image media as resource_reference; "
-        "Gemini uses typed blocks for PDF/document/audio/video"
-    )
-
-
-def test_readme_provider_matrix_openai_explicitly_unsupported() -> None:
-    """README.md must document OpenAI/Codex non-image modalities as explicitly unsupported."""
-    content = _README_PATH.read_text(encoding="utf-8")
-    # Must say PDFs/docs/audio/video are unsupported for OpenAI
-    assert (
-        "explicitly unsupported" in content or "unsupported via the chat completion API" in content
-    ), "README.md must describe PDF/document/audio/video as explicitly unsupported for OpenAI/Codex"
-    # Must not say OpenAI non-image media falls back to resource_reference
-    assert "other models fall back to resource reference" not in content, (
-        "README.md must not claim OpenAI non-image media falls back to resource_reference; "
-        "those modalities are explicitly unsupported"
-    )
-
-
-def test_readme_provider_matrix_unknown_providers_replayable() -> None:
-    """README.md must document unknown providers using replayable resource references."""
-    content = _README_PATH.read_text(encoding="utf-8")
-    assert "replayable resource references" in content or "resource_reference_replay" in content, (
-        "README.md must describe unknown providers as using replayable resource references"
-    )
 
 
 def test_mcp_servers_doc_provider_matrix_typed_blocks() -> None:
@@ -296,45 +233,6 @@ def test_architecture_md_upstream_normalization_not_rejection() -> None:
     # Must describe the normalization policy instead
     assert "normalized to" in content or "normalizes" in content, (
         "ARCHITECTURE.md must describe the upstream normalization policy"
-    )
-
-
-def test_readme_describes_screenshot_and_browser_visual_workflows() -> None:
-    """README.md must describe screenshot and browser-captured visual QA workflows."""
-    content = _README_PATH.read_text(encoding="utf-8")
-    assert "screenshot" in content.lower(), (
-        "README.md must describe screenshot/browser-captured visual QA workflows"
-    )
-    assert "browser" in content.lower(), (
-        "README.md must mention browser-captured visuals as a multimodal workflow"
-    )
-
-
-def test_readme_describes_replayable_resource_handles_via_resources_read() -> None:
-    """README.md must describe replayable ralph://media/... handles via resources/read."""
-    content = _README_PATH.read_text(encoding="utf-8")
-    assert "ralph://media/" in content, (
-        "README.md must describe replayable ralph://media/... handles"
-    )
-    assert "resources/read" in content, (
-        "README.md must describe how artifacts are retrievable via resources/read"
-    )
-
-
-def test_readme_describes_mixed_modality_workflows() -> None:
-    """README.md must describe mixed-modality execution combining multiple modality types."""
-    content = _README_PATH.read_text(encoding="utf-8")
-    content_lower = content.lower()
-    assert "mixed" in content_lower or "mixed-modality" in content_lower, (
-        "README.md must describe mixed-modality workflows combining multiple modalities"
-    )
-
-
-def test_readme_text_only_safety_is_explicit() -> None:
-    """README.md must explicitly state that text-only workflows remain safe and unchanged."""
-    content = _README_PATH.read_text(encoding="utf-8")
-    assert "text-only" in content, (
-        "README.md must explicitly describe text-only safety/compatibility"
     )
 
 

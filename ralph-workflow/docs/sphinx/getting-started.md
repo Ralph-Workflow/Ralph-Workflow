@@ -4,7 +4,7 @@ New to Ralph Workflow? This page takes you from install to your first unattended
 
 ## What Ralph Workflow does
 
-Ralph Workflow is a repo-native orchestration CLI for bigger AI coding tasks. You describe the task in `PROMPT.md`, Ralph runs planning, coding, and agent review, and you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
+Ralph Workflow is a repo-native orchestration CLI for bigger AI coding tasks. You describe the task in `PROMPT.md`, Ralph Workflow runs planning, coding, and agent review, and you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
 
 It works well for substantial work in **existing repositories** as well as new ones: feature work, refactors, test expansion, documentation passes, and similar multi-file tasks.
 
@@ -55,7 +55,7 @@ git init my-project && cd my-project
 ralph --init
 ```
 
-This creates `PROMPT.md` plus the project-local `.agent/` support files Ralph needs to run.
+This creates `PROMPT.md` plus the project-local `.agent/` support files Ralph Workflow needs to run.
 
 If this repository also needs a project-local copy of the main Ralph Workflow config, create it explicitly:
 
@@ -104,9 +104,9 @@ Ralph Workflow shows progress inline while it runs. When it finishes, you come b
 
 You do not need the full internal model to operate Ralph Workflow. The short version is:
 
-1. **Planning** — Ralph turns your task into a plan
+1. **Planning** — Ralph Workflow turns your task into a plan
 2. **Development** — an implementation agent works through the plan
-3. **Analysis and review** — Ralph checks the result, decides whether more work is needed, and records review output
+3. **Analysis and review** — Ralph Workflow checks the result, decides whether more work is needed, and records review output
 4. **Completion** — the run ends with the resulting changes, logs, and artifacts saved in the repo
 
 If you later want the deeper mechanics — phases, drains, loopbacks, policy files, and artifact contracts — see [Concepts](concepts.md) and [Configuration](configuration.md).

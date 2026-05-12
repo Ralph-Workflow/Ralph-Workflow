@@ -67,6 +67,8 @@ _ALLOWLIST: list[tuple[str, str]] = [
     # README codeberg repo path — Ralph-Workflow is the repo name, not a project name usage
     ("Ralph-Workflow.git", "codeberg repository path"),
     ("Ralph-Workflow/ralph-workflow", "codeberg repository path"),
+    ("https://codeberg.org/RalphWorkflow/Ralph-Workflow", "codeberg repository URL"),
+    ("https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new", "codeberg issue tracker URL"),
 ]
 
 # Pattern: a capital-R 'Ralph' word that is NOT followed by ' Workflow'

@@ -111,15 +111,15 @@ Multiple drains can point at the same chain. That lets you change agent policy w
 
 ## `pipeline.toml` in plain language
 
-`pipeline.toml` defines the workflow shape Ralph uses for a run.
+`pipeline.toml` defines the workflow shape Ralph Workflow uses for a run.
 
 The top-level ideas are:
 
 - `entry_phase` — where the run starts
 - `terminal_phase` — what counts as successful completion
 - `[phases.<name>]` — the individual steps in the workflow
-- transitions — where Ralph goes next on success, failure, or loopback
-- counters and budgets — how Ralph limits iteration and retry behavior
+- transitions — where Ralph Workflow goes next on success, failure, or loopback
+- counters and budgets — how Ralph Workflow limits iteration and retry behavior
 - post-commit routes — what happens after a commit-producing step
 - parallel execution — whether independent work units can fan out concurrently
 
@@ -135,7 +135,7 @@ The main config also supports deeper transport-specific and workflow-authoring s
 - recovery policy tuning
 - parallel fan-out controls
 
-Those sections are useful when you are customizing Ralph deeply, but many operators never need to touch them.
+Those sections are useful when you are customizing Ralph Workflow deeply, but many operators never need to touch them.
 
 ## When to read further
 

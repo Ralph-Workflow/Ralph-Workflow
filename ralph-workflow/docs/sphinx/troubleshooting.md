@@ -64,7 +64,7 @@ ralph --check-mcp
 **Symptom:** Ralph Workflow reports an inactivity timeout or a stale session retry after an
 agent run that appeared active.
 
-**Cause:** Ralph decides idleness from real provider activity, not just from what happened to appear on screen. Streaming deltas, lifecycle events, tool calls, and tool results count as activity; blank heartbeat lines do not. If Ralph has to kill the subprocess for inactivity, any captured session ID is treated as unsafe and the retry starts fresh unless the transport explicitly supports safe resume after forced termination.
+**Cause:** Ralph Workflow decides idleness from real provider activity, not just from what happened to appear on screen. Streaming deltas, lifecycle events, tool calls, and tool results count as activity; blank heartbeat lines do not. If Ralph Workflow has to kill the subprocess for inactivity, any captured session ID is treated as unsafe and the retry starts fresh unless the transport explicitly supports safe resume after forced termination.
 
 **Fix:** Check the watchdog log line for `reason`, `last_activity_kind`, and `resume_safe`. If the next attempt reports `No conversation found with session ID`, recovery treats it as a stale session and retries fresh within the remaining budget.
 
@@ -126,7 +126,7 @@ Use `ralph --inspect-checkpoint` to see what the current checkpoint contains bef
 **Symptom:** Ralph Workflow shows *"Background child work still active"* for a long time even
 after the agent subprocess has returned. The run never completes.
 
-**Cause:** Ralph now uses an evidence-backed liveness model instead of assuming that an existing child PID means useful work is still happening. A child is treated as alive only when it renews its progress or heartbeat lease within the configured TTL (default: progress 45 s, heartbeat 15 s). If a process still exists but no fresh evidence remains, Ralph stops treating it as healthy active work and moves toward retry or recovery.
+**Cause:** Ralph Workflow now uses an evidence-backed liveness model instead of assuming that an existing child PID means useful work is still happening. A child is treated as alive only when it renews its progress or heartbeat lease within the configured TTL (default: progress 45 s, heartbeat 15 s). If a process still exists but no fresh evidence remains, Ralph Workflow stops treating it as healthy active work and moves toward retry or recovery.
 
 The waiting status log line includes `alive_by=` to explain the active evidence:
 

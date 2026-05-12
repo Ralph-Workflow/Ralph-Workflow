@@ -9,11 +9,11 @@ This page explains the terms you will see most often when running Ralph Workflow
 A normal run looks like this:
 
 1. You write the task in `PROMPT.md`
-2. Ralph plans and implements the work
-3. Ralph records analysis and review output during the run
+2. Ralph Workflow plans and implements the work
+3. Ralph Workflow records analysis and review output during the run
 4. You inspect the resulting changes, logs, and artifacts afterward
 
-The terms below help explain how Ralph does that.
+The terms below help explain how Ralph Workflow does that.
 
 ## `PROMPT.md`
 
@@ -72,7 +72,7 @@ Examples include a plan, a development result, a review issues list, or an analy
 
 A useful rule of thumb:
 
-- JSON artifacts help Ralph decide what to do next
+- JSON artifacts help Ralph Workflow decide what to do next
 - Markdown handoff files are easier for humans and downstream agents to inspect
 
 ## Review output

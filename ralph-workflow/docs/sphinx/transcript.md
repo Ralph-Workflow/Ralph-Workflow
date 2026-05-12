@@ -1,14 +1,14 @@
 # Transcript and Display Reference
 
-This page explains the terminal transcript Ralph prints during a run. It is mainly for contributors and operators who want to decode the exact line format, display rules, and lifecycle banners.
+This page explains the terminal transcript Ralph Workflow prints during a run. It is mainly for contributors and operators who want to decode the exact line format, display rules, and lifecycle banners.
 
-If you just need to run Ralph successfully, you can skip this page and use [Getting Started](getting-started.md), [CLI Reference](cli.md), and [Troubleshooting](troubleshooting.md) instead.
+If you just need to run Ralph Workflow successfully, you can skip this page and use [Getting Started](getting-started.md), [CLI Reference](cli.md), and [Troubleshooting](troubleshooting.md) instead.
 
 Ralph Workflow emits a structured, line-oriented transcript to stdout. Every line has a fixed format that can be machine-parsed or read directly in a terminal.
 
 ## Display Architecture
 
-`DisplayContext` (from `ralph.display`) is the single place where Ralph decides how output should render: console, theme, terminal width, color policy, display mode, and adaptive character limits.
+`DisplayContext` (from `ralph.display`) is the single place where Ralph Workflow decides how output should render: console, theme, terminal width, color policy, display mode, and adaptive character limits.
 
 ### Dependency Injection Contract
 
@@ -132,18 +132,24 @@ Verbosity controls which levels are shown. Use `--quiet` to suppress everything 
 
 ## Streaming Blocks and Long-Content Display
 
-Long agent outputs (e.g., code, plans, long prose) are emitted as streaming blocks
-bounded by `content-start` / `content-end` tags. Within a block:
+Long agent outputs (for example code, plans, or long prose) are emitted as streaming blocks bounded by `content-start` / `content-end` tags. Within a block:
 
 - `content-continue` lines carry the raw streamed chunks.
-- `content-checkpoint` lines appear at configurable intervals to allow progressive
-  display without buffering the entire block.
+- `content-checkpoint` lines appear at configurable intervals to allow progressive display without buffering the entire block.
+
+Ralph Workflow also applies a deterministic headline summary layer when a completed block exceeds **4000** display cells. That layer is **enabled by default**. It appears before the condensed output so operators get a stable summary instead of scrolling through a giant block.
+
+If no clean headline can be extracted, Ralph Workflow shows **`(no headline available)`**. Inline summary lines are capped at **200** characters, and streaming end-line summaries are capped at **120** characters.
+
+Disable the deterministic headline layer with `RALPH_LONG_CONTENT_SUMMARY` values `0`, `false`, `no`, or `off`. There is no special opt-in value because the feature is already on by default.
 
 When a block ends, Ralph Workflow may append summary lines depending on configuration:
 
 - `⇳ summary:` — static truncation summary (always present for very long blocks)
 - `⇳ preview:` — first *N* characters of the block content
 - `⇳ ai-summary:` — LLM-generated one-line summary (requires `RALPH_LONG_CONTENT_AI_SUMMARY`)
+
+The optional AI-generated layer is separate from the deterministic headline layer. Use `RALPH_LONG_CONTENT_AI_SUMMARY` only when you want the additional `↳ ai-summary:` style output.
 
 ## Phase-Start Banner
 

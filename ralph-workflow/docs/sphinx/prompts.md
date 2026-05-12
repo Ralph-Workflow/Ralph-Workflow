@@ -1,12 +1,12 @@
 # Prompts
 
-> **Most operators do not need this page.** Start with [Getting Started](getting-started.md) unless you are customizing how Ralph builds prompts.
+> **Most operators do not need this page.** Start with [Getting Started](getting-started.md) unless you are customizing how Ralph Workflow builds prompts.
 
 This page explains how Ralph Workflow builds the prompts it sends to agents for each phase.
 
 ## The short version
 
-Ralph uses built-in templates to assemble prompts for planning, development, review, fix, commit, and related phases. Projects can override those templates locally when they need custom behavior.
+Ralph Workflow uses built-in templates to assemble prompts for planning, development, review, fix, commit, and related phases. Projects can override those templates locally when they need custom behavior.
 
 ## Template registry
 

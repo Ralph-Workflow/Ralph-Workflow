@@ -6,12 +6,12 @@
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-Ralph Workflow is a repo-native orchestration CLI for developers who want AI to handle bigger coding tasks without constant supervision. You write the spec, Ralph runs planning, coding, and agent review, and you come back to completed work, a run log, and artifacts you can inspect in your normal git workflow.
+Ralph Workflow is a repo-native orchestration CLI for developers who want AI to handle bigger coding tasks without constant supervision. You write the spec, Ralph Workflow runs planning, coding, and agent review, and you come back to completed work, a run log, and artifacts you can inspect in your normal git workflow.
 
 ## Why developers use Ralph Workflow
 
 - **Run longer jobs unattended.** Useful for refactors, test generation, documentation sweeps, and multi-file migrations.
-- **Keep review in the loop.** Ralph uses reviewer agents during the run, then leaves behind output your team can inspect instead of an exhausted chat transcript.
+- **Keep review in the loop.** Ralph Workflow uses reviewer agents during the run, then leaves behind output your team can inspect instead of an exhausted chat transcript.
 - **Use the agents you already have.** Point different phases at Claude Code, Codex CLI, OpenCode, or your preferred setup.
 - **Keep the workflow in your repo.** Prompts and runtime config live with the codebase instead of disappearing into a hosted tool.
 
@@ -101,6 +101,7 @@ Keep this README for onboarding. Use these when you want the full reference:
 
 - **Product site:** <https://ralphworkflow.com>
 - **Docs:** <https://ralphworkflow.com/docs>
+- **Maintained Sphinx docs:** [`ralph-workflow/docs/sphinx/`](ralph-workflow/docs/sphinx/)
 - **Package reference README:** [`ralph-workflow/README.md`](ralph-workflow/README.md)
 - **Python contributor workflow:** [`ralph-workflow/CONTRIBUTING.md`](ralph-workflow/CONTRIBUTING.md)
 

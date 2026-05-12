@@ -1,15 +1,15 @@
 # Recovery
 
-> **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) first. This page explains how Ralph behaves when a run is interrupted or something fails.
+> **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) first. This page explains how Ralph Workflow behaves when a run is interrupted or something fails.
 
-Ralph Workflow treats recovery as a built-in part of the product, not an afterthought. In normal use, you do not need to turn anything on. Ralph retries transient failures, keeps checkpoints up to date, and can resume safely after interruptions.
+Ralph Workflow treats recovery as a built-in part of the product, not an afterthought. In normal use, you do not need to turn anything on. Ralph Workflow retries transient failures, keeps checkpoints up to date, and can resume safely after interruptions.
 
 ## The practical model
 
 Most users only need to know three things:
 
-- Ralph can retry some failures automatically
-- Ralph writes checkpoints so a run can resume later
+- Ralph Workflow can retry some failures automatically
+- Ralph Workflow writes checkpoints so a run can resume later
 - you choose whether to resume from a saved checkpoint or start fresh
 
 ## Failure categories
@@ -21,13 +21,13 @@ Every failure is classified into one of four categories:
 | `environmental` | Network outage, upstream service error, transport disconnect | No |
 | `agent` | Empty output, idle timeout, malformed tool calls, repeated policy violations | Yes |
 | `user_config` | Invalid config, unbound agent chain, missing required inputs | No |
-| `ambiguous` | Ralph cannot confidently determine the cause | No |
+| `ambiguous` | Ralph Workflow cannot confidently determine the cause | No |
 
 The goal is simple: transient infrastructure problems should not burn the same budget as genuine agent failures.
 
 ## Offline detection and auto-resume
 
-Ralph monitors connectivity. While offline, the run pauses instead of burning budget. When connectivity returns, Ralph resumes automatically.
+Ralph Workflow monitors connectivity. While offline, the run pauses instead of burning budget. When connectivity returns, Ralph Workflow resumes automatically.
 
 You will see messages like:
 
@@ -48,13 +48,13 @@ Recovery resumed after offline
 
 ## Retry and fallover
 
-Each phase uses an agent chain. If one agent exhausts its retry budget, Ralph can fall over to the next configured agent.
+Each phase uses an agent chain. If one agent exhausts its retry budget, Ralph Workflow can fall over to the next configured agent.
 
 That is how longer unattended runs stay moving without being pinned to one provider.
 
 ## Recovery-cycle cap
 
-`[general].max_cycles` limits how many full fallback cycles Ralph will attempt before stopping.
+`[general].max_cycles` limits how many full fallback cycles Ralph Workflow will attempt before stopping.
 
 ```toml
 [general]
@@ -65,7 +65,7 @@ This prevents a persistently failing workflow from retrying forever without maki
 
 ## Checkpoints
 
-Ralph saves a checkpoint after each successful phase transition so a run can continue from the last completed step after an interruption or crash.
+Ralph Workflow saves a checkpoint after each successful phase transition so a run can continue from the last completed step after an interruption or crash.
 
 ### Where the checkpoint lives
 
@@ -101,7 +101,7 @@ ralph --no-resume
 checkpoint_enabled = true
 ```
 
-When `checkpoint_enabled = false`, Ralph stops writing checkpoints and every run starts from the beginning.
+When `checkpoint_enabled = false`, Ralph Workflow stops writing checkpoints and every run starts from the beginning.
 
 ## When to read the deeper internals
 

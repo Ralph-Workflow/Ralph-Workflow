@@ -5,7 +5,7 @@ Ralph Workflow
 
    <section class="hero">
      <h1 class="hero-headline">Run bigger AI coding tasks without babysitting the terminal</h1>
-     <p class="hero-subtitle">Ralph Workflow keeps the workflow in your repo: write the task in <code>PROMPT.md</code>, let Ralph run planning, coding, and agent review, then come back to completed work, logs, and artifacts you can inspect in your normal git workflow.</p>
+     <p class="hero-subtitle">Ralph Workflow keeps the workflow in your repo: write the task in <code>PROMPT.md</code>, let Ralph Workflow run planning, coding, and agent review, then come back to completed work, logs, and artifacts you can inspect in your normal git workflow.</p>
      <a class="hero-cta" href="getting-started.html">Get started →</a>
    </section>
 

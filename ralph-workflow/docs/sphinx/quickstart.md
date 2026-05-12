@@ -26,11 +26,13 @@ This creates:
 - `.agent/` — project-local support files (`mcp.toml`, `pipeline.toml`, `artifacts.toml`)
 - `~/.config/ralph-workflow.toml` and `~/.config/ralph-workflow-mcp.toml` — user-global defaults created once and reused across projects
 
-If this repository also needs a project-local copy of the main Ralph Workflow config:
+If this repository also needs a project-local copy of the main Ralph Workflow config, run the explicit opt-in local-override flow:
 
 ```bash
 ralph --init-local-config
 ```
+
+That command creates `.agent/ralph-workflow.toml` as the project-local main-config override.
 
 ## Edit `PROMPT.md`
 
