@@ -4028,9 +4028,7 @@ def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(  #
             if effect.phase == "planning_analysis":
                 planning_analysis_calls += 1
                 decision = (
-                    "request_changes"
-                    if planning_analysis_calls <= analysis_cap
-                    else "completed"
+                    "request_changes" if planning_analysis_calls <= analysis_cap else "completed"
                 )
                 write_artifact(
                     ".agent/artifacts/planning_analysis_decision.json",

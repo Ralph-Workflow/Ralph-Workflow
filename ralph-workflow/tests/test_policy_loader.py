@@ -393,7 +393,6 @@ def test_load_policy_for_workspace_scope_accepts_legacy_global_policy_names(
     )
 
 
-
 def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_load(_: Path) -> None:
         raise LoaderPolicyValidationError("boom", source="agents")

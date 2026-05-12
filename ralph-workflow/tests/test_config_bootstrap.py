@@ -109,14 +109,12 @@ def test_ensure_global_policy_configs_migrate_legacy_global_policy_files(tmp_pat
 
     results = ensure_global_policy_configs(tmp_path)
 
-    assert (
-        (tmp_path / "ralph-workflow-pipeline.toml").read_text(encoding="utf-8")
-        == "# legacy pipeline\n"
-    )
-    assert (
-        (tmp_path / "ralph-workflow-artifacts.toml").read_text(encoding="utf-8")
-        == "# legacy artifacts\n"
-    )
+    assert (tmp_path / "ralph-workflow-pipeline.toml").read_text(
+        encoding="utf-8"
+    ) == "# legacy pipeline\n"
+    assert (tmp_path / "ralph-workflow-artifacts.toml").read_text(
+        encoding="utf-8"
+    ) == "# legacy artifacts\n"
     assert all(result.action == "created" for result in results)
 
 
