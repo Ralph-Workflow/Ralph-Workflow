@@ -49,6 +49,20 @@ Add whatever helps you do your job. This is your cheat sheet.
 - **Minimax API (OpenCode):** `sk-cp-cZhzgD75zcZiuQ42wsiiDM_EzFxbuKUV94M_vvYhE88ohNKfe9udkXXIrqBv6BNxRzasB_vqHBa6Ubtd6JOr4Y7rnbPjwvLC2yG5QapmSIcsudIyuEipodY`
   - Used for: AI model access via OpenClaw
 
+## Social Accounts
+
+### Reddit
+- **Account:** ken@ralphworkflow.com
+- **Password:** `V9%)/A@=sXX-ebn`
+  - Used for: Reddit marketing, posting in dev/AI communities
+
+## Git Hosting
+
+- **Codeberg SSH:** `git@codeberg.org:RalphWorkflow/Ralph-Workflow.git`
+  - Key: `~/.ssh/git_access` (ed25519)
+- **GitHub SSH:** `git@github.com:Ralph-Workflow/Ralph-Workflow.git`
+  - Key: `~/.ssh/id_ed25519` (ed25519)
+
 ## Model Quick Policy
 
 - Default: `openai-codex/gpt-5.4`
