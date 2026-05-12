@@ -241,6 +241,16 @@ class _AgentRegistryFactory(Protocol):
     def from_config(cls, config: UnifiedConfig) -> _RegistryLike: ...
 
 
+class _ExecuteEffectKwargsFn(Protocol):
+    def __call__(
+        self,
+        effect: Effect,
+        config: UnifiedConfig,
+        workspace_scope: WorkspaceScope,
+        **kwargs: object,
+    ) -> Event: ...
+
+
 class _PhaseAwareDisplay(Protocol):
     def begin_phase(self, phase: str) -> None: ...
 
@@ -667,22 +677,67 @@ def _build_default_display(
         return _LegacyConsoleDisplay(display_context)
 
 
-def _execute_effect_with_optional_display(  # noqa: PLR0913
+def _execute_effect_with_optional_display(  # noqa: PLR0911, PLR0913
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     *,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
 ) -> Event:
-    params = frozenset(signature(_execute_effect).parameters)
+    params = signature(_execute_effect).parameters
+    kwargs_execute_effect = cast("_ExecuteEffectKwargsFn", _execute_effect)
+    accepts_kwargs = any(param.kind == param.VAR_KEYWORD for param in params.values())
+    optional_kwargs = {
+        "display": display,
+        "display_context": display_context,
+        "verbosity": verbosity,
+        "state": state,
+        "policy_bundle": policy_bundle,
+    }
+    supported_kwargs: dict[str, object] = {
+        name: value
+        for name, value in optional_kwargs.items()
+        if name in params or accepts_kwargs
+    }
+    if accepts_kwargs:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            **supported_kwargs,
+        )
+
     has_display = "display" in params
+    has_display_context = "display_context" in params
     has_verbosity = "verbosity" in params
     has_state = "state" in params
     has_policy_bundle = "policy_bundle" in params
 
+    if has_display and has_display_context and has_verbosity and has_state and has_policy_bundle:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+            state=state,
+            policy_bundle=policy_bundle,
+        )
+    if has_display and has_display_context and has_verbosity and has_state:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+            state=state,
+        )
     if has_display and has_verbosity and has_state and has_policy_bundle:
         return _execute_effect(
             effect,
@@ -693,6 +748,15 @@ def _execute_effect_with_optional_display(  # noqa: PLR0913
             state=state,
             policy_bundle=policy_bundle,
         )
+    if has_display and has_display_context and has_verbosity:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+        )
     if has_display and has_verbosity and has_state:
         return _execute_effect(
             effect,
@@ -701,6 +765,14 @@ def _execute_effect_with_optional_display(  # noqa: PLR0913
             display=display,
             verbosity=verbosity,
             state=state,
+        )
+    if has_display and has_display_context:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
         )
     if has_display and has_verbosity:
         return _execute_effect(
@@ -721,6 +793,7 @@ def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
     *,
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    display_context: DisplayContext | None = None,
     verbosity: Verbosity,
     state: PipelineState,
     policy_bundle: PolicyBundle,
@@ -730,6 +803,7 @@ def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
         config,
         workspace_scope,
         display=display,
+        display_context=display_context,
         verbosity=verbosity,
         state=state,
         policy_bundle=policy_bundle,
@@ -892,6 +966,7 @@ def _run_pipeline_step(  # noqa: PLR0912,PLR0913
                 config,
                 workspace_scope,
                 display=display,
+                display_context=display_context,
                 verbosity=verbosity,
                 state=state,
                 policy_bundle=policy_bundle,

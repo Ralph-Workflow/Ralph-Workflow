@@ -3200,6 +3200,46 @@ class TestExecuteEffect:
             "display": display,
         }
 
+    def test_execute_effect_with_optional_display_passes_context_to_kwargs_handlers(
+        self, monkeypatch
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_execute_effect(effect, config, workspace_scope, **kwargs):
+            captured["effect"] = effect
+            captured["config"] = config
+            captured["workspace_scope"] = workspace_scope
+            captured.update(kwargs)
+            return PipelineEvent.AGENT_SUCCESS
+
+        monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+        effect = InvokeAgentEffect(agent_name="planning", phase="planning", prompt_file="plan.md")
+        config = MagicMock()
+        workspace_scope = WorkspaceScope("/tmp/worktree")
+        display_context = make_display_context()
+        state = PipelineState(phase="planning")
+
+        result = runner_module._execute_effect_with_optional_display(
+            effect,
+            config,
+            workspace_scope,
+            display=None,
+            display_context=display_context,
+            verbosity=Verbosity.QUIET,
+            state=state,
+            policy_bundle=_load_default_policy_bundle(),
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert captured["effect"] is effect
+        assert captured["config"] is config
+        assert captured["workspace_scope"] == workspace_scope
+        assert captured["display"] is None
+        assert captured["display_context"] is display_context
+        assert captured["verbosity"] == Verbosity.QUIET
+        assert captured["state"] == state
+        assert isinstance(captured["policy_bundle"], PolicyBundle)
+
     def test_commit_effect_delegates_to_commit_handler(self, monkeypatch) -> None:
         captured: dict[str, bool] = {}
 
