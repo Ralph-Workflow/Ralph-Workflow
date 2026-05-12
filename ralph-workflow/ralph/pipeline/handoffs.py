@@ -8,12 +8,36 @@ policy data loaded at the composition root.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from ralph.pipeline import progress
+from ralph.policy.models import PhaseLoopPolicy
 
 if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PipelinePolicy
+
+
+@dataclass(frozen=True)
+class ExhaustedAnalysisSkip:
+    """Details for a single exhausted analysis phase that was bypassed."""
+
+    phase: PipelinePhase
+    target_phase: PipelinePhase
+    iteration_field: str
+    iteration_value: int
+    max_iterations: int
+
+
+@dataclass(frozen=True)
+class ExhaustedAnalysisBypassResult:
+    """Resolved exhausted-analysis bypass outcome for a phase handoff."""
+
+    state: PipelineState
+    target_phase: PipelinePhase
+    skipped: tuple[ExhaustedAnalysisSkip, ...] = ()
 
 
 def resolve_phase_drain(
@@ -70,6 +94,62 @@ def resolve_next_phase(
         raise ValueError(msg)
 
     return target
+
+
+def resolve_exhausted_analysis_bypass(
+    state: PipelineState,
+    candidate_phase: PipelinePhase,
+    pipeline_policy: PipelinePolicy,
+) -> ExhaustedAnalysisBypassResult:
+    """Resolve exhausted-analysis re-entry from one canonical policy-driven helper.
+
+    The helper accepts an analysis phase candidate and follows that phase's
+    declared success transition whenever its loop budget is already exhausted.
+    Each skipped analysis phase has its loop counter reset to 0 and its skip
+    metadata recorded so reducer and runner paths can reuse the exact same
+    bypass contract.
+    """
+    current_state = state
+    current_target = candidate_phase
+    skipped: list[ExhaustedAnalysisSkip] = []
+    visited: set[str] = set()
+
+    while current_target not in visited:
+        visited.add(current_target)
+        phase_def = pipeline_policy.phases.get(current_target)
+        if phase_def is None or not isinstance(phase_def.loop_policy, PhaseLoopPolicy):
+            break
+
+        iteration_field = phase_def.loop_policy.iteration_state_field
+        current_iteration = current_state.get_loop_iteration(iteration_field)
+        max_iterations = progress.resolve_analysis_cap(
+            current_state,
+            iteration_field,
+            pipeline_policy,
+        )
+        if not progress.should_skip_analysis_reentry(current_iteration, max_iterations):
+            break
+
+        next_target = resolve_next_phase(current_target, "success", pipeline_policy)
+        skipped.append(
+            ExhaustedAnalysisSkip(
+                phase=current_target,
+                target_phase=next_target,
+                iteration_field=iteration_field,
+                iteration_value=current_iteration,
+                max_iterations=max_iterations,
+            )
+        )
+        current_state = current_state.with_loop_iteration(iteration_field, 0).copy_with(
+            review_outcome=None
+        )
+        current_target = next_target
+
+    return ExhaustedAnalysisBypassResult(
+        state=current_state,
+        target_phase=current_target,
+        skipped=tuple(skipped),
+    )
 
 
 def resolve_post_commit_phase(

@@ -35,7 +35,11 @@ from ralph.pipeline.events import (
     WorkerFailedEvent,
     WorkerStartedEvent,
 )
-from ralph.pipeline.handoffs import resolve_next_phase, resolve_post_commit_phase
+from ralph.pipeline.handoffs import (
+    resolve_exhausted_analysis_bypass,
+    resolve_next_phase,
+    resolve_post_commit_phase,
+)
 from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.policy.explain import explain_routing_decision
@@ -813,46 +817,6 @@ def _handle_phase_advance(
     return _resolve_or_terminal(state, "success", policy, "phase advance")
 
 
-def _resolve_exhausted_analysis_target(
-    state: PipelineState,
-    target_phase: PipelinePhase,
-    policy: PipelinePolicy,
-) -> tuple[PipelineState, PipelinePhase]:
-    """Bypass analysis targets whose loop budget is already exhausted.
-
-    When a non-analysis phase tries to advance into an analysis phase whose loop
-    counter is already at or above its active cap, treat that analysis phase as
-    exhausted for the current cycle and follow its declared success transition
-    instead of re-entering it.
-    """
-    current_state = state
-    current_target = target_phase
-    visited: set[str] = set()
-
-    while current_target not in visited:
-        visited.add(current_target)
-        phase_def = policy.phases.get(current_target)
-        if phase_def is None or not isinstance(phase_def.loop_policy, PhaseLoopPolicy):
-            return current_state, current_target
-
-        iteration_field = phase_def.loop_policy.iteration_state_field
-        current_iteration = current_state.get_loop_iteration(iteration_field)
-        max_iterations = progress.resolve_analysis_cap(
-            current_state,
-            iteration_field,
-            policy,
-        )
-        if not progress.should_skip_analysis_reentry(current_iteration, max_iterations):
-            return current_state, current_target
-
-        current_state = current_state.with_loop_iteration(iteration_field, 0).copy_with(
-            review_outcome=None
-        )
-        current_target = resolve_next_phase(current_target, "success", policy)
-
-    return current_state, current_target
-
-
 def _prepare_phase_advance(
     state: PipelineState,
     target_phase: PipelinePhase,
@@ -861,7 +825,20 @@ def _prepare_phase_advance(
     """Resolve the effective phase target before applying the transition."""
     if policy is None:
         return state, target_phase
-    return _resolve_exhausted_analysis_target(state, target_phase, policy)
+
+    current_phase_def = policy.phases.get(state.phase)
+    if current_phase_def is not None and current_phase_def.role == "analysis":
+        try:
+            success_target = resolve_next_phase(state.phase, "success", policy)
+        except ValueError:
+            success_target = None
+        if success_target == target_phase:
+            bypass = resolve_exhausted_analysis_bypass(state, state.phase, policy)
+            if bypass.skipped:
+                return bypass.state, bypass.target_phase
+
+    bypass = resolve_exhausted_analysis_bypass(state, target_phase, policy)
+    return bypass.state, bypass.target_phase
 
 
 def _advance_phase(

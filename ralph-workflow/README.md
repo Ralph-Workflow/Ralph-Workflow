@@ -188,7 +188,7 @@ ralph --diagnose
 When you run `ralph`, the workflow moves through a structured sequence of phases:
 
 1. **Planning** — a planning agent reads `PROMPT.md` and produces a structured plan
-2. **Planning analysis** — the workflow checks whether the proposed plan is executor-ready or needs another planning pass; when it sends planning back for revision, Ralph Workflow surfaces the prior planning-analysis feedback so the planner can edit the existing plan incrementally via the plan-draft MCP tools
+2. **Planning analysis** — the workflow checks whether the proposed plan is executor-ready or needs another planning pass; when it sends planning back for revision, Ralph Workflow surfaces the prior planning-analysis feedback so the planner can edit the existing plan incrementally via the plan-draft MCP tools. If planning re-enters with an already exhausted planning-analysis budget, the runner bypasses that analysis re-entry through the same policy-driven handoff path the reducer uses for all exhausted analysis skips.
 3. **Development** — a developer agent implements the work
 4. **Development analysis** — the workflow decides whether to iterate or continue
 5. **Development commit** — changes are committed; if iterations remain (derived from cap minus completed progress), the loop returns to planning for another cycle
@@ -255,7 +255,7 @@ That runs:
 - `make lint` (`ruff check ralph/ tests/`)
 - `make typecheck` (`uv run python -m mypy ralph/`)
 - `make docs` (`uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going`)
-- `make test-cov` — runs pytest with coverage enabled and enforces ≥80% coverage (uses `$(PYTEST_WORKERS)` workers, defaulting to 8; excludes subprocess_e2e tests)
+- `make test-cov` — runs pytest with coverage enabled and enforces ≥80% coverage (uses `$(PYTEST_WORKERS)` workers, defaulting to 8, with xdist `worksteal`; excludes subprocess_e2e tests)
 - `make test-subprocess-e2e`
 
 If any step fails, `make verify` prints a high-visibility banner that cites `AGENTS.md` and `CLAUDE.md` and tells the active AI agent to fix the failure immediately before doing anything else.

@@ -572,9 +572,7 @@ def test_cli_run_in_fresh_dir_shows_init_hint(
     assert "ralph --init" in result.output, (
         f"Expected 'ralph --init' in output, got: {result.output}"
     )
-    assert "PROMPT.md" in result.output, (
-        f"Expected 'PROMPT.md' in output, got: {result.output}"
-    )
+    assert "PROMPT.md" in result.output, f"Expected 'PROMPT.md' in output, got: {result.output}"
     assert "ralph" in result.output, (
         f"Expected 'ralph' run guidance in output, got: {result.output}"
     )

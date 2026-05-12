@@ -106,10 +106,10 @@ from ralph.pipeline.cycle_baseline import (
     write_cycle_baseline,
 )
 from ralph.pipeline.effects import (
-    AutoAnalysisSuccessEffect,
     CommitEffect,
     EarlySkipCommitEffect,
     Effect,
+    ExhaustedAnalysisPhaseAdvanceEffect,
     ExitFailureEffect,
     ExitSuccessEffect,
     FanOutEffect,
@@ -118,13 +118,19 @@ from ralph.pipeline.effects import (
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import (
+    AnalysisDecisionEvent,
     Event,
     PhaseFailureEvent,
     PipelineEvent,
     PostFanoutVerificationEvent,
     WorkerFailedEvent,
 )
-from ralph.pipeline.handoffs import resolve_phase_drain
+from ralph.pipeline.handoffs import (
+    ExhaustedAnalysisBypassResult,
+    resolve_exhausted_analysis_bypass,
+    resolve_next_phase,
+    resolve_phase_drain,
+)
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.mode import SameWorkspaceContext
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -925,16 +931,15 @@ def _run_pipeline_step(  # noqa: PLR0912,PLR0913
             policy_bundle.pipeline,
             recovery=recovery_controller,
         )
-        skipped_info: tuple[str, str] | None = None
-        with suppress(TypeError, AttributeError):
-            skipped_info = _skipped_exhausted_analysis_info(
-                state.phase,
-                next_state.phase,
-                state,
-                policy_bundle.pipeline,
-            )
-        if skipped_info is not None:
-            _clear_phase_materialization_outputs(workspace, skipped_info[0])
+        skipped_phases = _record_phase_transition_metadata(
+            display,
+            state,
+            event,
+            next_state,
+            policy_bundle.pipeline,
+        )
+        for skipped_phase in skipped_phases:
+            _clear_phase_materialization_outputs(workspace, skipped_phase)
         _notify_pipeline_subscriber(pipeline_subscriber, next_state)
         _save_checkpoint_or_log(
             next_state,
@@ -1088,40 +1093,184 @@ class _PhaseChangeRenderData:
     transition_context: dict[str, object] | None
 
 
+@dataclass(frozen=True)
+class _PendingPhaseTransitionMetadata:
+    previous_phase: str
+    current_phase: str
+    transition_context: dict[str, object] | None = None
+    routing_note: str | None = None
+    skipped_phases: tuple[str, ...] = ()
+
+
+_PENDING_PHASE_TRANSITION_METADATA_ATTR = "_pending_phase_transition_metadata"
+
+
+def _analysis_phase_label(phase: str) -> str:
+    return phase.replace("_", " ").title()
+
+
+def _humanize_analysis_decision(decision: str) -> str:
+    return decision.replace("_", " ")
+
+
+def _bypass_info_message(phase: str) -> str:
+    return f"{_analysis_phase_label(phase)} cap reached, skipping"
+
+
+def _bypass_transition_context(
+    bypass: ExhaustedAnalysisBypassResult,
+) -> dict[str, object] | None:
+    if not bypass.skipped:
+        return None
+    return {_analysis_phase_label(skip.phase): "cap reached, skipping" for skip in bypass.skipped}
+
+
+def _store_pending_phase_transition_metadata(
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    metadata: _PendingPhaseTransitionMetadata | None,
+) -> None:
+    if display is None:
+        return
+    if metadata is None:
+        with suppress(Exception):
+            delattr(display, _PENDING_PHASE_TRANSITION_METADATA_ATTR)
+        return
+    with suppress(Exception):
+        setattr(display, _PENDING_PHASE_TRANSITION_METADATA_ATTR, metadata)
+
+
+def _consume_pending_phase_transition_metadata(
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+    previous_phase: str,
+    current_phase: str,
+) -> _PendingPhaseTransitionMetadata | None:
+    metadata = cast(
+        "_PendingPhaseTransitionMetadata | None",
+        getattr(display, _PENDING_PHASE_TRANSITION_METADATA_ATTR, None),
+    )
+    if metadata is None:
+        return None
+    with suppress(Exception):
+        delattr(display, _PENDING_PHASE_TRANSITION_METADATA_ATTR)
+    if metadata.previous_phase != previous_phase or metadata.current_phase != current_phase:
+        return None
+    return metadata
+
+
+def _analysis_decision_transition_context(
+    event: AnalysisDecisionEvent,
+    next_state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+) -> dict[str, object] | None:
+    context: dict[str, object] = {"decision": _humanize_analysis_decision(event.decision)}
+    phase_def = pipeline_policy.phases.get(event.phase)
+    if phase_def is not None and phase_def.loop_policy is not None:
+        route = phase_def.decisions.get(event.decision)
+        if route is not None and not route.reset_loop:
+            iteration_field = phase_def.loop_policy.iteration_state_field
+            analysis_cur = next_state.get_loop_iteration(iteration_field)
+            max_iter = _resolve_analysis_cap(iteration_field, next_state, pipeline_policy)
+            if progress.is_final_analysis_iteration(analysis_cur, max_iter):
+                context["analysis_status"] = "final, skipping next"
+    return context or None
+
+
+def _bypass_resolution_for_transition(
+    state: PipelineState,
+    event: Event,
+    next_state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+) -> ExhaustedAnalysisBypassResult | None:
+    phase_def = pipeline_policy.phases.get(state.phase)
+    if phase_def is None:
+        return None
+
+    candidate_phase: str | None = None
+    if event == PipelineEvent.PHASE_ADVANCE and phase_def.role == "analysis":
+        candidate_phase = state.phase
+    elif event in (
+        PipelineEvent.AGENT_SUCCESS,
+        PipelineEvent.ANALYSIS_SUCCESS,
+        PipelineEvent.COMMIT_SUCCESS,
+        PipelineEvent.COMMIT_SKIPPED,
+        PipelineEvent.FIX_SUCCESS,
+        PipelineEvent.REVIEW_CLEAN,
+    ):
+        with suppress(ValueError):
+            candidate_phase = resolve_next_phase(state.phase, "success", pipeline_policy)
+    if candidate_phase is None:
+        return None
+
+    with suppress(TypeError, AttributeError):
+        bypass = resolve_exhausted_analysis_bypass(state, candidate_phase, pipeline_policy)
+        if not bypass.skipped or next_state.phase != bypass.target_phase:
+            return None
+        return bypass
+    return None
+
+
+def _record_phase_transition_metadata(
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    state: PipelineState,
+    event: Event,
+    next_state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+) -> tuple[str, ...]:
+    if isinstance(event, AnalysisDecisionEvent):
+        metadata = _PendingPhaseTransitionMetadata(
+            previous_phase=state.phase,
+            current_phase=next_state.phase,
+            transition_context=_analysis_decision_transition_context(
+                event,
+                next_state,
+                pipeline_policy,
+            ),
+        )
+        _store_pending_phase_transition_metadata(display, metadata)
+        return ()
+
+    bypass = _bypass_resolution_for_transition(state, event, next_state, pipeline_policy)
+    if bypass is None:
+        _store_pending_phase_transition_metadata(display, None)
+        return ()
+
+    skipped_phases = tuple(skip.phase for skip in bypass.skipped)
+    metadata = _PendingPhaseTransitionMetadata(
+        previous_phase=state.phase,
+        current_phase=next_state.phase,
+        transition_context=_bypass_transition_context(bypass),
+        routing_note="; ".join(_bypass_info_message(skip.phase) for skip in bypass.skipped),
+        skipped_phases=skipped_phases,
+    )
+    _store_pending_phase_transition_metadata(display, metadata)
+    return skipped_phases
+
+
 def _phase_transition_context(
     previous_phase: str,
     current_phase: str,
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
+    metadata: _PendingPhaseTransitionMetadata | None = None,
 ) -> dict[str, object] | None:
-    """Return routing context for the rich phase-transition banner.
+    """Return routing context for the rich phase-transition banner."""
+    if metadata is not None:
+        return metadata.transition_context
 
-    The dedicated transition banner sits between the previous phase's close
-    banner and the next phase's start banner, so it should focus on handoff
-    semantics rather than repeating iteration details already shown elsewhere.
-    """
     previous_phase_def = pipeline_policy.phases.get(previous_phase)
-    current_phase_def = pipeline_policy.phases.get(current_phase)
-    if previous_phase_def is None or current_phase_def is None:
+    if previous_phase_def is None or previous_phase_def.role != "analysis":
         return None
 
-    context: dict[str, object] = {}
-    previous_role = previous_phase_def.role
-    current_role = current_phase_def.role
-    if previous_role == "analysis":
-        loop_policy = previous_phase_def.loop_policy
-        if loop_policy is not None:
-            iteration_field = loop_policy.iteration_state_field
-            analysis_cur = state.get_loop_iteration(iteration_field)
-            max_iter = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
-            if progress.is_final_analysis_iteration(analysis_cur, max_iter):
-                context["analysis_status"] = "final, skipping next"
-        if current_role == "commit":
-            context["decision"] = "approved"
-        elif current_role == "execution":
-            context["decision"] = "needs changes"
+    loop_policy = previous_phase_def.loop_policy
+    if loop_policy is None:
+        return None
 
-    return context or None
+    iteration_field = loop_policy.iteration_state_field
+    analysis_cur = state.get_loop_iteration(iteration_field)
+    max_iter = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
+    if progress.is_final_analysis_iteration(analysis_cur, max_iter):
+        return {"analysis_status": "final, skipping next"}
+    return None
 
 
 def _skipped_exhausted_analysis_info(
@@ -1130,41 +1279,26 @@ def _skipped_exhausted_analysis_info(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
 ) -> tuple[str, str] | None:
-    """Detect when an exhausted analysis phase was skipped due to cap exhaustion.
+    """Return compatibility skip info for direct display helpers.
 
-    Returns a tuple of (skipped_phase, info_message) if an exhausted analysis
-    phase was skipped, None otherwise.
-
-    This happens when:
-    1. previous_phase is an execution phase transitioning to another non-analysis phase
-    2. previous_phase's on_success target is an analysis phase
-    3. That analysis phase's loop counter is at or above its cap (exhausted)
+    This fallback only covers transitions that bypass an analysis phase after a
+    prior phase succeeds directly into another non-analysis phase. Live runner
+    paths record explicit metadata during step execution.
     """
     previous_phase_def = pipeline_policy.phases.get(previous_phase)
-    if previous_phase_def is None or previous_phase_def.role not in ("execution", "review"):
+    if previous_phase_def is None:
         return None
 
-    on_success_target = previous_phase_def.transitions.on_success
-    if not on_success_target or on_success_target not in pipeline_policy.phases:
+    candidate_phase = previous_phase_def.transitions.on_success
+    if not candidate_phase:
         return None
 
-    target_def = pipeline_policy.phases.get(on_success_target)
-    if target_def is None or target_def.role != "analysis":
+    bypass = resolve_exhausted_analysis_bypass(state, candidate_phase, pipeline_policy)
+    if not bypass.skipped or bypass.target_phase != current_phase:
         return None
 
-    if target_def.loop_policy is None:
-        return None
-
-    iteration_field = target_def.loop_policy.iteration_state_field
-    current_iteration = state.get_loop_iteration(iteration_field)
-    max_iter = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
-
-    if not progress.should_skip_analysis_reentry(current_iteration, max_iter):
-        return None
-
-    skipped_phase_label = on_success_target.replace("_", " ").title()
-    info_message = f"{skipped_phase_label} cap reached, skipping"
-    return (on_success_target, info_message)
+    skipped_phase = bypass.skipped[0].phase
+    return (skipped_phase, _bypass_info_message(skipped_phase))
 
 
 def _build_phase_change_render_data(
@@ -1203,10 +1337,24 @@ def _build_phase_change_render_data(
     entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
     prev_phase_def = pipeline_policy.phases.get(previous_phase)
     prev_phase_role: str | None = prev_phase_def.role if prev_phase_def is not None else None
-    skipped_info = _skipped_exhausted_analysis_info(
-        previous_phase, state.phase, state, pipeline_policy
+    pending_metadata = _consume_pending_phase_transition_metadata(
+        display,
+        previous_phase,
+        state.phase,
     )
-    routing_note: str | None = skipped_info[1] if skipped_info is not None else None
+    skipped_info = None
+    if pending_metadata is None:
+        skipped_info = _skipped_exhausted_analysis_info(
+            previous_phase,
+            state.phase,
+            state,
+            pipeline_policy,
+        )
+    routing_note: str | None = (
+        pending_metadata.routing_note
+        if pending_metadata is not None
+        else (skipped_info[1] if skipped_info is not None else None)
+    )
     exit_model = PhaseExitModel.from_entry_model(
         entry,
         elapsed_seconds=elapsed,
@@ -1234,6 +1382,7 @@ def _build_phase_change_render_data(
             state.phase,
             state,
             pipeline_policy,
+            pending_metadata,
         ),
     )
 
@@ -2573,18 +2722,23 @@ def _terminal_phase_effect(state: PipelineState, pipeline_policy: PipelinePolicy
     return None
 
 
-def _should_auto_skip_current_analysis_phase(
+def _current_analysis_phase_advance_effect(
     state: PipelineState,
     phase_def: PhaseDefinition,
     pipeline_policy: PipelinePolicy,
-) -> bool:
-    """Return True when the current analysis phase is already beyond its allowed budget."""
-    if phase_def.role != "analysis" or phase_def.loop_policy is None:
-        return False
-    iteration_field = phase_def.loop_policy.iteration_state_field
-    current_iteration = state.get_loop_iteration(iteration_field)
-    max_iterations = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
-    return progress.should_skip_analysis_reentry(current_iteration, max_iterations)
+) -> ExhaustedAnalysisPhaseAdvanceEffect | None:
+    """Return a phase-advance effect when the current analysis phase is exhausted.
+
+    The runner deliberately reuses the shared handoff helper instead of
+    re-implementing budget math locally so current-phase bypass behavior stays
+    aligned with reducer-owned phase advancement.
+    """
+    if phase_def.role != "analysis":
+        return None
+    bypass = resolve_exhausted_analysis_bypass(state, state.phase, pipeline_policy)
+    if not bypass.skipped:
+        return None
+    return ExhaustedAnalysisPhaseAdvanceEffect(phase=state.phase)
 
 
 def _determine_effect_from_policy(  # noqa: PLR0911
@@ -2602,8 +2756,13 @@ def _determine_effect_from_policy(  # noqa: PLR0911
     if phase_def is None:
         return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
 
-    if _should_auto_skip_current_analysis_phase(state, phase_def, policy_bundle.pipeline):
-        return AutoAnalysisSuccessEffect(phase=state.phase)
+    exhausted_analysis_effect = _current_analysis_phase_advance_effect(
+        state,
+        phase_def,
+        policy_bundle.pipeline,
+    )
+    if exhausted_analysis_effect is not None:
+        return exhausted_analysis_effect
 
     if phase_def.skip_invocation is True:
         on_success = phase_def.transitions.on_success
@@ -3005,7 +3164,7 @@ def _commit_effect(workspace_root: Path) -> CommitEffect:
     return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
 
 
-def _execute_effect(  # noqa: PLR0913
+def _execute_effect(  # noqa: PLR0911,PLR0913
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -3057,12 +3216,20 @@ def _execute_effect(  # noqa: PLR0913
         logger.info("Skipping commit early: worktree is clean")
         _cleanup_commit_message_artifacts(workspace_scope.root)
         return PipelineEvent.COMMIT_SKIPPED
-    if isinstance(effect, AutoAnalysisSuccessEffect):
+    if isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect):
+        if state is None or policy_bundle is None:
+            logger.warning(
+                "Skipping exhausted analysis phase '{}' without routing context",
+                effect.phase,
+            )
+            return PipelineEvent.PHASE_ADVANCE
+        bypass = resolve_exhausted_analysis_bypass(state, effect.phase, policy_bundle.pipeline)
         logger.info(
-            "Skipping exhausted analysis phase '{}' and emitting ANALYSIS_SUCCESS",
+            "Skipping exhausted analysis phase '{}' and reducing PHASE_ADVANCE to '{}'",
             effect.phase,
+            bypass.target_phase,
         )
-        return PipelineEvent.ANALYSIS_SUCCESS
+        return PipelineEvent.PHASE_ADVANCE
     if isinstance(effect, SaveCheckpointEffect):
         return PipelineEvent.CHECKPOINT_SAVED
 

@@ -7,12 +7,14 @@ declares the correct increments_counter.
 
 from __future__ import annotations
 
-from ralph.pipeline.handoffs import resolve_post_commit_phase
+from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_post_commit_phase
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     BudgetCounterConfig,
+    LoopCounterConfig,
     PhaseCommitPolicy,
     PhaseDefinition,
+    PhaseLoopPolicy,
     PhaseTransition,
     PipelinePolicy,
     PostCommitRoute,
@@ -120,3 +122,68 @@ class TestComputeBudgetStateUsingCommitPolicy:
         )
         next_phase = resolve_post_commit_phase(state, policy)
         assert next_phase == "complete"
+
+
+def _planning_bypass_policy() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                role="execution",
+                transitions=PhaseTransition(on_success="planning_analysis"),
+            ),
+            "planning_analysis": PhaseDefinition(
+                drain="planning_analysis",
+                role="analysis",
+                transitions=PhaseTransition(on_success="development", on_loopback="planning"),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
+            ),
+            "development": PhaseDefinition(
+                drain="development",
+                role="execution",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+            "complete": PhaseDefinition(
+                drain="complete",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+            ),
+        },
+        entry_phase="planning",
+        terminal_phase="complete",
+        loop_counters={"planning_analysis_iteration": LoopCounterConfig(default_max=3)},
+    )
+
+
+class TestResolveExhaustedAnalysisBypass:
+    def test_bypass_resets_exhausted_analysis_and_routes_to_success_target(self) -> None:
+        policy = _planning_bypass_policy()
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 3},
+            loop_caps={"planning_analysis_iteration": 3},
+            review_outcome="issues",
+        )
+
+        bypass = resolve_exhausted_analysis_bypass(state, "planning_analysis", policy)
+
+        assert bypass.target_phase == "development"
+        assert bypass.state.get_loop_iteration("planning_analysis_iteration") == 0
+        assert bypass.state.review_outcome is None
+        assert bypass.skipped[0].phase == "planning_analysis"
+        assert bypass.skipped[0].target_phase == "development"
+
+    def test_non_exhausted_analysis_target_is_left_unchanged(self) -> None:
+        policy = _planning_bypass_policy()
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 2},
+            loop_caps={"planning_analysis_iteration": 3},
+        )
+
+        bypass = resolve_exhausted_analysis_bypass(state, "planning_analysis", policy)
+
+        assert bypass.target_phase == "planning_analysis"
+        assert bypass.state == state
+        assert bypass.skipped == ()
