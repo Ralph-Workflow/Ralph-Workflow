@@ -1,192 +1,146 @@
 {
-  "timestamp": "2026-05-12T09:02:13.162874",
+  "timestamp": "2026-05-12T11:23:20.594009",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "AI agent orchestration CLI for unattended coding workflows \u2014 Ralph Workflow",
-      "meta_description": "Ralph Workflow is a repo-native AI agent orchestration CLI for spec-driven planning, unattended coding workflows, and reviewable handoffs. Run long code changes with planning loops, verification gates, and git-backed evidence instead of babysitting every agent step.",
-      "canonical": "https://ralphworkflow.com/",
-      "og_tags": {
-        "description": "Ralph Workflow is a repo-native AI agent orchestration CLI for spec-driven planning, unattended coding workflows, and reviewable handoffs. Run long code changes with planning loops, verification gates, and git-backed evidence instead of babysitting every agent step.",
-        "title": "AI agent orchestration CLI for unattended coding workflows",
-        "type": "website",
-        "url": "https://ralphworkflow.com/",
-        "site_name": "Ralph Workflow",
-        "image": "https://ralphworkflow.com/icon.png"
-      },
-      "twitter_card": "summary_large_image",
+      "title": "Ralph Workflow",
+      "meta_description": "",
+      "canonical": "",
+      "og_tags": {},
+      "twitter_card": "",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6794,
+      "word_count": 22,
       "has_nav": true,
       "has_main": true,
       "lang_attr": ""
     },
     "robots": {
       "status": 200,
-      "directive_count": 6,
+      "directive_count": 0,
       "sitemap_url": "https://ralphworkflow.com/sitemap.xml"
     },
     "sitemap": {
       "status": 200,
-      "url_count": 248,
+      "url_count": 247,
       "urls": [
-        "https://ralphworkflow.com/",
-        "https://ralphworkflow.com/privacy",
-        "https://ralphworkflow.com/terms",
-        "https://ralphworkflow.com/docs/",
-        "https://ralphworkflow.com/contact",
-        "https://ralphworkflow.com/docs/_modules/",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/activity",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/availability",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/chain",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/completion_signals",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/execution_state",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/executor",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/idle_watchdog",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/invoke",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/base",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/claude",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/codex",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/gemini",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/generic",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/opencode"
+        "https://ralphworkflow.com/1",
+        "https://ralphworkflow.com/2",
+        "https://ralphworkflow.com/3",
+        "https://ralphworkflow.com/4",
+        "https://ralphworkflow.com/5",
+        "https://ralphworkflow.com/6",
+        "https://ralphworkflow.com/7",
+        "https://ralphworkflow.com/8",
+        "https://ralphworkflow.com/9",
+        "https://ralphworkflow.com/10",
+        "https://ralphworkflow.com/11",
+        "https://ralphworkflow.com/12",
+        "https://ralphworkflow.com/13",
+        "https://ralphworkflow.com/14",
+        "https://ralphworkflow.com/15",
+        "https://ralphworkflow.com/16",
+        "https://ralphworkflow.com/17",
+        "https://ralphworkflow.com/18",
+        "https://ralphworkflow.com/19",
+        "https://ralphworkflow.com/20"
       ]
     }
   },
   "onpage": {
-    "score": 65,
-    "grade": "C",
+    "score": 10,
+    "grade": "F",
     "issues": [
       {
         "severity": "error",
-        "item": "Title too long"
+        "item": "Missing meta description"
       },
       {
-        "severity": "warning",
-        "item": "Meta description too long",
-        "detail": "Keep between 150-160 characters"
+        "severity": "error",
+        "item": "Missing canonical tag"
+      },
+      {
+        "severity": "error",
+        "item": "Missing Open Graph tags"
+      },
+      {
+        "severity": "error",
+        "item": "Missing Twitter card"
       },
       {
         "severity": "warning",
         "item": "Missing lang attribute on <html>",
         "detail": "Add lang='en' to <html> tag for clarity"
+      },
+      {
+        "severity": "warning",
+        "item": "Homepage content seems thin",
+        "detail": "~22 words. Aim for 300+ words."
       }
     ],
     "recommendations": [
-      "Keep title under 60 characters (current: 75 chars)"
+      "Add a 150-160 char meta description",
+      "Add a self-referencing canonical tag",
+      "Add og:title, og:description, og:type, og:url",
+      "Add twitter:card meta tag",
+      "Expand homepage content with clear value proposition, features, and use cases"
     ]
   },
-  "ranks": {
-    "unattended coding agent": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "AI agent orchestration CLI": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "spec-driven AI agent": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "AI coding workflow automation": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "Claude Code automation": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "Claude Code unattended": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "AI agent workflow composer": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    },
-    "Ralph Workflow": {
-      "position": null,
-      "impressions": 0,
-      "clicks": 0,
-      "source": "GSC"
-    }
-  },
+  "ranks": {},
   "backlinks": {
-    "count_approx": 0,
-    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data"
+    "count_approx": 0
   },
   "domain_rating": {
-    "dr": null,
-    "status": 0
+    "dr": null
   },
   "competitors": {
     "claude.ai/code": {
-      "status": 0,
-      "ok": false,
+      "status": 200,
+      "ok": true,
       "title": ""
     },
     "cursor.com": {
       "status": 200,
       "ok": true,
-      "title": "Cursor: The best way to code with AI"
+      "title": ""
     },
     "github.com/features/copilot": {
       "status": 200,
       "ok": true,
-      "title": "GitHub Copilot \u00b7 Your AI pair programmer \u00b7 GitHub"
+      "title": ""
     },
     "aider.chat": {
       "status": 200,
       "ok": true,
-      "title": "Aider - AI Pair Programming in Your Terminal"
+      "title": ""
     },
     "continue.dev": {
       "status": 200,
       "ok": true,
-      "title": "Continue \u2022 Quality control for your software factory. | Continue"
+      "title": ""
     }
   },
   "content_gap": {
     "gaps": [
       "unattended coding agent",
+      "AI agent orchestration CLI",
       "spec-driven AI agent",
       "AI coding workflow automation",
       "Claude Code automation",
       "Claude Code unattended",
-      "AI agent workflow composer"
-    ],
-    "covered": [
-      "AI agent orchestration CLI",
+      "AI agent workflow composer",
       "Ralph Workflow"
     ],
-    "coverage_pct": 25.0
+    "covered": [],
+    "coverage_pct": 0.0
   },
   "serp": {
-    "position": null,
-    "people_also_ask": false,
-    "related_searches": false,
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
-    "Fix top on-page SEO issues (current score: 65/100)",
-    "Create content targeting: unattended coding agent, spec-driven AI agent, AI coding workflow automation",
+    "Fix top on-page SEO issues (current score: 10/100)",
+    "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]
 }
