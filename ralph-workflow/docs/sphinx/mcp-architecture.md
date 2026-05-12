@@ -2,11 +2,11 @@
 
 > **New to Ralph Workflow?** See [Getting Started](getting-started.md) first — it introduces MCP in context before these internals.
 
-How the Ralph Workflow MCP server is structured, how it controls agent access, and how it proxies upstream tools.
+This page explains how Ralph's local MCP server is put together, how it decides which tools an agent may use, and how it proxies tools from upstream MCP servers.
 
 ## Overview
 
-Ralph Workflow runs a local MCP (Model Context Protocol) server for each agent invocation. The server exposes a set of tools — workspace read/write, artifact submission, coordination, web search, process execution, and more — that the agent can call during its session. Access to each tool is gated by a capability model derived from the active session drain.
+Ralph Workflow runs a local MCP (Model Context Protocol) server for each agent invocation. That server exposes the tools the agent can use during its session — workspace reads and writes, artifact submission, coordination, web search, bounded command execution, and more. Each tool call is filtered through a capability model derived from the active session drain.
 
 ```
 Agent subprocess
@@ -25,7 +25,7 @@ Ralph Workflow MCP server  (ralph.mcp.server)
 
 ## Capability model
 
-Every MCP tool call is evaluated against the session's capability set before execution. Capabilities are defined in `ralph.mcp.protocol.capability_mapping`:
+Before any MCP tool call runs, Ralph checks it against the current session's capability set. The capability vocabulary lives in `ralph.mcp.protocol.capability_mapping`:
 
 - `Capability` — internal Ralph Workflow capability vocabulary (e.g. `workspace.read`, `artifact.submit`)
 - `McpCapability` — typed MCP-level capability vocabulary (e.g. `WorkspaceRead`, `ArtifactSubmit`)
@@ -88,7 +88,7 @@ python -m ralph.mcp.server --drain development --workspace .
 
 ## Upstream MCP proxy
 
-`ralph.mcp.upstream` implements a transparent proxy that forwards selected tool calls to one or more upstream MCP servers configured by the operator. This allows agents to use tools provided by external MCP servers (e.g. a filesystem MCP, a search MCP) without Ralph Workflow having to implement each tool natively.
+`ralph.mcp.upstream` implements a transparent proxy that forwards selected tool calls to one or more upstream MCP servers configured by the operator. This lets agents use tools from external MCP servers — for example a filesystem or search server — without Ralph having to implement every tool itself.
 
 Key submodules:
 

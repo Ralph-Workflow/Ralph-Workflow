@@ -1,19 +1,18 @@
 # Transcript and Display Reference
 
-Ralph Workflow emits a structured, line-oriented transcript to stdout. Every line
-has a fixed format that can be machine-parsed or read directly in a terminal.
+This page explains the terminal transcript Ralph prints during a run. It is mainly for contributors and operators who want to decode the exact line format, display rules, and lifecycle banners.
+
+If you just need to run Ralph successfully, you can skip this page and use [Getting Started](getting-started.md), [CLI Reference](cli.md), and [Troubleshooting](troubleshooting.md) instead.
+
+Ralph Workflow emits a structured, line-oriented transcript to stdout. Every line has a fixed format that can be machine-parsed or read directly in a terminal.
 
 ## Display Architecture
 
-`DisplayContext` (from `ralph.display`) is the **single source of truth** for all
-display decisions: console, theme, terminal width, color policy, display mode, and
-adaptive character limits.
+`DisplayContext` (from `ralph.display`) is the single place where Ralph decides how output should render: console, theme, terminal width, color policy, display mode, and adaptive character limits.
 
 ### Dependency Injection Contract
 
-Every renderer function requires a `display_context: DisplayContext` argument.
-No renderer may construct its own `rich.Console`. Callers must create a
-`DisplayContext` via `make_display_context()` before invoking any renderer.
+Every renderer function requires a `display_context: DisplayContext` argument. No renderer should construct its own `rich.Console`. Callers create a `DisplayContext` with `make_display_context()` before invoking any renderer.
 
 ```python
 from ralph.display import make_display_context

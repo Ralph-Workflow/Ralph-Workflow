@@ -2,7 +2,7 @@
 
 > **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
 
-Frequently asked questions and common issues when using Ralph Workflow.
+Use this page when a run does not behave the way you expect. It is organized around symptoms, likely causes, and the next command or file to check.
 
 ## I just installed Ralph Workflow and don't know what to do
 
@@ -64,15 +64,9 @@ ralph --check-mcp
 **Symptom:** Ralph Workflow reports an inactivity timeout or a stale session retry after an
 agent run that appeared active.
 
-**Cause:** Idle timeout follows provider activity signals before display rendering. Real
-streaming deltas, lifecycle events, tool calls, and tool results count as activity; blank
-heartbeat lines do not. If Ralph Workflow has to kill the subprocess for inactivity, any captured
-session ID is considered unsafe and the retry starts fresh unless the transport explicitly
-supports safe resume after forced termination.
+**Cause:** Ralph decides idleness from real provider activity, not just from what happened to appear on screen. Streaming deltas, lifecycle events, tool calls, and tool results count as activity; blank heartbeat lines do not. If Ralph has to kill the subprocess for inactivity, any captured session ID is treated as unsafe and the retry starts fresh unless the transport explicitly supports safe resume after forced termination.
 
-**Fix:** Check the watchdog log line for `reason`, `last_activity_kind`, and `resume_safe`.
-If the next attempt reports `No conversation found with session ID`, recovery treats it as a
-stale session and retries fresh within the remaining budget.
+**Fix:** Check the watchdog log line for `reason`, `last_activity_kind`, and `resume_safe`. If the next attempt reports `No conversation found with session ID`, recovery treats it as a stale session and retries fresh within the remaining budget.
 
 ## `make verify` fails after editing config
 
@@ -132,14 +126,7 @@ Use `ralph --inspect-checkpoint` to see what the current checkpoint contains bef
 **Symptom:** Ralph Workflow shows *"Background child work still active"* for a long time even
 after the agent subprocess has returned. The run never completes.
 
-**Cause (before v1.1):** Process existence alone was used to decide whether a child was
-still alive. A stale label or orphaned PID could keep `WAITING_ON_CHILD` open forever.
-
-**Current behaviour:** Ralph Workflow uses an evidence-backed liveness model. A child is only
-considered alive when it has renewed its progress or heartbeat lease within the configured
-TTL (default: progress 45 s, heartbeat 15 s). A stale process without fresh evidence is
-not treated as active; the parent falls back to OS-descendant detection, and if that also
-clears, escalates to a resumable-retry path.
+**Cause:** Ralph now uses an evidence-backed liveness model instead of assuming that an existing child PID means useful work is still happening. A child is treated as alive only when it renews its progress or heartbeat lease within the configured TTL (default: progress 45 s, heartbeat 15 s). If a process still exists but no fresh evidence remains, Ralph stops treating it as healthy active work and moves toward retry or recovery.
 
 The waiting status log line includes `alive_by=` to explain the active evidence:
 

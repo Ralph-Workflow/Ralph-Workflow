@@ -1,6 +1,6 @@
 # Release & Versioning
 
-This document describes how to bump, build, validate, and publish a new Ralph Workflow release.
+This maintainer-facing page describes how to bump, build, validate, and publish a new Ralph Workflow release.
 
 ## 1. Bump the version
 
@@ -20,7 +20,7 @@ Ralph Workflow follows [Semantic Versioning](https://semver.org/):
 - **MINOR** (`1.x.0`): new backward-compatible features.
 - **MAJOR** (`x.0.0`): breaking API or behavior changes.
 
-## 2. Build distribution artefacts
+## 2. Build distribution artifacts
 
 ```bash
 cd ralph-workflow
@@ -32,7 +32,7 @@ This produces `dist/ralph_workflow-<version>-py3-none-any.whl` and
 
 ## 3. Validate metadata
 
-Before uploading, verify the built artefacts are well-formed:
+Before uploading, verify the built artifacts are well-formed:
 
 ```bash
 uv run python -m twine check dist/*

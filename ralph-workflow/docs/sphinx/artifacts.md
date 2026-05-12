@@ -2,7 +2,7 @@
 
 > **New to Ralph Workflow?** See [Getting Started](getting-started.md) first — it walks you through the full pipeline before these internals make sense.
 
-Structured JSON payloads submitted by agents through the MCP layer. Every phase that produces output does so by submitting a typed artifact rather than writing to stdout.
+Artifacts are the structured files Ralph leaves behind so later phases — and you — can understand what happened in a run. Instead of relying on terminal output alone, each phase submits a typed payload that Ralph validates and stores.
 
 ## Artifact types
 
@@ -28,7 +28,7 @@ See `ralph.mcp.artifacts.typed_artifacts` for Pydantic schema definitions for ea
 
 ## Format docs
 
-Each non-plan artifact type ships with a bundled Markdown reference document that agents can read at runtime to understand the expected payload shape. These format docs live in `ralph/mcp/artifacts/format_docs/` and are materialized into the workspace at `.agent/artifact-formats/` before each agent invocation.
+Each non-plan artifact type also ships with a small Markdown format guide that agents can read at runtime before they submit data. The bundled source files live in `ralph/mcp/artifacts/format_docs/`, and Ralph materializes them into the workspace at `.agent/artifact-formats/` before each agent invocation.
 
 The format doc loader is in `ralph.mcp.artifacts.format_docs`. The `FORMAT_DOC_ARTIFACT_TYPES` tuple lists all types that have bundled docs:
 
@@ -41,7 +41,7 @@ An index doc (`artifact_formats_index.md`) is also materialized at `.agent/artif
 
 ## MCP submission tools
 
-Agents submit artifacts through the following MCP tools, exposed by `ralph.mcp.tools.artifact`:
+Agents submit artifacts through these MCP tools, exposed by `ralph.mcp.tools.artifact`:
 
 | Tool | Purpose |
 |---|---|

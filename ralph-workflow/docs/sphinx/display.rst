@@ -1,8 +1,9 @@
 Display Architecture
 ====================
 
-Ralph Workflow's display layer uses a single-source-of-truth dependency injection
-pattern built around :class:`~ralph.display.context.DisplayContext`.
+This maintainer-facing page explains the internal display architecture built around :class:`~ralph.display.context.DisplayContext`.
+
+If you only need to understand what appears in the terminal during a run, start with :doc:`transcript` instead.
 
 .. contents:: On this page
    :local:
@@ -11,9 +12,7 @@ pattern built around :class:`~ralph.display.context.DisplayContext`.
 Overview
 --------
 
-Every renderer receives a ``DisplayContext`` rather than constructing its own
-``Console`` or reading environment variables directly.  This keeps rendering
-testable, predictable, and easy to audit.
+Every renderer receives a ``DisplayContext`` instead of constructing its own ``Console`` or reading environment variables directly. This keeps rendering testable, predictable, and easier to audit.
 
 The DI invariant
 ----------------

@@ -1,9 +1,6 @@
 # MCP Tools Reference
 
-Ralph Workflow runs a private MCP (Model Context Protocol) server for each agent
-invocation. Agents connect to it automatically; no manual setup is needed. The server
-exposes workspace access, artifact submission, coordination, and web tools — all gated
-by the capability flags in effect for the current session drain.
+Ralph Workflow runs a private MCP (Model Context Protocol) server for each agent invocation. Agents connect to it automatically; you do not need to wire it up by hand. The server exposes workspace access, artifact submission, coordination, and web tools, all gated by the capability set for the current session drain.
 
 ## Native Tools
 
@@ -11,7 +8,7 @@ The following tools are exposed directly by Ralph Workflow's MCP server. The
 capability gate column lists the capability that must be present in the session for
 the tool to be callable.
 
-Drain class groupings used in this table:
+The table below uses a few drain groupings:
 
 - **all** — every drain: planning, development, development\_analysis, development\_commit,
   review, review\_analysis, review\_commit, fix, commit
@@ -68,11 +65,7 @@ See `ralph.mcp.tools.names` for the canonical name constants.
 - `{"command": ["python", "-m", "pytest"]}`
 - `{"argv": ["python", "-m", "pytest"]}`
 
-Quoted arguments inside string forms are preserved, so values containing spaces stay as a
-single argument. Ralph Workflow still does **not** emulate a shell: shell control operators
-such as `|`, `&&`, `;`, `>`, and `<` are rejected instead of being interpreted, and the
-error message explicitly says that `exec` runs a subprocess rather than a shell. If you need
-file edits, git operations, or structured reads, prefer the dedicated MCP tools.
+Quoted arguments inside string forms are preserved, so values containing spaces stay as a single argument. Ralph Workflow still does **not** emulate a shell: control operators such as `|`, `&&`, `;`, `>`, and `<` are rejected instead of being interpreted. If you need file edits, git operations, or structured reads, prefer the dedicated MCP tools.
 
 ### read_file response shapes
 

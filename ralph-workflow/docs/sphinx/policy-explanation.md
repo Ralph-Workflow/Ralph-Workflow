@@ -1,8 +1,6 @@
 # Policy Explanation
 
-Ralph Workflow can render a human-readable explanation of the active policy configuration
-with a single command. Use this to verify your pipeline definition before running or
-to document the workflow your team is using.
+Ralph Workflow can render a human-readable explanation of the active policy configuration with a single command. Use it when you want to sanity-check your pipeline before a run or document the workflow your team is relying on.
 
 ## The command
 
@@ -10,8 +8,7 @@ to document the workflow your team is using.
 ralph --explain-policy
 ```
 
-This reads the active `pipeline.toml` (project-local `.agent/pipeline.toml` when present,
-otherwise the bundled defaults) and prints a structured summary to stdout.
+This reads the active `pipeline.toml` — project-local `.agent/pipeline.toml` when present, otherwise the bundled defaults — and prints a structured summary to stdout.
 
 To inspect a custom policy directory instead:
 
@@ -21,7 +18,7 @@ ralph --explain-policy --explain-policy-dir /path/to/policy/dir
 
 ## Fast validation without explanation
 
-To check that the policy is valid without producing the full explanation output, use:
+If you only want a pass/fail validation without the full explanation output, use:
 
 ```bash
 ralph --check-policy
@@ -157,8 +154,7 @@ Four sentence forms are generated:
 | Bypass route | `Explanation: phase 'review' bypasses to 'review_commit' when the configured outcome is 'review_clean'.` |
 | Loopback cap | `Explanation: phase 'development_analysis' loops back to 'development' until 3 attempts are exhausted, after which the run terminates.` |
 
-These sentences make it possible to answer "why did Ralph Workflow route here?" from the explanation output alone,
-without reading `pipeline.toml` or runtime code.
+These sentences make it possible to answer "why did Ralph route here?" from the explanation output alone, without reading `pipeline.toml` or the runtime code.
 
 ## Structural breakdown
 

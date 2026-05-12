@@ -1,20 +1,12 @@
 # Policy-Driven Overhaul Migration Guide
 
-This guide is for users upgrading from an earlier version of Ralph Workflow to the current
-policy-driven release. It explains what changed conceptually, which old assumptions no
-longer hold, and how to update existing configurations.
+This guide is for users upgrading from an earlier Ralph Workflow release to the current policy-driven model. It focuses on the assumptions that changed, the config updates you may need to make, and the commands to run before you trust the migrated workflow.
 
 ## What changed
 
-Ralph Workflow's pipeline was overhauled to be **completely policy-driven**. All
-workflow behavior — routing, retry rules, analysis loops, commit semantics, verification
-gates, recovery routing, and terminal behavior — is now declared in `pipeline.toml`
-and enforced by a generic runtime without any hardcoded phase knowledge.
+Ralph Workflow's pipeline is now **fully policy-driven**. Routing, retry rules, analysis loops, commit semantics, verification gates, recovery routing, and terminal behavior all come from `pipeline.toml`.
 
-Before this change, some workflow behavior was silently owned by the runtime code.
-Users could configure some edges but not actually reshape the full workflow. After the
-change, the runtime is a generic policy interpreter: if it is not in `pipeline.toml`,
-it does not happen.
+Before this change, some workflow behavior still lived implicitly in the runtime. After the change, the runtime follows the declared policy. If a behavior is not expressed in `pipeline.toml`, Ralph does not invent it.
 
 ## Assumptions that no longer hold
 
@@ -79,9 +71,7 @@ the same as the built-in defaults.
 
 ## Hidden behavior removed in this iteration
 
-The following runtime behaviors were previously hardcoded and are now fully replaced by
-policy declarations. Configurations that relied on the old implicit behavior will fail
-`validate_policy_completeness()` at startup with a `PolicyValidationError`.
+The items below are the main hidden behaviors that were removed. If an older configuration depended on them, startup validation now fails with a `PolicyValidationError` instead of letting the workflow proceed with silent assumptions.
 
 | Removed hidden behavior | Replaced by |
 |-------------------------|-------------|
@@ -101,8 +91,7 @@ drain names.
 
 ## How to migrate an existing `pipeline.toml`
 
-If you have a project-local `.agent/pipeline.toml` that predates the policy-driven
-overhaul, run:
+If you have a project-local `.agent/pipeline.toml` from before the policy-driven overhaul, start here:
 
 ```bash
 ralph --regenerate-config
@@ -239,7 +228,7 @@ correct for any policy-declared phase name.
 No `pipeline.toml` changes are required — the new dispatch is automatic when the
 phase role is correctly declared.
 
-## Verifying the migrated policy
+## Fast verification commands
 
 After migration, use the policy validator for a fast pass/fail check:
 

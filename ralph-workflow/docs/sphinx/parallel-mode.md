@@ -2,17 +2,13 @@
 
 > **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
 
-When the planning phase produces two or more work units, Ralph Workflow fans development
-out across multiple workers running in parallel. All workers operate directly on the
-same git checkout (same-workspace mode) and are isolated from each other through
-path restrictions and per-worker artifact namespaces.
+When the planning phase produces two or more work units, Ralph Workflow can fan development out across multiple workers in parallel. In v1, those workers all operate against the same git checkout and are isolated from each other with path restrictions and per-worker artifact namespaces.
 
-v1 supports same-workspace parallel execution; other parallel-execution modes are out of scope for v1.
+v1 supports only this same-workspace parallel mode. Other execution models are out of scope.
 
 ## Configuration
 
-Parallelization is configured per phase in `.agent/pipeline.toml`. To enable parallel fan-out
-for the development phase:
+Parallelization is configured per phase in `.agent/pipeline.toml`. To enable fan-out for the development phase:
 
 ```toml
 [phases.development.parallelization]
