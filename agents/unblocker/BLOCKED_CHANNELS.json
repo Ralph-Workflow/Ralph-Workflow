@@ -1,16 +1,46 @@
 {
-  "timestamp": "2026-05-12T02:08:00.232882+02:00",
-  "summary": {
-    "blocked": 7,
-    "partial": 0,
-    "ready": 0
-  },
-  "results": [
+  "version": 1,
+  "updated_at": "2026-05-12T02:08:00.263665+02:00",
+  "channels": [
     {
-      "channel_id": "devto",
+      "id": "devto",
       "name": "dev.to",
-      "recommendation": "mixed_progress",
-      "attempts": [
+      "status": "blocked",
+      "priority": "medium",
+      "goal": "Cross-post RalphWorkflow technical articles",
+      "blockers": [
+        "Needs API key or OAuth-backed account",
+        "No confirmed writable publishing credential"
+      ],
+      "allowed_actions": [
+        "check_public_read_access",
+        "check_auth_status",
+        "prepare_manual_account_setup",
+        "prepare_manual_api_key_request",
+        "verify_browser_readiness"
+      ],
+      "forbidden_actions": [
+        "bypass_bot_detection",
+        "mass_account_creation",
+        "credential_stuffing",
+        "captcha_evasion"
+      ],
+      "manual_prerequisites": [
+        "User creates or confirms dev.to account",
+        "User provides API key or OAuth approval"
+      ],
+      "browser_requirements": {
+        "desktop_browser": true,
+        "extension_notes": [
+          "Ad/tracker blocking is optional for usability/privacy, not for bypassing protections"
+        ]
+      },
+      "preferred_next_actions": [
+        "verify_browser_readiness",
+        "check_auth_status",
+        "prepare_manual_api_key_request"
+      ],
+      "attempt_history": [
         {
           "action": "verify_browser_readiness",
           "status": "useful",
@@ -44,18 +74,48 @@
           },
           "timestamp": "2026-05-12T02:08:00.233122+02:00"
         }
-      ],
-      "next_actions": [
-        "verify_browser_readiness",
-        "prepare_manual_api_key_request",
-        "check_auth_status"
       ]
     },
     {
-      "channel_id": "twitter",
+      "id": "twitter",
       "name": "Twitter/X",
-      "recommendation": "mixed_progress",
-      "attempts": [
+      "status": "blocked",
+      "priority": "low",
+      "goal": "Distribute short-form RalphWorkflow posts",
+      "blockers": [
+        "Login/session flow unreliable",
+        "No approved posting session or API access"
+      ],
+      "allowed_actions": [
+        "check_public_read_access",
+        "check_auth_status",
+        "prepare_manual_account_setup",
+        "verify_browser_readiness",
+        "document_policy_requirements"
+      ],
+      "forbidden_actions": [
+        "bot_evasion",
+        "stealth_automation",
+        "synthetic_identity_creation",
+        "captcha_evasion"
+      ],
+      "manual_prerequisites": [
+        "User creates or confirms account",
+        "User completes any phone/email verification",
+        "User provides approved API/session route if allowed"
+      ],
+      "browser_requirements": {
+        "desktop_browser": true,
+        "extension_notes": [
+          "Ad/tracker blocking is optional for privacy only"
+        ]
+      },
+      "preferred_next_actions": [
+        "verify_browser_readiness",
+        "check_auth_status",
+        "document_policy_requirements"
+      ],
+      "attempt_history": [
         {
           "action": "verify_browser_readiness",
           "status": "useful",
@@ -100,18 +160,45 @@
           },
           "timestamp": "2026-05-12T02:08:00.233353+02:00"
         }
-      ],
-      "next_actions": [
-        "verify_browser_readiness",
-        "document_policy_requirements",
-        "check_auth_status"
       ]
     },
     {
-      "channel_id": "reddit",
+      "id": "reddit",
       "name": "Reddit",
-      "recommendation": "continue_legitimate_unblock",
-      "attempts": [
+      "status": "blocked",
+      "priority": "low",
+      "goal": "Participate in relevant developer discussions",
+      "blockers": [
+        "Needs account and subreddit reputation",
+        "Automated posting likely inappropriate without established presence"
+      ],
+      "allowed_actions": [
+        "check_public_read_access",
+        "prepare_manual_account_setup",
+        "document_community_requirements",
+        "verify_browser_readiness"
+      ],
+      "forbidden_actions": [
+        "karma_farming_bots",
+        "sockpuppet_accounts",
+        "ban_evasion",
+        "spam_automation"
+      ],
+      "manual_prerequisites": [
+        "User creates account",
+        "User builds genuine participation history manually"
+      ],
+      "browser_requirements": {
+        "desktop_browser": true,
+        "extension_notes": [
+          "Ad/tracker blocking is optional for privacy only"
+        ]
+      },
+      "preferred_next_actions": [
+        "document_community_requirements",
+        "verify_browser_readiness"
+      ],
+      "attempt_history": [
         {
           "action": "document_community_requirements",
           "status": "useful",
@@ -142,17 +229,42 @@
           },
           "timestamp": "2026-05-12T02:08:00.233500+02:00"
         }
-      ],
-      "next_actions": [
-        "document_community_requirements",
-        "verify_browser_readiness"
       ]
     },
     {
-      "channel_id": "hackernews",
+      "id": "hackernews",
       "name": "Hacker News",
-      "recommendation": "continue_legitimate_unblock",
-      "attempts": [
+      "status": "blocked",
+      "priority": "medium",
+      "goal": "Share launch or technical writeups when appropriate",
+      "blockers": [
+        "Needs account",
+        "Posting should be manual and policy-aware"
+      ],
+      "allowed_actions": [
+        "check_public_read_access",
+        "prepare_manual_account_setup",
+        "document_community_requirements",
+        "verify_browser_readiness"
+      ],
+      "forbidden_actions": [
+        "vote_manipulation",
+        "account_farming",
+        "ban_evasion"
+      ],
+      "manual_prerequisites": [
+        "User creates account",
+        "User manually submits launch/post when ready"
+      ],
+      "browser_requirements": {
+        "desktop_browser": true,
+        "extension_notes": []
+      },
+      "preferred_next_actions": [
+        "document_community_requirements",
+        "verify_browser_readiness"
+      ],
+      "attempt_history": [
         {
           "action": "document_community_requirements",
           "status": "useful",
@@ -181,17 +293,39 @@
           },
           "timestamp": "2026-05-12T02:08:00.233642+02:00"
         }
-      ],
-      "next_actions": [
-        "document_community_requirements",
-        "verify_browser_readiness"
       ]
     },
     {
-      "channel_id": "lobsters",
+      "id": "lobsters",
       "name": "Lobsters",
-      "recommendation": "continue_legitimate_unblock",
-      "attempts": [
+      "status": "blocked",
+      "priority": "low",
+      "goal": "Share technical content when community fit exists",
+      "blockers": [
+        "Needs account/invite",
+        "Community fit should be validated manually"
+      ],
+      "allowed_actions": [
+        "check_public_read_access",
+        "document_community_requirements",
+        "verify_browser_readiness"
+      ],
+      "forbidden_actions": [
+        "invite_abuse",
+        "account_farming",
+        "spam_automation"
+      ],
+      "manual_prerequisites": [
+        "User obtains legitimate account/invite"
+      ],
+      "browser_requirements": {
+        "desktop_browser": true,
+        "extension_notes": []
+      },
+      "preferred_next_actions": [
+        "document_community_requirements"
+      ],
+      "attempt_history": [
         {
           "action": "document_community_requirements",
           "status": "useful",
@@ -207,16 +341,44 @@
           },
           "timestamp": "2026-05-12T02:08:00.233656+02:00"
         }
-      ],
-      "next_actions": [
-        "document_community_requirements"
       ]
     },
     {
-      "channel_id": "producthunt",
+      "id": "producthunt",
       "name": "Product Hunt",
-      "recommendation": "continue_legitimate_unblock",
-      "attempts": [
+      "status": "blocked",
+      "priority": "medium",
+      "goal": "Prepare for a legitimate launch",
+      "blockers": [
+        "Manual launch flow required",
+        "Anti-bot protections on submit flow"
+      ],
+      "allowed_actions": [
+        "check_public_read_access",
+        "prepare_manual_account_setup",
+        "document_policy_requirements",
+        "verify_browser_readiness"
+      ],
+      "forbidden_actions": [
+        "anti_bot_evasion",
+        "fake_accounts",
+        "launch_spam"
+      ],
+      "manual_prerequisites": [
+        "User creates or confirms Product Hunt account",
+        "User completes launch assets and manual submission"
+      ],
+      "browser_requirements": {
+        "desktop_browser": true,
+        "extension_notes": [
+          "Browser should be stable for manual launch prep"
+        ]
+      },
+      "preferred_next_actions": [
+        "verify_browser_readiness",
+        "document_policy_requirements"
+      ],
+      "attempt_history": [
         {
           "action": "verify_browser_readiness",
           "status": "useful",
@@ -252,17 +414,42 @@
           },
           "timestamp": "2026-05-12T02:08:00.233794+02:00"
         }
-      ],
-      "next_actions": [
-        "verify_browser_readiness",
-        "document_policy_requirements"
       ]
     },
     {
-      "channel_id": "github-write",
+      "id": "github-write",
       "name": "GitHub write access",
-      "recommendation": "continue_legitimate_unblock",
-      "attempts": [
+      "status": "blocked",
+      "priority": "high",
+      "goal": "Enable legitimate outreach and repo updates",
+      "blockers": [
+        "PAT appears read-only",
+        "No confirmed writable token or app installation"
+      ],
+      "allowed_actions": [
+        "check_public_read_access",
+        "check_auth_status",
+        "prepare_manual_token_upgrade",
+        "document_policy_requirements"
+      ],
+      "forbidden_actions": [
+        "scope_bypass",
+        "credential_reuse_without_permission",
+        "privilege_escalation"
+      ],
+      "manual_prerequisites": [
+        "User creates new PAT or GitHub App with required scopes",
+        "User confirms which repos/actions are authorized"
+      ],
+      "browser_requirements": {
+        "desktop_browser": false,
+        "extension_notes": []
+      },
+      "preferred_next_actions": [
+        "check_auth_status",
+        "prepare_manual_token_upgrade"
+      ],
+      "attempt_history": [
         {
           "action": "check_auth_status",
           "status": "partial",
@@ -284,10 +471,6 @@
           },
           "timestamp": "2026-05-12T02:08:00.263399+02:00"
         }
-      ],
-      "next_actions": [
-        "prepare_manual_token_upgrade",
-        "check_auth_status"
       ]
     }
   ]

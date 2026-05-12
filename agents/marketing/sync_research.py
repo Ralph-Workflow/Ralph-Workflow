@@ -34,6 +34,9 @@ SYNC_PATH_SPECS: tuple[str, ...] = (
     "agents/marketing/run_posting.py",
     "agents/marketing/sync_research.py",
     "agents/marketing/tests",
+    "agents/unblocker/BLOCKED_CHANNELS.json",
+    "agents/unblocker/run.py",
+    "agents/unblocker/tests",
     "agents/*/logs",
 )
 

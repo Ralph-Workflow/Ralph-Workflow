@@ -82,3 +82,4 @@ Research sync includes curated workspace materials plus `memory/*.md` notes, not
 2. Add Google Search Console or another trustworthy search metric source
 3. Add click/conversion tracking once a stable CTA destination is chosen
 4. Replace blocked-channel exploration with a manual unblock registry
+5. Run a policy-safe unblock review agent that learns which legitimate next steps are most useful for each blocked channel
