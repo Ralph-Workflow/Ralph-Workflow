@@ -95,6 +95,10 @@ ralph -T     # thorough: complex refactors, ten iterations
 - Tiny tasks that finish before setup overhead pays off
 - Workflows that depend on unpredictable mid-run human input
 
+## Where the name comes from
+
+Ralph Workflow builds on the original Ralph idea: repeat a strong prompt until the model can make real progress. That loop was simple and powerful. Ralph Workflow extends it into a repo-native engineering workflow with planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
+
 ## Need the deeper technical details?
 
 Keep this README for onboarding. Use these when you want the full reference:

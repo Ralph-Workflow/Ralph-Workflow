@@ -99,6 +99,10 @@ ralph -T     # thorough: complex refactors, ten iterations
 - Tiny tasks where setup overhead is not worth it
 - Workflows that need unpredictable mid-run human input
 
+## Where the name comes from
+
+Ralph Workflow builds on the original Ralph idea: repeat a strong prompt until the model can make real progress. That loop was simple and powerful. Ralph Workflow extends it into a repo-native engineering workflow with planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
+
 ## Development and verification
 
 If you are changing Ralph Workflow itself, start with [`CONTRIBUTING.md`](CONTRIBUTING.md) and run the canonical verification command before you finish:
