@@ -180,11 +180,10 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
     )
 
 
-
 def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() -> None:
     display_context = make_display_context()
     session_line = '{"session_id":"sess-early"}'
-    filler = ['x' * 8192 for _ in range(_OUTPUT_BATCH)]
+    filler = ["x" * 8192 for _ in range(_OUTPUT_BATCH)]
 
     parsed_output, raw_output, resume_session_id = _collect_commit_agent_output(
         [session_line, *filler],

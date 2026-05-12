@@ -150,9 +150,7 @@ def _configure_run_pipeline(monkeypatch: MonkeyPatch, tmp_path: Path) -> PolicyB
     monkeypatch.setattr(
         runner,
         "start_mcp_server",
-        lambda *args, **kwargs: SimpleNamespace(
-            agent_endpoint_uri=lambda: "http://127.0.0.1/mcp"
-        ),
+        lambda *args, **kwargs: SimpleNamespace(agent_endpoint_uri=lambda: "http://127.0.0.1/mcp"),
     )
     monkeypatch.setattr(runner, "shutdown_mcp_server", lambda _bridge: None)
     monkeypatch.setattr(runner, "check_mcp_bridge_health", lambda _bridge: None)
