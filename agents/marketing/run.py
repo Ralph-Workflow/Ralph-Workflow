@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Daily metrics collector and weekly evaluator for RalphWorkflow marketing.
 
-Active loop:
-- measure only live channels
-- compare content buckets using structured metadata
-- make small weekly decisions rather than broad speculative plans
+Self-improving SEO loop:
+- Runs seo_daily.py for fresh SEO intelligence every day
+- Loads prior SEO reports to detect trends (rank changes, score changes)
+- Makes weekly decisions based on what improved / what degraded
+- Feeds insights back into content strategy via STRATEGY.md
+- Content generation is guided by actual SEO data, not guesswork
 """
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
+import sys
 import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -20,6 +25,7 @@ AGENTS_DIR = Path("/home/mistlight/.openclaw/workspace/agents/marketing")
 LOG_DIR = AGENTS_DIR / "logs"
 STRATEGY_FILE = AGENTS_DIR / "STRATEGY.md"
 POSTED_FILE = LOG_DIR / "posted_urls.json"
+SEO_REPORTS_DIR = Path("/home/mistlight/.openclaw/workspace/seo-reports")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 BLOCKED_CHANNELS = {
@@ -32,13 +38,89 @@ BLOCKED_CHANNELS = {
 }
 
 
+# ── Run seo_daily.py ──────────────────────────────────────────────────────────
+
+def run_seo_daily() -> dict:
+    """Run seo_daily.py and parse its JSON summary output."""
+    result = subprocess.run(
+        [sys.executable, str(AGENTS_DIR / "seo_daily.py")],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    # seo_daily.py prints a JSON summary to stdout (multi-line, after a log line)
+    try:
+        text = result.stdout.strip()
+        # Skip the [seo_daily] log line, then parse the JSON block
+        if text.startswith("["):
+            text = text[text.index("{"):]
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return {"error": f"Failed to parse seo_daily JSON: {exc}", "stdout": result.stdout[-500:] if result.stdout else "", "stderr": result.stderr[-500:] if result.stderr else ""}
+
+
+# ── Load SEO trend data ───────────────────────────────────────────────────────
+
+def load_seo_trends(days: int = 14) -> dict:
+    """Load recent SEO logs to compute week-over-week trends."""
+    trends = []
+    cutoff = datetime.now() - timedelta(days=days)
+    for log_file in sorted(LOG_DIR.glob("seo_*.json")):
+        try:
+            dt = datetime.fromisoformat(log_file.stem.replace("seo_", ""))
+            if dt >= cutoff:
+                data = json.loads(log_file.read_text(encoding="utf-8"))
+                trends.append(data)
+        except Exception:
+            continue
+    return trends
+
+
+def compute_trends(current: dict, history: list[dict]) -> dict:
+    """Compute week-over-week deltas for key SEO metrics."""
+    if not history:
+        return {"note": "Not enough history to compute trends yet."}
+
+    def avg_key(docs: list[dict], key: str, default=0):
+        vals = [d.get(key, default) for d in docs if d.get(key) is not None]
+        return sum(vals) / len(vals) if vals else default
+
+    prev_ranks = []
+    prev_bl = []
+    for d in history:
+        rank_count = sum(1 for v in d.get("ranks", {}).values() if isinstance(v, dict) and v.get("position"))
+        prev_ranks.append(rank_count)
+        bl_val = d.get("backlinks", {})
+        if isinstance(bl_val, dict):
+            prev_bl.append(bl_val.get("count_approx", 0))
+        else:
+            prev_bl.append(0)
+
+    current_ranks = sum(1 for v in current.get("ranks", {}).values() if isinstance(v, dict) and v.get("position"))
+    current_bl = current.get("backlinks", {}).get("count_approx", 0) if isinstance(current.get("backlinks"), dict) else current.get("backlinks_approx", 0)
+    current_dr = current.get("domain_rating")
+
+    rank_delta = current_ranks - (sum(prev_ranks) / len(prev_ranks) if prev_ranks else current_ranks)
+    bl_delta = current_bl - (sum(prev_bl) / len(prev_bl) if prev_bl else current_bl)
+
+    return {
+        "rank_delta": round(rank_delta, 1),
+        "backlinks_delta": round(bl_delta, 1),
+        "domain_rating": current_dr,
+        "prev_avg_ranks": round(sum(prev_ranks) / len(prev_ranks), 1) if prev_ranks else None,
+        "prev_avg_bl": round(sum(prev_bl) / len(prev_bl), 1) if prev_bl else None,
+    }
+
+
+# ── HTTP helpers ─────────────────────────────────────────────────────────────
+
 def http_status(url: str) -> dict:
     for method in ("HEAD", "GET"):
         try:
             req = urllib.request.Request(url, method=method, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=12) as resp:
                 return {"ok": True, "status": resp.status, "method": method}
-        except Exception as exc:  # pragma: no cover - network behavior varies
+        except Exception as exc:
             last_error = str(exc)
     return {"ok": False, "error": last_error}
 
@@ -51,9 +133,11 @@ def fetch_writeas_views(url: str) -> int:
             html = resp.read().decode("utf-8", errors="ignore")
         match = re.search(r"(\d+)\s+views?", html)
         return int(match.group(1)) if match else 0
-    except Exception:  # pragma: no cover - network behavior varies
+    except Exception:
         return 0
 
+
+# ── Post performance helpers ─────────────────────────────────────────────────
 
 def load_posted_records() -> list[dict]:
     if not POSTED_FILE.exists():
@@ -112,18 +196,45 @@ def summarize_content_performance(posts: list[dict]) -> dict[str, dict]:
     return dict(sorted(buckets.items()))
 
 
-def build_weekly_decisions(content_summary: dict[str, dict], site_health: dict) -> list[dict]:
-    decisions: list[dict] = []
-    if not site_health["homepage"].get("ok"):
-        decisions.append({"priority": "high", "action": "Fix homepage availability before more promotion.", "reason": "Primary site health failed."})
+# ── Strategy updates ─────────────────────────────────────────────────────────
 
+def load_strategy_content() -> str:
+    if not STRATEGY_FILE.exists():
+        return ""
+    return STRATEGY_FILE.read_text(encoding="utf-8")
+
+
+def build_weekly_decisions(
+    content_summary: dict[str, dict],
+    seo_trends: dict,
+    seo_current: dict,
+    seo_actions: list[str],
+) -> list[dict]:
+    """Build weekly decisions informed by actual SEO data + content performance."""
+    decisions: list[dict] = []
+
+    # SEO health gate
+    onpage_score_raw = seo_current.get("onpage_score", "?/100")
+    if isinstance(onpage_score_raw, str) and "/" in onpage_score_raw:
+        try:
+            score = int(onpage_score_raw.split("/")[0])
+            if score < 75:
+                decisions.append({
+                    "priority": "high",
+                    "action": "Fix on-page SEO issues before investing in new content.",
+                    "reason": f"SEO score is {score}/100 — technical foundation needs attention.",
+                })
+        except ValueError:
+            pass
+
+    # Content performance
     ranked = sorted(content_summary.items(), key=lambda item: item[1].get("avg_views", 0), reverse=True)
     if ranked:
         best_type, best_stats = ranked[0]
         decisions.append({
             "priority": "medium",
             "action": f"Keep publishing {best_type} content.",
-            "reason": f"Best average views so far: {best_stats.get('avg_views', 0)}.",
+            "reason": f"Best avg views: {best_stats.get('avg_views', 0):.1f} — lean into what's working.",
         })
         if len(ranked) > 1:
             worst_type, worst_stats = ranked[-1]
@@ -131,52 +242,145 @@ def build_weekly_decisions(content_summary: dict[str, dict], site_health: dict) 
                 decisions.append({
                     "priority": "medium",
                     "action": f"Shift one future slot away from {worst_type} toward {best_type}.",
-                    "reason": f"{best_type} is outperforming {worst_type} on average views.",
+                    "reason": f"{best_type} outperforms {worst_type} on avg views.",
                 })
-    else:
-        decisions.append({"priority": "info", "action": "Collect more data before changing the content mix.", "reason": "No successful posts with measurable views yet."})
 
-    decisions.append({"priority": "ongoing", "action": "Stay focused on write.as + site SEO until blocked channels are unblocked.", "reason": "Current working distribution channel is write.as."})
-    decisions.append({"priority": "ongoing", "action": "Track blocked channels separately instead of trying to automate them now.", "reason": ", ".join(sorted(BLOCKED_CHANNELS))})
+    # SEO trend-based decisions
+    rank_delta = seo_trends.get("rank_delta", 0)
+    if rank_delta > 0:
+        decisions.append({
+            "priority": "medium",
+            "action": "Rankings improving — maintain content cadence and keyword targeting.",
+            "reason": f"Avg keyword positions improved by {rank_delta:.1f} positions week-over-week.",
+        })
+    elif rank_delta < -2:
+        decisions.append({
+            "priority": "high",
+            "action": "Keyword positions dropped. Review competing content and refresh underperforming posts.",
+            "reason": f"Avg keyword positions dropped by {abs(rank_delta):.1f} week-over-week.",
+        })
+
+    bl_delta = seo_trends.get("backlinks_delta", 0)
+    if bl_delta == 0 and seo_trends.get("prev_avg_bl", 0) == 0:
+        decisions.append({
+            "priority": "high",
+            "action": "Build backlinks — submit to directories and pursue guest post opportunities.",
+            "reason": "Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now.",
+        })
+
+    # Priority actions from seo_daily
+    for action in (seo_actions or [])[:2]:
+        if not any(action.lower() in d.get("action", "").lower() for d in decisions):
+            decisions.append({
+                "priority": "medium",
+                "action": action,
+                "reason": "Identified by daily SEO analysis as a top priority.",
+            })
+
+    # Distribution channel decisions
+    decisions.append({
+        "priority": "ongoing",
+        "action": "Continue write.as + Telegraph posting until blocked channels are unblocked.",
+        "reason": "Working distribution channel. Track ratio of views per post to gauge platform value.",
+    })
+
+    if not decisions:
+        decisions.append({
+            "priority": "info",
+            "action": "Collect more data before changing the strategy.",
+            "reason": "No strong signals yet. Keep running the loop.",
+        })
+
     return decisions
 
 
-def render_strategy_snapshot(now: datetime, summary: dict, decisions: list[dict]) -> str:
-    lines = [f"## Automation Review — {now.strftime('%Y-%m-%d')}", "", "### Active Loop", "- Generate scheduled RalphWorkflow drafts", "- Publish only real drafts to write.as", "- Measure views + site health", "- Adjust content mix weekly", "", "### Site Health"]
-    for name, status in summary["site_health"].items():
-        badge = "✅" if status.get("ok") else "❌"
-        detail = status.get("status", status.get("error", "unknown"))
-        lines.append(f"- {badge} {name}: {detail}")
-    lines.extend(["", "### Content Performance"])
-    if summary["content_summary"]:
+def update_strategy_file(now: datetime, summary: dict, decisions: list[dict], seo_current: dict, seo_trends: dict) -> None:
+    """Update STRATEGY.md with a new weekly review section."""
+    # SEO summary block
+    seo_block = [
+        f"**SEO Score:** {seo_current.get('onpage_score', 'unknown')} | Ranked keywords: {seo_current.get('ranked_keywords', '?')} | Backlinks: {seo_current.get('backlinks_approx', '?')} | DR: {seo_current.get('domain_rating', '?')}",
+        f"**Trends:** ranks {seo_trends.get('rank_delta', '?')}",
+    ]
+
+    lines = [
+        f"## Weekly Review — {now.strftime('%Y-%m-%d')}",
+        "",
+        "### SEO Health",
+        *seo_block,
+        "",
+        "### Content Performance",
+    ]
+    if summary.get("content_summary"):
         for bucket, stats in summary["content_summary"].items():
-            lines.append(f"- {bucket}: {stats['posts']} posts, {stats['views']} total views, {stats['avg_views']} avg views")
+            lines.append(f"- {bucket}: {stats['posts']} posts, {stats['views']} total views, {stats['avg_views']} avg views/publish")
     else:
-        lines.append("- No successful posts with measurable data yet")
+        lines.append("- No measurable posts yet.")
+
     lines.extend(["", "### Weekly Decisions"])
     for item in decisions:
-        lines.append(f"- [{item['priority'].upper()}] {item['action']} — {item['reason']}")
-    return "\n".join(lines) + "\n"
+        lines.append(f"- **[{item['priority'].upper()}]** {item['action']} — {item['reason']}")
 
+    lines.extend(["", "### Priority Actions (from SEO analysis)"])
+    for action in (seo_current.get("priority_actions") or ["Collect more data"]):
+        lines.append(f"- {action}")
 
-def update_strategy_file(now: datetime, summary: dict, decisions: list[dict]) -> None:
-    snapshot = render_strategy_snapshot(now, summary, decisions)
-    existing = STRATEGY_FILE.read_text(encoding="utf-8") if STRATEGY_FILE.exists() else "# Ralph Workflow Marketing Strategy\n"
-    marker = f"## Automation Review — {now.strftime('%Y-%m-%d')}"
+    snapshot = "\n".join(lines)
+
+    existing = load_strategy_content()
+    marker = f"## Weekly Review — {now.strftime('%Y-%m-%d')}"
     if marker in existing:
         prefix = existing.split(marker)[0].rstrip()
         new_content = prefix + "\n\n" + snapshot
     else:
         new_content = existing.rstrip() + "\n\n" + snapshot
+
     STRATEGY_FILE.write_text(new_content, encoding="utf-8")
 
 
-def build_summary(now: datetime) -> dict:
-    site_health = {
-        "homepage": http_status("https://ralphworkflow.com"),
-        "robots": http_status("https://ralphworkflow.com/robots.txt"),
-        "sitemap": http_status("https://ralphworkflow.com/sitemap.xml"),
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def write_seo_insights(seo_current: dict, decisions: list[dict]) -> Path:
+    """Write SEO gap insights to a file for generate_content.py to read."""
+    insights = {
+        'generated_at': datetime.now().isoformat(),
+        'priority_keywords': seo_current.get('priority_actions', []),
+        'gaps': (seo_current.get('content_gap') or {}).get('gaps', []) if isinstance(seo_current.get('content_gap'), dict) else [],
+        'onpage_score': seo_current.get('onpage_score', 'N/A'),
+        'ranked_keywords': seo_current.get('ranked_keywords', 0),
+        'backlinks_approx': seo_current.get('backlinks_approx', 0),
+        'weekly_decisions': [d['action'] for d in decisions if d.get('priority') in ('high', 'medium')],
     }
+    path = LOG_DIR / 'seo-insights.json'
+    path.write_text(json.dumps(insights, indent=2), encoding='utf-8')
+    return path
+
+
+def main() -> int:
+    now = datetime.now()
+    weekday = now.weekday()
+    is_monday = weekday == 0
+
+    # Run seo_daily.py for fresh SEO intelligence
+    print("[run.py] Running seo_daily.py...", flush=True)
+    seo_current = run_seo_daily()
+    seo_error = seo_current.get("error", "")
+
+    # Load SEO history for trend computation — runs every day to accumulate data
+    seo_history = load_seo_trends(days=14)
+    seo_trends = compute_trends(seo_current, seo_history)
+
+    # Site health (from seo_daily)
+    site_health = seo_current.get("site_health", {}) if not seo_error else {}
+
+    # If seo_daily failed, fall back to basic site checks
+    if seo_error or not site_health:
+        site_health = {
+            "homepage": http_status("https://ralphworkflow.com"),
+            "robots": http_status("https://ralphworkflow.com/robots.txt"),
+            "sitemap": http_status("https://ralphworkflow.com/sitemap.xml"),
+        }
+
+    # Content performance
     posts = recent_successful_posts(load_posted_records(), now)
     posts = enrich_posts_with_views(posts)
     content_summary = summarize_content_performance(posts)
@@ -184,35 +388,61 @@ def build_summary(now: datetime) -> dict:
         "posts_last_30d": len(posts),
         "views_last_30d": sum(int(post.get("views", 0)) for post in posts),
     }
-    return {
-        "timestamp": now.isoformat(),
-        "site_health": site_health,
-        "posts": posts,
-        "content_summary": content_summary,
-        "totals": totals,
-        "blocked_channels": BLOCKED_CHANNELS,
-    }
 
+    # Weekly decisions
+    decisions = []
+    if is_monday:
+        decisions = build_weekly_decisions(
+            content_summary,
+            seo_trends,
+            seo_current,
+            seo_current.get("priority_actions", []),
+        )
+        update_strategy_file(now, {
+            "content_summary": content_summary,
+            "totals": totals,
+        }, decisions, seo_current, seo_trends)
 
-def main() -> int:
-    now = datetime.now()
-    summary = build_summary(now)
-    weekly_mode = now.weekday() == 0
-    decisions = build_weekly_decisions(summary["content_summary"], summary["site_health"]) if weekly_mode else []
-    if weekly_mode:
-        update_strategy_file(now, summary, decisions)
+    # Always write SEO insights for generate_content.py to read
+    insights_path = write_seo_insights(seo_current, decisions)
+    print(f"[run.py] SEO insights written to {insights_path}", flush=True)
 
+    # On Mondays: trigger content generation targeting SEO gaps
+    if is_monday:
+        print("[run.py] Monday — triggering content generation from SEO insights...", flush=True)
+        result = subprocess.run(
+            [sys.executable, str(AGENTS_DIR / "generate_content.py")],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode == 0:
+            print(f"[run.py] Content generated (stdout: {result.stdout[:200]})", flush=True)
+        else:
+            print(f"[run.py] Content generation warning: {result.stderr[:200]}", flush=True)
+
+    # Build payload
     payload = {
         "timestamp": now.isoformat(),
-        "weekly_mode": weekly_mode,
-        "site_health": summary["site_health"],
-        "totals": summary["totals"],
-        "content_summary": summary["content_summary"],
+        "weekly_mode": is_monday,
+        "site_health": site_health,
+        "totals": totals,
+        "content_summary": content_summary,
         "decisions": decisions,
-        "blocked_channels": summary["blocked_channels"],
+        "blocked_channels": BLOCKED_CHANNELS,
+        "seo": {
+            "score": seo_current.get("onpage_score", "N/A"),
+            "ranked_keywords": sum(1 for v in seo_current.get("ranks", {}).values() if isinstance(v, dict) and v.get("position")),
+            "backlinks_approx": seo_current.get("backlinks", {}).get("count_approx", 0) if isinstance(seo_current.get("backlinks"), dict) else seo_current.get("backlinks_approx", 0),
+            "domain_rating": seo_current.get("domain_rating"),
+            "trends": seo_trends,
+            "priority_actions": seo_current.get("priority_actions", []),
+            "report": seo_current.get("report", ""),
+            "seo_daily_error": seo_error,
+            "sitemap_urls": (site_health.get("sitemap") or {}).get("url_count", 0) if isinstance(site_health.get("sitemap"), dict) else 0,
+        },
     }
+
     log_file = LOG_DIR / f"marketing_{now.strftime('%Y-%m-%d')}.json"
-    log_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    log_file.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     print(json.dumps(payload, indent=2))
     return 0
 

@@ -1,0 +1,146 @@
+{
+  "timestamp": "2026-05-12T05:01:52.066083",
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "title": "Ralph Workflow",
+      "meta_description": "",
+      "canonical": "",
+      "og_tags": {},
+      "twitter_card": "",
+      "json_ld": true,
+      "has_h1": true,
+      "word_count": 22,
+      "has_nav": true,
+      "has_main": true,
+      "lang_attr": ""
+    },
+    "robots": {
+      "status": 200,
+      "directive_count": 0,
+      "sitemap_url": "https://ralphworkflow.com/sitemap.xml"
+    },
+    "sitemap": {
+      "status": 200,
+      "url_count": 247,
+      "urls": [
+        "https://ralphworkflow.com/1",
+        "https://ralphworkflow.com/2",
+        "https://ralphworkflow.com/3",
+        "https://ralphworkflow.com/4",
+        "https://ralphworkflow.com/5",
+        "https://ralphworkflow.com/6",
+        "https://ralphworkflow.com/7",
+        "https://ralphworkflow.com/8",
+        "https://ralphworkflow.com/9",
+        "https://ralphworkflow.com/10",
+        "https://ralphworkflow.com/11",
+        "https://ralphworkflow.com/12",
+        "https://ralphworkflow.com/13",
+        "https://ralphworkflow.com/14",
+        "https://ralphworkflow.com/15",
+        "https://ralphworkflow.com/16",
+        "https://ralphworkflow.com/17",
+        "https://ralphworkflow.com/18",
+        "https://ralphworkflow.com/19",
+        "https://ralphworkflow.com/20"
+      ]
+    }
+  },
+  "onpage": {
+    "score": 10,
+    "grade": "F",
+    "issues": [
+      {
+        "severity": "error",
+        "item": "Missing meta description"
+      },
+      {
+        "severity": "error",
+        "item": "Missing canonical tag"
+      },
+      {
+        "severity": "error",
+        "item": "Missing Open Graph tags"
+      },
+      {
+        "severity": "error",
+        "item": "Missing Twitter card"
+      },
+      {
+        "severity": "warning",
+        "item": "Missing lang attribute on <html>",
+        "detail": "Add lang='en' to <html> tag for clarity"
+      },
+      {
+        "severity": "warning",
+        "item": "Homepage content seems thin",
+        "detail": "~22 words. Aim for 300+ words."
+      }
+    ],
+    "recommendations": [
+      "Add a 150-160 char meta description",
+      "Add a self-referencing canonical tag",
+      "Add og:title, og:description, og:type, og:url",
+      "Add twitter:card meta tag",
+      "Expand homepage content with clear value proposition, features, and use cases"
+    ]
+  },
+  "ranks": {},
+  "backlinks": {
+    "count_approx": 0
+  },
+  "domain_rating": {
+    "dr": null
+  },
+  "competitors": {
+    "claude.ai/code": {
+      "status": 200,
+      "ok": true,
+      "title": ""
+    },
+    "cursor.com": {
+      "status": 200,
+      "ok": true,
+      "title": ""
+    },
+    "github.com/features/copilot": {
+      "status": 200,
+      "ok": true,
+      "title": ""
+    },
+    "aider.chat": {
+      "status": 200,
+      "ok": true,
+      "title": ""
+    },
+    "continue.dev": {
+      "status": 200,
+      "ok": true,
+      "title": ""
+    }
+  },
+  "content_gap": {
+    "gaps": [
+      "unattended coding agent",
+      "AI agent orchestration CLI",
+      "spec-driven AI agent",
+      "AI coding workflow automation",
+      "Claude Code automation",
+      "Claude Code unattended",
+      "AI agent workflow composer",
+      "Ralph Workflow"
+    ],
+    "covered": [],
+    "coverage_pct": 0.0
+  },
+  "serp": {
+    "keyword": "unattended coding agent"
+  },
+  "priority_actions": [
+    "Fix top on-page SEO issues (current score: 10/100)",
+    "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+    "Build backlinks: submit to directories, guest post, earn citations"
+  ]
+}

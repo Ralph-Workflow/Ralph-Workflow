@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-05-11T09:00:00",
+  "onpage_score": "55/100 (D)",
+  "homepage_ok": true,
+  "sitemap_urls": 247,
+  "ranked_keywords": 0,
+  "backlinks_approx": 0,
+  "domain_rating": {},
+  "content_gap_pct": 25.0,
+  "content_gap": {
+    "gaps": [
+      "unattended coding agent",
+      "spec-driven AI agent",
+      "AI coding workflow automation",
+      "Claude Code automation",
+      "Claude Code unattended",
+      "AI agent workflow composer"
+    ],
+    "covered": [
+      "Ralph Workflow"
+    ],
+    "coverage_pct": 25.0
+  },
+  "priority_actions": [
+    "Fix on-page SEO",
+    "Create content targeting gap keywords"
+  ],
+  "onpage": {
+    "score": 55,
+    "grade": "D",
+    "issues": [
+      {
+        "item": "Title too long",
+        "severity": "warning",
+        "detail": "75 chars"
+      },
+      {
+        "item": "Meta description too long",
+        "severity": "warning"
+      },
+      {
+        "item": "Missing lang attribute on <html>",
+        "severity": "warning"
+      }
+    ],
+    "recommendations": [
+      "Keep title under 60 characters"
+    ]
+  },
+  "ranks": {},
+  "backlinks": {
+    "count_approx": 0
+  },
+  "serp": {},
+  "competitors": {},
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200
+    }
+  }
+}

@@ -17,6 +17,19 @@ DRAFTS_DIR = Path("/home/mistlight/.openclaw/workspace/drafts")
 DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+
+
+def load_seo_insights() -> dict:
+    """Read SEO gap insights from run.py's latest analysis."""
+    insights_file = Path(__file__).parent / 'logs' / 'seo-insights.json'
+    if not insights_file.exists():
+        return {}
+    try:
+        return json.loads(insights_file.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+
+
 @dataclass(frozen=True)
 class Topic:
     slug: str
@@ -203,7 +216,21 @@ def build_draft_content(topic: Topic, now: datetime) -> str:
 
 def generate_draft(now: Optional[datetime] = None) -> Optional[Path]:
     now = now or datetime.now()
+    # SEO-informed topic selection: prioritize gaps identified by run.py
     topic = TOPICS.get(now.weekday())
+    insights = load_seo_insights()
+    gap_keywords = insights.get('gaps', [])
+    if gap_keywords:
+        # Find a topic whose angle/body mentions a gap keyword
+        for idx, t in TOPICS.items():
+            for gap in gap_keywords:
+                if gap.lower() in (t.angle + t.body).lower():
+                    topic = t
+                    print(f"[generate_content.py] SEO match: using topic '{topic.slug}' for gap keyword '{gap}'", flush=True)
+                    break
+            else:
+                continue
+            break
     if topic is None:
         return None
 
