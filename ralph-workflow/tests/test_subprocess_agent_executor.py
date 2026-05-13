@@ -244,3 +244,47 @@ async def test_activity_router_receives_valid_ndjson_and_non_json_lines(
     assert any("structured" in entry for entry in entries)
     # Non-JSON line is passed to the parser as raw content (not pre-rejected as error)
     assert any("not-json" in entry for entry in entries)
+
+
+
+@pytest.mark.asyncio
+async def test_activity_router_raw_log_is_bounded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Executor-owned raw logs must stop growing once the shared byte cap is reached."""
+    router = ActivityRouter()
+    max_bytes = 1024
+    monkeypatch.setattr(
+        "ralph.agents.subprocess_executor.DEFAULT_MAX_OVERFLOW_FILE_BYTES",
+        max_bytes,
+    )
+    payload = "x" * 200
+    command = [
+        sys.executable,
+        "-c",
+        "for _ in range(20): print('" + payload + "')",
+    ]
+    executor = SubprocessAgentExecutor(
+        command,
+        activity_router=router,
+        raw_overflow_root=tmp_path,
+    )
+    unit = make_unit("bounded-raw-log")
+
+    result = await executor.run(
+        unit,
+        on_output=ignore_output,
+        on_status=ignore_status,
+    )
+
+    assert result.exit_code == 0
+    assert router.get_buffer(unit.unit_id).snapshot()
+
+    log_path = tmp_path / ".agent" / "raw" / "bounded-raw-log.log"
+    assert log_path.exists()
+    assert log_path.stat().st_size <= max_bytes
+
+    previous_size = log_path.stat().st_size
+    raw_log = executor._get_raw_log(unit.unit_id)
+    assert raw_log.append(payload) is False
+    assert log_path.stat().st_size == previous_size

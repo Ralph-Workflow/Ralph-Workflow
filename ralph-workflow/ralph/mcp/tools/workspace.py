@@ -12,6 +12,7 @@ import difflib
 import fnmatch
 import json
 import re
+from collections import OrderedDict
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, cast
 
@@ -33,7 +34,11 @@ from ralph.mcp.multimodal.capabilities import (
     resolve_capability_profile,
 )
 from ralph.mcp.multimodal.errors import MultimodalFailureKind
-from ralph.mcp.multimodal.resources import MediaManifest, parse_media_uri
+from ralph.mcp.multimodal.resources import (
+    MediaManifest,
+    build_media_identity,
+    parse_media_uri,
+)
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -1147,6 +1152,36 @@ def _get_session_capability_profile(session: object) -> ResolvedCapabilityProfil
 _MEDIA_SESSION_SCHEMA_VERSION = "2"
 
 
+def _workspace_artifact_loader(
+    workspace: Workspace,
+    cache_path: str,
+    source_path: str,
+) -> Callable[[], bytes | None]:
+    """Build a lazy artifact loader bound to a workspace replay source."""
+
+    def _loader() -> bytes | None:
+        return _load_artifact_bytes(workspace, cache_path, source_path)
+
+    return _loader
+
+
+def _media_session_identity(entry: dict[str, str]) -> str:
+    """Return the dedupe identity for a persisted media-session entry."""
+    identity_key = entry.get("identity_key", "")
+    if identity_key:
+        return identity_key
+    source_uri = entry.get("source_uri", "")
+    source_path = entry.get("source_path", "")
+    modality = entry.get("modality", "")
+    artifact_id = entry.get("artifact_id", "")
+    uri = entry.get("uri", "")
+    if source_uri:
+        return f"source-uri:{modality}:{source_uri}"
+    if source_path:
+        return f"source-path:{modality}:{source_path}"
+    return f"artifact-id:{artifact_id or uri}"
+
+
 def _write_durable_media_cache(
     workspace: Workspace,
     artifact_id: str,
@@ -1233,15 +1268,7 @@ def _persist_media_session_entry(
     workspace: Workspace,
     meta: dict[str, str],
 ) -> None:
-    """Append a resource-reference artifact to the persistent session media index.
-
-    The runner reads this index at the next prompt materialization to carry
-    media artifacts forward across sessions via the handoff sidecar.
-
-    *meta* must contain: uri, mime_type, title, modality, reason.
-    v2 fields (source_path, cache_path, source_uri, block_type, failure_kind) are written
-    when present.
-    """
+    """Upsert a resource-reference artifact into the persistent session media index."""
     drain: object = getattr(session, "drain", None)
     phase = str(drain) if drain else "standalone"
     path = media_session_path(phase)
@@ -1260,6 +1287,7 @@ def _persist_media_session_entry(
         "source_uri": meta.get("source_uri", ""),
         "block_type": meta.get("block_type", ""),
         "failure_kind": meta.get("failure_kind", ""),
+        "identity_key": meta.get("identity_key", ""),
     }
     try:
         try:
@@ -1270,11 +1298,17 @@ def _persist_media_session_entry(
             )
         except Exception:
             artifacts = []
-        artifacts = [*artifacts, new_entry]
+
+        new_identity = _media_session_identity(new_entry)
+        ordered: OrderedDict[str, dict[str, str]] = OrderedDict()
+        for artifact in artifacts:
+            normalized = {str(k): str(v) for k, v in artifact.items()}
+            ordered[_media_session_identity(normalized)] = normalized
+        ordered[new_identity] = new_entry
         payload: dict[str, object] = {
             "schema_version": _MEDIA_SESSION_SCHEMA_VERSION,
             "phase": phase,
-            "artifacts": artifacts,
+            "artifacts": list(ordered.values()),
         }
         workspace.write(path, json.dumps(payload, indent=2))
     except Exception:
@@ -1335,8 +1369,19 @@ def _replay_from_manifest_entry(
     """Return the appropriate typed block from a live manifest entry."""
     profile = _get_session_capability_profile(session)
     verdict = profile.verdict_for(entry.modality)
+    raw_bytes = entry.load_bytes()
     if verdict.delivery == DeliveryMode.INLINE_IMAGE:
-        encoded = base64.b64encode(entry.raw_bytes).decode("ascii")
+        if raw_bytes is None:
+            return ToolResult(
+                content=[
+                    ToolContent.text_content(
+                        f"{MultimodalFailureKind.MISSING_REPLAY_SOURCE}: "
+                        f"Artifact '{entry.uri}' is no longer available from its replay source."
+                    )
+                ],
+                is_error=True,
+            )
+        encoded = base64.b64encode(raw_bytes).decode("ascii")
         return ToolResult(
             content=[ImageContent(data=encoded, mime_type=entry.mime_type)],
             is_error=False,
@@ -1558,11 +1603,30 @@ def _handle_workspace_media(
             ],
             is_error=True,
         )
-    entry = manifest.add(title=title, mime_type=mime_type, modality=modality, raw_bytes=raw_bytes)
+    source_path = normalized or path
+    identity_key = build_media_identity(
+        modality=modality,
+        mime_type=mime_type,
+        title=title,
+        source_path=source_path,
+        raw_bytes=raw_bytes,
+    )
+    entry = manifest.add(
+        title=title,
+        mime_type=mime_type,
+        modality=modality,
+        raw_bytes=raw_bytes,
+        source_path=source_path,
+        identity_key=identity_key,
+    )
     block, delivery = _make_non_inline_workspace_block(verdict, entry, mime_type, modality, title)
     artifact_id = entry.uri.rsplit("/", maxsplit=1)[-1]
-    source_path = normalized or path
     cache_path = _write_durable_media_cache(workspace, artifact_id, raw_bytes)
+    entry.set_replay_source(
+        cache_path=cache_path,
+        source_path=source_path,
+        byte_loader=_workspace_artifact_loader(workspace, cache_path, source_path),
+    )
     _persist_media_session_entry(
         session,
         workspace,
@@ -1577,6 +1641,7 @@ def _handle_workspace_media(
             "cache_path": cache_path,
             "source_uri": "",
             "block_type": verdict.block_type or "",
+            "identity_key": identity_key,
         },
     )
     return ToolResult(content=[block], is_error=False)
@@ -1736,7 +1801,20 @@ def persist_upstream_media_artifacts(
             if entry is None:
                 continue
             verdict = profile.verdict_for(entry.modality)
-            cache_path = _write_durable_media_cache(workspace, artifact_id, entry.raw_bytes)
+            raw_bytes = entry.load_bytes()
+            if raw_bytes is None:
+                continue
+            cache_path = _write_durable_media_cache(workspace, artifact_id, raw_bytes)
+            identity_key = entry.identity_key or build_media_identity(
+                modality=entry.modality,
+                mime_type=entry.mime_type,
+                title=entry.title,
+                raw_bytes=raw_bytes,
+            )
+            entry.set_replay_source(
+                cache_path=cache_path,
+                byte_loader=_workspace_artifact_loader(workspace, cache_path, ""),
+            )
             _persist_media_session_entry(
                 session,
                 workspace,
@@ -1751,6 +1829,7 @@ def persist_upstream_media_artifacts(
                     "cache_path": cache_path,
                     "source_uri": "",
                     "block_type": verdict.block_type or "",
+                    "identity_key": identity_key,
                 },
             )
 
@@ -1782,6 +1861,12 @@ def persist_upstream_media_artifacts(
                     "source_uri": source_uri,
                     "block_type": "",
                     "failure_kind": "unsupported_runtime_seam",
+                    "identity_key": build_media_identity(
+                        modality=modality,
+                        mime_type=mime_type,
+                        title=title,
+                        source_uri=source_uri,
+                    ),
                 },
             )
 

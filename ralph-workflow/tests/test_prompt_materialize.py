@@ -2256,3 +2256,60 @@ def test_collect_media_entries_preserves_failure_kind_through_sidecar_round_trip
         f"got: {audio_e.failure_kind!r}"
     )
     assert audio_e.delivery == "unsupported"
+
+
+
+def test_collect_media_entries_dedupes_repeated_identity_key() -> None:
+    import json
+
+    from ralph.prompts.debug_dump import media_session_path
+    from ralph.workspace.memory import MemoryWorkspace
+
+    workspace = MemoryWorkspace()
+    workspace.write(
+        media_session_path("development"),
+        json.dumps(
+            {
+                "schema_version": "2",
+                "phase": "development",
+                "artifacts": [
+                    {
+                        "artifact_id": "old-001",
+                        "uri": "ralph://media/old-001",
+                        "mime_type": "application/pdf",
+                        "title": "report.pdf",
+                        "modality": "pdf",
+                        "delivery": "resource_reference_replay",
+                        "reason": "first",
+                        "source_path": "docs/report.pdf",
+                        "cache_path": ".agent/tmp/media/old-001",
+                        "source_uri": "",
+                        "block_type": "",
+                        "failure_kind": "",
+                        "identity_key": "source-path:pdf:docs/report.pdf",
+                    },
+                    {
+                        "artifact_id": "new-002",
+                        "uri": "ralph://media/new-002",
+                        "mime_type": "application/pdf",
+                        "title": "report.pdf",
+                        "modality": "pdf",
+                        "delivery": "resource_reference_replay",
+                        "reason": "second",
+                        "source_path": "docs/report.pdf",
+                        "cache_path": ".agent/tmp/media/new-002",
+                        "source_uri": "",
+                        "block_type": "",
+                        "failure_kind": "",
+                        "identity_key": "source-path:pdf:docs/report.pdf",
+                    },
+                ],
+            }
+        ),
+    )
+
+    entries = collect_media_entries_for_phase(workspace, "development")
+
+    assert len(entries) == 1
+    assert entries[0].artifact_id == "new-002"
+    assert entries[0].identity_key == "source-path:pdf:docs/report.pdf"

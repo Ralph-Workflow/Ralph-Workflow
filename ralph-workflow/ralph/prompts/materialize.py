@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,6 +81,7 @@ class MultimodalSidecarEntry:
     source_uri: str = ""
     block_type: str = ""
     failure_kind: str = ""
+    identity_key: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -95,7 +97,19 @@ class MultimodalSidecarEntry:
             "source_uri": self.source_uri,
             "block_type": self.block_type,
             "failure_kind": self.failure_kind,
+            "identity_key": self.identity_key,
         }
+
+
+def _sidecar_entry_identity(entry: MultimodalSidecarEntry) -> str:
+    """Return the bounded live-set identity for a multimodal sidecar entry."""
+    if entry.identity_key:
+        return entry.identity_key
+    if entry.source_uri:
+        return f"source-uri:{entry.modality}:{entry.source_uri}"
+    if entry.source_path:
+        return f"source-path:{entry.modality}:{entry.source_path}"
+    return f"artifact-id:{entry.artifact_id or entry.uri}"
 
 
 _SIDECAR_SCHEMA_VERSION = "2"
@@ -144,30 +158,30 @@ def collect_media_entries_for_phase(
         artifacts = data.get("artifacts")
         if not isinstance(artifacts, list):
             return []
-        entries: list[MultimodalSidecarEntry] = []
+        entries: OrderedDict[str, MultimodalSidecarEntry] = OrderedDict()
         for item in artifacts:
             if not isinstance(item, dict):
                 continue
             try:
-                entries.append(
-                    MultimodalSidecarEntry(
-                        artifact_id=str(item.get("artifact_id", "")),
-                        uri=str(item.get("uri", "")),
-                        mime_type=str(item.get("mime_type", "")),
-                        title=str(item.get("title", "")),
-                        modality=str(item.get("modality", "")),
-                        delivery=str(item.get("delivery", "resource_reference_replay")),
-                        reason=str(item.get("reason", "")),
-                        source_path=str(item.get("source_path", "")),
-                        cache_path=str(item.get("cache_path", "")),
-                        source_uri=str(item.get("source_uri", "")),
-                        block_type=str(item.get("block_type", "")),
-                        failure_kind=str(item.get("failure_kind", "")),
-                    )
+                entry = MultimodalSidecarEntry(
+                    artifact_id=str(item.get("artifact_id", "")),
+                    uri=str(item.get("uri", "")),
+                    mime_type=str(item.get("mime_type", "")),
+                    title=str(item.get("title", "")),
+                    modality=str(item.get("modality", "")),
+                    delivery=str(item.get("delivery", "resource_reference_replay")),
+                    reason=str(item.get("reason", "")),
+                    source_path=str(item.get("source_path", "")),
+                    cache_path=str(item.get("cache_path", "")),
+                    source_uri=str(item.get("source_uri", "")),
+                    block_type=str(item.get("block_type", "")),
+                    failure_kind=str(item.get("failure_kind", "")),
+                    identity_key=str(item.get("identity_key", "")),
                 )
             except Exception:
                 continue
-        return entries
+            entries[_sidecar_entry_identity(entry)] = entry
+        return list(entries.values())
     except Exception:
         return []
 

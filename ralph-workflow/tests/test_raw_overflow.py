@@ -90,3 +90,16 @@ def test_append_strips_trailing_newline(tmp_path: Path) -> None:
     content = log.path.read_text(encoding="utf-8")
     assert content == "line with newline\n"
     assert not content.endswith("\n\n")
+
+
+
+def test_append_hard_stops_at_max_bytes(tmp_path: Path) -> None:
+    max_bytes = 16
+    log = RawOverflowLog(tmp_path, "unit-1", max_bytes=max_bytes)
+
+    assert log.append("1234567") is True  # 8 bytes with trailing newline
+    assert log.append("abcdefg") is True  # 8 bytes with trailing newline
+    assert log.append("overflow") is False
+
+    assert log.path.stat().st_size == max_bytes
+    assert log.path.read_text(encoding="utf-8") == "1234567\nabcdefg\n"

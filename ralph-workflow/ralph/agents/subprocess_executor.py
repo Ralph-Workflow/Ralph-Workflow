@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from ralph.agents.executor import ExecutorError, WorkerResult
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 from ralph.display.line_sanitizer import sanitize_display_line
-from ralph.display.raw_overflow import RawOverflowLog
+from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.process.manager import ProcessManager, get_process_manager
@@ -76,7 +76,9 @@ class SubprocessAgentExecutor:
             root = self._raw_overflow_root
             if root is None:
                 root = self._cwd if self._cwd is not None else Path.cwd()
-            self._raw_logs[unit_id] = RawOverflowLog(root, unit_id)
+            self._raw_logs[unit_id] = RawOverflowLog(
+                root, unit_id, max_bytes=DEFAULT_MAX_OVERFLOW_FILE_BYTES
+            )
         return self._raw_logs[unit_id]
 
     async def run(
