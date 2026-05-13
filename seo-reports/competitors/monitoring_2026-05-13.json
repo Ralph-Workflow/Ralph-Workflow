@@ -1,0 +1,148 @@
+{
+  "timestamp": "2026-05-13T08:02:25.727520",
+  "competitors": {
+    "hermes-agent": {
+      "slug": "hermes-agent",
+      "name": "Hermes Agent",
+      "url": "https://hermes-agent.org",
+      "checked_at": "2026-05-13T08:02:08.391782",
+      "site_status": 200,
+      "title": "Hermes Agent \u2014 Open-Source AI Agent with Persistent Memory",
+      "description": "Self-hosted AI agent that remembers your projects, builds skills automatically, and reaches you on Telegram, Discord &#38; more. MIT license. No tracking.",
+      "pricing_visible": "Free / Open source",
+      "positioning": "Self-improving agent that learns from experience",
+      "key_features_found": [
+        "Persistent memory"
+      ],
+      "blog_status": null,
+      "github_stars": 147366,
+      "changes": []
+    },
+    "conductor-oss": {
+      "slug": "conductor-oss",
+      "name": "Conductor OSS",
+      "url": "https://conductor-oss.org",
+      "checked_at": "2026-05-13T08:02:09.859611",
+      "site_status": 200,
+      "title": "Conductor OSS Foundation",
+      "description": "Conductor OSS Foundation Home Page",
+      "pricing_visible": "Free / Open source (Apache 2.0)",
+      "positioning": "Enterprise-grade workflow orchestration for AI agents",
+      "key_features_found": [
+        "Durable execution"
+      ],
+      "blog_status": null,
+      "github_stars": 31794,
+      "changes": [],
+      "docs_status": 200,
+      "docs_title": "Durable Execution for workflows and agents"
+    },
+    "conductor-teams": {
+      "slug": "conductor-teams",
+      "name": "Conductor (Teams)",
+      "url": "https://conductross.com",
+      "checked_at": "2026-05-13T08:02:11.439066",
+      "site_status": 200,
+      "title": "Conductor OSS | Markdown-Native AI Agent Orchestrator",
+      "description": "Conductor OSS is a markdown-native, local-first AI agent orchestrator for teams running coding agents in parallel with branch or worktree session modes, tmux, MCP, and webhooks.",
+      "pricing_visible": "Free / Open source",
+      "positioning": "Markdown-native local-first orchestration for coding teams",
+      "key_features_found": [
+        "Local-first"
+      ],
+      "blog_status": null,
+      "github_stars": null,
+      "changes": []
+    },
+    "aider": {
+      "slug": "aider",
+      "name": "Aider",
+      "url": "https://aider.chat",
+      "checked_at": "2026-05-13T08:02:12.578569",
+      "site_status": 200,
+      "title": "Aider - AI Pair Programming in Your Terminal",
+      "description": "Aider lets you pair program with LLMs to start\n                        a new project or build on your existing\n                        codebase.",
+      "pricing_visible": "Free / Open source",
+      "positioning": "Terminal-based AI pair programming in your git repo",
+      "key_features_found": [],
+      "blog_status": null,
+      "github_stars": 44735,
+      "changes": [],
+      "docs_status": 200,
+      "docs_title": "Aider Documentation | aider"
+    },
+    "continue": {
+      "slug": "continue",
+      "name": "Continue",
+      "url": "https://continue.dev",
+      "checked_at": "2026-05-13T08:02:14.247410",
+      "site_status": 200,
+      "title": "Continue \u2022 Quality control for your software factory. | Continue",
+      "description": "Source-controlled AI checks on every pull request. Standards as checks, enforced by AI, decided by humans.",
+      "pricing_visible": "Free / Open source",
+      "positioning": "The leading AI code assistant inside your IDE",
+      "key_features_found": [],
+      "blog_status": null,
+      "github_stars": 33155,
+      "changes": [],
+      "docs_status": 200,
+      "docs_title": "What is Continue? | Continue Docs"
+    },
+    "cursor": {
+      "slug": "cursor",
+      "name": "Cursor",
+      "url": "https://cursor.com",
+      "checked_at": "2026-05-13T08:02:16.637068",
+      "site_status": 200,
+      "title": "Cursor: The best way to code with AI",
+      "description": "Built to make you extraordinarily productive, Cursor is the best way to build software with AI.",
+      "pricing_visible": "Free tier / $20/mo Pro",
+      "positioning": "The AI code editor built for pair programming with AI",
+      "key_features_found": [
+        "Composer",
+        "Context-aware"
+      ],
+      "blog_status": null,
+      "github_stars": null,
+      "changes": [],
+      "docs_status": 200,
+      "docs_title": "Cursor Docs \u2014 Agent, Rules, MCP, Skills &amp; CLI"
+    },
+    "claude-code": {
+      "slug": "claude-code",
+      "name": "Claude Code",
+      "url": "https://claude.ai/code",
+      "checked_at": "2026-05-13T08:02:18.955171",
+      "site_status": 0,
+      "title": "",
+      "description": "",
+      "pricing_visible": "Included with Claude subscription",
+      "positioning": "Anthropic's official CLI for agentic coding",
+      "key_features_found": [],
+      "blog_status": null,
+      "github_stars": null,
+      "changes": [],
+      "docs_status": 200,
+      "docs_title": "Claude Code overview - Claude Code Docs"
+    },
+    "copilot": {
+      "slug": "copilot",
+      "name": "GitHub Copilot",
+      "url": "https://github.com/features/copilot",
+      "checked_at": "2026-05-13T08:02:20.712807",
+      "site_status": 200,
+      "title": "GitHub Copilot \u00b7 Your AI pair programmer \u00b7 GitHub",
+      "description": "GitHub Copilot works alongside you directly in your editor, suggesting whole lines or entire functions for you.",
+      "pricing_visible": "$10/mo individual / $19/mo Business",
+      "positioning": "Your AI pair programmer embedded in GitHub and your IDE",
+      "key_features_found": [
+        "Inline suggestions"
+      ],
+      "blog_status": null,
+      "github_stars": null,
+      "changes": [],
+      "docs_status": 200,
+      "docs_title": "GitHub Copilot documentation - GitHub Docs"
+    }
+  }
+}
