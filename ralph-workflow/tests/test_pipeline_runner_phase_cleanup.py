@@ -143,7 +143,7 @@ def test_runner_phase_scope_kills_phase_labeled_child(
     assert spawned_pid, "Fake handler must have spawned a process"
 
     # Verify the process was terminated by the phase scope
-    record = pm._records.get(spawned_pid[0])
+    record = pm.get_record(spawned_pid[0])
     assert record is not None
     assert record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 
@@ -200,12 +200,12 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     assert spawned, "Fake handler must have spawned processes"
 
     # Phase-labeled process should be killed
-    phase_record = pm._records.get(spawned["phase"])
+    phase_record = pm.get_record(spawned["phase"])
     assert phase_record is not None
     assert phase_record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 
     # Bystander should still be running (then we clean it up)
-    bystander_record = pm._records.get(spawned["bystander"])
+    bystander_record = pm.get_record(spawned["bystander"], include_terminal=False)
     assert bystander_record is not None
     assert bystander_record.status == ProcessStatus.RUNNING
 
@@ -266,7 +266,7 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     assert spawned_pid, "Fake handler must have spawned a tracked child"
 
     # Verify the process was terminated
-    record = pm._records.get(spawned_pid[0])
+    record = pm.get_record(spawned_pid[0])
     assert record is not None
     assert record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 

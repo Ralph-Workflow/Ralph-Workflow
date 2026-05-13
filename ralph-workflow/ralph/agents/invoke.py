@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import threading
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -92,6 +93,10 @@ _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
     {ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED}
 )
 
+_MAX_PARSED_OUTPUT_LINES = 256
+_MAX_WORKSPACE_CHANGED_FILES = 512
+_EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
+
 
 @dataclass(frozen=True)
 class InvokeOptions:
@@ -152,6 +157,8 @@ class InvokeOptions:
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
     required_artifact: RequiredArtifact | None = None
+    explicit_completion_seen: bool = False
+    captured_session_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -350,7 +357,7 @@ class AgentInactivityTimeoutError(AgentInvocationError):
             agent_name,
             -1,
             stderr_msg,
-            parsed_output,
+            list(parsed_output) if parsed_output is not None else [],
         )
 
 
@@ -373,17 +380,32 @@ class UnsupportedMcpTransportError(RuntimeError):
     """Raised when MCP-backed execution is requested for an unsupported transport."""
 
 
-def extract_session_id(raw_output: list[str]) -> str | None:
+def _extract_session_id_from_line(line: str) -> str | None:
+    try:
+        parsed = cast("object", json.loads(line))
+    except json.JSONDecodeError:
+        return None
+    return _find_session_id(parsed)
+
+
+def extract_session_id(raw_output: list[str] | tuple[str, ...]) -> str | None:
     """Extract a nested session identifier from raw NDJSON output lines."""
     for line in raw_output:
-        try:
-            parsed = cast("object", json.loads(line))
-        except json.JSONDecodeError:
-            continue
-        session_id = _find_session_id(parsed)
+        session_id = _extract_session_id_from_line(line)
         if session_id:
             return session_id
     return None
+
+
+def _bounded_output_lines(
+    raw_output: list[str] | tuple[str, ...],
+    *,
+    explicit_completion_seen: bool = False,
+) -> list[str]:
+    lines = list(raw_output)
+    if explicit_completion_seen and not any(_EXPLICIT_COMPLETION_MARKER in line for line in lines):
+        lines.append(_EXPLICIT_COMPLETION_MARKER)
+    return lines
 
 
 def _find_session_id(value: object) -> str | None:
@@ -420,7 +442,7 @@ class WorkspaceMonitor:
         self._workspace = workspace_path
         self._observer: _HasStop | None = None
         self._event_count = 0
-        self._seen_files: set[str] = set()
+        self._seen_files: dict[str, None] = {}
 
     def start(self) -> None:
         """Start monitoring the workspace for file changes."""
@@ -451,7 +473,11 @@ class WorkspaceMonitor:
         Args:
             src_path: Path to the changed file.
         """
-        self._seen_files.add(src_path)
+        self._seen_files.pop(src_path, None)
+        self._seen_files[src_path] = None
+        while len(self._seen_files) > _MAX_WORKSPACE_CHANGED_FILES:
+            oldest = next(iter(self._seen_files))
+            del self._seen_files[oldest]
         self._event_count += 1
 
     def stop(self) -> None:
@@ -474,7 +500,7 @@ class WorkspaceMonitor:
     @property
     def changed_files(self) -> set[str]:
         """Set of file paths that changed during monitoring."""
-        return self._seen_files.copy()
+        return set(self._seen_files)
 
 
 def invoke_agent(
@@ -648,7 +674,9 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
             monitor=monitor,
             _clock=clock,
         )
-        parsed_output: list[str] = []
+        parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
+        explicit_completion_seen = False
+        captured_session_id: str | None = None
         try:
             if show_progress:
                 agent_name = _agent_command_name(config)
@@ -663,11 +691,25 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                     ),
                 )
                 for line in progress_iter:
-                    parsed_output.append(line.rstrip())
+                    stripped_line = line.rstrip()
+                    parsed_output.append(stripped_line)
+                    explicit_completion_seen = explicit_completion_seen or (
+                        _EXPLICIT_COMPLETION_MARKER in stripped_line
+                    )
+                    session_id = _extract_session_id_from_line(stripped_line)
+                    if session_id is not None:
+                        captured_session_id = session_id
                     yield line
             else:
                 for line in lines_iter:
-                    parsed_output.append(line.rstrip())
+                    stripped_line = line.rstrip()
+                    parsed_output.append(stripped_line)
+                    explicit_completion_seen = explicit_completion_seen or (
+                        _EXPLICIT_COMPLETION_MARKER in stripped_line
+                    )
+                    session_id = _extract_session_id_from_line(stripped_line)
+                    if session_id is not None:
+                        captured_session_id = session_id
                     yield line
 
             # Post-EOF: wait for subprocess to exit within policy budget.
@@ -684,7 +726,10 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
             raise AgentInactivityTimeoutError(
                 _agent_command_name(config),
                 exc.timeout_seconds,
-                parsed_output,
+                _bounded_output_lines(
+                    tuple(parsed_output),
+                    explicit_completion_seen=explicit_completion_seen,
+                ),
                 reason=exc.reason,
                 diagnostic=exc.diagnostic,
             ) from exc
@@ -692,13 +737,15 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
         _check_process_result(
             handle,
             _agent_command_name(config),
-            parsed_output,
+            list(parsed_output),
             _CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=workspace_path,
                 liveness_probe=probe,
                 policy=policy,
                 required_artifact=required_artifact,
+                explicit_completion_seen=explicit_completion_seen,
+                captured_session_id=captured_session_id,
             ),
             _clock=clock,
         )
@@ -1206,6 +1253,8 @@ class _CompletionCheckOptions:
     # Uses a factory default so callers that don't need timeouts can omit it.
     policy: TimeoutPolicy = field(default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None))
     required_artifact: RequiredArtifact | None = None
+    explicit_completion_seen: bool = False
+    captured_session_id: str | None = None
 
 
 def _wait_for_completion_grace(
@@ -1234,7 +1283,10 @@ def _wait_for_completion_grace(
     def classify_exit_state() -> AgentExecutionState:
         signals = evaluate_completion(
             workspace_path,
-            list(parsed_output) if parsed_output else [],
+            _bounded_output_lines(
+                parsed_output,
+                explicit_completion_seen=opts.explicit_completion_seen,
+            ),
             required_artifact=opts.required_artifact,
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
@@ -1285,7 +1337,10 @@ def _wait_for_descendants_then_recheck(
     def classify_exit_state() -> AgentExecutionState:
         signals = evaluate_completion(
             workspace_path,
-            list(parsed_output) if parsed_output else [],
+            _bounded_output_lines(
+                parsed_output,
+                explicit_completion_seen=opts.explicit_completion_seen,
+            ),
             required_artifact=opts.required_artifact,
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
@@ -1332,7 +1387,17 @@ def _check_process_result(
         stderr_pipe = cast("IO[str] | None", handle.stderr)
         stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
         logger.error("Agent exited with code {}: {}", returncode, stderr)
-        raise AgentInvocationError(agent_name, returncode, stderr, parsed_output)
+        raise AgentInvocationError(
+            agent_name,
+            returncode,
+            stderr,
+            _bounded_output_lines(
+                parsed_output or [],
+                explicit_completion_seen=(
+                    check_options.explicit_completion_seen if check_options is not None else False
+                ),
+            ),
+        )
 
     opts = check_options
     if (
@@ -1341,9 +1406,13 @@ def _check_process_result(
         and opts.execution_strategy.supports_session_continuation()
         and opts.workspace_path is not None
     ):
+        bounded_output = _bounded_output_lines(
+            parsed_output or [],
+            explicit_completion_seen=opts.explicit_completion_seen,
+        )
         signals = evaluate_completion(
             opts.workspace_path,
-            list(parsed_output) if parsed_output else [],
+            bounded_output,
             required_artifact=opts.required_artifact,
         )
         # First classification: check completion signals and immediate child status
@@ -1360,7 +1429,7 @@ def _check_process_result(
             exit_state = _wait_for_completion_grace(
                 handle,
                 opts,
-                list(parsed_output) if parsed_output else [],
+                bounded_output,
                 clock=_clock,
             )
 
@@ -1370,12 +1439,12 @@ def _check_process_result(
             exit_state = _wait_for_descendants_then_recheck(
                 handle,
                 opts,
-                list(parsed_output) if parsed_output else [],
+                bounded_output,
                 clock=_clock,
             )
 
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
-            session_id = extract_session_id(list(parsed_output) if parsed_output else [])
+            session_id = opts.captured_session_id or extract_session_id(bounded_output)
             raise OpenCodeResumableExitError(agent_name, session_id=session_id)
 
 

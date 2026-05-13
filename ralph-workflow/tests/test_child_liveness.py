@@ -95,8 +95,8 @@ def test_snapshot_excludes_terminal_records_after_exit_reconcile_window() -> Non
     # Advance past exit_reconcile=5.0
     t[0] = 8.0
     snap_out = reg.snapshot("scope/a")
-    # Terminal count still visible in snapshot (it's a count, not filtered)
-    assert snap_out.terminal_count == 1
+    # Snapshot now prunes expired terminal-ack entries at read time.
+    assert snap_out.terminal_count == 0
     assert snap_out.active_count == 0
 
 
@@ -156,6 +156,51 @@ def test_snapshot_aggregates_fresh_label_across_all_matching_children() -> None:
 
     snap = reg.snapshot("scope/a")
 
-    assert snap.active_count == _EXPECTED_ACTIVE_CHILDREN
+    assert snap.active_count == 1
     assert snap.has_process is True
     assert snap.has_fresh_label is True
+
+
+def test_snapshot_prunes_stale_label_only_records_at_read_time() -> None:
+    reg, t = _registry()
+    t[0] = 0.0
+    reg.register_child("stale", "scope/a")
+    t[0] = 15.0
+    snap = reg.snapshot("scope/a")
+    assert snap.active_count == 0
+    assert snap.has_process is False
+
+
+def test_snapshot_prunes_stale_progress_without_fresh_heartbeat() -> None:
+    reg, t = _registry()
+    t[0] = 0.0
+    reg.register_child("child", "scope/a")
+    t[0] = 1.0
+    reg.record_progress("child")
+    t[0] = 50.0
+    snap = reg.snapshot("scope/a")
+    assert snap.active_count == 0
+
+
+def test_snapshot_keeps_stale_progress_when_fresh_heartbeat_exists() -> None:
+    reg, t = _registry()
+    t[0] = 0.0
+    reg.register_child("child", "scope/a")
+    t[0] = 1.0
+    reg.record_progress("child")
+    t[0] = 50.0
+    reg.record_heartbeat("child")
+    snap = reg.snapshot("scope/a")
+    assert snap.active_count == 1
+    assert snap.has_fresh_label is True
+
+
+def test_snapshot_prunes_expired_terminal_ack_records_at_read_time() -> None:
+    reg, t = _registry()
+    t[0] = 0.0
+    reg.register_child("child", "scope/a")
+    t[0] = 1.0
+    reg.record_terminal_ack("child", terminal_state="complete")
+    t[0] = 7.0
+    snap = reg.snapshot("scope/a")
+    assert snap.terminal_count == 0

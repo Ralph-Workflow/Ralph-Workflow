@@ -181,6 +181,7 @@ class OpenCodeExecutionStrategy:
         # Check own registry first for fresh child evidence
         registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
         if registry is not None:
+            had_scoped_records = registry.has_records(probe_prefix)
             try:
                 reg_snap = registry.snapshot(probe_prefix)
                 verdict = classify_child_snapshot(reg_snap)
@@ -188,7 +189,7 @@ class OpenCodeExecutionStrategy:
                     return AgentExecutionState.ACTIVE
                 if verdict.deferral_allowed:
                     return AgentExecutionState.WAITING_ON_CHILD
-                if reg_snap.has_process:
+                if had_scoped_records:
                     scoped_child_evidence_stale = True
             except Exception:
                 pass
@@ -368,14 +369,16 @@ def _registry_check_for_exit(
     label_prefix: str | None,
 ) -> tuple[AgentExecutionState | None, bool]:
     """Returns (decided_state_or_none, scoped_evidence_stale)."""
+    scope_prefix = label_prefix if label_prefix is not None else ""
+    had_scoped_records = registry.has_records(scope_prefix)
     try:
-        reg_snap = registry.snapshot(label_prefix if label_prefix is not None else "")
+        reg_snap = registry.snapshot(scope_prefix)
         verdict = classify_child_snapshot(reg_snap)
         if verdict.all_children_terminal:
             return AgentExecutionState.TERMINAL_COMPLETE, False
         if verdict.deferral_allowed:
             return AgentExecutionState.WAITING_ON_CHILD, False
-        return None, reg_snap.has_process
+        return None, had_scoped_records
     except Exception:
         pass
     return None, False

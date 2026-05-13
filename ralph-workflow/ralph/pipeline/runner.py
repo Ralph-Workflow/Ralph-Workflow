@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import uuid
+from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -240,6 +241,16 @@ class _AgentRegistryFactory(Protocol):
     def from_config(cls, config: UnifiedConfig) -> _RegistryLike: ...
 
 
+class _ExecuteEffectKwargsFn(Protocol):
+    def __call__(
+        self,
+        effect: Effect,
+        config: UnifiedConfig,
+        workspace_scope: WorkspaceScope,
+        **kwargs: object,
+    ) -> Event: ...
+
+
 class _PhaseAwareDisplay(Protocol):
     def begin_phase(self, phase: str) -> None: ...
 
@@ -399,6 +410,8 @@ _LEGACY_EXECUTE_EFFECT_ARITY = 3
 _POLICY_LOADER_CONFIG_ARITY = 2
 load_policy_or_die = _dir_load_policy_or_die
 _RECOVERY_CONTEXT_LINES = 12
+_AGENT_RAW_OUTPUT_TAIL_LINES = 256
+_AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
 _MIN_WORK_UNITS_FOR_PARALLEL_PREFLIGHT = 2
 _TRANSIENT_CONNECTIVITY_MARKERS = (
     "connection refused",
@@ -664,22 +677,67 @@ def _build_default_display(
         return _LegacyConsoleDisplay(display_context)
 
 
-def _execute_effect_with_optional_display(  # noqa: PLR0913
+def _execute_effect_with_optional_display(  # noqa: PLR0911, PLR0913
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     *,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
 ) -> Event:
-    params = frozenset(signature(_execute_effect).parameters)
+    params = signature(_execute_effect).parameters
+    kwargs_execute_effect = cast("_ExecuteEffectKwargsFn", _execute_effect)
+    accepts_kwargs = any(param.kind == param.VAR_KEYWORD for param in params.values())
+    optional_kwargs = {
+        "display": display,
+        "display_context": display_context,
+        "verbosity": verbosity,
+        "state": state,
+        "policy_bundle": policy_bundle,
+    }
+    supported_kwargs: dict[str, object] = {
+        name: value
+        for name, value in optional_kwargs.items()
+        if name in params or accepts_kwargs
+    }
+    if accepts_kwargs:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            **supported_kwargs,
+        )
+
     has_display = "display" in params
+    has_display_context = "display_context" in params
     has_verbosity = "verbosity" in params
     has_state = "state" in params
     has_policy_bundle = "policy_bundle" in params
 
+    if has_display and has_display_context and has_verbosity and has_state and has_policy_bundle:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+            state=state,
+            policy_bundle=policy_bundle,
+        )
+    if has_display and has_display_context and has_verbosity and has_state:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+            state=state,
+        )
     if has_display and has_verbosity and has_state and has_policy_bundle:
         return _execute_effect(
             effect,
@@ -690,6 +748,15 @@ def _execute_effect_with_optional_display(  # noqa: PLR0913
             state=state,
             policy_bundle=policy_bundle,
         )
+    if has_display and has_display_context and has_verbosity:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
+            verbosity=verbosity,
+        )
     if has_display and has_verbosity and has_state:
         return _execute_effect(
             effect,
@@ -698,6 +765,14 @@ def _execute_effect_with_optional_display(  # noqa: PLR0913
             display=display,
             verbosity=verbosity,
             state=state,
+        )
+    if has_display and has_display_context:
+        return kwargs_execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            display_context=display_context,
         )
     if has_display and has_verbosity:
         return _execute_effect(
@@ -718,6 +793,7 @@ def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
     *,
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    display_context: DisplayContext | None = None,
     verbosity: Verbosity,
     state: PipelineState,
     policy_bundle: PolicyBundle,
@@ -727,6 +803,7 @@ def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
         config,
         workspace_scope,
         display=display,
+        display_context=display_context,
         verbosity=verbosity,
         state=state,
         policy_bundle=policy_bundle,
@@ -889,6 +966,7 @@ def _run_pipeline_step(  # noqa: PLR0912,PLR0913
                 config,
                 workspace_scope,
                 display=display,
+                display_context=display_context,
                 verbosity=verbosity,
                 state=state,
                 policy_bundle=policy_bundle,
@@ -3403,8 +3481,14 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
         )
 
         for attempt_index in range(max_recovery_attempts + 1):
-            raw_output: list[str] = []
-            rendered_output: list[str] = []
+            raw_output: deque[str] = deque(maxlen=_AGENT_RAW_OUTPUT_TAIL_LINES)
+            rendered_output: deque[str] = deque(maxlen=_AGENT_RENDERED_OUTPUT_TAIL_LINES)
+            extracted_session_id: str | None = None
+
+            def _capture_session_id(session_id: str) -> None:
+                nonlocal extracted_session_id
+                extracted_session_id = session_id
+
             try:
                 check_mcp_bridge_health(bridge)
                 if (
@@ -3459,10 +3543,18 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                             display_context=resolved_display_context,
                             raw_output_sink=raw_output,
                             rendered_output_sink=rendered_output,
+                            session_id_sink=_capture_session_id,
                         )
                     else:
-                        raw_output.extend(str(line) for line in output_lines)
-                _set_last_captured_session_id(extract_session_id(raw_output))
+                        for line in output_lines:
+                            text_line = str(line)
+                            raw_output.append(text_line)
+                            session_id = extract_session_id((text_line,))
+                            if session_id is not None:
+                                extracted_session_id = session_id
+                _set_last_captured_session_id(
+                    extracted_session_id or extract_session_id(tuple(raw_output))
+                )
                 return PipelineEvent.AGENT_SUCCESS
             except McpServerError as exc:
                 logger.error(
@@ -3478,9 +3570,11 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                     max_recovery_attempts=max_recovery_attempts,
                     effect=effect,
                     workspace_root=workspace_scope.root,
-                    raw_output=raw_output,
-                    rendered_output=rendered_output,
-                    extracted_session_id=extract_session_id(raw_output),
+                    raw_output=list(raw_output),
+                    rendered_output=list(rendered_output),
+                    extracted_session_id=(
+                        extracted_session_id or extract_session_id(tuple(raw_output))
+                    ),
                     inactivity_error_type=AgentInactivityTimeoutError,
                 )
                 if recovery_plan is None:
@@ -3885,8 +3979,9 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     *,
     display_context: DisplayContext | None = None,
-    raw_output_sink: list[str] | None = None,
-    rendered_output_sink: list[str] | None = None,
+    raw_output_sink: deque[str] | list[str] | None = None,
+    rendered_output_sink: deque[str] | list[str] | None = None,
+    session_id_sink: Callable[[str], None] | None = None,
 ) -> None:
     parser = _resolve_parser(parser_type)
 
@@ -3895,6 +3990,9 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
             text = str(line)
             if raw_output_sink is not None:
                 raw_output_sink.append(text)
+            session_id = extract_session_id((text,))
+            if session_id is not None and session_id_sink is not None:
+                session_id_sink(session_id)
             yield text
 
     parallel_display_cls = _parallel_display_cls()

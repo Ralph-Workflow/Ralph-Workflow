@@ -16,7 +16,7 @@ from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
 from ralph.display.plain_renderer import PlainLogRenderer, _PhaseCounters
-from ralph.display.raw_overflow import RawOverflowLog
+from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
 _DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
-_MAX_OVERFLOW_FILE_BYTES: int = 50 * 1024 * 1024  # 50 MB guard
+_MAX_OVERFLOW_FILE_BYTES: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES
 _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
 
@@ -109,7 +109,9 @@ class ParallelDisplay:
 
     def _get_overflow_log(self, unit_id: str) -> RawOverflowLog:
         if unit_id not in self._overflow_logs:
-            self._overflow_logs[unit_id] = RawOverflowLog(self._workspace_root, unit_id)
+            self._overflow_logs[unit_id] = RawOverflowLog(
+                self._workspace_root, unit_id, max_bytes=_MAX_OVERFLOW_FILE_BYTES
+            )
         return self._overflow_logs[unit_id]
 
     def _raw_overflow_write(self, unit_id: str, raw_line: str) -> None:

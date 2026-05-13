@@ -252,3 +252,74 @@ def test_last_failure_category_round_trip() -> None:
 
     assert restored.last_failure_category == "ambiguous"
     assert restored.recovery_cycle_count == 2  # noqa: PLR2004
+
+
+def test_checkpoint_round_trip_normalizes_over_cap_recovery_context() -> None:
+    """Direct JSON restore trims recovery context to the newest retained records."""
+    state = PipelineState(
+        phase="development",
+        recovery_cycle_cap=2,
+        fallover_history=(
+            FalloverRecord(
+                phase="development",
+                from_agent="a1",
+                to_agent="b1",
+                timestamp_iso="2026-04-21T00:00:01Z",
+            ),
+            FalloverRecord(
+                phase="development",
+                from_agent="a2",
+                to_agent="b2",
+                timestamp_iso="2026-04-21T00:00:02Z",
+            ),
+            FalloverRecord(
+                phase="development",
+                from_agent="a3",
+                to_agent="b3",
+                timestamp_iso="2026-04-21T00:00:03Z",
+            ),
+        ),
+        recovery_cycle_count=3,
+        last_failure_category="agent",
+    )
+
+    restored = PipelineState.model_validate_json(state.model_dump_json())
+
+    assert restored.recovery_cycle_count == 3  # noqa: PLR2004
+    assert [record.from_agent for record in restored.fallover_history] == ["a2", "a3"]
+    assert restored.last_failure_category == "agent"
+
+
+def test_mid_recovery_copy_with_normalizes_when_cycle_cap_shrinks() -> None:
+    """Resume-path state updates keep only the newest records after a lower cap is applied."""
+    state = PipelineState(
+        phase="development",
+        recovery_cycle_cap=3,
+        fallover_history=(
+            FalloverRecord(
+                phase="development",
+                from_agent="a1",
+                to_agent="b1",
+                timestamp_iso="2026-04-21T00:00:01Z",
+            ),
+            FalloverRecord(
+                phase="development",
+                from_agent="a2",
+                to_agent="b2",
+                timestamp_iso="2026-04-21T00:00:02Z",
+            ),
+            FalloverRecord(
+                phase="development",
+                from_agent="a3",
+                to_agent="b3",
+                timestamp_iso="2026-04-21T00:00:03Z",
+            ),
+        ),
+        recovery_cycle_count=2,
+        last_failure_category="agent",
+    )
+
+    restored = state.copy_with(recovery_cycle_cap=2)
+
+    assert restored.recovery_cycle_count == 2  # noqa: PLR2004
+    assert [record.from_agent for record in restored.fallover_history] == ["a2", "a3"]

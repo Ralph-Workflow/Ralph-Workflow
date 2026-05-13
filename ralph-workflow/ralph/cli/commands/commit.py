@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import typing
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from inspect import signature
 from pathlib import Path
@@ -70,6 +71,8 @@ _VERBOSE_THRESHOLD = 2
 _SKIP_PREFIX = "skip:"
 _MAX_METADATA_PARTS = 5
 _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_message artifact"
+_MAX_COMMIT_PARSED_OUTPUT_LINES = 128
+_MAX_COMMIT_RAW_OUTPUT_LINES = 256
 
 
 @dataclass(frozen=True)
@@ -552,7 +555,7 @@ def _invoke_commit_agent_attempt(
         )
 
     try:
-        parsed_output, raw_output = _collect_commit_agent_output(
+        parsed_output, raw_output, resume_session_id = _collect_commit_agent_output(
             lines,
             parser_type=str(agent.json_parser),
             agent_name=agent.cmd.split()[0],
@@ -578,7 +581,7 @@ def _invoke_commit_agent_attempt(
             ),
             parsed_output=parsed_output,
             raw_output=raw_output,
-            resume_session_id=extract_session_id(raw_output),
+            resume_session_id=resume_session_id,
         )
 
     if not artifact_message:
@@ -591,7 +594,7 @@ def _invoke_commit_agent_attempt(
             ),
             parsed_output=parsed_output,
             raw_output=raw_output,
-            resume_session_id=extract_session_id(raw_output),
+            resume_session_id=resume_session_id,
         )
 
     if _is_skip_response(artifact_message):
@@ -739,18 +742,23 @@ def _collect_commit_agent_output(
     agent_name: str,
     verbose: bool,
     display_context: DisplayContext,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], str | None]:
     ctx = display_context
     console = ctx.console
     parser = _resolve_commit_parser(parser_type)
-    parsed_output: list[str] = []
-    raw_output: list[str] = []
+    parsed_output: deque[str] = deque(maxlen=_MAX_COMMIT_PARSED_OUTPUT_LINES)
+    raw_output: deque[str] = deque(maxlen=_MAX_COMMIT_RAW_OUTPUT_LINES)
+    resume_session_id: str | None = None
     try:
 
         def _raw_lines() -> Iterator[str]:
             for line in lines:
                 raw_line = str(line)
                 raw_output.append(raw_line)
+                session_id = extract_session_id((raw_line,))
+                nonlocal resume_session_id
+                if session_id is not None:
+                    resume_session_id = session_id
                 yield raw_line
 
         for parsed_line in parser.parse(_raw_lines()):
@@ -761,8 +769,8 @@ def _collect_commit_agent_output(
             if verbose:
                 console.print(rendered)
     except AgentInvocationError as exc:
-        raise _invocation_error_with_output(exc, parsed_output) from exc
-    return parsed_output, raw_output
+        raise _invocation_error_with_output(exc, list(parsed_output)) from exc
+    return list(parsed_output), list(raw_output), resume_session_id
 
 
 def _resolve_commit_parser(parser_type: str) -> AgentParser:

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _SAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
+DEFAULT_MAX_OVERFLOW_FILE_BYTES = 50 * 1024 * 1024
 
 
 def _sanitize_unit_id(unit_id: str) -> str:
@@ -23,34 +24,53 @@ class RawOverflowLog:
     never crashes due to a read-only workspace.
     """
 
-    def __init__(self, workspace_root: Path, unit_id: str) -> None:
+    def __init__(
+        self,
+        workspace_root: Path,
+        unit_id: str,
+        *,
+        max_bytes: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES,
+    ) -> None:
         safe_id = _sanitize_unit_id(unit_id)
         self.path = workspace_root / ".agent" / "raw" / f"{safe_id}.log"
         self._lock = threading.Lock()
         self._first_write = True
         self._disabled = False
+        self._max_bytes = max(max_bytes, 0)
+        self._bytes_written = 0
 
     def disable(self) -> None:
         """Permanently disable this log so future appends are no-ops."""
         with self._lock:
             self._disabled = True
 
-    def append(self, line: str) -> None:
-        """Write *line* to the overflow log. No-op on any I/O error."""
+    def append(self, line: str) -> bool:
+        """Write *line* to the overflow log.
+
+        Returns True when the line was written. Returns False when the log is
+        disabled, the byte cap has been reached, or an I/O error occurs.
+        """
         with self._lock:
             if self._disabled:
-                return
+                return False
             try:
                 text = line.rstrip("\n") + "\n"
+                encoded = text.encode("utf-8")
+                if self._bytes_written + len(encoded) > self._max_bytes:
+                    self._disabled = True
+                    return False
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 if self._first_write:
-                    self.path.write_text(text, encoding="utf-8")
+                    self.path.write_bytes(encoded)
                     self._first_write = False
                 else:
-                    with self.path.open("a", encoding="utf-8") as fh:
-                        fh.write(text)
+                    with self.path.open("ab") as fh:
+                        fh.write(encoded)
+                self._bytes_written += len(encoded)
+                return True
             except (OSError, PermissionError):
                 self._disabled = True
+                return False
 
     def relative_reference(self, workspace_root: Path) -> str:
         """Return POSIX path relative to *workspace_root*, or absolute on error."""
@@ -60,4 +80,4 @@ class RawOverflowLog:
             return self.path.as_posix()
 
 
-__all__ = ["RawOverflowLog"]
+__all__ = ["DEFAULT_MAX_OVERFLOW_FILE_BYTES", "RawOverflowLog"]

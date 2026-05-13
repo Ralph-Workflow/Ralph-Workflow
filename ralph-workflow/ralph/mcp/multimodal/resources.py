@@ -6,8 +6,10 @@ so they can be listed via resources/list and retrieved via resources/read.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 _RALPH_MEDIA_PREFIX = "ralph://media/"
@@ -16,6 +18,8 @@ _URI_PATTERN = re.compile(
 )
 
 MEDIA_URI_TEMPLATE = "ralph://media/{artifact_id}"
+
+ByteLoader = Callable[[], bytes | None]
 
 
 def build_media_uri(artifact_id: str) -> str:
@@ -36,6 +40,26 @@ def new_artifact_id() -> str:
     return str(uuid.uuid4())
 
 
+def build_media_identity(  # noqa: PLR0913
+    *,
+    modality: str,
+    mime_type: str,
+    title: str,
+    source_path: str = "",
+    source_uri: str = "",
+    raw_bytes: bytes | None = None,
+) -> str:
+    """Build a stable identity for deduping repeated live artifacts."""
+    if source_uri:
+        return f"source-uri:{modality}:{source_uri}"
+    if source_path:
+        return f"source-path:{modality}:{source_path}"
+    if raw_bytes is not None:
+        digest = hashlib.sha256(raw_bytes).hexdigest()
+        return f"payload:{modality}:{mime_type}:{title}:{digest}"
+    return f"artifact:{modality}:{mime_type}:{title}"
+
+
 @dataclass
 class ManifestEntry:
     """An entry in the session-scoped multimodal manifest."""
@@ -45,7 +69,46 @@ class ManifestEntry:
     mime_type: str
     title: str
     modality: str
-    raw_bytes: bytes
+    identity_key: str = ""
+    cache_path: str = ""
+    source_path: str = ""
+    source_uri: str = ""
+    _raw_bytes: bytes | None = field(default=None, repr=False)
+    _byte_loader: ByteLoader | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def raw_bytes(self) -> bytes:
+        """Return artifact bytes, rehydrating from the loader when needed."""
+        return self.load_bytes() or b""
+
+    def load_bytes(self) -> bytes | None:
+        """Return artifact bytes from memory or a backing replay source."""
+        if self._raw_bytes is not None:
+            return self._raw_bytes
+        if self._byte_loader is None:
+            return None
+        return self._byte_loader()
+
+    def set_replay_source(
+        self,
+        *,
+        cache_path: str = "",
+        source_path: str = "",
+        source_uri: str = "",
+        byte_loader: ByteLoader | None = None,
+        retain_raw_bytes: bool = False,
+    ) -> None:
+        """Attach a durable replay source and optionally release in-memory bytes."""
+        if cache_path:
+            self.cache_path = cache_path
+        if source_path:
+            self.source_path = source_path
+        if source_uri:
+            self.source_uri = source_uri
+        if byte_loader is not None:
+            self._byte_loader = byte_loader
+        if not retain_raw_bytes:
+            self._raw_bytes = None
 
     def resource_list_entry(self) -> dict[str, object]:
         """Return the entry shape for a resources/list response."""
@@ -62,17 +125,31 @@ class MediaManifest:
     """Session-scoped manifest of all multimodal resource references."""
 
     _entries: dict[str, ManifestEntry] = field(default_factory=dict)
+    _identity_index: dict[str, str] = field(default_factory=dict)
 
-    def add(
+    def add(  # noqa: PLR0913
         self,
         *,
         title: str,
         mime_type: str,
         modality: str,
         raw_bytes: bytes,
+        cache_path: str = "",
+        source_path: str = "",
+        source_uri: str = "",
+        identity_key: str = "",
+        byte_loader: ByteLoader | None = None,
     ) -> ManifestEntry:
-        """Add a new artifact and return its manifest entry."""
-        artifact_id = new_artifact_id()
+        """Add or replace an artifact and return its manifest entry."""
+        resolved_identity = identity_key or build_media_identity(
+            modality=modality,
+            mime_type=mime_type,
+            title=title,
+            source_path=source_path,
+            source_uri=source_uri,
+            raw_bytes=raw_bytes,
+        )
+        artifact_id = self._identity_index.get(resolved_identity, new_artifact_id())
         uri = build_media_uri(artifact_id)
         entry = ManifestEntry(
             artifact_id=artifact_id,
@@ -80,9 +157,15 @@ class MediaManifest:
             mime_type=mime_type,
             title=title,
             modality=modality,
-            raw_bytes=raw_bytes,
+            identity_key=resolved_identity,
+            cache_path=cache_path,
+            source_path=source_path,
+            source_uri=source_uri,
+            _raw_bytes=raw_bytes,
+            _byte_loader=byte_loader,
         )
         self._entries[artifact_id] = entry
+        self._identity_index[resolved_identity] = artifact_id
         return entry
 
     def get(self, artifact_id: str) -> ManifestEntry | None:
@@ -102,6 +185,7 @@ __all__ = [
     "MEDIA_URI_TEMPLATE",
     "ManifestEntry",
     "MediaManifest",
+    "build_media_identity",
     "build_media_uri",
     "new_artifact_id",
     "parse_media_uri",

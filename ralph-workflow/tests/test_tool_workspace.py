@@ -1933,6 +1933,44 @@ class TestHandleReadMedia:
         assert "a.pdf" in titles
         assert "b.pdf" in titles
 
+    def test_resource_reference_repeated_same_file_replaces_live_session_entry(
+        self, tmp_path: Path
+    ) -> None:
+        """Repeated reads of the same artifact must not grow the live session set."""
+
+        @dataclass
+        class SessionWithDrain:
+            allowed_capability: str | None = None
+            drain: str = "development"
+            session_id: str = "test-session"
+            media_manifest: MediaManifest = field(default_factory=MediaManifest)
+            model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+            def check_capability(self, capability: str) -> object:
+                return capability == self.allowed_capability
+
+            def check_edit_area(self, _: str) -> object:
+                return True
+
+        media_file = tmp_path / "report.pdf"
+        media_file.write_bytes(b"%PDF-1.4 repeatable")
+
+        session = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        ws = FsWorkspace(tmp_path)
+
+        first = handle_read_media(session, ws, {"path": "report.pdf"})
+        second = handle_read_media(session, ws, {"path": "report.pdf"})
+
+        assert first.is_error is False
+        assert second.is_error is False
+        assert len(session.media_manifest.list_entries()) == 1
+
+        index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        artifacts = data["artifacts"]
+        assert len(artifacts) == 1
+        assert artifacts[0]["source_path"] == "report.pdf"
+
     # -------------------------------------------------------------------------
     # Typed-block delivery tests (Claude provider)
     # -------------------------------------------------------------------------

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 import httpx
 
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
+from ralph.mcp.multimodal.resources import build_media_identity
 from ralph.mcp.protocol.startup import (
     initialize_request,
     initialized_notification,
@@ -317,6 +318,12 @@ def _normalize_media_block(  # noqa: PLR0913
             mime_type=mime_type,
             modality=block_type,
             raw_bytes=raw_bytes,
+            identity_key=build_media_identity(
+                modality=block_type,
+                mime_type=mime_type,
+                title=title,
+                raw_bytes=raw_bytes,
+            ),
         )
         uri = entry.uri
         delivery = "resource_reference_replay"

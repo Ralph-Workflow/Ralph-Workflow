@@ -433,7 +433,15 @@ class McpServer:
                 ServerState.RUNNING,
             )
 
-        blob = _base64.b64encode(entry.raw_bytes).decode("ascii")
+        raw_bytes = entry.load_bytes()
+        if raw_bytes is None:
+            error = {"code": -32602, "message": f"Resource bytes no longer available: '{uri}'"}
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+
+        blob = _base64.b64encode(raw_bytes).decode("ascii")
         contents: list[dict[str, object]] = [
             {"uri": entry.uri, "mimeType": entry.mime_type, "blob": blob},
         ]
