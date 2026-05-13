@@ -176,9 +176,13 @@ def test_fresh_planning_prompt_does_not_include_artifact_history_even_if_history
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Create a brand new plan")
-    history_file = history_index_path(tmp_path / ".agent" / "artifacts", "plan")
-    history_file.parent.mkdir(parents=True, exist_ok=True)
-    history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    plan_history_file = history_index_path(artifact_dir, "plan")
+    plan_history_file.parent.mkdir(parents=True, exist_ok=True)
+    plan_history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+    development_history_file = history_index_path(artifact_dir, "development_result")
+    development_history_file.parent.mkdir(parents=True, exist_ok=True)
+    development_history_file.write_text("# Development History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
         phase="planning",
@@ -192,8 +196,10 @@ def test_fresh_planning_prompt_does_not_include_artifact_history_even_if_history
 
     rendered = workspace.read(prompt_path)
     assert "ARTIFACT HISTORY" not in rendered
-    assert str(history_file) not in rendered
-    assert history_file.exists() is False
+    assert str(plan_history_file) not in rendered
+    assert str(development_history_file) not in rendered
+    assert plan_history_file.exists() is False
+    assert development_history_file.exists() is False
 
 
 def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path) -> None:
@@ -642,9 +648,13 @@ def test_planning_loopback_prompt_includes_artifact_history_when_history_exists(
             }
         ),
     )
-    history_file = history_index_path(tmp_path / ".agent" / "artifacts", "plan")
-    history_file.parent.mkdir(parents=True, exist_ok=True)
-    history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    plan_history_file = history_index_path(artifact_dir, "plan")
+    plan_history_file.parent.mkdir(parents=True, exist_ok=True)
+    plan_history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+    development_history_file = history_index_path(artifact_dir, "development_result")
+    development_history_file.parent.mkdir(parents=True, exist_ok=True)
+    development_history_file.write_text("# Development History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
         phase="planning",
@@ -658,7 +668,7 @@ def test_planning_loopback_prompt_includes_artifact_history_when_history_exists(
 
     rendered = workspace.read(prompt_path)
     assert "ARTIFACT HISTORY" in rendered
-    assert str(history_file) in rendered
+    assert str(plan_history_file) in rendered
 
 
 def test_materialize_planning_retry_preserves_current_plan_context_when_last_retry_error_exists(
@@ -868,9 +878,13 @@ def test_planning_retry_prompt_includes_artifact_history_path_when_history_exist
         ".agent/tmp/last_retry_error_planning.txt",
         "PREVIOUS ATTEMPT FAILED: validation error during planning retry",
     )
-    history_file = history_index_path(tmp_path / ".agent" / "artifacts", "plan")
-    history_file.parent.mkdir(parents=True, exist_ok=True)
-    history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    plan_history_file = history_index_path(artifact_dir, "plan")
+    plan_history_file.parent.mkdir(parents=True, exist_ok=True)
+    plan_history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+    development_history_file = history_index_path(artifact_dir, "development_result")
+    development_history_file.parent.mkdir(parents=True, exist_ok=True)
+    development_history_file.write_text("# Development History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
         phase="planning",
@@ -884,7 +898,7 @@ def test_planning_retry_prompt_includes_artifact_history_path_when_history_exist
 
     rendered = workspace.read(prompt_path)
     assert "ARTIFACT HISTORY" in rendered
-    assert str(history_file) in rendered
+    assert str(plan_history_file) in rendered
 
 
 def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(
@@ -1162,7 +1176,7 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
     assert "`mcp__ralph__declare_complete` or bare `declare_complete`" in rendered
 
 
-def test_materialize_development_entry_clears_completed_planning_history(
+def test_materialize_development_entry_clears_all_completed_planning_history(
     tmp_path: Path,
 ) -> None:
     from ralph.mcp.artifacts.history import history_index_path
@@ -1191,9 +1205,13 @@ def test_materialize_development_entry_clears_completed_planning_history(
             }
         ),
     )
-    history_file = history_index_path(tmp_path / ".agent" / "artifacts", "plan")
-    history_file.parent.mkdir(parents=True, exist_ok=True)
-    history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    plan_history_file = history_index_path(artifact_dir, "plan")
+    plan_history_file.parent.mkdir(parents=True, exist_ok=True)
+    plan_history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+    development_history_file = history_index_path(artifact_dir, "development_result")
+    development_history_file.parent.mkdir(parents=True, exist_ok=True)
+    development_history_file.write_text("# Development History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
         phase="development",
@@ -1207,7 +1225,8 @@ def test_materialize_development_entry_clears_completed_planning_history(
 
     rendered = workspace.read(prompt_path)
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
-    assert history_file.exists() is False
+    assert plan_history_file.exists() is False
+    assert development_history_file.exists() is False
 
 
 
@@ -1744,10 +1763,10 @@ def test_development_analysis_prompt_renders_without_development_result(
     )
 
 
-def test_fresh_planning_clears_history_when_clear_on_fresh_entry_enabled(
+def test_fresh_planning_clears_all_artifact_history_on_entry(
     tmp_path: Path,
 ) -> None:
-    """Fresh planning entry clears artifact history when planning policy enables it."""
+    """Fresh planning entry clears all artifact history before a new planning cycle."""
     from ralph.mcp.artifacts.history import (
         history_dir_for_artifact,
         history_index_path,
@@ -1759,12 +1778,19 @@ def test_fresh_planning_clears_history_when_clear_on_fresh_entry_enabled(
 
     # Create history files on disk (bypass MemoryWorkspace)
     artifact_dir = tmp_path / ".agent" / "artifacts"
-    hist_dir = history_dir_for_artifact(artifact_dir, "plan")
-    hist_dir.mkdir(parents=True, exist_ok=True)
-    archived_json = hist_dir / "20260506T120000_plan.json"
-    archived_json.write_text('{"type":"plan"}', encoding="utf-8")
-    index_file = history_index_path(artifact_dir, "plan")
-    index_file.write_text("# History", encoding="utf-8")
+    plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
+    plan_hist_dir.mkdir(parents=True, exist_ok=True)
+    archived_plan_json = plan_hist_dir / "20260506T120000_plan.json"
+    archived_plan_json.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_index_file = history_index_path(artifact_dir, "plan")
+    plan_index_file.write_text("# History", encoding="utf-8")
+
+    development_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
+    development_hist_dir.mkdir(parents=True, exist_ok=True)
+    archived_development_json = development_hist_dir / "20260506T120000_development_result.json"
+    archived_development_json.write_text('{"type":"development_result"}', encoding="utf-8")
+    development_index_file = history_index_path(artifact_dir, "development_result")
+    development_index_file.write_text("# History", encoding="utf-8")
 
     materialize_prompt_for_phase(
         phase="planning",
@@ -1776,8 +1802,18 @@ def test_fresh_planning_clears_history_when_clear_on_fresh_entry_enabled(
         previous_phase=None,
     )
 
-    assert not archived_json.exists(), "archive json must be removed on fresh planning entry"
-    assert not index_file.exists(), "history index must be removed on fresh planning entry"
+    assert not archived_plan_json.exists(), (
+        "plan archive json must be removed on fresh planning entry"
+    )
+    assert not plan_index_file.exists(), (
+        "plan history index must be removed on fresh planning entry"
+    )
+    assert not archived_development_json.exists(), (
+        "development archive json must be removed on fresh planning entry"
+    )
+    assert not development_index_file.exists(), (
+        "development history index must be removed on fresh planning entry"
+    )
 
 
 def test_resolve_planning_history_path_returns_empty_when_no_index(tmp_path: Path) -> None:

@@ -268,7 +268,6 @@ def _render_prompt_for_phase(  # noqa: PLR0913
     _clear_completed_planning_history_if_needed(
         workspace_root=workspace_root,
         pipeline_policy=pipeline_policy,
-        artifacts_policy=artifacts_policy,
         phase=phase,
         previous_phase=previous_phase,
     )
@@ -640,18 +639,17 @@ def _clear_completed_planning_history_if_needed(
     *,
     workspace_root: Path,
     pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None,
     phase: str,
     previous_phase: str | None,
 ) -> None:
-    """Clear plan history when the planning cycle finishes and development begins.
+    """Clear all artifact history when the planning cycle finishes and development begins.
 
     The history remains available throughout planning and replanning. Once the
     planning-analysis phase succeeds and the workflow advances to its on_success
-    target (the developer-facing phase), old plan history should be cleared so it
-    does not leak into downstream execution contexts.
+    target (the developer-facing phase), all artifact history should be cleared so
+    downstream execution starts from a clean slate.
     """
-    if artifacts_policy is None or previous_phase is None:
+    if previous_phase is None:
         return
     previous_phase_def = pipeline_policy.phases.get(previous_phase)
     if previous_phase_def is None or previous_phase_def.role != "analysis":
@@ -664,10 +662,21 @@ def _clear_completed_planning_history_if_needed(
     loopback_phase_def = pipeline_policy.phases.get(loopback_phase)
     if loopback_phase_def is None:
         return
-    if _drain_artifact_type(loopback_phase_def.drain, artifacts_policy) != PLAN_ARTIFACT_TYPE:
+    if loopback_phase_def.role != "execution":
         return
+    _clear_all_artifact_history(workspace_root)
+
+
+def _clear_all_artifact_history(workspace_root: Path) -> None:
+    """Remove every artifact history archive under .agent/artifacts/history/."""
     artifact_dir = workspace_root / ".agent" / "artifacts"
-    clear_artifact_history(artifact_dir, PLAN_ARTIFACT_TYPE, backend=DEFAULT_FILE_BACKEND)
+    history_root = artifact_dir / "history"
+    if not history_root.exists():
+        return
+    for path in history_root.iterdir():
+        if path.is_dir():
+            clear_artifact_history(artifact_dir, path.name, backend=DEFAULT_FILE_BACKEND)
+
 
 
 def _resolve_and_clear_dev_artifact_history(
@@ -701,16 +710,8 @@ def _clear_fresh_planning_context(
     if handoff_path and workspace.exists(handoff_path):
         workspace.remove(handoff_path)
 
-    # Clear planning artifact history when the phase policy opts in.
-    phase_def = pipeline_policy.phases.get(phase)
-    if (
-        phase_def is not None
-        and phase_def.artifact_history is not None
-        and phase_def.artifact_history.clear_on_fresh_entry
-    ):
-        workspace_root = Path(workspace.absolute_path("."))
-        artifact_dir = workspace_root / ".agent" / "artifacts"
-        clear_artifact_history(artifact_dir, PLAN_ARTIFACT_TYPE, backend=DEFAULT_FILE_BACKEND)
+    workspace_root = Path(workspace.absolute_path("."))
+    _clear_all_artifact_history(workspace_root)
 
     if artifacts_policy is None:
         return
