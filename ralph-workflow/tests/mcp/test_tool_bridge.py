@@ -7,9 +7,11 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 from ralph.config.mcp_models import McpConfig, WebSearchConfig
+from ralph.mcp.artifacts.plan import PLAN_SECTION_NAMES
 from ralph.mcp.tools.bridge import _tool_specs, build_ralph_tool_registry
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
+    SUBMIT_PLAN_SECTION_TOOL,
     WEB_SEARCH_TOOL,
 )
 from ralph.mcp.upstream.config import (
@@ -87,6 +89,25 @@ class TestToolSpecsWebSearch:
         tool_names = {spec.metadata.definition.name for spec in specs}
         for tool in ALL_RALPH_TOOLS:
             assert tool in tool_names, f"Tool {tool} is missing from _tool_specs"
+
+    def test_submit_plan_section_tool_lists_every_supported_plan_section(self) -> None:
+        """The MCP-facing tool description must stay aligned with the plan schema.
+
+        planning_edit.jinja teaches agents to revise plans through the MCP plan-edit
+        flow, so the brokered tool metadata must enumerate every section accepted by
+        the backend validator.
+        """
+        specs = _tool_specs(McpConfig())
+        submit_plan_spec = next(
+            spec for spec in specs if spec.metadata.definition.name == SUBMIT_PLAN_SECTION_TOOL
+        )
+        description = submit_plan_spec.metadata.definition.description
+
+        for section_name in sorted(PLAN_SECTION_NAMES):
+            assert section_name in description, (
+                f"submit-plan-section description is missing schema-supported section "
+                f"{section_name!r}"
+            )
 
 
 class TestUpstreamEnvVar:

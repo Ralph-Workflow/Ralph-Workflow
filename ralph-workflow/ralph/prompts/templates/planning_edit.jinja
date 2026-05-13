@@ -1,4 +1,4 @@
-You are in PLANNING EDIT MODE. Revise the existing implementation plan in response to planning-analysis feedback.
+You are in PLANNING EDIT MODE. Revise the existing execution plan in response to planning-analysis feedback.
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
@@ -20,9 +20,6 @@ The goal is not merely to fix what the analyzer found; it is to eliminate every 
 
 ORIGINAL REQUEST:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
-
-CURRENT PLAN:
-{{ render_payload_section('CURRENT PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
 
 ANALYSIS FEEDBACK:
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
@@ -94,7 +91,7 @@ Your revised plan must remain executor-ready for unattended development. The upd
 - satisfy the ORIGINAL REQUEST, not only the latest feedback summary
 - keep concrete ordered steps, critical files, risks, and exact verification commands
 - eliminate vague or unverifiable instructions
-- make the planning-to-development handoff explicit again after revision
+- make the planning-to-development handoff explicit again after revision so the development agent can start without doing planning work
 - close all currently known analyzer findings in this pass rather than leaving obvious follow-up repairs for a later iteration
 - do not preserve prompt-violating tests, files, or workflows as justified exceptions unless the ORIGINAL REQUEST explicitly allows them
 
@@ -104,6 +101,7 @@ Do not preserve prompt-violating tests, files, or workflows as justified excepti
 If the feedback says the plan is missing detail, add that detail.
 If the feedback says verification is weak, replace vague checks with exact commands and expected outcomes.
 If the feedback says the structure is unsound, revise the affected sections systematically rather than patching around the problem.
+Do not make transient .agent handoff files part of the revised plan's execution inputs unless the original request is explicitly about Ralph Workflow's own planning or artifact plumbing.
 
 Before `{{FINALIZE_PLAN_TOOL_NAME}}`, perform this self-audit:
 - Feedback closure: every currently known analyzer finding has been resolved in the revised draft or forced a broader section replacement; no known issue is left partially addressed

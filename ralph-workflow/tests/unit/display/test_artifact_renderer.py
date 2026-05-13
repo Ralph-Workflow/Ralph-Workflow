@@ -71,7 +71,7 @@ class TestRenderPlanArtifact:
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir(parents=True)
         plan_markdown = (
-            "# Implementation Plan\n\n"
+            "# Execution Plan\n\n"
             "## Steps\n"
             "1. Add regression tests\n"
             "2. Fix pipeline routing\n\n"

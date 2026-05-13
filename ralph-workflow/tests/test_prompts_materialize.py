@@ -87,7 +87,7 @@ def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
 
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\n1. Do the thing\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
     history_file = history_index_path(tmp_path / ".agent" / "artifacts", "development_result")
     history_file.parent.mkdir(parents=True, exist_ok=True)
     history_file.write_text("# History\n\n## Entry 1\n", encoding="utf-8")
@@ -149,7 +149,7 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
 
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\n1. Do the thing\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
 
     # Create history files on disk
     artifact_dir = tmp_path / ".agent" / "artifacts"
@@ -237,7 +237,7 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
 
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\n1. Do the thing\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
     workspace.write(
         ".agent/artifacts/development_analysis_decision.json",
         json.dumps(
@@ -317,7 +317,7 @@ def test_development_prompt_includes_artifact_history_path_when_history_exists(
 
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\n1. Do the thing\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
 
     # Create the history index file on disk
     artifact_dir = tmp_path / ".agent" / "artifacts"

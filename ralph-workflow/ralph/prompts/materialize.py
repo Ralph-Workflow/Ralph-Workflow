@@ -265,6 +265,13 @@ def _render_prompt_for_phase(  # noqa: PLR0913
     context = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
     prompt_content = _read_optional(workspace, "PROMPT.md")
+    _clear_completed_planning_history_if_needed(
+        workspace_root=workspace_root,
+        pipeline_policy=pipeline_policy,
+        artifacts_policy=artifacts_policy,
+        phase=phase,
+        previous_phase=previous_phase,
+    )
     current_prompt_path = _persist_current_prompt(workspace_root, prompt_content)
 
     phase_def = pipeline_policy.phases.get(phase)
@@ -627,6 +634,40 @@ def _resolve_planning_history_path(
 ) -> str:
     """Return the absolute path to the planning artifact history index, if it exists."""
     return _resolve_artifact_history_path(workspace_root, PLAN_ARTIFACT_TYPE)
+
+
+def _clear_completed_planning_history_if_needed(
+    *,
+    workspace_root: Path,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+    phase: str,
+    previous_phase: str | None,
+) -> None:
+    """Clear plan history when the planning cycle finishes and development begins.
+
+    The history remains available throughout planning and replanning. Once the
+    planning-analysis phase succeeds and the workflow advances to its on_success
+    target (the developer-facing phase), old plan history should be cleared so it
+    does not leak into downstream execution contexts.
+    """
+    if artifacts_policy is None or previous_phase is None:
+        return
+    previous_phase_def = pipeline_policy.phases.get(previous_phase)
+    if previous_phase_def is None or previous_phase_def.role != "analysis":
+        return
+    if previous_phase_def.transitions.on_success != phase:
+        return
+    loopback_phase = previous_phase_def.transitions.on_loopback
+    if loopback_phase is None:
+        return
+    loopback_phase_def = pipeline_policy.phases.get(loopback_phase)
+    if loopback_phase_def is None:
+        return
+    if _drain_artifact_type(loopback_phase_def.drain, artifacts_policy) != PLAN_ARTIFACT_TYPE:
+        return
+    artifact_dir = workspace_root / ".agent" / "artifacts"
+    clear_artifact_history(artifact_dir, PLAN_ARTIFACT_TYPE, backend=DEFAULT_FILE_BACKEND)
 
 
 def _resolve_and_clear_dev_artifact_history(

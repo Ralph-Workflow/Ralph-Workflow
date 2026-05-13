@@ -1144,12 +1144,12 @@ def test_piecewise_plan_submission_produces_same_plan_json_as_atomic(tmp_path: P
     assert (
         (atomic_path / ".agent" / "PLAN.md")
         .read_text(encoding="utf-8")
-        .startswith("# Implementation Plan\n")
+        .startswith("# Execution Plan\n")
     )
     assert (
         (piecewise_path / ".agent" / "PLAN.md")
         .read_text(encoding="utf-8")
-        .startswith("# Implementation Plan\n")
+        .startswith("# Execution Plan\n")
     )
     # Draft must be gone after a successful finalize.
     assert not (piecewise_path / ".agent" / "artifacts" / ".plan_draft.json").exists()

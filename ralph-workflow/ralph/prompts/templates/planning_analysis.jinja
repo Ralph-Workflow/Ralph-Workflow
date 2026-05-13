@@ -14,9 +14,7 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 
 {{ render_payload_path('PROMPT', PROMPT_PATH) }}
 
-{{ render_payload_path('PLAN', PLAN_PATH) }}
-
-{{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
+Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the current finalized plan or staged draft before evaluating it.
 
 ---
 
@@ -58,8 +56,13 @@ need to enumerate every skipped item in the artifact.
 - You MAY conclude that verification is still incomplete if you ran the referenced command and it
   does not establish the required behavior, or if no runnable verification command exists for that
   claim.
+- Do not fail a plan solely because of Ralph Workflow internal exec or transport quirks when the underlying
+  verification intent is already clear and would not force the executor to invent a materially
+  different check.
 - You MAY conclude that a referenced path, file, command, or dependency is invalid if you checked
   it directly and the repository or command output contradicts the plan.
+- Do not treat transient .agent handoff plumbing as a blocking repository-accuracy defect when an
+  equivalent canonical artifact or prompt path already makes the executor's task unambiguous.
 - You MUST NOT judge what the agent, developer, or reviewer did or did not do.
 - You MUST NOT infer correctness from whether the planner seemed confident or detailed.
 - You MUST NOT rely on agent logs, transcripts, or inferred process history as evaluation evidence.
@@ -152,8 +155,7 @@ Actively look for missing work and internal contradictions:
   verification items, or work units conflict with each other?
 - **Traceability**: can you see how each major requirement flows into concrete implementation and
   verification, or are important outcomes left hanging?
-- **No downstream replanning**: if the executor would need to make planning decisions mid-flight,
-  treat that as a plan gap rather than an execution detail.
+- **No downstream replanning**: if the executor would need to make planning decisions mid-flight, or if the plan asks the executor to perform planning work mid-flight (for example reread analysis feedback, compare prompt files, audit spec drift, or decide scope), treat that as a plan gap rather than an execution detail.
 
 ### 4. REPOSITORY ACCURACY — HIGH
 

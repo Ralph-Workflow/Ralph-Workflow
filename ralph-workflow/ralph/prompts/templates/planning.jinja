@@ -1,4 +1,4 @@
-You are in PLANNING MODE. Create a detailed, structured implementation plan.
+You are in PLANNING MODE. Create a detailed, structured execution plan.
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
@@ -55,15 +55,15 @@ If you have not verified something yet, do not present it as settled fact — ad
 
 Your plan must be executor-ready for unattended development. The submitted artifact must:
 - Capture the problem context and the concrete user-facing outcome
-- Break the work into ordered implementation steps with enough detail to execute without re-planning
+- Break the work into ordered execution steps with enough detail for the development agent to execute without re-planning
 - Identify the critical files or subsystems to inspect or modify and why they matter
 - Call out major risks, edge cases, and the mitigation for each
 - Define verification that the development agent can run to prove completion
 - Include work_units when the work can be parallelized safely
 - Make the planning-to-development handoff explicit so the development agent can start immediately
 
-Prefer concrete actions and acceptance criteria over vague advice. This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure.
-If the executor would need to stop and research basic repository structure, guess which file owns a behavior, invent a verification command, or choose among multiple plausible approaches, the plan is underspecified.
+Prefer concrete executor actions and acceptance criteria over vague or meta-planning advice. This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure.
+If the executor would need to stop and research basic repository structure, guess which file owns a behavior, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
 Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern.
 Do not use phrases like "run tests" unless you provide the exact command and the expected passing result.
 For every concrete requirement or acceptance criterion in the PROMPT, make sure the plan maps it to implementation steps and verification that prove the outcome.

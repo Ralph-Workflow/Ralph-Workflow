@@ -59,12 +59,17 @@ class SkillsMcp(RalphBaseModel):
 
 
 class StepTarget(RalphBaseModel):
-    """A file path and the action taken on it within a plan step."""
+    """A file path and the action taken on it within a plan step.
+
+    Step targets can be mutating (create/modify/delete) or non-mutating
+    research/context actions (read/reference) so plans can point executors at
+    exact source material without abusing critical_files.primary_files.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
-    action: Literal["create", "modify", "delete"]
+    action: Literal["create", "modify", "delete", "read", "reference"]
 
 
 class PlanStep(RalphBaseModel):
@@ -431,9 +436,9 @@ def render_plan_markdown(content: Mapping[str, object]) -> str:
     """Render the structured plan artifact as agent-facing Markdown."""
     plan = normalize_plan_artifact_content(cast("dict[str, object]", dict(content)))
     if plan.get("noop") is True:
-        return "# Implementation Plan\n\nNo implementation work is required.\n"
+        return "# Execution Plan\n\nNo execution work is required.\n"
 
-    lines = ["# Implementation Plan"]
+    lines = ["# Execution Plan"]
     lines.extend(_render_summary_section(plan.get("summary")))
     lines.extend(_render_steps_section(plan.get("steps")))
     lines.extend(_render_critical_files_section(plan.get("critical_files")))

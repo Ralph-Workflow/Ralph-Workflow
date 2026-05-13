@@ -34,7 +34,7 @@ _MIN_EXPECTED_ANALYSIS_TEMPLATES = 2
 def _write_plan_handoff(workspace: MemoryWorkspace) -> None:
     workspace.write(
         ".agent/PLAN.md",
-        "# Implementation Plan\n\n"
+        "# Execution Plan\n\n"
         "1. Add the missing regression test.\n"
         "2. Tighten prompt preconditions.\n",
     )
@@ -125,6 +125,11 @@ class TestAnalysisTemplatesStructuralInvariants:
     def test_plan_uses_render_payload_path_not_section(self) -> None:
         for template in self._analysis_templates():
             source = template.read_text(encoding="utf-8")
+            if template.name == "planning_analysis.jinja":
+                assert "render_payload_path('PLAN'" not in source
+                assert 'render_payload_path("PLAN"' not in source
+                assert "GET_PLAN_DRAFT_TOOL_REFERENCE" in source
+                continue
             uses_path = (
                 "render_payload_path('PLAN'" in source or 'render_payload_path("PLAN"' in source
             )

@@ -183,6 +183,28 @@ def test_validate_plan_section_steps_append_mode_accepts_single_item() -> None:
     assert fragment["number"] == 1
 
 
+def test_validate_plan_section_accepts_non_mutating_step_targets() -> None:
+    fragment = validate_plan_section(
+        "steps",
+        {
+            "number": 2,
+            "title": "Inspect prior analysis feedback",
+            "content": "Read the prior feedback and reference the prompt artifact.",
+            "targets": [
+                {"path": ".agent/PLANNING_ANALYSIS_DECISION.md", "action": "read"},
+                {"path": ".agent/CURRENT_PROMPT.md", "action": "reference"},
+            ],
+        },
+        mode="append",
+    )
+
+    assert isinstance(fragment, dict)
+    assert fragment["targets"] == [
+        {"path": ".agent/PLANNING_ANALYSIS_DECISION.md", "action": "read"},
+        {"path": ".agent/CURRENT_PROMPT.md", "action": "reference"},
+    ]
+
+
 def test_validate_plan_section_work_units_append_mode_accepts_single_item() -> None:
     fragment = validate_plan_section(
         "work_units",

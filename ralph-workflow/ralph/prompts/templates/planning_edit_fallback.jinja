@@ -7,16 +7,13 @@ Treat the planning-analysis feedback as a starting point, not as the full list o
 The goal is not merely to fix what the analyzer found; it is to eliminate every repo-grounded issue the analyzer could still surface on the next pass.
 
 Canonical request file: `{{PROMPT_PATH}}`
-Canonical current plan file: `{{PLAN_PATH}}`
+Current plan context is provided inline below.
 Canonical analysis feedback file: `{{ANALYSIS_FEEDBACK_PATH}}`
 {% if ARTIFACT_HISTORY_PATH %}Canonical artifact history directory: `{{ARTIFACT_HISTORY_DIR}}`
 Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`{% endif %}
 
 ORIGINAL REQUEST:
 {{PROMPT}}
-
-CURRENT PLAN:
-{{PLAN}}
 
 ANALYSIS FEEDBACK:
 {{ANALYSIS_FEEDBACK}}
@@ -34,6 +31,7 @@ You must perform your own repo-grounded analysis before finalizing.
 Classify the defect scope as `local_section`, `cross_section`, or `repo_wide` before deciding what to preserve.
 This classification is diagnostic only. It does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
 If the ORIGINAL REQUEST has repository-wide acceptance criteria and the current plan narrowed scope before running repository-wide discovery, treat that as a scope-invalidating defect.
+If the revised plan would make the development agent reread feedback, compare prompt files, or decide scope, the draft is still underspecified.
 Do not preserve the prior target cluster as the starting scope in that case.
 If a canonical verification command or repo-wide audit already surfaces a blocker during replanning, that blocker immediately becomes in-scope plan work and must be reflected in the revised draft.
 When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example or the currently edited file cluster.

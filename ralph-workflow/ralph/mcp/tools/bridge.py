@@ -1148,13 +1148,14 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
             metadata=_metadata(
                 name=SUBMIT_PLAN_SECTION_TOOL,
                 description=(
-                    "Submit a single section of the plan artifact for incremental validation. "
-                    "Required params: section (string) and content (string). Optional param: "
-                    "mode (string, 'replace' or 'append', default 'replace'). "
-                    "Call ralph_finalize_plan when all sections are staged. "
+                    "Submit one validated plan section. Required: section, content. "
+                    "Optional: mode ('replace' or 'append', default 'replace'). "
+                    "Sections: summary, skills_mcp, steps, critical_files, "
+                    "risks_mitigations, verification_strategy, parallel_plan, work_units. "
+                    "Call ralph_finalize_plan after staging all sections. "
                     'Example: {"section": "summary", "content": '
                     + _EXAMPLE_PLAN_CONTENT
-                    + ', "mode": "replace"} updates the summary section.'
+                    + ', "mode": "replace"}.'
                 ),
                 input_schema={
                     "type": "object",
@@ -1164,8 +1165,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                             "description": (
                                 "Section name as a string: summary, skills_mcp, steps, "
                                 "critical_files, risks_mitigations, verification_strategy, "
-                                "or parallel_plan "
-                                "(example values: 'summary', 'steps', 'risks_mitigations')."
+                                "parallel_plan, or work_units "
+                                "(example values: 'summary', 'steps', "
+                                "'risks_mitigations', 'work_units')."
                             ),
                         },
                         "content": {

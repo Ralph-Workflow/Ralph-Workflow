@@ -116,6 +116,12 @@ ANALYSIS_NO_ASSUMED_HUMAN_BEHAVIOR_GUIDANCE = (
     "You MUST NOT judge what the agent, developer, or reviewer did or did not do."
 )
 ANALYSIS_RUN_COMMAND_OR_NO_COMMAND_GUIDANCE = "no runnable verification command exists"
+ANALYSIS_NO_PLUMBING_OVERWEIGHT_GUIDANCE = (
+    "Do not fail a plan solely because of Ralph Workflow internal exec or transport quirks"
+)
+ANALYSIS_NO_TRANSIENT_HANDOFF_FAILURE_GUIDANCE = (
+    "Do not treat transient .agent handoff plumbing as a blocking repository-accuracy defect"
+)
 ANALYSIS_NO_AGENT_LOG_GUIDANCE = (
     "You MUST NOT rely on agent logs, transcripts, or inferred process history "
     "as evaluation evidence."
@@ -238,6 +244,13 @@ PLANNING_ANALYSIS_MCP_REMEDIATION_GUIDANCE = (
 )
 PLANNING_ANALYSIS_SECTION_RESUBMIT_GUIDANCE = (
     "Exact plan sections to resubmit via the MCP plan-edit tools."
+)
+PLANNING_EXECUTION_PLAN_GUIDANCE = "Create a detailed, structured execution plan."
+PLANNING_EDIT_EXECUTION_PLAN_GUIDANCE = (
+    "Revise the existing execution plan in response to planning-analysis feedback."
+)
+PLANNING_ANALYSIS_NO_DOWNSTREAM_REPLANNING_GUIDANCE = (
+    "if the plan asks the executor to perform planning work mid-flight"
 )
 
 
@@ -537,6 +550,26 @@ def test_analysis_templates_define_failed_as_stronger_major_remediation() -> Non
     assert "security vulnerability, or data loss risk" not in development_analysis
     assert "security vulnerability, or data loss risk" not in planning_analysis
     assert "fundamentally incomplete or missed critical issues" not in review_analysis
+
+
+def test_planning_analysis_template_deemphasizes_internal_plumbing_failures() -> None:
+    planning_analysis = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
+
+    assert ANALYSIS_NO_PLUMBING_OVERWEIGHT_GUIDANCE in planning_analysis
+    assert ANALYSIS_NO_TRANSIENT_HANDOFF_FAILURE_GUIDANCE in planning_analysis
+
+
+def test_planning_templates_require_developer_executable_plans_not_meta_plans() -> None:
+    planning = (TEMPLATES_ROOT / "planning.jinja").read_text(encoding="utf-8")
+    planning_edit = (TEMPLATES_ROOT / "planning_edit.jinja").read_text(encoding="utf-8")
+    planning_analysis = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
+
+    assert PLANNING_EXECUTION_PLAN_GUIDANCE in planning
+    assert PLANNING_EDIT_EXECUTION_PLAN_GUIDANCE in planning_edit
+    assert PLANNING_ANALYSIS_NO_DOWNSTREAM_REPLANNING_GUIDANCE in planning_analysis
+    assert "render_payload_path('PLAN', PLAN_PATH)" not in planning_analysis
+    assert 'render_payload_path("PLAN", PLAN_PATH)' not in planning_analysis
+    assert "PLAN_PATH" not in planning_edit
 
 
 _MIN_WORKER_PROMPT_LEN = 50

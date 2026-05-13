@@ -2,7 +2,7 @@ PLANNING MODE
 
 {% include 'shared/_unattended_mode.j2' %}
 
-Create an implementation plan for:
+Create an execution plan for:
 
 Canonical request file: `{{PROMPT_PATH}}`
 {% if ARTIFACT_HISTORY_PATH %}
@@ -25,7 +25,7 @@ Fallback still needs an executor-grade plan. Include:
 
 Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern.
 Do not use phrases like "run tests" unless you provide the exact command and the expected passing result.
-If the executor would need to stop and research basic repository structure, invent a verification command, or choose among multiple plausible approaches, the plan is underspecified.
+If the executor would need to stop and research basic repository structure, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
 
 Native agent tools are disabled in this brokered fallback. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}, {{GET_PLAN_DRAFT_TOOL_REFERENCE}}, {{FINALIZE_PLAN_TOOL_REFERENCE}}, {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}, and {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} exactly as named below.
 

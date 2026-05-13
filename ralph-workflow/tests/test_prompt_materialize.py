@@ -8,6 +8,13 @@ import pytest
 from git import Repo as GitRepo
 
 import ralph.prompts.materialize as materialize_module
+from ralph.mcp.artifacts.handoffs import HANDOFF_PATHS
+from ralph.mcp.tools.artifact import (
+    handle_finalize_plan,
+    handle_get_plan_draft,
+    handle_submit_artifact,
+    handle_submit_plan_section,
+)
 from ralph.pipeline.cycle_baseline import write_cycle_baseline
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
@@ -26,6 +33,23 @@ from ralph.prompts.materialize import (
 from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
+
+
+class _ArtifactSubmitSession:
+    session_id = "test-session"
+    drain = "planning_analysis"
+
+    def check_capability(self, capability: str) -> object:
+        return capability == "artifact.submit"
+
+
+class _ArtifactWorkspace:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    def absolute_path(self, path: str) -> str:
+        return str(self.root / path)
+
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (
     "Use `ralph_get_plan_draft` to inspect the current finalized plan "
@@ -110,7 +134,7 @@ if TYPE_CHECKING:
 
 
 MINIMAL_PLAN_HANDOFF = (
-    "# Implementation Plan\n\n"
+    "# Execution Plan\n\n"
     "1. Add regression coverage.\n"
     "2. Tighten non-planning prompt preconditions.\n"
 )
@@ -220,7 +244,7 @@ def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path)
             }
         ),
     )
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nOld plan handoff.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nOld plan handoff.\n")
     workspace.write(
         ".agent/artifacts/planning_analysis_decision.json",
         json.dumps(
@@ -297,7 +321,7 @@ def test_materialize_planning_fallback_tolerates_missing_plan_and_clears_stale_a
             }
         ),
     )
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStale handoff.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStale handoff.\n")
     workspace.write(
         ".agent/artifacts/planning_analysis_decision.json",
         json.dumps(
@@ -343,6 +367,127 @@ def test_materialize_planning_fallback_tolerates_missing_plan_and_clears_stale_a
     assert workspace.exists(".agent/PLAN.md") is False
     assert workspace.exists(".agent/artifacts/planning_analysis_decision.json") is False
     assert workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md") is False
+
+
+def test_planning_loopback_prompt_and_plan_edit_mcp_contract_stay_consistent(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    artifact_workspace = _ArtifactWorkspace(tmp_path)
+    session = _ArtifactSubmitSession()
+    workspace.write("PROMPT.md", "Refine the plan based on analysis feedback")
+
+    plan_artifact = {
+        "summary": {
+            "context": "Existing plan to preserve.",
+            "scope_items": [
+                {"text": "one"},
+                {"text": "two"},
+                {"text": "three"},
+            ],
+        },
+        "steps": [
+            {
+                "number": 1,
+                "title": "Keep",
+                "content": "keep existing",
+                "targets": [{"path": "src/keep.py", "action": "modify"}],
+            }
+        ],
+        "critical_files": {
+            "primary_files": [{"path": "src/keep.py", "action": "modify"}],
+            "reference_files": [{"path": "PROMPT.md", "purpose": "original request"}],
+        },
+        "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
+        "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
+    }
+    handle_submit_artifact(
+        session,
+        artifact_workspace,
+        {"artifact_type": "plan", "content": json.dumps(plan_artifact)},
+    )
+    handle_submit_artifact(
+        session,
+        artifact_workspace,
+        {
+            "artifact_type": "planning_analysis_decision",
+            "content": json.dumps(
+                {
+                    "status": "request_changes",
+                    "summary": "The plan needs revisions.",
+                    "what_came_up_short": ["Verification commands are too vague."],
+                    "how_to_fix": ["Edit the existing plan draft instead of restarting."],
+                }
+            ),
+        },
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase="planning_analysis",
+    )
+
+    rendered = workspace.read(prompt_path)
+    expected_feedback_path = tmp_path / HANDOFF_PATHS["planning_analysis_decision"]
+    assert str(expected_feedback_path) in rendered
+    assert PLANNING_EDIT_GET_DRAFT_TEXT in rendered
+    assert "ralph_submit_plan_section" in rendered
+    assert "ralph_finalize_plan" in rendered
+
+    draft_result = handle_get_plan_draft(session, artifact_workspace, {})
+    draft_payload = json.loads(draft_result.content[0].text)
+    assert draft_payload["source"] == "finalized_plan"
+
+    revised_steps = [
+        {
+            "number": 1,
+            "title": "Review analyzer feedback against the existing plan",
+            "content": (
+                "Use the analysis artifact to tighten verification "
+                "and preserve valid scope."
+            ),
+            "targets": [
+                {"path": ".agent/PLANNING_ANALYSIS_DECISION.md", "action": "read"},
+                {"path": ".agent/CURRENT_PROMPT.md", "action": "reference"},
+                {"path": "PROMPT.md", "action": "reference"},
+            ],
+        }
+    ]
+    revised_verification = [
+        {
+            "method": "uv run pytest -q tests/test_prompt_materialize.py",
+            "expected_outcome": "planning edit contract stays aligned with MCP plan revision flow.",
+        }
+    ]
+    handle_submit_plan_section(
+        session,
+        artifact_workspace,
+        {"section": "steps", "content": json.dumps(revised_steps)},
+    )
+    handle_submit_plan_section(
+        session,
+        artifact_workspace,
+        {"section": "verification_strategy", "content": json.dumps(revised_verification)},
+    )
+    finalize_result = handle_finalize_plan(session, artifact_workspace, {})
+    assert finalize_result.is_error is False
+
+    stored = json.loads(
+        (tmp_path / ".agent" / "artifacts" / "plan.json").read_text(encoding="utf-8")
+    )
+    content = stored["content"]
+    assert content["steps"] == revised_steps
+    assert content["verification_strategy"] == revised_verification
+    assert content["critical_files"]["reference_files"] == [
+        {"path": "PROMPT.md", "purpose": "original request"}
+    ]
+
 
 
 def test_planning_loopback_entry_preserves_plan_and_analysis_artifacts(
@@ -465,7 +610,7 @@ def test_repeated_planning_loopback_never_renders_fresh_template(
     assert "Your job is to revise the existing plan" in rendered
 
 
-def test_planning_loopback_prompt_includes_artifact_history_path_when_history_exists(
+def test_planning_loopback_prompt_includes_artifact_history_when_history_exists(
     tmp_path: Path,
 ) -> None:
     from ralph.mcp.artifacts.history import history_index_path
@@ -546,7 +691,7 @@ def test_materialize_planning_retry_preserves_current_plan_context_when_last_ret
             }
         ),
     )
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nCurrent retryable plan context.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nCurrent retryable plan context.\n")
     workspace.write(
         ".agent/tmp/last_retry_error_planning.txt",
         "PREVIOUS ATTEMPT FAILED: validation error during planning retry",
@@ -565,7 +710,8 @@ def test_materialize_planning_retry_preserves_current_plan_context_when_last_ret
     rendered = workspace.read(prompt_path)
     assert "PLANNING EDIT MODE" in rendered
     assert "PREVIOUS ATTEMPT ERROR" in rendered
-    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
+    assert "ralph_get_plan_draft" in rendered
     assert workspace.exists(".agent/artifacts/plan.json") is True
     assert workspace.exists(".agent/PLAN.md") is True
 
@@ -610,7 +756,8 @@ def test_materialize_resumed_planning_with_draft_only_uses_draft_context(
 
     rendered = workspace.read(prompt_path)
     assert "PLANNING EDIT MODE" in rendered
-    assert "Resumed draft-only context." in rendered
+    assert "Resumed draft-only context." not in rendered
+    assert "ralph_get_plan_draft" in rendered
     assert workspace.exists(".agent/artifacts/.plan_draft.json") is True
 
 
@@ -644,7 +791,7 @@ def test_materialize_resumed_planning_preserves_existing_plan_context(
             }
         ),
     )
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nResumed plan context.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nResumed plan context.\n")
     workspace.write(
         ".agent/artifacts/.plan_draft.json",
         json.dumps(
@@ -716,7 +863,7 @@ def test_planning_retry_prompt_includes_artifact_history_path_when_history_exist
             }
         ),
     )
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nRetryable plan context.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nRetryable plan context.\n")
     workspace.write(
         ".agent/tmp/last_retry_error_planning.txt",
         "PREVIOUS ATTEMPT FAILED: validation error during planning retry",
@@ -797,7 +944,8 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
 
     rendered = workspace.read(prompt_path)
     assert "PLANNING EDIT MODE" in rendered
-    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
+    assert "ralph_get_plan_draft" in rendered
     assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") in rendered
     assert "Read the complete analysis feedback from file at" in rendered
     assert "This file is the authoritative source for analysis feedback in this prompt." in rendered
@@ -1014,6 +1162,55 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
     assert "`mcp__ralph__declare_complete` or bare `declare_complete`" in rendered
 
 
+def test_materialize_development_entry_clears_completed_planning_history(
+    tmp_path: Path,
+) -> None:
+    from ralph.mcp.artifacts.history import history_index_path
+
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Implement unattended planning recovery")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Approved plan context.",
+                        "scope_items": [{"text": "one"}, {"text": "two"}, {"text": "three"}],
+                    },
+                    "steps": [{"number": 1, "title": "Implement", "content": "do the work"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/app.py", "action": "modify"}],
+                        "reference_files": [],
+                    },
+                    "risks_mitigations": [{"risk": "regression", "mitigation": "test it"}],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
+                },
+            }
+        ),
+    )
+    history_file = history_index_path(tmp_path / ".agent" / "artifacts", "plan")
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        previous_phase="planning_analysis",
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
+    assert history_file.exists() is False
+
+
+
 def test_materialize_development_prompt_reads_agent_plan_markdown_handoff(
     tmp_path: Path,
 ) -> None:
@@ -1022,7 +1219,7 @@ def test_materialize_development_prompt_reads_agent_plan_markdown_handoff(
     workspace.write("PROMPT.md", "Implement unattended planning recovery")
     workspace.write(
         ".agent/PLAN.md",
-        "# Implementation Plan\n\n## Steps\n1. Add regression tests\n2. Fix pipeline routing\n",
+        "# Execution Plan\n\n## Steps\n1. Add regression tests\n2. Fix pipeline routing\n",
     )
 
     prompt_path = materialize_prompt_for_phase(
@@ -1038,7 +1235,7 @@ def test_materialize_development_prompt_reads_agent_plan_markdown_handoff(
     current_prompt_path = tmp_path / ".agent" / "CURRENT_PROMPT.md"
     assert str(current_prompt_path) in rendered
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
-    assert "Read the complete implementation plan from file at" in rendered
+    assert "Read the complete execution plan from file at" in rendered
     assert "Add regression tests" not in rendered
 
 
@@ -1218,9 +1415,10 @@ def test_materialize_planning_analysis_uses_markdown_plan_handoff(
     )
 
     rendered = workspace.read(prompt_path)
-    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
-    assert "Read the complete latest artifact from file at" in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
+    assert "Read the complete latest artifact from file at" not in rendered
     assert "Fresh plan context." not in rendered
+    assert "ralph_get_plan_draft" in rendered
 
 
 def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
@@ -1261,9 +1459,9 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
 
     rendered = workspace.read(prompt_path)
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
-    assert "Read the complete implementation plan from file at" in rendered
+    assert "Read the complete execution plan from file at" in rendered
     assert (
-        "This file is the authoritative source for implementation plan in this prompt." in rendered
+        "This file is the authoritative source for execution plan in this prompt." in rendered
     )
     assert "STALE PLAN" not in rendered
     assert "Fresh structured plan" not in rendered
@@ -1762,7 +1960,7 @@ def test_materialize_with_no_multimodal_entries_does_not_create_sidecar(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Build the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
 
     materialize_prompt_for_phase(
         phase="development",
@@ -1784,7 +1982,7 @@ def test_materialize_with_empty_multimodal_entries_does_not_create_sidecar(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Build the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
 
     materialize_prompt_for_phase(
         phase="development",
@@ -1806,7 +2004,7 @@ def test_materialize_with_multimodal_entries_creates_sidecar(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Build the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
 
     entry = _make_sidecar_entry()
     materialize_prompt_for_phase(
@@ -1846,7 +2044,7 @@ def test_materialize_sidecar_contains_all_artifacts(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Build the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
 
     entries = [
         _make_sidecar_entry(
@@ -1887,7 +2085,7 @@ def test_stale_sidecar_is_cleared_on_text_only_run(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Build the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
 
     # First run: multimodal
     entry = _make_sidecar_entry()

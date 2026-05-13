@@ -152,7 +152,7 @@ def _write_minimal_plan_artifacts(
         encoding="utf-8",
     )
     (root / ".agent" / "PLAN.md").write_text(
-        f"# Implementation Plan\n\n{context}.\n",
+        f"# Execution Plan\n\n{context}.\n",
         encoding="utf-8",
     )
 
@@ -204,7 +204,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_pl
     workspace.write("PROMPT.md", "Create a fresh plan")
     workspace.write(
         ".agent/tmp/planning_prompt.md",
-        "You are in PLANNING EDIT MODE. Revise the existing implementation plan.",
+        "You are in PLANNING EDIT MODE. Revise the existing execution plan.",
     )
     effect = InvokeAgentEffect(
         agent_name="claude",
@@ -278,7 +278,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
     )
     workspace.write(
         ".agent/tmp/planning_prompt.md",
-        "You are in PLANNING MODE. Create a detailed, structured implementation plan.",
+        "You are in PLANNING MODE. Create a detailed, structured execution plan.",
     )
     effect = InvokeAgentEffect(
         agent_name="claude",
@@ -317,7 +317,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
     )
     workspace.write(
         ".agent/PLAN.md",
-        "# Implementation Plan\n\n1. Continue implementing the feature\n",
+        "# Execution Plan\n\n1. Continue implementing the feature\n",
     )
     workspace.write(
         ".agent/tmp/development_prompt.md",
@@ -1166,7 +1166,7 @@ class TestPipelineRunnerLoop:
         )
         workspace.write(
             ".agent/tmp/planning_prompt.md",
-            "You are in PLANNING MODE. Create a detailed, structured implementation plan.",
+            "You are in PLANNING MODE. Create a detailed, structured execution plan.",
         )
         state = PipelineState(phase="planning", previous_phase="planning_analysis")
         effect = InvokeAgentEffect(
@@ -4628,7 +4628,7 @@ def test_materialize_agent_prompt_creates_sidecar_from_session_index(
     policy_bundle = _load_default_policy_bundle()
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Build the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
     _write_media_session(tmp_path, "development", [_SAMPLE_SESSION_IMAGE])
 
     effect = InvokeAgentEffect(
@@ -4666,7 +4666,7 @@ def test_materialize_agent_prompt_clears_sidecar_when_no_session_index(
     policy_bundle = _load_default_policy_bundle()
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Build the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
     stale_sidecar = tmp_path / ".agent" / "tmp" / "development_multimodal_handoff.json"
     stale_sidecar.parent.mkdir(parents=True, exist_ok=True)
     stale_sidecar.write_text(
@@ -4710,7 +4710,7 @@ def test_materialize_agent_prompt_carries_multiple_media_entries(
     policy_bundle = _load_default_policy_bundle()
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Build the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
     _write_media_session(tmp_path, "development", [_SAMPLE_SESSION_IMAGE, _SAMPLE_SESSION_PDF])
 
     effect = InvokeAgentEffect(
@@ -4763,7 +4763,7 @@ def test_materialize_agent_prompt_preserves_multimodal_metadata_across_preparati
     policy_bundle = _load_default_policy_bundle()
     workspace = FsWorkspace(tmp_path)
     workspace.write("PROMPT.md", "Build the feature")
-    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
 
     mixed_artifacts = [_SAMPLE_SESSION_IMAGE, _SAMPLE_SESSION_PDF, _SAMPLE_SESSION_AUDIO]
     _write_media_session(tmp_path, "development", mixed_artifacts)
