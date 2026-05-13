@@ -2175,6 +2175,55 @@ class TestExecuteAgentEffect:
         assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
 
+    def test_materialize_agent_prompt_if_needed_resets_resumed_planning_context_when_prompt_changed(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        workspace = FsWorkspace(tmp_path)
+        _write_minimal_plan_artifacts(tmp_path, context="Resumed plan")
+        _write_minimal_plan_draft(tmp_path, context="Resumed draft")
+        (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".agent" / "CURRENT_PROMPT.md").write_text(
+            "Resume the interrupted planning pass",
+            encoding="utf-8",
+        )
+        (tmp_path / "PROMPT.md").write_text(
+            "Replace the plan with a different task",
+            encoding="utf-8",
+        )
+        effect = InvokeAgentEffect(
+            agent_name="planner",
+            phase="planning",
+            prompt_file=".agent/tmp/planning_prompt.md",
+            drain="planning",
+        )
+        state = PipelineState(
+            phase="planning",
+            previous_phase=None,
+            checkpoint_saved_count=1,
+        )
+        registry = MagicMock()
+        registry.get.return_value = None
+
+        runner_module._materialize_agent_prompt_if_needed(
+            effect,
+            state,
+            workspace,
+            bundle,
+            registry,
+        )
+
+        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(encoding="utf-8")
+        assert "PLANNING MODE" in rendered
+        assert "PLANNING EDIT MODE" not in rendered
+        assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
+            "Replace the plan with a different task"
+        )
+        assert not (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
+        assert not (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert not (tmp_path / ".agent" / "PLAN.md").exists()
+
     def test_dynamic_ccs_agent_reaches_invocation(self, monkeypatch: MonkeyPatch) -> None:
         effect = InvokeAgentEffect(
             agent_name="ccs/mm",

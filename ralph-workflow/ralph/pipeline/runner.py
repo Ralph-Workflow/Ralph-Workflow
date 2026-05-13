@@ -2586,12 +2586,15 @@ def _materialize_prepared_prompt(  # noqa: PLR0913
         pipeline_policy=pipeline_policy,
         artifacts_policy=artifacts_policy,
         previous_phase=effect.previous_phase,
-        resume_existing_phase=_should_resume_existing_planning_phase_name(
-            phase=effect.phase,
-            drain=effect.drain,
-            state=state,
-            pipeline_policy=pipeline_policy,
-            artifacts_policy=artifacts_policy,
+        resume_existing_phase=(
+            not _prompt_changed_since_last_materialization(workspace_scope.root)
+            and _should_resume_existing_planning_phase_name(
+                phase=effect.phase,
+                drain=effect.drain,
+                state=state,
+                pipeline_policy=pipeline_policy,
+                artifacts_policy=artifacts_policy,
+            )
         ),
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
@@ -2603,6 +2606,20 @@ def _materialize_prepared_prompt(  # noqa: PLR0913
         worker_namespace=worker_namespace,
         multimodal_entries=media_entries,
     )
+
+
+def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
+    prompt_path = workspace_root / "PROMPT.md"
+    current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    if not prompt_path.exists() or not current_prompt_path.exists():
+        return False
+    try:
+        return prompt_path.read_text(encoding="utf-8") != current_prompt_path.read_text(
+            encoding="utf-8"
+        )
+    except OSError:
+        return False
+
 
 
 def _should_resume_existing_planning_phase_name(
@@ -2664,10 +2681,13 @@ def _materialize_agent_prompt_if_needed(
         pipeline_policy=policy_bundle.pipeline,
         artifacts_policy=policy_bundle.artifacts,
         previous_phase=state.previous_phase,
-        resume_existing_phase=_should_resume_existing_planning_phase(
-            effect=effect,
-            state=state,
-            policy_bundle=policy_bundle,
+        resume_existing_phase=(
+            not _prompt_changed_since_last_materialization(workspace.root)
+            and _should_resume_existing_planning_phase(
+                effect=effect,
+                state=state,
+                policy_bundle=policy_bundle,
+            )
         ),
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(

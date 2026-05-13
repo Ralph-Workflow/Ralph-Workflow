@@ -6,6 +6,7 @@ This module implements the main pipeline execution command.
 from __future__ import annotations
 
 import pathlib  # noqa: TC003
+import shutil
 from importlib import import_module
 from inspect import signature
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
@@ -98,6 +99,28 @@ _EXIT_INTERRUPT = 130
 _EXIT_PREFLIGHT = 2
 load_policy = _dir_load_policy
 
+_GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
+    "artifacts",
+    "tmp",
+    "prompt_history",
+    "workers",
+)
+
+_GENERATED_AGENT_STATE_FILES: tuple[str, ...] = (
+    "CURRENT_PROMPT.md",
+    "PLAN.md",
+    "ISSUES.md",
+    "DEVELOPMENT_RESULT.md",
+    "FIX_RESULT.md",
+    "DEVELOPMENT_ANALYSIS_DECISION.md",
+    "REVIEW_ANALYSIS_DECISION.md",
+    "checkpoint.json",
+    "rebase_checkpoint.json",
+    "rebase_checkpoint.json.bak",
+    "rebase.lock",
+    "start_commit",
+)
+
 
 class _LoadResult(NamedTuple):
     config: UnifiedConfig
@@ -106,12 +129,44 @@ class _LoadResult(NamedTuple):
     policy_bundle: PolicyBundle | None
 
 
+def _prompt_changed_since_last_materialization(workspace_root: pathlib.Path) -> bool:
+    prompt_path = workspace_root / "PROMPT.md"
+    current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    if not prompt_path.exists() or not current_prompt_path.exists():
+        return False
+    try:
+        return prompt_path.read_text(encoding="utf-8") != current_prompt_path.read_text(
+            encoding="utf-8"
+        )
+    except OSError:
+        return False
+
+
+
+def _clear_generated_pipeline_state(workspace_root: pathlib.Path) -> None:
+    agent_dir = workspace_root / ".agent"
+    for relative_dir in _GENERATED_AGENT_STATE_DIRS:
+        shutil.rmtree(agent_dir / relative_dir, ignore_errors=True)
+    for relative_file in _GENERATED_AGENT_STATE_FILES:
+        (agent_dir / relative_file).unlink(missing_ok=True)
+
+
+
+def _invalidate_pipeline_state_if_prompt_changed(workspace_root: pathlib.Path) -> bool:
+    if not _prompt_changed_since_last_materialization(workspace_root):
+        return False
+    _clear_generated_pipeline_state(workspace_root)
+    return True
+
+
+
 def _load_configuration(
     config_path: pathlib.Path | None,
     cli_overrides: ConfigOverrides,
     resume: bool,
     *,
     display_context: DisplayContext,
+    inline_prompt: str | None = None,
 ) -> _LoadResult | int:
     """Load configuration and resolve workspace scope.
 
@@ -128,6 +183,19 @@ def _load_configuration(
 
     initial_state: PipelineState | None = None
     policy_bundle: PolicyBundle | None = None
+
+    if (
+        workspace_scope is not None
+        and inline_prompt is None
+        and _invalidate_pipeline_state_if_prompt_changed(workspace_scope.root)
+    ):
+        console.print(
+            Text(
+                "PROMPT.md changed since the last materialized run context; "
+                "cleared saved pipeline state and caches.",
+                style="theme.status.warning",
+            )
+        )
 
     if workspace_scope is not None:
         try:
@@ -429,7 +497,13 @@ def run_pipeline(  # noqa: PLR0913
         current_prompt_path.write_text(inline_prompt, encoding="utf-8")
 
     # Phase 1: Load configuration
-    load_result = _load_configuration(config_path, cli_overrides or {}, resume, display_context=ctx)
+    load_result = _load_configuration(
+        config_path,
+        cli_overrides or {},
+        resume,
+        display_context=ctx,
+        inline_prompt=inline_prompt,
+    )
     if isinstance(load_result, int):
         return load_result
 

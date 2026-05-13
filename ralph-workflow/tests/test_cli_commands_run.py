@@ -194,6 +194,74 @@ def test_run_pipeline_without_resume_ignores_existing_checkpoint(
     assert seen["initial_state"] is None
 
 
+
+def test_invalidate_pipeline_state_if_prompt_changed_clears_generated_state(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "PROMPT.md").write_text("new prompt\n", encoding="utf-8")
+    (agent_dir / "CURRENT_PROMPT.md").write_text("old prompt\n", encoding="utf-8")
+    (agent_dir / "checkpoint.json").write_text("{}", encoding="utf-8")
+    (agent_dir / "PLAN.md").write_text("# stale\n", encoding="utf-8")
+    (agent_dir / "start_commit").write_text("abc123\n", encoding="utf-8")
+    (agent_dir / "rebase_checkpoint.json").write_text("{}", encoding="utf-8")
+    (agent_dir / "rebase_checkpoint.json.bak").write_text("{}", encoding="utf-8")
+    (agent_dir / "rebase.lock").write_text("1", encoding="utf-8")
+    (agent_dir / "tmp").mkdir(parents=True, exist_ok=True)
+    (agent_dir / "tmp" / "planning_prompt.md").write_text("stale", encoding="utf-8")
+    (agent_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+    (agent_dir / "artifacts" / "plan.json").write_text("{}", encoding="utf-8")
+    (agent_dir / "prompt_history").mkdir(parents=True, exist_ok=True)
+    (agent_dir / "prompt_history" / "PROMPT_1.md").write_text("old", encoding="utf-8")
+    (agent_dir / "workers").mkdir(parents=True, exist_ok=True)
+    (agent_dir / "workers" / "w1").mkdir(parents=True, exist_ok=True)
+    (agent_dir / "workers" / "w1" / "state.txt").write_text("stale", encoding="utf-8")
+    (agent_dir / "ralph-workflow.toml").write_text("[agents]\n", encoding="utf-8")
+
+    changed = run_module._invalidate_pipeline_state_if_prompt_changed(tmp_path)
+
+    assert changed is True
+    assert not (agent_dir / "CURRENT_PROMPT.md").exists()
+    assert not (agent_dir / "checkpoint.json").exists()
+    assert not (agent_dir / "PLAN.md").exists()
+    assert not (agent_dir / "start_commit").exists()
+    assert not (agent_dir / "rebase_checkpoint.json").exists()
+    assert not (agent_dir / "rebase_checkpoint.json.bak").exists()
+    assert not (agent_dir / "rebase.lock").exists()
+    assert not (agent_dir / "tmp").exists()
+    assert not (agent_dir / "artifacts").exists()
+    assert not (agent_dir / "prompt_history").exists()
+    assert not (agent_dir / "workers").exists()
+    assert (agent_dir / "ralph-workflow.toml").exists()
+
+
+
+def test_run_pipeline_resume_clears_stale_state_before_loading_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_workspace(monkeypatch, tmp_path)
+    agent_dir = tmp_path / ".agent"
+    (tmp_path / "PROMPT.md").write_text("# Goal\n\nNew task.\n", encoding="utf-8")
+    (agent_dir / "CURRENT_PROMPT.md").write_text("# Goal\n\nOld task.\n", encoding="utf-8")
+    (agent_dir / "checkpoint.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
+    seen: dict[str, object] = {}
+
+    def fake_load() -> None:
+        seen["checkpoint_exists_when_load_called"] = (agent_dir / "checkpoint.json").exists()
+
+    def fake_run(*_args, **kwargs):
+        seen["initial_state"] = kwargs.get("initial_state")
+        return 0
+
+    monkeypatch.setattr(run_module.ckpt, "load", fake_load)
+    monkeypatch.setattr(run_module, "_run_func", fake_run)
+
+    assert run_module.run_pipeline(resume=True) == 0
+    assert seen["checkpoint_exists_when_load_called"] is False
+    assert seen["initial_state"] is None
+
+
 def test_run_pipeline_resume_without_checkpoint_prints_notice(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
