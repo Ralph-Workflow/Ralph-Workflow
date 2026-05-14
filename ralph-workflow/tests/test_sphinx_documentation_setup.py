@@ -15,6 +15,7 @@ INDEX_RST_PATH = REPO_ROOT / "docs" / "sphinx" / "index.rst"
 GETTING_STARTED_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"
 SPHINX_DIR = REPO_ROOT / "docs" / "sphinx"
 DEVELOPER_INTERNALS_PATH = SPHINX_DIR / "developer-internals.md"
+REFERENCE_MD_PATH = SPHINX_DIR / "reference.md"
 README_PATH = REPO_ROOT / "README.md"
 
 # Public packages that must have non-empty docstrings (pydoc-first contract)
@@ -203,6 +204,30 @@ def test_developer_internals_toctree_entries_resolve_to_real_sphinx_pages() -> N
     assert not missing, (
         "The following developer-internals.md toctree entries do not resolve:\n"
         + "\n".join(f"  docs/sphinx/{name}.md" for name in missing)
+    )
+
+
+def test_supervising_api_page_in_developer_section() -> None:
+    """supervising-api must be in developer-internals.md and absent from reference.md.
+
+    Product requirement 9: the supervising API documentation must be
+    discoverable through the developer section and must NOT appear in
+    operator-facing pages.
+    """
+    dev_content = DEVELOPER_INTERNALS_PATH.read_text(encoding="utf-8")
+    dev_docnames = _md_toctree_docnames(dev_content)
+    assert "supervising-api" in dev_docnames, (
+        "developer-internals.md toctree must include 'supervising-api'. "
+        "The supervising API documentation must be discoverable through the "
+        "developer section, not through operator-facing pages."
+    )
+
+    ref_content = REFERENCE_MD_PATH.read_text(encoding="utf-8")
+    ref_docnames = _md_toctree_docnames(ref_content)
+    assert "supervising-api" not in ref_docnames, (
+        "reference.md toctree must NOT include 'supervising-api'. "
+        "The supervising API is developer-internal only; adding it to "
+        "reference.md would violate product requirement 9."
     )
 
 

@@ -113,3 +113,18 @@ def test_on_snapshot_view_contains_recent_activity_after_record_activity(tmp_pat
 
     assert received
     assert any("running mypy checks" in activity for activity in received[-1].recent_activity)
+
+
+def test_on_snapshot_exception_does_not_propagate_to_notify(tmp_path: Path) -> None:
+    def _raise(snap: object) -> None:
+        raise ValueError("callback error")
+
+    subscriber = _make_subscriber(
+        tmp_path,
+        run_id="run-exc",
+        on_snapshot=_raise,
+    )
+
+    subscriber.notify(_make_state("development"))
+
+    assert not subscriber.queue.empty()
