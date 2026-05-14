@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-05-15T00:00:01.048077",
+  "sites": {
+    "https://hireaegis.com": [
+      "MISSING_CHARSET"
+    ],
+    "https://billing.hireaegis.com": [
+      "MISSING_META_DESC"
+    ],
+    "https://ralphworkflow.com": []
+  },
+  "opportunities": [],
+  "fixes": []
+}
