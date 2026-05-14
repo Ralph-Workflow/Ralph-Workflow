@@ -176,6 +176,13 @@ ralph.cli.commands.run
    :members:
    :show-inheritance:
 
+ralph.cli.commands.smoke
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.smoke
+   :members:
+   :show-inheritance:
+
 ralph.cli.commands.check_policy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -634,6 +641,13 @@ ralph.agents.parsers.opencode
    :members:
    :show-inheritance:
 
+ralph.agents.parsers.claude_interactive
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.parsers.claude_interactive
+   :members:
+   :show-inheritance:
+
 ralph.agents.registry
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -751,6 +765,13 @@ ralph.mcp.artifacts.store
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.artifacts.store
+   :members:
+   :show-inheritance:
+
+ralph.mcp.artifacts.smoke_test_result
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.smoke_test_result
    :members:
    :show-inheritance:
 
@@ -1396,6 +1417,13 @@ ralph.process.manager
 .. automodule:: ralph.process.manager
    :no-members:
 
+ralph.process.pty
+~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.process.pty
+   :members:
+   :show-inheritance:
+
 ralph.process.mcp_supervisor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1556,6 +1584,13 @@ ralph.display.line_sanitizer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.line_sanitizer
+   :members:
+   :show-inheritance:
+
+ralph.display.vt_normalizer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.vt_normalizer
    :members:
    :show-inheritance:
 

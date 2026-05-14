@@ -14,6 +14,7 @@ from ralph.process.child_liveness import (  # noqa: F401
 from ralph.process.manager import (
     ManagedAsyncProcess,
     ManagedProcess,
+    ManagedPtyProcess,
     ProcessEvent,
     ProcessManager,
     ProcessManagerPolicy,
@@ -28,6 +29,7 @@ from ralph.process.manager import (
 __all__ = [
     "ManagedAsyncProcess",
     "ManagedProcess",
+    "ManagedPtyProcess",
     "ProcessEvent",
     "ProcessManager",
     "ProcessManagerPolicy",

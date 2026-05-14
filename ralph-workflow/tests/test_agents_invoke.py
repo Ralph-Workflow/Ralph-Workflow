@@ -532,6 +532,38 @@ def test_build_command_injects_claude_append_system_prompt_file() -> None:
     ]
 
 
+def test_build_command_injects_claude_interactive_session_id_and_settings() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(
+            initial_session_id="fresh-session-1",
+            settings_json='{"hooks":{}}',
+        ),
+    )
+
+    assert cmd == [
+        "claude",
+        "--permission-mode",
+        "auto",
+        "--session-id",
+        "fresh-session-1",
+        "--settings",
+        '{"hooks":{}}',
+        "PROMPT.md",
+    ]
+
+
+
 def test_build_command_injects_claude_interactive_append_system_prompt_file() -> None:
     config = AgentConfig(
         cmd="claude",

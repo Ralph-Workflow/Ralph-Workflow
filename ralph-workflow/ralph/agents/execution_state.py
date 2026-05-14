@@ -12,6 +12,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.agents.parsers.claude_interactive import ClaudeInteractiveTranscriptParser
 from ralph.config.enums import AgentTransport
 from ralph.process.child_liveness import classify_child_snapshot
 
@@ -124,11 +125,26 @@ class ClaudeExecutionStrategy(GenericExecutionStrategy):
 class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
     """Interactive Claude session strategy.
 
-    Reuses Claude-aware line classification so unattended TUI output still
-    yields meaningful watchdog activity signals, while gating completion on
-    artifact evidence or explicit declare_complete. A clean exit without
-    evidence is resumable, allowing the runner to retry.
+    Uses a VT-aware transcript parser before falling back to the headless Claude
+    classifier so TUI repaint noise does not downgrade meaningful tool/lifecycle
+    lines into generic output.
     """
+
+    def __init__(self) -> None:
+        self._transcript_parser = ClaudeInteractiveTranscriptParser()
+
+    def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+        events = self._transcript_parser.feed(line)
+        if events:
+            event = events[-1]
+            if event.kind == "tool_use":
+                return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=event.text)
+            if event.kind == "lifecycle":
+                return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=event.text)
+            if event.kind == "session":
+                return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=event.text)
+            return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=event.text)
+        return super().classify_activity_line(line)
 
     def supports_session_continuation(self) -> bool:
         return True

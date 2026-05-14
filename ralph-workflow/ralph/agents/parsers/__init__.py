@@ -26,6 +26,7 @@ To add a parser for a new agent transport, create a module in this package, impl
 
 from ralph.agents.parsers.base import AgentOutputLine, AgentParser
 from ralph.agents.parsers.claude import ClaudeParser
+from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
 from ralph.agents.parsers.gemini import GeminiParser
 from ralph.agents.parsers.generic import GenericParser
@@ -34,6 +35,7 @@ from ralph.agents.parsers.opencode import OpenCodeParser
 __all__ = [
     "AgentOutputLine",
     "AgentParser",
+    "ClaudeInteractiveParser",
     "ClaudeParser",
     "CodexParser",
     "GeminiParser",
@@ -56,6 +58,7 @@ def get_parser(parser_type: str) -> AgentParser:
     """
     parsers: dict[str, type[AgentParser]] = {
         "claude": ClaudeParser,
+        "claude_interactive": ClaudeInteractiveParser,
         "codex": CodexParser,
         "gemini": GeminiParser,
         "opencode": OpenCodeParser,

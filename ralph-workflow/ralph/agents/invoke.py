@@ -12,18 +12,23 @@ Key features:
 
 from __future__ import annotations
 
+import codecs
+import contextlib
 import importlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Protocol, cast, runtime_checkable
+from uuid import uuid4
 
 from loguru import logger
 from tqdm import tqdm
@@ -49,6 +54,7 @@ from ralph.agents.idle_watchdog import (
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
+from ralph.display.vt_normalizer import normalize_vt_text
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -73,10 +79,12 @@ from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classif
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
     ManagedProcess,
+    ManagedPtyProcess,
     ProcessEvent,
     ProcessStatus,
     get_process_manager,
 )
+from ralph.process.pty import read_master_chunk, wait_for_master_readable
 from ralph.timeout_defaults import (
     CHILD_EXIT_RECONCILE_SECONDS,
     CHILD_HEARTBEAT_TTL_SECONDS,
@@ -96,6 +104,22 @@ _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
 _MAX_PARSED_OUTPUT_LINES = 256
 _MAX_WORKSPACE_CHANGED_FILES = 512
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
+_TURN_BOUNDARY_MARKER = "[claude turn boundary]"
+_SESSION_ID_PATTERNS = (
+    re.compile(r"session\s+id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
+    re.compile(r"--resume\s+([A-Za-z0-9._:-]+)"),
+)
+_PERMISSION_PROMPT_PATTERNS = (
+    re.compile(r"claude requested permissions?", re.IGNORECASE),
+    re.compile(r"\bapprove\b", re.IGNORECASE),
+    re.compile(r"\ballow\?", re.IGNORECASE),
+    re.compile(r"enable auto mode\?", re.IGNORECASE),
+    re.compile(r"enter to confirm", re.IGNORECASE),
+)
+_CHOICE_MENU_OPTION_RE = re.compile(
+    r"^(?P<prefix>\u276f\s*)?(?P<index>\d+)\.\s+(?P<label>.+)$"
+)
+_MENU_QUIESCENCE_SECONDS = 0.75
 
 
 @dataclass(frozen=True)
@@ -159,6 +183,9 @@ class InvokeOptions:
     required_artifact: RequiredArtifact | None = None
     explicit_completion_seen: bool = False
     captured_session_id: str | None = None
+    initial_session_id: str | None = None
+    settings_json: str | None = None
+    stop_sentinel_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -171,6 +198,24 @@ class _BuildCommandOptions:
     allowed_mcp_tool_names: tuple[str, ...] = ()
     system_prompt_file: str | None = None
     workspace_path: Path | None = None
+    initial_session_id: str | None = None
+    settings_json: str | None = None
+    stop_sentinel_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class _ChoiceMenuOption:
+    index: int
+    label: str
+    selected: bool
+
+
+@dataclass(frozen=True)
+class _ChoiceMenuState:
+    prompt: str
+    options: tuple[_ChoiceMenuOption, ...]
+    selected_index: int | None
+    confirm_footer: str
 
 
 @dataclass(frozen=True)
@@ -313,6 +358,18 @@ class AgentInvocationError(Exception):
         return ""
 
 
+class InteractivePermissionPromptError(AgentInvocationError):
+    """Raised when interactive Claude reaches a permission prompt in unattended mode."""
+
+    def __init__(self, agent_name: str, parsed_output: list[str]) -> None:
+        super().__init__(
+            agent_name,
+            -1,
+            "Interactive Claude reached a permission prompt in unattended mode",
+            parsed_output,
+        )
+
+
 class AgentInactivityTimeoutError(AgentInvocationError):
     """Raised when an agent stalls without producing output."""
 
@@ -388,6 +445,11 @@ def _extract_session_id_from_line(line: str) -> str | None:
     try:
         parsed = cast("object", json.loads(line))
     except json.JSONDecodeError:
+        stripped = line.strip()
+        for pattern in _SESSION_ID_PATTERNS:
+            match = pattern.search(stripped)
+            if match is not None:
+                return match.group(1)
         return None
     return _find_session_id(parsed)
 
@@ -507,6 +569,79 @@ class WorkspaceMonitor:
         return set(self._seen_files)
 
 
+def _shell_single_quote(value: str) -> str:
+    escaped = value.replace("'", "'\\''")
+    return f"'{escaped}'"
+
+
+
+def _interactive_stop_sentinel_path(session_id: str) -> Path:
+    return Path(tempfile.gettempdir()) / f"ralph-claude-interactive-{session_id}.done"
+
+
+
+def _interactive_stop_hook_settings(sentinel_path: Path) -> str:
+    command = f"touch {_shell_single_quote(str(sentinel_path))}"
+    settings: dict[str, object] = {
+        "hooks": {
+            "Stop": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": command,
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+    return json.dumps(settings)
+
+
+
+def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig) -> InvokeOptions:
+    if _agent_transport(config) != AgentTransport.CLAUDE_INTERACTIVE:
+        return opts
+    session_id = opts.session_id or opts.initial_session_id or str(uuid4())
+    sentinel_path = opts.stop_sentinel_path or _interactive_stop_sentinel_path(session_id)
+    settings_json = opts.settings_json or _interactive_stop_hook_settings(sentinel_path)
+    return InvokeOptions(
+        model_flag=opts.model_flag,
+        session_id=opts.session_id,
+        verbose=opts.verbose,
+        show_progress=opts.show_progress,
+        workspace_path=opts.workspace_path,
+        extra_env=opts.extra_env,
+        idle_timeout_seconds=opts.idle_timeout_seconds,
+        drain_window_seconds=opts.drain_window_seconds,
+        max_waiting_on_child_seconds=opts.max_waiting_on_child_seconds,
+        idle_poll_interval_seconds=opts.idle_poll_interval_seconds,
+        parent_exit_grace_seconds=opts.parent_exit_grace_seconds,
+        descendant_wait_timeout_seconds=opts.descendant_wait_timeout_seconds,
+        descendant_wait_poll_seconds=opts.descendant_wait_poll_seconds,
+        process_exit_wait_seconds=opts.process_exit_wait_seconds,
+        max_session_seconds=opts.max_session_seconds,
+        waiting_status_interval_seconds=opts.waiting_status_interval_seconds,
+        suspect_waiting_on_child_seconds=opts.suspect_waiting_on_child_seconds,
+        child_progress_ttl_seconds=opts.child_progress_ttl_seconds,
+        child_heartbeat_ttl_seconds=opts.child_heartbeat_ttl_seconds,
+        child_stale_label_ttl_seconds=opts.child_stale_label_ttl_seconds,
+        child_exit_reconcile_seconds=opts.child_exit_reconcile_seconds,
+        max_waiting_on_child_no_progress_seconds=opts.max_waiting_on_child_no_progress_seconds,
+        pure=opts.pure,
+        system_prompt_file=opts.system_prompt_file,
+        waiting_listener=opts.waiting_listener,
+        required_artifact=opts.required_artifact,
+        explicit_completion_seen=opts.explicit_completion_seen,
+        captured_session_id=opts.captured_session_id,
+        initial_session_id=session_id,
+        settings_json=settings_json,
+        stop_sentinel_path=sentinel_path,
+    )
+
+
+
 def invoke_agent(
     config: AgentConfig,
     prompt_file: str,
@@ -528,7 +663,7 @@ def invoke_agent(
     Raises:
         AgentInvocationError: If agent exits with non-zero code.
     """
-    opts = options or InvokeOptions()
+    opts = _prepare_interactive_claude_options(options or InvokeOptions(), config)
     runtime = resolve_invocation_runtime(
         config,
         opts.extra_env,
@@ -550,6 +685,9 @@ def invoke_agent(
             allowed_mcp_tool_names=allowed_mcp_tool_names,
             system_prompt_file=opts.system_prompt_file,
             workspace_path=opts.workspace_path,
+            initial_session_id=opts.initial_session_id,
+            settings_json=opts.settings_json,
+            stop_sentinel_path=opts.stop_sentinel_path,
         ),
     )
     logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
@@ -568,20 +706,39 @@ def invoke_agent(
     policy = _policy_from_options(opts)
 
     try:
-        lines_iter = _run_subprocess_and_read_lines(
-            cmd,
-            config,
-            opts.show_progress,
-            runtime_env,
-            opts.workspace_path,
-            policy=policy,
-            execution_strategy=execution_strategy,
-            liveness_probe=liveness_probe,
-            waiting_listener=opts.waiting_listener,
-            monitor=monitor,
-            required_artifact=opts.required_artifact,
-            _clock=_clock,
-        )
+        transport = _agent_transport(config)
+        if transport == AgentTransport.CLAUDE_INTERACTIVE:
+            lines_iter = _run_pty_and_read_lines(
+                cmd,
+                config,
+                opts.show_progress,
+                runtime_env,
+                opts.workspace_path,
+                policy=policy,
+                execution_strategy=execution_strategy,
+                liveness_probe=liveness_probe,
+                waiting_listener=opts.waiting_listener,
+                monitor=monitor,
+                required_artifact=opts.required_artifact,
+                _clock=_clock,
+                expected_session_id=opts.session_id or opts.initial_session_id,
+                stop_sentinel_path=opts.stop_sentinel_path,
+            )
+        else:
+            lines_iter = _run_subprocess_and_read_lines(
+                cmd,
+                config,
+                opts.show_progress,
+                runtime_env,
+                opts.workspace_path,
+                policy=policy,
+                execution_strategy=execution_strategy,
+                liveness_probe=liveness_probe,
+                waiting_listener=opts.waiting_listener,
+                monitor=monitor,
+                required_artifact=opts.required_artifact,
+                _clock=_clock,
+            )
         yield from lines_iter
 
         _log_workspace_completion(monitor)
@@ -753,6 +910,653 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
             ),
             _clock=clock,
         )
+
+
+def _run_pty_and_read_lines(  # noqa: PLR0913
+    cmd: list[str],
+    config: AgentConfig,
+    show_progress: bool,
+    extra_env: dict[str, str] | None,
+    workspace_path: Path | None,
+    *,
+    policy: TimeoutPolicy,
+    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
+    liveness_probe: LivenessProbe | None = None,
+    waiting_listener: WaitingStatusListener | None = None,
+    monitor: WorkspaceMonitor | None = None,
+    required_artifact: RequiredArtifact | None = None,
+    _clock: Clock | None = None,
+    expected_session_id: str | None = None,
+    stop_sentinel_path: Path | None = None,
+) -> Iterator[str]:
+    if stop_sentinel_path is not None:
+        with contextlib.suppress(FileNotFoundError):
+            stop_sentinel_path.unlink()
+    handle = get_process_manager().spawn_pty(
+        cmd,
+        cwd=str(workspace_path) if workspace_path is not None else None,
+        env=_subprocess_env(extra_env),
+        label=f"invoke:{_agent_command_name(config)}",
+    )
+    strategy = execution_strategy or GenericExecutionStrategy()
+    probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
+    clock: Clock = _clock or SystemClock()
+    with handle:
+        lines_iter = _read_lines_from_pty_process(
+            handle,
+            agent_name=_agent_command_name(config),
+            policy=policy,
+            execution_strategy=strategy,
+            liveness_probe=probe,
+            waiting_listener=waiting_listener,
+            monitor=monitor,
+            _clock=clock,
+            expected_session_id=expected_session_id,
+            stop_sentinel_path=stop_sentinel_path,
+        )
+        parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
+        explicit_completion_seen = False
+        captured_session_id: str | None = None
+        try:
+            if show_progress:
+                agent_name = _agent_command_name(config)
+                progress_iter = cast(
+                    "Iterator[str]",
+                    tqdm(
+                        lines_iter,
+                        desc=f"[{agent_name}]",
+                        unit="line",
+                        leave=False,
+                        file=sys.stdout,
+                    ),
+                )
+                for line in progress_iter:
+                    stripped_line = line.rstrip()
+                    parsed_output.append(stripped_line)
+                    explicit_completion_seen = explicit_completion_seen or (
+                        _EXPLICIT_COMPLETION_MARKER in stripped_line
+                    )
+                    session_id = _extract_session_id_from_line(stripped_line)
+                    if session_id is not None:
+                        captured_session_id = session_id
+                    yield line
+            else:
+                for line in lines_iter:
+                    stripped_line = line.rstrip()
+                    parsed_output.append(stripped_line)
+                    explicit_completion_seen = explicit_completion_seen or (
+                        _EXPLICIT_COMPLETION_MARKER in stripped_line
+                    )
+                    session_id = _extract_session_id_from_line(stripped_line)
+                    if session_id is not None:
+                        captured_session_id = session_id
+                    yield line
+
+            if captured_session_id is None:
+                captured_session_id = expected_session_id
+
+            post_exit = PostExitWatchdog(policy, clock)
+            verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
+            if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
+                handle.terminate(grace_period_s=0.5)
+                raise _IdleStreamTimeoutError(
+                    policy.process_exit_wait_seconds,
+                    WatchdogFireReason.PROCESS_EXIT_HANG,
+                )
+        except _IdleStreamTimeoutError as exc:
+            raise AgentInactivityTimeoutError(
+                _agent_command_name(config),
+                exc.timeout_seconds,
+                _bounded_output_lines(
+                    tuple(parsed_output),
+                    explicit_completion_seen=explicit_completion_seen,
+                ),
+                reason=exc.reason,
+                diagnostic=exc.diagnostic,
+            ) from exc
+
+        _check_process_result(
+            handle,
+            _agent_command_name(config),
+            list(parsed_output),
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=workspace_path,
+                liveness_probe=probe,
+                policy=policy,
+                required_artifact=required_artifact,
+                explicit_completion_seen=explicit_completion_seen,
+                captured_session_id=captured_session_id,
+            ),
+            _clock=clock,
+        )
+
+
+
+def _split_complete_vt_lines(text: str) -> tuple[list[str], str]:
+    lines = text.splitlines(keepends=True)
+    pending = lines.pop() if lines and not lines[-1].endswith(("\n", "\r")) else ""
+    return lines, pending
+
+
+
+def _pending_vt_snapshot_line(text: str) -> str | None:
+    normalized = normalize_vt_text(text).strip()
+    if not normalized:
+        return None
+    return f"{normalized}\n"
+
+
+
+def _visible_tui_text(text: str) -> str:
+    return normalize_vt_text(text).strip()
+
+
+
+def _extract_choice_menu_state(text: str) -> _ChoiceMenuState | None:
+    visible = normalize_vt_text(text)
+    lines = [line.strip() for line in visible.splitlines() if line.strip()]
+    if not lines:
+        return None
+    options: list[_ChoiceMenuOption] = []
+    prompt: str | None = None
+    confirm_footer: str | None = None
+    for line in lines:
+        if "enter to confirm" in line.lower():
+            confirm_footer = line
+            continue
+        match = _CHOICE_MENU_OPTION_RE.match(line)
+        if match is not None:
+            index = int(str(match.group("index")))
+            label = str(match.group("label")).strip()
+            selected = match.group("prefix") is not None
+            options.append(_ChoiceMenuOption(index=index, label=label, selected=selected))
+            continue
+        if prompt is None:
+            prompt = line
+    if prompt is None or confirm_footer is None or not options:
+        return None
+    selected_index = next((i for i, option in enumerate(options) if option.selected), None)
+    return _ChoiceMenuState(
+        prompt=prompt,
+        options=tuple(options),
+        selected_index=selected_index,
+        confirm_footer=confirm_footer,
+    )
+
+
+
+def _plan_choice_menu_response(text: str) -> str | None:
+    state = _extract_choice_menu_state(text)
+    if state is None:
+        return None
+    preferred_index = state.selected_index
+    for i, option in enumerate(state.options):
+        label = option.label.lower()
+        if label.startswith("yes") and "default" not in label:
+            preferred_index = i
+            break
+    if preferred_index is None:
+        return None
+    if state.selected_index is None:
+        return None
+    delta = preferred_index - state.selected_index
+    if delta > 0:
+        return ("\x1b[B" * delta) + "\r"
+    if delta < 0:
+        return ("\x1b[A" * abs(delta)) + "\r"
+    return "\r"
+
+
+
+def _write_pty_input(writer: IO[bytes], text: str, *, lock: threading.Lock | None = None) -> None:
+    if lock is None:
+        writer.write(text.encode("utf-8"))
+        writer.flush()
+        return
+    with lock:
+        writer.write(text.encode("utf-8"))
+        writer.flush()
+
+
+
+def _is_permission_prompt_line(text: str) -> bool:
+    stripped = _visible_tui_text(text)
+    if _extract_choice_menu_state(text) is not None:
+        return True
+    return any(pattern.search(stripped) is not None for pattern in _PERMISSION_PROMPT_PATTERNS)
+
+
+
+def _interactive_auto_response_for_prompt(
+    text: str,
+    *,
+    auto_mode_prompt_seen: bool,
+) -> str | None:
+    if not auto_mode_prompt_seen:
+        return None
+    return _plan_choice_menu_response(text)
+
+
+
+def _claude_projects_root() -> Path:
+    home = Path.home()
+    return home / ".claude" / "projects"
+
+
+
+def _find_claude_transcript_path(session_id: str) -> Path | None:
+    projects_root = _claude_projects_root()
+    if not projects_root.exists():
+        return None
+    target_name = f"{session_id}.jsonl"
+    for candidate_root in projects_root.iterdir():
+        candidate = candidate_root / target_name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+
+def _extract_message_text(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return ""
+
+
+
+def _transcript_lines_from_event(raw_line: str) -> list[str]:  # noqa: PLR0911,PLR0912
+    try:
+        parsed = cast("object", json.loads(raw_line))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, dict):
+        return []
+    obj = cast("dict[str, object]", parsed)
+    event_type = str(obj.get("type", ""))
+    if event_type == "permission-mode":
+        return []
+    if event_type == "assistant":
+        message = obj.get("message")
+        if not isinstance(message, dict):
+            return []
+        content = message.get("content")
+        if not isinstance(content, list):
+            return []
+        assistant_lines: list[str] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            item_type = str(item.get("type", ""))
+            if item_type == "tool_use":
+                tool_name = str(item.get("name", "tool"))
+                assistant_lines.append(f"claude tool: {tool_name}\n")
+            elif item_type == "text":
+                text = str(item.get("text", "")).strip()
+                if text:
+                    assistant_lines.append(f"{text}\n")
+        return assistant_lines
+    if event_type == "user":
+        message = obj.get("message")
+        if not isinstance(message, dict):
+            return []
+        content = message.get("content")
+        if not isinstance(content, list):
+            return []
+        user_lines: list[str] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            user_item_type: object = item.get("type")
+            if user_item_type != "tool_result":
+                continue
+            result_content = _extract_message_text(item.get("content"))
+            if result_content:
+                user_lines.append(f"claude tool result: {result_content}\n")
+        return user_lines
+    return []
+
+
+
+def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
+    handle: ManagedPtyProcess,
+    *,
+    agent_name: str,
+    policy: TimeoutPolicy,
+    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
+    liveness_probe: LivenessProbe | None = None,
+    waiting_listener: WaitingStatusListener | None = None,
+    monitor: WorkspaceMonitor | None = None,
+    _clock: Clock | None = None,
+    expected_session_id: str | None = None,
+    stop_sentinel_path: Path | None = None,
+) -> Iterator[str]:
+    lines_queue: list[str] = []
+    lines_lock = threading.Lock()
+    lines_event = threading.Event()
+    clock: Clock = _clock or SystemClock()
+    input_writer = os.fdopen(os.dup(handle.master_fd), "wb", buffering=0)
+    input_writer_lock = threading.Lock()
+
+    terminal_child_events_counter: list[int] = [0]
+    last_activity_meaningful: list[bool] = [False]
+    _last_hard_stop_event: list[WaitingStatusEvent | None] = [None]
+
+    def _terminal_listener(event: ProcessEvent) -> None:
+        if (
+            event.record.label is not None
+            and event.record.label.startswith("invoke:")
+            and event.new_status in _TERMINAL_PROCESS_STATUSES
+        ):
+            terminal_child_events_counter[0] += 1
+
+    _unsubscribe_terminal = get_process_manager().register_listener(_terminal_listener)
+
+    def _internal_waiting_listener(evt: WaitingStatusEvent) -> None:
+        if evt.kind == WaitingStatusKind.HARD_STOP:
+            _last_hard_stop_event[0] = evt
+        if waiting_listener is not None:
+            waiting_listener(evt)
+
+    strategy = execution_strategy or GenericExecutionStrategy()
+    probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
+
+    def _corroborate() -> CorroborationSnapshot:
+        ws_count: int | None = monitor.event_count if monitor is not None else None
+        oldest_secs: float | None = None
+        scoped_active: bool | None = None
+        scoped_count: int | None = None
+        try:
+            desc_count, desc_oldest = handle.descendant_snapshot()
+            scoped_count = desc_count
+            scoped_active = desc_count > 0
+            oldest_secs = desc_oldest
+        except Exception:
+            logger.debug("corroborator: PTY process scan failed (suppressed)")
+        alive_by: AliveBy | None = None
+        reg = cast("ChildLivenessRegistry | None", getattr(strategy, "_registry", None))
+        if reg is not None:
+            try:
+                label_prefix = cast(
+                    "str | None",
+                    getattr(strategy, "_active_label_prefix", lambda: None)(),
+                )
+                reg_snap = reg.snapshot(label_prefix or "")
+                verdict = classify_child_snapshot(reg_snap, has_os_descendants=bool(scoped_active))
+                alive_by = verdict.alive_by
+            except Exception:
+                logger.debug("corroborator: PTY registry snapshot failed (suppressed)")
+        elif scoped_active:
+            alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        return CorroborationSnapshot(
+            workspace_event_count=ws_count,
+            oldest_child_seconds=oldest_secs,
+            scoped_child_active=scoped_active,
+            scoped_child_count=scoped_count,
+            terminal_child_events_total=terminal_child_events_counter[0],
+            last_activity_was_meaningful=last_activity_meaningful[0],
+            alive_by=alive_by,
+        )
+
+    watchdog = IdleWatchdog(
+        policy,
+        clock,
+        listener=_internal_waiting_listener,
+        corroborator=_corroborate,
+    )
+    reader_done: list[bool] = [False]
+    monitor_stop = threading.Event()
+
+    def read_lines_thread() -> None:
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        pending = ""
+        last_snapshot: str | None = None
+        try:
+            while True:
+                if handle.poll() is not None and not wait_for_master_readable(
+                    handle.master_fd, 0.01
+                ):
+                    break
+                if not wait_for_master_readable(handle.master_fd, 0.05):
+                    continue
+                chunk = read_master_chunk(handle.master_fd)
+                if not chunk:
+                    break
+                pending += decoder.decode(chunk)
+                completed, pending = _split_complete_vt_lines(pending)
+                if completed:
+                    with lines_lock:
+                        lines_queue.extend(completed)
+                        lines_event.set()
+                    last_snapshot = None
+                    continue
+                snapshot_line = _pending_vt_snapshot_line(pending)
+                if snapshot_line is not None and snapshot_line != last_snapshot:
+                    with lines_lock:
+                        lines_queue.append(snapshot_line)
+                        lines_event.set()
+                    last_snapshot = snapshot_line
+            tail = pending + decoder.decode(b"", final=True)
+            if tail:
+                snapshot_line = _pending_vt_snapshot_line(tail)
+                if snapshot_line is None:
+                    snapshot_line = tail
+                with lines_lock:
+                    lines_queue.append(snapshot_line)
+                    lines_event.set()
+        except Exception:
+            pass
+        finally:
+            with lines_lock:
+                reader_done[0] = True
+            lines_event.set()
+            monitor_stop.set()
+
+    def transcript_thread() -> None:
+        if expected_session_id is None:
+            return
+        transcript_path: Path | None = None
+        file_obj = None
+        while not monitor_stop.is_set():
+            if transcript_path is None:
+                transcript_path = _find_claude_transcript_path(expected_session_id)
+                if transcript_path is None:
+                    monitor_stop.wait(0.1)
+                    continue
+                file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
+            assert file_obj is not None
+            line = file_obj.readline()
+            if not line:
+                monitor_stop.wait(0.1)
+                continue
+            emitted_lines = _transcript_lines_from_event(line)
+            if emitted_lines:
+                with lines_lock:
+                    lines_queue.extend(emitted_lines)
+                    lines_event.set()
+        if file_obj is not None:
+            file_obj.close()
+
+    def sentinel_thread() -> None:
+        if stop_sentinel_path is None:
+            return
+        while not monitor_stop.is_set():
+            if stop_sentinel_path.exists():
+                with lines_lock:
+                    lines_queue.append(_TURN_BOUNDARY_MARKER + "\n")
+                    lines_event.set()
+                with contextlib.suppress(OSError):
+                    _write_pty_input(input_writer, "/exit\r\n", lock=input_writer_lock)
+                return
+            monitor_stop.wait(0.05)
+
+    reader = threading.Thread(target=read_lines_thread, daemon=True)
+    reader.start()
+    transcript_reader = threading.Thread(target=transcript_thread, daemon=True)
+    transcript_reader.start()
+    sentinel_reader = threading.Thread(target=sentinel_thread, daemon=True)
+    sentinel_reader.start()
+
+    def _safe_classify_quiet() -> AgentExecutionState:
+        try:
+            return strategy.classify_quiet(handle, probe)
+        except Exception:
+            logger.opt(exception=True).debug(
+                "idle watchdog: classify_quiet raised for PTY runtime; "
+                "defaulting to WAITING_ON_CHILD"
+            )
+            return AgentExecutionState.WAITING_ON_CHILD
+
+    def _handle_fire_verdict(
+        verdict: WatchdogVerdict,
+    ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
+        if verdict != WatchdogVerdict.FIRE:
+            return None
+        assert policy.idle_timeout_seconds is not None or policy.max_session_seconds is not None
+        fire_reason = watchdog.last_fire_reason
+        assert fire_reason is not None
+        timeout_val = (
+            policy.max_session_seconds
+            if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+            else policy.idle_timeout_seconds
+        )
+        assert timeout_val is not None
+        with lines_lock:
+            pending_lines = list(lines_queue)
+            lines_queue.clear()
+        handle.terminate(grace_period_s=0.5)
+        hs_event = _last_hard_stop_event[0]
+        hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
+        return pending_lines, _IdleStreamTimeoutError(
+            timeout_val,
+            fire_reason,
+            diagnostic=hard_stop_diag,
+        )
+
+    interrupted = False
+    auto_mode_prompt_seen = False
+    auto_mode_menu_screen: str | None = None
+    last_auto_mode_response_at: float | None = None
+    last_auto_mode_menu_seen_at: float | None = None
+    try:
+        while True:
+            lines_event.clear()
+            queued_line: str | None = None
+            is_done = False
+            with lines_lock:
+                if lines_queue:
+                    queued_line = lines_queue.pop(0)
+                elif reader_done[0]:
+                    is_done = True
+
+            if queued_line is not None:
+                visible_line = _visible_tui_text(queued_line)
+                if _extract_choice_menu_state(queued_line) is not None:
+                    auto_mode_menu_screen = queued_line
+                    last_auto_mode_menu_seen_at = clock.monotonic()
+                if "enable auto mode?" in visible_line.lower():
+                    auto_mode_prompt_seen = True
+                    last_auto_mode_menu_seen_at = clock.monotonic()
+                if _is_permission_prompt_line(queued_line):
+                    if auto_mode_prompt_seen:
+                        pass
+                    else:
+                        handle.terminate(grace_period_s=0.5)
+                        raise InteractivePermissionPromptError(
+                            agent_name,
+                            [queued_line.rstrip()],
+                        )
+                activity_signal = strategy.classify_activity_line(queued_line)
+                if activity_signal is not None:
+                    last_activity_meaningful[0] = (
+                        activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
+                    )
+                    watchdog.record_activity()
+                else:
+                    last_activity_meaningful[0] = False
+                strategy.observe_line(queued_line)
+                yield queued_line
+                fire_result = _handle_fire_verdict(
+                    watchdog.evaluate(classify_quiet=_safe_classify_quiet)
+                )
+                if fire_result is not None:
+                    pending_lines, exc = fire_result
+                    yield from pending_lines
+                    raise exc
+                continue
+
+            if is_done:
+                drain_window_deadline = (
+                    clock.monotonic() + policy.drain_window_seconds
+                    if policy.drain_window_seconds
+                    else None
+                )
+                while True:
+                    fire_result = _handle_fire_verdict(
+                        watchdog.evaluate(classify_quiet=_safe_classify_quiet)
+                    )
+                    if fire_result is not None:
+                        pending_lines, exc = fire_result
+                        yield from pending_lines
+                        raise exc
+                    if (
+                        drain_window_deadline is not None
+                        and clock.monotonic() >= drain_window_deadline
+                    ):
+                        break
+                    if policy.idle_timeout_seconds is None:
+                        break
+                    clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
+                break
+
+            if auto_mode_prompt_seen:
+                now = clock.monotonic()
+                menu_quiescent = (
+                    last_auto_mode_menu_seen_at is not None
+                    and (now - last_auto_mode_menu_seen_at) >= _MENU_QUIESCENCE_SECONDS
+                )
+                if menu_quiescent and (
+                    last_auto_mode_response_at is None or (now - last_auto_mode_response_at) >= 1.0
+                ):
+                    with contextlib.suppress(OSError):
+                        response = _plan_choice_menu_response(auto_mode_menu_screen or "") or "\r"
+                        _write_pty_input(input_writer, response, lock=input_writer_lock)
+                        last_auto_mode_response_at = now
+            fire_result = _handle_fire_verdict(
+                watchdog.evaluate(classify_quiet=_safe_classify_quiet)
+            )
+            if fire_result is not None:
+                pending_lines, exc = fire_result
+                yield from pending_lines
+                raise exc
+
+            clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
+    except BaseException:
+        interrupted = True
+        monitor_stop.set()
+        with contextlib.suppress(Exception):
+            handle.close()
+        raise
+    finally:
+        monitor_stop.set()
+        reader.join(timeout=0.1 if interrupted else 10)
+        transcript_reader.join(timeout=0.1 if interrupted else 1)
+        sentinel_reader.join(timeout=0.1 if interrupted else 1)
+        with contextlib.suppress(Exception):
+            input_writer.close()
+        if stop_sentinel_path is not None:
+            with contextlib.suppress(FileNotFoundError):
+                stop_sentinel_path.unlink()
+        _unsubscribe_terminal()
+
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -1262,7 +2066,7 @@ class _CompletionCheckOptions:
 
 
 def _wait_for_completion_grace(
-    handle: ManagedProcess,
+    handle: ManagedProcess | ManagedPtyProcess,
     opts: _CompletionCheckOptions,
     parsed_output: list[str],
     *,
@@ -1305,7 +2109,7 @@ def _wait_for_completion_grace(
 
 
 def _wait_for_descendants_then_recheck(
-    handle: ManagedProcess,
+    handle: ManagedProcess | ManagedPtyProcess,
     opts: _CompletionCheckOptions,
     parsed_output: list[str],
     *,
@@ -1361,7 +2165,7 @@ def _wait_for_descendants_then_recheck(
 
 
 def _check_process_result(
-    handle: ManagedProcess,
+    handle: ManagedProcess | ManagedPtyProcess,
     agent_name: str,
     parsed_output: list[str] | None = None,
     check_options: _CompletionCheckOptions | None = None,
@@ -1388,7 +2192,7 @@ def _check_process_result(
     """
     returncode = int(handle.returncode or 0)
     if returncode != 0:
-        stderr_pipe = cast("IO[str] | None", handle.stderr)
+        stderr_pipe = cast("IO[str] | None", getattr(handle, "stderr", None))
         stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
         logger.error("Agent exited with code {}: {}", returncode, stderr)
         raise AgentInvocationError(
@@ -1552,6 +2356,10 @@ def _build_claude_interactive_command(
         cmd.append(config.verbose_flag)
     if config.session_flag and options.session_id:
         cmd.extend(config.session_flag.format(options.session_id).split())
+    elif options.initial_session_id is not None:
+        cmd.extend(["--session-id", options.initial_session_id])
+    if options.settings_json is not None:
+        cmd.extend(["--settings", options.settings_json])
     if options.system_prompt_file:
         cmd.extend(["--append-system-prompt-file", options.system_prompt_file])
     effective_model = options.model_flag or config.model_flag

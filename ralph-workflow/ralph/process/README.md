@@ -12,6 +12,7 @@ All child processes go through `ProcessManager`. No direct `subprocess.Popen`,
 | Symbol | Description |
 |---|---|
 | `spawn(command, *, label, ...)` | Spawn a synchronous child; returns `ManagedProcess` |
+| `spawn_pty(command, *, label, ...)` | Spawn a PTY-backed child; returns `ManagedPtyProcess` |
 | `spawn_async(command, *, label, ...)` | Spawn an async child; returns `ManagedAsyncProcess` |
 | `register_listener(callback)` | Subscribe to `ProcessEvent` stream; returns unsubscribe callable |
 | `terminate(handle, ...)` | Escalated termination for a `ManagedProcess` |
@@ -46,10 +47,13 @@ not the manager.
 
 ## Cross-platform
 
-psutil handles Linux, macOS, and Windows process tree teardown. No POSIX-only
-APIs (`killpg`, `setsid`, `signal.SIGTERM`, `signal.SIGKILL`, `setpgrp`) appear
-in the manager or its direct callers. The `start_new_session=True` kwarg is
-allowed (it is a `Popen` parameter, not a direct POSIX call).
+The ProcessManager's ordinary subprocess lifecycle (`spawn`, `spawn_async`, tree teardown)
+remains cross-platform through psutil on Linux, macOS, and Windows.
+
+`spawn_pty(...)` is different: it is intentionally **POSIX-only** because a real unattended
+interactive Claude session requires PTY and controlling-terminal APIs such as `openpty`,
+`fork`, `setsid`, and `TIOCSCTTY`. On Windows, callers must use a headless transport instead
+of the PTY-backed interactive Claude path.
 
 ## Label conventions
 
