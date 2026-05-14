@@ -24,6 +24,16 @@ if TYPE_CHECKING:
 def _builtin_agents() -> dict[str, AgentConfig]:
     return {
         "claude": AgentConfig(
+            cmd="claude",
+            output_flag=None,
+            yolo_flag="--permission-mode auto",
+            verbose_flag="--verbose",
+            can_commit=True,
+            json_parser=JsonParserType.CLAUDE,
+            session_flag="--resume {}",
+            transport=AgentTransport.CLAUDE_INTERACTIVE,
+        ),
+        "claude-headless": AgentConfig(
             cmd="claude -p",
             output_flag="--output-format=stream-json",
             yolo_flag="--permission-mode auto",
@@ -149,7 +159,7 @@ class AgentRegistry:
         for name, config in self.agents.items():
             if not config.cmd:
                 errors.append(f"Agent '{name}' has no command configured")
-            if not config.output_flag:
+            if config.transport != AgentTransport.CLAUDE_INTERACTIVE and not config.output_flag:
                 errors.append(f"Agent '{name}' has no output flag configured")
         return errors
 
@@ -208,6 +218,7 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
 
 def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:
     segments = name.split("/")
+    resolved: AgentConfig | None = None
 
     if name.startswith("opencode/"):
         if len(segments) < _MIN_OPENCODE_SEGMENTS or not all(segments[1:]):
@@ -218,20 +229,22 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
             "model_flag": f"-m {_normalize_opencode_model_id(name)}",
             "can_commit": True,
         }
-        return base_config.model_copy(update=dynamic_overrides)
+        resolved = base_config.model_copy(update=dynamic_overrides)
+    elif len(segments) == _CLAUDE_MODEL_SEGMENTS and segments[1]:
+        if name.startswith("ccs/"):
+            resolved = _resolve_dynamic_ccs_agent(name, ccs_defaults)
+        elif name.startswith("claude-headless/"):
+            base_config = deepcopy(_builtin_agents()["claude-headless"])
+            claude_headless_overrides: dict[str, object] = {
+                "model_flag": f"--model {segments[1]}"
+            }
+            resolved = base_config.model_copy(update=claude_headless_overrides)
+        elif name.startswith("claude/"):
+            base_config = deepcopy(_builtin_agents()["claude"])
+            claude_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
+            resolved = base_config.model_copy(update=claude_overrides)
 
-    if len(segments) != _CLAUDE_MODEL_SEGMENTS or not segments[1]:
-        return None
-
-    if name.startswith("ccs/"):
-        return _resolve_dynamic_ccs_agent(name, ccs_defaults)
-
-    if not name.startswith("claude/"):
-        return None
-
-    base_config = deepcopy(_builtin_agents()["claude"])
-    claude_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
-    return base_config.model_copy(update=claude_overrides)
+    return resolved
 
 
 def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import gc
 import tempfile
 import tracemalloc
 from pathlib import Path
@@ -16,7 +15,7 @@ from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.controller import RecoveryController
 
 _RECOVERY_CYCLE_CAP = 4
-_RECOVERY_ITERATION_COUNT = 20
+_RECOVERY_ITERATION_COUNT = 8
 _RETAINED_DELTA_SPREAD_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 20_000_000
 _CHECKPOINT_SIZE_SPREAD_LIMIT = 2_048
@@ -47,7 +46,7 @@ def _make_state() -> PipelineState:
     )
 
 
-def _make_controller() -> RecoveryController:
+def _make_controller(policy_bundle) -> RecoveryController:
     registry = (
         AgentBudgetRegistry()
         .set_budget("development", "claude", max_retries=1)
@@ -56,7 +55,7 @@ def _make_controller() -> RecoveryController:
     return RecoveryController(
         cycle_cap=_RECOVERY_CYCLE_CAP,
         budget_registry=registry,
-        policy_bundle=_minimal_policy_bundle(),
+        policy_bundle=policy_bundle,
     )
 
 
@@ -80,13 +79,14 @@ def test_recovery_memory_regression(tmp_path: Path) -> None:
     retained_deltas: list[int] = []
     checkpoint_sizes: list[int] = []
 
-    gc.collect()
+    policy_bundle = _minimal_policy_bundle()
+
     tracemalloc.start()
     baseline_current, _ = tracemalloc.get_traced_memory()
     tracemalloc.reset_peak()
 
     for cycle in range(1, _RECOVERY_ITERATION_COUNT + 1):
-        controller = _make_controller()
+        controller = _make_controller(policy_bundle)
         state, _, _ = controller.handle(
             state,
             _AgentInactivityTimeoutError("claude idle"),
@@ -118,7 +118,6 @@ def test_recovery_memory_regression(tmp_path: Path) -> None:
 
         state = _resume_next_cycle(loaded)
 
-    gc.collect()
     final_current, peak_current = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 

@@ -223,6 +223,42 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
     assert any(s.name == "toml-injected" for s in upstreams)
 
 
+def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    fake_home = tmp_path / "fake-home"
+    fake_home.mkdir()
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    seen_env: list[dict[str, str]] = []
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
+    monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    upstreams = load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV])
+    assert any(s.name == "toml-injected" for s in upstreams)
+
+
 def test_opencode_upstream_env_var_includes_mcp_toml_server(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

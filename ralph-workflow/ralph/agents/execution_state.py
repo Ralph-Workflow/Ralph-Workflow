@@ -121,6 +121,28 @@ class ClaudeExecutionStrategy(GenericExecutionStrategy):
         return _classify_claude_json_object(obj, line)
 
 
+class ClaudeInteractiveExecutionStrategy(GenericExecutionStrategy):
+    """Interactive Claude session completion strategy.
+
+    Completion is gated on artifact evidence or explicit declare_complete.
+    A clean exit without evidence is resumable, allowing the runner to retry.
+    """
+
+    def supports_session_continuation(self) -> bool:
+        return True
+
+    def classify_exit(
+        self,
+        handle: _LiveDescendantHandle,
+        completion_signals: CompletionSignals,
+        liveness_probe: LivenessProbe | None = None,
+    ) -> AgentExecutionState:
+        del handle, liveness_probe
+        if _check_signals_terminal(completion_signals):
+            return AgentExecutionState.TERMINAL_COMPLETE
+        return AgentExecutionState.RESUMABLE_CONTINUE
+
+
 class OpenCodeExecutionStrategy:
     """OpenCode-aware strategy.
 
@@ -234,6 +256,8 @@ def strategy_for_transport(
         return OpenCodeExecutionStrategy(label_scope=label_scope, registry=registry)
     if transport == AgentTransport.CLAUDE:
         return ClaudeExecutionStrategy()
+    if transport == AgentTransport.CLAUDE_INTERACTIVE:
+        return ClaudeInteractiveExecutionStrategy()
     return GenericExecutionStrategy()
 
 
@@ -503,6 +527,7 @@ def _claude_activity_kind_for_content_block(obj: dict[str, object]) -> AgentActi
 __all__ = [
     "AgentExecutionState",
     "ClaudeExecutionStrategy",
+    "ClaudeInteractiveExecutionStrategy",
     "GenericExecutionStrategy",
     "OpenCodeExecutionStrategy",
     "_route_opencode_line_to_registry",

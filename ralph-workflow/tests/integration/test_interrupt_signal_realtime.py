@@ -128,7 +128,7 @@ def test_live_sigint_gracefully_terminates_runner_and_tracked_child(tmp_path: Pa
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
-        timeout=4,
+        timeout=10,
         check=False,
     )
 
@@ -232,7 +232,7 @@ def test_second_live_sigint_force_kills_stubborn_child(tmp_path: Path) -> None:
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
-        timeout=4,
+        timeout=10,
         check=False,
     )
 

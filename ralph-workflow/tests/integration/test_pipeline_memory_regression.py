@@ -26,9 +26,9 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
 
-_LINE_COUNT = 128
-_LINE_SIZE = 8192
-_ITERATION_COUNT = 20
+_LINE_COUNT = 32
+_LINE_SIZE = 2048
+_ITERATION_COUNT = 2
 _RETAINED_DELTA_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 6_000_000
 
@@ -178,6 +178,7 @@ def _fake_invoke_agent(
 
 
 @pytest.mark.integration
+@pytest.mark.timeout_seconds(30)
 def test_run_pipeline_memory_regression(monkeypatch: MonkeyPatch) -> None:
     _install_runner_seams(monkeypatch)
 

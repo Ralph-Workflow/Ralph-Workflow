@@ -11,6 +11,7 @@ import pytest
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import RetryablePreflightError
 from ralph.mcp.upstream.agent_probe import (
+    _DEFAULT_TRANSPORTS,
     AgentProbeReport,
     _augment_codex_config_with_server,
     probe_agent_transports,
@@ -148,6 +149,10 @@ def test_probe_emits_opencode_config_with_remote_mcp_entry(
     ralph_entry = payload["mcp"]["ralph"]
     assert ralph_entry["type"] == "remote"
     assert ralph_entry["url"] == server.url
+
+
+def test_claude_interactive_in_default_probe_transports() -> None:
+    assert AgentTransport.CLAUDE_INTERACTIVE in _DEFAULT_TRANSPORTS
 
 
 def test_probe_reports_failure_when_server_unreachable(

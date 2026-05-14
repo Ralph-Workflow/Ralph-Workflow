@@ -8,15 +8,17 @@ import threading
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import pytest
 from loguru import logger
 
 from ralph.agents import invoke as invoke_module
 from ralph.agents.activity import AgentActivityKind
+from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
     AgentExecutionState,
+    ClaudeInteractiveExecutionStrategy,
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
     strategy_for_transport,
@@ -54,6 +56,11 @@ from ralph.mcp.upstream.config import (
 )
 from ralph.process.liveness import FakeLivenessProbe
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from ralph.agents.idle_watchdog import WaitingCorroborator, WaitingStatusListener
+
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 
@@ -72,7 +79,7 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return list(args[0])
+    return list(cast("Iterable[str]", args[0]))
 
 
 def test_invoke_agent_passes_idle_timeout_to_subprocess(
@@ -425,6 +432,73 @@ def test_build_command_splits_multi_part_claude_permission_mode_flag() -> None:
         "auto",
         "PROMPT.md",
     ]
+
+
+def test_claude_interactive_build_command_excludes_output_flag() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        verbose_flag="--verbose",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(
+            model_flag="--model claude-sonnet-4",
+            session_id="abc123",
+            verbose=True,
+        ),
+    )
+
+    assert cmd == [
+        "claude",
+        "--permission-mode",
+        "auto",
+        "--verbose",
+        "--resume",
+        "abc123",
+        "--model",
+        "claude-sonnet-4",
+        "PROMPT.md",
+    ]
+
+
+def test_strategy_for_transport_returns_claude_interactive_strategy() -> None:
+    assert isinstance(
+        strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE),
+        ClaudeInteractiveExecutionStrategy,
+    )
+
+
+def test_claude_interactive_execution_strategy_supports_session_continuation() -> None:
+    assert ClaudeInteractiveExecutionStrategy().supports_session_continuation() is True
+
+
+def test_claude_interactive_execution_strategy_classify_exit_terminal_on_completion() -> None:
+    strategy = ClaudeInteractiveExecutionStrategy()
+    signals = CompletionSignals(True, False, ())
+
+    class _FakeHandle:
+        def has_live_descendants(self) -> bool:
+            return False
+
+    assert strategy.classify_exit(_FakeHandle(), signals) == AgentExecutionState.TERMINAL_COMPLETE
+
+
+def test_claude_interactive_execution_strategy_classify_exit_resumable_without_signals() -> None:
+    strategy = ClaudeInteractiveExecutionStrategy()
+    signals = CompletionSignals(False, False, ())
+
+    class _FakeHandle:
+        def has_live_descendants(self) -> bool:
+            return False
+
+    assert strategy.classify_exit(_FakeHandle(), signals) == AgentExecutionState.RESUMABLE_CONTINUE
 
 
 def test_build_command_injects_claude_append_system_prompt_file() -> None:
@@ -3864,11 +3938,19 @@ def test_invoke_agent_passes_config_drain_window_to_watchdog(
         self: IdleWatchdog,
         cfg: TimeoutPolicy,
         clock: Clock,
-        listener: object = None,
+        listener: WaitingStatusListener | None = None,
+        corroborator: WaitingCorroborator | None = None,
         **kwargs: object,
     ) -> None:
         captured_config.append(cfg)
-        original_init(self, cfg, clock, listener, **kwargs)
+        original_init(
+            self,
+            cfg,
+            clock,
+            listener,
+            corroborator=corroborator,
+            **cast("dict[str, object]", kwargs),
+        )
 
     monkeypatch.setattr(IdleWatchdog, "__init__", capturing_init)
 

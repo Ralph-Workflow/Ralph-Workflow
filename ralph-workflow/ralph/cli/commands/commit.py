@@ -330,7 +330,7 @@ def _commit_submit_artifact_tool_names(
 
 
 def _submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
-    if transport == AgentTransport.CLAUDE:
+    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
     return SUBMIT_ARTIFACT_TOOL
 
@@ -370,7 +370,7 @@ def _commit_prompt_for_agent(
 def _submit_artifact_tool_names_for_transport(
     transport: AgentTransport | None,
 ) -> tuple[str, ...]:
-    if transport == AgentTransport.CLAUDE:
+    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         return SUBMIT_ARTIFACT_TOOL.prompt_aliases(
             tool_name_prefix=claude_tool_name_prefix(),
         )

@@ -813,7 +813,7 @@ def resolve_invocation_runtime(
             server_env=server_env or None,
             mcp_endpoint=endpoint,
         )
-    if transport == AgentTransport.CLAUDE:
+    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         if endpoint:
             existing = load_existing_claude_upstream_servers(workspace_path)
             mcp_toml = mcp_toml_as_upstreams(workspace_path)
@@ -1497,8 +1497,16 @@ def _build_command(
             options=build_options,
         )
 
+    if transport == AgentTransport.CLAUDE_INTERACTIVE:
+        return _build_claude_interactive_command(
+            config,
+            prompt_file,
+            options=build_options,
+        )
+
     cmd = config.cmd.split()
-    cmd.append(config.output_flag)
+    if transport == AgentTransport.CLAUDE and config.output_flag is not None:
+        cmd.append(config.output_flag)
 
     if config.print_flag:
         cmd.append(config.print_flag)
@@ -1527,12 +1535,35 @@ def _build_command(
     return cmd
 
 
+def _build_claude_interactive_command(
+    config: AgentConfig,
+    prompt_file: str,
+    *,
+    options: _BuildCommandOptions,
+) -> list[str]:
+    cmd = config.cmd.split()
+    cmd.extend(_split_optional_flag(config.yolo_flag))
+    _extend_claude_transport_flags(cmd, AgentTransport.CLAUDE_INTERACTIVE, options)
+    if options.verbose and config.verbose_flag:
+        cmd.append(config.verbose_flag)
+    if config.session_flag and options.session_id:
+        cmd.extend(config.session_flag.format(options.session_id).split())
+    effective_model = options.model_flag or config.model_flag
+    if effective_model:
+        cmd.extend(effective_model.split())
+    cmd.append(prompt_file)
+    return cmd
+
+
 def _extend_claude_transport_flags(
     cmd: list[str],
     transport: AgentTransport,
     build_options: _BuildCommandOptions,
 ) -> None:
-    if transport != AgentTransport.CLAUDE or build_options.mcp_endpoint is None:
+    if (
+        transport not in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE)
+        or build_options.mcp_endpoint is None
+    ):
         return
 
     # Claude/CCS non-interactive MCP mode is brittle around `--tools ""` combined
@@ -1673,7 +1704,10 @@ def _provider_allowed_mcp_tool_names(
     config: AgentConfig,
     endpoint: str | None,
 ) -> tuple[str, ...]:
-    if endpoint is None or _agent_transport(config) != AgentTransport.CLAUDE:
+    if endpoint is None or _agent_transport(config) not in (
+        AgentTransport.CLAUDE,
+        AgentTransport.CLAUDE_INTERACTIVE,
+    ):
         return ()
     try:
         visible_tool_names = _discover_http_mcp_tool_names(endpoint)
@@ -1756,7 +1790,8 @@ def _build_codex_command(
     if artifacts:
         prompt_text += _build_multimodal_appendix(artifacts)
     cmd = config.cmd.split()
-    cmd.append(config.output_flag)
+    if config.output_flag is not None:
+        cmd.append(config.output_flag)
 
     cmd.extend(_split_optional_flag(config.yolo_flag))
 
@@ -1772,7 +1807,12 @@ def _command_for_log(config: AgentConfig, cmd: list[str], prompt_file: str) -> s
     logged_cmd = list(cmd)
     if (
         _agent_transport(config)
-        in {AgentTransport.OPENCODE, AgentTransport.CODEX, AgentTransport.CLAUDE}
+        in {
+            AgentTransport.OPENCODE,
+            AgentTransport.CODEX,
+            AgentTransport.CLAUDE,
+            AgentTransport.CLAUDE_INTERACTIVE,
+        }
         and logged_cmd
     ):
         logged_cmd[-1] = prompt_file

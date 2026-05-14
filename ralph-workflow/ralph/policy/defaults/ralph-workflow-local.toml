@@ -43,7 +43,10 @@
 # checkpoint_enabled = true     # enable checkpoint/resume functionality
 
 # ---------------------------------------------------------------------------
-# [ccs] — Claude Code Switch (CCS) defaults
+# [ccs] — Claude Code Switch (CCS) headless-Claude defaults.
+# CCS is the explicitly-headless Claude path. Configure [ccs_aliases] to run
+# Claude non-interactively (--print --output-format=stream-json). For unattended
+# interactive Claude use the built-in "claude" or "claude/MODEL" agents instead.
 # ---------------------------------------------------------------------------
 [ccs]
 # output_flag = "--output-format=stream-json"
@@ -88,11 +91,9 @@
 
 # [agents.claude]
 # cmd = "claude"
-# output_flag = "--output-format=stream-json"
+# transport = "claude_interactive"
 # yolo_flag = "--permission-mode auto"
 # verbose_flag = "--verbose"
-# print_flag = "--print"
-# streaming_flag = "--include-partial-messages"
 # json_parser = "claude"
 # session_flag = "--resume {}"
 # can_commit = true

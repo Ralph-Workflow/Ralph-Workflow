@@ -23,6 +23,7 @@ from ralph.cli.commands.commit import (
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig
 from ralph.display.context import make_display_context
+from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
 
 _OUTPUT_BATCH = 400
 
@@ -70,6 +71,12 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
     _, kwargs = mock_materialize.call_args
     assert "default_current_prompt" in kwargs
     assert kwargs["default_current_prompt"]
+
+
+def test_submit_artifact_tool_name_claude_interactive() -> None:
+    assert commit_module._submit_artifact_tool_name_for_transport(
+        AgentTransport.CLAUDE_INTERACTIVE
+    ) == claude_tool_name(SUBMIT_ARTIFACT_TOOL)
 
 
 def test_commit_tool_render_escapes_markup_like_input_before_console_render() -> None:

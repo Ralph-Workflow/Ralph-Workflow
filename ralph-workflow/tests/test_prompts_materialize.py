@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.history import history_dir_for_artifact, history_index_path
 from ralph.policy.models import (
     ArtifactContract,
@@ -17,7 +18,11 @@ from ralph.policy.models import (
     PhaseTransition,
     PipelinePolicy,
 )
-from ralph.prompts.materialize import _resolve_fix_result_content, materialize_prompt_for_phase
+from ralph.prompts.materialize import (
+    _resolve_fix_result_content,
+    materialize_prompt_for_phase,
+    tool_name_prefix_for_transport,
+)
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
@@ -45,6 +50,10 @@ def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: P
     content, path = _resolve_fix_result_content(workspace)
     assert content == "(no fix result available)"
     assert path == ""
+
+
+def test_tool_name_prefix_for_claude_interactive() -> None:
+    assert tool_name_prefix_for_transport(AgentTransport.CLAUDE_INTERACTIVE) == "mcp__ralph__"
 
 
 def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
