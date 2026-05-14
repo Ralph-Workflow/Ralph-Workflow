@@ -1,0 +1,256 @@
+uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going
+Running Sphinx v9.1.0
+loading translations [en]... done
+loading pickled environment... The configuration has changed (2 options: 'html_js_files', 'html_static_path')
+done
+myst v5.0.0: MdParserConfig(commonmark_only=False, gfm_only=False, enable_extensions={'deflist', 'colon_fence', 'linkify', 'substitution'}, disable_syntax=[], all_links_external=False, links_external_new_tab=False, url_schemes=('http', 'https', 'mailto', 'ftp'), ref_domains=None, fence_as_directive=set(), number_code_blocks=[], title_to_header=False, heading_anchors=0, heading_slug_func=None, html_meta={}, footnote_sort=True, footnote_transition=True, words_per_minute=200, substitutions={}, linkify_fuzzy_links=True, dmath_allow_labels=True, dmath_allow_space=True, dmath_allow_digits=True, dmath_double_inline=False, update_mathjax=True, mathjax_classes='tex2jax_process|mathjax_process|math|output_area', enable_checkboxes=False, suppress_warnings=[], highlight_code_blocks=True)
+building [mo]: targets for 0 po files that are out of date
+writing output... 
+building [html]: targets for 0 source files that are out of date
+updating environment: 0 added, 1 changed, 0 removed
+reading sources... [100%] modules
+
+looking for now-outdated files... none found
+pickling environment... done
+checking consistency... done
+preparing documents... done
+copying assets... 
+copying static files... 
+Writing evaluated template result to /Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/docs/sphinx/_build/html/_static/basic.css
+Writing evaluated template result to /Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/docs/sphinx/_build/html/_static/language_data.js
+Writing evaluated template result to /Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/docs/sphinx/_build/html/_static/documentation_options.js
+Writing evaluated template result to /Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/docs/sphinx/_build/html/_static/copybutton.js
+copying static files: done
+copying extra files... 
+copying extra files: done
+copying assets: done
+writing output... [ 50%] developer-reference
+writing output... [100%] modules
+
+generating indices... genindex py-modindex done
+highlighting module code... [  0%] collections.abc
+highlighting module code... [  1%] pathlib
+highlighting module code... [  1%] pydantic.main
+highlighting module code... [  2%] ralph.agents.activity
+highlighting module code... [  2%] ralph.agents.availability
+highlighting module code... [  3%] ralph.agents.chain
+highlighting module code... [  3%] ralph.agents.completion_signals
+highlighting module code... [  4%] ralph.agents.execution_state
+highlighting module code... [  4%] ralph.agents.executor
+highlighting module code... [  5%] ralph.agents.idle_watchdog
+highlighting module code... [  5%] ralph.agents.invoke
+highlighting module code... [  5%] ralph.agents.parsers.base
+highlighting module code... [  6%] ralph.agents.parsers.claude
+highlighting module code... [  6%] ralph.agents.parsers.codex
+highlighting module code... [  7%] ralph.agents.parsers.gemini
+highlighting module code... [  7%] ralph.agents.parsers.generic
+highlighting module code... [  8%] ralph.agents.parsers.opencode
+highlighting module code... [  8%] ralph.agents.post_exit_watchdog
+highlighting module code... [  9%] ralph.agents.registry
+highlighting module code... [  9%] ralph.agents.subprocess_executor
+highlighting module code... [ 10%] ralph.agents.timeout_clock
+highlighting module code... [ 10%] ralph.api.opencode
+highlighting module code... [ 11%] ralph.banner
+highlighting module code... [ 11%] ralph.checkpoint.builder
+highlighting module code... [ 11%] ralph.checkpoint.execution_history
+highlighting module code... [ 12%] ralph.checkpoint.run_context
+highlighting module code... [ 12%] ralph.checkpoint.size_monitor
+highlighting module code... [ 13%] ralph.cli.commands.check_policy
+highlighting module code... [ 13%] ralph.cli.commands.cleanup
+highlighting module code... [ 14%] ralph.cli.commands.commit
+highlighting module code... [ 14%] ralph.cli.commands.diagnose
+highlighting module code... [ 15%] ralph.cli.commands.explain
+highlighting module code... [ 15%] ralph.cli.commands.init
+highlighting module code... [ 16%] ralph.cli.commands.run
+highlighting module code... [ 16%] ralph.cli.main
+highlighting module code... [ 16%] ralph.cli.options
+highlighting module code... [ 17%] ralph.config.bootstrap
+highlighting module code... [ 17%] ralph.config.enums
+highlighting module code... [ 18%] ralph.config.loader
+highlighting module code... [ 18%] ralph.config.mcp_loader
+highlighting module code... [ 19%] ralph.config.mcp_models
+highlighting module code... [ 19%] ralph.config.models
+highlighting module code... [ 20%] ralph.config.welcome
+highlighting module code... [ 20%] ralph.diagnostics
+highlighting module code... [ 21%] ralph.display.activity_model
+highlighting module code... [ 21%] ralph.display.activity_router
+highlighting module code... [ 21%] ralph.display.artifact_reader
+highlighting module code... [ 22%] ralph.display.artifact_renderer
+highlighting module code... [ 22%] ralph.display.completion_summary
+highlighting module code... [ 23%] ralph.display.content_condenser
+highlighting module code... [ 23%] ralph.display.context
+highlighting module code... [ 24%] ralph.display.lifecycle_filter
+highlighting module code... [ 24%] ralph.display.line_sanitizer
+highlighting module code... [ 25%] ralph.display.long_content_summary
+highlighting module code... [ 25%] ralph.display.parallel_display
+highlighting module code... [ 26%] ralph.display.phase_banner
+highlighting module code... [ 26%] ralph.display.phase_lifecycle
+highlighting module code... [ 26%] ralph.display.phase_status
+highlighting module code... [ 27%] ralph.display.plain_renderer
+highlighting module code... [ 27%] ralph.display.progress
+highlighting module code... [ 28%] ralph.display.prompt_reader
+highlighting module code... [ 28%] ralph.display.raw_overflow
+highlighting module code... [ 29%] ralph.display.ring_buffer
+highlighting module code... [ 29%] ralph.display.snapshot
+highlighting module code... [ 30%] ralph.display.subscriber
+highlighting module code... [ 30%] ralph.display.tables
+highlighting module code... [ 31%] ralph.display.theme
+highlighting module code... [ 31%] ralph.display.tool_args
+highlighting module code... [ 32%] ralph.executor.process
+highlighting module code... [ 32%] ralph.exit_pause
+highlighting module code... [ 32%] ralph.files.operations
+highlighting module code... [ 33%] ralph.git.executor
+highlighting module code... [ 33%] ralph.git.hooks
+highlighting module code... [ 34%] ralph.git.operations
+highlighting module code... [ 34%] ralph.git.rebase.rebase
+highlighting module code... [ 35%] ralph.git.rebase.rebase_checkpoint
+highlighting module code... [ 35%] ralph.git.rebase.rebase_continuation
+highlighting module code... [ 36%] ralph.git.rebase.rebase_kinds
+highlighting module code... [ 36%] ralph.git.rebase.rebase_preconditions
+highlighting module code... [ 37%] ralph.git.rebase.rebase_state_machine
+highlighting module code... [ 37%] ralph.git.subprocess_runner
+highlighting module code... [ 37%] ralph.git.wrapper
+highlighting module code... [ 38%] ralph.guidelines.go
+highlighting module code... [ 38%] ralph.guidelines.java
+highlighting module code... [ 39%] ralph.guidelines.javascript
+highlighting module code... [ 39%] ralph.guidelines.php
+highlighting module code... [ 40%] ralph.guidelines.python
+highlighting module code... [ 40%] ralph.guidelines.ruby
+highlighting module code... [ 41%] ralph.guidelines.rust
+highlighting module code... [ 41%] ralph.guidelines.stack
+highlighting module code... [ 42%] ralph.install
+highlighting module code... [ 42%] ralph.interrupt.asyncio_bridge
+highlighting module code... [ 42%] ralph.interrupt.controller
+highlighting module code... [ 43%] ralph.interrupt.state
+highlighting module code... [ 43%] ralph.language_detector
+highlighting module code... [ 44%] ralph.language_detector.extensions
+highlighting module code... [ 44%] ralph.language_detector.models
+highlighting module code... [ 45%] ralph.language_detector.scanner
+highlighting module code... [ 45%] ralph.language_detector.signatures
+highlighting module code... [ 46%] ralph.logging
+highlighting module code... [ 46%] ralph.mcp.artifacts.audit_adapter
+highlighting module code... [ 47%] ralph.mcp.artifacts.bridge
+highlighting module code... [ 47%] ralph.mcp.artifacts.commit_message
+highlighting module code... [ 47%] ralph.mcp.artifacts.development_result
+highlighting module code... [ 48%] ralph.mcp.artifacts.file_backend
+highlighting module code... [ 48%] ralph.mcp.artifacts.format_docs
+highlighting module code... [ 49%] ralph.mcp.artifacts.handoffs
+highlighting module code... [ 49%] ralph.mcp.artifacts.history
+highlighting module code... [ 50%] ralph.mcp.artifacts.plan
+highlighting module code... [ 50%] ralph.mcp.artifacts.policy_outcomes
+highlighting module code... [ 51%] ralph.mcp.artifacts.store
+highlighting module code... [ 51%] ralph.mcp.artifacts.typed_artifacts
+highlighting module code... [ 52%] ralph.mcp.multimodal.artifacts
+highlighting module code... [ 52%] ralph.mcp.multimodal.capabilities
+highlighting module code... [ 53%] ralph.mcp.multimodal.errors
+highlighting module code... [ 53%] ralph.mcp.multimodal.resources
+highlighting module code... [ 53%] ralph.mcp.protocol.capability_mapping
+highlighting module code... [ 54%] ralph.mcp.protocol.env
+highlighting module code... [ 54%] ralph.mcp.protocol.session
+highlighting module code... [ 55%] ralph.mcp.protocol.startup
+highlighting module code... [ 55%] ralph.mcp.protocol.transport
+highlighting module code... [ 56%] ralph.mcp.server.factory
+highlighting module code... [ 56%] ralph.mcp.server.factory_impl
+highlighting module code... [ 57%] ralph.mcp.server.lifecycle
+highlighting module code... [ 57%] ralph.mcp.session_plan
+highlighting module code... [ 58%] ralph.mcp.tools.artifact
+highlighting module code... [ 58%] ralph.mcp.tools.bridge
+highlighting module code... [ 58%] ralph.mcp.tools.coordination
+highlighting module code... [ 59%] ralph.mcp.tools.exec
+highlighting module code... [ 59%] ralph.mcp.tools.git_read
+highlighting module code... [ 60%] ralph.mcp.tools.names
+highlighting module code... [ 60%] ralph.mcp.tools.websearch
+highlighting module code... [ 61%] ralph.mcp.tools.webvisit
+highlighting module code... [ 61%] ralph.mcp.tools.workspace
+highlighting module code... [ 62%] ralph.mcp.transport.claude
+highlighting module code... [ 62%] ralph.mcp.transport.codex
+highlighting module code... [ 63%] ralph.mcp.transport.common
+highlighting module code... [ 63%] ralph.mcp.transport.opencode
+highlighting module code... [ 63%] ralph.mcp.upstream.agent_probe
+highlighting module code... [ 64%] ralph.mcp.upstream.client
+highlighting module code... [ 64%] ralph.mcp.upstream.config
+highlighting module code... [ 65%] ralph.mcp.upstream.models
+highlighting module code... [ 65%] ralph.mcp.upstream.registry
+highlighting module code... [ 66%] ralph.mcp.upstream.validation
+highlighting module code... [ 66%] ralph.mcp.websearch.backends.base
+highlighting module code... [ 67%] ralph.mcp.websearch.backends.brave
+highlighting module code... [ 67%] ralph.mcp.websearch.backends.ddgs
+highlighting module code... [ 68%] ralph.mcp.websearch.backends.exa
+highlighting module code... [ 68%] ralph.mcp.websearch.backends.searxng
+highlighting module code... [ 68%] ralph.mcp.websearch.backends.tavily
+highlighting module code... [ 69%] ralph.mcp.websearch.secrets
+highlighting module code... [ 69%] ralph.mcp.webvisit.extractor
+highlighting module code... [ 70%] ralph.mcp.webvisit.fetcher
+highlighting module code... [ 70%] ralph.onboarding
+highlighting module code... [ 71%] ralph.phases.analysis
+highlighting module code... [ 71%] ralph.phases.artifacts
+highlighting module code... [ 72%] ralph.phases.commit
+highlighting module code... [ 72%] ralph.phases.commit_logging
+highlighting module code... [ 73%] ralph.phases.execution
+highlighting module code... [ 73%] ralph.phases.integrity
+highlighting module code... [ 74%] ralph.phases.required_artifacts
+highlighting module code... [ 74%] ralph.phases.review
+highlighting module code... [ 74%] ralph.phases.timing
+highlighting module code... [ 75%] ralph.phases.verification
+highlighting module code... [ 75%] ralph.pipeline.checkpoint
+highlighting module code... [ 76%] ralph.pipeline.cycle_baseline
+highlighting module code... [ 76%] ralph.pipeline.effects
+highlighting module code... [ 77%] ralph.pipeline.events
+highlighting module code... [ 77%] ralph.pipeline.handoffs
+highlighting module code... [ 78%] ralph.pipeline.orchestrator
+highlighting module code... [ 78%] ralph.pipeline.parallel.coordinator
+highlighting module code... [ 79%] ralph.pipeline.parallel.mode
+highlighting module code... [ 79%] ralph.pipeline.parallel.scheduler
+highlighting module code... [ 79%] ralph.pipeline.parallel.worker_session
+highlighting module code... [ 80%] ralph.pipeline.progress
+highlighting module code... [ 80%] ralph.pipeline.reducer
+highlighting module code... [ 81%] ralph.pipeline.runner
+highlighting module code... [ 81%] ralph.pipeline.state
+highlighting module code... [ 82%] ralph.pipeline.work_units
+highlighting module code... [ 82%] ralph.pipeline.worker_state
+highlighting module code... [ 83%] ralph.platform.detection
+highlighting module code... [ 83%] ralph.platform.models
+highlighting module code... [ 84%] ralph.policy.explain
+highlighting module code... [ 84%] ralph.policy.loader
+highlighting module code... [ 84%] ralph.policy.models
+highlighting module code... [ 85%] ralph.policy.render
+highlighting module code... [ 85%] ralph.policy.validation
+highlighting module code... [ 86%] ralph.process.child_liveness
+highlighting module code... [ 86%] ralph.process.liveness
+highlighting module code... [ 87%] ralph.process.manager
+highlighting module code... [ 87%] ralph.process.mcp_supervisor
+highlighting module code... [ 88%] ralph.prompts.commit
+highlighting module code... [ 88%] ralph.prompts.debug_dump
+highlighting module code... [ 89%] ralph.prompts.developer
+highlighting module code... [ 89%] ralph.prompts.materialize
+highlighting module code... [ 89%] ralph.prompts.payload_refs
+highlighting module code... [ 90%] ralph.prompts.reviewer
+highlighting module code... [ 90%] ralph.prompts.system_prompt
+highlighting module code... [ 91%] ralph.prompts.template_context
+highlighting module code... [ 91%] ralph.prompts.template_engine
+highlighting module code... [ 92%] ralph.prompts.template_parsing
+highlighting module code... [ 92%] ralph.prompts.template_registry
+highlighting module code... [ 93%] ralph.prompts.template_variables
+highlighting module code... [ 93%] ralph.prompts.types
+highlighting module code... [ 94%] ralph.recovery.budget
+highlighting module code... [ 94%] ralph.recovery.classifier
+highlighting module code... [ 95%] ralph.recovery.connectivity
+highlighting module code... [ 95%] ralph.recovery.controller
+highlighting module code... [ 95%] ralph.recovery.cycle_cap
+highlighting module code... [ 96%] ralph.recovery.events
+highlighting module code... [ 96%] ralph.recovery.testing
+highlighting module code... [ 97%] ralph.runtime.environment
+highlighting module code... [ 97%] ralph.supervising
+highlighting module code... [ 98%] ralph.testing.fake_agent_executor
+highlighting module code... [ 98%] ralph.verify
+highlighting module code... [ 99%] ralph.verify_timeout
+highlighting module code... [ 99%] ralph.workspace.memory
+highlighting module code... [100%] ralph.workspace.protocol
+highlighting module code... [100%] ralph.workspace.scope
+
+writing additional pages... search done
+dumping search index in English (code: en)... done
+dumping object inventory... done
+build succeeded.
+
+The HTML pages are in docs/sphinx/_build/html.

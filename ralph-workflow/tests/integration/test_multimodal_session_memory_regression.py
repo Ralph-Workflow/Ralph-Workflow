@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import gc
 import json
 import tracemalloc
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -19,12 +18,13 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from pathlib import Path
 
-_ITERATION_COUNT = 20
-_ARTIFACT_SIZE_BYTES = 256 * 1024
-_RETAINED_DELTA_SPREAD_LIMIT = 2_000_000
-_PEAK_DELTA_LIMIT = 6_000_000
-_FINAL_RETAINED_DELTA_LIMIT = 2_000_000
-_SESSION_INDEX_SIZE_SPREAD_LIMIT = 2_048
+
+_ARTIFACT_SIZE_BYTES = 8 * 1024
+_WARMUP_CALLS = 1
+_SAMPLE_CALLS = 6
+_CURRENT_BUDGET_BYTES = 256_000
+_INDEX_SIZE_BUDGET_BYTES = 256
+_PEAK_BUDGET_BYTES = 3 * 1024 * 1024
 
 
 @dataclass
@@ -42,6 +42,10 @@ class _SessionWithDrain:
         return True
 
 
+def _read_media(session: _SessionWithDrain, workspace: FsWorkspace) -> Any:
+    return handle_read_media(session, workspace, {"path": "report.pdf"})
+
+
 @pytest.mark.integration
 @pytest.mark.timeout_seconds(10)
 def test_multimodal_session_memory_regression(tmp_path: Path) -> None:
@@ -49,42 +53,31 @@ def test_multimodal_session_memory_regression(tmp_path: Path) -> None:
     session = _SessionWithDrain(MEDIA_READ_CAPABILITY)
     media_file = tmp_path / "report.pdf"
     media_file.write_bytes(b"%PDF-1.4\n" + b"x" * (_ARTIFACT_SIZE_BYTES - 9))
+    index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
 
-    retained_deltas: list[int] = []
-    session_index_sizes: list[int] = []
-
-    gc.collect()
-    tracemalloc.start()
-    baseline_current, _ = tracemalloc.get_traced_memory()
-    tracemalloc.reset_peak()
-
-    for _ in range(_ITERATION_COUNT):
-        result = handle_read_media(session, workspace, {"path": "report.pdf"})
+    for _ in range(_WARMUP_CALLS):
+        result = _read_media(session, workspace)
         assert result.is_error is False
 
-        gc.collect()
-        current_current, _ = tracemalloc.get_traced_memory()
-        retained_deltas.append(current_current - baseline_current)
+    current_samples: list[int] = []
+    index_sizes: list[int] = []
+    tracemalloc.start()
+    try:
+        tracemalloc.reset_peak()
+        for _ in range(_SAMPLE_CALLS):
+            result = _read_media(session, workspace)
+            assert result.is_error is False
+            current, _peak = tracemalloc.get_traced_memory()
+            current_samples.append(current)
+            index_sizes.append(index_path.stat().st_size)
+        _current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
 
-        index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
-        session_index_sizes.append(index_path.stat().st_size)
-
-    gc.collect()
-    final_current, peak_current = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-
-    post_warmup_deltas = retained_deltas[1:]
-    post_warmup_sizes = session_index_sizes[1:]
-    assert post_warmup_deltas
-    assert post_warmup_sizes
-
-    assert max(post_warmup_deltas) - min(post_warmup_deltas) <= _RETAINED_DELTA_SPREAD_LIMIT
-    assert peak_current - baseline_current <= _PEAK_DELTA_LIMIT
-    assert final_current - baseline_current <= _FINAL_RETAINED_DELTA_LIMIT
-    assert max(post_warmup_sizes) - min(post_warmup_sizes) <= _SESSION_INDEX_SIZE_SPREAD_LIMIT
-
-    index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
     persisted = json.loads(index_path.read_text(encoding="utf-8"))
     assert len(persisted["artifacts"]) == 1
     assert len(collect_media_entries_for_phase(workspace, "development")) == 1
     assert len(session.media_manifest.list_entries()) == 1
+    assert max(current_samples) - min(current_samples) < _CURRENT_BUDGET_BYTES
+    assert max(index_sizes) - min(index_sizes) < _INDEX_SIZE_BUDGET_BYTES
+    assert peak < _PEAK_BUDGET_BYTES

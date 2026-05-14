@@ -221,3 +221,6 @@ def test_config_authority_mypy_ini_only() -> None:
         "Found [tool.mypy] in pyproject.toml; mypy.ini is the sole authority. "
         f"Config: {mypy_config}"
     )
+
+
+_repo_type_ignore_lines()

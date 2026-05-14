@@ -131,3 +131,23 @@ def test_recent_activity_falls_back_to_last_activity_line() -> None:
 def test_recent_activity_is_a_tuple() -> None:
     view = instance_view_from_snapshot(_snap())
     assert isinstance(view.recent_activity, tuple)
+
+
+def test_current_stage_is_none_when_phase_is_unset_sentinel() -> None:
+    view = instance_view_from_snapshot(_snap(phase="__unset__"))
+    assert view.lifecycle_status == InstanceStatus.ACTIVE
+    assert view.current_stage is None
+
+
+def test_two_instances_with_different_run_ids_have_distinct_identities() -> None:
+    view1 = instance_view_from_snapshot(_snap(run_id="run-001"))
+    view2 = instance_view_from_snapshot(_snap(run_id="run-002"))
+    assert view1.instance_id == "run-001"
+    assert view2.instance_id == "run-002"
+    assert view1.instance_id != view2.instance_id
+
+
+def test_recent_activity_omits_reason_separator_when_reason_is_empty() -> None:
+    log = (("planning", "proceed", "", "t0"),)
+    view = instance_view_from_snapshot(_snap(decision_log=log))
+    assert view.recent_activity == ("t0 | planning | proceed",)

@@ -1,0 +1,245 @@
+bringing up nodes...
+bringing up nodes...
+
+........................................................................ [  1%]
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  5%]
+........................................................................ [  6%]
+........................................................................ [  8%]
+......................................s................................. [  9%]
+........................................................................ [ 10%]
+........................................................................ [ 12%]
+........................................................................ [ 13%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+........................................................................ [ 17%]
+........................................................................ [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 21%]
+........................................................................ [ 22%]
+............................................................s.ss...s.... [ 24%]
+........................................................................ [ 25%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 29%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 33%]
+........................................................................ [ 35%]
+........................................................................ [ 36%]
+........................................................................ [ 37%]
+........................................................................ [ 39%]
+........................................................................ [ 40%]
+........................................................................ [ 41%]
+........................................................................ [ 43%]
+........................................................................ [ 44%]
+........................................................................ [ 45%]
+........................................................................ [ 47%]
+........................................................................ [ 48%]
+........................................................................ [ 49%]
+........................................................................ [ 51%]
+........................................................................ [ 52%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+........................................................................ [ 56%]
+.............................................s.......................... [ 57%]
+........................................................................ [ 59%]
+........................................................................ [ 60%]
+........................................................................ [ 61%]
+........................................................................ [ 63%]
+..........................................F............................. [ 64%]
+........................................................................ [ 66%]
+........................................................................ [ 67%]
+........................................................................ [ 68%]
+........................................................................ [ 70%]
+........................................................................ [ 71%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+.....................................s.................................. [ 75%]
+......s...........s.........................................s........... [ 76%]
+........................................................................ [ 78%]
+........................................................................ [ 79%]
+........................................................................ [ 80%]
+........................................................................ [ 82%]
+........................................................................ [ 83%]
+........................................................................ [ 84%]
+........................................................................ [ 86%]
+........................................................................ [ 87%]
+...............................F........................................ [ 88%]
+........................................................................ [ 90%]
+........................................................................ [ 91%]
+........................................................................ [ 92%]
+........................................................................ [ 94%]
+...................................F.................................... [ 95%]
+........................................................................ [ 96%]
+........................................................................ [ 98%]
+........................................................................ [ 99%]
+.................                                                        [100%]
+=================================== FAILURES ===================================
+_________________________ test_display_style_contracts _________________________
+[gw2] darwin -- Python 3.14.4 /Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/bin/python
+
+    def test_display_style_contracts() -> None:
+        """Display code must avoid bare style literals and bare markup colors."""
+        style_violations: list[str] = []
+        append_violations: list[str] = []
+        markup_violations: list[str] = []
+    
+        for path in _target_files():
+            rel = path.relative_to(_REPO_ROOT / "ralph-workflow")
+            for lineno, literal in _literal_style_violations(path):
+                style_violations.append(f"  {rel}:{lineno}: style={literal!r}")
+            for lineno, literal in _positional_append_style_violations(path):
+                append_violations.append(f"  {rel}:{lineno}: .append(..., {literal!r})")
+>           for lineno, literal in _markup_string_violations(path):
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_display_no_literal_styles.py:182: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_display_no_literal_styles.py:145: in _markup_string_violations
+    for node in ast.walk(tree):
+                ^^^^^^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/ast.py:396: in walk
+    todo.extend(iter_child_nodes(node))
+/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/ast.py:280: in iter_child_nodes
+    def iter_child_nodes(node):
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _handle_timeout(signum: int, frame) -> None:
+        del signum, frame
+>       raise TestExecutionTimeoutError(f"test exceeded {timeout_seconds} seconds: {item.nodeid}")
+E       tests.conftest.TestExecutionTimeoutError: test exceeded 1.0 seconds: tests/test_display_no_literal_styles.py::test_display_style_contracts
+
+tests/conftest.py:52: TestExecutionTimeoutError
+__________________ test_dag_property_no_deadlock_no_duplicate __________________
+[gw3] darwin -- Python 3.14.4 /Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/bin/python
+  + Exception Group Traceback (most recent call last):
+  |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/tests/test_scheduler.py", line 115, in test_dag_property_no_deadlock_no_duplicate
+  |     @given(
+  |     
+  |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/core.py", line 2264, in wrapped_test
+  |     raise the_error_hypothesis_found
+  | hypothesis.errors.FlakyFailure: Inconsistent results: An example failed on the first run but now succeeds (or fails with another error, or is for some reason not runnable). (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/core.py", line 1211, in _execute_once_for_engine
+    |     result = self.execute_once(data)
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/core.py", line 1150, in execute_once
+    |     result = self.test_runner(data, run)
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/core.py", line 824, in default_executor
+    |     return function(data)
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/core.py", line 1054, in run
+    |     kw, argslices = context.prep_args_kwargs_from_strategies(
+    |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+    |         self.stuff.given_kwargs
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |     )
+    |     ^
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/control.py", line 219, in prep_args_kwargs_from_strategies
+    |     kwargs[k] = self.data.draw(s, observe_as=f"generate:{k}")
+    |                 ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/internal/conjecture/data.py", line 1210, in draw
+    |     v = unwrapped.do_draw(self)
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/strategies/_internal/collections.py", line 226, in do_draw
+    |     result.append(data.draw(self.element_strategy))
+    |                   ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/internal/conjecture/data.py", line 1205, in draw
+    |     return unwrapped.do_draw(self)
+    |            ~~~~~~~~~~~~~~~~~^^^^^^
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/strategies/_internal/collections.py", line 79, in do_draw
+    |     result.append(data.draw(strategy))
+    |                   ~~~~~~~~~^^^^^^^^^^
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/internal/conjecture/data.py", line 1205, in draw
+    |     return unwrapped.do_draw(self)
+    |            ~~~~~~~~~~~~~~~~~^^^^^^
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/strategies/_internal/numbers.py", line 84, in do_draw
+    |     return data.draw_integer(
+    |            ~~~~~~~~~~~~~~~~~^
+    |         min_value=self.start, max_value=self.end, weights=weights
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     )
+    |     ^
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/internal/conjecture/data.py", line 901, in draw_integer
+    |     return self._draw("integer", constraints, observe=observe, forced=forced)
+    |            ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/internal/conjecture/data.py", line 844, in _draw
+    |     size = 0 if self.provider.avoid_realization else choices_size([value])
+    |                                                      ~~~~~~~~~~~~^^^^^^^^^
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/lib/python3.14/site-packages/hypothesis/internal/conjecture/choice.py", line 616, in choices_size
+    |     def choices_size(choices: Iterable[ChoiceT]) -> int:
+    |     
+    |   File "/Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/tests/conftest.py", line 52, in _handle_timeout
+    |     raise TestExecutionTimeoutError(f"test exceeded {timeout_seconds} seconds: {item.nodeid}")
+    | tests.conftest.TestExecutionTimeoutError: test exceeded 1.0 seconds: tests/test_scheduler.py::test_dag_property_no_deadlock_no_duplicate
+    | while generating 'dep_pairs' from lists(tuples(integers(min_value=0, max_value=19), integers(min_value=0, max_value=19)), max_size=40)
+    +------------------------------------
+________ test_phase_failure_event_uses_effect_phase_not_literal_review _________
+[gw6] darwin -- Python 3.14.4 /Users/mistlight/Projects/RalphWithReviewer/wt-112-multi-ralph/ralph-workflow/.venv/bin/python
+
+    def test_phase_failure_event_uses_effect_phase_not_literal_review() -> None:
+        """PhaseFailureEvent.phase must equal effect.phase, not the literal 'review'."""
+        custom_phase_name = "custom_review_phase"
+        effect = InvokeAgentEffect(
+            agent_name="reviewer",
+            phase=custom_phase_name,
+            prompt_file="PROMPT.md",
+        )
+        ctx = _make_failing_context()
+        with patch(
+            "ralph.phases.review.load_phase_artifact",
+            side_effect=ValueError("missing artifact"),
+        ):
+>           events = handle_review(effect, ctx)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_review_handler_uses_effect_phase_name.py:41: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+ralph/phases/review.py:124: in handle_review
+    baseline = _read_review_baseline(ctx)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ralph/phases/review.py:54: in _read_review_baseline
+    marker = _workspace_absolute_path(ctx, REVIEW_BASELINE_MARKER)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ralph/phases/review.py:48: in _workspace_absolute_path
+    return ctx.workspace.absolute_path(rel)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py:723: in __getattr__
+    elif isinstance(result, _SpecState):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/homebrew/Cellar/python@3.14/3.14.4/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/mock.py:603: in __class__
+    @property
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _handle_timeout(signum: int, frame) -> None:
+        del signum, frame
+>       raise TestExecutionTimeoutError(f"test exceeded {timeout_seconds} seconds: {item.nodeid}")
+E       tests.conftest.TestExecutionTimeoutError: test exceeded 1.0 seconds: tests/test_review_handler_uses_effect_phase_name.py::test_phase_failure_event_uses_effect_phase_not_literal_review
+
+tests/conftest.py:52: TestExecutionTimeoutError
+============================= slowest 20 durations =============================
+2.41s call     tests/test_scheduler.py::test_dag_property_no_deadlock_no_duplicate
+2.04s call     tests/test_pipeline_runner.py::test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap
+1.59s call     tests/agents/test_invoke_timeout_integration.py::test_watchdog_fires_even_when_classify_quiet_raises
+1.54s call     tests/test_type_ignore_policy.py::test_repo_type_ignore_comments_follow_policy
+1.48s call     tests/agents/test_invoke_timeout_integration.py::test_classify_quiet_exception_defers_not_fires
+1.19s call     tests/integration/test_pipeline_memory_regression.py::test_run_pipeline_memory_regression
+1.04s call     tests/test_display_no_literal_styles.py::test_display_style_contracts
+1.01s call     tests/test_review_handler_uses_effect_phase_name.py::test_phase_failure_event_uses_effect_phase_not_literal_review
+0.87s call     tests/test_git_hooks.py::test_uninstall_hooks_removes_managed_files
+0.86s call     tests/test_mcp_server.py::test_build_fastmcp_server_normalizes_tool_result_payload
+0.86s call     tests/test_pipeline_runner.py::TestCycleBaselineLifecycle::test_run_clears_baseline_at_teardown_on_failure
+0.81s setup    tests/test_cycle_baseline_diff.py::TestWriteCycleBaselineForceParam::test_write_baseline_force_false_preserves_existing
+0.80s call     tests/test_cli_first_run.py::test_cli_init_fallback_no_duplicated_loop_wording
+0.79s call     tests/test_asyncio_bridge.py::TestInstallSignalHandlers::test_injected_controller_handles_graceful_then_forced_sigint
+0.77s call     tests/test_prompt_materialize.py::test_git_diff_cumulative_across_multiple_mid_cycle_commits
+0.76s call     tests/test_mcp_server.py::test_build_fastmcp_server_preserves_registry_input_schema
+0.76s call     tests/test_cli_diagnose_path.py::test_diagnose_next_steps_panel_rendered_in_cli
+0.75s call     tests/test_tool_workspace.py::test_read_media_replay_handle_round_trips_video_metadata
+0.75s call     tests/test_parallel_coordinator.py::test_same_workspace_creates_worker_session_and_shuts_down_mcp
+0.72s setup    tests/test_prompt_materialize.py::test_git_diff_uses_start_commit_sha_when_present
+=========================== short test summary info ============================
+FAILED tests/test_display_no_literal_styles.py::test_display_style_contracts
+FAILED tests/test_scheduler.py::test_dag_property_no_deadlock_no_duplicate - ...
+FAILED tests/test_review_handler_uses_effect_phase_name.py::test_phase_failure_event_uses_effect_phase_not_literal_review
+3 failed, 5332 passed, 10 skipped in 104.63s (0:01:44)

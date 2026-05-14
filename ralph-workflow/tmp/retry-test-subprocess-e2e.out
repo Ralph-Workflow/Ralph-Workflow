@@ -1,0 +1,8 @@
+uv run python -m ralph.verify_timeout --suite-timeout 60 -- pytest tests/ -q -n 1 -m subprocess_e2e
+2026-05-14 00:12:55.975 | DEBUG    | ralph.process.manager:_loguru_event_listener:918 - process 14657 RUNNING rc=None
+bringing up nodes...
+bringing up nodes...
+
+............                                                             [100%]
+12 passed in 47.63s
+2026-05-14 00:13:49.005 | INFO     | ralph.process.manager:_loguru_event_listener:920 - process 14657 EXITED rc=0
