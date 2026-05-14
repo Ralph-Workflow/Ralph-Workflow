@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import tempfile
+from functools import lru_cache
 from io import StringIO
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 from rich.console import Console
@@ -28,24 +30,34 @@ _VALID_DEV_RESULT_JSON = json.dumps(
             "status": "completed",
             "summary": "Done.",
             "files_changed": "- src/a.py",
+            "plan_items_proven": [{"plan_item": "u1", "proof": "Implemented."}],
+            "analysis_items_addressed": [],
         },
     }
 )
 
 
+@lru_cache(maxsize=1)
+def _default_policy_bundle() -> Any:
+    with tempfile.TemporaryDirectory() as tmp:
+        return load_policy(Path(tmp) / ".agent")
+
+
 class TestHandleDevelopment:
     @classmethod
     def _make_context(cls, workspace=None, console=None) -> PhaseContext:
-        with tempfile.TemporaryDirectory() as tmp:
-            policy = load_policy(Path(tmp) / ".agent")
+        policy = _default_policy_bundle()
         ws = workspace if workspace is not None else MagicMock()
+        registry: Any = object()
+        chain_manager: Any = object()
+        agents_policy: Any = object()
         return PhaseContext.construct(
             workspace=ws,
-            registry=object(),
-            chain_manager=object(),
+            registry=registry,
+            chain_manager=chain_manager,
             pipeline_policy=policy.pipeline,
             artifacts_policy=policy.artifacts,
-            agents_policy=object(),
+            agents_policy=agents_policy,
             console=console,
         )
 
@@ -132,7 +144,7 @@ class TestHandleDevelopment:
         result = handle_execution_phase(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
-    def test_invoke_agent_effect_without_development_result_returns_agent_success(
+    def test_invoke_agent_effect_without_development_result_returns_phase_failure(
         self,
     ) -> None:
         workspace = MagicMock()
@@ -142,8 +154,9 @@ class TestHandleDevelopment:
 
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
         result = handle_execution_phase(effect, ctx)
-        # development_result is optional — missing artifact succeeds
-        assert result == [PipelineEvent.AGENT_SUCCESS]
+        failure_events = [event for event in result if isinstance(event, PhaseFailureEvent)]
+        assert failure_events, "Missing required development_result must produce PhaseFailureEvent"
+        assert failure_events[0].recoverable is True
 
     def test_invoke_agent_effect_with_malformed_development_result_returns_phase_failure(
         self,

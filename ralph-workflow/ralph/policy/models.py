@@ -193,6 +193,34 @@ class ArtifactHistoryPolicy(_FrozenPolicyModel):
     )
 
 
+class ArtifactProofPolicy(_FrozenPolicyModel):
+    """Per-phase proof requirements for development artifacts.
+
+    Attributes:
+        require_plan_proof: When True, require plan_items_proven coverage for the
+            plan artifact's canonical step refs or assigned work unit ids.
+        require_analysis_proof: When True, require analysis_items_addressed coverage
+            for prior how_to_fix items when analysis feedback exists.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    require_plan_proof: bool = Field(
+        default=True,
+        description=(
+            "When True, validate plan_items_proven coverage for the plan artifact's "
+            "canonical step refs or assigned work unit ids."
+        ),
+    )
+    require_analysis_proof: bool = Field(
+        default=True,
+        description=(
+            "When True, validate analysis_items_addressed coverage for prior how_to_fix "
+            "items when analysis feedback exists."
+        ),
+    )
+
+
 class PhaseRetryPolicy(_FrozenPolicyModel):
     """Per-phase retry policy overriding chain-level defaults.
 
@@ -486,6 +514,7 @@ class PhaseDefinition(_FrozenPolicyModel):
         verification: Optional verification gating policy.
         artifact_required: Whether this phase's output artifact is required for phase success
             when the phase's drain has an artifact contract. Defaults to True.
+        artifact_proof_policy: Optional proof-validation policy for development_result artifacts.
         terminal_outcome: Explicit terminal outcome; required when role='terminal'.
         bypass_routes: Named bypass routes (e.g. clean -> review_commit).
         clean_outcome: For role='review': the bypass_routes key that means the review
@@ -600,6 +629,14 @@ class PhaseDefinition(_FrozenPolicyModel):
             "Optional artifact history policy. When set with enabled=True, the runtime "
             "archives the prior canonical artifact and Markdown handoff before overwrite. "
             "Phases sharing the same drain must agree on artifact_history.enabled."
+        ),
+    )
+    artifact_proof_policy: ArtifactProofPolicy | None = Field(
+        default=None,
+        description=(
+            "Optional proof-validation policy for development_result artifacts. When set, "
+            "the runtime validates plan and analysis proof entries before accepting the "
+            "development_result artifact."
         ),
     )
     workflow_fallback: PhaseWorkflowFallback | None = Field(

@@ -19,6 +19,8 @@ from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
 from ralph.testing.fake_process import FakeControllableAsyncProcess
 
+pytestmark = pytest.mark.subprocess_e2e
+
 EXIT_CODE_FAILURE = 42
 EXPECTED_ACTIVITY_ENTRIES = 2
 

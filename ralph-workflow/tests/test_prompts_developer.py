@@ -106,7 +106,8 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
     assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
     assert plan_text in prompt
     assert "ARTIFACT SUBMISSION" not in prompt
-    assert "development_result" not in prompt
+    assert "development_result" in prompt
+    assert "plan_items_proven" in prompt
     assert "content_path" not in prompt
 
 
@@ -128,7 +129,8 @@ def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work
 
     assert "continuing a DEVELOPMENT iteration" in prompt
     assert "content_path" not in prompt
-    assert "development_result" not in prompt
+    assert "development_result" in prompt
+    assert "analysis_items_addressed" in prompt
 
 
 def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path):

@@ -21,10 +21,6 @@ from ralph.git.rebase.rebase import (
     get_conflicted_files,
     rebase_onto,
 )
-from ralph.process.manager import ProcessStatus, get_process_manager, reset_process_manager
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
     NoRebaseInProgressError,
@@ -44,6 +40,12 @@ from ralph.git.rebase.rebase_state_machine import (
     RebaseStateMachine,
     RecoveryAction,
 )
+from ralph.process.manager import ProcessStatus, get_process_manager, reset_process_manager
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+pytestmark = pytest.mark.subprocess_e2e
 
 
 class FakeProcessExecutor(ProcessExecutor):

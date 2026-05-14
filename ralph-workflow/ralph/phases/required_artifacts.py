@@ -149,7 +149,7 @@ def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str
 
     Unlike build_retry_hint (which describes a missing *output*), this function
     describes a missing *input* — i.e., a handoff that a prior phase should have
-    produced.  The hint is written to the phase's retry-hint file so the agent
+    produced. The hint is written to the phase's retry-hint file so the agent
     sees an explanation on the next attempt, but the message correctly names the
     upstream producer rather than blaming the current agent.
     """
@@ -161,9 +161,18 @@ def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str
     )
 
 
+def build_proof_failure_hint(phase: str, detail: str) -> str:
+    """Build a retry hint for a phase that submitted proof but failed validation."""
+    return (
+        f"PREVIOUS ATTEMPT FAILED: The agent submitted the artifact but the proof "
+        f"entries are incomplete or invalid.\n\nDetails: {detail}"
+    )
+
+
 __all__ = [
     "RequiredArtifact",
     "build_missing_input_hint",
+    "build_proof_failure_hint",
     "build_required_artifacts",
     "build_retry_hint",
     "resolve_phase_required_artifact",

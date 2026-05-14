@@ -300,14 +300,14 @@ def test_load_policy_rejects_artifact_required_in_artifacts_toml(tmp_path: Path)
         load_policy(tmp_path)
 
 
-def test_load_policy_supports_phase_owned_artifact_required_in_pipeline_toml(
+def test_default_pipeline_toml_makes_development_artifact_required(
     tmp_path: Path,
 ) -> None:
     _copy_default_policy_files(tmp_path)
 
     bundle = load_policy(tmp_path)
 
-    assert bundle.pipeline.phases["development"].artifact_required is False
+    assert bundle.pipeline.phases["development"].artifact_required is True
 
 
 def test_load_policy_wraps_validate_drain_contracts_error(

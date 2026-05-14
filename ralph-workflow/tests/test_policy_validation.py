@@ -2536,14 +2536,14 @@ class TestValidatePostCommitAllBudgetStatesCovered:
         validate_policy_completeness(bundle)  # must not raise
 
 
-class TestOptionalArtifactPolicy:
-    """Tests for pipeline-owned optional artifact behavior."""
+class TestPipelineOwnedArtifactRequiredPolicy:
+    """Tests for pipeline-owned required artifact behavior."""
 
-    def test_default_policy_loads_with_development_phase_optional(self, tmp_path: Path) -> None:
+    def test_default_policy_loads_with_development_phase_required(self, tmp_path: Path) -> None:
         """Default policy must load with development artifact requirement owned by pipeline."""
         bundle = load_policy(tmp_path / ".agent")
-        assert bundle.pipeline.phases["development"].artifact_required is False, (
-            "phases.development.artifact_required must be False in default policy"
+        assert bundle.pipeline.phases["development"].artifact_required is True, (
+            "phases.development.artifact_required must be True in default policy"
         )
 
     def test_artifact_contract_rejects_phase_owned_artifact_required(self) -> None:
@@ -2557,7 +2557,7 @@ class TestOptionalArtifactPolicy:
                 }
             )
 
-    def test_phase_required_artifact_uses_pipeline_owned_optional_flag(
+    def test_phase_required_artifact_uses_pipeline_owned_required_flag(
         self, tmp_path: Path
     ) -> None:
         """resolve_phase_required_artifact threads artifact_required from phase policy."""
@@ -2571,8 +2571,8 @@ class TestOptionalArtifactPolicy:
             drain="development",
         )
         assert dev_ra is not None, "development phase must have a RequiredArtifact entry"
-        assert dev_ra.artifact_required is False, (
-            "RequiredArtifact for development must have artifact_required=False from pipeline"
+        assert dev_ra.artifact_required is True, (
+            "RequiredArtifact for development must have artifact_required=True from pipeline"
         )
 
 

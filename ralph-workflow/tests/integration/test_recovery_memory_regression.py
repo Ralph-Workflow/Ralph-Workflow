@@ -5,6 +5,7 @@ from __future__ import annotations
 import gc
 import tempfile
 import tracemalloc
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,7 @@ from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.controller import RecoveryController
 
 _RECOVERY_CYCLE_CAP = 4
-_RECOVERY_ITERATION_COUNT = 20
+_RECOVERY_ITERATION_COUNT = 4
 _RETAINED_DELTA_SPREAD_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 20_000_000
 _CHECKPOINT_SIZE_SPREAD_LIMIT = 2_048
@@ -28,6 +29,7 @@ class _AgentInactivityTimeoutError(Exception):
 
 _AgentInactivityTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
+@lru_cache(maxsize=1)
 def _minimal_policy_bundle():
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")

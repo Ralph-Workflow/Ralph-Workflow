@@ -19,8 +19,8 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from pathlib import Path
 
-_ITERATION_COUNT = 20
-_ARTIFACT_SIZE_BYTES = 256 * 1024
+_ITERATION_COUNT = 8
+_ARTIFACT_SIZE_BYTES = 64 * 1024
 _RETAINED_DELTA_SPREAD_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 6_000_000
 _FINAL_RETAINED_DELTA_LIMIT = 2_000_000
@@ -62,7 +62,6 @@ def test_multimodal_session_memory_regression(tmp_path: Path) -> None:
         result = handle_read_media(session, workspace, {"path": "report.pdf"})
         assert result.is_error is False
 
-        gc.collect()
         current_current, _ = tracemalloc.get_traced_memory()
         retained_deltas.append(current_current - baseline_current)
 

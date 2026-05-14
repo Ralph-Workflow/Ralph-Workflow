@@ -1,5 +1,6 @@
 import json
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
@@ -31,6 +32,7 @@ from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 
 
+@lru_cache(maxsize=1)
 def _default_policy():
     with tempfile.TemporaryDirectory() as tmp:
         return load_policy(Path(tmp) / ".agent")

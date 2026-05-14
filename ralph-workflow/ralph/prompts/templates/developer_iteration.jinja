@@ -11,7 +11,7 @@ You are in IMPLEMENTATION MODE. Execute the plan and make progress.
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
 {% if LAST_RETRY_ERROR %}
-IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
+IMPORTANT: The previous attempt did not complete successfully.
 
 {{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
 {% endif %}
@@ -35,3 +35,21 @@ and what development-analysis feedback they received.
 {% endif %}
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
+
+## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
+
+You MUST submit a `development_result` artifact before declaring completion. The artifact must include proof for every plan step and every prior analysis how_to_fix item:
+
+**plan_items_proven** (required when the execution plan has steps): One unique entry per step.
+- `plan_item`: Canonical step reference — must EXACTLY match "Step N: <title>" where N is the step number and <title> is the step title as written in the plan.
+- `proof`: Concrete evidence, e.g. "Modified src/validation.py lines 10-25. All tests pass."
+
+**plan_items_proven** (required when the plan uses work_units): One entry for the work unit you were assigned.
+- `plan_item`: Must EXACTLY match the `unit_id` of your assigned work unit from the plan.
+- `proof`: Concrete evidence of what you implemented for this work unit.
+
+**analysis_items_addressed** (required when ANALYSIS FEEDBACK exists): One unique entry per `how_to_fix` item.
+- `how_to_fix_item`: Must EXACTLY match the how_to_fix text from the prior analysis artifact — copy it verbatim, do not paraphrase.
+- `proof`: Concrete evidence of how it was resolved.
+
+Each `plan_item` and each `how_to_fix_item` must be distinct — duplicate entries will fail validation. Unknown references (ones that don't match an actual plan step, work_unit id, or analysis item) will also fail validation and trigger a re-prompt.

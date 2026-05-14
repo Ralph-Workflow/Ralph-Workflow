@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 from unittest.mock import patch
 
@@ -48,6 +49,7 @@ def _copy_default_policy_files(target_dir: Path) -> None:
         shutil.copy(_DEFAULT_POLICY_DIR / filename, target_dir / filename)
 
 
+@lru_cache(maxsize=1)
 def _load_default_artifact_registry() -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         policy_dir = Path(tmp) / ".agent"
@@ -56,6 +58,7 @@ def _load_default_artifact_registry() -> dict:
         return build_required_artifacts(policy.artifacts)
 
 
+@lru_cache(maxsize=1)
 def _load_default_optional_artifact_phases() -> set[str]:
     with tempfile.TemporaryDirectory() as tmp:
         policy_dir = Path(tmp) / ".agent"
@@ -272,29 +275,30 @@ def test_development_missing_plan_hint_names_upstream_planning_phase() -> None:
     )
 
 
-def test_development_missing_dev_result_succeeds_optional() -> None:
-    """When development_result is missing, development succeeds (artifact is optional)."""
+def test_development_missing_dev_result_returns_phase_failure() -> None:
+    """When development_result is missing, development returns PhaseFailureEvent.
+
+    The artifact is now required.
+    """
     workspace = MemoryWorkspace()
     workspace.write(".agent/artifacts/plan.json", _VALID_PLAN_JSON_LEGACY)
     ctx = _make_ctx(workspace)
 
     events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
 
-    # development_result is optional — missing artifact must not fail the phase
-    assert events == [PipelineEvent.AGENT_SUCCESS], (
-        "Missing optional development_result must not produce PhaseFailureEvent"
-    )
-    # No retry hint should be written for a missing optional artifact
+    failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
+    assert failure_events, "Missing required development_result must produce PhaseFailureEvent"
+    assert failure_events[0].recoverable is True
     hint_path = retry_hint_path("development")
-    assert not workspace.exists(hint_path), (
-        "No retry hint should be written for a missing optional artifact"
-    )
+    assert workspace.exists(
+        hint_path
+    ), "Retry hint must be written when required development_result is missing"
 
 
-def test_development_missing_dev_result_uses_pipeline_owned_optional_policy(
+def test_development_missing_dev_result_uses_pipeline_owned_required_policy(
     tmp_path: Path,
 ) -> None:
-    """Missing development_result must succeed when pipeline.toml marks the phase optional."""
+    """Missing development_result must fail when pipeline.toml marks the phase required."""
     artifact_policy_dir = tmp_path / ".agent"
     _copy_default_policy_files(artifact_policy_dir)
     policy = load_policy(artifact_policy_dir)
@@ -304,10 +308,10 @@ def test_development_missing_dev_result_uses_pipeline_owned_optional_policy(
 
     events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
 
-    assert events == [PipelineEvent.AGENT_SUCCESS], (
-        "Pipeline-owned optional artifact policy must allow missing development_result"
-    )
-    assert not workspace.exists(retry_hint_path("development"))
+    failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
+    assert failure_events, "Missing required development_result must produce PhaseFailureEvent"
+    assert failure_events[0].recoverable is True
+    assert workspace.exists(retry_hint_path("development"))
 
 
 def test_read_and_clear_retry_hint_returns_content_and_deletes_file() -> None:
@@ -370,7 +374,9 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
 @pytest.mark.parametrize(
     "phase,drain",
     [
-        # development is excluded: development_result is optional, so absence succeeds
+        # development is excluded from this end-to-end test:
+        # the default proof policy requires valid proof entries in the artifact,
+        # which is out of scope for this routing test
         ("development_analysis", SessionDrain.DEVELOPMENT),
     ],
 )

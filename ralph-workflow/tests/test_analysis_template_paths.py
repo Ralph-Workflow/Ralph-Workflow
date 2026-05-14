@@ -164,8 +164,8 @@ def _render_development_analysis_no_dev_result(tmp_path: Path) -> str:
 class TestDevelopmentAnalysisWithoutDevResult:
     """Verify development_analysis prompt renders correctly when development_result is absent.
 
-    Since development_result is optional (artifact_required=false), prompt materialization
-    for development_analysis must not crash and must still reference CURRENT_PROMPT.md and PLAN.
+    Prompt materialization for development_analysis must not crash and must still reference
+    CURRENT_PROMPT.md and PLAN.
     """
 
     def test_renders_without_crash_when_dev_result_absent(self, tmp_path: Path) -> None:

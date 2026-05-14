@@ -8,6 +8,7 @@ real subprocesses.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -102,6 +103,11 @@ class DevelopmentAnalysisAlwaysLoopbackInvoker(MockAgentInvoker):
         return PipelineEvent.ANALYSIS_SUCCESS
 
 
+@lru_cache(maxsize=1)
+def _default_policy_bundle():
+    return load_policy(DEFAULT_POLICY_DIR)
+
+
 def _config() -> UnifiedConfig:
     return UnifiedConfig()
 
@@ -115,7 +121,7 @@ def _run_pipeline(  # noqa: PLR0913
     counter_overrides: dict[str, int] | None = None,
 ) -> tuple[int, list[PipelineState]]:
     saved_states: list[PipelineState] = []
-    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
+    policy_bundle = _default_policy_bundle()
 
     def fake_execute_effect(effect, _config, _workspace_scope):
         if isinstance(effect, InvokeAgentEffect):
@@ -644,12 +650,14 @@ def test_dev_cycle_completes_without_development_result_artifact(
     tmp_path: Path,
     mock_agent_invoker: MockAgentInvoker,
 ) -> None:
-    """Full development cycle must complete even when development_result is never written.
+    """Routing-layer regression: the pipeline can complete development cycles even when
+    the mock execution handler never writes development_result.
 
-    Regression: the optional development_result contract must not cause early termination
-    or off-by-one bugs in the development -> development_analysis -> development_commit cycle.
-    The mock agent invoker never writes development_result, so this exercises the optional
-    artifact path end-to-end at the routing layer.
+    _execute_effect is mocked to return AGENT_SUCCESS, completely bypassing
+    handle_execution_phase. This test exercises the runner/checkpoint/state-machine
+    routing layer only, not artifact validation. development_result is required by
+    default policy, but this test confirms the routing layer is not affected by
+    mocked execution.
     """
     result, saved_states = _run_pipeline(
         monkeypatch,

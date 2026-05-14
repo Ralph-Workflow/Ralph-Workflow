@@ -9,20 +9,14 @@ Artifacts are the structured files Ralph Workflow leaves behind so later phases 
 | Artifact type | Submitted by | Purpose | Required? |
 |---|---|---|---|
 | `plan` | planning agent | Implementation plan with steps and work units | yes |
-| `development_result` | development agent | Summary of changes made (context for analysis) | **no** |
+| `development_result` | development agent | Summary of changes made (context for analysis) | **yes** |
 | `issues` | review agent | List of issues found in the development output | yes |
 | `fix_result` | fix agent | Summary of fixes applied | yes |
 | `commit_message` | commit agent | Proposed commit subject and body | yes |
 | `development_analysis_decision` | analysis agent | Go/no-go for development output | yes |
 | `review_analysis_decision` | analysis agent | Go/no-go for review output | yes |
 
-> **Optional artifacts:** When *Required?* is **no**, phase success does not depend on the artifact
-> being present and no explicit `declare_complete` call is required. The development agent *may*
-> submit `development_result` to give the analysis agent richer context, but a clean exit (exit
-> code 0) alone is sufficient for terminal success. A submitted optional artifact is still fully
-> validated against its schema. The `artifact_required` flag in `pipeline.toml` controls this
-> behaviour on the phase definition; artifact contracts in `artifacts.toml` only describe the
-> artifact itself.
+> **Required artifacts:** When *Required?* is **yes**, the phase must submit the artifact before completion. A submitted artifact is still fully validated against its schema. Whether a phase requires `development_result` is controlled by `pipeline.toml` on the phase definition; artifact contracts in `artifacts.toml` only describe the artifact itself.
 
 See `ralph.mcp.artifacts.typed_artifacts` for Pydantic schema definitions for each type.
 
@@ -52,6 +46,21 @@ Agents submit artifacts through these MCP tools, exposed by `ralph.mcp.tools.art
 | `ralph_discard_plan_draft` | Delete the staged plan draft to start fresh |
 
 The plan tools exist because plans are large and submitted section-by-section to avoid agent context window pressure. All other artifact types are submitted as single JSON blobs via `ralph_submit_artifact`.
+
+## Proof policy
+
+The development phase can also enforce proof requirements through `[phases.development.artifact_proof_policy]` in `pipeline.toml`.
+
+```toml
+[phases.development.artifact_proof_policy]
+require_plan_proof = true
+require_analysis_proof = true
+```
+
+The bundled defaults enable both checks. Omitting the block in a project-local policy inherits the bundled defaults; to disable proof enforcement, set both fields to `false` explicitly in `.agent/pipeline.toml`.
+
+- `require_plan_proof` controls whether `plan_items_proven` must cover the plan's canonical step refs or assigned work unit ids.
+- `require_analysis_proof` controls whether `analysis_items_addressed` must cover prior `how_to_fix` items when analysis feedback exists.
 
 ## Schema validation
 

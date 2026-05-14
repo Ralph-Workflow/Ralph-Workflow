@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import tempfile
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 from ralph.phases import PhaseContext
@@ -16,9 +18,14 @@ from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.recovery.controller import RecoveryController
 
 
-def _default_policy_context(workspace=None) -> PhaseContext:
+@lru_cache(maxsize=1)
+def _default_policy_bundle() -> Any:
     with tempfile.TemporaryDirectory() as tmp:
-        policy = load_policy(Path(tmp) / ".agent")
+        return load_policy(Path(tmp) / ".agent")
+
+
+def _default_policy_context(workspace=None) -> PhaseContext:
+    policy = _default_policy_bundle()
     ws = workspace if workspace is not None else MagicMock()
     if workspace is None:
         ws.exists.return_value = False

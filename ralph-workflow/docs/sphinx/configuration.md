@@ -123,6 +123,18 @@ The top-level ideas are:
 - post-commit routes — what happens after a commit-producing step
 - parallel execution — whether independent work units can fan out concurrently
 
+### Development proof policy
+
+The development phase now supports a proof policy block in `pipeline.toml`:
+
+```toml
+[phases.development.artifact_proof_policy]
+require_plan_proof = true
+require_analysis_proof = true
+```
+
+Omitting this block inherits the bundled defaults. To disable proof enforcement in a project-local `.agent/pipeline.toml`, set both fields to `false` explicitly. The proof policy is phase-owned, so it lives under `[phases.development]` alongside the other phase settings.
+
 ## Advanced sections you may not need right away
 
 The main config also supports deeper transport-specific and workflow-authoring sections such as:

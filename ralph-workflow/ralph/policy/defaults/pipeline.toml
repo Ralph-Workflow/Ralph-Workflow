@@ -125,7 +125,6 @@ reset_loop = false
 [phases.development]
 drain = "development"
 role = "execution"
-artifact_required = false
 prompt_template = "developer_iteration.jinja"
 continuation_template = "developer_iteration_continuation.jinja"
 [phases.development.transitions]
@@ -141,6 +140,10 @@ max_parallel_workers = 8
 max_work_units = 50
 require_allowed_directories = true
 post_fanout_verification = false
+
+[phases.development.artifact_proof_policy]
+require_plan_proof = true
+require_analysis_proof = true
 
 [phases.development_analysis]
 drain = "development_analysis"

@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.mcp.artifacts.development_result import DevelopmentResult
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PLAN_DRAFT_PATH,
@@ -39,8 +40,10 @@ from ralph.phases.artifacts import (
 )
 from ralph.phases.required_artifacts import (
     build_missing_input_hint,
+    build_proof_failure_hint,
     build_retry_hint,
     resolve_phase_required_artifact,
+    resolve_required_artifact,
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -51,7 +54,12 @@ from ralph.policy.validation import PolicyValidationError, validate_work_units_a
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
     from ralph.phases.required_artifacts import RequiredArtifact
-    from ralph.policy.models import ArtifactsPolicy, PhaseDefinition, PipelinePolicy
+    from ralph.policy.models import (
+        ArtifactProofPolicy,
+        ArtifactsPolicy,
+        PhaseDefinition,
+        PipelinePolicy,
+    )
 
 
 def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
@@ -78,32 +86,44 @@ def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
         logger.info("Execution phase '{}': preparing prompt", phase)
         return [PipelineEvent.PROMPT_PREPARED]
 
-    if isinstance(effect, InvokeAgentEffect):
-        phase = effect.phase
-        logger.info("Execution phase '{}': validating output artifact after agent run", phase)
+    if not isinstance(effect, InvokeAgentEffect):
+        return []
 
-        phase_def = ctx.pipeline_policy.phases.get(phase)
-        drain = phase_def.drain if phase_def is not None else phase
-        ra = resolve_phase_required_artifact(
-            ctx.pipeline_policy, ctx.artifacts_policy, phase=phase, drain=drain
-        )
+    phase = effect.phase
+    logger.info("Execution phase '{}': validating output artifact after agent run", phase)
 
-        if ra is not None and ra.artifact_type == "plan":
-            return _validate_plan_output(effect, ctx, ra, phase_def)
+    phase_def = ctx.pipeline_policy.phases.get(phase)
+    drain = phase_def.drain if phase_def is not None else phase
+    ra = resolve_phase_required_artifact(
+        ctx.pipeline_policy, ctx.artifacts_policy, phase=phase, drain=drain
+    )
 
-        if ra is not None and ra.artifact_type == "development_result":
-            plan_result = _validate_plan_input(effect, ctx)
-            if plan_result is not None:
-                return plan_result if plan_result else [PipelineEvent.AGENT_SUCCESS]
+    events: list[Event] | None = None
+    if ra is not None and ra.artifact_type == "plan":
+        events = _validate_plan_output(effect, ctx, ra, phase_def)
+    elif ra is not None and ra.artifact_type == "development_result":
+        plan_result = _validate_plan_input(effect, ctx)
+        if plan_result is not None:
+            events = plan_result if plan_result else [PipelineEvent.AGENT_SUCCESS]
 
-        if ra is not None:
-            failure = _validate_output_artifact(effect, ctx, ra)
-            if failure is not None:
-                return failure
+    if events is None and ra is not None:
+        failure = _validate_output_artifact(effect, ctx, ra)
+        if failure is not None:
+            events = failure
+        elif (
+            ra.artifact_type == "development_result"
+            and phase_def is not None
+            and phase_def.artifact_proof_policy is not None
+        ):
+            proof_failure = _validate_development_result_proof(
+                ctx, phase, phase_def.artifact_proof_policy, ra
+            )
+            if proof_failure is not None:
+                events = proof_failure
 
-        return [PipelineEvent.AGENT_SUCCESS]
-
-    return []
+    if events is None:
+        events = [PipelineEvent.AGENT_SUCCESS]
+    return events
 
 
 def _clear_stale_plan_draft_if_needed(ctx: PhaseContext) -> None:
@@ -201,7 +221,7 @@ def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[E
         artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
         artifact_content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
         if is_noop_plan(artifact_content):
-            return []  # empty list = noop signal
+            return []
         artifact = (
             artifact_content
             if _is_legacy_work_units_payload(artifact_content)
@@ -259,7 +279,9 @@ def _validate_output_artifact(
         ]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)
-        unwrap_phase_artifact_content(artifact_wrapper, expected_type=ra.artifact_type)
+        content = unwrap_phase_artifact_content(artifact_wrapper, expected_type=ra.artifact_type)
+        if ra.normalizer is not None:
+            ra.normalizer(content)
     except (json.JSONDecodeError, PhaseArtifactError, ValueError) as exc:
         detail = str(exc)
         logger.warning(
@@ -282,6 +304,181 @@ def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
     hint = build_retry_hint(phase, detail)
     with suppress(Exception):
         ctx.workspace.write(hint_path, hint)
+
+
+def _write_proof_failure_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
+    hint_path = retry_hint_path(phase)
+    hint = build_proof_failure_hint(phase, detail)
+    with suppress(Exception):
+        ctx.workspace.write(hint_path, hint)
+
+
+def _step_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
+    errors: list[str] = []
+    submitted_set = frozenset(submitted_list)
+    if len(submitted_set) < len(submitted_list):
+        errors.append("PROOF INVALID: Duplicate plan_item entries found in plan_items_proven.")
+    missing = required_refs - submitted_set
+    extra = submitted_set - required_refs
+    if missing:
+        errors.append(
+            "PROOF INCOMPLETE: The following plan step(s) have no proof entry: "
+            f"{sorted(missing)}. Each plan_item must exactly match \"Step N: <title>\"."
+        )
+    if extra:
+        errors.append(
+            "PROOF INVALID: Unknown plan_item reference(s) not matching any plan step: "
+            f"{sorted(extra)}."
+        )
+    return errors
+
+
+def _work_unit_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
+    errors: list[str] = []
+    submitted_set = frozenset(submitted_list)
+    if len(submitted_set) < len(submitted_list):
+        errors.append("PROOF INVALID: Duplicate plan_item entries found in plan_items_proven.")
+    if not submitted_set:
+        errors.append(
+            "PROOF INCOMPLETE: plan_items_proven is empty. The agent must prove at least "
+            "one work unit. Each plan_item must exactly match a work_unit unit_id from the plan."
+        )
+    extra = submitted_set - required_refs
+    if extra:
+        errors.append(
+            "PROOF INVALID: Unknown plan_item reference(s) not matching any work_unit unit_id: "
+            f"{sorted(extra)}. Valid unit_ids: {sorted(required_refs)}."
+        )
+    return errors
+
+
+def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
+    errors: list[str] = []
+    submitted_set = frozenset(submitted_list)
+    if len(submitted_set) < len(submitted_list):
+        errors.append(
+            "PROOF INVALID: Duplicate how_to_fix_item entries found in analysis_items_addressed."
+        )
+    missing = required_refs - submitted_set
+    extra = submitted_set - required_refs
+    if missing:
+        errors.append(
+            "PROOF INCOMPLETE: The following how_to_fix item(s) have no proof entry: "
+            f"{sorted(missing)}. Each how_to_fix_item must exactly match the prior analysis text."
+        )
+    if extra:
+        errors.append(
+            "PROOF INVALID: Unknown how_to_fix_item reference(s) not matching any prior "
+            f"analysis item: {sorted(extra)}."
+        )
+    return errors
+
+
+def _plan_proof_errors(ctx: PhaseContext, dev_result: DevelopmentResult) -> list[str]:
+    step_refs = _get_canonical_step_refs(ctx)
+    if step_refs:
+        return _step_proof_errors(step_refs, [p.plan_item for p in dev_result.plan_items_proven])
+    work_unit_ids = _get_canonical_work_unit_ids(ctx)
+    if work_unit_ids:
+        return _work_unit_proof_errors(
+            work_unit_ids, [p.plan_item for p in dev_result.plan_items_proven]
+        )
+    return []
+
+
+def _get_canonical_step_refs(ctx: PhaseContext) -> frozenset[str]:
+    refs: set[str] = set()
+    try:
+        if ctx.workspace.exists(PLAN_ARTIFACT_PATH):
+            artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
+            content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
+            if not is_noop_plan(content):
+                steps = content.get("steps")
+                if isinstance(steps, list) and steps:
+                    for step in steps:
+                        if not isinstance(step, dict):
+                            return frozenset()
+                        if "number" not in step or "title" not in step:
+                            return frozenset()
+                        refs.add(f"Step {step['number']}: {step['title']}")
+    except Exception:
+        return frozenset()
+    return frozenset(refs)
+
+
+def _get_canonical_work_unit_ids(ctx: PhaseContext) -> frozenset[str]:
+    try:
+        if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
+            return frozenset()
+        artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
+        content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
+        if is_noop_plan(content):
+            return frozenset()
+        parsed = parse_work_units_from_artifact(content)
+        if parsed is None or not parsed.work_units:
+            return frozenset()
+        return frozenset(unit.unit_id for unit in parsed.work_units)
+    except Exception:
+        return frozenset()
+
+
+def _get_canonical_analysis_how_to_fix_refs(ctx: PhaseContext, phase: str) -> frozenset[str]:
+    try:
+        for phase_def in ctx.pipeline_policy.phases.values():
+            if phase_def.role != "analysis" or phase_def.transitions.on_loopback != phase:
+                continue
+            ra = resolve_required_artifact(ctx.artifacts_policy, drain=phase_def.drain)
+            if ra is None or not ctx.workspace.exists(ra.json_path):
+                return frozenset()
+            artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)
+            content = unwrap_phase_artifact_content(
+                artifact_wrapper, expected_type=ra.artifact_type
+            )
+            how_to_fix = content.get("how_to_fix")
+            if not isinstance(how_to_fix, list):
+                return frozenset()
+            return frozenset(str(item) for item in how_to_fix if item)
+        return frozenset()
+    except Exception:
+        return frozenset()
+
+
+def _validate_development_result_proof(
+    ctx: PhaseContext,
+    phase: str,
+    proof_policy: ArtifactProofPolicy,
+    ra: RequiredArtifact,
+) -> list[Event] | None:
+    try:
+        artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)
+        raw_content = unwrap_phase_artifact_content(
+            artifact_wrapper, expected_type=ra.artifact_type
+        )
+        dev_result = DevelopmentResult.model_validate(raw_content)
+    except Exception:
+        return None
+
+    errors: list[str] = []
+    if proof_policy.require_plan_proof:
+        errors.extend(_plan_proof_errors(ctx, dev_result))
+    if proof_policy.require_analysis_proof:
+        required_refs = _get_canonical_analysis_how_to_fix_refs(ctx, phase)
+        if required_refs:
+            errors.extend(
+                _analysis_proof_errors(
+                    required_refs,
+                    [a.how_to_fix_item for a in dev_result.analysis_items_addressed],
+                )
+            )
+
+    if not errors:
+        return None
+
+    detail = "\n".join(errors)
+    _write_proof_failure_hint(ctx, phase, detail)
+    return [
+        PhaseFailureEvent(phase=phase, reason=detail, recoverable=True, retry_in_session=True)
+    ]
 
 
 def _is_legacy_work_units_payload(content: dict[str, object]) -> bool:
