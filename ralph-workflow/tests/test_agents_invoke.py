@@ -532,6 +532,64 @@ def test_build_command_injects_claude_append_system_prompt_file() -> None:
     ]
 
 
+def test_build_command_injects_claude_interactive_session_id_and_settings() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(
+            initial_session_id="fresh-session-1",
+            settings_json='{"hooks":{}}',
+        ),
+    )
+
+    assert cmd == [
+        "claude",
+        "--permission-mode",
+        "auto",
+        "--session-id",
+        "fresh-session-1",
+        "--settings",
+        '{"hooks":{}}',
+        "PROMPT.md",
+    ]
+
+
+
+def test_build_command_injects_claude_interactive_append_system_prompt_file() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(system_prompt_file="SYSTEM_PROMPT.md"),
+    )
+
+    assert cmd == [
+        "claude",
+        "--permission-mode",
+        "auto",
+        "--append-system-prompt-file",
+        "SYSTEM_PROMPT.md",
+        "PROMPT.md",
+    ]
+
+
 def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("plain prompt", encoding="utf-8")
@@ -3790,6 +3848,13 @@ def test_transport_activity_classifier_preserves_generic_and_claude_semantics() 
     assert claude_signal is not None
     assert claude_signal.kind == AgentActivityKind.STREAM_DELTA
 
+    interactive_strategy = strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE)
+    interactive_signal = interactive_strategy.classify_activity_line(
+        "claude tool: read_file {\"path\":\"PROMPT.md\"}"
+    )
+    assert interactive_signal is not None
+    assert interactive_signal.kind == AgentActivityKind.TOOL_USE
+
 
 @pytest.mark.skip(reason="ScheduledStdout uses blocking Event.wait(); FakeClock can't control it")
 def test_idle_timeout_defers_when_children_active_then_clears(
@@ -4304,6 +4369,35 @@ def test_claude_mcp_prompt_text_only_when_no_sidecar(tmp_path: Path) -> None:
     full_prompt = cmd[-1]
     assert full_prompt == prompt_text
     assert "Multimodal Artifacts" not in full_prompt
+
+
+def test_claude_interactive_mcp_prompt_includes_multimodal_appendix_when_sidecar_present(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Build the interactive feature.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_IMAGE_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+    )
+
+    assert cmd[-2] == "--"
+    full_prompt = cmd[-1]
+    assert "Build the interactive feature." in full_prompt
+    assert "Multimodal Artifacts" in full_prompt
+    assert "ralph://media/abc123" in full_prompt
+    assert "[image] screenshot.png" in full_prompt
 
 
 def test_opencode_prompt_includes_multimodal_appendix_when_sidecar_present(

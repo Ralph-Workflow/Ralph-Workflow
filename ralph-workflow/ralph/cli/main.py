@@ -27,6 +27,7 @@ from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
 from ralph.cli.commands.run import run_pipeline
+from ralph.cli.commands.smoke import smoke_interactive_claude_command
 from ralph.cli.options import display_agents_table, display_providers_table
 from ralph.config.bootstrap import (
     ensure_global_config,
@@ -703,6 +704,13 @@ def main(  # noqa: PLR0913
 app.callback(invoke_without_command=True)(main)
 app.command()(cleanup)
 
+
+def smoke_interactive_claude() -> None:
+    """Run the manual PTY/TUI smoke test for interactive Claude using claude/haiku."""
+    raise typer.Exit(code=smoke_interactive_claude_command(display_context=_get_cli_context()))
+
+
+app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
 
 def _validate_mode_flags(*, quick: bool, thorough: bool, resume: bool, no_resume: bool) -> None:
     if resume and no_resume:

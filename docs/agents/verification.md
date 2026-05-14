@@ -74,6 +74,32 @@ uv run pytest -q tests/integration/test_runner_fanout_wiring.py
 uv run pytest -q tests/integration/test_old_checkpoint_loads.py
 ```
 
+## Interactive Claude PTY tests
+
+When working on or verifying the PTY-backed interactive Claude runtime:
+
+```bash
+cd ralph-workflow
+uv run pytest -q tests/test_process_manager_pty.py
+uv run pytest -q tests/test_claude_interactive_pty.py tests/test_claude_interactive_session_resume.py tests/test_claude_interactive_parser.py
+uv run pytest -q tests/integration/test_claude_interactive_pty_e2e.py tests/integration/test_claude_interactive_interrupt_realtime.py
+```
+
+## Manual interactive Claude smoke test
+
+This smoke test is **not** part of `make verify` because it consumes live agent tokens. Use it when you want a real `claude/haiku` PTY run to validate that the interactive TUI interpreter still surfaces the same semantic signals Ralph expects from the headless contract.
+
+```bash
+cd ralph-workflow
+python -m ralph smoke-interactive-claude
+```
+
+What it does:
+- writes a tiny smoke prompt under `tmp/interactive-claude-smoke/`
+- asks `claude/haiku` to create a small JavaScript todo list in `tmp/interactive-claude-smoke/todo-list.js`
+- prints a detailed report of what worked and what broke
+- uses the headless Claude contract as a **guide** for expected semantics (session capture, tool activity, completion signal, parser events, tmp/ artifact creation) without running headless Claude itself
+
 ## Recovery tests
 
 When working on or verifying the failure recovery feature:

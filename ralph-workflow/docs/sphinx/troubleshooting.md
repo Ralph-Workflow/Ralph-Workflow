@@ -167,6 +167,19 @@ quiet periods between progress signals.
 
 See [Recovery](recovery.md) for retry budget and fallover behavior.
 
+## Interactive Claude unavailable on Windows
+
+**Symptom:** Interactive Claude fails immediately on Windows, or the run log reports that PTY-backed interactive Claude is supported only on POSIX platforms.
+
+**Cause:** Ralph Workflow now runs unattended interactive Claude inside a real PTY. That PTY transport depends on POSIX terminal APIs (`openpty`, `fork`, controlling-terminal setup), so it supports Linux and macOS directly but not native Windows terminals through the same code path.
+
+**Fix:**
+
+- Use `claude-headless` on Windows when you need Claude specifically.
+- Or route the phase to another headless transport such as Codex or OpenCode.
+- If you need the interactive Claude product path, run Ralph Workflow on Linux or macOS.
+- For a live semantic check of the interactive interpreter, run `python -m ralph smoke-interactive-claude` on Linux or macOS.
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough

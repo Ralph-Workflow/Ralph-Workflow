@@ -238,7 +238,15 @@ def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
     seen_env: list[dict[str, str]] = []
-    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
+
+    def fake_run_pty_and_read_lines(*args: object, **kwargs: object):
+        del kwargs
+        env = args[3]
+        assert isinstance(env, dict)
+        seen_env.append(env)
+        yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+
+    monkeypatch.setattr("ralph.agents.invoke._run_pty_and_read_lines", fake_run_pty_and_read_lines)
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))

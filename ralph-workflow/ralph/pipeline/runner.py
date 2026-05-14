@@ -916,8 +916,11 @@ def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -
             interrupt_done.set()
 
     restore_force_kill = install_force_kill_handler(_force_exit)
+    interrupt_thread = threading.Thread(target=_begin_interrupt, daemon=True)
+    interrupt_thread.start()
     try:
-        _begin_interrupt()
+        while not interrupt_done.wait(timeout=0.05):
+            continue
     finally:
         with suppress(Exception):
             restore_force_kill()
@@ -3529,6 +3532,7 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                             str(agent_config.json_parser),
                             effect.agent_name,
                             display,
+                            transport=agent_config.transport,
                             display_context=resolved_display_context,
                             raw_output_sink=raw_output,
                             rendered_output_sink=rendered_output,
@@ -3967,12 +3971,18 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
     agent_name: str,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     *,
+    transport: AgentTransport | None = None,
     display_context: DisplayContext | None = None,
     raw_output_sink: deque[str] | list[str] | None = None,
     rendered_output_sink: deque[str] | list[str] | None = None,
     session_id_sink: Callable[[str], None] | None = None,
 ) -> None:
-    parser = _resolve_parser(parser_type)
+    parser_key = (
+        "claude_interactive"
+        if transport == AgentTransport.CLAUDE_INTERACTIVE
+        else parser_type
+    )
+    parser = _resolve_parser(parser_key)
 
     def _iter_lines() -> Iterator[str]:
         for line in lines:
