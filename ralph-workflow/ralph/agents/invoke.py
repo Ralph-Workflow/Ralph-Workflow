@@ -1552,10 +1552,12 @@ def _build_claude_interactive_command(
         cmd.append(config.verbose_flag)
     if config.session_flag and options.session_id:
         cmd.extend(config.session_flag.format(options.session_id).split())
+    if options.system_prompt_file:
+        cmd.extend(["--append-system-prompt-file", options.system_prompt_file])
     effective_model = options.model_flag or config.model_flag
     if effective_model:
         cmd.extend(effective_model.split())
-    cmd.append(prompt_file)
+    _append_transport_prompt_arg(cmd, AgentTransport.CLAUDE_INTERACTIVE, prompt_file, options)
     return cmd
 
 
@@ -1692,7 +1694,10 @@ def _append_transport_prompt_arg(
     prompt_file: str,
     build_options: _BuildCommandOptions,
 ) -> None:
-    if transport == AgentTransport.CLAUDE and build_options.mcp_endpoint:
+    if (
+        transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE)
+        and build_options.mcp_endpoint
+    ):
         cmd.append("--")
         resolved_prompt = _resolve_prompt_path(prompt_file, build_options.workspace_path)
         prompt_text = resolved_prompt.read_text(encoding="utf-8")

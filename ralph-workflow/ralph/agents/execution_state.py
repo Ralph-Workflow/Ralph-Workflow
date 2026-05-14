@@ -121,11 +121,13 @@ class ClaudeExecutionStrategy(GenericExecutionStrategy):
         return _classify_claude_json_object(obj, line)
 
 
-class ClaudeInteractiveExecutionStrategy(GenericExecutionStrategy):
-    """Interactive Claude session completion strategy.
+class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
+    """Interactive Claude session strategy.
 
-    Completion is gated on artifact evidence or explicit declare_complete.
-    A clean exit without evidence is resumable, allowing the runner to retry.
+    Reuses Claude-aware line classification so unattended TUI output still
+    yields meaningful watchdog activity signals, while gating completion on
+    artifact evidence or explicit declare_complete. A clean exit without
+    evidence is resumable, allowing the runner to retry.
     """
 
     def supports_session_continuation(self) -> bool:
