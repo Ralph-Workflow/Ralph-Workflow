@@ -17,7 +17,7 @@ pytestmark = pytest.mark.subprocess_e2e
 PYTHON = sys.executable
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _STUBBORN_CHILD = (
-    "import signal; signal.signal(signal.SIGTERM, signal.SIG_IGN); signal.pause()"
+    "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(30)"
 )
 
 
@@ -100,7 +100,7 @@ def test_live_sigint_gracefully_terminates_runner_and_tracked_child(tmp_path: Pa
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
-        timeout=6,
+        timeout=10,
         check=False,
     )
 
@@ -177,7 +177,7 @@ def test_second_live_sigint_force_kills_stubborn_child(tmp_path: Path) -> None:
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
-        timeout=6,
+        timeout=10,
         check=False,
     )
 

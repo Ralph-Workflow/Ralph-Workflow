@@ -49,7 +49,7 @@ class AgentConfig(_FrozenConfigModel):
 
     Attributes:
         cmd: Base command to run the agent.
-        output_flag: Output format flag for streaming JSON.
+        output_flag: Optional output format flag for streaming JSON.
         yolo_flag: Optional autonomous/non-interactive flag string.
         verbose_flag: Flag for verbose output.
         can_commit: Whether the agent can run git commit.
@@ -63,7 +63,7 @@ class AgentConfig(_FrozenConfigModel):
     """
 
     cmd: str
-    output_flag: str = "--json-stream"
+    output_flag: str | None = None
     yolo_flag: str | None = None
     verbose_flag: str | None = None
     can_commit: bool = False
@@ -85,7 +85,7 @@ class AgentConfig(_FrozenConfigModel):
             JsonParserType.OPENCODE: AgentTransport.OPENCODE,
         }
         command_to_transport = {
-            "claude": AgentTransport.CLAUDE,
+            "claude": AgentTransport.CLAUDE_INTERACTIVE,
             "codex": AgentTransport.CODEX,
             "opencode": AgentTransport.OPENCODE,
         }
@@ -353,10 +353,15 @@ class GeneralConfig(_FrozenConfigModel):
 
 
 class CcsConfig(_FrozenConfigModel):
-    """CCS (Claude Code Switch) defaults configuration.
+    """Headless-by-design Claude Code Switch (CCS) defaults.
+
+    CCS aliases explicitly run Claude in non-interactive streaming mode
+    (``--print --output-format=stream-json``). That is the intended explicit
+    headless Claude path for users who configure ``[ccs_aliases]``. The built-in
+    ``claude`` agent runs in interactive mode by default.
 
     Attributes:
-        output_flag: Output-format flag for CCS.
+        output_flag: Output-format flag for CCS aliases.
         yolo_flag: Default autonomous/non-interactive flag for CCS aliases.
         verbose_flag: Flag for verbose output.
         print_flag: Print flag for non-interactive mode.

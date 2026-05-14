@@ -53,6 +53,8 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.parallel.coordinator import _WorkerContext
 
+pytestmark = pytest.mark.subprocess_e2e
+
 
 def _make_work_unit(uid: str) -> WorkUnit:
     return WorkUnit(

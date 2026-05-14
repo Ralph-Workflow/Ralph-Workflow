@@ -459,7 +459,7 @@ def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
     # Prompt templates should talk about the same tool names the current agent
     # transport will actually see. Claude gets namespaced MCP tools; other
     # transports continue to see Ralph's bare tool names.
-    if transport == AgentTransport.CLAUDE:
+    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         return claude_tool_name_prefix()
     return ""
 
@@ -676,7 +676,6 @@ def _clear_all_artifact_history(workspace_root: Path) -> None:
     for path in history_root.iterdir():
         if path.is_dir():
             clear_artifact_history(artifact_dir, path.name, backend=DEFAULT_FILE_BACKEND)
-
 
 
 def _resolve_and_clear_dev_artifact_history(

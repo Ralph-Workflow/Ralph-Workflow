@@ -31,6 +31,8 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+pytestmark = pytest.mark.subprocess_e2e
+
 # Description length bounds enforced by the quality bar
 _MIN_DESCRIPTION_CHARS = 20
 _MAX_DESCRIPTION_CHARS = 500

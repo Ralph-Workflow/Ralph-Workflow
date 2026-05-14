@@ -496,8 +496,8 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
     )
 
     assert invoked_agents == [
-        ("claude -p", None),
-        ("claude -p", None),
+        ("claude", None),
+        ("claude", None),
         ("opencode", None),
     ]
     assert any(

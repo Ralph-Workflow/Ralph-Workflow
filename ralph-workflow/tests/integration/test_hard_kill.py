@@ -6,6 +6,7 @@ import time
 from typing import TYPE_CHECKING, cast
 
 import psutil
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -21,6 +22,8 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.process.manager import get_process_manager, reset_process_manager
+
+pytestmark = pytest.mark.subprocess_e2e
 
 _NUM_WORKERS = 3
 

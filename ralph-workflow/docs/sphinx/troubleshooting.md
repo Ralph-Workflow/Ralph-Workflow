@@ -153,6 +153,20 @@ use the full 1800 s ceiling, set `agent_idle_no_progress_waiting_on_child_second
 your TOML config. This is not recommended unless you have workloads with legitimately long
 quiet periods between progress signals.
 
+## Interactive Claude session exited without completing
+
+**Symptom:** The pipeline retried an interactive Claude session, or the run log shows `RESUMABLE_CONTINUE` after a Claude invocation.
+
+**Cause:** Ralph Workflow evaluates interactive Claude completion by artifact presence or an explicit `declare_complete` MCP call. If neither signal is present when the subprocess exits, Ralph Workflow classifies the exit as incomplete and retries the session using `--resume SESSION_ID`. This is expected behavior, not a failure.
+
+**Fix:**
+
+- If the agent completed its work but did not write an artifact, confirm the agent wrote its plan or result artifact to `.agent/artifacts/` and called `declare_complete`.
+- If the session keeps retrying without completing, check the agent logs for errors and confirm that `.agent/mcp.toml` is configured correctly and that the `declare_complete` tool is accessible.
+- To force a fresh start instead of continuing, run `ralph --no-resume`.
+
+See [Recovery](recovery.md) for retry budget and fallover behavior.
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough

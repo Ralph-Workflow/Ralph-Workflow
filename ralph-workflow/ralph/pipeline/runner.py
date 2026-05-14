@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import shutil
+import signal
 import sys
 import threading
 import time
@@ -696,9 +697,7 @@ def _execute_effect_with_optional_display(  # noqa: PLR0911, PLR0913
         "policy_bundle": policy_bundle,
     }
     supported_kwargs: dict[str, object] = {
-        name: value
-        for name, value in optional_kwargs.items()
-        if name in params or accepts_kwargs
+        name: value for name, value in optional_kwargs.items() if name in params or accepts_kwargs
     }
     if accepts_kwargs:
         return kwargs_execute_effect(
@@ -891,18 +890,39 @@ def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -
         process_manager=process_manager,
         stop_connectivity=monitor_stop,
     )
+    interrupt_done = threading.Event()
+    interrupt_error: list[BaseException] = []
 
     def _force_exit() -> None:
-        controller.force_exit()
+        kill_method = os.killpg if hasattr(os, "killpg") else os.kill
+        try:
+            active_records = list(process_manager.list_active())
+        except Exception:
+            active_records = []
+        for record in active_records:
+            with suppress(ProcessLookupError, PermissionError):
+                if kill_method is os.killpg:
+                    kill_method(record.pgid, signal.SIGKILL)
+                else:
+                    kill_method(record.pid, signal.SIGKILL)
+        os._exit(130)
+
+    def _begin_interrupt() -> None:
+        try:
+            controller.begin_interrupt(grace_period_s=process_manager.policy.default_grace_period_s)
+        except BaseException as exc:
+            interrupt_error.append(exc)
+        finally:
+            interrupt_done.set()
 
     restore_force_kill = install_force_kill_handler(_force_exit)
     try:
-        controller.begin_interrupt(grace_period_s=process_manager.policy.default_grace_period_s)
-    except Exception:
-        logger.warning("Interrupt controller raised during KeyboardInterrupt")
+        _begin_interrupt()
     finally:
         with suppress(Exception):
             restore_force_kill()
+    if interrupt_error:
+        logger.warning("Interrupt controller raised during KeyboardInterrupt")
 
 
 def _run_pipeline_step(  # noqa: PLR0912,PLR0913
@@ -2618,7 +2638,6 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
         return False
 
 
-
 def _should_resume_existing_planning_phase_name(
     *,
     phase: str,
@@ -3666,7 +3685,7 @@ def _retryable_agent_failure_reason(
         return "an inactivity timeout"
 
     if type(exc).__name__ == "OpenCodeResumableExitError":
-        return "OpenCode exited without submitting a required completion artifact"
+        return "agent session exited without required completion evidence"
 
     raw_details = "\n".join(_recovery_error_parts(exc))
     if any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS):

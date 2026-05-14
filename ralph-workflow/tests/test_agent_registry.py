@@ -32,8 +32,29 @@ def test_agent_registry_from_config_loads_all_agents() -> None:
 
     registry = AgentRegistry.from_config(config)
 
-    assert registry.list_agents() == ["claude", "codex", "opencode"]
+    assert set(registry.list_agents()) >= {"claude", "claude-headless", "codex", "opencode"}
     assert registry.get("opencode") == AgentConfig(cmd="opencode", can_commit=True)
+
+
+def test_builtin_claude_agent_is_claude_interactive_transport() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    claude = registry.get("claude")
+
+    assert claude is not None
+    assert claude.cmd == "claude"
+    assert claude.transport == AgentTransport.CLAUDE_INTERACTIVE
+
+
+def test_builtin_claude_headless_agent_is_claude_transport() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    claude_headless = registry.get("claude-headless")
+
+    assert claude_headless is not None
+    assert claude_headless.cmd == "claude -p"
+    assert claude_headless.transport == AgentTransport.CLAUDE
+    assert claude_headless.output_flag == "--output-format=stream-json"
 
 
 def test_agent_registry_validate_reports_missing_required_fields() -> None:
@@ -41,7 +62,14 @@ def test_agent_registry_validate_reports_missing_required_fields() -> None:
     registry.register(
         "missing-cmd", AgentConfig.model_construct(cmd="", output_flag="--json-stream")
     )
-    registry.register("missing-output", AgentConfig.model_construct(cmd="claude", output_flag=""))
+    registry.register(
+        "missing-output",
+        AgentConfig.model_construct(
+            cmd="claude -p",
+            output_flag="",
+            transport=AgentTransport.CLAUDE,
+        ),
+    )
 
     assert registry.validate() == [
         "Agent 'missing-cmd' has no command configured",
@@ -61,15 +89,34 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert claude is not None
     assert codex is not None
     assert opencode is not None
-    assert claude.cmd == "claude -p"
+    assert claude.cmd == "claude"
     assert claude.yolo_flag == "--permission-mode auto"
-    assert claude.transport == AgentTransport.CLAUDE
+    assert claude.transport == AgentTransport.CLAUDE_INTERACTIVE
+    claude_headless = registry.get("claude-headless")
+    assert claude_headless is not None
+    assert claude_headless.cmd == "claude -p"
+    assert claude_headless.transport == AgentTransport.CLAUDE
     assert codex.cmd == "codex exec"
     assert codex.output_flag == "--json"
     assert codex.yolo_flag == "--dangerously-bypass-approvals-and-sandbox"
     assert codex.transport == AgentTransport.CODEX
     assert opencode.yolo_flag is None
     assert opencode.transport == AgentTransport.OPENCODE
+
+
+def test_ccs_alias_keeps_claude_transport() -> None:
+    config = UnifiedConfig(ccs_aliases={"glm": "ccs glm"})
+
+    registry = AgentRegistry.from_config(config)
+    ccs_agent = registry.get("ccs/glm")
+
+    assert ccs_agent is not None
+    assert ccs_agent.cmd == "ccs glm"
+    assert ccs_agent.output_flag == config.ccs.output_flag
+    assert ccs_agent.yolo_flag == "--permission-mode auto"
+    assert ccs_agent.print_flag == config.ccs.print_flag
+    assert ccs_agent.streaming_flag == config.ccs.streaming_flag
+    assert ccs_agent.transport == AgentTransport.CLAUDE
 
 
 def test_agent_registry_resolves_string_ccs_alias_with_defaults() -> None:
@@ -125,18 +172,64 @@ def test_agent_registry_resolves_direct_opencode_model_reference() -> None:
     assert agent.can_commit is True
 
 
+def test_claude_model_reference_resolves_to_claude_interactive() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("claude/opus")
+
+    assert agent is not None
+    assert agent.cmd == "claude"
+    assert agent.output_flag is None
+    assert agent.json_parser == "claude"
+    assert agent.transport == AgentTransport.CLAUDE_INTERACTIVE
+    assert agent.model_flag == "--model opus"
+    assert agent.can_commit is True
+
+
 def test_agent_registry_resolves_direct_claude_model_reference() -> None:
     registry = AgentRegistry.from_config(UnifiedConfig())
 
     agent = registry.get("claude/opus")
 
     assert agent is not None
-    assert agent.cmd == "claude -p"
-    assert agent.output_flag == "--output-format=stream-json"
+    assert agent.cmd == "claude"
+    assert agent.output_flag is None
     assert agent.json_parser == "claude"
-    assert agent.transport == AgentTransport.CLAUDE
+    assert agent.transport == AgentTransport.CLAUDE_INTERACTIVE
     assert agent.model_flag == "--model opus"
     assert agent.can_commit is True
+
+
+def test_agent_config_claude_cmd_infers_claude_interactive() -> None:
+    config = AgentConfig(cmd="claude")
+
+    assert config.transport == AgentTransport.CLAUDE_INTERACTIVE
+
+
+def test_claude_headless_model_reference_resolves() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("claude-headless/haiku")
+
+    assert agent is not None
+    assert agent.cmd == "claude -p"
+    assert agent.output_flag == "--output-format=stream-json"
+    assert agent.transport == AgentTransport.CLAUDE
+    assert agent.model_flag == "--model haiku"
+
+
+def test_registry_validate_exempts_claude_interactive_output_flag() -> None:
+    registry = AgentRegistry()
+    registry.register(
+        "interactive",
+        AgentConfig(
+            cmd="claude",
+            output_flag=None,
+            transport=AgentTransport.CLAUDE_INTERACTIVE,
+        ),
+    )
+
+    assert registry.validate() == []
 
 
 def test_agent_registry_resolves_direct_ccs_model_reference() -> None:

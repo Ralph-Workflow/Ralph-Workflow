@@ -287,6 +287,47 @@ def test_mcp_servers_doc_describes_resolved_capability_profile() -> None:
     )
 
 
+def test_agents_doc_explains_interactive_completion_evaluation() -> None:
+    """agents.md must explain interactive Claude completion via artifacts or declare_complete."""
+    content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
+    assert "artifact" in content, (
+        "docs/sphinx/agents.md must explain that completion is evaluated via artifact evidence"
+    )
+    assert "declare_complete" in content, (
+        "agents.md must explain that an explicit declare_complete MCP call signals completion"
+    )
+
+
+def test_agents_doc_describes_resumable_session_on_incomplete_exit() -> None:
+    """agents.md must explain what happens when interactive Claude exits without completing."""
+    content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
+    assert "incomplete" in content or "without completing" in content, (
+        "docs/sphinx/agents.md must describe what happens on an incomplete exit "
+        "(e.g. session continuation or retry behavior)"
+    )
+
+
+def test_agents_doc_explains_interactive_vs_headless_tradeoff() -> None:
+    """agents.md must explain the observability tradeoff between interactive and headless Claude."""
+    content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
+    assert "observability" in content or "tradeoff" in content, (
+        "docs/sphinx/agents.md must explain the observability or streaming tradeoff "
+        "between interactive and headless Claude transport modes"
+    )
+
+
+def test_agents_doc_explains_unattended_orchestration_contract() -> None:
+    """docs/sphinx/agents.md must explain Ralph Workflow's unattended orchestration contract."""
+    content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
+    assert "unattended" in content, (
+        "docs/sphinx/agents.md must describe unattended orchestration"
+    )
+    assert "supervise" in content or "orchestrate" in content or "manages" in content, (
+        "docs/sphinx/agents.md must describe how Ralph Workflow supervises, orchestrates, "
+        "or manages the interactive Claude session"
+    )
+
+
 # Maintained type checking and tooling docs enforcement
 _CODE_STYLE_PATH = REPO_ROOT.parent / "CODE_STYLE.md"
 _CODE_STYLE_INDEX_PATH = REPO_ROOT.parent / "docs" / "code-style" / "index.md"

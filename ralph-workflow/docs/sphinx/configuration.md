@@ -116,15 +116,14 @@ The top-level ideas are:
 
 The main config also supports deeper transport-specific and workflow-authoring sections such as:
 
-- `[ccs]`
-- `[ccs_aliases]`
-- `[agents.*]`
+- `[ccs]` / `[ccs_aliases]` for explicitly-headless Claude Code Switch defaults
+- `[agents.*]` for agent defaults, including `transport = 'claude_interactive'` on the built-in `claude` path
 - loop counters and budget counters
 - review-role bypass routes
 - recovery policy tuning
 - parallel fan-out controls
 
-Those sections are useful when you are customizing Ralph Workflow deeply, but many operators never need to touch them.
+Those sections are useful when you are customizing Ralph Workflow deeply, but many operators never need to touch them. The default `claude` agent runs interactive Claude Code; use CCS only when you explicitly want the headless path.
 
 ## When to read further
 
