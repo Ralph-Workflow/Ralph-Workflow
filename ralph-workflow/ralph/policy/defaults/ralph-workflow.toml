@@ -94,15 +94,6 @@
 # can_commit = false
 
 # ---------------------------------------------------------------------------
-# [cloud] — Optional cloud reporting (leave disabled unless you have an account)
-# ---------------------------------------------------------------------------
-[cloud]
-# enabled = false
-# api_url = "https://api.example.com"   # base URL for cloud API
-# api_key = ""                          # prefer RALPH_CLOUD_API_KEY env var instead
-# timeout_secs = 30
-
-# ---------------------------------------------------------------------------
 # [agents.*] — Agent definitions
 # Uncomment and adjust to add or override agents.
 # ---------------------------------------------------------------------------

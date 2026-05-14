@@ -27,7 +27,6 @@ from ralph.config.enums import (
 )
 from ralph.config.models import (
     AgentConfig,
-    CloudConfig,
     GeneralConfig,
     UnifiedConfig,
 )
@@ -36,7 +35,6 @@ from ralph.config.welcome import emit_first_run_welcome
 __all__ = [
     "AgentConfig",
     "BootstrapResult",
-    "CloudConfig",
     "GeneralConfig",
     "JsonParserType",
     "PauseOnExit",

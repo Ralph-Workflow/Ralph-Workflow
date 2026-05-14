@@ -1405,20 +1405,13 @@ ralph.process.mcp_supervisor
 
 ----
 
-API / Cloud
------------
+API
+---
 
 ralph.api
 ~~~~~~~~~
 
 .. automodule:: ralph.api
-   :members:
-   :show-inheritance:
-
-ralph.api.cloud
-~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.api.cloud
    :members:
    :show-inheritance:
 
@@ -1429,16 +1422,10 @@ ralph.api.opencode
    :members:
    :show-inheritance:
 
-ralph.cloud
-~~~~~~~~~~~
+ralph.supervising
+~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.cloud
-   :no-members:
-
-ralph.cloud.client
-~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.cloud.client
+.. automodule:: ralph.supervising
    :members:
    :show-inheritance:
 

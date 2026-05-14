@@ -52,18 +52,9 @@ class _GeneralConfigStub:
     agent_child_stale_label_ttl_seconds: float = 120.0
     agent_child_exit_reconcile_seconds: float = 5.0
     agent_process_exit_wait_seconds: float = 5.0
-    cloud_mode: bool = False
     agent_system_prompt: str | None = None
     agent_provider: str | None = None
     verbose: bool = False
-
-
-@dataclass
-class _CloudConfigStub:
-    enabled: bool = False
-    api_url: str | None = None
-    api_key: str | None = None
-    timeout_secs: float = 30.0
 
 
 @dataclass
@@ -74,7 +65,6 @@ class _CcsConfigStub:
 @dataclass
 class _ConfigStub:
     general: _GeneralConfigStub = field(default_factory=_GeneralConfigStub)
-    cloud: _CloudConfigStub = field(default_factory=_CloudConfigStub)
     ccs: _CcsConfigStub = field(default_factory=_CcsConfigStub)
     ccs_aliases: dict[str, str] = field(default_factory=dict)
 

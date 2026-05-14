@@ -68,17 +68,6 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 |-----|---------|-------------|
 | `checkpoint_enabled` | `true` | Enable checkpoint/resume support |
 
-### `[cloud]`
-
-Optional cloud reporting integration.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `false` | Enable cloud reporting |
-| `api_url` | — | Base URL for the cloud API |
-| `api_key` | `""` | API key (prefer `RALPH_CLOUD_API_KEY`) |
-| `timeout_secs` | `30` | Request timeout |
-
 ## Agent chains and drains
 
 Most operator customization happens in `[agent_chains]` and `[agent_drains]` inside `ralph-workflow.toml`.

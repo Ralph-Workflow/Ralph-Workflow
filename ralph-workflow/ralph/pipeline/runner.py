@@ -20,7 +20,6 @@ import uuid
 from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from importlib import import_module
 from inspect import signature
 from pathlib import Path
@@ -31,7 +30,6 @@ from loguru import logger
 from rich.text import Text
 
 from ralph.agents.chain import ChainManager
-from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -42,7 +40,6 @@ from ralph.agents.invoke import (
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
-from ralph.cloud.client import CloudClient, CloudClientConfig, ProgressEventType, ProgressUpdate
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.display import context as display_context_module
 from ralph.display.activity_router import map_parser_type_to_kind
@@ -3341,9 +3338,8 @@ def _dispatch_waiting_event(
     subscriber: PipelineSubscriber | None,
     unit_id: str,
     agent_name: str,
-    cloud_progress: Callable[[object], None] | None,
 ) -> None:
-    """Dispatch a WaitingStatusEvent to the subscriber and optionally to cloud.
+    """Dispatch a WaitingStatusEvent to the subscriber.
 
     Exposed as a free function so tests can exercise it without a full pipeline.
     """
@@ -3352,15 +3348,6 @@ def _dispatch_waiting_event(
             subscriber.record_waiting_status(event, unit_id=unit_id, agent_name=agent_name)
         except Exception:
             logger.debug("_dispatch_waiting_event.record_waiting_status failed", exc_info=True)
-
-    if cloud_progress is None or not isinstance(event, WaitingStatusEvent):
-        return
-    if event.kind not in (WaitingStatusKind.SUSPECTED_FROZEN, WaitingStatusKind.HARD_STOP):
-        return
-    try:
-        cloud_progress(event)
-    except Exception:
-        logger.debug("_dispatch_waiting_event.cloud_progress failed", exc_info=True)
 
 
 def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
@@ -3404,50 +3391,13 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
         )
 
     _display_subscriber = _subscriber_for_display(display)
-    cloud_progress_fn: Callable[[object], None] | None = None
-    if config.cloud.enabled and config.cloud.api_url and config.cloud.api_key:
-        _cloud_cfg = CloudClientConfig(
-            enabled=True,
-            api_url=str(config.cloud.api_url),
-            api_key=config.cloud.api_key,
-            timeout_secs=float(config.cloud.timeout_secs),
-        )
-        _cloud_run_id = _display_subscriber.run_id if _display_subscriber is not None else "unknown"
 
-        def _report_cloud_progress(evt: object) -> None:
-            if not isinstance(evt, WaitingStatusEvent):
-                return
-            event_type = (
-                ProgressEventType.CHILD_WAITING_SUSPECTED_FROZEN
-                if evt.kind == WaitingStatusKind.SUSPECTED_FROZEN
-                else ProgressEventType.CHILD_WAITING_HARD_STOP
-            )
-            update = ProgressUpdate(
-                timestamp=datetime.now(UTC),
-                phase=str(effect.phase),
-                message=f"child waiting {evt.kind.value}",
-                event_type=event_type,
-                metadata=dict(
-                    agent_name=effect.agent_name,
-                    kind=evt.kind.value,
-                    cumulative_seconds=evt.cumulative_seconds,
-                    current_run_seconds=evt.current_run_seconds,
-                    ceiling_seconds=evt.ceiling_seconds,
-                    **evt.diagnostic,
-                ),
-            )
-            with CloudClient(_cloud_cfg) as _cl:
-                _cl.report_progress(_cloud_run_id, update)
-
-        cloud_progress_fn = _report_cloud_progress
-
-    def _waiting_listener(event: WaitingStatusEvent) -> None:
+    def _waiting_listener(event: object) -> None:
         _dispatch_waiting_event(
             event,
             subscriber=_display_subscriber,
             unit_id=effect.agent_name,
             agent_name=effect.agent_name,
-            cloud_progress=cloud_progress_fn,
         )
 
     attempt_prompt_file = effect.prompt_file

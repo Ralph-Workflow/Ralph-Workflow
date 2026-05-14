@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pathlib
 
-from pydantic import ConfigDict, Field, HttpUrl, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.pydantic_compat import RalphBaseModel
@@ -95,22 +95,6 @@ class AgentConfig(_FrozenConfigModel):
             command_to_transport.get(command_name, AgentTransport.GENERIC),
         )
         object.__setattr__(self, "transport", inferred_transport)
-
-
-class CloudConfig(_FrozenConfigModel):
-    """Optional cloud reporting configuration.
-
-    Attributes:
-        enabled: Whether cloud reporting is enabled.
-        api_url: Base URL for the cloud API.
-        api_key: API key for authentication.
-        timeout_secs: Request timeout in seconds.
-    """
-
-    enabled: bool = False
-    api_url: HttpUrl | None = None
-    api_key: str | None = None
-    timeout_secs: int = 30
 
 
 class GeneralWorkflowFlags(_FrozenConfigModel):
@@ -433,7 +417,6 @@ class UnifiedConfig(_FrozenConfigModel):
         ccs_aliases: CCS alias mappings.
         agent_chains: Named reusable chain definitions.
         agent_drains: Drain-to-chain bindings for built-in drains.
-        cloud: Optional cloud reporting configuration.
     """
 
     general: GeneralConfig = Field(default_factory=GeneralConfig)
@@ -442,4 +425,3 @@ class UnifiedConfig(_FrozenConfigModel):
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
     agent_chains: dict[str, list[str]] = Field(default_factory=dict)
     agent_drains: dict[str, str] = Field(default_factory=dict)
-    cloud: CloudConfig = Field(default_factory=CloudConfig)

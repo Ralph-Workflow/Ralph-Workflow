@@ -11,6 +11,7 @@ If you only need to run Ralph Workflow, start with [Operator Reference](referenc
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialization
 - [Transcript and Display Reference](transcript.md) — output event structure and rendering behavior
+- [Supervising API](supervising-api.md) — trackable instance model for orchestration use cases
 
 ```{toctree}
 :maxdepth: 1
@@ -20,6 +21,7 @@ mcp-architecture
 artifacts
 prompts
 transcript
+supervising-api
 ```
 
 ## Related pages
