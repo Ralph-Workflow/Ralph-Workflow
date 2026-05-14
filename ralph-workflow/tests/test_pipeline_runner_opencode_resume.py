@@ -99,6 +99,72 @@ class TestBuildAgentRecoveryPlanResumableSession:
         assert plan is None
 
 
+class TestBuildAgentRecoveryPlanInteractiveClaude:
+    def test_resumable_session_id_is_threaded_into_recovery_plan(self, tmp_path: Path) -> None:
+        """Claude interactive resumable exit threads session_id into the recovery plan."""
+        exc = OpenCodeResumableExitError("claude", session_id="sess-abc")
+        effect = _make_effect(agent_name="claude")
+
+        plan = _build_agent_recovery_plan(
+            exc=exc,
+            attempt_index=0,
+            max_recovery_attempts=3,
+            effect=effect,
+            workspace_root=tmp_path,
+            raw_output=[],
+            rendered_output=[],
+            extracted_session_id=None,
+            inactivity_error_type=AgentInactivityTimeoutError,
+        )
+
+        assert plan is not None, "Expected a recovery plan, got None"
+        assert plan.session_id == "sess-abc"
+        assert plan.prompt_file != "PROMPT.md"
+
+    def test_fallback_to_extract_session_id_when_resumable_session_id_is_none(
+        self, tmp_path: Path
+    ) -> None:
+        """Claude interactive fallback extracts the session id from raw output."""
+        exc = OpenCodeResumableExitError("claude", session_id=None)
+        effect = _make_effect(agent_name="claude")
+        raw_output = [json.dumps({"session_id": "sess-from-output"})]
+
+        plan = _build_agent_recovery_plan(
+            exc=exc,
+            attempt_index=0,
+            max_recovery_attempts=3,
+            effect=effect,
+            workspace_root=tmp_path,
+            raw_output=raw_output,
+            rendered_output=[],
+            extracted_session_id="sess-from-output",
+            inactivity_error_type=AgentInactivityTimeoutError,
+        )
+
+        assert plan is not None, "Expected a recovery plan, got None"
+        assert plan.session_id == "sess-from-output"
+        assert plan.prompt_file != "PROMPT.md"
+
+    def test_no_plan_when_attempt_limit_exceeded(self, tmp_path: Path) -> None:
+        """No recovery plan for Claude interactive when attempt limit is exceeded."""
+        exc = OpenCodeResumableExitError("claude", session_id="sess-xyz")
+        effect = _make_effect(agent_name="claude")
+
+        plan = _build_agent_recovery_plan(
+            exc=exc,
+            attempt_index=3,
+            max_recovery_attempts=3,
+            effect=effect,
+            workspace_root=tmp_path,
+            raw_output=[],
+            rendered_output=[],
+            extracted_session_id=None,
+            inactivity_error_type=AgentInactivityTimeoutError,
+        )
+
+        assert plan is None
+
+
 class TestOptionalArtifactNeverTriggersRecovery:
     """Optional-artifact phases exit cleanly and terminal without raising
     OpenCodeResumableExitError, so _build_agent_recovery_plan is never

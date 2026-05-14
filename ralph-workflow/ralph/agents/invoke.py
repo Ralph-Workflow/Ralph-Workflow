@@ -362,7 +362,8 @@ class AgentInactivityTimeoutError(AgentInvocationError):
 
 
 class OpenCodeResumableExitError(AgentInvocationError):
-    """Raised when OpenCode exits with code 0 without producing a required artifact.
+    """Raised when an agent session exits with code 0 without required
+    completion evidence.
 
     The session can be continued; the runner maps this into a session-preserving retry.
     """
@@ -372,7 +373,10 @@ class OpenCodeResumableExitError(AgentInvocationError):
         super().__init__(
             agent_name,
             0,
-            "OpenCode exited without submitting a required completion artifact",
+            (
+                "agent session exited without required completion evidence "
+                "(no artifact, no declare_complete)"
+            ),
         )
 
 
@@ -1366,7 +1370,7 @@ def _check_process_result(
 ) -> None:
     """Check subprocess return code and raise error if non-zero.
 
-    For OpenCode agents, exit 0 without a required completion artifact raises
+    For session-continuing agents, exit 0 without required completion evidence raises
     OpenCodeResumableExitError so the runner can continue the same session.
     When the process exits but child agents are still running, this function
     waits up to policy.descendant_wait_timeout_seconds for the tree to quiesce
@@ -1379,8 +1383,8 @@ def _check_process_result(
 
     Raises:
         AgentInvocationError: If process exited with non-zero code.
-        OpenCodeResumableExitError: If OpenCode exited without a required artifact
-            and no child agents are still running.
+        OpenCodeResumableExitError: If the agent session exited without required
+            completion evidence and no child agents are still running.
     """
     returncode = int(handle.returncode or 0)
     if returncode != 0:

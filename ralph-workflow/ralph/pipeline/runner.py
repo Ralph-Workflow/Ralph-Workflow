@@ -700,9 +700,7 @@ def _execute_effect_with_optional_display(  # noqa: PLR0911, PLR0913
         "policy_bundle": policy_bundle,
     }
     supported_kwargs: dict[str, object] = {
-        name: value
-        for name, value in optional_kwargs.items()
-        if name in params or accepts_kwargs
+        name: value for name, value in optional_kwargs.items() if name in params or accepts_kwargs
     }
     if accepts_kwargs:
         return kwargs_execute_effect(
@@ -2643,7 +2641,6 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
         return False
 
 
-
 def _should_resume_existing_planning_phase_name(
     *,
     phase: str,
@@ -3738,7 +3735,7 @@ def _retryable_agent_failure_reason(
         return "an inactivity timeout"
 
     if type(exc).__name__ == "OpenCodeResumableExitError":
-        return "OpenCode exited without submitting a required completion artifact"
+        return "agent session exited without required completion evidence"
 
     raw_details = "\n".join(_recovery_error_parts(exc))
     if any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS):
