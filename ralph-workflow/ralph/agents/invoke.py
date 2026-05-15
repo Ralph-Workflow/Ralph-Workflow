@@ -180,6 +180,7 @@ class InvokeOptions:
     pure: bool = False
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
+    permission_prompt_listener: Callable[[str], None] | None = None
     required_artifact: RequiredArtifact | None = None
     explicit_completion_seen: bool = False
     captured_session_id: str | None = None
@@ -233,7 +234,7 @@ class ResolvedInvocationRuntime:
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from ralph.config.models import AgentConfig, GeneralConfig
     from ralph.phases.required_artifacts import RequiredArtifact
@@ -638,6 +639,7 @@ def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig
         initial_session_id=session_id,
         settings_json=settings_json,
         stop_sentinel_path=sentinel_path,
+        permission_prompt_listener=opts.permission_prompt_listener,
     )
 
 
@@ -928,6 +930,7 @@ def _run_pty_and_read_lines(  # noqa: PLR0913
     _clock: Clock | None = None,
     expected_session_id: str | None = None,
     stop_sentinel_path: Path | None = None,
+    permission_prompt_listener: Callable[[str], None] | None = None,
 ) -> Iterator[str]:
     if stop_sentinel_path is not None:
         with contextlib.suppress(FileNotFoundError):
@@ -953,6 +956,7 @@ def _run_pty_and_read_lines(  # noqa: PLR0913
             _clock=clock,
             expected_session_id=expected_session_id,
             stop_sentinel_path=stop_sentinel_path,
+            permission_prompt_listener=permission_prompt_listener,
         )
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
@@ -1086,6 +1090,21 @@ def _extract_choice_menu_state(text: str) -> _ChoiceMenuState | None:
 
 
 
+def _menu_navigation_response(
+    state: _ChoiceMenuState,
+    preferred_index: int | None,
+) -> str | None:
+    if preferred_index is None or state.selected_index is None:
+        return None
+    delta = preferred_index - state.selected_index
+    if delta > 0:
+        return ("\x1b[B" * delta) + "\r"
+    if delta < 0:
+        return ("\x1b[A" * abs(delta)) + "\r"
+    return "\r"
+
+
+
 def _plan_choice_menu_response(text: str) -> str | None:
     state = _extract_choice_menu_state(text)
     if state is None:
@@ -1096,16 +1115,101 @@ def _plan_choice_menu_response(text: str) -> str | None:
         if label.startswith("yes") and "default" not in label:
             preferred_index = i
             break
-    if preferred_index is None:
+    return _menu_navigation_response(state, preferred_index)
+
+
+
+def _approval_option_score(label: str) -> int | None:
+    lowered = label.lower()
+    if any(
+        token in lowered
+        for token in ("no", "cancel", "deny", "reject", "block", "exit", "skip")
+    ):
         return None
-    if state.selected_index is None:
+    score = 0
+    if any(
+        token in lowered for token in ("allow", "approve", "grant", "authorize", "yes")
+    ):
+        score += 4
+    if any(token in lowered for token in ("once", "this time", "now")):
+        score += 2
+    if any(token in lowered for token in ("always", "default", "session", "permanent")):
+        score -= 3
+    return score if score > 0 else None
+
+
+
+def _best_permission_option(state: _ChoiceMenuState) -> tuple[int, str] | None:
+    preferred_index: int | None = None
+    preferred_score: int | None = None
+    preferred_label: str | None = None
+    for i, option in enumerate(state.options):
+        score = _approval_option_score(option.label)
+        if score is None:
+            continue
+        if preferred_score is None or score > preferred_score:
+            preferred_index = i
+            preferred_score = score
+            preferred_label = option.label
+    if preferred_index is None or preferred_label is None:
         return None
-    delta = preferred_index - state.selected_index
-    if delta > 0:
-        return ("\x1b[B" * delta) + "\r"
-    if delta < 0:
-        return ("\x1b[A" * abs(delta)) + "\r"
-    return "\r"
+    return preferred_index, preferred_label
+
+
+
+def _plan_fuzzy_permission_menu_response(text: str) -> str | None:
+    state = _extract_choice_menu_state(text)
+    if state is None:
+        return None
+    best = _best_permission_option(state)
+    if best is None:
+        return None
+    preferred_index, _ = best
+    return _menu_navigation_response(state, preferred_index)
+
+
+
+def _permission_prompt_action_message(
+    text: str,
+    *,
+    auto_mode_prompt_seen: bool,
+) -> str | None:
+    state = _extract_choice_menu_state(
+        text if auto_mode_prompt_seen else f"Enable auto mode?\n{text}"
+        if _is_auto_mode_menu_snapshot(text)
+        else text
+    )
+    if state is None:
+        return None
+    selected_label: str | None = None
+    if auto_mode_prompt_seen or _is_auto_mode_menu_snapshot(text):
+        for option in state.options:
+            lowered = option.label.lower()
+            if lowered.startswith("yes") and "default" not in lowered:
+                selected_label = option.label
+                break
+    else:
+        best = _best_permission_option(state)
+        if best is not None:
+            _, selected_label = best
+    if selected_label is None:
+        return None
+    prompt_summary = state.prompt
+    return (
+        f"Ralph auto-answered permission prompt: {prompt_summary} → {selected_label}"
+    )
+
+
+
+def _is_auto_mode_menu_snapshot(text: str) -> bool:
+    visible = normalize_vt_text(text)
+    lowered = [line.strip().lower() for line in visible.splitlines() if line.strip()]
+    if not any("enter to confirm" in line for line in lowered):
+        return False
+    return (
+        any("yes, and make it my default mode" in line for line in lowered)
+        and any("yes, enable auto mode" in line for line in lowered)
+    )
 
 
 
@@ -1133,9 +1237,11 @@ def _interactive_auto_response_for_prompt(
     *,
     auto_mode_prompt_seen: bool,
 ) -> str | None:
-    if not auto_mode_prompt_seen:
-        return None
-    return _plan_choice_menu_response(text)
+    if auto_mode_prompt_seen or _is_auto_mode_menu_snapshot(text):
+        return _plan_choice_menu_response(
+            text if auto_mode_prompt_seen else f"Enable auto mode?\n{text}"
+        )
+    return _plan_fuzzy_permission_menu_response(text)
 
 
 
@@ -1238,6 +1344,7 @@ def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
     _clock: Clock | None = None,
     expected_session_id: str | None = None,
     stop_sentinel_path: Path | None = None,
+    permission_prompt_listener: Callable[[str], None] | None = None,
 ) -> Iterator[str]:
     lines_queue: list[str] = []
     lines_lock = threading.Lock()
@@ -1443,9 +1550,12 @@ def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
 
     interrupted = False
     auto_mode_prompt_seen = False
+    auto_response_menu_seen = False
     auto_mode_menu_screen: str | None = None
     last_auto_mode_response_at: float | None = None
     last_auto_mode_menu_seen_at: float | None = None
+    pending_permission_prompt_line: str | None = None
+    pending_permission_prompt_started_at: float | None = None
     try:
         while True:
             lines_event.clear()
@@ -1462,18 +1572,26 @@ def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
                 if _extract_choice_menu_state(queued_line) is not None:
                     auto_mode_menu_screen = queued_line
                     last_auto_mode_menu_seen_at = clock.monotonic()
-                if "enable auto mode?" in visible_line.lower():
+                prompt_line_seen = "enable auto mode?" in visible_line.lower()
+                menu_snapshot_seen = _is_auto_mode_menu_snapshot(queued_line)
+                if prompt_line_seen or menu_snapshot_seen:
                     auto_mode_prompt_seen = True
+                    auto_mode_menu_screen = queued_line
+                    last_auto_mode_menu_seen_at = clock.monotonic()
+                auto_response = _interactive_auto_response_for_prompt(
+                    queued_line,
+                    auto_mode_prompt_seen=auto_mode_prompt_seen,
+                )
+                if auto_response is not None:
+                    auto_response_menu_seen = True
+                    auto_mode_menu_screen = queued_line
                     last_auto_mode_menu_seen_at = clock.monotonic()
                 if _is_permission_prompt_line(queued_line):
-                    if auto_mode_prompt_seen:
-                        pass
-                    else:
-                        handle.terminate(grace_period_s=0.5)
-                        raise InteractivePermissionPromptError(
-                            agent_name,
-                            [queued_line.rstrip()],
-                        )
+                    pending_permission_prompt_line = queued_line.rstrip()
+                    pending_permission_prompt_started_at = clock.monotonic()
+                else:
+                    pending_permission_prompt_line = None
+                    pending_permission_prompt_started_at = None
                 activity_signal = strategy.classify_activity_line(queued_line)
                 if activity_signal is not None:
                     last_activity_meaningful[0] = (
@@ -1517,7 +1635,7 @@ def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
                     clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
                 break
 
-            if auto_mode_prompt_seen:
+            if auto_response_menu_seen:
                 now = clock.monotonic()
                 menu_quiescent = (
                     last_auto_mode_menu_seen_at is not None
@@ -1527,9 +1645,38 @@ def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
                     last_auto_mode_response_at is None or (now - last_auto_mode_response_at) >= 1.0
                 ):
                     with contextlib.suppress(OSError):
-                        response = _plan_choice_menu_response(auto_mode_menu_screen or "") or "\r"
+                        screen = auto_mode_menu_screen or ""
+                        response = _interactive_auto_response_for_prompt(
+                            screen,
+                            auto_mode_prompt_seen=auto_mode_prompt_seen,
+                        ) or "\r"
                         _write_pty_input(input_writer, response, lock=input_writer_lock)
+                        action_message = _permission_prompt_action_message(
+                            screen,
+                            auto_mode_prompt_seen=auto_mode_prompt_seen,
+                        )
+                        if action_message is not None:
+                            logger.info(action_message)
+                            if permission_prompt_listener is not None:
+                                permission_prompt_listener(action_message)
+                        pending_permission_prompt_line = None
+                        pending_permission_prompt_started_at = None
                         last_auto_mode_response_at = now
+            prompt_grace_exceeded = (
+                pending_permission_prompt_started_at is not None
+                and (clock.monotonic() - pending_permission_prompt_started_at)
+                >= _MENU_QUIESCENCE_SECONDS
+            )
+            if (
+                pending_permission_prompt_line is not None
+                and prompt_grace_exceeded
+                and not auto_response_menu_seen
+            ):
+                handle.terminate(grace_period_s=0.5)
+                raise InteractivePermissionPromptError(
+                    agent_name,
+                    [pending_permission_prompt_line],
+                )
             fire_result = _handle_fire_verdict(
                 watchdog.evaluate(classify_quiet=_safe_classify_quiet)
             )
@@ -1679,6 +1826,7 @@ def build_invoke_options_from_config(  # noqa: PLR0913
     session_id: str | None = None,
     system_prompt_file: str | None = None,
     waiting_listener: WaitingStatusListener | None = None,
+    permission_prompt_listener: Callable[[str], None] | None = None,
     required_artifact: RequiredArtifact | None = None,
 ) -> InvokeOptions:
     """Build InvokeOptions from GeneralConfig, mapping all timeout fields."""
@@ -1691,6 +1839,7 @@ def build_invoke_options_from_config(  # noqa: PLR0913
         session_id=session_id,
         system_prompt_file=system_prompt_file,
         waiting_listener=waiting_listener,
+        permission_prompt_listener=permission_prompt_listener,
         required_artifact=required_artifact,
         idle_timeout_seconds=general_config.agent_idle_timeout_seconds,
         drain_window_seconds=general_config.agent_idle_drain_window_seconds,

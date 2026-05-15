@@ -3489,6 +3489,18 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                     and _display_subscriber is not None
                 ):
                     _display_subscriber.record_mcp_restart(bridge.restart_count)
+                def _permission_prompt_listener(message: str) -> None:
+                    if _display_subscriber is None:
+                        return
+                    prefix = "Ralph auto-answered permission prompt: "
+                    summary = message.removeprefix(prefix)
+                    prompt_summary, _, selected_option = summary.partition(" → ")
+                    _display_subscriber.record_permission_prompt_action(
+                        agent_name=effect.agent_name,
+                        prompt_summary=prompt_summary or "permission prompt",
+                        selected_option=selected_option or "confirm",
+                    )
+
                 options = build_invoke_options_from_config(
                     config.general,
                     verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
@@ -3502,6 +3514,7 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                     session_id=resume_session_id,
                     system_prompt_file=system_prompt_file,
                     waiting_listener=_waiting_listener,
+                    permission_prompt_listener=_permission_prompt_listener,
                     required_artifact=(
                         resolve_phase_required_artifact(
                             policy_bundle.pipeline,
