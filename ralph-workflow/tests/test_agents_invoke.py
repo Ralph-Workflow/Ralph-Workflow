@@ -35,9 +35,10 @@ from ralph.agents.invoke import (
     check_agent_available,
     invoke_agent,
 )
+from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import Clock, FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
-from ralph.config.models import AgentConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
@@ -536,7 +537,7 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
     config = AgentConfig(
         cmd="claude",
         output_flag=None,
-        yolo_flag="--permission-mode auto",
+        yolo_flag="--dangerously-skip-permissions",
         session_flag="--resume {}",
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE_INTERACTIVE,
@@ -553,8 +554,7 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
 
     assert cmd == [
         "claude",
-        "--permission-mode",
-        "auto",
+        "--dangerously-skip-permissions",
         "--session-id",
         "fresh-session-1",
         "--settings",
@@ -568,7 +568,7 @@ def test_build_command_injects_claude_interactive_append_system_prompt_file() ->
     config = AgentConfig(
         cmd="claude",
         output_flag=None,
-        yolo_flag="--permission-mode auto",
+        yolo_flag="--dangerously-skip-permissions",
         session_flag="--resume {}",
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE_INTERACTIVE,
@@ -582,12 +582,23 @@ def test_build_command_injects_claude_interactive_append_system_prompt_file() ->
 
     assert cmd == [
         "claude",
-        "--permission-mode",
-        "auto",
+        "--dangerously-skip-permissions",
         "--append-system-prompt-file",
         "SYSTEM_PROMPT.md",
         "PROMPT.md",
     ]
+
+
+def test_builtin_claude_command_defaults_to_skip_permissions() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+    config = registry.get("claude")
+
+    assert config is not None
+    cmd = _build_command(config, "PROMPT.md")
+
+    assert cmd[:2] == ["claude", "--dangerously-skip-permissions"]
+    assert cmd[-1] == "PROMPT.md"
+
 
 
 def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) -> None:

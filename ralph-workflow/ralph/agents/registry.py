@@ -26,7 +26,7 @@ def _builtin_agents() -> dict[str, AgentConfig]:
         "claude": AgentConfig(
             cmd="claude",
             output_flag=None,
-            yolo_flag="--permission-mode auto",
+            yolo_flag="--dangerously-skip-permissions",
             verbose_flag="--verbose",
             can_commit=True,
             json_parser=JsonParserType.CLAUDE,

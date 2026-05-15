@@ -97,7 +97,7 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     interactive = AgentConfig(
         cmd="claude",
         output_flag=None,
-        yolo_flag="--permission-mode auto",
+        yolo_flag="--dangerously-skip-permissions",
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
@@ -123,7 +123,7 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
             bridge_shutdown.append(True)
 
     def fake_invoke_agent(config: AgentConfig, prompt_file: str, *, options=None):
-        assert config.yolo_flag == "--permission-mode auto"
+        assert config.yolo_flag == "--dangerously-skip-permissions"
         assert options is not None
         assert options.extra_env is not None
         assert options.extra_env[smoke_module.MCP_ENDPOINT_ENV] == "http://127.0.0.1:9999/mcp"
