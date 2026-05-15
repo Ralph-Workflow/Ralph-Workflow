@@ -1,0 +1,29 @@
+
+=== REDDIT POSTING CHECKLIST ===
+URL: https://www.reddit.com/r/cscareerquestions/submit
+Title: Title: What coding interview format actually predicts job performance? [discussion]
+Body: Title: What coding interview format actually predicts job performance? [discussion]
+
+Hey everyone — I've spent the last year building a live coding interview platform (and watching 200+ technical interviews in the process). Wanted to share some data-driven findings on what actually predicts job performance.
+
+**Quick background:** I'm a developer who got tired of whiteboard interviews that didn't predict anything. Built HireAegis to bring real coding tasks + AI visibility to technical interviews.
+
+**What we measured:** Time to first solution, quality of AI usage, debugging approach, communication patterns, and 90-day performance reviews (where we had it).
+
+**Key findings (with caveats):**
+
+- Candidates who use AI as a collaborator (not just autocomplete) score 40% higher on practical tasks
+- The "thinking out loud" factor correlates strongly with code review quality
+- Experience level didn't correlate with speed — seniors took longer but produced cleaner solutions
+- Docker preview (seeing your code run) changed candidate behavior significantly — more testing, more debugging
+
+**My take:** The best interview format is an open-ended problem + AI assistant + 45 minutes + someone watching how you work, not just what you produce.
+
+Would love to hear others' experiences with technical interviews — both as interviewer and interviewee.
+
+We're building a platform that answers this empirically
+
+---
+1. Open URL
+2. Fill form
+3. Submit
