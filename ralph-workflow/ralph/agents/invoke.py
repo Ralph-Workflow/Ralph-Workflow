@@ -1109,6 +1109,18 @@ def _plan_choice_menu_response(text: str) -> str | None:
 
 
 
+def _is_auto_mode_menu_snapshot(text: str) -> bool:
+    visible = normalize_vt_text(text)
+    lowered = [line.strip().lower() for line in visible.splitlines() if line.strip()]
+    if not any("enter to confirm" in line for line in lowered):
+        return False
+    return (
+        any("yes, and make it my default mode" in line for line in lowered)
+        and any("yes, enable auto mode" in line for line in lowered)
+    )
+
+
+
 def _write_pty_input(writer: IO[bytes], text: str, *, lock: threading.Lock | None = None) -> None:
     if lock is None:
         writer.write(text.encode("utf-8"))
@@ -1133,9 +1145,11 @@ def _interactive_auto_response_for_prompt(
     *,
     auto_mode_prompt_seen: bool,
 ) -> str | None:
-    if not auto_mode_prompt_seen:
+    if not auto_mode_prompt_seen and not _is_auto_mode_menu_snapshot(text):
         return None
-    return _plan_choice_menu_response(text)
+    return _plan_choice_menu_response(
+        text if auto_mode_prompt_seen else f"Enable auto mode?\n{text}"
+    )
 
 
 
@@ -1462,8 +1476,11 @@ def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
                 if _extract_choice_menu_state(queued_line) is not None:
                     auto_mode_menu_screen = queued_line
                     last_auto_mode_menu_seen_at = clock.monotonic()
-                if "enable auto mode?" in visible_line.lower():
+                prompt_line_seen = "enable auto mode?" in visible_line.lower()
+                menu_snapshot_seen = _is_auto_mode_menu_snapshot(queued_line)
+                if prompt_line_seen or menu_snapshot_seen:
                     auto_mode_prompt_seen = True
+                    auto_mode_menu_screen = queued_line
                     last_auto_mode_menu_seen_at = clock.monotonic()
                 if _is_permission_prompt_line(queued_line):
                     if auto_mode_prompt_seen:

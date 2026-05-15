@@ -56,3 +56,20 @@ def test_plan_menu_response_confirms_selected_affirmative_option() -> None:
     response = invoke_module._plan_choice_menu_response(screen)
 
     assert response == "\r"
+
+
+def test_interactive_auto_response_handles_menu_snapshot_without_prompt_line() -> None:
+    screen = """
+    \u276f 1. Yes, and make it my default mode
+      2. Yes, enable auto mode
+      3. No, exit
+
+    Enter to confirm · Esc to cancel
+    """
+
+    response = invoke_module._interactive_auto_response_for_prompt(
+        screen,
+        auto_mode_prompt_seen=False,
+    )
+
+    assert response == "\x1b[B\r"
