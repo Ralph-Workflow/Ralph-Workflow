@@ -65,11 +65,11 @@
 # default_max: default cap used at pipeline start (overridable via config)
 
 [loop_counters.development_analysis_iteration]
-default_max = 5
+default_max = 10
 description = "Development analysis loop iteration counter"
 
 [loop_counters.planning_analysis_iteration]
-default_max = 5
+default_max = 3
 description = "Planning analysis loop iteration counter"
 
 # ---------------------------------------------------------------------------

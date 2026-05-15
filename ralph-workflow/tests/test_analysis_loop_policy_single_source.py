@@ -17,7 +17,8 @@ from ralph.policy.models import PhaseLoopPolicy
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS_DIR = ROOT / "ralph" / "policy" / "defaults"
-ANALYSIS_DEFAULT_MAX = 5
+PLANNING_ANALYSIS_DEFAULT_MAX = 3
+DEVELOPMENT_ANALYSIS_DEFAULT_MAX = 10
 
 
 def test_phase_loop_policy_uses_counter_link_only() -> None:
@@ -43,11 +44,11 @@ def test_default_policy_uses_loop_counters_as_single_source_of_truth() -> None:
     assert not hasattr(development_analysis.loop_policy, "max_iterations")
     assert (
         bundle.pipeline.loop_counters["planning_analysis_iteration"].default_max
-        == ANALYSIS_DEFAULT_MAX
+        == PLANNING_ANALYSIS_DEFAULT_MAX
     )
     assert (
         bundle.pipeline.loop_counters["development_analysis_iteration"].default_max
-        == ANALYSIS_DEFAULT_MAX
+        == DEVELOPMENT_ANALYSIS_DEFAULT_MAX
     )
 
 

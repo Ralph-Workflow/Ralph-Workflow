@@ -28,7 +28,7 @@ from ralph.policy.loader import (
 from ralph.policy.validation import PolicyValidationError as PolicyContractValidationError
 from ralph.workspace.scope import WorkspaceScope
 
-PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 5
+PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 3
 _GLOBAL_POLICY_MAX_PARALLEL_WORKERS = 3
 _LEGACY_GLOBAL_POLICY_MAX_PARALLEL_WORKERS = 4
 
