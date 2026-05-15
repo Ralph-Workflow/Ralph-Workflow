@@ -14,7 +14,6 @@ _MODULES_RST = Path(__file__).parent.parent / "docs" / "sphinx" / "modules.rst"
 # These are internal/helper modules that should not appear in the public API reference.
 _EXCLUDED: dict[str, str] = {
     "testing.fake_process": "test infrastructure, not public API",
-    "vulture_whitelist": "internal Vulture whitelist, not public API",
 }
 
 _TOP_LEVEL_SECTION_HEADERS = frozenset(
