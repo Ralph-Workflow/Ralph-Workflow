@@ -135,7 +135,7 @@ The main config also supports deeper transport-specific and workflow-authoring s
 - recovery policy tuning
 - parallel fan-out controls
 
-Those sections are useful when you are customizing Ralph Workflow deeply, but many operators never need to touch them. The default `claude` agent runs interactive Claude Code; use CCS only when you explicitly want the headless path.
+Those sections are useful when you are customizing Ralph Workflow deeply, but many operators never need to touch them. Use `claude-headless` or CCS when you explicitly want the documented non-interactive Claude path.
 
 ## When to read further
 

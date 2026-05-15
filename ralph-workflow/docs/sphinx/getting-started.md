@@ -14,7 +14,7 @@ You will need:
 
 - **Python 3.12 or newer** — check with `python --version`
 - **A git repository** — Ralph Workflow runs inside a git repo
-- **At least one supported AI agent on your PATH** — usually `claude` (Claude Code) — runs in interactive mode by default; Ralph Workflow manages the session unattended — or `opencode` (OpenCode)
+- **At least one supported AI agent on your PATH** — usually `claude` (Claude Code) or `opencode` (OpenCode). If you want the documented non-interactive Claude path, configure `claude-headless`.
 
 Install links:
 

@@ -1,18 +1,22 @@
 # Ralph Workflow (Python)
 
-> **Ship reviewable AI coding runs without babysitting the terminal.**
+> **Write the spec. Wake up to working software.**
 
-Ralph Workflow is a Python 3.12+ CLI for developers who want AI to handle multi-step coding work without constant supervision. You describe the task in `PROMPT.md`, point Ralph Workflow at the agent CLIs you already use, and let it run. For Claude-based runs, Ralph Workflow now defaults to an unattended interactive Claude Code session. On Linux and macOS that interactive path runs inside a managed PTY so Claude behaves like a real terminal-attached session without requiring a human to keep the terminal open. When it finishes, you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
+Ralph Workflow is a Python 3.12+ CLI for spec-driven, unattended AI coding runs. You describe the task in `PROMPT.md`, point Ralph Workflow at the agent CLIs you already use, and let it run. When the workflow finishes, you come back to code changes, logs, artifacts, and review output you can inspect in your normal git workflow.
+
+For Claude-based runs, Ralph Workflow ships both a default `claude` transport and an explicit `claude-headless` transport. The headless path is the documented non-interactive option; transport details for the default Claude path live in the reference docs rather than this onboarding README.
+
+This package is a good fit when you want more than a demo. Ralph Workflow is designed for the kind of bounded engineering work that should leave you with a working feature, a verified refactor, a serious production-bound draft, or a reviewable implementation foundation.
 
 ## What you get
 
-- **Unattended runs for real engineering work** such as refactors, test generation, documentation sweeps, and migrations
+- **Spec-driven unattended runs** for real engineering work such as refactors, test generation, documentation sweeps, and migrations
 - **Repo-native workflow files** instead of hidden product state
 - **Agent-reviewed output** instead of a long interactive transcript
 - **Flexible agent routing** across Claude Code, Codex CLI, OpenCode, and your own configured agents
-- **Interactive Claude Code sessions run unattended by default** — Ralph Workflow manages the session without requiring a human at the terminal
-- **PTY-backed interactive Claude on POSIX** — Linux and macOS get the real interactive Claude terminal path; Windows should use `claude-headless` or another headless transport
-- **A practical default workflow** you can use before you invent anything custom
+- **Flexible Claude transport choices** including the explicit `claude-headless` path for documented non-interactive runs
+- **Cross-agent routing on supported platforms** — use Claude Code, Codex CLI, OpenCode, or your own configured agents based on your workflow needs
+- **A practical default workflow** you can use before inventing anything custom
 
 ## Install
 
@@ -70,6 +74,18 @@ What happens in that flow:
 
 After `ralph --init`, review the generated `.agent/` support files. If this repository needs a project-local main-config override, run `ralph --init-local-config` to create `.agent/ralph-workflow.toml`, then point the workflow at the agent CLIs you already use for planning, development, and review.
 
+## What to expect from a run
+
+Ralph Workflow is meant to get you to a strong implementation starting point while you are away, not to replace engineering judgment.
+
+A good run should leave you with:
+
+- code that compiles, tests, or clearly shows where work remains
+- review artifacts and logs that explain what happened
+- a result that is worth continuing from, not discarding and restarting
+
+That may be a finished small task, or it may be a substantial first pass toward production on a larger one.
+
 ## Good first tasks
 
 Start with work that is easy to verify:
@@ -103,7 +119,7 @@ ralph -T     # thorough: complex refactors, ten iterations
 
 ## Where the name comes from
 
-Ralph Workflow builds on the original Ralph idea: repeat a strong prompt until the model can make real progress. That loop was simple and powerful. Ralph Workflow extends it into a repo-native engineering workflow with planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
+Ralph Workflow builds on the original Ralph idea: repeat a strong prompt until the model can make real progress. That loop was simple and powerful. In practice, Ralph Workflow is the Ralph loop on steroids: planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
 
 ## Development and verification
 

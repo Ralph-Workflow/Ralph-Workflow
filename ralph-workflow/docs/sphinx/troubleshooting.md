@@ -153,11 +153,11 @@ use the full 1800 s ceiling, set `agent_idle_no_progress_waiting_on_child_second
 your TOML config. This is not recommended unless you have workloads with legitimately long
 quiet periods between progress signals.
 
-## Interactive Claude session exited without completing
+## Default Claude transport exited without completing
 
-**Symptom:** The pipeline retried an interactive Claude session, or the run log shows `RESUMABLE_CONTINUE` after a Claude invocation.
+**Symptom:** The pipeline retried the default Claude transport, or the run log shows `RESUMABLE_CONTINUE` after a Claude invocation.
 
-**Cause:** Ralph Workflow evaluates interactive Claude completion by artifact presence or an explicit `declare_complete` MCP call. If neither signal is present when the subprocess exits, Ralph Workflow classifies the exit as incomplete and retries the session using `--resume SESSION_ID`. This is expected behavior, not a failure.
+**Cause:** Ralph Workflow evaluates completion on the default Claude transport by artifact presence or an explicit `declare_complete` MCP call. If neither signal is present when the subprocess exits, Ralph Workflow classifies the exit as incomplete and retries the session using `--resume SESSION_ID`. This is expected behavior, not a failure.
 
 **Fix:**
 
@@ -167,18 +167,17 @@ quiet periods between progress signals.
 
 See [Recovery](recovery.md) for retry budget and fallover behavior.
 
-## Interactive Claude unavailable on Windows
+## Default Claude transport unavailable on Windows
 
-**Symptom:** Interactive Claude fails immediately on Windows, or the run log reports that PTY-backed interactive Claude is supported only on POSIX platforms.
+**Symptom:** The default Claude transport fails immediately on Windows, or the run log reports that PTY-backed terminal handling is supported only on POSIX platforms.
 
-**Cause:** Ralph Workflow now runs unattended interactive Claude inside a real PTY. That PTY transport depends on POSIX terminal APIs (`openpty`, `fork`, controlling-terminal setup), so it supports Linux and macOS directly but not native Windows terminals through the same code path.
+**Cause:** Ralph Workflow may use PTY-backed terminal handling for the default Claude transport on POSIX systems. That transport depends on POSIX terminal APIs (`openpty`, `fork`, controlling-terminal setup), so it supports Linux and macOS directly but not native Windows terminals through the same code path.
 
 **Fix:**
 
 - Use `claude-headless` on Windows when you need Claude specifically.
 - Or route the phase to another headless transport such as Codex or OpenCode.
-- If you need the interactive Claude product path, run Ralph Workflow on Linux or macOS.
-- For a live semantic check of the interactive interpreter, run `python -m ralph smoke-interactive-claude` on Linux or macOS.
+- For a live semantic check of the transport behavior, run `python -m ralph smoke-interactive-claude` on Linux or macOS.
 
 ## Related pages
 
