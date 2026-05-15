@@ -1,4 +1,4 @@
-"""Tests: missing-required-artifact failure strings classify as AMBIGUOUS."""
+"""Tests: artifact/proof validation strings classify as artifact_validation."""
 
 from __future__ import annotations
 
@@ -26,10 +26,10 @@ _AGENT = "claude"
         "Missing fix_result artifact at .agent/artifacts/fix_result.json",
     ],
 )
-def test_missing_artifact_message_classifies_as_ambiguous(message: str) -> None:
+def test_missing_artifact_message_classifies_as_artifact_validation(message: str) -> None:
     result = _CLASSIFIER.classify(message, phase=_PHASE, agent=_AGENT)
-    assert result.category == FailureCategory.AMBIGUOUS, (
-        f"Expected AMBIGUOUS for message {message!r}, got {result.category}"
+    assert result.category == FailureCategory.ARTIFACT_VALIDATION, (
+        f"Expected ARTIFACT_VALIDATION for message {message!r}, got {result.category}"
     )
 
 
@@ -54,6 +54,25 @@ def test_missing_artifact_does_not_count_against_budget() -> None:
     msg = "Missing required artifact at .agent/artifacts/issues.json"
     result = _CLASSIFIER.classify(msg, phase=_PHASE, agent=_AGENT)
     assert not result.counts_against_budget
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        (
+            "PROOF INCOMPLETE: The following how_to_fix item(s) have no proof entry: "
+            "['Add test']. Each how_to_fix_item must exactly match the prior analysis text."
+        ),
+        "PROOF INVALID: Duplicate how_to_fix_item entries found in analysis_items_addressed.",
+        "Invalid development evidence: Artifact type mismatch: expected plan, got 'wrong'",
+    ],
+)
+def test_proof_and_artifact_validation_messages_classify_as_artifact_validation(
+    message: str,
+) -> None:
+    result = _CLASSIFIER.classify(message, phase=_PHASE, agent=_AGENT)
+    assert result.category == FailureCategory.ARTIFACT_VALIDATION
+    assert result.counts_against_budget is False
 
 
 def test_non_artifact_failure_still_classifies() -> None:

@@ -12,6 +12,7 @@ _ANALYSIS_TEMPLATES = ["development_analysis.jinja", "review_analysis.jinja"]
 
 _RETRY_HINT_TEMPLATES = [
     "developer_iteration.jinja",
+    "developer_iteration_continuation.jinja",
     "review.jinja",
     "planning.jinja",
     "fix_mode.jinja",

@@ -20,6 +20,7 @@ import shutil
 import tempfile
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -150,6 +151,19 @@ _VALID_DEV_RESULT_JSON = json.dumps(
     }
 )
 
+_VALID_DEV_RESULT_WITH_PROOF_JSON = json.dumps(
+    {
+        "type": "development_result",
+        "content": {
+            "status": "completed",
+            "summary": "Done.",
+            "files_changed": "- src/a.py",
+            "plan_items_proven": [{"plan_item": "Step 1: test step", "proof": "Implemented."}],
+            "analysis_items_addressed": [],
+        },
+    }
+)
+
 _VALID_DEV_ANALYSIS_JSON = json.dumps(
     {
         "type": "development_analysis_decision",
@@ -168,13 +182,16 @@ def _make_ctx(workspace: MemoryWorkspace, policy=None) -> PhaseContext:
     if policy is None:
         with tempfile.TemporaryDirectory() as tmp:
             policy = load_policy(Path(tmp) / ".agent")
+    registry: Any = object()
+    chain_manager: Any = object()
+    agents_policy: Any = object()
     return PhaseContext.construct(
         workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
+        registry=registry,
+        chain_manager=chain_manager,
         pipeline_policy=policy.pipeline,
         artifacts_policy=policy.artifacts,
-        agents_policy=object(),
+        agents_policy=agents_policy,
     )
 
 
@@ -369,6 +386,44 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
     rendered = workspace.read(prompt_path)
     assert "PREVIOUS ATTEMPT FAILED" in rendered
     assert not workspace.exists(retry_hint_path("development_analysis"))
+
+
+def test_development_proof_failure_uses_retry_hint_contract(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "fix the proof failure without restarting")
+    _setup_phase_prerequisites(workspace, "development", full_plan=True)
+    workspace.write(".agent/artifacts/development_result.json", _VALID_DEV_RESULT_JSON)
+
+    ctx = _make_ctx(workspace, policy)
+    events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
+    failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
+    assert failure_events
+    assert failure_events[0].retry_in_session is True
+    assert workspace.exists(retry_hint_path("development"))
+
+    with patch.object(materialize_module, "_git_diff", return_value="diff"):
+        prompt_path = materialize_module.materialize_prompt_for_phase(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+            previous_phase="development_analysis",
+        )
+
+    rendered = workspace.read(prompt_path)
+    assert "PREVIOUS ATTEMPT ERROR" in rendered
+    assert "proof entries are incomplete or invalid" in rendered
+    assert not workspace.exists(retry_hint_path("development"))
+
+    workspace.write(".agent/artifacts/development_result.json", _VALID_DEV_RESULT_WITH_PROOF_JSON)
+    ctx2 = _make_ctx(workspace, policy)
+    events2 = _execution_handler_for("development")(_invoke_effect("development"), ctx2)
+    assert PipelineEvent.AGENT_SUCCESS in events2
 
 
 @pytest.mark.parametrize(

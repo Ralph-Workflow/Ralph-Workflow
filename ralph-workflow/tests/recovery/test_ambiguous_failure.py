@@ -120,6 +120,22 @@ def test_ambiguous_failure_emits_warning_log() -> None:
         logger.remove(handler_id)
 
 
+def test_artifact_validation_failure_is_not_flagged_as_ambiguous() -> None:
+    sink = io.StringIO()
+    handler_id = logger.add(sink, level="WARNING", format="{level} {message}")
+    try:
+        classifier = FailureClassifier()
+        failure = classifier.classify(
+            "PROOF INCOMPLETE: The following how_to_fix item(s) have no proof entry: ['Add test']",
+            phase="development",
+            agent="claude",
+        )
+        assert failure.category == FailureCategory.ARTIFACT_VALIDATION
+        assert "flagged_for_review" not in sink.getvalue().lower()
+    finally:
+        logger.remove(handler_id)
+
+
 def test_connection_refused_is_not_ambiguous() -> None:
     """ConnectionRefused is clearly environmental, not ambiguous."""
     classifier = FailureClassifier()

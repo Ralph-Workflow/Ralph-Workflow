@@ -24,6 +24,7 @@ from loguru import logger
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PlanArtifactValidationError, is_noop_plan
 from ralph.phases.artifacts import (
     PhaseArtifactError,
+    artifact_validation_failure_event,
     decision_vocabulary_for_drain,
     load_phase_artifact,
     unwrap_phase_artifact_content,
@@ -34,12 +35,7 @@ from ralph.phases.required_artifacts import (
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import (
-    AnalysisDecisionEvent,
-    Event,
-    PhaseFailureEvent,
-    PipelineEvent,
-)
+from ralph.pipeline.events import AnalysisDecisionEvent, Event, PipelineEvent
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -193,24 +189,15 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
                     retry_hint_path(phase_name),
                     build_retry_hint(phase_name, detail),
                 )
-            return [
-                PhaseFailureEvent(
-                    phase=phase_name,
-                    reason=detail,
-                    recoverable=True,
-                    retry_in_session=True,
-                )
-            ]
+            return [artifact_validation_failure_event(phase=phase_name, reason=detail)]
 
         status = parse_analysis_decision_status(ctx, drain_name, phase_name=phase_name)
         if status is None:
             # parse_analysis_decision_status already logged the warning
             return [
-                PhaseFailureEvent(
+                artifact_validation_failure_event(
                     phase=phase_name,
                     reason=f"Unroutable analysis decision for phase '{phase_name}'",
-                    recoverable=True,
-                    retry_in_session=True,
                 )
             ]
 

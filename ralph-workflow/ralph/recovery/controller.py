@@ -66,7 +66,7 @@ class RecoveryController:
     def budget_registry(self) -> AgentBudgetRegistry:
         return self._registry
 
-    def handle(
+    def handle(  # noqa: PLR0913
         self,
         state: PipelineState,
         raw_failure: BaseException | str,
@@ -74,6 +74,7 @@ class RecoveryController:
         phase: str,
         agent: str | None,
         retry_in_session: bool = False,
+        classified_failure: ClassifiedFailure | None = None,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         """Classify a failure and compute the recovery transition.
 
@@ -85,6 +86,9 @@ class RecoveryController:
             retry_in_session: When True and state carries a captured session ID,
                 the AGENT-category retry path sets session_preserve_retry_pending
                 so the runner reuses the agent session rather than cold-starting.
+            classified_failure: Optional pre-classified failure object for known
+                phase-level failures. When supplied, recovery must honor it
+                directly instead of re-classifying the string reason.
 
         Returns:
             Tuple of (new_state, effects, failure_event).
@@ -92,7 +96,9 @@ class RecoveryController:
         # Lazy import: ralph.pipeline.effects depends transitively on recovery types.
         from ralph.pipeline.effects import ExitFailureEffect  # noqa: PLC0415
 
-        failure = self._classifier.classify(raw_failure, phase=phase, agent=agent)
+        failure = classified_failure or self._classifier.classify(
+            raw_failure, phase=phase, agent=agent
+        )
 
         chain = state.chain_for_phase(phase)
         chain_capacity = 0
@@ -133,13 +139,22 @@ class RecoveryController:
             # Environmental failures retry immediately without debiting budget or retries.
             return new_state.copy_with(last_error=failure.reason), [], failure_evt
 
-        if failure.category == FailureCategory.AMBIGUOUS:
+        if failure.category in (
+            FailureCategory.ARTIFACT_VALIDATION,
+            FailureCategory.AMBIGUOUS,
+        ):
+            category_label = (
+                "Artifact validation"
+                if failure.category == FailureCategory.ARTIFACT_VALIDATION
+                else "Ambiguous"
+            )
             logger.info(
-                "Ambiguous failure in phase={} (retry without budget debit): {}",
+                "{} failure in phase={} (retry without budget debit): {}",
+                category_label,
                 phase,
                 failure.reason[:200],
             )
-            # Ambiguous retries track retry count (but no budget debit).
+            # Non-budget retries track retry count and may preserve session.
             new_state = new_state.copy_with(last_error=failure.reason)
             new_state = self._increment_chain_retries(new_state, phase)
             if retry_in_session and new_state.last_agent_session_id:

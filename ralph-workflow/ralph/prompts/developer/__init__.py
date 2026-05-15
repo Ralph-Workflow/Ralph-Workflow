@@ -119,6 +119,7 @@ def prompt_developer_iteration_xml_with_context(
                 "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
                 "ARTIFACT_HISTORY_PATH": inputs.artifact_history_path,
                 "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
+                "LAST_RETRY_ERROR": inputs.last_retry_error,
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
                 "PLAN_PATH": inputs.plan_path
                 or str(

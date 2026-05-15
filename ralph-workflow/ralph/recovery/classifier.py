@@ -54,6 +54,7 @@ class FailureCategory(StrEnum):
     ENVIRONMENTAL = "environmental"
     AGENT = "agent"
     USER_CONFIG = "user_config"
+    ARTIFACT_VALIDATION = "artifact_validation"
     AMBIGUOUS = "ambiguous"
 
 
@@ -133,12 +134,30 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
 
 
 def _is_missing_artifact_message(raw_message: str) -> bool:
-    """Return True if the message indicates a missing required artifact.
-
-    These failures are classified as AMBIGUOUS so they do not debit the agent
-    budget — the retry-hint mechanism nudges the agent to submit the artifact.
-    """
+    """Return True if the message indicates a missing required artifact."""
     return any(s in raw_message for s in _MISSING_ARTIFACT_SUBSTRINGS)
+
+
+def _is_artifact_validation_message(raw_message: str) -> bool:
+    """Return True for artifact/proof validation failures with a typed recovery path."""
+    artifact_validation_substrings = (
+        "Invalid plan artifact:",
+        "Invalid development evidence:",
+        "Missing/invalid issues artifact:",
+        "Artifact type mismatch:",
+        "Artifact content must be a JSON object",
+        "must be valid JSON text",
+        "must be a JSON object",
+        "PROOF INVALID:",
+        "PROOF INCOMPLETE:",
+        "proof entries are incomplete or invalid",
+        "how_to_fix item",
+        "Unknown plan_item reference",
+        "Unknown how_to_fix_item reference",
+    )
+    return _is_missing_artifact_message(raw_message) or any(
+        s in raw_message for s in artifact_validation_substrings
+    )
 
 
 def _is_stale_session_message(raw_message: str) -> bool:
@@ -247,8 +266,8 @@ class FailureClassifier:
             return FailureCategory.ENVIRONMENTAL, False, False
         if _is_user_config_message(raw_message):
             return FailureCategory.USER_CONFIG, False, False
-        if _is_missing_artifact_message(raw_message):
-            return FailureCategory.AMBIGUOUS, False, False
+        if _is_artifact_validation_message(raw_message):
+            return FailureCategory.ARTIFACT_VALIDATION, False, False
         return FailureCategory.AMBIGUOUS, False, False
 
     def _build_reason(self, category: FailureCategory, raw_message: str) -> str:
@@ -256,6 +275,7 @@ class FailureClassifier:
             FailureCategory.ENVIRONMENTAL: "Environmental fault",
             FailureCategory.AGENT: "Agent fault",
             FailureCategory.USER_CONFIG: "Configuration fault",
+            FailureCategory.ARTIFACT_VALIDATION: "Artifact validation fault",
             FailureCategory.AMBIGUOUS: "Ambiguous fault (flagged for review)",
         }
         prefix = prefix_map.get(category, "Unknown fault")
@@ -266,8 +286,8 @@ class FailureClassifier:
 def is_retryable_without_budget(failure: ClassifiedFailure) -> bool:
     """Return True if this failure should retry without debiting the agent budget.
 
-    Environmental and ambiguous failures retry without counting.
-    Agent and user_config failures consume budget (user_config should not
-    reach runtime, but defensively we treat them as non-retryable without budget).
+    Environmental, artifact-validation, and ambiguous failures retry without
+    counting. Agent and user_config failures consume budget (user_config should
+    not reach runtime, but defensively we treat them as non-retryable without budget).
     """
     return not failure.counts_against_budget

@@ -28,16 +28,13 @@ if TYPE_CHECKING:
     from ralph.phases import PhaseContext
 from ralph.phases.artifacts import (
     PhaseArtifactError,
+    artifact_validation_failure_event,
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
 from ralph.phases.required_artifacts import build_retry_hint, retry_hint_path
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import (
-    Event,
-    PhaseFailureEvent,
-    PipelineEvent,
-)
+from ralph.pipeline.events import Event, PipelineEvent
 
 REVIEW_BASELINE_MARKER = ".agent/tmp/last_reviewed_sha.txt"
 REVIEW_ISSUES_ARTIFACT_PATH = ".agent/artifacts/issues.json"
@@ -140,11 +137,9 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
             logger.warning("Review phase missing fresh issues artifact: {}", detail)
             _write_retry_hint(ctx, effect.phase, detail)
             return [
-                PhaseFailureEvent(
+                artifact_validation_failure_event(
                     phase=effect.phase,
                     reason=f"Missing/invalid issues artifact: {detail}",
-                    recoverable=True,
-                    retry_in_session=True,
                 )
             ]
 

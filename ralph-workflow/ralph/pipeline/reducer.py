@@ -44,6 +44,7 @@ from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseDefinition, PhaseLoopPolicy
+from ralph.recovery.classifier import ClassifiedFailure
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -177,12 +178,26 @@ def reduce(  # noqa: PLR0911
     # recovery (intelligent attribution, budget management). When None, use legacy logic.
     if isinstance(event, PhaseFailureEvent):
         if recovery is not None:
+            classified_failure = None
+            if event.failure_category is not None:
+                raw_message = event.reason or f"(no reason reported for phase={event.phase})"
+                classified_failure = ClassifiedFailure(
+                    category=event.failure_category,
+                    reason=f"Artifact validation fault: {raw_message}",
+                    attributed_agent=None,
+                    attributed_phase=event.phase,
+                    counts_against_budget=False,
+                    original_exception=None,
+                    raw_message=raw_message,
+                    reset_session=False,
+                )
             new_state, effects, _ = recovery.handle(
                 state,
                 event.reason or f"(no reason reported for phase={event.phase})",
                 phase=event.phase,
                 agent=state.current_agent(),
                 retry_in_session=event.retry_in_session,
+                classified_failure=classified_failure,
             )
             return _restore_work_units(state, new_state), effects
         return _handle_phase_failure(state, event, policy=pipeline_policy)

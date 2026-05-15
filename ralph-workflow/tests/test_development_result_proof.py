@@ -11,7 +11,11 @@ from ralph.phases import PhaseContext
 from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.reducer import reduce as reducer_reduce
+from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
+from ralph.recovery.classifier import FailureCategory
+from ralph.recovery.controller import RecoveryController
 from ralph.workspace.memory import MemoryWorkspace
 
 
@@ -147,6 +151,7 @@ def test_schema_invalid_development_result_returns_phase_failure() -> None:
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
     assert failure_events[0].recoverable is True
+    assert failure_events[0].failure_category == FailureCategory.ARTIFACT_VALIDATION
 
 
 def test_proof_policy_can_be_disabled_explicitly(tmp_path: Path) -> None:
@@ -182,12 +187,39 @@ def test_steps_plan_fails_when_no_proof_is_submitted() -> None:
 
     failure_events = [event for event in events if isinstance(event, PhaseFailureEvent)]
     assert failure_events
+    assert failure_events[0].failure_category == FailureCategory.ARTIFACT_VALIDATION
     assert "PROOF INCOMPLETE" in failure_events[0].reason
     hint = workspace.read(".agent/tmp/last_retry_error_development.txt")
     assert hint.startswith(
         "PREVIOUS ATTEMPT FAILED: The agent submitted the artifact "
         "but the proof entries are incomplete or invalid."
     )
+
+
+
+def test_proof_failure_preserves_same_session_via_recovery_controller() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    _write_dev_result(workspace)
+    ctx = _make_context(workspace)
+
+    events = handle_execution_phase(_invoke(), ctx)
+    failure_event = next(event for event in events if isinstance(event, PhaseFailureEvent))
+
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(agents=["dev"], current_index=0, retries=0)
+        },
+        last_agent_session_id="sess-proof-123",
+    )
+    controller = RecoveryController(cycle_cap=10)
+
+    new_state, _ = reducer_reduce(state, failure_event, recovery=controller)
+
+    assert new_state.session_preserve_retry_pending is True
+    assert new_state.last_agent_session_id == "sess-proof-123"
+    assert new_state.last_failure_category == FailureCategory.ARTIFACT_VALIDATION
 
 
 def test_steps_plan_rejects_duplicate_plan_item_entries() -> None:

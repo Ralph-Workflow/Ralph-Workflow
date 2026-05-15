@@ -22,8 +22,9 @@ from loguru import logger
 
 from ralph.git.operations import GitOperationError, has_uncommitted_changes
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT, read_commit_message_artifact
+from ralph.phases.artifacts import artifact_validation_failure_event
 from ralph.pipeline.effects import Effect, InvokeAgentEffect
-from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import PipelineEvent
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -91,14 +92,12 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
             COMMIT_MESSAGE_ARTIFACT,
         )
         return [
-            PhaseFailureEvent(
+            artifact_validation_failure_event(
                 phase=phase_name,
                 reason=(
                     f"Missing commit_message artifact at {COMMIT_MESSAGE_ARTIFACT}; "
                     "the agent must submit commit_message before declaring completion"
                 ),
-                recoverable=True,
-                retry_in_session=True,
             )
         ]
 

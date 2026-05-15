@@ -35,6 +35,7 @@ from ralph.mcp.artifacts.plan import (
 )
 from ralph.phases.artifacts import (
     PhaseArtifactError,
+    artifact_validation_failure_event,
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
@@ -47,7 +48,7 @@ from ralph.phases.required_artifacts import (
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import Event, PipelineEvent
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
 
@@ -163,9 +164,7 @@ def _validate_plan_output(
         )
         logger.warning("Planning agent completed without producing {}", ra.json_path)
         _write_retry_hint(ctx, phase, detail)
-        return [
-            PhaseFailureEvent(phase=phase, reason=detail, recoverable=True, retry_in_session=True)
-        ]
+        return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)
         raw_content = unwrap_phase_artifact_content(
@@ -191,11 +190,9 @@ def _validate_plan_output(
         logger.warning("Invalid plan artifact: {}", exc)
         _write_retry_hint(ctx, phase, str(exc))
         return [
-            PhaseFailureEvent(
+            artifact_validation_failure_event(
                 phase=phase,
                 reason=f"Invalid plan artifact: {exc}",
-                recoverable=True,
-                retry_in_session=True,
             )
         ]
     return [PipelineEvent.AGENT_SUCCESS]
@@ -214,9 +211,7 @@ def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[E
         hint = build_missing_input_hint(phase, upstream, PLAN_ARTIFACT_PATH)
         with suppress(Exception):
             ctx.workspace.write(retry_hint_path(phase), hint)
-        return [
-            PhaseFailureEvent(phase=phase, reason=detail, recoverable=True, retry_in_session=True)
-        ]
+        return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
         artifact_content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
@@ -241,11 +236,9 @@ def _validate_plan_input(effect: InvokeAgentEffect, ctx: PhaseContext) -> list[E
         logger.warning("Invalid development phase evidence: {}", exc)
         _write_retry_hint(ctx, phase, str(exc))
         return [
-            PhaseFailureEvent(
+            artifact_validation_failure_event(
                 phase=phase,
                 reason=f"Invalid development evidence: {exc}",
-                recoverable=True,
-                retry_in_session=True,
             )
         ]
     return None
@@ -274,9 +267,7 @@ def _validate_output_artifact(
         )
         logger.warning("Execution phase '{}' missing required artifact at {}", phase, ra.json_path)
         _write_retry_hint(ctx, phase, detail)
-        return [
-            PhaseFailureEvent(phase=phase, reason=detail, recoverable=True, retry_in_session=True)
-        ]
+        return [artifact_validation_failure_event(phase=phase, reason=detail)]
     try:
         artifact_wrapper = load_phase_artifact(ctx.workspace, ra.json_path)
         content = unwrap_phase_artifact_content(artifact_wrapper, expected_type=ra.artifact_type)
@@ -289,11 +280,9 @@ def _validate_output_artifact(
         )
         _write_retry_hint(ctx, phase, detail)
         return [
-            PhaseFailureEvent(
+            artifact_validation_failure_event(
                 phase=phase,
                 reason=f"Invalid {ra.artifact_type} artifact: {detail}",
-                recoverable=True,
-                retry_in_session=True,
             )
         ]
     return None
@@ -476,7 +465,7 @@ def _validate_development_result_proof(
 
     detail = "\n".join(errors)
     _write_proof_failure_hint(ctx, phase, detail)
-    return [PhaseFailureEvent(phase=phase, reason=detail, recoverable=True, retry_in_session=True)]
+    return [artifact_validation_failure_event(phase=phase, reason=detail)]
 
 
 def _is_legacy_work_units_payload(content: dict[str, object]) -> bool:

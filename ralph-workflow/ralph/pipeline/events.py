@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ralph.recovery.classifier import FailureCategory
 
 
 class PipelineEvent(StrEnum):
@@ -51,12 +55,17 @@ class PhaseFailureEvent:
             resume, the recovery path should preserve the active session ID so
             the next retry continues in the same agent session rather than
             starting from scratch. Only meaningful when recoverable=True.
+        failure_category: Optional pre-classified failure category for known
+            phase-level failures such as artifact/proof validation errors. When
+            present, recovery must honor this category directly instead of
+            re-classifying the string reason heuristically.
     """
 
     phase: str
     reason: str
     recoverable: bool
     retry_in_session: bool = False
+    failure_category: FailureCategory | None = None
 
 
 @dataclass(frozen=True)

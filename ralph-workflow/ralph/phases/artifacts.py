@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, cast
 
+from ralph.pipeline.events import PhaseFailureEvent
+from ralph.recovery.classifier import FailureCategory
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -50,6 +53,22 @@ def unwrap_phase_artifact_content(
     if not isinstance(content, dict):
         raise PhaseArtifactError("Artifact content must be a JSON object")
     return cast("dict[str, object]", content)
+
+
+def artifact_validation_failure_event(
+    phase: str,
+    reason: str,
+    *,
+    retry_in_session: bool = True,
+) -> PhaseFailureEvent:
+    """Build a typed phase failure event for artifact/proof validation issues."""
+    return PhaseFailureEvent(
+        phase=phase,
+        reason=reason,
+        recoverable=True,
+        retry_in_session=retry_in_session,
+        failure_category=FailureCategory.ARTIFACT_VALIDATION,
+    )
 
 
 def artifact_contract_for_drain(
