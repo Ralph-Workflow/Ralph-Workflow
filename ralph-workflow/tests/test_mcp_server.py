@@ -20,7 +20,7 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.capability_mapping import McpCapability
-from ralph.mcp.protocol.env import MCP_SESSION_ENV
+from ralph.mcp.protocol.env import MCP_SESSION_ENV, WORKER_ARTIFACT_DIR_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
 from ralph.mcp.tools.coordination import ImageContent, ToolContent, ToolResult
@@ -1465,7 +1465,7 @@ class TestFileBackedSessionWorkerArtifactDir:
     )
         session = FileBackedSession(
         session_file,
-        env_getter=lambda k: "/tmp/artifacts" if k == "RALPH_WORKER_ARTIFACT_DIR" else None,
+        env_getter=lambda k: "/tmp/artifacts" if k == WORKER_ARTIFACT_DIR_ENV else None,
     )
         assert session.worker_artifact_dir == Path("/tmp/artifacts")
 
