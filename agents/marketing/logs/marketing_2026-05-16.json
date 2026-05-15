@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-05-16T00:54:19.938932",
+  "weekly_mode": false,
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "robots": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "sitemap": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    }
+  },
+  "totals": {
+    "posts_last_30d": 5,
+    "views_last_30d": 0
+  },
+  "content_summary": {
+    "unknown": {
+      "posts": 5,
+      "views": 0,
+      "avg_views": 0.0
+    }
+  },
+  "decisions": [],
+  "blocked_channels": {
+    "dev.to": "Needs API key or OAuth",
+    "twitter": "Login/session blocked",
+    "reddit": "Needs account + karma",
+    "hackernews": "Needs account",
+    "lobsters": "Needs invite/account",
+    "producthunt": "Protected flow / manual launch required"
+  },
+  "seo": {
+    "score": "65/100 (C)",
+    "ranked_keywords": 0,
+    "backlinks_approx": 0,
+    "domain_rating": null,
+    "trends": {
+      "rank_delta": 0.0,
+      "backlinks_delta": 0.0,
+      "domain_rating": null,
+      "prev_avg_ranks": 0.0,
+      "prev_avg_bl": 0.0
+    },
+    "priority_actions": [
+      "Fix top on-page SEO issues (current score: 65/100)",
+      "Create content targeting: unattended coding agent, spec-driven AI agent, AI coding workflow automation",
+      "Build backlinks: submit to directories, guest post, earn citations"
+    ],
+    "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-16.md",
+    "seo_daily_error": "",
+    "sitemap_urls": 0,
+    "competitor_analysis": null
+  }
+}
