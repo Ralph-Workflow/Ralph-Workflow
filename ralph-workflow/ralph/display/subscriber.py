@@ -301,6 +301,29 @@ class PipelineSubscriber:
         if snapshot is not None:
             self._publish(snapshot)
 
+    def record_permission_prompt_action(
+        self,
+        *,
+        agent_name: str,
+        prompt_summary: str,
+        selected_option: str,
+    ) -> None:
+        """Record an auto-answered permission prompt for visibility and auditing."""
+        line = (
+            f"Ralph auto-answered permission prompt: {prompt_summary} → {selected_option}"
+        )
+        with self._lock:
+            self._active_agent = agent_name or self._active_agent
+            self._last_activity_line = line
+            self._append_decision_log_locked(
+                phase=self._previous_phase or "unknown",
+                decision="permission_prompt_auto_answered",
+                reason=f"{prompt_summary} -> {selected_option}",
+            )
+            snapshot = self._build_snapshot_locked(self._last_state)
+        if snapshot is not None:
+            self._publish(snapshot)
+
     def _record_state_transitions_locked(self, state: PipelineState) -> None:
         prev = self._previous_phase
         cur = state.phase

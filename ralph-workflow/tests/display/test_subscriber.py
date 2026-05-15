@@ -263,3 +263,25 @@ def test_waiting_status_line_property_returns_current_value(tmp_path: Path) -> N
     sub.record_waiting_status(_event(WaitingStatusKind.PROGRESS))
     assert sub.waiting_status_line is not None
     assert "still active" in sub.waiting_status_line
+
+
+def test_record_permission_prompt_action_updates_activity_and_decision_log(tmp_path: Path) -> None:
+    from ralph.pipeline.state import PipelineState
+
+    sub = _make_subscriber(tmp_path)
+    sub.notify(PipelineState(phase="development"))
+    sub.record_permission_prompt_action(
+        agent_name="claude/sonnet",
+        prompt_summary="Allow this action?",
+        selected_option="Allow once",
+    )
+
+    snapshot = sub.build_snapshot(PipelineState(phase="development"))
+    assert snapshot is not None
+    assert snapshot.last_activity_line is not None
+    assert "auto-answered permission prompt" in snapshot.last_activity_line
+    assert "Allow once" in snapshot.last_activity_line
+    assert any(
+        entry[1] == "permission_prompt_auto_answered" and "Allow this action?" in entry[2]
+        for entry in sub.decision_log
+    )
