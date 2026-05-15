@@ -6,7 +6,6 @@ If you only need to run Ralph Workflow, start with [Operator Reference](referenc
 
 ## What lives here
 
-- [Agents Architecture](agents.md) — agent definitions, chains, drains, fallback behavior, and waiting-state handling
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialization
@@ -16,7 +15,6 @@ If you only need to run Ralph Workflow, start with [Operator Reference](referenc
 ```{toctree}
 :maxdepth: 1
 
-agents
 mcp-architecture
 artifacts
 prompts

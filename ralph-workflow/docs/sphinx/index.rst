@@ -67,6 +67,7 @@ Ralph Workflow
    :maxdepth: 2
    :caption: Developer Reference
 
+   agents
    developer-reference
    display
 

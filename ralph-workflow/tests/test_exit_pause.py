@@ -159,10 +159,19 @@ class TestDetectLaunchContext:
         assert isinstance(ctx.is_windows, bool)
         assert isinstance(ctx.has_terminal_session_marker, bool)
 
-    @patch.dict("os.environ", {"WT_SESSION": "test-session"}, clear=False)
     def test_terminal_marker_detected(self) -> None:
         """Test that WT_SESSION environment variable sets has_terminal_session_marker."""
-        ctx = detect_launch_context()
+        ctx = detect_launch_context(env={"WT_SESSION": "test-session"})
+        assert ctx.has_terminal_session_marker is True
+
+    def test_no_marker_when_env_empty(self) -> None:
+        """Test that detect_launch_context returns False marker when env is empty."""
+        ctx = detect_launch_context(env={})
+        assert ctx.has_terminal_session_marker is False
+
+    def test_marker_detected_via_term_env_var(self) -> None:
+        """Test that WT_SESSION terminal env var sets has_terminal_session_marker."""
+        ctx = detect_launch_context(env={"WT_SESSION": "test-123"})
         assert ctx.has_terminal_session_marker is True
 
     @patch("ralph.exit_pause.sys.platform", "win32")

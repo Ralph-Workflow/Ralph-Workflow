@@ -1452,3 +1452,84 @@ class TestFileBackedSessionCapabilityProfile:
         for modality in SUPPORTED_MODALITIES:
             verdict = profile.verdict_for(modality)
             assert verdict is not None, f"no verdict for modality={modality!r}"
+
+
+class TestFileBackedSessionWorkerArtifactDir:
+    def test_worker_artifact_dir_returns_path_when_env_set(self, tmp_path: Path) -> None:
+        from ralph.mcp.server.runtime import FileBackedSession
+        session_file = tmp_path / "session.json"
+        session_file.write_text(
+        '{"session_id":"s","run_id":"r","drain":"d","capabilities":[]}',
+        encoding="utf-8",
+    )
+        session = FileBackedSession(
+        session_file,
+        env_getter=lambda k: "/tmp/artifacts" if k == "RALPH_WORKER_ARTIFACT_DIR" else None,
+    )
+        assert session.worker_artifact_dir == Path("/tmp/artifacts")
+
+    def test_worker_artifact_dir_returns_none_when_env_not_set(self, tmp_path: Path) -> None:
+        from ralph.mcp.server.runtime import FileBackedSession
+        session_file = tmp_path / "session.json"
+        session_file.write_text(
+        '{"session_id":"s","run_id":"r","drain":"d","capabilities":[]}',
+        encoding="utf-8",
+    )
+        session = FileBackedSession(session_file, env_getter=lambda k: None)
+        assert session.worker_artifact_dir is None
+
+
+class TestLoadRuntimeUpstreamServers:
+    def test_returns_empty_when_env_not_set(self) -> None:
+        from ralph.config.mcp_models import McpConfig
+        from ralph.mcp.server.runtime import _load_runtime_upstream_servers
+        result = _load_runtime_upstream_servers(McpConfig(), env={})
+        assert result == ()
+
+    def test_env_servers_present_when_env_set(self) -> None:
+        from ralph.config.mcp_models import McpConfig
+        from ralph.mcp.server.runtime import _load_runtime_upstream_servers
+        from ralph.mcp.upstream.config import (
+            UPSTREAM_MCP_CONFIG_ENV,
+            UpstreamMcpServer,
+            serialize_upstream_mcp_servers,
+        )
+        srv = UpstreamMcpServer(name="env-srv", transport="http", url="http://localhost:9")
+        serialized = serialize_upstream_mcp_servers([srv])
+        result = _load_runtime_upstream_servers(
+        McpConfig(), env={UPSTREAM_MCP_CONFIG_ENV: serialized}
+    )
+        assert any(s.name == "env-srv" for s in result)
+
+    def test_both_env_and_toml_servers_included_when_names_differ(self) -> None:
+        from ralph.config.mcp_models import McpConfig, McpServerSpec
+        from ralph.mcp.server.runtime import _load_runtime_upstream_servers
+        from ralph.mcp.upstream.config import (
+            UPSTREAM_MCP_CONFIG_ENV,
+            UpstreamMcpServer,
+            serialize_upstream_mcp_servers,
+        )
+        env_srv = UpstreamMcpServer(name="env-srv", transport="http", url="http://env:9")
+        serialized = serialize_upstream_mcp_servers([env_srv])
+        toml_spec = McpServerSpec(name="toml-srv", transport="http", url="http://toml:9")
+        config = McpConfig(mcp_servers={"toml-srv": toml_spec})
+        result = _load_runtime_upstream_servers(config, env={UPSTREAM_MCP_CONFIG_ENV: serialized})
+        assert {s.name for s in result} == {"env-srv", "toml-srv"}
+
+    def test_toml_server_overwrites_env_server_on_name_collision(self) -> None:
+        from ralph.config.mcp_models import McpConfig, McpServerSpec
+        from ralph.mcp.server.runtime import _load_runtime_upstream_servers
+        from ralph.mcp.upstream.config import (
+            UPSTREAM_MCP_CONFIG_ENV,
+            UpstreamMcpServer,
+            serialize_upstream_mcp_servers,
+        )
+        shared = "shared-srv"
+        env_srv = UpstreamMcpServer(name=shared, transport="http", url="http://env:9")
+        serialized = serialize_upstream_mcp_servers([env_srv])
+        toml_spec = McpServerSpec(name=shared, transport="http", url="http://toml:9")
+        config = McpConfig(mcp_servers={shared: toml_spec})
+        result = _load_runtime_upstream_servers(config, env={UPSTREAM_MCP_CONFIG_ENV: serialized})
+        assert len(result) == 1
+        assert result[0].url == "http://toml:9"
+

@@ -23,7 +23,7 @@ from ralph.mcp.multimodal.artifacts import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 RUN_REPORT_PROGRESS_CAPABILITY = "run.report_progress"
 ARTIFACT_SUBMIT_CAPABILITY = "artifact.submit"
@@ -229,18 +229,20 @@ def handle_read_env(
     session: CoordinationSessionLike,
     _workspace: WorkspaceLike,
     params: dict[str, object],
+    *,
+    env: Mapping[str, str] = os.environ,
 ) -> ToolResult:
     """Read an environment variable by name."""
     require_capability(session, ENV_READ_CAPABILITY, "Environment variable read")
     name = _parameter_as_string(params, "name")
-    value = _read_env_value(os.environ, name)
+    value = _read_env_value(env, name)
     return ToolResult(
         content=[ToolContent.text_content(f"{name}={value}")],
         is_error=False,
     )
 
 
-def _read_env_value(env: dict[str, str] | os._Environ[str], name: str) -> str:
+def _read_env_value(env: Mapping[str, str], name: str) -> str:
     return env.get(name, "[not found]")
 
 

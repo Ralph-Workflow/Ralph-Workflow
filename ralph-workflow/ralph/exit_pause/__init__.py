@@ -9,8 +9,12 @@ import os
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import psutil
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class ExitOutcome(StrEnum):
@@ -55,10 +59,17 @@ TERMINAL_MARKERS: list[str] = [
 ]
 
 
-def _has_terminal_session_marker() -> bool:
-    """Check if any terminal session marker environment variable is set."""
+def _has_terminal_session_marker(env: Mapping[str, str]) -> bool:
+    """Check if any terminal session marker environment variable is set.
+
+    Args:
+        env: Environment mapping to check.
+
+    Returns:
+        True if any terminal marker is present and non-empty.
+    """
     for marker in TERMINAL_MARKERS:
-        value = os.environ.get(marker)
+        value = env.get(marker)
         if value is not None and value.strip():
             return True
     return False
@@ -107,14 +118,18 @@ def should_pause_before_exit(
     return outcome == ExitOutcome.FAILURE and _is_probably_standalone_windows_launch(launch_context)
 
 
-def detect_launch_context() -> LaunchContext:
+def detect_launch_context(*, env: Mapping[str, str] | None = None) -> LaunchContext:
     """Detect the launch context for the current process.
+
+    Args:
+        env: Optional environment mapping. Uses os.environ if None.
 
     Returns:
         LaunchContext with information about how Ralph was launched.
     """
     is_windows = sys.platform == "win32" or os.name == "nt"
-    has_marker = _has_terminal_session_marker()
+    env_map = os.environ if env is None else env
+    has_marker = _has_terminal_session_marker(env_map)
     parent_name: str | None = None
 
     if is_windows:

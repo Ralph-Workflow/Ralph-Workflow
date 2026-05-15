@@ -20,7 +20,9 @@ from typing import TYPE_CHECKING
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
-    from ralph.agents.registry import AgentRegistry
+        from collections.abc import Callable, Mapping
+
+        from ralph.agents.registry import AgentRegistry
 
 
 @dataclass
@@ -48,7 +50,7 @@ class SystemInfo:
     uncommitted_changes: int | None
 
     @classmethod
-    def gather(cls) -> SystemInfo:
+    def gather(cls, env: Mapping[str, str] | None = None) -> SystemInfo:
         """Gather system information.
 
         Returns:
@@ -57,7 +59,7 @@ class SystemInfo:
         os_name = sys.platform
         arch = platform.machine()
         working_directory = _get_working_directory()
-        shell = _get_shell()
+        shell = _get_shell(dict(os.environ) if env is None else dict(env))
         git_version = _run_git_command(["--version"])
         git_repo = _is_git_repo()
         git_branch = None
@@ -88,9 +90,9 @@ def _get_working_directory() -> str | None:
         return None
 
 
-def _get_shell() -> str | None:
+def _get_shell(env: Mapping[str, str]) -> str | None:
     """Get current shell."""
-    return os.environ.get("SHELL") or os.environ.get("COMSPEC")
+    return env.get("SHELL") or env.get("COMSPEC")
 
 
 def _run_git_command(args: list[str]) -> str | None:
@@ -143,6 +145,20 @@ class AgentStatus:
     json_parser: str
     command: str
 
+def _is_agent_available(cmd: str) -> bool:
+    """Check if an agent command is available.
+
+    Args:
+        cmd: Command to check.
+
+    Returns:
+        True if the command exists and is executable.
+    """
+    if not cmd:
+        return False
+    command = cmd.split(maxsplit=1)[0]
+    return shutil.which(command) is not None
+
 
 @dataclass
 class AgentDiagnostics:
@@ -161,11 +177,18 @@ class AgentDiagnostics:
     agent_status: list[AgentStatus] = field(default_factory=list)
 
     @classmethod
-    def test(cls, registry: AgentRegistry) -> AgentDiagnostics:
+    def test(
+        cls,
+        registry: AgentRegistry,
+        *,
+        is_available_fn: Callable[[str], bool] = _is_agent_available,
+    ) -> AgentDiagnostics:
+        """Test agent availability using the given registry."""
         """Test agent availability using the given registry.
 
         Args:
             registry: Agent registry to test.
+            is_available_fn: Callable to check if an agent command is available.
 
         Returns:
             AgentDiagnostics with availability information.
@@ -180,7 +203,7 @@ class AgentDiagnostics:
             if config is None:
                 continue
 
-            available = _is_agent_available(config.cmd)
+            available = is_available_fn(config.cmd)
             display = config.display_name or name
             command = config.cmd.split()[0] if config.cmd else ""
 
@@ -207,20 +230,6 @@ class AgentDiagnostics:
         )
 
 
-def _is_agent_available(cmd: str) -> bool:
-    """Check if an agent command is available.
-
-    Args:
-        cmd: Command to check.
-
-    Returns:
-        True if the command exists and is executable.
-    """
-    if not cmd:
-        return False
-    command = cmd.split(maxsplit=1)[0]
-    return shutil.which(command) is not None
-
 
 @dataclass
 class DiagnosticReport:
@@ -235,7 +244,12 @@ class DiagnosticReport:
     agents: AgentDiagnostics
 
 
-def run_diagnostics(registry: AgentRegistry) -> DiagnosticReport:
+def run_diagnostics(
+    registry: AgentRegistry,
+    *,
+    env: Mapping[str, str] | None = None,
+    is_available_fn: Callable[[str], bool] = _is_agent_available,
+) -> DiagnosticReport:
     """Run all diagnostics and return the combined report.
 
     This function gathers all diagnostic information without printing.
@@ -243,12 +257,14 @@ def run_diagnostics(registry: AgentRegistry) -> DiagnosticReport:
 
     Args:
         registry: Agent registry to check for diagnostics.
+        env: Environment mapping for diagnostic commands (defaults to os.environ).
+        is_available_fn: Callable to check if an agent command is available.
 
     Returns:
         DiagnosticReport containing all diagnostic information.
     """
-    system = SystemInfo.gather()
-    agents = AgentDiagnostics.test(registry)
+    system = SystemInfo.gather(env=env)
+    agents = AgentDiagnostics.test(registry, is_available_fn=is_available_fn)
 
     return DiagnosticReport(system=system, agents=agents)
 

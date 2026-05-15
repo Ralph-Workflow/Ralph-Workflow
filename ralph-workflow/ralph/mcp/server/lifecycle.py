@@ -304,7 +304,7 @@ def _spawn_mcp_process(  # noqa: PLR0913
     env = deps.subprocess_env(session_file)
     if extra_env:
         # Merge extra_env so the subprocess inherits worker-specific env vars
-        # (e.g. RALPH_WORKER_ARTIFACT_DIR for parallel workers).
+        # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
         env.update(extra_env)
     process = deps.spawn_process(
         [

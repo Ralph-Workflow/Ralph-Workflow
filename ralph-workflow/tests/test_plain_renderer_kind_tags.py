@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 from io import StringIO
-from unittest.mock import patch
 
 from rich.console import Console
 
@@ -490,8 +488,9 @@ def test_summary_disabled_env_suppresses_summary_line() -> None:
     """RALPH_LONG_CONTENT_SUMMARY=0 must yield no ↳ summary: line."""
     renderer, buf = _make_renderer()
     long_text = "First sentence. " * 300  # well above 4000 chars
-    with patch.dict(os.environ, {"RALPH_LONG_CONTENT_SUMMARY": "0"}):
-        visible, condensed, summary_line, _ai = condense_content(long_text, summary=True)
+    visible, condensed, summary_line, _ai = condense_content(
+        long_text, summary=True, env={"RALPH_LONG_CONTENT_SUMMARY": "0"}
+    )
     assert condensed is True
     assert summary_line is None
     renderer.emit_activity_line(
@@ -574,7 +573,6 @@ def test_content_end_no_ai_summary_when_env_not_set() -> None:
     renderer, buf = _make_renderer()
     set_ai_summary_hook(lambda text: "should not appear")
     try:
-        os.environ.pop("RALPH_LONG_CONTENT_AI_SUMMARY", None)
         for _ in range(3):
             renderer.emit_activity_line("u", "text", "x" * 1500)
         buf.truncate(0)

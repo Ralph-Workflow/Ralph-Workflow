@@ -11,7 +11,12 @@ from loguru import logger
 from ralph import logging as ralph_logging
 from ralph.agents import subprocess_executor
 from ralph.mcp.artifacts.store import list_artifacts
-from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
+from ralph.mcp.protocol.env import (
+    AGENT_LABEL_SCOPE_ENV,
+    WORKER_ARTIFACT_DIR_ENV,
+    WORKER_ID_ENV,
+    WORKER_NAMESPACE_ENV,
+)
 from ralph.mcp.server import factory_impl
 from ralph.pipeline.events import (
     Event,
@@ -274,9 +279,9 @@ def _prepare_executor(
                 cwd=same_workspace.repo_root,
                 extra_env={
                     "RALPH_MCP_ENDPOINT": bundle.mcp_handle.endpoint,
-                    "RALPH_WORKER_ID": unit.unit_id,
-                    "RALPH_WORKER_NAMESPACE": str(worker_namespace),
-                    "RALPH_WORKER_ARTIFACT_DIR": str(worker_artifact_dir),
+                    str(WORKER_ID_ENV): unit.unit_id,
+                    str(WORKER_NAMESPACE_ENV): str(worker_namespace),
+                    str(WORKER_ARTIFACT_DIR_ENV): str(worker_artifact_dir),
                     str(AGENT_LABEL_SCOPE_ENV): agent_label_scope,
                 },
                 activity_router=activity_router,

@@ -9,7 +9,7 @@ Tests cover:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -57,6 +57,16 @@ class TestSystemInfo:
         """Test that SystemInfo.gather() populates shell (or None)."""
         # shell may be None in CI environments, but the field should exist
         assert info.shell is None or isinstance(info.shell, str)
+
+    def test_system_info_gather_uses_injected_env_for_shell(self) -> None:
+        """Test that SystemInfo.gather() uses injected env for shell."""
+        info = SystemInfo.gather(env={"SHELL": "/bin/zsh"})
+        assert info.shell == "/bin/zsh"
+
+    def test_system_info_gather_returns_none_shell_when_env_empty(self) -> None:
+        """Test that SystemInfo.gather() returns None shell when env is empty."""
+        info = SystemInfo.gather(env={})
+        assert info.shell is None
 
     def test_system_info_gather_populates_git_version(self, info: SystemInfo) -> None:
         """Test that SystemInfo.gather() populates git_version."""
@@ -141,8 +151,7 @@ class TestAgentDiagnostics:
         )
         mock_registry.get.return_value = agent_config
 
-        with patch("ralph.diagnostics._is_agent_available", return_value=True):
-            diagnostics = AgentDiagnostics.test(mock_registry)
+        diagnostics = AgentDiagnostics.test(mock_registry, is_available_fn=lambda cmd: True)
 
         assert diagnostics.total_agents == 1
         assert diagnostics.available_agents == 1
@@ -164,8 +173,7 @@ class TestAgentDiagnostics:
         )
         mock_registry.get.return_value = agent_config
 
-        with patch("ralph.diagnostics._is_agent_available", return_value=False):
-            diagnostics = AgentDiagnostics.test(mock_registry)
+        diagnostics = AgentDiagnostics.test(mock_registry, is_available_fn=lambda cmd: False)
 
         assert diagnostics.total_agents == 1
         assert diagnostics.available_agents == 0
@@ -197,8 +205,7 @@ class TestAgentDiagnostics:
         }
         mock_registry.get.side_effect = configs.get
 
-        with patch("ralph.diagnostics._is_agent_available", return_value=True):
-            diagnostics = AgentDiagnostics.test(mock_registry)
+        diagnostics = AgentDiagnostics.test(mock_registry, is_available_fn=lambda cmd: True)
 
         assert diagnostics.total_agents == MULTI_AGENT_COUNT
         assert diagnostics.available_agents == MULTI_AGENT_COUNT
@@ -239,9 +246,10 @@ class TestRunDiagnostics:
         mock_registry = MagicMock()
         mock_registry.list_agents.return_value = []
 
-        with patch.object(SystemInfo, "gather", wraps=SystemInfo.gather) as mock_gather:
-            run_diagnostics(mock_registry)
-            mock_gather.assert_called_once()
+        report = run_diagnostics(mock_registry)
+        assert report.system is not None
+        assert isinstance(report.system.os, str)
+        assert isinstance(report.system.arch, str)
 
     def test_run_diagnostics_tests_agent_availability(self) -> None:
         """Test that run_diagnostics() tests agent availability."""
@@ -256,8 +264,16 @@ class TestRunDiagnostics:
         )
         mock_registry.get.return_value = agent_config
 
-        with patch("ralph.diagnostics._is_agent_available", return_value=True):
-            report = run_diagnostics(mock_registry)
+        report = run_diagnostics(mock_registry, is_available_fn=lambda cmd: True)
 
         assert report.agents.total_agents == 1
         assert report.agents.available_agents == 1
+
+    def test_run_diagnostics_uses_injected_env_for_shell(self) -> None:
+        """Test that run_diagnostics() uses injected env for shell in system info."""
+        mock_registry = MagicMock()
+        mock_registry.list_agents.return_value = []
+
+        report = run_diagnostics(mock_registry, env={"SHELL": "/bin/zsh"})
+
+        assert report.system.shell == "/bin/zsh"

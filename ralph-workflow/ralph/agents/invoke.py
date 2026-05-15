@@ -232,7 +232,7 @@ class ResolvedInvocationRuntime:
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Mapping
 
     from ralph.config.models import AgentConfig, GeneralConfig
     from ralph.phases.required_artifacts import RequiredArtifact
@@ -1691,6 +1691,7 @@ def resolve_invocation_runtime(
     extra_env: dict[str, str] | None,
     workspace_path: Path | None,
     *,
+    _base_env: Mapping[str, str] | None = None,
     system_prompt_file: str | None = None,
 ) -> ResolvedInvocationRuntime:
     """Build the runtime configuration needed to launch an agent.
@@ -1700,6 +1701,7 @@ def resolve_invocation_runtime(
     ``ResolvedInvocationRuntime`` whose fields are ready to pass to the
     subprocess launcher.
     """
+    _env = _base_env if _base_env is not None else cast("Mapping[str, str]", os.environ)
     runtime_env = dict(extra_env or {})
     server_env: dict[str, str] = {}
     endpoint = runtime_env.get("RALPH_MCP_ENDPOINT")
@@ -1709,7 +1711,7 @@ def resolve_invocation_runtime(
         if not endpoint:
             return ResolvedInvocationRuntime(agent_env=runtime_env or None)
         provider_config, upstreams = build_opencode_provider_config(
-            runtime_env.get("OPENCODE_CONFIG_CONTENT") or os.environ.get("OPENCODE_CONFIG_CONTENT"),
+            runtime_env.get("OPENCODE_CONFIG_CONTENT") or _env.get("OPENCODE_CONFIG_CONTENT"),
             endpoint,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
@@ -1728,7 +1730,7 @@ def resolve_invocation_runtime(
         codex_home, upstreams = prepare_codex_home_with_upstreams(
             endpoint,
             workspace_path=workspace_path,
-            existing_home=runtime_env.get("CODEX_HOME") or os.environ.get("CODEX_HOME"),
+            existing_home=runtime_env.get("CODEX_HOME") or _env.get("CODEX_HOME"),
             system_prompt_file=system_prompt_file,
         )
         runtime_env["CODEX_HOME"] = codex_home

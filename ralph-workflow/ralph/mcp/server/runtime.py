@@ -42,7 +42,7 @@ from time import sleep
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
 try:
     _fastmcp_module = import_module("mcp.server.fastmcp")
@@ -71,6 +71,9 @@ from ralph.mcp.protocol.env import (
 )
 from ralph.mcp.protocol.env import (
     MCP_SESSION_FILE_ENV as SESSION_FILE_ENV,
+)
+from ralph.mcp.protocol.env import (
+    WORKER_ARTIFACT_DIR_ENV as WORKER_ARTIFACT_DIR,
 )
 from ralph.mcp.protocol.session import AgentSession, session_has_capability
 from ralph.mcp.tools.bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
@@ -703,6 +706,7 @@ class FileBackedSession:
         loader: Callable[[Path], dict[str, object]] | None = None,
         session_id_factory: Callable[[], str] | None = None,
         run_id_factory: Callable[[], str] | None = None,
+        env_getter: Callable[[str], str | None] | None = None,
     ) -> None:
         self._path = path
         self._loader = loader or _load_session_payload
@@ -710,6 +714,7 @@ class FileBackedSession:
             lambda: f"standalone-{uuid.uuid4().hex[:8]}"
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
+        self._env_getter = env_getter if env_getter is not None else os.environ.get
         self._media_manifest = MediaManifest()
 
     def _load(self) -> dict[str, object]:
@@ -738,11 +743,11 @@ class FileBackedSession:
     def worker_artifact_dir(self) -> Path | None:
         """Return worker artifact dir from environment variable.
 
-        For parallel workers, the parent process sets RALPH_WORKER_ARTIFACT_DIR
+        For parallel workers, the parent process sets WORKER_ARTIFACT_DIR
         in the subprocess environment. This property reads that value so that
         artifact submission can route to the correct per-worker namespace.
         """
-        raw = os.environ.get("RALPH_WORKER_ARTIFACT_DIR")
+        raw = self._env_getter(WORKER_ARTIFACT_DIR)
         if raw is None:
             return None
         return Path(raw)
@@ -793,7 +798,7 @@ def _load_session_payload(path: Path) -> dict[str, object]:
 
 
 def session_from_env(
-    env: dict[str, str] | os._Environ[str] | None = None,
+    env: Mapping[str, str] | None = None,
     *,
     session_id_factory: Callable[[], str] | None = None,
     run_id_factory: Callable[[], str] | None = None,
@@ -1006,8 +1011,12 @@ def _mcp_toml_upstream_servers(mcp_config: McpConfig) -> tuple[UpstreamMcpServer
     )
 
 
-def _load_runtime_upstream_servers(mcp_config: McpConfig) -> tuple[UpstreamMcpServer, ...]:
-    raw_upstream = os.environ.get(UPSTREAM_MCP_CONFIG_ENV)
+def _load_runtime_upstream_servers(
+    mcp_config: McpConfig,
+    env: Mapping[str, str] | None = None,
+) -> tuple[UpstreamMcpServer, ...]:
+    env_map = os.environ if env is None else env
+    raw_upstream = env_map.get(UPSTREAM_MCP_CONFIG_ENV)
     env_servers = load_upstream_mcp_servers(raw_upstream)
     merged: dict[str, UpstreamMcpServer] = {server.name: server for server in env_servers}
     for server in _mcp_toml_upstream_servers(mcp_config):

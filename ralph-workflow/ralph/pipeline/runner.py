@@ -73,7 +73,7 @@ from ralph.mcp.artifacts.commit_message import (
 from ralph.mcp.artifacts.handoffs import sync_markdown_handoff
 from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.protocol.capability_mapping import DrainClass
-from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, WORKER_NAMESPACE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
@@ -2597,7 +2597,7 @@ def _materialize_prepared_prompt(  # noqa: PLR0913
         workspace_scope.root,
         allowed_roots=workspace_scope.allowed_roots,
     )
-    worker_ns_str = os.environ.get("RALPH_WORKER_NAMESPACE")
+    worker_ns_str = os.environ.get(WORKER_NAMESPACE_ENV)
     worker_namespace = Path(worker_ns_str) if worker_ns_str else None
     media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
     materialize_prompt_for_phase(
