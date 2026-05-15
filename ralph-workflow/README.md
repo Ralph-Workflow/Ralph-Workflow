@@ -6,7 +6,7 @@ Ralph Workflow is a Python 3.12+ CLI for spec-driven, unattended AI coding runs.
 
 Ralph Workflow supports mixed-agent runs across planning, analysis, development, review, and commit phases. You might plan with Claude, route analysis through an OpenCode-backed GPT model, hand development to Codex or another OpenCode provider, and keep review on a different agent chain — all inside the same repo-native workflow.
 
-For Claude-based runs, Ralph Workflow ships both a default `claude` transport and an explicit `claude-headless` transport. The headless path is the documented non-interactive option; deeper transport details for the default Claude path live in the reference docs rather than this onboarding README.
+The deeper transport and configuration details live in the reference docs; this README stays focused on how to get a real unattended workflow running quickly.
 
 This package is a good fit when you want more than a demo. Ralph Workflow is designed for the kind of bounded engineering work that should leave you with a working feature, a verified refactor, a serious production-bound draft, or a reviewable implementation foundation.
 
@@ -17,7 +17,6 @@ This package is a good fit when you want more than a demo. Ralph Workflow is des
 - **Agent-reviewed output** instead of a long interactive transcript
 - **Flexible agent routing** across Claude Code, Codex CLI, OpenCode, and your own configured agents
 - **Phase-by-phase model selection** so planning, analysis, development, review, and commit can each use the best-fit agent chain
-- **Flexible Claude transport choices** including the explicit `claude-headless` path for documented non-interactive runs
 - **A practical default workflow** you can use before inventing anything custom
 
 ## Install
