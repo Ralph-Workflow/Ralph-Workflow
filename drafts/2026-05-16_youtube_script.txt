@@ -1,0 +1,71 @@
+# YouTube Script: The exact setup I use to let AI agents build complete features while I sleep
+
+## VIDEO TYPE: Tutorial / Workflow demo
+## LENGTH: 12-18 minutes
+## HOOK: 30 seconds
+
+---
+
+### INTRO (0:00-0:30)
+[On camera]
+"Today I'm going to show you the exact workflow I use to let AI agents build complete features while I sleep. Not just one agent — a full developer + reviewer loop that produces spec-driven, committed code."
+
+[Screen: Show RalphWorkflow running]
+
+---
+
+### SETUP (0:30-2:00)
+[Voiceover + screen]
+"What you need: Ralph CLI, Claude Code or Codex, and about 10 minutes to write a spec."
+
+[Screen: Show the ralph --init flow]
+
+"Here's the key: the spec is everything. I write what I want like I'm writing a product requirements doc, not a coding task."
+
+---
+
+### THE WORKFLOW (2:00-10:00)
+[Voiceover + screen, real run if possible]
+[Walk through each phase: PLAN.md → dev iteration → review cycle → commit]
+
+"The magic happens at the review loop. Codex catches logic errors, design issues, anything I've missed."
+
+[Show an actual issue found and fixed]
+
+---
+
+### RESULTS (10:00-12:00)
+[Screen: Git log showing commits]
+"Four hours, 12 commits, zero hands on keyboard after the initial spec."
+
+[On camera or voiceover]
+"The ROI is insane. I'm not saying replace your devs — I'm saying your devs can focus on the 20% of problems that actually need a human."
+
+---
+
+### OUTRO + CTA (12:00-13:00)
+[On camera]
+"If you want to try this, RalphWorkflow is free and open source. Link below. And if you want the hosted version with team analytics — that's HireAegis."
+
+Like and subscribe if this saved you time — it took me about 20 minutes to set up.
+
+---
+
+## DESCRIPTION (for YouTube)
+In this video I show the exact unattended AI workflow I've been using to let Claude Code and Codex collaborate on real features. Works while you sleep. 
+
+#AI #coding #automation #ClaudeCode #OpenAI #developertools
+
+---
+
+## THUMBNAIL IDEAS
+- [Dark background, green terminal] "AI built this while I slept" + time stamps (4 hours, 12 commits)
+- [Split screen: sleeping person / code being written] "Let AI do your sprint"
+- [Terminal screenshot with commit graph] "Zero hands on keyboard for 4 hours"
+
+## CHAPTERS (YouTube)
+0:00 Intro  
+0:30 What you need  
+2:00 Walking through the workflow  
+10:00 Results  
+12:00 CTA + outro
