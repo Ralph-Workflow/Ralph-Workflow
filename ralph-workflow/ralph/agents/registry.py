@@ -238,9 +238,7 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
             resolved = _resolve_dynamic_ccs_agent(name, ccs_defaults)
         elif name.startswith("claude-headless/"):
             base_config = deepcopy(_builtin_agents()["claude-headless"])
-            claude_headless_overrides: dict[str, object] = {
-                "model_flag": f"--model {segments[1]}"
-            }
+            claude_headless_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
             resolved = base_config.model_copy(update=claude_headless_overrides)
         elif name.startswith("claude/"):
             base_config = deepcopy(_builtin_agents()["claude"])

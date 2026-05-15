@@ -58,7 +58,7 @@ def test_test_cov_splits_covered_pytest_runs_under_timeout_wrapper() -> None:
     assert any("$(PYTEST_ROOT_PATHS_A_H)" in line for line in pytest_lines)
     assert any("$(PYTEST_ROOT_PATHS_I_P)" in line for line in pytest_lines)
     assert any("$(PYTEST_ROOT_PATHS_Q_Z)" in line for line in pytest_lines)
-    assert any("pytest tests/integration/ -q" in line for line in pytest_lines)
+    assert any("python -m pytest tests/integration/ -q" in line for line in pytest_lines)
     assert sum("--cov-append" in line for line in pytest_lines) == COVER_APPEND_SHARD_COUNT
 
 
@@ -84,7 +84,7 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert any("$(PYTEST_ROOT_PATHS_A_H)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_I_P)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_Q_Z)" in line for line in unit_body)
-    assert "pytest tests/integration/ -q" in integration_body[0]
+    assert "python -m pytest tests/integration/ -q" in integration_body[0]
 
 
 def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
@@ -93,7 +93,7 @@ def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     assert e2e_body == [
         "uv run python -m ralph.verify_timeout "
         "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
-        "pytest tests/ -q -n 1 -m subprocess_e2e"
+        "python -m pytest tests/ -q -n 1 -m subprocess_e2e"
     ]
 
 

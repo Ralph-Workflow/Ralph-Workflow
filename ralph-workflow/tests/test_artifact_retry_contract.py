@@ -290,9 +290,9 @@ def test_development_missing_dev_result_returns_phase_failure() -> None:
     assert failure_events, "Missing required development_result must produce PhaseFailureEvent"
     assert failure_events[0].recoverable is True
     hint_path = retry_hint_path("development")
-    assert workspace.exists(
-        hint_path
-    ), "Retry hint must be written when required development_result is missing"
+    assert workspace.exists(hint_path), (
+        "Retry hint must be written when required development_result is missing"
+    )
 
 
 def test_development_missing_dev_result_uses_pipeline_owned_required_policy(

@@ -84,9 +84,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     if _is_xdist_worker(config):
         return
 
-    timeout_seconds = timeout_seconds_from_env(
-        SUITE_TIMEOUT_ENV, DEFAULT_SUITE_TIMEOUT_SECONDS
-    )
+    timeout_seconds = timeout_seconds_from_env(SUITE_TIMEOUT_ENV, DEFAULT_SUITE_TIMEOUT_SECONDS)
     if timeout_seconds <= 0:
         return
 
@@ -104,9 +102,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Cancel the suite watchdog when pytest finishes normally."""
     del exitstatus
-    watchdog = cast(
-        "_SuiteWatchdog | None", getattr(session.config, _WATCHDOG_ATTR, None)
-    )
+    watchdog = cast("_SuiteWatchdog | None", getattr(session.config, _WATCHDOG_ATTR, None))
     if watchdog is None:
         return
     watchdog.cancel_event.set()

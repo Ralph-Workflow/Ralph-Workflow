@@ -96,7 +96,9 @@ class _ViolationVisitor(ast.NodeVisitor):
                 self.markup_violations.append((first_arg.lineno, first_arg.value[:100]))
 
 
-def _file_violations(source_path: Path) -> tuple[
+def _file_violations(
+    source_path: Path,
+) -> tuple[
     list[tuple[int, str]],
     list[tuple[int, str]],
     list[tuple[int, str]],
@@ -113,6 +115,7 @@ def _file_violations(source_path: Path) -> tuple[
     visitor = _ViolationVisitor()
     visitor.visit(tree)
     return visitor.style_violations, visitor.append_violations, visitor.markup_violations
+
 
 # Pre-populate caches at module import time so the I/O and AST parsing
 # happen before the per-test SIGALRM window is set up.

@@ -309,9 +309,7 @@ class PipelineSubscriber:
         selected_option: str,
     ) -> None:
         """Record an auto-answered permission prompt for visibility and auditing."""
-        line = (
-            f"Ralph auto-answered permission prompt: {prompt_summary} → {selected_option}"
-        )
+        line = f"Ralph auto-answered permission prompt: {prompt_summary} → {selected_option}"
         with self._lock:
             self._active_agent = agent_name or self._active_agent
             self._last_activity_line = line

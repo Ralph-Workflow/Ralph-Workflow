@@ -542,7 +542,7 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
         '"plan_items_proven":['
         '{"plan_item":"Step 1: Validate plan",'
         '"proof":"Validated the wrapped plan artifact."}'
-        ']}}'
+        "]}}"
     )
     workspace.exists.side_effect = lambda path: (
         path

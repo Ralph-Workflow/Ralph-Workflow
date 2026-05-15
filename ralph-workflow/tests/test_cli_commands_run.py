@@ -194,7 +194,6 @@ def test_run_pipeline_without_resume_ignores_existing_checkpoint(
     assert seen["initial_state"] is None
 
 
-
 def test_invalidate_pipeline_state_if_prompt_changed_clears_generated_state(tmp_path: Path) -> None:
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
@@ -232,7 +231,6 @@ def test_invalidate_pipeline_state_if_prompt_changed_clears_generated_state(tmp_
     assert not (agent_dir / "prompt_history").exists()
     assert not (agent_dir / "workers").exists()
     assert (agent_dir / "ralph-workflow.toml").exists()
-
 
 
 def test_run_pipeline_resume_clears_stale_state_before_loading_checkpoint(

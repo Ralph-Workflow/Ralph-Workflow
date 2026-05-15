@@ -56,22 +56,21 @@ def test_pending_vt_snapshot_line_surfaces_semantic_activity_without_newline() -
     )
 
 
-
 def test_permission_prompt_line_is_detected() -> None:
-    assert invoke_module._is_permission_prompt_line(
-        "Claude requested permissions to read from /tmp/prompt.md"
-    ) is True
+    assert (
+        invoke_module._is_permission_prompt_line(
+            "Claude requested permissions to read from /tmp/prompt.md"
+        )
+        is True
+    )
     assert invoke_module._is_permission_prompt_line("Enable auto mode?") is True
     assert (
         invoke_module._is_permission_prompt_line(
-            "\u276f 1. Yes, and make it my default mode\n"
-            "2. Yes, enable auto mode\n"
-            "Enter to confirm"
+            "\u276f 1. Yes, and make it my default mode\n2. Yes, enable auto mode\nEnter to confirm"
         )
         is True
     )
     assert invoke_module._is_permission_prompt_line("claude tool: write_file") is False
-
 
 
 def test_auto_response_for_interactive_prompt_handles_auto_mode_gate() -> None:
@@ -83,10 +82,13 @@ def test_auto_response_for_interactive_prompt_handles_auto_mode_gate() -> None:
 
     Enter to confirm · Esc to cancel
     """
-    assert invoke_module._interactive_auto_response_for_prompt(
-        menu,
-        auto_mode_prompt_seen=True,
-    ) == "\x1b[B\r"
+    assert (
+        invoke_module._interactive_auto_response_for_prompt(
+            menu,
+            auto_mode_prompt_seen=True,
+        )
+        == "\x1b[B\r"
+    )
     assert (
         invoke_module._interactive_auto_response_for_prompt(
             "Enable auto mode?", auto_mode_prompt_seen=False

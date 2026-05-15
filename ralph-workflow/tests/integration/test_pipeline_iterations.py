@@ -428,7 +428,7 @@ def test_development_analysis_runs_exactly_up_to_cap_then_skips_reentry(
         phase="development",
         policy_entry_phase=policy_bundle.pipeline.entry_phase,
         current_drain="development",
-        budget_caps={"iteration": 1, "reviewer_pass": 0},
+        budget_caps={"iteration": 1},
         loop_caps=initial_loop_caps,
     )
 
@@ -438,7 +438,7 @@ def test_development_analysis_runs_exactly_up_to_cap_then_skips_reentry(
         invoker,
         _config(),
         initial_state=initial_state,
-        counter_overrides={"iteration": 1, "reviewer_pass": 0},
+        counter_overrides={"iteration": 1},
     )
 
     assert result == 0
@@ -548,6 +548,12 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                             "status": "completed",
                             "summary": "Development artifact present.",
                             "files_changed": "foo.py",
+                            "plan_items_proven": [
+                                {
+                                    "plan_item": "Step 1: Touch file",
+                                    "proof": "Updated foo.py as planned.",
+                                }
+                            ],
                         },
                     },
                 )
@@ -645,7 +651,7 @@ def test_checkpoint_resume_preserves_budget(
     assert final_state.get_budget_remaining("iteration") == 0
 
 
-def test_dev_cycle_completes_without_development_result_artifact(
+def test_dev_cycle_routing_layer_completes_with_mocked_execution(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     mock_agent_invoker: MockAgentInvoker,
@@ -664,7 +670,7 @@ def test_dev_cycle_completes_without_development_result_artifact(
         tmp_path,
         mock_agent_invoker,
         _config(),
-        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO, "reviewer_pass": 0},
+        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO},
     )
 
     assert result == 0

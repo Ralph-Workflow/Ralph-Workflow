@@ -104,7 +104,7 @@ make test-integration
 When working on `ralph/pipeline/runner.py`, `ralph/phases/`, or Claude/CCS agent invocation, preserve these invariants unless you are deliberately replacing them with something stronger:
 
 1. A clean subprocess exit is not enough evidence of useful work for `review`; `development` and `fix` must still produce real workspace side effects, not empty no-op runs.
-2. `review` depends on a fresh per-phase artifact created during the current invocation; `development` and `fix` may emit artifacts or handoffs, but pipeline success must not depend on them.
+2. `review` depends on a fresh per-phase artifact created during the current invocation; `development` must submit `development_result` with proof entries covering every plan step (and every prior how_to_fix item when development_analysis feedback exists). Proof policy is enforced by `[phases.development.artifact_proof_policy]` in `pipeline.toml` and can be disabled with `require_plan_proof = false` and `require_analysis_proof = false` in a project-local `.agent/pipeline.toml`.
 3. The runner clears stale per-phase artifacts before invoking the agent so interrupted runs cannot satisfy later checks accidentally or leak old summaries into later phases.
 4. Claude/CCS MCP invocations must avoid half-configured tool restriction flags. If the live MCP allowlist cannot be discovered, prefer the safer strict-MCP path over emitting brittle `--tools ""` combinations.
 
@@ -176,12 +176,17 @@ present, Ralph Workflow raises `OpenCodeResumableExitError` and the runner retri
 the agent exits early without producing the required output.
 
 **Optional artifacts:** Some phases declare their artifact as optional via `artifact_required = false`
-in `pipeline.toml`. The `development_result` artifact (development phase) is the canonical example:
-it provides context for the analysis agent but phase success does not depend on its presence. A clean
-exit (exit code 0) is sufficient for terminal-complete on optional-artifact phases — no explicit
-`declare_complete` call and no artifact file are required. When an optional artifact is absent,
-`artifact_optional=True` is set on the `CompletionSignals`, which is treated as a terminal signal.
-A present optional artifact is still fully validated against its schema.
+in `pipeline.toml`. By default, `development_result` is required — the development phase must submit
+a `development_result` artifact with proof entries before completion. For phases configured with
+`artifact_required = false`, a clean exit (exit code 0) is sufficient for terminal-complete — no
+explicit `declare_complete` call and no artifact file are required. When an optional artifact is
+absent, `artifact_optional=True` is set on the `CompletionSignals`, which is treated as a terminal
+signal. A present optional artifact is still fully validated against its schema. Whether
+`development_result` is required is controlled by the phase definition in `pipeline.toml`; the
+bundled default sets `artifact_required = true` and also requires proof via
+`[phases.development.artifact_proof_policy]`. When proof validation fails, the orchestrator writes
+a retry hint to `.agent/tmp/last_retry_error_development.txt` and re-invokes the development phase
+in a loopback so the agent can address the missing proof items.
 
 Phases with no registered required artifact (not in `REQUIRED_ARTIFACTS`) also return
 `required_artifact_present=False`, so OpenCode agents on such phases must call `declare_complete`

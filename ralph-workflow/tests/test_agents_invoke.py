@@ -563,7 +563,6 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
     ]
 
 
-
 def test_build_command_injects_claude_interactive_append_system_prompt_file() -> None:
     config = AgentConfig(
         cmd="claude",
@@ -598,7 +597,6 @@ def test_builtin_claude_command_defaults_to_skip_permissions() -> None:
 
     assert cmd[:2] == ["claude", "--dangerously-skip-permissions"]
     assert cmd[-1] == "PROMPT.md"
-
 
 
 def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) -> None:
@@ -3861,7 +3859,7 @@ def test_transport_activity_classifier_preserves_generic_and_claude_semantics() 
 
     interactive_strategy = strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE)
     interactive_signal = interactive_strategy.classify_activity_line(
-        "claude tool: read_file {\"path\":\"PROMPT.md\"}"
+        'claude tool: read_file {"path":"PROMPT.md"}'
     )
     assert interactive_signal is not None
     assert interactive_signal.kind == AgentActivityKind.TOOL_USE

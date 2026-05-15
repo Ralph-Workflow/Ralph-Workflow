@@ -92,7 +92,6 @@ def test_append_strips_trailing_newline(tmp_path: Path) -> None:
     assert not content.endswith("\n\n")
 
 
-
 def test_append_hard_stops_at_max_bytes(tmp_path: Path) -> None:
     max_bytes = 16
     log = RawOverflowLog(tmp_path, "unit-1", max_bytes=max_bytes)

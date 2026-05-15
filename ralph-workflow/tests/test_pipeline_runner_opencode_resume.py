@@ -165,19 +165,20 @@ class TestBuildAgentRecoveryPlanInteractiveClaude:
         assert plan is None
 
 
-class TestOptionalArtifactNeverTriggersRecovery:
-    """Optional-artifact phases exit cleanly and terminal without raising
-    OpenCodeResumableExitError, so _build_agent_recovery_plan is never
-    called on their behalf.  This class documents the runner-side contract.
+class TestNonResumableExceptionYieldsNoRecovery:
+    """Non-resumable exceptions never trigger the agent recovery path. Only
+    OpenCodeResumableExitError and timeout errors enter recovery; all other
+    exceptions result in no recovery plan.  This class documents the
+    runner-side contract.
     """
 
     def test_non_resumable_exception_yields_no_recovery_plan(self, tmp_path: Path) -> None:
         """Any exception that is not OpenCodeResumableExitError or a timeout
         produces no recovery plan.
 
-        Optional-artifact development phases never raise either of those types
-        (a clean exit with artifact_optional=True is immediately terminal), so
-        the runner never enters the recovery path for them.
+        A clean exit that raises a plain RuntimeError (not OpenCodeResumableExitError
+        or a timeout) never triggers the recovery path — the runner enters recovery
+        only for resumable exits and timeouts.
         """
         exc = RuntimeError("process completed normally")
         effect = _make_effect(phase="development")

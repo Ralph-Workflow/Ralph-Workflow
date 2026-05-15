@@ -76,9 +76,7 @@ def test_suite_timeout_error_message_cites_policy() -> None:
 def test_raw_pytest_run_is_hard_capped_by_suite_timeout(tmp_path: Path) -> None:
     slow_test = tmp_path / "test_slow_suite_timeout.py"
     slow_test.write_text(
-        "import time\n\n"
-        "def test_sleeps_past_suite_timeout():\n"
-        "    time.sleep(2.0)\n",
+        "import time\n\ndef test_sleeps_past_suite_timeout():\n    time.sleep(2.0)\n",
         encoding="utf-8",
     )
 

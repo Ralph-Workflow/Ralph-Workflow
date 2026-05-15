@@ -2192,7 +2192,9 @@ class TestOptionalArtifactCompletion:
     def test_optional_artifact_absent_without_evidence_is_terminal(self, tmp_path: Path) -> None:
         """Optional artifact absent with no evidence must be terminal (not resumable).
 
-        The development_result artifact is optional context for the analysis agent.
+        This test exercises the general optional-artifact execution contract using
+        a custom RequiredArtifact(artifact_required=False); it does not represent
+        the default development phase policy where development_result is required.
         A clean exit (0) with an optional artifact contract is terminal success even
         when the agent produces no artifact and makes no declare_complete call.
         """

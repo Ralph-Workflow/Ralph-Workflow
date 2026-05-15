@@ -323,7 +323,7 @@ def _step_proof_errors(required_refs: frozenset[str], submitted_list: list[str])
     if missing:
         errors.append(
             "PROOF INCOMPLETE: The following plan step(s) have no proof entry: "
-            f"{sorted(missing)}. Each plan_item must exactly match \"Step N: <title>\"."
+            f'{sorted(missing)}. Each plan_item must exactly match "Step N: <title>".'
         )
     if extra:
         errors.append(
@@ -476,9 +476,7 @@ def _validate_development_result_proof(
 
     detail = "\n".join(errors)
     _write_proof_failure_hint(ctx, phase, detail)
-    return [
-        PhaseFailureEvent(phase=phase, reason=detail, recoverable=True, retry_in_session=True)
-    ]
+    return [PhaseFailureEvent(phase=phase, reason=detail, recoverable=True, retry_in_session=True)]
 
 
 def _is_legacy_work_units_payload(content: dict[str, object]) -> bool:

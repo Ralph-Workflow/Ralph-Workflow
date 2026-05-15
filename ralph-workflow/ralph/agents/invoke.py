@@ -116,9 +116,7 @@ _PERMISSION_PROMPT_PATTERNS = (
     re.compile(r"enable auto mode\?", re.IGNORECASE),
     re.compile(r"enter to confirm", re.IGNORECASE),
 )
-_CHOICE_MENU_OPTION_RE = re.compile(
-    r"^(?P<prefix>\u276f\s*)?(?P<index>\d+)\.\s+(?P<label>.+)$"
-)
+_CHOICE_MENU_OPTION_RE = re.compile(r"^(?P<prefix>\u276f\s*)?(?P<index>\d+)\.\s+(?P<label>.+)$")
 _MENU_QUIESCENCE_SECONDS = 0.75
 
 
@@ -575,10 +573,8 @@ def _shell_single_quote(value: str) -> str:
     return f"'{escaped}'"
 
 
-
 def _interactive_stop_sentinel_path(session_id: str) -> Path:
     return Path(tempfile.gettempdir()) / f"ralph-claude-interactive-{session_id}.done"
-
 
 
 def _interactive_stop_hook_settings(sentinel_path: Path) -> str:
@@ -598,7 +594,6 @@ def _interactive_stop_hook_settings(sentinel_path: Path) -> str:
         }
     }
     return json.dumps(settings)
-
 
 
 def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig) -> InvokeOptions:
@@ -641,7 +636,6 @@ def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig
         stop_sentinel_path=sentinel_path,
         permission_prompt_listener=opts.permission_prompt_listener,
     )
-
 
 
 def invoke_agent(
@@ -1036,12 +1030,10 @@ def _run_pty_and_read_lines(  # noqa: PLR0913
         )
 
 
-
 def _split_complete_vt_lines(text: str) -> tuple[list[str], str]:
     lines = text.splitlines(keepends=True)
     pending = lines.pop() if lines and not lines[-1].endswith(("\n", "\r")) else ""
     return lines, pending
-
 
 
 def _pending_vt_snapshot_line(text: str) -> str | None:
@@ -1051,10 +1043,8 @@ def _pending_vt_snapshot_line(text: str) -> str | None:
     return f"{normalized}\n"
 
 
-
 def _visible_tui_text(text: str) -> str:
     return normalize_vt_text(text).strip()
-
 
 
 def _extract_choice_menu_state(text: str) -> _ChoiceMenuState | None:
@@ -1089,7 +1079,6 @@ def _extract_choice_menu_state(text: str) -> _ChoiceMenuState | None:
     )
 
 
-
 def _menu_navigation_response(
     state: _ChoiceMenuState,
     preferred_index: int | None,
@@ -1102,7 +1091,6 @@ def _menu_navigation_response(
     if delta < 0:
         return ("\x1b[A" * abs(delta)) + "\r"
     return "\r"
-
 
 
 def _plan_choice_menu_response(text: str) -> str | None:
@@ -1118,25 +1106,20 @@ def _plan_choice_menu_response(text: str) -> str | None:
     return _menu_navigation_response(state, preferred_index)
 
 
-
 def _approval_option_score(label: str) -> int | None:
     lowered = label.lower()
     if any(
-        token in lowered
-        for token in ("no", "cancel", "deny", "reject", "block", "exit", "skip")
+        token in lowered for token in ("no", "cancel", "deny", "reject", "block", "exit", "skip")
     ):
         return None
     score = 0
-    if any(
-        token in lowered for token in ("allow", "approve", "grant", "authorize", "yes")
-    ):
+    if any(token in lowered for token in ("allow", "approve", "grant", "authorize", "yes")):
         score += 4
     if any(token in lowered for token in ("once", "this time", "now")):
         score += 2
     if any(token in lowered for token in ("always", "default", "session", "permanent")):
         score -= 3
     return score if score > 0 else None
-
 
 
 def _best_permission_option(state: _ChoiceMenuState) -> tuple[int, str] | None:
@@ -1156,7 +1139,6 @@ def _best_permission_option(state: _ChoiceMenuState) -> tuple[int, str] | None:
     return preferred_index, preferred_label
 
 
-
 def _plan_fuzzy_permission_menu_response(text: str) -> str | None:
     state = _extract_choice_menu_state(text)
     if state is None:
@@ -1168,14 +1150,15 @@ def _plan_fuzzy_permission_menu_response(text: str) -> str | None:
     return _menu_navigation_response(state, preferred_index)
 
 
-
 def _permission_prompt_action_message(
     text: str,
     *,
     auto_mode_prompt_seen: bool,
 ) -> str | None:
     state = _extract_choice_menu_state(
-        text if auto_mode_prompt_seen else f"Enable auto mode?\n{text}"
+        text
+        if auto_mode_prompt_seen
+        else f"Enable auto mode?\n{text}"
         if _is_auto_mode_menu_snapshot(text)
         else text
     )
@@ -1195,10 +1178,7 @@ def _permission_prompt_action_message(
     if selected_label is None:
         return None
     prompt_summary = state.prompt
-    return (
-        f"Ralph auto-answered permission prompt: {prompt_summary} → {selected_label}"
-    )
-
+    return f"Ralph auto-answered permission prompt: {prompt_summary} → {selected_label}"
 
 
 def _is_auto_mode_menu_snapshot(text: str) -> bool:
@@ -1206,11 +1186,9 @@ def _is_auto_mode_menu_snapshot(text: str) -> bool:
     lowered = [line.strip().lower() for line in visible.splitlines() if line.strip()]
     if not any("enter to confirm" in line for line in lowered):
         return False
-    return (
-        any("yes, and make it my default mode" in line for line in lowered)
-        and any("yes, enable auto mode" in line for line in lowered)
+    return any("yes, and make it my default mode" in line for line in lowered) and any(
+        "yes, enable auto mode" in line for line in lowered
     )
-
 
 
 def _write_pty_input(writer: IO[bytes], text: str, *, lock: threading.Lock | None = None) -> None:
@@ -1223,13 +1201,11 @@ def _write_pty_input(writer: IO[bytes], text: str, *, lock: threading.Lock | Non
         writer.flush()
 
 
-
 def _is_permission_prompt_line(text: str) -> bool:
     stripped = _visible_tui_text(text)
     if _extract_choice_menu_state(text) is not None:
         return True
     return any(pattern.search(stripped) is not None for pattern in _PERMISSION_PROMPT_PATTERNS)
-
 
 
 def _interactive_auto_response_for_prompt(
@@ -1244,11 +1220,9 @@ def _interactive_auto_response_for_prompt(
     return _plan_fuzzy_permission_menu_response(text)
 
 
-
 def _claude_projects_root() -> Path:
     home = Path.home()
     return home / ".claude" / "projects"
-
 
 
 def _find_claude_transcript_path(session_id: str) -> Path | None:
@@ -1263,7 +1237,6 @@ def _find_claude_transcript_path(session_id: str) -> Path | None:
     return None
 
 
-
 def _extract_message_text(value: object) -> str:
     if isinstance(value, str):
         return value
@@ -1276,7 +1249,6 @@ def _extract_message_text(value: object) -> str:
                     parts.append(text)
         return "".join(parts)
     return ""
-
 
 
 def _transcript_lines_from_event(raw_line: str) -> list[str]:  # noqa: PLR0911,PLR0912
@@ -1329,7 +1301,6 @@ def _transcript_lines_from_event(raw_line: str) -> list[str]:  # noqa: PLR0911,P
                 user_lines.append(f"claude tool result: {result_content}\n")
         return user_lines
     return []
-
 
 
 def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
@@ -1646,10 +1617,13 @@ def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
                 ):
                     with contextlib.suppress(OSError):
                         screen = auto_mode_menu_screen or ""
-                        response = _interactive_auto_response_for_prompt(
-                            screen,
-                            auto_mode_prompt_seen=auto_mode_prompt_seen,
-                        ) or "\r"
+                        response = (
+                            _interactive_auto_response_for_prompt(
+                                screen,
+                                auto_mode_prompt_seen=auto_mode_prompt_seen,
+                            )
+                            or "\r"
+                        )
                         _write_pty_input(input_writer, response, lock=input_writer_lock)
                         action_message = _permission_prompt_action_message(
                             screen,
@@ -1703,7 +1677,6 @@ def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
             with contextlib.suppress(FileNotFoundError):
                 stop_sentinel_path.unlink()
         _unsubscribe_terminal()
-
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:

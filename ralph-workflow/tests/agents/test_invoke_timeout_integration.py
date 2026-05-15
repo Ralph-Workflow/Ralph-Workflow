@@ -38,6 +38,7 @@ from ralph.process.liveness import FakeLivenessProbe
 
 class _FakeManagedHandle:
     """Minimal test double for ManagedProcess used by _read_lines_from_process."""
+
     def __init__(
         self,
         stdout_lines: object,

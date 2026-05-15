@@ -319,9 +319,7 @@ def test_agents_doc_explains_interactive_vs_headless_tradeoff() -> None:
 def test_agents_doc_explains_unattended_orchestration_contract() -> None:
     """docs/sphinx/agents.md must explain Ralph Workflow's unattended orchestration contract."""
     content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
-    assert "unattended" in content, (
-        "docs/sphinx/agents.md must describe unattended orchestration"
-    )
+    assert "unattended" in content, "docs/sphinx/agents.md must describe unattended orchestration"
     assert "supervise" in content or "orchestrate" in content or "manages" in content, (
         "docs/sphinx/agents.md must describe how Ralph Workflow supervises, orchestrates, "
         "or manages the interactive Claude session"

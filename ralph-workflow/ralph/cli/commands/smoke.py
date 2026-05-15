@@ -111,7 +111,7 @@ def _build_smoke_prompt(output_relpath: str, *, submit_artifact_tool_name: str) 
         "- Use the headless semantic guide as a rubric: session capture, tool activity, "
         "completion signal, parser events, and tmp artifact creation.\n"
         f"- Call `{submit_artifact_tool_name}` with "
-        f"artifact_type=\"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}\" "
+        f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
         "and report what worked and what broke.\n"
         "- When finished, call declare_complete.\n"
     )
@@ -272,9 +272,9 @@ def _run_smoke_agent(  # noqa: PLR0912,PLR0913,PLR0915
     parsed_event_count = _count_parsed_events(config, lines) if lines else 0
     tool_activity_seen = _tool_activity_seen(config, lines) if lines else False
     submitted_artifact = read_smoke_test_result_artifact(workspace_root) is not None
-    meaningful_output_lines = [
-        line for line in live_output_lines if line.strip()
-    ][:_MAX_MEANINGFUL_OUTPUT_LINES]
+    meaningful_output_lines = [line for line in live_output_lines if line.strip()][
+        :_MAX_MEANINGFUL_OUTPUT_LINES
+    ]
     if not meaningful_output_lines:
         meaningful_output_lines = _meaningful_output_lines(config, lines) if lines else []
 

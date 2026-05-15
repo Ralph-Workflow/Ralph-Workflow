@@ -460,8 +460,7 @@ def test_planning_loopback_prompt_and_plan_edit_mcp_contract_stay_consistent(
             "number": 1,
             "title": "Review analyzer feedback against the existing plan",
             "content": (
-                "Use the analysis artifact to tighten verification "
-                "and preserve valid scope."
+                "Use the analysis artifact to tighten verification and preserve valid scope."
             ),
             "targets": [
                 {"path": ".agent/PLANNING_ANALYSIS_DECISION.md", "action": "read"},
@@ -498,7 +497,6 @@ def test_planning_loopback_prompt_and_plan_edit_mcp_contract_stay_consistent(
     assert content["critical_files"]["reference_files"] == [
         {"path": "PROMPT.md", "purpose": "original request"}
     ]
-
 
 
 def test_planning_loopback_entry_preserves_plan_and_analysis_artifacts(
@@ -1234,7 +1232,6 @@ def test_materialize_development_entry_clears_all_completed_planning_history(
     assert development_history_file.exists() is False
 
 
-
 def test_materialize_development_prompt_reads_agent_plan_markdown_handoff(
     tmp_path: Path,
 ) -> None:
@@ -1484,9 +1481,7 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
     rendered = workspace.read(prompt_path)
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
     assert "Read the complete execution plan from file at" in rendered
-    assert (
-        "This file is the authoritative source for execution plan in this prompt." in rendered
-    )
+    assert "This file is the authoritative source for execution plan in this prompt." in rendered
     assert "STALE PLAN" not in rendered
     assert "Fresh structured plan" not in rendered
     assert (tmp_path / ".agent" / "PLAN.md").read_text(encoding="utf-8") != "STALE PLAN"
@@ -1712,9 +1707,10 @@ def test_development_analysis_prompt_renders_without_development_result(
 ) -> None:
     """development_analysis prompt must render even when development_result.json is absent.
 
-    Since development_result is optional, the analysis agent must still receive
-    a complete prompt referencing the plan handoff and diff context.
-    LATEST_ARTIFACT may be empty, but prompt generation must not crash.
+    development_result is required by default policy, but prompt generation must not
+    crash when the artifact is absent on disk. This test exercises template rendering
+    only, not artifact validation — the analysis agent must still receive a complete
+    prompt even when development_result.json is missing.
     """
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -2495,7 +2491,6 @@ def test_collect_media_entries_preserves_failure_kind_through_sidecar_round_trip
         f"got: {audio_e.failure_kind!r}"
     )
     assert audio_e.delivery == "unsupported"
-
 
 
 def test_collect_media_entries_dedupes_repeated_identity_key() -> None:

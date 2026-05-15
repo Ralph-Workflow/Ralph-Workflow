@@ -39,9 +39,7 @@ def _make_subscriber(tmp_path: Path) -> PipelineSubscriber:
     return PipelineSubscriber(queue=q, workspace_root=tmp_path, run_id="test-run")
 
 
-def test_dispatch_calls_subscriber_for_all_kinds(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_dispatch_calls_subscriber_for_all_kinds(tmp_path: Path, monkeypatch) -> None:
     calls: list[WaitingStatusEvent] = []
     sub = _make_subscriber(tmp_path)
 

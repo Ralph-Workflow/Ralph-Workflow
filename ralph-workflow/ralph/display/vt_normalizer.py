@@ -9,9 +9,7 @@ from __future__ import annotations
 
 import re
 
-_ANSI_ESCAPE_RE = re.compile(
-    r"\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x1b\x07]*(?:\x07|\x1b\\)|[@-Z\\-_])"
-)
+_ANSI_ESCAPE_RE = re.compile(r"\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x1b\x07]*(?:\x07|\x1b\\)|[@-Z\\-_])")
 
 
 def normalize_vt_text(raw: str) -> str:

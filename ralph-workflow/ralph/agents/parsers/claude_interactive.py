@@ -165,9 +165,7 @@ class ClaudeInteractiveParser:
                     continue
                 elif event.kind == "tool_use":
                     tool_name = (
-                        event.text.split(":", 1)[-1].strip()
-                        if ":" in event.text
-                        else event.text
+                        event.text.split(":", 1)[-1].strip() if ":" in event.text else event.text
                     )
                     yield AgentOutputLine(
                         type="tool_use",

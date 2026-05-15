@@ -92,9 +92,7 @@ def test_spawn_pty_records_pid_pgid_and_terminal_status(tmp_path: Path) -> None:
         label="invoke:claude-interactive",
     )
 
-    assert factory.calls == [
-        (("claude", "PROMPT.md"), str(tmp_path), {"TERM": "xterm-256color"})
-    ]
+    assert factory.calls == [(("claude", "PROMPT.md"), str(tmp_path), {"TERM": "xterm-256color"})]
     assert handle.record.status == ProcessStatus.RUNNING
     assert handle.record.pid == handle.pid
     assert handle.record.pgid == handle.pid

@@ -3489,6 +3489,7 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                     and _display_subscriber is not None
                 ):
                     _display_subscriber.record_mcp_restart(bridge.restart_count)
+
                 def _permission_prompt_listener(message: str) -> None:
                     if _display_subscriber is None:
                         return
@@ -3991,9 +3992,7 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
     session_id_sink: Callable[[str], None] | None = None,
 ) -> None:
     parser_key = (
-        "claude_interactive"
-        if transport == AgentTransport.CLAUDE_INTERACTIVE
-        else parser_type
+        "claude_interactive" if transport == AgentTransport.CLAUDE_INTERACTIVE else parser_type
     )
     parser = _resolve_parser(parser_key)
 

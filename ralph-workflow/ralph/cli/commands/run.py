@@ -142,7 +142,6 @@ def _prompt_changed_since_last_materialization(workspace_root: pathlib.Path) -> 
         return False
 
 
-
 def _clear_generated_pipeline_state(workspace_root: pathlib.Path) -> None:
     agent_dir = workspace_root / ".agent"
     for relative_dir in _GENERATED_AGENT_STATE_DIRS:
@@ -151,13 +150,11 @@ def _clear_generated_pipeline_state(workspace_root: pathlib.Path) -> None:
         (agent_dir / relative_file).unlink(missing_ok=True)
 
 
-
 def _invalidate_pipeline_state_if_prompt_changed(workspace_root: pathlib.Path) -> bool:
     if not _prompt_changed_since_last_materialization(workspace_root):
         return False
     _clear_generated_pipeline_state(workspace_root)
     return True
-
 
 
 def _load_configuration(

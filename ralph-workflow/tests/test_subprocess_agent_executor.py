@@ -248,7 +248,6 @@ async def test_activity_router_receives_valid_ndjson_and_non_json_lines(
     assert any("not-json" in entry for entry in entries)
 
 
-
 @pytest.mark.asyncio
 async def test_activity_router_raw_log_is_bounded(
     monkeypatch: pytest.MonkeyPatch, tmp_path

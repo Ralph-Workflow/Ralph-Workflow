@@ -712,6 +712,7 @@ def smoke_interactive_claude() -> None:
 
 app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
 
+
 def _validate_mode_flags(*, quick: bool, thorough: bool, resume: bool, no_resume: bool) -> None:
     if resume and no_resume:
         raise click.UsageError(
