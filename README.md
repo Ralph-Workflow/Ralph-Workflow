@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-Ralph Workflow is an agent-agnostic orchestration CLI for spec-driven planning, coding, and review. You write the task in `PROMPT.md`, Ralph runs the workflow unattended, and you come back to a real codebase: changes in git, logs, artifacts, and review output you can inspect in your normal engineering process.
+Ralph Workflow is an agent-agnostic orchestration CLI for spec-driven planning, analysis, coding, and review. You write the task in `PROMPT.md`, Ralph routes each phase through the agents you choose, and you come back to a real codebase: changes in git, logs, artifacts, and review output you can inspect in your normal engineering process.
 
 The point is not to generate a throwaway demo. Ralph Workflow is built for the kind of work that should leave you with a serious starting point for production: a working feature, a refactor in progress, a verified batch of tests, or a reviewable implementation foundation your team can keep pushing forward.
 
@@ -14,7 +14,7 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 
 - **Write a spec, not a babysitting script.** Define the task and acceptance criteria once, then let the run continue without constant prompting.
 - **Wake up to reviewable output.** Ralph leaves behind code changes, run logs, artifacts, and agent review instead of a giant chat transcript.
-- **Use the agents you already have.** Route different phases through Claude Code, Codex CLI, OpenCode, or your preferred setup.
+- **Use the agents you already have.** Route different phases through Claude Code, Codex CLI, OpenCode, or your preferred setup — for example, Claude for planning, an OpenCode-backed GPT model for analysis, and a different coding agent for development or review.
 - **Keep the workflow in the repo.** Prompts, config, and run artifacts live with the codebase instead of disappearing into a hosted black box.
 - **Aim past prototypes.** The best fit is work that should produce a strong implementation head start, not just a mockup.
 
@@ -48,7 +48,7 @@ Requires Python 3.12+.
 
 ## Before your first run
 
-Make sure the agent CLIs you want Ralph to call are already installed and authenticated. Ralph Workflow reuses those existing CLIs instead of asking you to re-enter provider credentials into a separate product.
+Make sure the agent CLIs you want Ralph to call are already installed and already authenticated. Ralph Workflow does not manage provider login state or touch your credentials; you authenticate those tools first, and then Ralph invokes them directly and supervises the run. That makes phase-by-phase routing practical: you can keep one agent on planning, another on analysis, and another on coding or review without changing how the workflow is operated.
 
 ## Get it running
 
@@ -65,7 +65,7 @@ What to do in that flow:
 1. **`ralph --init`** seeds the project-local `.agent/` files.
 2. **`ralph --diagnose`** checks that your configured agents and MCP setup are reachable before you spend time on a real run.
 3. **`PROMPT.md`** should describe one concrete task with clear acceptance criteria.
-4. **`ralph`** starts the unattended run.
+4. **`ralph`** directly invokes your configured agent CLIs and supervises the unattended run.
 
 ## What a good run feels like
 

@@ -4,7 +4,9 @@
 
 Ralph Workflow is a Python 3.12+ CLI for spec-driven, unattended AI coding runs. You describe the task in `PROMPT.md`, point Ralph Workflow at the agent CLIs you already use, and let it run. When the workflow finishes, you come back to code changes, logs, artifacts, and review output you can inspect in your normal git workflow.
 
-For Claude-based runs, Ralph Workflow ships both a default `claude` transport and an explicit `claude-headless` transport. The headless path is the documented non-interactive option; transport details for the default Claude path live in the reference docs rather than this onboarding README.
+Ralph Workflow supports mixed-agent runs across planning, analysis, development, review, and commit phases. You might plan with Claude, route analysis through an OpenCode-backed GPT model, hand development to Codex or another OpenCode provider, and keep review on a different agent chain — all inside the same repo-native workflow.
+
+For Claude-based runs, Ralph Workflow ships both a default `claude` transport and an explicit `claude-headless` transport. The headless path is the documented non-interactive option; deeper transport details for the default Claude path live in the reference docs rather than this onboarding README.
 
 This package is a good fit when you want more than a demo. Ralph Workflow is designed for the kind of bounded engineering work that should leave you with a working feature, a verified refactor, a serious production-bound draft, or a reviewable implementation foundation.
 
@@ -14,8 +16,8 @@ This package is a good fit when you want more than a demo. Ralph Workflow is des
 - **Repo-native workflow files** instead of hidden product state
 - **Agent-reviewed output** instead of a long interactive transcript
 - **Flexible agent routing** across Claude Code, Codex CLI, OpenCode, and your own configured agents
+- **Phase-by-phase model selection** so planning, analysis, development, review, and commit can each use the best-fit agent chain
 - **Flexible Claude transport choices** including the explicit `claude-headless` path for documented non-interactive runs
-- **Cross-agent routing on supported platforms** — use Claude Code, Codex CLI, OpenCode, or your own configured agents based on your workflow needs
 - **A practical default workflow** you can use before inventing anything custom
 
 ## Install
@@ -53,7 +55,7 @@ Requires Python 3.12+.
 2. Authenticate those CLIs normally.
 3. Pick one small, concrete task for the first run.
 
-Ralph Workflow reuses your existing agent CLI authentication. You do not need to copy provider credentials into a separate hosted system first.
+Ralph Workflow does not manage provider authentication or store your agent credentials. You authenticate the agent CLIs yourself first, and Ralph Workflow then invokes those tools directly and supervises the workflow, even when different phases are routed through different agent families.
 
 ## Quick start
 
@@ -70,7 +72,7 @@ What happens in that flow:
 - **`ralph --init`** creates the local `.agent/` support files.
 - **`ralph --diagnose`** checks whether your configured agents and MCP setup are reachable.
 - **`PROMPT.md`** becomes the task spec for the run.
-- **`ralph`** starts the unattended workflow.
+- **`ralph`** directly invokes your configured agent CLIs and starts the unattended workflow.
 
 After `ralph --init`, review the generated `.agent/` support files. If this repository needs a project-local main-config override, run `ralph --init-local-config` to create `.agent/ralph-workflow.toml`, then point the workflow at the agent CLIs you already use for planning, development, and review.
 
