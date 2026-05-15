@@ -55,7 +55,7 @@ from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.display.vt_normalizer import normalize_vt_text
-from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV
 from ralph.mcp.protocol.startup import (
     PreflightError,
     ensure_no_preflight_error,
@@ -1704,7 +1704,7 @@ def resolve_invocation_runtime(
     _env = _base_env if _base_env is not None else cast("Mapping[str, str]", os.environ)
     runtime_env = dict(extra_env or {})
     server_env: dict[str, str] = {}
-    endpoint = runtime_env.get("RALPH_MCP_ENDPOINT")
+    endpoint = runtime_env.get(MCP_ENDPOINT_ENV)
 
     transport = _agent_transport(config)
     if transport == AgentTransport.OPENCODE:

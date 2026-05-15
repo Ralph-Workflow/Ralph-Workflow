@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -422,11 +423,10 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(monkeypatch,
     def _fake_dump(workspace, phase, prompt):
         return "/fake/prompt/path"
 
-    monkeypatch.setenv("RALPH_WORKER_NAMESPACE", str(worker_ns))
-    monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
-    # Patch dump to avoid writing files
+    # Patch materialize and dump to avoid writing files
     import ralph.prompts.materialize
 
+    monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", _fake_dump)
 
     policy = load_policy(tmp_path / ".agent")
@@ -434,7 +434,8 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(monkeypatch,
     effect = PreparePromptEffect(phase="development", iteration=1)
 
     runner_module._materialize_prepared_prompt(
-        effect, policy.pipeline, policy.artifacts, workspace_scope
+        effect, policy.pipeline, policy.artifacts, workspace_scope,
+        env={str(WORKER_NAMESPACE_ENV): str(worker_ns)}
     )
 
     assert len(recorded_kwargs) == 1
@@ -452,7 +453,7 @@ def test_materialize_prepared_prompt_no_namespace_without_env(monkeypatch, tmp_p
     from ralph.pipeline.effects import PreparePromptEffect
     from ralph.policy.loader import load_policy
 
-    monkeypatch.delenv("RALPH_WORKER_NAMESPACE", raising=False)
+    monkeypatch.delenv(str(WORKER_NAMESPACE_ENV), raising=False)
     recorded_kwargs: list[dict] = []
 
     def _fake_materialize(**kwargs):

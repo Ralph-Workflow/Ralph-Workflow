@@ -311,7 +311,7 @@ def test_run_pipeline_returns_2_on_negative_max_retries(
         mp.setattr(
             run_module,
             "validate_recovery_config",
-            lambda loaded_bundle: (_ for _ in ()).throw(
+            lambda _loaded_bundle: (_ for _ in ()).throw(
                 PolicyValidationError("max_retries must be >= 0")
             ),
         )

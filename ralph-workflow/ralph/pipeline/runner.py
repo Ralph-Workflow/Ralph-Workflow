@@ -170,7 +170,7 @@ from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator
+    from collections.abc import Callable, Iterable, Iterator, Mapping
 
     from rich.console import Console
 
@@ -2591,13 +2591,15 @@ def _materialize_prepared_prompt(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
     agents_policy: AgentsPolicy | None = None,
     state: PipelineState | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> None:
 
+    env_map = os.environ if env is None else env
     workspace = FsWorkspace(
         workspace_scope.root,
         allowed_roots=workspace_scope.allowed_roots,
     )
-    worker_ns_str = os.environ.get(WORKER_NAMESPACE_ENV)
+    worker_ns_str = env_map.get(WORKER_NAMESPACE_ENV)
     worker_namespace = Path(worker_ns_str) if worker_ns_str else None
     media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
     materialize_prompt_for_phase(
@@ -3186,39 +3188,23 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
         return
 
     if event == PipelineEvent.AGENT_SUCCESS:
-        phase_def = policy_bundle.pipeline.phases.get(phase) if policy_bundle is not None else None
-        phase_role = phase_def.role if phase_def is not None else None
-        entry: PhaseEntryModel | None = None
-        if state is not None and policy_bundle is not None:
-            entry = _build_phase_entry_model_from_state(
-                phase,
-                state,
-                policy_bundle.pipeline,
-            )
         _render_success_artifact(
             artifact_type,
-            phase,
             workspace_root,
             ctx,
             display,
             verbosity,
             required_artifact,
-            phase_role=phase_role,
-            entry_model=entry,
         )
 
 
 def _render_success_artifact(  # noqa: PLR0913
     artifact_type: str,
-    phase: str,
     workspace_root: Path,
     display_context: DisplayContext,
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
     verbosity: Verbosity,
     ra: RequiredArtifact,
-    *,
-    phase_role: str | None = None,
-    entry_model: PhaseEntryModel | None = None,
 ) -> None:
     def _emit_close(produced: str) -> None:
         if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):

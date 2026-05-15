@@ -30,13 +30,13 @@ type SignalHandler = Callable[[int, FrameType | None], object] | int | None
 class SignalGetter(Protocol):
     """Protocol for ``signal.getsignal``-compatible callables."""
 
-    def __call__(self, signalnum: int, /) -> SignalHandler: ...
+    def __call__(self, _signalnum: int, /) -> SignalHandler: ...
 
 
 class SignalSetter(Protocol):
     """Protocol for ``signal.signal``-compatible callables."""
 
-    def __call__(self, signalnum: int, handler: SignalHandler, /) -> SignalHandler: ...
+    def __call__(self, _signalnum: int, handler: SignalHandler, /) -> SignalHandler: ...
 
 
 _DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)

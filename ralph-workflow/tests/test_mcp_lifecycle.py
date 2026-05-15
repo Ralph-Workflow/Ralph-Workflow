@@ -10,6 +10,7 @@ import pytest
 
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server.lifecycle import _session_payload_json
@@ -64,7 +65,7 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
 
     def fake_subprocess_env(session_file: Path) -> dict[str, str]:
         seen["session_file"] = session_file
-        return {"RALPH_MCP_SESSION_FILE": str(session_file)}
+        return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
         command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
@@ -117,7 +118,7 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
         return path
 
     def fake_subprocess_env(session_file: Path) -> dict[str, str]:
-        return {"RALPH_MCP_SESSION_FILE": str(session_file)}
+        return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
         command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
@@ -173,7 +174,7 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
         return path
 
     def fake_subprocess_env(session_file: Path) -> dict[str, str]:
-        return {"RALPH_MCP_SESSION_FILE": str(session_file)}
+        return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
         command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
@@ -355,7 +356,7 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
         return path
 
     def fake_subprocess_env(session_file: Path) -> dict[str, str]:
-        return {"RALPH_MCP_SESSION_FILE": str(session_file)}
+        return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
         command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
@@ -560,7 +561,7 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
         return path
 
     def fake_subprocess_env(session_file: Path) -> dict[str, str]:
-        return {"RALPH_MCP_SESSION_FILE": str(session_file)}
+        return {str(MCP_SESSION_FILE_ENV): str(session_file)}
 
     def fake_spawn(
         command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None

@@ -12,10 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ralph.display.phase_lifecycle import PhaseEntryModel
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.runner import _render_phase_artifact_handoff
-from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -281,85 +279,3 @@ def _make_bundle_with_dev_result_contract() -> PolicyBundle:
         }
     )
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-
-
-class TestEntryModelFlowsToRenderSuccessArtifact:
-    """entry_model from state flows through to _render_success_artifact."""
-
-    def test_entry_model_passed_with_outer_dev_when_state_has_progress(
-        self,
-        tmp_workspace: Path,
-    ) -> None:
-        """When state carries outer_dev progress, entry_model has outer_dev_iteration set.
-
-        outer_dev_iteration is 1-indexed (current cycle = completed + 1) so that
-        the phase-start banner shows "Dev 1/5" on the first cycle, not "Dev 0/5".
-        """
-        outer_completed = 2
-        bundle = _make_bundle_with_dev_result_contract()
-        state = PipelineState.from_policy(bundle.pipeline).with_outer_progress(
-            "dev_iter", outer_completed
-        )
-
-        display = MagicMock()
-
-        (tmp_workspace / "build.json").write_text("{}")
-
-        captured_entries: list[object] = []
-
-        def capture_entry_model(*args: object, **kwargs: object) -> None:
-            captured_entries.append(kwargs.get("entry_model"))
-
-        with (
-            patch("ralph.pipeline.runner.render_development_artifact"),
-            patch(
-                "ralph.pipeline.runner._render_success_artifact",
-                side_effect=capture_entry_model,
-            ),
-        ):
-            _render_phase_artifact_handoff(
-                "build",
-                PipelineEvent.AGENT_SUCCESS,
-                tmp_workspace,
-                display,
-                policy_bundle=bundle,
-                state=state,
-            )
-
-        assert len(captured_entries) == 1
-        entry = captured_entries[0]
-        assert isinstance(entry, PhaseEntryModel)
-        # 1-indexed: completed=2 means we're on cycle 3
-        assert entry.outer_dev_iteration == outer_completed + 1
-
-    def test_no_entry_model_when_state_is_none(
-        self,
-        tmp_workspace: Path,
-    ) -> None:
-        """When state=None, entry_model passed to _render_success_artifact is None."""
-        bundle = _make_bundle_with_dev_result_contract()
-        display = MagicMock()
-
-        captured_entries: list[object] = []
-
-        def capture_entry_model(*args: object, **kwargs: object) -> None:
-            captured_entries.append(kwargs.get("entry_model"))
-
-        with (
-            patch("ralph.pipeline.runner.render_development_artifact"),
-            patch(
-                "ralph.pipeline.runner._render_success_artifact",
-                side_effect=capture_entry_model,
-            ),
-        ):
-            _render_phase_artifact_handoff(
-                "build",
-                PipelineEvent.AGENT_SUCCESS,
-                tmp_workspace,
-                display,
-                policy_bundle=bundle,
-                state=None,
-            )
-
-        assert len(captured_entries) == 1
-        assert captured_entries[0] is None

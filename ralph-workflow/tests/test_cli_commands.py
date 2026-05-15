@@ -28,6 +28,7 @@ from ralph.mcp.multimodal.capabilities import (
     ResolvedCapabilityProfile,
     resolve_capability_profile,
 )
+from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
@@ -576,8 +577,8 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
 
     assert seen_extra_env == [
         {
-            "RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp",
-            "RALPH_MCP_RUN_ID": "commit-plumbing",
+            str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp",
+            str(MCP_RUN_ID_ENV): "commit-plumbing",
         }
     ]
     assert "Generated commit message" in stream.getvalue()

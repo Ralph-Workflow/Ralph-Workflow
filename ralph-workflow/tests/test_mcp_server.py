@@ -20,6 +20,7 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.capability_mapping import McpCapability
+from ralph.mcp.protocol.env import MCP_SESSION_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
 from ralph.mcp.tools.coordination import ImageContent, ToolContent, ToolResult
@@ -105,7 +106,7 @@ def test_file_backed_session_allows_workspace_write_any_via_ephemeral_alias(
 def test_session_from_env_mapping_supports_json_payload() -> None:
     session = server_runtime.session_from_env(
         {
-            "RALPH_MCP_SESSION_JSON": json.dumps(
+            str(MCP_SESSION_ENV): json.dumps(
                 {
                     "session_id": "json-session",
                     "run_id": "json-run",
@@ -134,7 +135,7 @@ def test_session_from_env_accepts_injected_id_factories() -> None:
 def test_session_from_env_preserves_model_identity() -> None:
     session = server_runtime.session_from_env(
         {
-            "RALPH_MCP_SESSION_JSON": json.dumps(
+            str(MCP_SESSION_ENV): json.dumps(
                 {
                     "session_id": "id-session",
                     "run_id": "id-run",
@@ -159,7 +160,7 @@ def test_session_from_env_preserves_model_identity() -> None:
 def test_session_from_env_without_model_identity_defaults_to_unknown() -> None:
     session = server_runtime.session_from_env(
         {
-            "RALPH_MCP_SESSION_JSON": json.dumps(
+            str(MCP_SESSION_ENV): json.dumps(
                 {
                     "session_id": "id-session",
                     "run_id": "id-run",
@@ -177,7 +178,7 @@ def test_session_from_env_without_model_identity_defaults_to_unknown() -> None:
 def test_session_from_env_preserves_capability_profile() -> None:
     session = server_runtime.session_from_env(
         {
-            "RALPH_MCP_SESSION_JSON": json.dumps(
+            str(MCP_SESSION_ENV): json.dumps(
                 {
                     "session_id": "prof-session",
                     "run_id": "prof-run",

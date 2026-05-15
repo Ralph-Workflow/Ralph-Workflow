@@ -13,6 +13,7 @@ from ralph.agents import subprocess_executor
 from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.protocol.env import (
     AGENT_LABEL_SCOPE_ENV,
+    MCP_ENDPOINT_ENV,
     WORKER_ARTIFACT_DIR_ENV,
     WORKER_ID_ENV,
     WORKER_NAMESPACE_ENV,
@@ -278,7 +279,7 @@ def _prepare_executor(
                 signal_bridge=same_workspace.signal_bridge,
                 cwd=same_workspace.repo_root,
                 extra_env={
-                    "RALPH_MCP_ENDPOINT": bundle.mcp_handle.endpoint,
+                    str(MCP_ENDPOINT_ENV): bundle.mcp_handle.endpoint,
                     str(WORKER_ID_ENV): unit.unit_id,
                     str(WORKER_NAMESPACE_ENV): str(worker_namespace),
                     str(WORKER_ARTIFACT_DIR_ENV): str(worker_artifact_dir),

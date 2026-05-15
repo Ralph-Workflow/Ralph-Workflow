@@ -458,7 +458,7 @@ def test_bridge_shared_across_retry_attempts(
         return str(tmp_path / "SYSTEM_PROMPT.md")
 
     def fake_invoke_agent(
-        agent_cfg: AgentConfig, prompt_file: str, *, options: object = None
+        _agent_cfg: AgentConfig, prompt_file: str, *, options: object = None
     ) -> list[str]:
         nonlocal attempt
         invoke_calls.append(attempt)

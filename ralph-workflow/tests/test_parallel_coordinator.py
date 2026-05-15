@@ -15,7 +15,7 @@ from loguru import logger
 
 from ralph.agents.executor import WorkerResult
 from ralph.display.activity_router import ActivityRouter
-from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, WORKER_ARTIFACT_DIR_ENV
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
@@ -614,13 +614,13 @@ async def test_subprocess_worker_receives_ralph_worker_artifact_dir(
     assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
     assert len(recorded_extra_envs) == 1
     env = recorded_extra_envs[0]
-    assert "RALPH_WORKER_ARTIFACT_DIR" in env, (
-        "SubprocessAgentExecutor must receive RALPH_WORKER_ARTIFACT_DIR in extra_env"
+    assert str(WORKER_ARTIFACT_DIR_ENV) in env, (
+        "SubprocessAgentExecutor must receive WORKER_ARTIFACT_DIR_ENV in extra_env"
     )
     expected_suffix = str(tmp_path / ".agent" / "workers" / "unit-b" / "artifacts")
-    assert env["RALPH_WORKER_ARTIFACT_DIR"] == expected_suffix, (
-        f"RALPH_WORKER_ARTIFACT_DIR must point to the per-worker artifact dir, "
-        f"got: {env['RALPH_WORKER_ARTIFACT_DIR']!r}"
+    assert env[str(WORKER_ARTIFACT_DIR_ENV)] == expected_suffix, (
+        f"WORKER_ARTIFACT_DIR_ENV must point to the per-worker artifact dir, "
+        f"got: {env[str(WORKER_ARTIFACT_DIR_ENV)]!r}"
     )
 
 

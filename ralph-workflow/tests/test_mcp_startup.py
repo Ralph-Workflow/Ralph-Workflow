@@ -11,6 +11,7 @@ import pytest
 
 from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.capability_mapping import AccessMode, SessionDrain
+from ralph.mcp.protocol.env import MCP_PREFLIGHT_TIMEOUT_MS_ENV, MCP_SUPERVISION_INTERVAL_MS_ENV
 from ralph.mcp.upstream.config import (
     UpstreamConfigError,
     UpstreamMcpServer,
@@ -186,7 +187,7 @@ def test_classify_connect_error_returns_permanent_for_non_retryable_errno() -> N
 def test_mcp_preflight_timeout_from_env_defaults_to_30_seconds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("RALPH_MCP_PREFLIGHT_TIMEOUT_MS", raising=False)
+    monkeypatch.delenv(str(MCP_PREFLIGHT_TIMEOUT_MS_ENV), raising=False)
     expected = datetime.timedelta(milliseconds=30_000)
     assert startup.mcp_preflight_timeout_from_env() == expected
 
@@ -194,13 +195,13 @@ def test_mcp_preflight_timeout_from_env_defaults_to_30_seconds(
 def test_mcp_preflight_timeout_from_mapping_is_injectable() -> None:
     expected = datetime.timedelta(milliseconds=1234)
     assert (
-        startup.mcp_preflight_timeout_from_env({"RALPH_MCP_PREFLIGHT_TIMEOUT_MS": "1234"})
+        startup.mcp_preflight_timeout_from_env({str(MCP_PREFLIGHT_TIMEOUT_MS_ENV): "1234"})
         == expected
     )
 
 
 def test_heartbeat_policy_from_mapping_is_injectable() -> None:
-    policy = startup.heartbeat_policy_from_env({"RALPH_MCP_SUPERVISION_INTERVAL_MS": "1500"})
+    policy = startup.heartbeat_policy_from_env({str(MCP_SUPERVISION_INTERVAL_MS_ENV): "1500"})
 
     assert policy.interval == datetime.timedelta(milliseconds=1500)
 
@@ -441,17 +442,17 @@ def test_heartbeat_policy_from_env_returns_default_when_unset() -> None:
 
 
 def test_heartbeat_policy_from_env_reads_env_variable() -> None:
-    policy = startup.heartbeat_policy_from_env({"RALPH_MCP_SUPERVISION_INTERVAL_MS": "500"})
+    policy = startup.heartbeat_policy_from_env({str(MCP_SUPERVISION_INTERVAL_MS_ENV): "500"})
     assert policy.interval == datetime.timedelta(milliseconds=500)
 
 
 def test_heartbeat_policy_from_env_enforces_minimum_bound() -> None:
-    policy = startup.heartbeat_policy_from_env({"RALPH_MCP_SUPERVISION_INTERVAL_MS": "5"})
+    policy = startup.heartbeat_policy_from_env({str(MCP_SUPERVISION_INTERVAL_MS_ENV): "5"})
     assert policy.interval == datetime.timedelta(milliseconds=100)
 
 
 def test_heartbeat_policy_from_env_ignores_invalid_value() -> None:
     policy = startup.heartbeat_policy_from_env(
-        {"RALPH_MCP_SUPERVISION_INTERVAL_MS": "not-a-number"}
+        {str(MCP_SUPERVISION_INTERVAL_MS_ENV): "not-a-number"}
     )
     assert policy.interval == datetime.timedelta(milliseconds=2000)

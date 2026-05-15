@@ -50,6 +50,7 @@ def test_cli_first_run_shows_welcome_banner(
     tmp_path: Path,
 ) -> None:
     """First invocation should show the 'Ralph Workflow first-run setup' banner and ASCII banner."""
+    del clean_env
     runner = CliRunner()
 
     # chdir to the temp path so .agent is created there
@@ -76,6 +77,7 @@ def test_cli_first_run_banner_not_shown_on_second_run(
     tmp_path: Path,
 ) -> None:
     """Second invocation should NOT show the welcome banner (idempotency)."""
+    del clean_env
     runner = CliRunner()
 
     # chdir to the temp path
@@ -105,6 +107,7 @@ def test_cli_regenerate_config_shows_banner(
     tmp_path: Path,
 ) -> None:
     """Regenerate-config should show the banner when files are regenerated."""
+    del clean_env
     runner = CliRunner()
 
     # chdir to the temp path
@@ -133,6 +136,7 @@ def test_cli_init_shows_welcome_banner(
     tmp_path: Path,
 ) -> None:
     """`ralph --init` should show the welcome banner when creating local configs."""
+    del clean_env
     runner = CliRunner()
 
     # chdir to the temp path
@@ -156,6 +160,7 @@ def test_cli_init_without_label_has_no_deprecation_warning(
     tmp_path: Path,
 ) -> None:
     """`ralph --init` with no label should stay warning-free."""
+    del clean_env
     runner = CliRunner()
 
     monkeypatch.chdir(tmp_path)
@@ -172,6 +177,7 @@ def test_cli_init_with_default_label_emits_deprecation_warning(
     tmp_path: Path,
 ) -> None:
     """`ralph --init default` should warn that labels are deprecated."""
+    del clean_env
     runner = CliRunner()
 
     monkeypatch.chdir(tmp_path)
@@ -188,6 +194,7 @@ def test_cli_init_with_arbitrary_label_emits_deprecation_warning(
     tmp_path: Path,
 ) -> None:
     """Arbitrary `--init` labels should warn that the label is ignored."""
+    del clean_env
     runner = CliRunner()
 
     monkeypatch.chdir(tmp_path)
@@ -206,6 +213,7 @@ def test_cli_init_idempotent_no_banner_on_second_run(
     tmp_path: Path,
 ) -> None:
     """Second `ralph --init` should not show the welcome banner."""
+    del clean_env
     runner = CliRunner()
 
     # chdir to the temp path
@@ -231,6 +239,7 @@ def test_cli_init_does_not_create_local_main_config_when_global_exists(
     tmp_path: Path,
 ) -> None:
     """`ralph --init` should keep using the global main config by default."""
+    del clean_env
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 

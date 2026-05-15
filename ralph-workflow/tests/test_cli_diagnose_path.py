@@ -42,6 +42,7 @@ def test_diagnose_renders_agent_path_column(
     tmp_path: Path,
 ) -> None:
     """ralph --diagnose must render an agent name with a PATH status on the same row."""
+    del clean_env
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
@@ -73,6 +74,7 @@ def test_diagnose_alias_with_different_display_name_shows_correct_path_status(
     Guards against the keying bug where path_by_name was keyed by display_name
     while diagnose iterated by registry name, causing aliases to always show 'missing'.
     """
+    del clean_env
     custom_agent = AgentConfig(
         cmd="python",
         output_flag="--json",
@@ -110,6 +112,7 @@ def test_diagnose_alias_path_status_rendered_in_cli(
     The alias registry key 'my-alias' with cmd 'python' (on PATH) must render
     'on PATH', not 'missing', even though its registry key differs from the cmd name.
     """
+    del clean_env
     custom_agent = AgentConfig(
         cmd="python",
         output_flag="--json",
@@ -242,6 +245,7 @@ def test_diagnose_next_steps_panel_rendered_in_cli(
     tmp_path: Path,
 ) -> None:
     """ralph --diagnose must render a 'Next steps' panel in its output."""
+    del clean_env
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
@@ -263,6 +267,7 @@ def test_diagnose_next_steps_points_to_getting_started_when_no_prompt(
     tmp_path: Path,
 ) -> None:
     """ralph --diagnose next steps must mention ralph --init when PROMPT.md is absent."""
+    del clean_env
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 

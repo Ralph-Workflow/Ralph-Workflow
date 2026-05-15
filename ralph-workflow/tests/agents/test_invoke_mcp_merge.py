@@ -16,6 +16,7 @@ from ralph.agents.invoke import (
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.mcp_models import McpConfig, McpServerSpec
 from ralph.config.models import AgentConfig
+from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.mcp.transport.common import mcp_toml_as_upstreams, merge_mcp_toml_into_upstreams
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
@@ -214,7 +215,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
     )
@@ -258,7 +259,7 @@ def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
     )
@@ -285,7 +286,7 @@ def test_opencode_upstream_env_var_includes_mcp_toml_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
     )
@@ -311,7 +312,7 @@ def test_codex_upstream_env_var_includes_mcp_toml_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
     )
@@ -353,7 +354,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
     )
@@ -394,7 +395,7 @@ def test_opencode_non_colliding_native_server_preserved(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
     )

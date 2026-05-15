@@ -39,7 +39,7 @@ from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import Clock, FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
     CODEX_NATIVE_FEATURES_TO_DISABLE,
@@ -956,13 +956,13 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
             config,
             str(prompt_file),
             options=InvokeOptions(
-                show_progress=False, extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"}
+                show_progress=False, extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"}
             ),
         )
     )
 
     assert seen_env
-    assert seen_env[0]["RALPH_MCP_ENDPOINT"] == "http://127.0.0.1:9999/mcp"
+    assert seen_env[0][str(MCP_ENDPOINT_ENV)] == "http://127.0.0.1:9999/mcp"
 
 
 def test_invoke_agent_times_out_when_agent_goes_idle(
@@ -1259,7 +1259,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
                 session_id="abc123",
                 verbose=True,
                 model_flag="--model claude-sonnet-4",
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -1519,7 +1519,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -1626,7 +1626,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -1736,7 +1736,7 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -1793,7 +1793,7 @@ def test_claude_mode_rejects_duplicate_ralph_server_name(
                 options=InvokeOptions(
                     show_progress=False,
                     workspace_path=tmp_path,
-                    extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                    extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
                 ),
             )
         )
@@ -1953,7 +1953,7 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -2028,7 +2028,7 @@ def test_invoke_agent_merges_existing_opencode_config_content(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -2090,7 +2090,7 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.delenv("RALPH_MCP_ENDPOINT", raising=False)
+    monkeypatch.delenv(str(MCP_ENDPOINT_ENV), raising=False)
     monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"model": "anthropic/test"}')
 
     list(
@@ -2204,7 +2204,7 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -2314,7 +2314,7 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.delenv("RALPH_MCP_ENDPOINT", raising=False)
+    monkeypatch.delenv(str(MCP_ENDPOINT_ENV), raising=False)
     monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", '{"model": "anthropic/test"}')
 
     list(
@@ -2388,7 +2388,7 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -2597,7 +2597,7 @@ def test_invoke_agent_preserves_existing_codex_home_state(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -2728,7 +2728,7 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -2816,7 +2816,7 @@ def test_invoke_agent_fails_fast_when_mcp_endpoint_has_unsupported_transport(
                 str(prompt_file),
                 options=InvokeOptions(
                     show_progress=False,
-                    extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                    extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
                 ),
             )
         )
@@ -2936,7 +2936,7 @@ def test_claude_strict_mode_only_exposes_ralph_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -3026,7 +3026,7 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -3112,7 +3112,7 @@ def test_codex_strict_mode_only_exposes_ralph_server(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
             _clock=FakeClock(),
         )
@@ -3201,7 +3201,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
     )
@@ -3225,7 +3225,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
     )
@@ -3255,7 +3255,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
             options=InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
             ),
         )
     )
@@ -4788,7 +4788,7 @@ class TestResolveInvocationRuntime:
         output_flag="--json-stream",
         transport=AgentTransport.OPENCODE,
     )
-        extra_env = {"RALPH_MCP_ENDPOINT": "http://localhost:9999"}
+        extra_env = {str(MCP_ENDPOINT_ENV): "http://localhost:9999"}
         captured: list[str | None] = []
         def fake_build(config_content: str | None, endpoint: str) -> tuple[str, list[object]]:
             captured.append(config_content)
@@ -4815,7 +4815,7 @@ class TestResolveInvocationRuntime:
         output_flag="",
         transport=AgentTransport.CODEX,
     )
-        extra_env = {"RALPH_MCP_ENDPOINT": "http://localhost:9999"}
+        extra_env = {str(MCP_ENDPOINT_ENV): "http://localhost:9999"}
         captured: list[str | None] = []
         def fake_prepare(
         endpoint: str | None,

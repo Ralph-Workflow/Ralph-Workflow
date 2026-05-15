@@ -149,6 +149,28 @@ indent-style = "space"
 paths = ["ralph", "tests"]
 min_confidence = 100
 sort_by_size = true
+ignore_names = [
+    "html_partial",
+    "separator",
+    "from_attributes",
+    "by_alias",
+    "by_name",
+    "raise_errors",
+    "deep",
+    "strict",
+    "extra",
+    "context",
+    "mode",
+    "exclude_unset",
+    "exclude_defaults",
+    "exclude_none",
+    "round_trip",
+    "warnings",
+    "force",
+    "indent",
+    "ensure_ascii",
+    "update",
+]
 
 
 [tool.coverage.run]

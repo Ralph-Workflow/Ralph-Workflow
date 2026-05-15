@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING
 from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
-        from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping
 
-        from ralph.agents.registry import AgentRegistry
+    from ralph.agents.registry import AgentRegistry
 
 
 @dataclass
@@ -184,15 +184,6 @@ class AgentDiagnostics:
         is_available_fn: Callable[[str], bool] = _is_agent_available,
     ) -> AgentDiagnostics:
         """Test agent availability using the given registry."""
-        """Test agent availability using the given registry.
-
-        Args:
-            registry: Agent registry to test.
-            is_available_fn: Callable to check if an agent command is available.
-
-        Returns:
-            AgentDiagnostics with availability information.
-        """
         all_agents = registry.list_agents()
 
         agent_statuses: list[AgentStatus] = []
