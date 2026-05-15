@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-05-15T09:00:01.441275",
+  "health": 35,
+  "mrr": 0,
+  "content_today": 2,
+  "improvements": [
+    {
+      "priority": "CRITICAL",
+      "action": "LS API blocked (401). Workaround: set up webhook endpoint to detect purchases. Manual revenue tracking until API fixed.",
+      "impact": "Can't track revenue programmatically"
+    },
+    {
+      "priority": "HIGH",
+      "action": "Created 2 content pieces but can't distribute without HN/Reddit/Twitter accounts. Need user to provide account access or create new accounts.",
+      "impact": "Zero traffic from content"
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Interview pricing page shows 'contact sales' instead of checkout. Add Stripe/Gumroad embed or wire LS checkout URLs.",
+      "impact": "Leakage: interested visitors have no way to pay"
+    },
+    {
+      "priority": "LOW",
+      "action": "Charset fix applied to ralph_site. Consider adding pricing page if monetizing SaaS features.",
+      "impact": "Minor SEO improvement"
+    }
+  ]
+}
