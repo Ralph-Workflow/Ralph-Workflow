@@ -1981,3 +1981,10 @@ ralph.testing.fake_agent_executor
 .. automodule:: ralph.testing.fake_agent_executor
    :members:
    :show-inheritance:
+
+ralph.testing.pytest_timeout_plugin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.pytest_timeout_plugin
+   :members:
+   :show-inheritance:

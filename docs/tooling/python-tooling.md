@@ -164,11 +164,13 @@ make test
 make test-cov
 
 # Run specific test file
-pytest tests/test_orchestrator.py -v
+uv run pytest tests/test_orchestrator.py -v
 
 # Run tests matching a pattern
-pytest -k "policy" -v
+uv run pytest -k "policy" -v
 ```
+
+Raw repo-local `pytest` runs are hard-capped at 30 seconds by the auto-loaded `ralph.testing.pytest_timeout_plugin` declared in `pytest.ini`. The Makefile keeps the outer `python -m ralph.verify_timeout` wrapper as a second guardrail for sharded verification commands.
 
 ### Coverage Requirements
 
@@ -267,8 +269,8 @@ This executes:
 1. `make lint` — ruff check (zero violations required)
 2. `make typecheck` — mypy strict mode (zero type errors required)
 3. `make docs` — Sphinx build with warnings treated as errors
-4. `make test-cov` — pytest with coverage (80% minimum branch coverage)
-5. `make test-subprocess-e2e` — subprocess/network-marked end-to-end checks
+4. `make test-cov` — pytest with coverage (80% minimum branch coverage), run as separate 30-second timeout-guarded shards for grouped package directories, root-level test files, and integration tests
+5. `make test-subprocess-e2e` — subprocess/network-marked end-to-end checks, also wrapped in the 30-second suite timeout guard
 
 **Type Checking Requirements:**
 - All public functions and exported APIs must be typed

@@ -4,6 +4,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
+COVERED_PYTEST_SHARD_COUNT = 6
+COVER_APPEND_SHARD_COUNT = 5
+UNIT_TEST_SHARD_COUNT = 5
 
 
 def _target_body(name: str) -> list[str]:
@@ -43,13 +46,20 @@ def test_docs_target_builds_html_into_single_canonical_output_tree() -> None:
     assert "docs/sphinx/build/html" not in docs_body[0]
 
 
-def test_test_cov_runs_pytest_once_with_coverage() -> None:
+def test_test_cov_splits_covered_pytest_runs_under_timeout_wrapper() -> None:
     test_cov_body = _target_body("test-cov")
-    pytest_lines = [line for line in test_cov_body if "pytest tests/" in line]
+    pytest_lines = [line for line in test_cov_body if "python -m ralph.verify_timeout" in line]
 
-    assert len(pytest_lines) == 1
-    assert "--cov=ralph" in pytest_lines[0]
-    assert "-n $(PYTEST_WORKERS)" in pytest_lines[0]
+    assert len(pytest_lines) == COVERED_PYTEST_SHARD_COUNT
+    assert all("--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in line for line in pytest_lines)
+    assert all("--cov=ralph" in line for line in pytest_lines)
+    assert any("$(PYTEST_CORE_PATHS)" in line for line in pytest_lines)
+    assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_A_H)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_I_P)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_Q_Z)" in line for line in pytest_lines)
+    assert any("pytest tests/integration/ -q" in line for line in pytest_lines)
+    assert sum("--cov-append" in line for line in pytest_lines) == COVER_APPEND_SHARD_COUNT
 
 
 def test_lint_targets_use_uv_managed_ruff() -> None:
@@ -63,11 +73,28 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     unit_body = _target_body("test-unit")
     integration_body = _target_body("test-integration")
 
-    assert len(unit_body) == 1
+    assert len(unit_body) == UNIT_TEST_SHARD_COUNT
     assert len(integration_body) == 1
-    assert "pytest tests/ -q" in unit_body[0]
-    assert "--ignore=tests/integration" in unit_body[0]
+    assert all("python -m ralph.verify_timeout" in line for line in unit_body)
+    assert "python -m ralph.verify_timeout" in integration_body[0]
+    assert all("--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in line for line in unit_body)
+    assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
+    assert any("$(PYTEST_CORE_PATHS)" in line for line in unit_body)
+    assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_A_H)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_I_P)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_Q_Z)" in line for line in unit_body)
     assert "pytest tests/integration/ -q" in integration_body[0]
+
+
+def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
+    e2e_body = _target_body("test-subprocess-e2e")
+
+    assert e2e_body == [
+        "uv run python -m ralph.verify_timeout "
+        "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
+        "pytest tests/ -q -n 1 -m subprocess_e2e"
+    ]
 
 
 def test_makefile_exposes_explicit_twine_upload_targets() -> None:

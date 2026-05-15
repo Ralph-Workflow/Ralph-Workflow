@@ -4139,6 +4139,12 @@ def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(  #
                             "status": "completed",
                             "summary": "Development artifact present.",
                             "files_changed": "foo.py",
+                            "plan_items_proven": [
+                                {
+                                    "plan_item": "Step 1: Touch file",
+                                    "proof": "Updated foo.py as planned.",
+                                }
+                            ],
                         },
                     },
                 )
@@ -4284,6 +4290,12 @@ def test_runner_resumed_planning_success_skips_planning_analysis_after_cap(  # n
                             "status": "completed",
                             "summary": "Development artifact present.",
                             "files_changed": "foo.py",
+                            "plan_items_proven": [
+                                {
+                                    "plan_item": "Step 1: Revise resumed plan",
+                                    "proof": "Revised foo.py while preserving resumed context.",
+                                }
+                            ],
                         },
                     },
                 )

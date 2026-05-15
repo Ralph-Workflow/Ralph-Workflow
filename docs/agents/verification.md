@@ -48,7 +48,7 @@ python -m ralph --help
 python -m ralph --version
 ```
 
-`make test` runs the full suite without coverage. `make test-unit` excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` is the single authoritative covered suite used by `make verify`. Use `uv run ruff ...` for direct Ruff repro commands so manual lint/format checks match the same uv-managed Ruff toolchain that `make verify` uses. `make docs` builds the Sphinx HTML docs into `docs/sphinx/_build/html` with warnings treated as errors.
+`make test` runs the full non-`subprocess_e2e` suite in multiple timeout-guarded slices so every pytest invocation fails fast after 30 seconds: grouped package directories first, then alphabetical root-level test shards, then `tests/integration/`. `make test-unit` uses the same sharded root/unit slices and excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` is the single authoritative covered suite used by `make verify`; it applies the same 30-second suite timeout to each shard separately, then merges coverage output. `make test-subprocess-e2e` also runs under the same 30-second suite timeout wrapper. In addition, repo-local raw `pytest` runs now auto-load `ralph.testing.pytest_timeout_plugin` from `pytest.ini`, so direct invocations inherit the same hard 30-second suite cap even without the Makefile wrapper. Use `uv run ruff ...` for direct Ruff repro commands so manual lint/format checks match the same uv-managed Ruff toolchain that `make verify` uses. `make docs` builds the Sphinx HTML docs into `docs/sphinx/_build/html` with warnings treated as errors.
 
 ---
 
