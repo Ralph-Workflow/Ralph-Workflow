@@ -18,6 +18,7 @@ FORMAT_DOC_ARTIFACT_TYPES: tuple[str, ...] = (
     "development_analysis_decision",
     "planning_analysis_decision",
     "review_analysis_decision",
+    "smoke_test_result",
 )
 
 ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE = "artifact_formats_index"

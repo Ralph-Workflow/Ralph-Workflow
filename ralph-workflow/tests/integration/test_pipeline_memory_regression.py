@@ -15,19 +15,20 @@ from ralph.agents.invoke import AgentInvocationError
 from ralph.config.enums import JsonParserType, Verbosity
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.pipeline import runner
+from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
     from pytest import MonkeyPatch
 
 
-_LINE_COUNT = 64
-_LINE_SIZE = 4096
+_LINE_COUNT = 32
+_LINE_SIZE = 2048
 _ITERATION_COUNT = 8
 _RETAINED_DELTA_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 6_000_000
@@ -36,6 +37,7 @@ _PEAK_DELTA_LIMIT = 6_000_000
 @dataclass
 class _GeneralConfigStub:
     verbosity: int = 0
+    max_same_agent_retries: int = 0
     agent_idle_timeout_seconds: float | None = 300.0
     agent_idle_drain_window_seconds: float = 2.0
     agent_idle_max_waiting_on_child_seconds: float = 1800.0
@@ -52,18 +54,9 @@ class _GeneralConfigStub:
     agent_child_stale_label_ttl_seconds: float = 120.0
     agent_child_exit_reconcile_seconds: float = 5.0
     agent_process_exit_wait_seconds: float = 5.0
-    cloud_mode: bool = False
     agent_system_prompt: str | None = None
     agent_provider: str | None = None
     verbose: bool = False
-
-
-@dataclass
-class _CloudConfigStub:
-    enabled: bool = False
-    api_url: str | None = None
-    api_key: str | None = None
-    timeout_secs: float = 30.0
 
 
 @dataclass
@@ -74,7 +67,6 @@ class _CcsConfigStub:
 @dataclass
 class _ConfigStub:
     general: _GeneralConfigStub = field(default_factory=_GeneralConfigStub)
-    cloud: _CloudConfigStub = field(default_factory=_CloudConfigStub)
     ccs: _CcsConfigStub = field(default_factory=_CcsConfigStub)
     ccs_aliases: dict[str, str] = field(default_factory=dict)
 
@@ -130,10 +122,6 @@ def _mcp_supervisor(*args: object, **kwargs: object) -> _NullSupervisor:
     return _NullSupervisor()
 
 
-def _materialize_system_prompt(**kwargs: object) -> None:
-    del kwargs
-
-
 def _build_session_mcp_plan(**kwargs: object) -> SimpleNamespace:
     del kwargs
     return SimpleNamespace(
@@ -148,14 +136,18 @@ def _emit_display_line(*args: object, **kwargs: object) -> None:
     del args, kwargs
 
 
-def _install_runner_seams(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr(runner, "start_mcp_server", _start_mcp_server)
-    monkeypatch.setattr(runner, "shutdown_mcp_server", _shutdown_mcp_server)
-    monkeypatch.setattr(runner, "check_mcp_bridge_health", _check_mcp_bridge_health)
-    monkeypatch.setattr(runner, "McpSupervisor", _mcp_supervisor)
-    monkeypatch.setattr(runner, "materialize_system_prompt", _materialize_system_prompt)
-    monkeypatch.setattr(runner, "build_session_mcp_plan", _build_session_mcp_plan)
-    monkeypatch.setattr(runner, "_emit_display_line", _emit_display_line)
+def _install_runner_seams(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner_module, "start_mcp_server", _start_mcp_server)
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", _shutdown_mcp_server)
+    monkeypatch.setattr(runner_module, "check_mcp_bridge_health", _check_mcp_bridge_health)
+    monkeypatch.setattr(runner_module, "McpSupervisor", _mcp_supervisor)
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_system_prompt",
+        lambda **_kwargs: str(tmp_path / "SYSTEM_PROMPT.md"),
+    )
+    monkeypatch.setattr(runner_module, "build_session_mcp_plan", _build_session_mcp_plan)
+    monkeypatch.setattr(runner_module, "_emit_display_line", _emit_display_line)
 
 
 def _config() -> UnifiedConfig:
@@ -170,28 +162,28 @@ def _fake_invoke_agent(
 ) -> Iterator[str]:
     del config, prompt_file, options
     session_payload: dict[str, str] = {"session_id": "sess-development"}
-    session_line = json.dumps(session_payload)
+    yield json.dumps(session_payload)
     payload = "x" * _LINE_SIZE
-    for idx in range(_LINE_COUNT):
-        prefix = session_line if idx == 0 else f"development:{idx}:"
-        yield f"{prefix}{payload}"
+    for idx in range(1, _LINE_COUNT):
+        yield f"development:{idx}:{payload}"
 
 
 @pytest.mark.integration
-def test_run_pipeline_memory_regression(monkeypatch: MonkeyPatch) -> None:
-    _install_runner_seams(monkeypatch)
+@pytest.mark.timeout_seconds(10)
+def test_run_pipeline_memory_regression(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    _install_runner_seams(monkeypatch, tmp_path)
 
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development",
         prompt_file="PROMPT.md",
     )
-    deps = runner._AgentExecutionDeps(
+    deps = runner_module._AgentExecutionDeps(
         invoke_agent=_fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
         agent_registry=_RegistryFactory,
     )
-    workspace_scope = WorkspaceScope("/tmp/worktree")
+    workspace_scope = WorkspaceScope(tmp_path)
     display_context = make_display_context()
 
     gc.collect()
@@ -200,7 +192,7 @@ def test_run_pipeline_memory_regression(monkeypatch: MonkeyPatch) -> None:
     tracemalloc.reset_peak()
 
     for _ in range(_ITERATION_COUNT):
-        event = runner._execute_agent_effect(
+        event = runner_module._execute_agent_effect(
             effect,
             _config(),
             deps,

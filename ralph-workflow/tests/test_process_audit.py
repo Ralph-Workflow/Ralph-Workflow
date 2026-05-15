@@ -35,6 +35,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_cli.py",  # exercises actual console-script entrypoint via subprocess
     "test_install.py",  # wheel build/install smoke coverage in a throwaway venv
     "test_interrupt_signal_realtime.py",  # live SIGINT black-box coverage needs a subprocess
+    "test_claude_interactive_interrupt_realtime.py",  # PTY-backed live SIGINT black-box coverage
 }
 
 _MCP_FIXTURE_FILES = {

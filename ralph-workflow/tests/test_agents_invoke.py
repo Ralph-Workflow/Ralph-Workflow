@@ -8,15 +8,17 @@ import threading
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import pytest
 from loguru import logger
 
 from ralph.agents import invoke as invoke_module
 from ralph.agents.activity import AgentActivityKind
+from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
     AgentExecutionState,
+    ClaudeInteractiveExecutionStrategy,
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
     strategy_for_transport,
@@ -54,6 +56,11 @@ from ralph.mcp.upstream.config import (
 )
 from ralph.process.liveness import FakeLivenessProbe
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from ralph.agents.idle_watchdog import WaitingCorroborator, WaitingStatusListener
+
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 
@@ -72,7 +79,7 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return list(args[0])
+    return list(cast("Iterable[str]", args[0]))
 
 
 def test_invoke_agent_passes_idle_timeout_to_subprocess(
@@ -427,6 +434,73 @@ def test_build_command_splits_multi_part_claude_permission_mode_flag() -> None:
     ]
 
 
+def test_claude_interactive_build_command_excludes_output_flag() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        verbose_flag="--verbose",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(
+            model_flag="--model claude-sonnet-4",
+            session_id="abc123",
+            verbose=True,
+        ),
+    )
+
+    assert cmd == [
+        "claude",
+        "--permission-mode",
+        "auto",
+        "--verbose",
+        "--resume",
+        "abc123",
+        "--model",
+        "claude-sonnet-4",
+        "PROMPT.md",
+    ]
+
+
+def test_strategy_for_transport_returns_claude_interactive_strategy() -> None:
+    assert isinstance(
+        strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE),
+        ClaudeInteractiveExecutionStrategy,
+    )
+
+
+def test_claude_interactive_execution_strategy_supports_session_continuation() -> None:
+    assert ClaudeInteractiveExecutionStrategy().supports_session_continuation() is True
+
+
+def test_claude_interactive_execution_strategy_classify_exit_terminal_on_completion() -> None:
+    strategy = ClaudeInteractiveExecutionStrategy()
+    signals = CompletionSignals(True, False, ())
+
+    class _FakeHandle:
+        def has_live_descendants(self) -> bool:
+            return False
+
+    assert strategy.classify_exit(_FakeHandle(), signals) == AgentExecutionState.TERMINAL_COMPLETE
+
+
+def test_claude_interactive_execution_strategy_classify_exit_resumable_without_signals() -> None:
+    strategy = ClaudeInteractiveExecutionStrategy()
+    signals = CompletionSignals(False, False, ())
+
+    class _FakeHandle:
+        def has_live_descendants(self) -> bool:
+            return False
+
+    assert strategy.classify_exit(_FakeHandle(), signals) == AgentExecutionState.RESUMABLE_CONTINUE
+
+
 def test_build_command_injects_claude_append_system_prompt_file() -> None:
     config = AgentConfig(
         cmd="claude -p",
@@ -450,6 +524,64 @@ def test_build_command_injects_claude_append_system_prompt_file() -> None:
         "--output-format=stream-json",
         "--print",
         "--include-partial-messages",
+        "--permission-mode",
+        "auto",
+        "--append-system-prompt-file",
+        "SYSTEM_PROMPT.md",
+        "PROMPT.md",
+    ]
+
+
+def test_build_command_injects_claude_interactive_session_id_and_settings() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(
+            initial_session_id="fresh-session-1",
+            settings_json='{"hooks":{}}',
+        ),
+    )
+
+    assert cmd == [
+        "claude",
+        "--permission-mode",
+        "auto",
+        "--session-id",
+        "fresh-session-1",
+        "--settings",
+        '{"hooks":{}}',
+        "PROMPT.md",
+    ]
+
+
+
+def test_build_command_injects_claude_interactive_append_system_prompt_file() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        session_flag="--resume {}",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    cmd = _build_command(
+        config,
+        "PROMPT.md",
+        options=_BuildCommandOptions(system_prompt_file="SYSTEM_PROMPT.md"),
+    )
+
+    assert cmd == [
+        "claude",
         "--permission-mode",
         "auto",
         "--append-system-prompt-file",
@@ -3716,6 +3848,13 @@ def test_transport_activity_classifier_preserves_generic_and_claude_semantics() 
     assert claude_signal is not None
     assert claude_signal.kind == AgentActivityKind.STREAM_DELTA
 
+    interactive_strategy = strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE)
+    interactive_signal = interactive_strategy.classify_activity_line(
+        "claude tool: read_file {\"path\":\"PROMPT.md\"}"
+    )
+    assert interactive_signal is not None
+    assert interactive_signal.kind == AgentActivityKind.TOOL_USE
+
 
 @pytest.mark.skip(reason="ScheduledStdout uses blocking Event.wait(); FakeClock can't control it")
 def test_idle_timeout_defers_when_children_active_then_clears(
@@ -3864,11 +4003,19 @@ def test_invoke_agent_passes_config_drain_window_to_watchdog(
         self: IdleWatchdog,
         cfg: TimeoutPolicy,
         clock: Clock,
-        listener: object = None,
+        listener: WaitingStatusListener | None = None,
+        corroborator: WaitingCorroborator | None = None,
         **kwargs: object,
     ) -> None:
         captured_config.append(cfg)
-        original_init(self, cfg, clock, listener, **kwargs)
+        original_init(
+            self,
+            cfg,
+            clock,
+            listener,
+            corroborator=corroborator,
+            **cast("dict[str, object]", kwargs),
+        )
 
     monkeypatch.setattr(IdleWatchdog, "__init__", capturing_init)
 
@@ -4222,6 +4369,35 @@ def test_claude_mcp_prompt_text_only_when_no_sidecar(tmp_path: Path) -> None:
     full_prompt = cmd[-1]
     assert full_prompt == prompt_text
     assert "Multimodal Artifacts" not in full_prompt
+
+
+def test_claude_interactive_mcp_prompt_includes_multimodal_appendix_when_sidecar_present(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Build the interactive feature.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_IMAGE_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="claude",
+        output_flag=None,
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+    )
+
+    assert cmd[-2] == "--"
+    full_prompt = cmd[-1]
+    assert "Build the interactive feature." in full_prompt
+    assert "Multimodal Artifacts" in full_prompt
+    assert "ralph://media/abc123" in full_prompt
+    assert "[image] screenshot.png" in full_prompt
 
 
 def test_opencode_prompt_includes_multimodal_appendix_when_sidecar_present(

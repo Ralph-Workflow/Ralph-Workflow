@@ -18,6 +18,7 @@ import pytest
 from ralph.agents.completion_signals import CompletionSignals, extract_explicit_completion
 from ralph.agents.execution_state import (
     AgentExecutionState,
+    ClaudeInteractiveExecutionStrategy,
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
 )
@@ -776,6 +777,97 @@ class TestCheckProcessResultCompletionSeam:
             ),
         )
         # No exception: artifact_optional=True -> TERMINAL_COMPLETE even for malformed file
+
+
+class TestCheckProcessResultClaudeInteractiveSeam:
+    """Completion contract with ClaudeInteractiveExecutionStrategy."""
+
+    def test_explicit_completion_without_artifact_does_not_raise(self, tmp_path: Path) -> None:
+        """declare_complete marker prevents OpenCodeResumableExitError without artifact."""
+        strategy = ClaudeInteractiveExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+        raw_output = ["Task declared complete: session_id=abc, summary=done, timestamp=1"]
+
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "claude",
+            raw_output,
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+            ),
+        )
+
+    def test_no_artifact_requirement_still_requires_explicit_completion(
+        self, tmp_path: Path
+    ) -> None:
+        """ClaudeInteractiveExecutionStrategy still requires an explicit completion signal."""
+        strategy = ClaudeInteractiveExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "claude",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+                ),
+            )
+
+    def test_artifact_present_without_explicit_completion_does_not_raise(
+        self, tmp_path: Path
+    ) -> None:
+        """Artifact on disk produces TERMINAL_COMPLETE without declare_complete."""
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "development_result.json").write_text('{"summary": "done"}')
+
+        strategy = ClaudeInteractiveExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "claude",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    json_path=".agent/artifacts/development_result.json",
+                    markdown_path=None,
+                    normalizer=None,
+                ),
+            ),
+        )
+
+    def test_neither_signal_nor_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
+        """No explicit completion and no artifact -> OpenCodeResumableExitError."""
+        strategy = ClaudeInteractiveExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "claude",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        json_path=".agent/artifacts/development_result.json",
+                        markdown_path=None,
+                        normalizer=None,
+                    ),
+                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+                ),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1655,7 +1747,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 self.call_count += 1
                 return self.call_count > 1
 
-            def child_snapshot(self, scope_prefix: str) -> object:
+            def child_snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
                 active = self.any_agent_active(scope_prefix)
                 return ChildActivitySnapshot(
                     scope_prefix=scope_prefix,
@@ -1811,7 +1903,7 @@ class TestStaleScopedChildEvidenceTimeout:
             def any_agent_active(self, label_prefix: str) -> bool:
                 return False  # No active agents in old-style check
 
-        probe = _OldStyleProbe()
+        probe = cast("FakeLivenessProbe", _OldStyleProbe())
         # Raw descendants exist (the stuck child process is still running)
         handle = _FakeHandle(has_descendants=True)
 
@@ -1948,7 +2040,7 @@ class TestStaleScopedChildEvidenceTimeout:
             def any_agent_active(self, label_prefix: str) -> bool:
                 return False
 
-        probe = _OldStyleProbe()
+        probe = cast("FakeLivenessProbe", _OldStyleProbe())
         handle = _FakeHandle(has_descendants=True)
         signals = CompletionSignals(
             explicit_complete=False,

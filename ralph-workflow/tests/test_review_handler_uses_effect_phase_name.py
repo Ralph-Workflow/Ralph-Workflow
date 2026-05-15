@@ -7,22 +7,45 @@ must derive the phase name from the InvokeAgentEffect.phase attribute.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from dataclasses import dataclass
+from typing import Any
+from unittest.mock import patch
 
+from ralph.phases import PhaseContext
 from ralph.phases.review import handle_review
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent
 
 
-def _make_failing_context() -> MagicMock:
+@dataclass(slots=True)
+class _FakeWorkspace:
+    def absolute_path(self, rel: str):
+        del rel
+
+    def read(self, *args, **kwargs):
+        del args, kwargs
+        raise FileNotFoundError("no artifact")
+
+    def write(self, *args, **kwargs):
+        del args, kwargs
+
+
+def _make_failing_context() -> PhaseContext:
     """Return a PhaseContext that simulates a missing review artifact."""
-    ctx = MagicMock()
-    # Simulate no git repo so _current_head_sha returns None
-    ctx.workspace.absolute_path.return_value = None
-    # Simulate missing artifact (no review baseline, artifact load fails)
-    ctx.workspace.read.side_effect = FileNotFoundError("no artifact")
-    ctx.workspace.write.return_value = None
-    return ctx
+    workspace: Any = _FakeWorkspace()
+    registry: Any = object()
+    chain_manager: Any = object()
+    pipeline_policy: Any = object()
+    agents_policy: Any = object()
+    artifacts_policy: Any = object()
+    return PhaseContext.model_construct(
+        workspace=workspace,
+        registry=registry,
+        chain_manager=chain_manager,
+        pipeline_policy=pipeline_policy,
+        agents_policy=agents_policy,
+        artifacts_policy=artifacts_policy,
+    )
 
 
 def test_phase_failure_event_uses_effect_phase_not_literal_review() -> None:

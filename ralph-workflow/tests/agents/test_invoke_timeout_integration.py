@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -38,7 +38,6 @@ from ralph.process.liveness import FakeLivenessProbe
 
 class _FakeManagedHandle:
     """Minimal test double for ManagedProcess used by _read_lines_from_process."""
-
     def __init__(
         self,
         stdout_lines: object,
@@ -46,17 +45,30 @@ class _FakeManagedHandle:
         descendant_count: int = 0,
         descendant_oldest_seconds: float = 0.0,
     ) -> None:
-        self.stdout = stdout_lines
-        self.stderr = None
-        self.returncode: int | None = 0
+        self._stdout = stdout_lines
+        self._stderr = None
+        self._returncode: int | None = 0
         self._terminated = False
         self._descendant_count = descendant_count
         self._descendant_oldest_seconds = descendant_oldest_seconds
 
-    def poll(self) -> int | None:
-        return 0
+    @property
+    def stdout(self) -> object | None:
+        return self._stdout
 
-    def terminate(self, grace_period_s: float = 0.5) -> None:
+    @property
+    def stderr(self) -> object | None:
+        return self._stderr
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
+
+    def poll(self) -> int | None:
+        return self._returncode
+
+    def terminate(self, grace_period_s: float | None = None) -> None:
+        del grace_period_s
         self._terminated = True
 
     def has_live_descendants(self) -> bool:
@@ -96,8 +108,15 @@ class _WaitingStrategy(GenericExecutionStrategy):
 
 
 _MAX_SESSION_SECONDS = 5.0
-_CLOCK_ADVANCE_PER_LINE = 1.0
-_TOTAL_LINES_IN_STDOUT = 20
+_CLOCK_ADVANCE_PER_LINE = 0.5
+_TOTAL_LINES_IN_STDOUT = 10
+
+
+def _read_lines(
+    handle: _FakeManagedHandle,
+    **kwargs: Any,
+):
+    return _read_lines_from_process(cast("Any", handle), **kwargs)
 
 
 def test_session_ceiling_fires_under_continuous_output() -> None:
@@ -127,7 +146,7 @@ def test_session_ceiling_fires_under_continuous_output() -> None:
     handle = _FakeManagedHandle(_stdout_gen())
 
     with pytest.raises(_IdleStreamTimeoutError) as exc_info:
-        for _ in _read_lines_from_process(handle, policy=policy, _clock=clock):
+        for _ in _read_lines(handle, policy=policy, _clock=clock):
             pass
 
     assert exc_info.value.reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
@@ -146,8 +165,8 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
     path (where _safe_classify_quiet is invoked).  The _reader_release event is
     set in a finally block so the reader daemon thread exits cleanly.
     """
-    idle_timeout = 0.2
-    max_waiting = 0.4
+    idle_timeout = 0.05
+    max_waiting = 0.1
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         max_waiting_on_child_seconds=max_waiting,
@@ -171,7 +190,7 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
 
     try:
         with pytest.raises(_IdleStreamTimeoutError) as exc_info:
-            for _ in _read_lines_from_process(
+            for _ in _read_lines(
                 handle,
                 policy=policy,
                 execution_strategy=_RaisingStrategy(),
@@ -192,8 +211,8 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
     NO_OUTPUT_DEADLINE is never raised when classify_quiet always raises. Instead
     the watchdog defers until the cumulative WAITING ceiling fires.
     """
-    idle_timeout = 0.2
-    max_waiting = 0.4
+    idle_timeout = 0.05
+    max_waiting = 0.1
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         max_waiting_on_child_seconds=max_waiting,
@@ -214,7 +233,7 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
 
     try:
         with pytest.raises(_IdleStreamTimeoutError) as exc_info:
-            for _ in _read_lines_from_process(
+            for _ in _read_lines(
                 handle,
                 policy=policy,
                 execution_strategy=_RaisingStrategy(),
@@ -237,7 +256,7 @@ def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
     drive the watchdog into the ACTIVE branch and fire NO_OUTPUT_DEADLINE even when
     children are present. Now the real classify_quiet is consulted.
     """
-    idle_timeout = 2.0
+    idle_timeout = 0.5
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         drain_window_seconds=0.5,
@@ -258,7 +277,7 @@ def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
     # returns WAITING_ON_CHILD so the post-yield evaluate defers, and the reader
     # exits cleanly before the cumulative ceiling is reached.
     lines = list(
-        _read_lines_from_process(
+        _read_lines(
             handle,
             policy=policy,
             execution_strategy=_WaitingStrategy(),
@@ -312,14 +331,14 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
                 time.sleep(0)  # release GIL; main thread advances clock
             yield f"heartbeat {heartbeat_num}\n"
         # Safety tail: release so reader thread exits cleanly if fire never fires.
-        _release.wait(timeout=5.0)
+        _release.wait(timeout=1.0)
         yield from ()
 
     handle = _FakeManagedHandle(_oscillating_stdout())
 
     try:
         with pytest.raises(_IdleStreamTimeoutError) as exc_info:
-            for _ in _read_lines_from_process(
+            for _ in _read_lines(
                 handle,
                 policy=policy,
                 execution_strategy=_WaitingStrategy(),
@@ -350,9 +369,9 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
     - Exactly 1 HARD_STOP event.
     - Total events <= 6.
     """
-    idle_timeout = 0.2
-    max_waiting = 0.6
-    status_interval = 0.2
+    idle_timeout = 0.05
+    max_waiting = 0.2
+    status_interval = 0.05
 
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -381,7 +400,7 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
 
     try:
         with pytest.raises(_IdleStreamTimeoutError) as exc_info:
-            for _ in _read_lines_from_process(
+            for _ in _read_lines(
                 handle,
                 policy=policy,
                 execution_strategy=_WaitingStrategy(),
@@ -421,8 +440,8 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
     - _IdleStreamTimeoutError message contains 'cumulative=' and 'scoped_child_active='.
     - Captured HARD_STOP WaitingStatusEvent.diagnostic includes 'evidence' and 'cumulative'.
     """
-    idle_timeout = 0.2
-    max_waiting = 0.6
+    idle_timeout = 0.05
+    max_waiting = 0.15
     status_interval = 100.0  # suppress PROGRESS noise
 
     policy = TimeoutPolicy(
@@ -451,7 +470,7 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
 
     try:
         with pytest.raises(_IdleStreamTimeoutError) as exc_info:
-            for _ in _read_lines_from_process(
+            for _ in _read_lines(
                 handle,
                 policy=policy,
                 execution_strategy=_WaitingStrategy(),
@@ -496,8 +515,8 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
     - Corroborator will set alive_by='os_descendant_only_stale_progress'.
     - Watchdog must fire at ~10s (no-progress ceiling), not 100s (full ceiling).
     """
-    idle_timeout = 0.5
-    max_waiting = 100.0
+    idle_timeout = 0.1
+    max_waiting = 20.0
     no_progress_ceiling = 10.0
     status_interval = 100.0  # suppress PROGRESS noise
 
@@ -532,7 +551,7 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
 
     try:
         with pytest.raises(_IdleStreamTimeoutError) as exc_info:
-            for _ in _read_lines_from_process(
+            for _ in _read_lines(
                 handle,
                 policy=policy,
                 execution_strategy=_WaitingStrategy(),
@@ -588,8 +607,8 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() 
     this test uses the real OpenCodeExecutionStrategy (empty registry, OS descendants present)
     to prove the end-to-end path from classify_quiet → corroborator → effective ceiling.
     """
-    idle_timeout = 0.5
-    max_waiting = 100.0
+    idle_timeout = 0.1
+    max_waiting = 20.0
     no_progress_ceiling = 10.0
     status_interval = 100.0
 
@@ -628,7 +647,7 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() 
 
     try:
         with pytest.raises(_IdleStreamTimeoutError) as exc_info:
-            for _ in _read_lines_from_process(
+            for _ in _read_lines(
                 handle,
                 policy=policy,
                 execution_strategy=strategy,

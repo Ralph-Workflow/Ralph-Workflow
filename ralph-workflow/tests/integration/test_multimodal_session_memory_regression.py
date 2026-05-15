@@ -6,7 +6,7 @@ import gc
 import json
 import tracemalloc
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _ITERATION_COUNT = 8
-_ARTIFACT_SIZE_BYTES = 64 * 1024
+_ARTIFACT_SIZE_BYTES = 256 * 1024
 _RETAINED_DELTA_SPREAD_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 6_000_000
 _FINAL_RETAINED_DELTA_LIMIT = 2_000_000
@@ -42,6 +42,10 @@ class _SessionWithDrain:
         return True
 
 
+def _read_media(session: _SessionWithDrain, workspace: FsWorkspace) -> Any:
+    return handle_read_media(session, workspace, {"path": "report.pdf"})
+
+
 @pytest.mark.integration
 @pytest.mark.timeout_seconds(10)
 def test_multimodal_session_memory_regression(tmp_path: Path) -> None:
@@ -49,6 +53,7 @@ def test_multimodal_session_memory_regression(tmp_path: Path) -> None:
     session = _SessionWithDrain(MEDIA_READ_CAPABILITY)
     media_file = tmp_path / "report.pdf"
     media_file.write_bytes(b"%PDF-1.4\n" + b"x" * (_ARTIFACT_SIZE_BYTES - 9))
+    index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
 
     retained_deltas: list[int] = []
     session_index_sizes: list[int] = []
@@ -59,16 +64,13 @@ def test_multimodal_session_memory_regression(tmp_path: Path) -> None:
     tracemalloc.reset_peak()
 
     for _ in range(_ITERATION_COUNT):
-        result = handle_read_media(session, workspace, {"path": "report.pdf"})
+        result = _read_media(session, workspace)
         assert result.is_error is False
 
         current_current, _ = tracemalloc.get_traced_memory()
         retained_deltas.append(current_current - baseline_current)
-
-        index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
         session_index_sizes.append(index_path.stat().st_size)
 
-    gc.collect()
     final_current, peak_current = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
@@ -82,7 +84,6 @@ def test_multimodal_session_memory_regression(tmp_path: Path) -> None:
     assert final_current - baseline_current <= _FINAL_RETAINED_DELTA_LIMIT
     assert max(post_warmup_sizes) - min(post_warmup_sizes) <= _SESSION_INDEX_SIZE_SPREAD_LIMIT
 
-    index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
     persisted = json.loads(index_path.read_text(encoding="utf-8"))
     assert len(persisted["artifacts"]) == 1
     assert len(collect_media_entries_for_phase(workspace, "development")) == 1

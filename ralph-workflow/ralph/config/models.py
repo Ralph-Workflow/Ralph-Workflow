@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pathlib
 
-from pydantic import ConfigDict, Field, HttpUrl, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.pydantic_compat import RalphBaseModel
@@ -49,7 +49,7 @@ class AgentConfig(_FrozenConfigModel):
 
     Attributes:
         cmd: Base command to run the agent.
-        output_flag: Output format flag for streaming JSON.
+        output_flag: Optional output format flag for streaming JSON.
         yolo_flag: Optional autonomous/non-interactive flag string.
         verbose_flag: Flag for verbose output.
         can_commit: Whether the agent can run git commit.
@@ -63,7 +63,7 @@ class AgentConfig(_FrozenConfigModel):
     """
 
     cmd: str
-    output_flag: str = "--json-stream"
+    output_flag: str | None = None
     yolo_flag: str | None = None
     verbose_flag: str | None = None
     can_commit: bool = False
@@ -85,7 +85,7 @@ class AgentConfig(_FrozenConfigModel):
             JsonParserType.OPENCODE: AgentTransport.OPENCODE,
         }
         command_to_transport = {
-            "claude": AgentTransport.CLAUDE,
+            "claude": AgentTransport.CLAUDE_INTERACTIVE,
             "codex": AgentTransport.CODEX,
             "opencode": AgentTransport.OPENCODE,
         }
@@ -95,22 +95,6 @@ class AgentConfig(_FrozenConfigModel):
             command_to_transport.get(command_name, AgentTransport.GENERIC),
         )
         object.__setattr__(self, "transport", inferred_transport)
-
-
-class CloudConfig(_FrozenConfigModel):
-    """Optional cloud reporting configuration.
-
-    Attributes:
-        enabled: Whether cloud reporting is enabled.
-        api_url: Base URL for the cloud API.
-        api_key: API key for authentication.
-        timeout_secs: Request timeout in seconds.
-    """
-
-    enabled: bool = False
-    api_url: HttpUrl | None = None
-    api_key: str | None = None
-    timeout_secs: int = 30
 
 
 class GeneralWorkflowFlags(_FrozenConfigModel):
@@ -369,10 +353,15 @@ class GeneralConfig(_FrozenConfigModel):
 
 
 class CcsConfig(_FrozenConfigModel):
-    """CCS (Claude Code Switch) defaults configuration.
+    """Headless-by-design Claude Code Switch (CCS) defaults.
+
+    CCS aliases explicitly run Claude in non-interactive streaming mode
+    (``--print --output-format=stream-json``). That is the intended explicit
+    headless Claude path for users who configure ``[ccs_aliases]``. The built-in
+    ``claude`` agent runs in interactive mode by default.
 
     Attributes:
-        output_flag: Output-format flag for CCS.
+        output_flag: Output-format flag for CCS aliases.
         yolo_flag: Default autonomous/non-interactive flag for CCS aliases.
         verbose_flag: Flag for verbose output.
         print_flag: Print flag for non-interactive mode.
@@ -433,7 +422,6 @@ class UnifiedConfig(_FrozenConfigModel):
         ccs_aliases: CCS alias mappings.
         agent_chains: Named reusable chain definitions.
         agent_drains: Drain-to-chain bindings for built-in drains.
-        cloud: Optional cloud reporting configuration.
     """
 
     general: GeneralConfig = Field(default_factory=GeneralConfig)
@@ -442,4 +430,3 @@ class UnifiedConfig(_FrozenConfigModel):
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
     agent_chains: dict[str, list[str]] = Field(default_factory=dict)
     agent_drains: dict[str, str] = Field(default_factory=dict)
-    cloud: CloudConfig = Field(default_factory=CloudConfig)

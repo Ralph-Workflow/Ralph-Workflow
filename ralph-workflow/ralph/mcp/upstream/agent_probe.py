@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 
 _DEFAULT_TRANSPORTS: tuple[AgentTransport, ...] = (
     AgentTransport.CLAUDE,
+    AgentTransport.CLAUDE_INTERACTIVE,
     AgentTransport.CODEX,
     AgentTransport.OPENCODE,
 )
@@ -107,39 +108,47 @@ def _probe_pair(
     server: UpstreamMcpServer,
     workspace_path: Path | None,
 ) -> AgentProbeReport:
+    report: AgentProbeReport
     try:
-        if transport == AgentTransport.CLAUDE:
-            return _probe_claude(server, workspace_path)
-        if transport == AgentTransport.CODEX:
-            return _probe_codex(server, workspace_path)
-        if transport == AgentTransport.OPENCODE:
-            return _probe_opencode(server, workspace_path)
+        if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
+            report = _probe_claude(server, workspace_path, transport=transport)
+        elif transport == AgentTransport.CODEX:
+            report = _probe_codex(server, workspace_path)
+        elif transport == AgentTransport.OPENCODE:
+            report = _probe_opencode(server, workspace_path)
+        else:
+            report = AgentProbeReport(
+                transport=transport,
+                server_name=server.name,
+                ok=False,
+                error=f"unsupported transport '{transport}'",
+            )
     except (PreflightError, UpstreamCallError, ValueError, OSError) as exc:
-        return AgentProbeReport(
+        report = AgentProbeReport(
             transport=transport,
             server_name=server.name,
             ok=False,
             error=_redact(server, exc),
         )
     except AgentTransportProbeError as exc:
-        return AgentProbeReport(
+        report = AgentProbeReport(
             transport=transport,
             server_name=server.name,
             ok=False,
             error=_redact(server, exc),
         )
-    return AgentProbeReport(
-        transport=transport,
-        server_name=server.name,
-        ok=False,
-        error=f"unsupported transport '{transport}'",
-    )
+    return report
 
 
-def _probe_claude(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:
+def _probe_claude(
+    server: UpstreamMcpServer,
+    workspace_path: Path | None,
+    *,
+    transport: AgentTransport,
+) -> AgentProbeReport:
     if server.transport == "stdio":
         return AgentProbeReport(
-            transport=AgentTransport.CLAUDE,
+            transport=transport,
             server_name=server.name,
             ok=True,
             note="skipped (stdio proxied by Claude CLI)",
@@ -164,7 +173,7 @@ def _probe_claude(server: UpstreamMcpServer, workspace_path: Path | None) -> Age
             f"Claude MCP config Ralph url='{entry.get('url')!r}' does not match server.url"
         )
     _http_handshake(server.url)
-    return AgentProbeReport(transport=AgentTransport.CLAUDE, server_name=server.name, ok=True)
+    return AgentProbeReport(transport=transport, server_name=server.name, ok=True)
 
 
 def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:

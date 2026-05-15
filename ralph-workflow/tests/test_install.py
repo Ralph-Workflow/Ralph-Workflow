@@ -5,6 +5,7 @@ from __future__ import annotations
 import builtins
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -187,6 +188,10 @@ def _repo_root() -> Path:
 
 
 def _build_wheel(repo_root: Path) -> Path:
+    wheels = sorted((repo_root / "dist").glob("ralph_workflow-*.whl"))
+    if wheels:
+        return wheels[-1]
+
     build = _run_subprocess(("uv", "run", "hatch", "build", "--target", "wheel"), cwd=repo_root)
     assert build.returncode == 0, build.stderr or build.stdout
     wheels = sorted((repo_root / "dist").glob("ralph_workflow-*.whl"))
@@ -206,21 +211,29 @@ def installed_wheel_python(
     built_wheel_path: Path,
 ) -> Path:
     """Create one installed virtualenv per test session for wheel bootstrapping tests."""
-    root = tmp_path_factory.mktemp("installed-wheel")
-    venv = root / "venv"
-    create_venv = _run_subprocess(
-        (sys.executable, "-m", "venv", str(venv)),
-        cwd=_repo_root(),
-    )
-    assert create_venv.returncode == 0, create_venv.stderr or create_venv.stdout
+    del tmp_path_factory
+    cache_root = _repo_root() / "tmp" / "installed-wheel-cache" / built_wheel_path.stem
+    launcher = cache_root / "bin" / "python"
+    if launcher.exists():
+        return launcher
 
-    python_bin = venv / "bin" / "python"
-    install = _run_subprocess(
-        (str(python_bin), "-m", "pip", "install", str(built_wheel_path)),
-        cwd=_repo_root(),
+    if cache_root.exists():
+        shutil.rmtree(cache_root)
+    site_packages = cache_root / "site-packages"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    site_packages.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(built_wheel_path) as wheel:
+        wheel.extractall(site_packages)
+
+    launcher.write_text(
+        "#!/usr/bin/env bash\n"
+        f'export PYTHONPATH="{site_packages}${{PYTHONPATH:+:$PYTHONPATH}}"\n'
+        f'exec "{sys.executable}" "$@"\n',
+        encoding="utf-8",
     )
-    assert install.returncode == 0, install.stderr or install.stdout
-    return python_bin
+    launcher.chmod(0o755)
+    return launcher
 
 
 @pytest.mark.subprocess_e2e

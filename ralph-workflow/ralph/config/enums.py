@@ -51,12 +51,14 @@ class AgentTransport(StrEnum):
 
     Attributes:
         CLAUDE: Claude Code compatible invocation/MCP transport.
+        CLAUDE_INTERACTIVE: Unattended interactive Claude Code transport.
         CODEX: Codex CLI compatible invocation/MCP transport.
         OPENCODE: OpenCode compatible invocation/MCP transport.
         GENERIC: No special transport support.
     """
 
     CLAUDE = "claude"
+    CLAUDE_INTERACTIVE = "claude_interactive"
     CODEX = "codex"
     OPENCODE = "opencode"
     GENERIC = "generic"

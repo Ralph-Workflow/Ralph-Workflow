@@ -2,7 +2,7 @@
 
 > **Ship reviewable AI coding runs without babysitting the terminal.**
 
-Ralph Workflow is a Python 3.12+ CLI for developers who want AI to handle multi-step coding work without constant supervision. You describe the task in `PROMPT.md`, point Ralph Workflow at the agent CLIs you already use, and let it run. When it finishes, you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
+Ralph Workflow is a Python 3.12+ CLI for developers who want AI to handle multi-step coding work without constant supervision. You describe the task in `PROMPT.md`, point Ralph Workflow at the agent CLIs you already use, and let it run. For Claude-based runs, Ralph Workflow now defaults to an unattended interactive Claude Code session. On Linux and macOS that interactive path runs inside a managed PTY so Claude behaves like a real terminal-attached session without requiring a human to keep the terminal open. When it finishes, you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
 
 ## What you get
 
@@ -10,6 +10,8 @@ Ralph Workflow is a Python 3.12+ CLI for developers who want AI to handle multi-
 - **Repo-native workflow files** instead of hidden product state
 - **Agent-reviewed output** instead of a long interactive transcript
 - **Flexible agent routing** across Claude Code, Codex CLI, OpenCode, and your own configured agents
+- **Interactive Claude Code sessions run unattended by default** — Ralph Workflow manages the session without requiring a human at the terminal
+- **PTY-backed interactive Claude on POSIX** — Linux and macOS get the real interactive Claude terminal path; Windows should use `claude-headless` or another headless transport
 - **A practical default workflow** you can use before you invent anything custom
 
 ## Install

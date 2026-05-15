@@ -43,6 +43,8 @@ from ralph.workspace.memory import MemoryWorkspace
 if TYPE_CHECKING:
     from pathlib import Path
 
+pytestmark = pytest.mark.subprocess_e2e
+
 # ---------------------------------------------------------------------------
 # Byte constants for in-memory artifacts — no external files needed
 # ---------------------------------------------------------------------------

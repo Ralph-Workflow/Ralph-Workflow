@@ -111,33 +111,33 @@ The most common parallelism hazard: production code calling `os.environ` directl
 
 **BEFORE — requires test isolation workaround:**
 ```python
-def test_cloud_disabled_by_default() -> None:
-    os.environ.pop("RALPH_CLOUD_MODE", None)   # mutates process-global state ❌
-    cfg = CloudConfig.from_env()
+def test_feature_disabled_by_default() -> None:
+    os.environ.pop("RALPH_FEATURE_ENABLED", None)   # mutates process-global state ❌
+    cfg = ServiceConfig.from_env()
     assert not cfg.enabled
 ```
 
 **AFTER — parallel-safe, no env mutation:**
 ```python
-def test_cloud_disabled_by_default() -> None:
-    cfg = CloudConfig.from_env_fn(lambda _key: None)
+def test_feature_disabled_by_default() -> None:
+    cfg = ServiceConfig.from_env_fn(lambda _key: None)
     assert not cfg.enabled
 
-def test_cloud_enabled_with_full_env() -> None:
-    env = {"RALPH_CLOUD_MODE": "true", "RALPH_CLOUD_API_URL": "https://x"}
-    cfg = CloudConfig.from_env_fn(env.get)
+def test_feature_enabled_with_env() -> None:
+    env = {"RALPH_FEATURE_ENABLED": "true", "RALPH_FEATURE_URL": "https://x"}
+    cfg = ServiceConfig.from_env_fn(env.get)
     assert cfg.enabled
 ```
 
 **Production pattern** — always provide both forms:
 ```python
 @classmethod
-def from_env_fn(cls, get: Callable[[str], str | None]) -> "CloudConfig":
+def from_env_fn(cls, get: Callable[[str], str | None]) -> "ServiceConfig":
     """Build config from an injected env-lookup function."""
     ...
 
 @classmethod
-def from_env(cls) -> "CloudConfig":
+def from_env(cls) -> "ServiceConfig":
     """Build config from the real process environment."""
     return cls.from_env_fn(os.environ.get)
 ```

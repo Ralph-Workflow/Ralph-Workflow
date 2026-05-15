@@ -23,6 +23,7 @@ from ralph.mcp.artifacts.format_docs import (
     materialize_format_doc,
     materialize_format_index,
 )
+from ralph.mcp.artifacts.smoke_test_result import normalize_smoke_test_result_content
 from ralph.mcp.tools.artifact import handle_submit_artifact
 from ralph.mcp.tools.coordination import InvalidParamsError
 
@@ -185,6 +186,7 @@ def test_bundled_examples_validate_through_real_normalizers(tmp_path: Path) -> N
     normalizers = {
         "commit_message": normalize_commit_message_content,
         "development_result": normalize_development_result_content,
+        "smoke_test_result": normalize_smoke_test_result_content,
     }
     passthrough_types = {
         "issues",
@@ -223,6 +225,14 @@ def test_format_doc_mentions_required_fields() -> None:
         "development_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
         "planning_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
         "review_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
+        "smoke_test_result": [
+            "status",
+            "summary",
+            "output_file",
+            "observed_working",
+            "observed_breaks",
+            "headless_guide_checks",
+        ],
     }
 
     for artifact_type, fields in required_fields.items():

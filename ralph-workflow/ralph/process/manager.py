@@ -35,6 +35,8 @@ from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.process.pty import PtyProcess, spawn_pty_process
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Sequence
 
@@ -132,6 +134,33 @@ if TYPE_CHECKING:
             start_new_session: bool,
         ) -> _AsyncProcessLike: ...
 
+    class _PtyProcessLike(Protocol):
+        pid: int
+        master_fd: int
+        slave_fd: int
+
+        @property
+        def returncode(self) -> int | None: ...
+
+        def poll(self) -> int | None: ...
+        def wait(self, timeout: float | None = None) -> int: ...
+        def terminate(self) -> None: ...
+        def kill(self) -> None: ...
+        def close(self) -> None: ...
+        def fileno(self) -> int: ...
+        def isatty(self) -> bool: ...
+
+    class _PtyProcessFactory(Protocol):
+        def __call__(
+            self,
+            command: Sequence[str],
+            *,
+            cwd: str | None,
+            env: dict[str, str] | None,
+            cols: int,
+            rows: int,
+        ) -> _PtyProcessLike: ...
+
 
 psutil: _PsutilModuleLike | None = None
 try:
@@ -187,6 +216,17 @@ async def _default_async_process_factory(  # noqa: PLR0913
         stderr=stderr,
         start_new_session=start_new_session,
     )
+
+
+def _default_pty_process_factory(
+    command: Sequence[str],
+    *,
+    cwd: str | None,
+    env: dict[str, str] | None,
+    cols: int,
+    rows: int,
+) -> PtyProcess:
+    return spawn_pty_process(command, cwd=cwd, env=env, cols=cols, rows=rows)
 
 
 class ProcessStatus(Enum):
@@ -380,6 +420,137 @@ class ManagedProcess:
                 self._proc.wait()
 
 
+class ManagedPtyProcess:
+    """Wraps a PTY-backed process and exposes the master terminal handle."""
+
+    def __init__(
+        self,
+        proc: _PtyProcessLike,
+        record: ProcessRecord,
+        manager: ProcessManager,
+    ) -> None:
+        self._proc = proc
+        self._record = record
+        self._manager = manager
+
+    @property
+    def record(self) -> ProcessRecord:
+        return self._record
+
+    @property
+    def pid(self) -> int:
+        return self._proc.pid
+
+    @property
+    def master_fd(self) -> int:
+        return self._proc.master_fd
+
+    @property
+    def slave_fd(self) -> int:
+        return self._proc.slave_fd
+
+    @property
+    def returncode(self) -> int | None:
+        return self._proc.returncode
+
+    def poll(self) -> int | None:
+        rc = self._proc.poll()
+        if rc is not None and self._record.status not in _TERMINAL_STATUSES:
+            self._manager._mark_exited(self._record, rc)
+        return rc
+
+    def wait(self, timeout: float | None = None) -> int:
+        try:
+            rc = self._proc.wait(timeout=timeout)
+        except TimeoutError:
+            raise
+        if self._record.status not in _TERMINAL_STATUSES:
+            self._manager._mark_exited(self._record, rc)
+        return rc
+
+    def fileno(self) -> int:
+        return self._proc.fileno()
+
+    def isatty(self) -> bool:
+        return self._proc.isatty()
+
+    def terminate(self, grace_period_s: float | None = None) -> None:
+        gp = (
+            grace_period_s
+            if grace_period_s is not None
+            else self._manager.policy.default_grace_period_s
+        )
+        self._manager._escalate_termination_pty(self._record, self._proc, gp)
+
+    def kill(self) -> None:
+        self._manager._escalate_termination_pty(self._record, self._proc, 0.0)
+
+    def has_live_descendants(self) -> bool:
+        psutil_mod = self._manager._psutil
+        if psutil_mod is None:
+            return False
+        try:
+            root = psutil_mod.Process(self.pid)
+            descendants = root.children(recursive=True)
+        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+            return False
+
+        for child in descendants:
+            try:
+                if child.is_running() and child.status() != "zombie":
+                    return True
+            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                continue
+        return False
+
+    def descendant_snapshot(self) -> tuple[int, float | None]:
+        psutil_mod = self._manager._psutil
+        if psutil_mod is None:
+            return (0, None)
+        try:
+            root = psutil_mod.Process(self.pid)
+            descendants = root.children(recursive=True)
+        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+            return (0, None)
+
+        now = _time.monotonic()
+        count = 0
+        oldest_age: float | None = None
+        for child in descendants:
+            try:
+                if not (child.is_running() and child.status() != "zombie"):
+                    continue
+                count += 1
+                try:
+                    create_time = child.create_time()
+                    age = now - create_time
+                    if oldest_age is None or age > oldest_age:
+                        oldest_age = age
+                except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                    pass
+            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                continue
+        return (count, oldest_age)
+
+    def close(self) -> None:
+        self._proc.close()
+
+    def __enter__(self) -> ManagedPtyProcess:
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        del exc_val, exc_tb
+        if exc_type is KeyboardInterrupt:
+            self.close()
+            return
+        if self._record.status not in _TERMINAL_STATUSES:
+            self.terminate(grace_period_s=2.0)
+        self.close()
+        if self._record.status not in _TERMINAL_STATUSES:
+            with contextlib.suppress(Exception):
+                self._proc.wait()
+
+
 class ManagedAsyncProcess:
     """Wraps asyncio.subprocess.Process and integrates with ProcessManager lifecycle tracking."""
 
@@ -472,16 +643,19 @@ class ProcessManager:
         policy: ProcessManagerPolicy | None = None,
         sync_process_factory: _SyncProcessFactory | None = None,
         async_process_factory: _AsyncProcessFactory | None = None,
+        pty_process_factory: _PtyProcessFactory | None = None,
         psutil: _PsutilModuleLike | None = None,
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
         self._records: dict[int, ProcessRecord] = {}
         self._terminal_records: OrderedDict[int, ProcessRecord] = OrderedDict()
         self._sync_procs: dict[int, _SyncProcessLike] = {}
+        self._pty_procs: dict[int, _PtyProcessLike] = {}
         self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
         self._sync_process_factory = sync_process_factory or _default_sync_process_factory
         self._async_process_factory = async_process_factory or _default_async_process_factory
+        self._pty_process_factory = pty_process_factory or _default_pty_process_factory
         self._psutil = psutil
         if self.policy.log_events:
             self.register_listener(_loguru_event_listener)
@@ -560,6 +734,64 @@ class ProcessManager:
         self._sync_procs[pid] = proc
         self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.RUNNING)
         return ManagedProcess(proc, record, self)
+
+    def spawn_pty(  # noqa: PLR0913
+        self,
+        command: Sequence[str],
+        *,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        cols: int = 80,
+        rows: int = 24,
+        label: str | None = None,
+    ) -> ManagedPtyProcess:
+        """Spawn a PTY-backed child process and begin tracking it."""
+        cmd = tuple(command)
+        now = datetime.now(tz=UTC)
+        try:
+            proc = self._pty_process_factory(
+                cmd,
+                cwd=cwd,
+                env=env,
+                cols=cols,
+                rows=rows,
+            )
+        except OSError as exc:
+            record = ProcessRecord(
+                pid=-1,
+                pgid=-1,
+                command=cmd,
+                cwd=cwd,
+                started_at=now,
+                status=ProcessStatus.FAILED,
+                ended_at=datetime.now(tz=UTC),
+                cause="failed",
+                failure_message=str(exc),
+                label=label,
+            )
+            self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
+            raise
+
+        pid = proc.pid
+        try:
+            pgid = os.getpgid(pid) if hasattr(os, "getpgid") else pid
+        except (ProcessLookupError, OSError):
+            pgid = pid
+
+        record = ProcessRecord(
+            pid=pid,
+            pgid=pgid,
+            command=cmd,
+            cwd=cwd,
+            started_at=now,
+            status=ProcessStatus.RUNNING,
+            label=label,
+        )
+        self._terminal_records.pop(pid, None)
+        self._records[pid] = record
+        self._pty_procs[pid] = proc
+        self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.RUNNING)
+        return ManagedPtyProcess(proc, record, self)
 
     async def spawn_async(  # noqa: PLR0913
         self,
@@ -662,7 +894,7 @@ class ProcessManager:
 
     def terminate(
         self,
-        handle: ManagedProcess | ManagedAsyncProcess,
+        handle: ManagedProcess | ManagedPtyProcess | ManagedAsyncProcess,
         *,
         grace_period_s: float | None = None,
     ) -> None:
@@ -670,6 +902,9 @@ class ProcessManager:
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
         if isinstance(handle, ManagedProcess):
             self._escalate_termination_sync(handle.record, handle._proc, gp)
+            return
+        if isinstance(handle, ManagedPtyProcess):
+            self._escalate_termination_pty(handle.record, handle._proc, gp)
 
     def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
         """Terminate all active processes."""
@@ -679,8 +914,12 @@ class ProcessManager:
                 proc = self._sync_procs.get(pid)
                 if proc is not None:
                     self._escalate_termination_sync(record, proc, gp)
-                else:
-                    self._terminate_by_pid(record, gp)
+                    continue
+                pty_proc = self._pty_procs.get(pid)
+                if pty_proc is not None:
+                    self._escalate_termination_pty(record, pty_proc, gp)
+                    continue
+                self._terminate_by_pid(record, gp)
 
     def shutdown_all_for_label(
         self, label_prefix: str, *, grace_period_s: float | None = None
@@ -696,13 +935,17 @@ class ProcessManager:
                 proc = self._sync_procs.get(pid)
                 if proc is not None:
                     self._escalate_termination_sync(record, proc, gp)
-                else:
-                    self._terminate_by_pid(record, gp)
+                    continue
+                pty_proc = self._pty_procs.get(pid)
+                if pty_proc is not None:
+                    self._escalate_termination_pty(record, pty_proc, gp)
+                    continue
+                self._terminate_by_pid(record, gp)
 
     def _terminate_root_only_sync(
         self,
         record: ProcessRecord,
-        proc: _SyncProcessLike,
+        proc: _SyncProcessLike | _PtyProcessLike,
         grace_period_s: float,
     ) -> None:
         with contextlib.suppress(ProcessLookupError):
@@ -776,7 +1019,7 @@ class ProcessManager:
     def _escalate_termination_sync(
         self,
         record: ProcessRecord,
-        proc: _SyncProcessLike,
+        proc: _SyncProcessLike | _PtyProcessLike,
         grace_period_s: float,
     ) -> None:
         """Escalate termination for a ManagedProcess using psutil tree-walk."""
@@ -811,6 +1054,20 @@ class ProcessManager:
         if still_alive:
             logger.error("Process {} still alive after kill", record.pid)
             raise ProcessTerminationError(record.pid, record.pgid)
+
+    def _escalate_termination_pty(
+        self,
+        record: ProcessRecord,
+        proc: _PtyProcessLike,
+        grace_period_s: float,
+    ) -> None:
+        if record.status in _TERMINAL_STATUSES:
+            return
+        try:
+            self._escalate_termination_sync(record, proc, grace_period_s)
+        finally:
+            with contextlib.suppress(Exception):
+                proc.close()
 
     async def _escalate_termination_async(
         self,
@@ -875,6 +1132,7 @@ class ProcessManager:
         record.ended_at = datetime.now(tz=UTC)
         record.cause = "exited"
         self._sync_procs.pop(record.pid, None)
+        self._pty_procs.pop(record.pid, None)
         self._record_terminal_state(record)
         self._emit(record, prev, ProcessStatus.EXITED)
 
@@ -887,6 +1145,7 @@ class ProcessManager:
         record.ended_at = datetime.now(tz=UTC)
         record.cause = "killed"
         self._sync_procs.pop(record.pid, None)
+        self._pty_procs.pop(record.pid, None)
         self._record_terminal_state(record)
         self._emit(record, prev, ProcessStatus.KILLED)
 
@@ -976,6 +1235,7 @@ def process_phase_scope(phase_name: str) -> Generator[None, None, None]:
 __all__ = [
     "ManagedAsyncProcess",
     "ManagedProcess",
+    "ManagedPtyProcess",
     "ProcessEvent",
     "ProcessManager",
     "ProcessManagerPolicy",

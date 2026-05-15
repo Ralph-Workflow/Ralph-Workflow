@@ -12,6 +12,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.agents.parsers.claude_interactive import ClaudeInteractiveTranscriptParser
 from ralph.config.enums import AgentTransport
 from ralph.process.child_liveness import classify_child_snapshot
 
@@ -119,6 +120,45 @@ class ClaudeExecutionStrategy(GenericExecutionStrategy):
 
         obj = cast("dict[str, object]", parsed)
         return _classify_claude_json_object(obj, line)
+
+
+class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
+    """Interactive Claude session strategy.
+
+    Uses a VT-aware transcript parser before falling back to the headless Claude
+    classifier so TUI repaint noise does not downgrade meaningful tool/lifecycle
+    lines into generic output.
+    """
+
+    def __init__(self) -> None:
+        self._transcript_parser = ClaudeInteractiveTranscriptParser()
+
+    def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+        events = self._transcript_parser.feed(line)
+        if events:
+            event = events[-1]
+            if event.kind == "tool_use":
+                return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=event.text)
+            if event.kind == "lifecycle":
+                return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=event.text)
+            if event.kind == "session":
+                return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=event.text)
+            return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=event.text)
+        return super().classify_activity_line(line)
+
+    def supports_session_continuation(self) -> bool:
+        return True
+
+    def classify_exit(
+        self,
+        handle: _LiveDescendantHandle,
+        completion_signals: CompletionSignals,
+        liveness_probe: LivenessProbe | None = None,
+    ) -> AgentExecutionState:
+        del handle, liveness_probe
+        if _check_signals_terminal(completion_signals):
+            return AgentExecutionState.TERMINAL_COMPLETE
+        return AgentExecutionState.RESUMABLE_CONTINUE
 
 
 class OpenCodeExecutionStrategy:
@@ -234,6 +274,8 @@ def strategy_for_transport(
         return OpenCodeExecutionStrategy(label_scope=label_scope, registry=registry)
     if transport == AgentTransport.CLAUDE:
         return ClaudeExecutionStrategy()
+    if transport == AgentTransport.CLAUDE_INTERACTIVE:
+        return ClaudeInteractiveExecutionStrategy()
     return GenericExecutionStrategy()
 
 
@@ -503,6 +545,7 @@ def _claude_activity_kind_for_content_block(obj: dict[str, object]) -> AgentActi
 __all__ = [
     "AgentExecutionState",
     "ClaudeExecutionStrategy",
+    "ClaudeInteractiveExecutionStrategy",
     "GenericExecutionStrategy",
     "OpenCodeExecutionStrategy",
     "_route_opencode_line_to_registry",

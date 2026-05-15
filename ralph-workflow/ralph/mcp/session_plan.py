@@ -67,7 +67,7 @@ def resolve_model_identity(
     """
     if transport is None:
         return UNKNOWN_IDENTITY
-    if transport == AgentTransport.CLAUDE:
+    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         return MultimodalModelIdentity(
             provider="claude",
             model_id=model_flag,
@@ -142,7 +142,7 @@ def build_session_mcp_plan(  # noqa: PLR0913
 
     server_env: dict[str, str] = {}
     upstreams = mcp_toml_as_upstreams(workspace_path)
-    if transport == AgentTransport.CLAUDE:
+    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         upstreams = merge_mcp_toml_into_upstreams(
             load_existing_claude_upstream_servers(workspace_path),
             upstreams,

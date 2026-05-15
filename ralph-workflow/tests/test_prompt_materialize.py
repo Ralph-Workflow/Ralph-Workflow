@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 from unittest.mock import patch
 
 import pytest
@@ -49,6 +49,10 @@ class _ArtifactWorkspace:
 
     def absolute_path(self, path: str) -> str:
         return str(self.root / path)
+
+
+class _TextContent(Protocol):
+    text: str
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (
@@ -447,7 +451,8 @@ def test_planning_loopback_prompt_and_plan_edit_mcp_contract_stay_consistent(
     assert "ralph_finalize_plan" in rendered
 
     draft_result = handle_get_plan_draft(session, artifact_workspace, {})
-    draft_payload = json.loads(draft_result.content[0].text)
+    draft_text = cast("_TextContent", draft_result.content[0]).text
+    draft_payload = json.loads(draft_text)
     assert draft_payload["source"] == "finalized_plan"
 
     revised_steps = [

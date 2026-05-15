@@ -68,17 +68,6 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 |-----|---------|-------------|
 | `checkpoint_enabled` | `true` | Enable checkpoint/resume support |
 
-### `[cloud]`
-
-Optional cloud reporting integration.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `false` | Enable cloud reporting |
-| `api_url` | — | Base URL for the cloud API |
-| `api_key` | `""` | API key (prefer `RALPH_CLOUD_API_KEY`) |
-| `timeout_secs` | `30` | Request timeout |
-
 ## Agent chains and drains
 
 Most operator customization happens in `[agent_chains]` and `[agent_drains]` inside `ralph-workflow.toml`.
@@ -139,15 +128,14 @@ Omitting this block inherits the bundled defaults. To disable proof enforcement 
 
 The main config also supports deeper transport-specific and workflow-authoring sections such as:
 
-- `[ccs]`
-- `[ccs_aliases]`
-- `[agents.*]`
+- `[ccs]` / `[ccs_aliases]` for explicitly-headless Claude Code Switch defaults
+- `[agents.*]` for agent defaults, including `transport = 'claude_interactive'` on the built-in `claude` path
 - loop counters and budget counters
 - review-role bypass routes
 - recovery policy tuning
 - parallel fan-out controls
 
-Those sections are useful when you are customizing Ralph Workflow deeply, but many operators never need to touch them.
+Those sections are useful when you are customizing Ralph Workflow deeply, but many operators never need to touch them. The default `claude` agent runs interactive Claude Code; use CCS only when you explicitly want the headless path.
 
 ## When to read further
 

@@ -70,8 +70,6 @@ suppress_warnings = [
     # Suppress inventory fetch failures — docs.python.org may be unreachable in offline/CI environments.
     # ref.python already suppresses unresolved xrefs so there is no user-visible regression.
     "intersphinx",
-    # Pre-existing upstream issue: developer-internals.md references 'agents' which doesn't exist
-    "toc.not_readable",
     "myst.xref_missing",
 ]
 

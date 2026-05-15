@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import shutil
+import signal
 import sys
 import threading
 import time
@@ -20,7 +21,6 @@ import uuid
 from collections import deque
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from importlib import import_module
 from inspect import signature
 from pathlib import Path
@@ -31,7 +31,6 @@ from loguru import logger
 from rich.text import Text
 
 from ralph.agents.chain import ChainManager
-from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -42,7 +41,6 @@ from ralph.agents.invoke import (
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
-from ralph.cloud.client import CloudClient, CloudClientConfig, ProgressEventType, ProgressUpdate
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.display import context as display_context_module
 from ralph.display.activity_router import map_parser_type_to_kind
@@ -699,9 +697,7 @@ def _execute_effect_with_optional_display(  # noqa: PLR0911, PLR0913
         "policy_bundle": policy_bundle,
     }
     supported_kwargs: dict[str, object] = {
-        name: value
-        for name, value in optional_kwargs.items()
-        if name in params or accepts_kwargs
+        name: value for name, value in optional_kwargs.items() if name in params or accepts_kwargs
     }
     if accepts_kwargs:
         return kwargs_execute_effect(
@@ -894,18 +890,42 @@ def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -
         process_manager=process_manager,
         stop_connectivity=monitor_stop,
     )
+    interrupt_done = threading.Event()
+    interrupt_error: list[BaseException] = []
 
     def _force_exit() -> None:
-        controller.force_exit()
+        kill_method = os.killpg if hasattr(os, "killpg") else os.kill
+        try:
+            active_records = list(process_manager.list_active())
+        except Exception:
+            active_records = []
+        for record in active_records:
+            with suppress(ProcessLookupError, PermissionError):
+                if kill_method is os.killpg:
+                    kill_method(record.pgid, signal.SIGKILL)
+                else:
+                    kill_method(record.pid, signal.SIGKILL)
+        os._exit(130)
+
+    def _begin_interrupt() -> None:
+        try:
+            controller.begin_interrupt(grace_period_s=process_manager.policy.default_grace_period_s)
+        except BaseException as exc:
+            interrupt_error.append(exc)
+        finally:
+            interrupt_done.set()
 
     restore_force_kill = install_force_kill_handler(_force_exit)
+    interrupt_thread = threading.Thread(target=_begin_interrupt, daemon=True)
+    interrupt_thread.start()
     try:
-        controller.begin_interrupt(grace_period_s=process_manager.policy.default_grace_period_s)
-    except Exception:
-        logger.warning("Interrupt controller raised during KeyboardInterrupt")
+        while not interrupt_done.wait(timeout=0.05):
+            continue
     finally:
         with suppress(Exception):
             restore_force_kill()
+    if interrupt_error:
+        logger.warning("Interrupt controller raised during KeyboardInterrupt")
 
 
 def _run_pipeline_step(  # noqa: PLR0912,PLR0913
@@ -2621,7 +2641,6 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
         return False
 
 
-
 def _should_resume_existing_planning_phase_name(
     *,
     phase: str,
@@ -3341,9 +3360,8 @@ def _dispatch_waiting_event(
     subscriber: PipelineSubscriber | None,
     unit_id: str,
     agent_name: str,
-    cloud_progress: Callable[[object], None] | None,
 ) -> None:
-    """Dispatch a WaitingStatusEvent to the subscriber and optionally to cloud.
+    """Dispatch a WaitingStatusEvent to the subscriber.
 
     Exposed as a free function so tests can exercise it without a full pipeline.
     """
@@ -3352,15 +3370,6 @@ def _dispatch_waiting_event(
             subscriber.record_waiting_status(event, unit_id=unit_id, agent_name=agent_name)
         except Exception:
             logger.debug("_dispatch_waiting_event.record_waiting_status failed", exc_info=True)
-
-    if cloud_progress is None or not isinstance(event, WaitingStatusEvent):
-        return
-    if event.kind not in (WaitingStatusKind.SUSPECTED_FROZEN, WaitingStatusKind.HARD_STOP):
-        return
-    try:
-        cloud_progress(event)
-    except Exception:
-        logger.debug("_dispatch_waiting_event.cloud_progress failed", exc_info=True)
 
 
 def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
@@ -3404,50 +3413,13 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
         )
 
     _display_subscriber = _subscriber_for_display(display)
-    cloud_progress_fn: Callable[[object], None] | None = None
-    if config.cloud.enabled and config.cloud.api_url and config.cloud.api_key:
-        _cloud_cfg = CloudClientConfig(
-            enabled=True,
-            api_url=str(config.cloud.api_url),
-            api_key=config.cloud.api_key,
-            timeout_secs=float(config.cloud.timeout_secs),
-        )
-        _cloud_run_id = _display_subscriber.run_id if _display_subscriber is not None else "unknown"
 
-        def _report_cloud_progress(evt: object) -> None:
-            if not isinstance(evt, WaitingStatusEvent):
-                return
-            event_type = (
-                ProgressEventType.CHILD_WAITING_SUSPECTED_FROZEN
-                if evt.kind == WaitingStatusKind.SUSPECTED_FROZEN
-                else ProgressEventType.CHILD_WAITING_HARD_STOP
-            )
-            update = ProgressUpdate(
-                timestamp=datetime.now(UTC),
-                phase=str(effect.phase),
-                message=f"child waiting {evt.kind.value}",
-                event_type=event_type,
-                metadata=dict(
-                    agent_name=effect.agent_name,
-                    kind=evt.kind.value,
-                    cumulative_seconds=evt.cumulative_seconds,
-                    current_run_seconds=evt.current_run_seconds,
-                    ceiling_seconds=evt.ceiling_seconds,
-                    **evt.diagnostic,
-                ),
-            )
-            with CloudClient(_cloud_cfg) as _cl:
-                _cl.report_progress(_cloud_run_id, update)
-
-        cloud_progress_fn = _report_cloud_progress
-
-    def _waiting_listener(event: WaitingStatusEvent) -> None:
+    def _waiting_listener(event: object) -> None:
         _dispatch_waiting_event(
             event,
             subscriber=_display_subscriber,
             unit_id=effect.agent_name,
             agent_name=effect.agent_name,
-            cloud_progress=cloud_progress_fn,
         )
 
     attempt_prompt_file = effect.prompt_file
@@ -3560,6 +3532,7 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                             str(agent_config.json_parser),
                             effect.agent_name,
                             display,
+                            transport=agent_config.transport,
                             display_context=resolved_display_context,
                             raw_output_sink=raw_output,
                             rendered_output_sink=rendered_output,
@@ -3716,7 +3689,7 @@ def _retryable_agent_failure_reason(
         return "an inactivity timeout"
 
     if type(exc).__name__ == "OpenCodeResumableExitError":
-        return "OpenCode exited without submitting a required completion artifact"
+        return "agent session exited without required completion evidence"
 
     raw_details = "\n".join(_recovery_error_parts(exc))
     if any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS):
@@ -3998,12 +3971,18 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
     agent_name: str,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     *,
+    transport: AgentTransport | None = None,
     display_context: DisplayContext | None = None,
     raw_output_sink: deque[str] | list[str] | None = None,
     rendered_output_sink: deque[str] | list[str] | None = None,
     session_id_sink: Callable[[str], None] | None = None,
 ) -> None:
-    parser = _resolve_parser(parser_type)
+    parser_key = (
+        "claude_interactive"
+        if transport == AgentTransport.CLAUDE_INTERACTIVE
+        else parser_type
+    )
+    parser = _resolve_parser(parser_key)
 
     def _iter_lines() -> Iterator[str]:
         for line in lines:

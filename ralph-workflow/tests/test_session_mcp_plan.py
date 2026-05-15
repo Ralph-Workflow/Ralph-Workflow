@@ -9,7 +9,7 @@ import ralph.api.opencode as opencode_module
 import ralph.mcp.session_plan as session_plan_module
 from ralph.config.enums import AgentTransport
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
-from ralph.mcp.session_plan import build_session_mcp_plan
+from ralph.mcp.session_plan import build_session_mcp_plan, resolve_model_identity
 from ralph.mcp.upstream.config import UPSTREAM_MCP_CONFIG_ENV, load_upstream_mcp_servers
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
@@ -66,6 +66,14 @@ def _default_agents_policy(_workspace_path: Path) -> AgentsPolicy:
     return _DEFAULT_AGENTS_POLICY
 
 
+def test_resolve_model_identity_claude_interactive() -> None:
+    identity = resolve_model_identity(AgentTransport.CLAUDE_INTERACTIVE, "--model sonnet")
+
+    assert identity.provider == "claude"
+    assert identity.model_id == "--model sonnet"
+    assert identity.transport == AgentTransport.CLAUDE_INTERACTIVE.value
+
+
 def test_session_mcp_plan_derives_web_and_upstream_capabilities_from_live_config(
     isolated_home: Path,
     tmp_path: Path,
@@ -103,6 +111,37 @@ enabled = true
     assert "upstream.tool_use" in plan.capabilities
     assert plan.server_env is not None
 
+    upstreams = load_upstream_mcp_servers(plan.server_env[UPSTREAM_MCP_CONFIG_ENV])
+    assert {server.name for server in upstreams} == {"github", "docs"}
+
+
+def test_build_session_mcp_plan_claude_interactive_includes_upstreams(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    (isolated_home / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"github": {"command": "npx", "args": ["-y", "github-mcp"]}}}),
+        encoding="utf-8",
+    )
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "mcp.toml").write_text(
+        """
+[mcp_servers.docs]
+transport = "http"
+url = "http://docs.example/mcp"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+        drain="planning",
+        workspace_path=tmp_path,
+        agents_policy=_default_agents_policy(tmp_path),
+    )
+
+    assert plan.server_env is not None
     upstreams = load_upstream_mcp_servers(plan.server_env[UPSTREAM_MCP_CONFIG_ENV])
     assert {server.name for server in upstreams} == {"github", "docs"}
 
