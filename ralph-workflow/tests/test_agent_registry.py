@@ -90,7 +90,7 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert codex is not None
     assert opencode is not None
     assert claude.cmd == "claude"
-    assert claude.yolo_flag == "--permission-mode auto"
+    assert claude.yolo_flag == "--dangerously-skip-permissions"
     assert claude.transport == AgentTransport.CLAUDE_INTERACTIVE
     claude_headless = registry.get("claude-headless")
     assert claude_headless is not None

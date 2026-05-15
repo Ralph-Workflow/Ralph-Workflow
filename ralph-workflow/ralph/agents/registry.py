@@ -23,10 +23,13 @@ if TYPE_CHECKING:
 
 def _builtin_agents() -> dict[str, AgentConfig]:
     return {
+        # Interactive Claude runs inside Ralph Workflow's MCP boundary, so we
+        # bypass Claude's own approval prompts here and rely on the Ralph
+        # Workflow MCP/tool allowlist to remain the permission control layer.
         "claude": AgentConfig(
             cmd="claude",
             output_flag=None,
-            yolo_flag="--permission-mode auto",
+            yolo_flag="--dangerously-skip-permissions",
             verbose_flag="--verbose",
             can_commit=True,
             json_parser=JsonParserType.CLAUDE,
