@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Mistlight" }]
 keywords = ["ai", "agent", "orchestration", "pipeline", "multi-agent"]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: GNU Affero General Public License v3",
   "Programming Language :: Python :: 3",
