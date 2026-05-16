@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-16T06:38:20.533040",
+  "timestamp": "2026-05-16T09:00:27.271290",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -71,7 +71,7 @@
   },
   "posting": {
     "returncode": 0,
-    "stdout": "{\n  \"timestamp\": \"2026-05-16T06:38:26.936894\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-16_usecase_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"d715545922a85e15ea7220c1c1413b69d798dec79a74f5fd5e94d35b3ac29e09\",\n      \"experiment_id\": \"2026-05-16-usecase\"\n    }\n  ]\n}",
+    "stdout": "{\n  \"timestamp\": \"2026-05-16T09:00:34.311369\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-16_usecase_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"d715545922a85e15ea7220c1c1413b69d798dec79a74f5fd5e94d35b3ac29e09\",\n      \"experiment_id\": \"2026-05-16-usecase\"\n    }\n  ]\n}",
     "stderr": ""
   }
 }
