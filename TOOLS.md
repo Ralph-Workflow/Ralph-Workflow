@@ -48,6 +48,8 @@ Add whatever helps you do your job. This is your cheat sheet.
 
 - **Minimax API (OpenCode):** `sk-cp-cZhzgD75zcZiuQ42wsiiDM_EzFxbuKUV94M_vvYhE88ohNKfe9udkXXIrqBv6BNxRzasB_vqHBa6Ubtd6JOr4Y7rnbPjwvLC2yG5QapmSIcsudIyuEipodY`
   - Used for: AI model access via OpenClaw
+- **Browserless:** `2UWbL11RUlO4quE8238557491eab7d21b44da3db127e3d5e4`
+  - Used for: headless browser automation
 
 ## Social Accounts
 
