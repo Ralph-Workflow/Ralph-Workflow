@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import json as _json
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -14,7 +15,11 @@ from git import Repo as GitRepo
 from rich.console import Console
 from rich.text import Text
 
-from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
+from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
+    AgentInvocationError,
+    InactivityTimeoutOpts,
+)
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
 from ralph.config.enums import (
     AgentTransport,
@@ -30,6 +35,12 @@ from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.validation import UpstreamValidationError
 from ralph.phases import HANDLERS, PhaseContext, handle_phase
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.cycle_baseline import (
+    write_cycle_baseline,
+)
+from ralph.pipeline.cycle_baseline import (
+    write_cycle_baseline as _real_write,
+)
 from ralph.pipeline.effects import (
     CommitEffect,
     EarlySkipCommitEffect,
@@ -947,8 +958,8 @@ def test_build_agent_recovery_plan_uses_retry_prompt_when_same_session_has_conte
     exc = AgentInactivityTimeoutError(
         "planner",
         30.0,
-        parsed_output=["analysis failed", "need more detail"],
-        session_resume_safe=True,
+        ["analysis failed", "need more detail"],
+        InactivityTimeoutOpts(session_resume_safe=True),
     )
 
     plan = runner_module._build_agent_recovery_plan(
@@ -986,8 +997,8 @@ def test_build_agent_recovery_plan_falls_back_to_original_prompt_when_context_mi
     exc = AgentInactivityTimeoutError(
         "planner",
         30.0,
-        parsed_output=None,
-        session_resume_safe=True,
+        None,
+        InactivityTimeoutOpts(session_resume_safe=True),
     )
     monkeypatch.setattr(runner_module, "_recovery_error_parts", lambda _exc: [])
 
@@ -3694,9 +3705,6 @@ class TestStartCommitCapture:
     def test_run_pipeline_writes_start_commit_on_first_invocation(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
     ) -> None:
-        from ralph.pipeline.cycle_baseline import (
-            write_cycle_baseline as _real_write,
-        )
 
         written: list[tuple[str, str]] = []
 
@@ -3736,9 +3744,6 @@ class TestStartCommitCapture:
         # Pre-write a sentinel SHA so run() sees the file as already present.
         # We make a second commit so the current HEAD differs from the sentinel,
         # ensuring a buggy "always-write" implementation would be caught.
-        from ralph.pipeline.cycle_baseline import (
-            write_cycle_baseline as _real_write,
-        )
 
         with GitRepo(tmp_git_repo) as repo:
             sentinel_sha = repo.head.commit.hexsha
@@ -4019,7 +4024,6 @@ class TestCycleBaselineLifecycle:
     def test_run_clears_baseline_at_teardown_on_success(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
     ) -> None:
-        from ralph.pipeline.cycle_baseline import write_cycle_baseline
 
         with GitRepo(tmp_git_repo) as _r:
             _head_sha = _r.head.commit.hexsha
@@ -4051,7 +4055,6 @@ class TestCycleBaselineLifecycle:
     def test_run_clears_baseline_at_teardown_on_failure(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
     ) -> None:
-        from ralph.pipeline.cycle_baseline import write_cycle_baseline
 
         with GitRepo(tmp_git_repo) as _r:
             _head_sha = _r.head.commit.hexsha
@@ -4089,7 +4092,6 @@ class TestCycleBaselineLifecycle:
     def test_run_pipeline_step_clears_baseline_after_development_commit_success(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
     ) -> None:
-        from ralph.pipeline.cycle_baseline import write_cycle_baseline
 
         with GitRepo(tmp_git_repo) as _r:
             _head_sha = _r.head.commit.hexsha
@@ -4746,7 +4748,6 @@ def test_handle_inline_effect_propagates_plan_handoff_error_outside_recovery(
 
 def _write_media_session(tmp_path: Path, phase: str, artifacts: list[dict[str, object]]) -> None:
     """Write a media session index file into the workspace as the MCP server would."""
-    import json as _json
 
     normalized = phase.replace("/", "_").replace(" ", "_")
     path = tmp_path / ".agent" / "tmp" / f"{normalized}_media_session.json"

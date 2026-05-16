@@ -17,6 +17,7 @@ from ralph.policy.models import (
 )
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.controller import (
+    FailureContext,
     RecoveryController,
     RecoveryControllerOptions,
     compute_backoff_ms,
@@ -100,8 +101,7 @@ def test_retry_delay_ms_zero_without_policy_bundle() -> None:
     _, _, evt = controller.handle(
         state,
         _AgentTimeoutError("agent idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Without policy_bundle, retry_delay_ms is 0
@@ -116,8 +116,7 @@ def test_environmental_failure_has_zero_delay() -> None:
     _, _, evt = controller.handle(
         state,
         ConnectionError("connection reset"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Environmental failures don't count against budget and have no delay
@@ -136,8 +135,12 @@ def test_reset_backoff_clears_counter() -> None:
     _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
     # Two failures to build up backoff (but no policy_bundle so delay stays 0)
-    controller.handle(state, _AgentTimeoutError("idle 1"), phase="development", agent="claude")
-    controller.handle(state, _AgentTimeoutError("idle 2"), phase="development", agent="claude")
+    controller.handle(
+        state, _AgentTimeoutError("idle 1"), FailureContext(phase="development", agent="claude")
+    )
+    controller.handle(
+        state, _AgentTimeoutError("idle 2"), FailureContext(phase="development", agent="claude")
+    )
 
     # Reset backoff (would be called on successful agent invocation)
     controller.reset_backoff("development", "claude")
@@ -158,15 +161,21 @@ def test_backoff_attempts_tracked_per_agent() -> None:
 
     # Fail with claude twice
     controller.handle(
-        state, _AgentTimeoutError("claude idle 1"), phase="development", agent="claude"
+        state,
+        _AgentTimeoutError("claude idle 1"),
+        FailureContext(phase="development", agent="claude"),
     )
     controller.handle(
-        state, _AgentTimeoutError("claude idle 2"), phase="development", agent="claude"
+        state,
+        _AgentTimeoutError("claude idle 2"),
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Fail with opencode once
     controller.handle(
-        state, _AgentTimeoutError("opencode idle"), phase="development", agent="opencode"
+        state,
+        _AgentTimeoutError("opencode idle"),
+        FailureContext(phase="development", agent="opencode"),
     )
 
     # Verify backoff attempts
@@ -191,8 +200,7 @@ def test_backoff_resets_on_fallover() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Should have fallen over to opencode
@@ -223,8 +231,7 @@ def test_retry_delay_ms_from_policy_bundle() -> None:
     _, _, evt = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # retry_delay_ms should be 500 (base delay for first attempt)
@@ -248,8 +255,7 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
     _, _, evt1 = controller.handle(
         state,
         _AgentTimeoutError("idle 1"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
     assert evt1.retry_delay_ms == 500
 
@@ -257,8 +263,7 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
     _, _, evt2 = controller.handle(
         state,
         _AgentTimeoutError("idle 2"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
     assert evt2.retry_delay_ms == 1000
 
@@ -266,8 +271,7 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
     _, _, evt3 = controller.handle(
         state,
         _AgentTimeoutError("idle 3"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
     assert evt3.retry_delay_ms == 2000
 
@@ -290,8 +294,7 @@ def test_retry_delay_ms_caps_at_max_backoff() -> None:
         controller.handle(
             state,
             _AgentTimeoutError(f"idle {i}"),
-            phase="development",
-            agent="claude",
+            FailureContext(phase="development", agent="claude"),
         )
 
     # The backoff_attempts key for this agent should have count=10
@@ -315,8 +318,12 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
     _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
     # Two failures to build up backoff
-    controller.handle(state, _AgentTimeoutError("idle 1"), phase="development", agent="claude")
-    controller.handle(state, _AgentTimeoutError("idle 2"), phase="development", agent="claude")
+    controller.handle(
+        state, _AgentTimeoutError("idle 1"), FailureContext(phase="development", agent="claude")
+    )
+    controller.handle(
+        state, _AgentTimeoutError("idle 2"), FailureContext(phase="development", agent="claude")
+    )
 
     # Verify backoff is at attempt 2
     key = f"{'development'}:claude"
@@ -332,8 +339,7 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
     _, _, evt = controller.handle(
         state,
         _AgentTimeoutError("idle after reset"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
     assert evt.retry_delay_ms == 500  # back to base, not 2000
 
@@ -357,14 +363,15 @@ def test_retry_delay_ms_applied_via_injected_sleep() -> None:
     _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
     # First failure
-    controller.handle(state, _AgentTimeoutError("idle 1"), phase="development", agent="claude")
+    controller.handle(
+        state, _AgentTimeoutError("idle 1"), FailureContext(phase="development", agent="claude")
+    )
 
     # Second failure - should have retry_delay_ms=1000
     _, _, evt = controller.handle(
         state,
         _AgentTimeoutError("idle 2"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # The event carries the correct computed delay
@@ -401,8 +408,7 @@ def test_zero_retry_delay_skips_sleep() -> None:
     _, _, evt = controller.handle(
         state,
         _AgentTimeoutError("idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert evt.retry_delay_ms == 0

@@ -1,3 +1,5 @@
+"""Analysis decision event for the pipeline."""
+
 from dataclasses import dataclass
 
 

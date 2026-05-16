@@ -5,12 +5,14 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import ExitFailureEffect, FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
+from ralph.policy.models import PhaseParallelization
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
@@ -136,9 +138,7 @@ class TestRunnerBoundaryPreflightRejection:
 
     def test_runner_uses_phase_scoped_max_parallel_workers(self) -> None:
         """FanOutEffect must use max_workers from the phase's parallelization."""
-        from unittest.mock import MagicMock
 
-        from ralph.policy.models import PhaseParallelization
 
         bundle = MagicMock()
         # Set up a development phase with parallelization, max_workers=1
@@ -162,9 +162,7 @@ class TestRunnerBoundaryPreflightRejection:
 
     def test_runner_post_fanout_verification_reads_phase_scoped_value(self) -> None:
         """FanOutEffect.run_post_fanout_verification reads from phase parallelization."""
-        from unittest.mock import MagicMock
 
-        from ralph.policy.models import PhaseParallelization
 
         bundle = MagicMock()
         para = PhaseParallelization(max_parallel_workers=8, post_fanout_verification=True)

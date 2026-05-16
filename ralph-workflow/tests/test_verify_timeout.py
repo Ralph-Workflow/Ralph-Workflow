@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.executor.process import run_process
+from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.runtime import (
     DEFAULT_TEST_TIMEOUT_SECONDS,
     SUITE_TIMEOUT_ENV,
@@ -84,12 +84,14 @@ def test_raw_pytest_run_is_hard_capped_by_suite_timeout(tmp_path: Path) -> None:
     result = run_process(
         sys.executable,
         ["-m", "pytest", "-c", "pytest.ini", str(slow_test), "-q"],
-        cwd=Path(__file__).resolve().parents[1],
-        env={
-            SUITE_TIMEOUT_ENV: "0.2",
-            TEST_TIMEOUT_ENV: "5.0",
-        },
-        timeout=5.0,
+        options=ProcessRunOptions(
+            cwd=Path(__file__).resolve().parents[1],
+            env={
+                SUITE_TIMEOUT_ENV: "0.2",
+                TEST_TIMEOUT_ENV: "5.0",
+            },
+            timeout=5.0,
+        ),
     )
     elapsed = time.monotonic() - start
 

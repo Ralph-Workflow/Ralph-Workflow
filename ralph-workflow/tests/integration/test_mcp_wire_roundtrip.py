@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.runtime import (
     JsonRpcRequest,
@@ -608,7 +610,6 @@ def _build_multimodal_server(
     model_id: str = "claude-3-5-sonnet-20241022",
 ) -> McpServer:
     """Build a McpServer with media.read capability and Claude model identity."""
-    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 
     workspace = FsWorkspace(workspace_path)
     session = AgentSession(
@@ -729,7 +730,6 @@ class TestMultimodalToolRoundtrip:
 
     def test_read_media_audio_resource_reference_is_retrievable(self, tmp_path: Path) -> None:
         """Audio from unknown provider stored as resource_reference fetchable via resources/read."""
-        import tempfile
 
         mp3_bytes = b"ID3" + b"\x00" * 50
         with tempfile.NamedTemporaryFile(suffix=".mp3", dir=tmp_path, delete=False) as f:
@@ -778,7 +778,6 @@ class TestMultimodalToolRoundtrip:
 
     def test_read_media_video_resource_reference_is_retrievable(self, tmp_path: Path) -> None:
         """Video from unknown provider stored as resource_reference fetchable via resources/read."""
-        import tempfile
 
         mp4_bytes = b"\x00\x00\x00\x20ftyp" + b"\x00" * 40
         with tempfile.NamedTemporaryFile(suffix=".mp4", dir=tmp_path, delete=False) as f:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tempfile
+import types
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -11,8 +13,18 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state import PipelineState as ReviewState
 from ralph.policy.loader import load_policy
+from ralph.policy.models import (
+    BudgetCounterConfig,
+    PhaseCommitPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    RecoveryPolicy,
+)
 
 if TYPE_CHECKING:
     from ralph.display.phase_lifecycle import PhaseExitModel
@@ -238,10 +250,7 @@ def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() ->
 
 def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
     """Commit effect must record the sha as artifact outcome for the phase-close banner."""
-    import tempfile
-    import types
 
-    from ralph.pipeline.effects import CommitEffect
 
     recorded: dict[str, str] = {}
 
@@ -287,19 +296,7 @@ def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
 
 def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
     """Commit effect records sha artifact outcome even when state and policy are provided."""
-    import tempfile
-    import types
 
-    from ralph.pipeline.effects import CommitEffect
-    from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import (
-        BudgetCounterConfig,
-        PhaseCommitPolicy,
-        PhaseDefinition,
-        PhaseTransition,
-        PipelinePolicy,
-        RecoveryPolicy,
-    )
 
     recorded: dict[str, str] = {}
 
@@ -508,13 +505,6 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
 
 def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> None:
     """review_issues_found must be populated when transitioning from a review phase."""
-    from ralph.policy.models import (
-        BudgetCounterConfig,
-        PhaseDefinition,
-        PhaseTransition,
-        PipelinePolicy,
-        RecoveryPolicy,
-    )
 
     policy = PipelinePolicy(
         entry_phase="review",
@@ -547,7 +537,6 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
 
     display = _StubDisplay()
     # State with review_outcome set to issues-found (not "clean")
-    from ralph.pipeline.state import PipelineState as ReviewState
 
     state = ReviewState(
         phase="done",

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from io import StringIO
 
 from rich.console import Console
 
-from ralph.display.content_condenser import condense_content
+from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import make_display_context
 from ralph.display.long_content_summary import set_ai_summary_hook
 from ralph.display.plain_renderer import LEVELS, PlainLogRenderer
+from ralph.display.snapshot import PipelineSnapshot
 
 
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
@@ -489,7 +491,7 @@ def test_summary_disabled_env_suppresses_summary_line() -> None:
     renderer, buf = _make_renderer()
     long_text = "First sentence. " * 300  # well above 4000 chars
     visible, condensed, summary_line, _ai = condense_content(
-        long_text, summary=True, env={"RALPH_LONG_CONTENT_SUMMARY": "0"}
+        long_text, options=CondenseOptions(summary=True, env={"RALPH_LONG_CONTENT_SUMMARY": "0"})
     )
     assert condensed is True
     assert summary_line is None
@@ -504,7 +506,9 @@ def test_sub_threshold_condensed_content_yields_no_summary() -> None:
     """Content between 400 and 4000 cells: condensed but no summary applicable."""
     renderer, buf = _make_renderer()
     text = "a" * 500  # above soft_limit(400) but below summary_threshold(4000)
-    visible, condensed, summary_line, _ai = condense_content(text, summary=True)
+    visible, condensed, summary_line, _ai = condense_content(
+        text, options=CondenseOptions(summary=True)
+    )
     assert condensed is True
     assert summary_line is None
     renderer.emit_activity_line(
@@ -518,7 +522,9 @@ def test_above_threshold_empty_headline_yields_placeholder() -> None:
     """Content above 4000-cell threshold with no extractable headline emits placeholder."""
     renderer, buf = _make_renderer()
     text = " " * 4100  # all spaces: no extractable headline, but cell_len > 4000
-    visible, condensed, summary_line, _ai = condense_content(text, summary=True)
+    visible, condensed, summary_line, _ai = condense_content(
+        text, options=CondenseOptions(summary=True)
+    )
     assert condensed is True
     assert summary_line == "(no headline available)"
     renderer.emit_activity_line(
@@ -590,9 +596,7 @@ def test_content_end_no_ai_summary_when_env_not_set() -> None:
 
 def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
     """Snapshot A emits [activity]; snapshot B emits exactly one [activity] line."""
-    from datetime import UTC, datetime
 
-    from ralph.display.snapshot import PipelineSnapshot
 
     renderer, buf = _make_renderer()
 
@@ -647,9 +651,7 @@ def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
 
 def test_activity_appends_path_when_missing() -> None:
     """[activity] appends (path=...) when active_path is not in last_activity_line."""
-    from datetime import UTC, datetime
 
-    from ralph.display.snapshot import PipelineSnapshot
 
     renderer, buf = _make_renderer()
     snapshot = PipelineSnapshot(
@@ -679,9 +681,7 @@ def test_activity_appends_path_when_missing() -> None:
 
 def test_activity_does_not_double_append_path_when_already_present() -> None:
     """[activity] must NOT append (path=...) when active_path is already in the line."""
-    from datetime import UTC, datetime
 
-    from ralph.display.snapshot import PipelineSnapshot
 
     renderer, buf = _make_renderer()
     snapshot = PipelineSnapshot(

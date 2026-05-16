@@ -384,7 +384,7 @@ def _handle_early_exit_flags(
         raise typer.Exit(code=check_policy_command(policy_dir, counter_overrides=counter_overrides))
 
 
-def main(
+def main(  # noqa: PLR0913
     ctx: typer.Context,
     prompt: Annotated[
         str | None,
@@ -689,14 +689,16 @@ def main(
     # Run the main pipeline
     exit_code = _run_pipeline(
         config,
-        cli_overrides,
-        dry_run,
-        resume,
-        no_resume,
-        verbosity,
-        counter_overrides=counter_overrides,
+        _RunPipelineOpts(
+            cli_overrides=cli_overrides,
+            dry_run=dry_run,
+            resume=resume,
+            no_resume=no_resume,
+            verbosity=verbosity,
+            counter_overrides=counter_overrides,
+            inline_prompt=prompt,
+        ),
         display_context=_cli_ctx,
-        inline_prompt=prompt,
     )
     raise typer.Exit(code=exit_code)
 
@@ -875,43 +877,34 @@ def _handle_commit_plumbing(
     return 0
 
 
+@dataclass(frozen=True)
+class _RunPipelineOpts:
+    cli_overrides: dict[str, object]
+    dry_run: bool
+    resume: bool
+    no_resume: bool
+    verbosity: Verbosity = Verbosity.VERBOSE
+    counter_overrides: dict[str, int] | None = None
+    inline_prompt: str | None = None
+
+
 def _run_pipeline(
     config: str | None,
-    cli_overrides: dict[str, object],
-    dry_run: bool,
-    resume: bool,
-    no_resume: bool,
-    verbosity: Verbosity = Verbosity.VERBOSE,
+    opts: _RunPipelineOpts,
     *,
-    counter_overrides: dict[str, int] | None = None,
     display_context: DisplayContext,
-    inline_prompt: str | None = None,
 ) -> int:
-    """Run the main pipeline.
-
-    Args:
-        config: Path to config file.
-        cli_overrides: CLI overrides dict.
-        dry_run: Whether to do dry run.
-        resume: Whether to resume.
-        no_resume: Whether to ignore checkpoint.
-        verbosity: Verbosity level.
-        counter_overrides: Budget counter overrides from --counter flags.
-        display_context: Display context for consistent rendering.
-
-    Returns:
-        Exit code.
-    """
+    """Run the main pipeline."""
     c = display_context.console
     try:
         request = RunPipelineRequest(
             config_path=_config_path(config),
-            cli_overrides=cli_overrides,
-            dry_run=dry_run,
-            resume=resume and not no_resume,
-            verbosity=verbosity,
-            counter_overrides=counter_overrides or {},
-            inline_prompt=inline_prompt,
+            cli_overrides=opts.cli_overrides,
+            dry_run=opts.dry_run,
+            resume=opts.resume and not opts.no_resume,
+            verbosity=opts.verbosity,
+            counter_overrides=opts.counter_overrides or {},
+            inline_prompt=opts.inline_prompt,
         )
         exit_code = run_pipeline(request, display_context=display_context)
         return exit_code

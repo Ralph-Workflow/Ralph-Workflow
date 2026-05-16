@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 
 from ralph.mcp.tools.artifact import handle_submit_artifact
+from ralph.pipeline.work_units import WorkUnit
+from ralph.policy.loader import load_policy
+from ralph.prompts.materialize import render_worker_prompt
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROMPTS_ROOT = REPO_ROOT / "ralph" / "prompts"
@@ -589,9 +592,6 @@ def test_worker_developer_template_renders_without_error(tmp_path: Path) -> None
     This fails loudly if the shared/_unattended_mode.jinja include is broken
     (e.g., pointing at a non-existent _unattended_mode.j2).
     """
-    from ralph.pipeline.work_units import WorkUnit
-    from ralph.policy.loader import load_policy
-    from ralph.prompts.materialize import render_worker_prompt
 
     unit = WorkUnit(
         unit_id="unit-x",
@@ -608,9 +608,6 @@ def test_worker_developer_template_renders_without_error(tmp_path: Path) -> None
 def test_worker_developer_template_contains_same_workspace_contract(tmp_path: Path) -> None:
     """worker_developer.jinja must instruct workers to share the same checkout
     and submit an artifact — not rely on git status or a per-worker worktree."""
-    from ralph.pipeline.work_units import WorkUnit
-    from ralph.policy.loader import load_policy
-    from ralph.prompts.materialize import render_worker_prompt
 
     unit = WorkUnit(
         unit_id="unit-y",

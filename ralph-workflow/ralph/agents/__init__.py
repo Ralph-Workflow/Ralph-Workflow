@@ -10,7 +10,7 @@ not pull in the full agent runtime during package initialization.
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from ralph.agents.chain import AgentChain
@@ -31,6 +31,8 @@ def __getattr__(name: str) -> object:
     except KeyError as exc:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
 
-    value = getattr(import_module(module_name), attr_name)
-    globals()[name] = value
+    module = import_module(module_name)
+    namespace = cast("dict[str, object]", module.__dict__)
+    value = namespace[attr_name]
+    cast("dict[str, object]", globals())[name] = value
     return value

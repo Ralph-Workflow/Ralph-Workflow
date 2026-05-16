@@ -13,31 +13,6 @@ from typing import IO, TYPE_CHECKING
 
 
 @dataclass
-class SyncProcessOptions:
-    """Options for synchronous subprocess creation."""
-
-    cwd: str | None = None
-    env: dict[str, str] | None = None
-    stdin: int | None = None
-    stdout: int | None = None
-    stderr: int | None = None
-    start_new_session: bool = False
-    text: bool = False
-
-
-@dataclass
-class AsyncProcessOptions:
-    """Options for asynchronous subprocess creation."""
-
-    cwd: str | None = None
-    env: dict[str, str] | None = None
-    stdin: int | None = None
-    stdout: int | None = None
-    stderr: int | None = None
-    start_new_session: bool = False
-
-
-@dataclass
 class ProcessState:
     """Process state flags."""
 
@@ -65,29 +40,17 @@ class AsyncProcessStreams:
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
-    from typing import Protocol
 
     from ralph.process.manager import (
-        _AsyncProcessLike,
+        SpawnOptions,
         _PsutilProcessLike,
-        _SyncProcessLike,
     )
-
-    class _SyncFactoryCallable(Protocol):
-        def __call__(
-            self,
-            command: Sequence[str],
-            *,
-            options: SyncProcessOptions,
-        ) -> _SyncProcessLike: ...
-
-    class _AsyncFactoryCallable(Protocol):
-        async def __call__(
-            self,
-            command: Sequence[str],
-            *,
-            options: AsyncProcessOptions,
-        ) -> _AsyncProcessLike: ...
+    from ralph.process.manager import (
+        _AsyncProcessFactory as _AsyncFactoryCallable,
+    )
+    from ralph.process.manager import (
+        _SyncProcessFactory as _SyncFactoryCallable,
+    )
 
 
 @dataclass
@@ -146,7 +109,7 @@ class FakePsutil:
         self._processes: dict[int, FakePsutilProcess] = {}
         self._next_pid = 1
 
-    def Process(self, pid: int) -> FakePsutilProcess:
+    def process_from_pid(self, pid: int) -> FakePsutilProcess:
         """Mimics psutil.Process()."""
         if pid not in self._processes:
             self._processes[pid] = FakePsutilProcess(pid=pid)
@@ -405,11 +368,8 @@ def make_sync_process_factory(
         killed: Set killed flag on all created processes
     """
 
-    def factory(
-        command: Sequence[str],
-        *,
-        options: SyncProcessOptions,
-    ) -> FakePopen:
+    def factory(command: Sequence[str], opts: SpawnOptions) -> FakePopen:
+        del command, opts
         return FakePopen(
             pid=next(pids),
             state=ProcessState(
@@ -429,11 +389,8 @@ def make_async_process_factory(
 ) -> _AsyncFactoryCallable:
     """Create an async process factory that generates FakeAsyncProcess with sequential PIDs."""
 
-    async def factory(
-        command: Sequence[str],
-        *,
-        options: AsyncProcessOptions,
-    ) -> FakeAsyncProcess:
+    async def factory(command: Sequence[str], opts: SpawnOptions) -> FakeAsyncProcess:
+        del command, opts
         return FakeAsyncProcess(
             pid=next(pids),
             state=ProcessState(returncode=returncode),
@@ -456,7 +413,6 @@ def make_psutil_factory(
 
 
 __all__ = [
-    "AsyncProcessOptions",
     "AsyncProcessStreams",
     "FakeAsyncProcess",
     "FakeControllableAsyncProcess",
@@ -466,7 +422,6 @@ __all__ = [
     "FakeTimeoutPopen",
     "ProcessState",
     "ProcessStreams",
-    "SyncProcessOptions",
     "make_async_process_factory",
     "make_psutil_factory",
     "make_sync_process_factory",

@@ -1,3 +1,5 @@
+"""Timeout policy configuration for the idle watchdog."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

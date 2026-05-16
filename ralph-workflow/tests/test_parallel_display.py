@@ -16,6 +16,7 @@ from ralph.display.parallel_display import (
     ParallelDisplay,
     _strip_markup,
 )
+from ralph.display.phase_lifecycle import PhaseExitModel
 from ralph.display.ring_buffer import RingBuffer
 from ralph.pipeline.worker_state import WorkerStatus
 
@@ -261,7 +262,6 @@ def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
 
 
 def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
-    from ralph.display.phase_lifecycle import PhaseExitModel
 
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)

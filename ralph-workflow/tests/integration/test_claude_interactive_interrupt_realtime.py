@@ -116,8 +116,8 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
         interrupted_state.phase = "development"
         initial_state.copy_with.return_value = interrupted_state
 
-        original_singleton = _mgr._singleton
-        _mgr._singleton = pm
+        original_singleton = _mgr._pm_state.instance
+        _mgr._pm_state.instance = pm
         try:
             threading.Timer(0.3, lambda: os.kill(os.getpid(), signal.SIGINT)).start()
             exit_code = runner_module.run(
@@ -133,7 +133,7 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
                 encoding="utf-8",
             )
         finally:
-            _mgr._singleton = original_singleton
+            _mgr._pm_state.instance = original_singleton
         """
     )
 

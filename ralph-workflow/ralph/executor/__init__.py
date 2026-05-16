@@ -18,6 +18,18 @@ For agent subprocess management (streaming, watchdogs, parser integration) see
 ``ralph.agents.invoke`` and ``ralph.agents.subprocess_executor``.
 """
 
-from .process import ProcessExecutionError, ProcessResult, run_process, run_process_async
+from .process import (
+    ProcessExecutionError,
+    ProcessResult,
+    ProcessRunOptions,
+    run_process,
+    run_process_async,
+)
 
-__all__ = ["ProcessExecutionError", "ProcessResult", "run_process", "run_process_async"]
+__all__ = [
+    "ProcessExecutionError",
+    "ProcessResult",
+    "ProcessRunOptions",
+    "run_process",
+    "run_process_async",
+]

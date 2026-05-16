@@ -9,7 +9,7 @@ from pathlib import Path
 from ralph.pipeline.state import AgentChainState, FalloverRecord, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 
 def _minimal_policy_bundle() -> object:
@@ -165,8 +165,7 @@ def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Chain exhausted with no next agent -> enters "failed"
@@ -199,8 +198,7 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Phase still DEVELOPMENT (not failed) - fallover happened
@@ -232,8 +230,7 @@ def test_checkpoint_round_trip_after_partial_recovery() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Simulate saving checkpoint mid-recovery

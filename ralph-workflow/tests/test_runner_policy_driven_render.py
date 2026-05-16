@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ralph.pipeline.activity_stream import ArtifactHandoffContext, render_phase_artifact_handoff
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.runner import _render_phase_artifact_handoff
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -119,15 +119,15 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
     ) -> None:
         """Audit phase (analysis role) with contract calls render_analysis_decision."""
         ctx = MagicMock()
-        with patch("ralph.pipeline.runner.render_analysis_decision") as mock_render:
-            _render_phase_artifact_handoff(
+        with patch("ralph.pipeline.activity_stream.render_analysis_decision") as mock_render:
+            render_phase_artifact_handoff(
                 "audit",
                 PipelineEvent.AGENT_SUCCESS,
                 tmp_workspace,
                 None,
-                display_context=ctx,
-                drain="audit",
-                policy_bundle=custom_bundle,
+                ArtifactHandoffContext(
+                    display_context=ctx, drain="audit", policy_bundle=custom_bundle
+                ),
             )
         mock_render.assert_called_once_with(tmp_workspace, "audit", ctx)
 
@@ -139,18 +139,18 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
         """Design phase (execution role) has no artifact contract — skips rendering."""
         ctx = MagicMock()
         with (
-            patch("ralph.pipeline.runner.render_plan_artifact") as mock_plan,
-            patch("ralph.pipeline.runner.render_analysis_decision") as mock_analysis,
-            patch("ralph.pipeline.runner.render_development_artifact") as mock_dev,
+            patch("ralph.pipeline.activity_stream.render_plan_artifact") as mock_plan,
+            patch("ralph.pipeline.activity_stream.render_analysis_decision") as mock_analysis,
+            patch("ralph.pipeline.activity_stream.render_development_artifact") as mock_dev,
         ):
-            _render_phase_artifact_handoff(
+            render_phase_artifact_handoff(
                 "design",
                 PipelineEvent.AGENT_SUCCESS,
                 tmp_workspace,
                 None,
-                display_context=ctx,
-                drain="design",
-                policy_bundle=custom_bundle,
+                ArtifactHandoffContext(
+                    display_context=ctx, drain="design", policy_bundle=custom_bundle
+                ),
             )
         mock_plan.assert_not_called()
         mock_analysis.assert_not_called()
@@ -164,18 +164,18 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
         """Build phase (execution role) has no artifact contract — skips rendering."""
         ctx = MagicMock()
         with (
-            patch("ralph.pipeline.runner.render_plan_artifact") as mock_plan,
-            patch("ralph.pipeline.runner.render_analysis_decision") as mock_analysis,
-            patch("ralph.pipeline.runner.render_development_artifact") as mock_dev,
+            patch("ralph.pipeline.activity_stream.render_plan_artifact") as mock_plan,
+            patch("ralph.pipeline.activity_stream.render_analysis_decision") as mock_analysis,
+            patch("ralph.pipeline.activity_stream.render_development_artifact") as mock_dev,
         ):
-            _render_phase_artifact_handoff(
+            render_phase_artifact_handoff(
                 "build",
                 PipelineEvent.AGENT_SUCCESS,
                 tmp_workspace,
                 None,
-                display_context=ctx,
-                drain="build",
-                policy_bundle=custom_bundle,
+                ArtifactHandoffContext(
+                    display_context=ctx, drain="build", policy_bundle=custom_bundle
+                ),
             )
         mock_plan.assert_not_called()
         mock_analysis.assert_not_called()
@@ -188,15 +188,15 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
     ) -> None:
         """Non-AGENT_SUCCESS events skip rendering for phases without an artifact contract."""
         ctx = MagicMock()
-        with patch("ralph.pipeline.runner.render_plan_artifact") as mock_render:
-            _render_phase_artifact_handoff(
+        with patch("ralph.pipeline.activity_stream.render_plan_artifact") as mock_render:
+            render_phase_artifact_handoff(
                 "design",
                 PipelineEvent.ANALYSIS_LOOPBACK,
                 tmp_workspace,
                 None,
-                display_context=ctx,
-                drain="design",
-                policy_bundle=custom_bundle,
+                ArtifactHandoffContext(
+                    display_context=ctx, drain="design", policy_bundle=custom_bundle
+                ),
             )
         mock_render.assert_not_called()
 
@@ -207,18 +207,16 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
         """Without a policy_bundle, rendering is skipped for any phase name."""
         ctx = MagicMock()
         with (
-            patch("ralph.pipeline.runner.render_plan_artifact") as mock_plan,
-            patch("ralph.pipeline.runner.render_analysis_decision") as mock_analysis,
-            patch("ralph.pipeline.runner.render_development_artifact") as mock_dev,
+            patch("ralph.pipeline.activity_stream.render_plan_artifact") as mock_plan,
+            patch("ralph.pipeline.activity_stream.render_analysis_decision") as mock_analysis,
+            patch("ralph.pipeline.activity_stream.render_development_artifact") as mock_dev,
         ):
-            _render_phase_artifact_handoff(
+            render_phase_artifact_handoff(
                 "planning",
                 PipelineEvent.AGENT_SUCCESS,
                 tmp_workspace,
                 None,
-                display_context=ctx,
-                drain="planning",
-                policy_bundle=None,
+                ArtifactHandoffContext(display_context=ctx, drain="planning", policy_bundle=None),
             )
         mock_plan.assert_not_called()
         mock_analysis.assert_not_called()

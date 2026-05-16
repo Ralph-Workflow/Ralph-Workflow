@@ -21,6 +21,7 @@ from ralph.process import (
     ProcessManager,
     ProcessManagerPolicy,
     ProcessStatus,
+    SpawnOptions,
     get_process_manager,
     process_phase_scope,
     reset_process_manager,
@@ -116,8 +117,10 @@ def test_terminate_escalates_to_sigkill() -> None:
 def test_list_active_returns_labeled_running_records() -> None:
     """list_active() returns all non-terminated records; labels are preserved."""
     pm = _make_pm()
-    h1 = pm.spawn([sys.executable, "-c", "pass"], label="phase:development:mcp-server")
-    h2 = pm.spawn([sys.executable, "-c", "pass"], label="invoke:dev-agent")
+    h1 = pm.spawn(
+        [sys.executable, "-c", "pass"], SpawnOptions(label="phase:development:mcp-server")
+    )
+    h2 = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="invoke:dev-agent"))
     active = pm.list_active()
     labels = {r.label for r in active}
     assert "phase:development:mcp-server" in labels
@@ -131,7 +134,7 @@ def test_list_active_excludes_terminated_processes() -> None:
     """list_active() excludes processes that have exited."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
-    handle = pm.spawn([sys.executable, "-c", "pass"], label="phase:test")
+    handle = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="phase:test"))
     handle.wait(timeout=2.0)
     active = pm.list_active()
     assert all(r.label != "phase:test" for r in active)
@@ -162,8 +165,7 @@ async def test_spawn_async_captures_output() -> None:
 
     handle = await pm.spawn_async(
         [sys.executable, "-c", "print('hello async')"],
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        SpawnOptions(stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE),
     )
     stdout, _stderr = await handle.communicate()
 
@@ -267,11 +269,11 @@ def test_shutdown_all_for_label_kills_only_matching() -> None:
 
     target = pm.spawn(
         [sys.executable, "-c", "pass"],
-        label="worker:target",
+        SpawnOptions(label="worker:target"),
     )
     bystander = pm.spawn(
         [sys.executable, "-c", "pass"],
-        label="other:bystander",
+        SpawnOptions(label="other:bystander"),
     )
 
     pm.shutdown_all_for_label("worker:", grace_period_s=0)
@@ -549,7 +551,7 @@ def test_get_record_returns_terminal_history_after_exit() -> None:
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
 
-    handle = pm.spawn([sys.executable, "-c", "pass"], label="phase:test")
+    handle = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="phase:test"))
     pid = handle.pid
     handle.wait()
 
@@ -563,8 +565,8 @@ def test_list_records_filters_active_and_terminal_by_label_prefix() -> None:
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = _make_pm(sync_factory=sync_factory)
 
-    active = pm.spawn([sys.executable, "-c", "pass"], label="phase:keep")
-    terminal = pm.spawn([sys.executable, "-c", "pass"], label="phase:done")
+    active = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="phase:keep"))
+    terminal = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="phase:done"))
     terminal.wait()
 
     active_records = pm.list_records(
@@ -595,7 +597,10 @@ def test_terminal_history_limit_evicts_oldest_terminal_records_first() -> None:
         async_process_factory=make_async_process_factory(itertools.count(100)),
     )
 
-    handles = [pm.spawn([sys.executable, "-c", "pass"], label=f"phase:{idx}") for idx in range(3)]
+    handles = [
+        pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label=f"phase:{idx}"))
+        for idx in range(3)
+    ]
     for handle in handles:
         handle.wait()
 

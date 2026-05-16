@@ -26,6 +26,7 @@ from ralph.policy.models import (
     PhaseDefinition,
     PhaseLoopPolicy,
     PhaseTransition,
+    PhaseWorkflowFallback,
     PipelinePolicy,
     PostCommitRoute,
     PostCommitRouteWhen,
@@ -454,7 +455,6 @@ class TestPhaseFailureEvent:
         for non-recoverable failures, matching the same precedence used in
         _handle_agent_failure for chain exhaustion.
         """
-        from ralph.policy.models import PhaseWorkflowFallback
 
         policy = PipelinePolicy(
             phases={
@@ -2016,7 +2016,6 @@ def test_full_noop_pipeline_flow_reaches_complete_via_skipped_iterations() -> No
 
 def test_agent_success_with_no_policy_raises_runtime_error() -> None:
     """AGENT_SUCCESS without a policy raises RuntimeError (policy is always required)."""
-    import pytest
 
     state = PipelineState(phase="development", recovery_epoch=4, last_error=None)
     with pytest.raises(RuntimeError, match="Routing requires loaded policy"):

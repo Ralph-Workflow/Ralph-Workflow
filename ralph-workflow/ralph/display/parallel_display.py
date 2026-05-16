@@ -15,9 +15,14 @@ from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
-from ralph.display.plain_renderer import PlainLogRenderer, _PhaseCounters
+from ralph.display.plain_renderer import (
+    PhaseCloseOptions,
+    PlainLogRenderer,
+    _ActivityLineOptions,
+    _PhaseCounters,
+)
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
-from ralph.display.subscriber import PipelineSubscriber
+from ralph.display.subscriber import ActivityDetails, PipelineSubscriber
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
 if TYPE_CHECKING:
@@ -181,11 +186,13 @@ class ParallelDisplay:
                 self._subscriber.record_activity(
                     unit_id=unit_id,
                     line=text,
-                    tool_name=original_name,
-                    path=tool_path or None,
-                    workdir=tool_workdir or None,
-                    command=tool_command or None,
-                    pattern=tool_pattern or None,
+                    details=ActivityDetails(
+                        tool_name=original_name,
+                        path=tool_path or None,
+                        workdir=tool_workdir or None,
+                        command=tool_command or None,
+                        pattern=tool_pattern or None,
+                    ),
                 )
 
         overflow = self._get_overflow_log(unit_id)
@@ -199,7 +206,6 @@ class ParallelDisplay:
                     soft_limit=self._ctx.condenser_soft_limit,
                     hard_limit=self._ctx.condenser_hard_limit,
                     summary=True,
-                    env=self._ctx.env,
                     overflow_ref=overflow_ref,
                 ),
             ),
@@ -224,11 +230,13 @@ class ParallelDisplay:
             unit_id,
             kind.value,
             visible,
-            condensed_ref=overflow_ref if condensed_flag else None,
-            condensed_flag=condensed_flag,
-            summary_line=effective_summary_line,
-            ai_summary_line=ai_summary_line,
-            _tool_signature=tool_signature,
+            options=_ActivityLineOptions(
+                condensed_ref=overflow_ref if condensed_flag else None,
+                condensed_flag=condensed_flag,
+                summary_line=effective_summary_line,
+                ai_summary_line=ai_summary_line,
+                tool_signature=tool_signature,
+            ),
         )
 
         self._emit_drop_warning(unit_id)
@@ -341,9 +349,11 @@ class ParallelDisplay:
             self._plain_renderer.emit_phase_close(
                 phase,
                 produced,
-                phase_role=phase_role,
-                iteration_context=iteration_context,
-                exit_trigger=exit_trigger,
+                options=PhaseCloseOptions(
+                    phase_role=phase_role,
+                    iteration_context=iteration_context,
+                    exit_trigger=exit_trigger,
+                ),
             )
 
     def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:

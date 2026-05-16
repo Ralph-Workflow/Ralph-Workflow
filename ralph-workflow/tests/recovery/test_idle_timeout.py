@@ -5,7 +5,7 @@ from __future__ import annotations
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 
 def _make_state(agents: list[str]) -> PipelineState:
@@ -48,8 +48,7 @@ def test_inactivity_timeout_counts_against_budget_in_controller() -> None:
     _, _, evt = controller.handle(
         state,
         _AgentInactivityTimeoutError("agent idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert evt.counted_against_budget is True

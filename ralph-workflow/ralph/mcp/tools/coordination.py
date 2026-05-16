@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.artifacts import (
@@ -28,6 +28,9 @@ from .tool_content import ToolContent
 from .tool_error import ToolError
 from .tool_result import ContentBlock, ToolResult
 from .workspace_like import WorkspaceLike
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 RUN_REPORT_PROGRESS_CAPABILITY = "run.report_progress"
 ARTIFACT_SUBMIT_CAPABILITY = "artifact.submit"

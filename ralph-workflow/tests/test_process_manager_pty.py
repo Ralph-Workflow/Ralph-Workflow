@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.process import ProcessManager, ProcessManagerPolicy, ProcessStatus
+from ralph.process import ProcessManager, ProcessManagerPolicy, ProcessStatus, PtySpawnOptions
 from ralph.process import pty as pty_module
 from ralph.testing.fake_process import FakePsutil
 
@@ -68,15 +68,11 @@ class _FakePtyFactory:
     def __call__(
         self,
         command: Sequence[str],
-        *,
-        cwd: str | None,
-        env: dict[str, str] | None,
-        cols: int,
-        rows: int,
+        opts: PtySpawnOptions,
     ) -> _FakePtyProcess:
-        assert cols == _PTY_COLUMNS
-        assert rows == _PTY_ROWS
-        self.calls.append((tuple(command), cwd, env))
+        assert opts.cols == _PTY_COLUMNS
+        assert opts.rows == _PTY_ROWS
+        self.calls.append((tuple(command), opts.cwd, opts.env))
         pid = next(self._pids)
         return _FakePtyProcess(pid=pid, master_fd=pid + 10, slave_fd=pid + 11)
 
@@ -87,9 +83,9 @@ def test_spawn_pty_records_pid_pgid_and_terminal_status(tmp_path: Path) -> None:
 
     handle = pm.spawn_pty(
         ["claude", "PROMPT.md"],
-        cwd=str(tmp_path),
-        env={"TERM": "xterm-256color"},
-        label="invoke:claude-interactive",
+        PtySpawnOptions(
+            cwd=str(tmp_path), env={"TERM": "xterm-256color"}, label="invoke:claude-interactive"
+        ),
     )
 
     assert factory.calls == [(("claude", "PROMPT.md"), str(tmp_path), {"TERM": "xterm-256color"})]
@@ -104,7 +100,7 @@ def test_managed_pty_process_exposes_master_read_handle(tmp_path: Path) -> None:
     factory = _FakePtyFactory()
     pm = ProcessManager(policy=_FAST_POLICY, pty_process_factory=factory, psutil=FakePsutil())
 
-    handle = pm.spawn_pty(["claude", "PROMPT.md"], cwd=str(tmp_path))
+    handle = pm.spawn_pty(["claude", "PROMPT.md"], PtySpawnOptions(cwd=str(tmp_path)))
 
     assert handle.master_fd == handle.pid + 10
     assert handle.fileno() == handle.master_fd
@@ -115,9 +111,11 @@ def test_terminate_pty_process_kills_process_group(tmp_path: Path) -> None:
     psutil_mod = FakePsutil()
     pm = ProcessManager(policy=_FAST_POLICY, pty_process_factory=factory, psutil=psutil_mod)
 
-    handle = pm.spawn_pty(["claude", "PROMPT.md"], cwd=str(tmp_path), label="invoke:claude")
-    psutil_proc = psutil_mod.Process(handle.pid)
-    child = psutil_mod.Process(handle.pid + 1)
+    handle = pm.spawn_pty(
+        ["claude", "PROMPT.md"], PtySpawnOptions(cwd=str(tmp_path), label="invoke:claude")
+    )
+    psutil_proc = psutil_mod.process_from_pid(handle.pid)
+    child = psutil_mod.process_from_pid(handle.pid + 1)
     psutil_proc._children = [child]
 
     handle.terminate(grace_period_s=0.0)

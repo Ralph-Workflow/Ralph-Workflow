@@ -23,7 +23,10 @@ from ralph.mcp.multimodal.capabilities import (
     DeliveryMode,
     MultimodalModelIdentity,
     get_delivery_mode,
+    profile_from_payload,
+    resolve_capability_profile,
 )
+from ralph.mcp.multimodal.errors import MultimodalFailure, MultimodalFailureKind
 
 # ---------------------------------------------------------------------------
 # MultimodalModelIdentity helpers
@@ -279,10 +282,6 @@ def test_unsupported_verdict_cites_modality_name() -> None:
 
 
 def test_multimodal_failure_kinds_are_importable() -> None:
-    from ralph.mcp.multimodal.errors import (
-        MultimodalFailure,
-        MultimodalFailureKind,
-    )
 
     assert MultimodalFailureKind.UNSUPPORTED_MODALITY == "unsupported_modality"
     assert MultimodalFailureKind.UNSUPPORTED_RUNTIME_SEAM == "unsupported_runtime_seam"
@@ -305,17 +304,12 @@ def test_multimodal_failure_kinds_are_importable() -> None:
 
 
 def test_multimodal_failure_is_exported_from_package() -> None:
-    from ralph.mcp.multimodal import MultimodalFailure, MultimodalFailureKind
 
     assert MultimodalFailure is not None
     assert MultimodalFailureKind is not None
 
 
 def test_multimodal_failure_user_message_without_optional_fields() -> None:
-    from ralph.mcp.multimodal.errors import (
-        MultimodalFailure,
-        MultimodalFailureKind,
-    )
 
     f = MultimodalFailure(
         kind=MultimodalFailureKind.FILE_READ_ERROR,
@@ -396,7 +390,6 @@ def test_capability_verdict_reason_is_explicit_for_unsupported_modality() -> Non
 
 
 def test_resolve_capability_profile_contains_all_supported_modalities() -> None:
-    from ralph.mcp.multimodal.capabilities import resolve_capability_profile
 
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
     profile = resolve_capability_profile(identity)
@@ -404,7 +397,6 @@ def test_resolve_capability_profile_contains_all_supported_modalities() -> None:
 
 
 def test_resolve_capability_profile_verdict_for_known_modality() -> None:
-    from ralph.mcp.multimodal.capabilities import resolve_capability_profile
 
     identity = MultimodalModelIdentity(provider="claude")
     profile = resolve_capability_profile(identity)
@@ -413,7 +405,6 @@ def test_resolve_capability_profile_verdict_for_known_modality() -> None:
 
 
 def test_resolve_capability_profile_verdict_for_unknown_modality_computes_fresh() -> None:
-    from ralph.mcp.multimodal.capabilities import resolve_capability_profile
 
     identity = MultimodalModelIdentity(provider="claude")
     profile = resolve_capability_profile(identity)
@@ -422,7 +413,6 @@ def test_resolve_capability_profile_verdict_for_unknown_modality_computes_fresh(
 
 
 def test_resolve_capability_profile_unknown_provider_all_resource_reference() -> None:
-    from ralph.mcp.multimodal.capabilities import resolve_capability_profile
 
     profile = resolve_capability_profile(UNKNOWN_IDENTITY)
     for modality in SUPPORTED_MODALITIES:
@@ -450,7 +440,6 @@ def test_resolve_capability_profile_provider_modality_coverage(
     modality: str,
     expected_delivery: DeliveryMode,
 ) -> None:
-    from ralph.mcp.multimodal.capabilities import resolve_capability_profile
 
     identity = MultimodalModelIdentity(provider=provider, model_id=model_id)
     profile = resolve_capability_profile(identity)
@@ -463,10 +452,6 @@ def test_resolve_capability_profile_provider_modality_coverage(
 
 def test_resolved_capability_profile_to_payload_roundtrip() -> None:
     """profile_from_payload(profile.to_payload()) restores the same verdicts."""
-    from ralph.mcp.multimodal.capabilities import (
-        profile_from_payload,
-        resolve_capability_profile,
-    )
 
     identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
     original = resolve_capability_profile(identity)
@@ -486,7 +471,6 @@ def test_resolved_capability_profile_to_payload_roundtrip() -> None:
 
 def test_profile_from_payload_missing_verdicts_falls_back_to_computed() -> None:
     """profile_from_payload with no verdicts key falls back to get_delivery_mode."""
-    from ralph.mcp.multimodal.capabilities import profile_from_payload
 
     raw: dict[str, object] = {"provider": "claude", "model_id": None, "transport": None}
     profile = profile_from_payload(raw)
@@ -495,7 +479,6 @@ def test_profile_from_payload_missing_verdicts_falls_back_to_computed() -> None:
 
 def test_profile_from_payload_bad_delivery_value_defaults_to_resource_reference() -> None:
     """profile_from_payload with an unrecognized delivery string uses RESOURCE_REFERENCE."""
-    from ralph.mcp.multimodal.capabilities import profile_from_payload
 
     raw: dict[str, object] = {
         "provider": "unknown",

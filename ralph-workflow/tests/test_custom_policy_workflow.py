@@ -11,8 +11,16 @@ handler registration is out of scope for this PR.
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
+from ralph.phases import HANDLERS, handle_phase, register_role_handlers
+from ralph.phases.analysis import handle_generic_analysis_phase
+from ralph.phases.commit import handle_commit_phase
+from ralph.phases.execution import handle_execution_phase
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.handoffs import resolve_post_commit_phase
 from ralph.pipeline.state import PipelineState
 from ralph.policy.explain import explain_policy
@@ -237,10 +245,6 @@ class TestRunWithFullyRenamedPhases:
         design (execution), build (execution), audit (analysis), and sign_off (commit)
         all receive correct generic handlers without any special-case code.
         """
-        from ralph.phases import HANDLERS, register_role_handlers
-        from ralph.phases.analysis import handle_generic_analysis_phase
-        from ralph.phases.commit import handle_commit_phase
-        from ralph.phases.execution import handle_execution_phase
 
         custom_phases = ["design", "build", "audit", "sign_off"]
         saved = {p: HANDLERS.pop(p, None) for p in custom_phases}
@@ -271,9 +275,6 @@ class TestCustomNamedPipelineHandlerDispatch:
         self, custom_bundle: PolicyBundle
     ) -> None:
         """register_role_handlers adds handlers for custom audit and sign_off phases."""
-        from ralph.phases import HANDLERS, register_role_handlers
-        from ralph.phases.analysis import handle_generic_analysis_phase
-        from ralph.phases.commit import handle_commit_phase
 
         before_audit = HANDLERS.get("audit")
         before_sign_off = HANDLERS.get("sign_off")
@@ -293,10 +294,7 @@ class TestCustomNamedPipelineHandlerDispatch:
 
     def test_handle_phase_dispatches_custom_commit_phase(self, custom_bundle: PolicyBundle) -> None:
         """handle_phase dispatches sign_off (commit-role) via the generic commit handler."""
-        from unittest.mock import MagicMock
 
-        from ralph.phases import HANDLERS, handle_phase, register_role_handlers
-        from ralph.pipeline.effects import InvokeAgentEffect
 
         HANDLERS.pop("sign_off", None)
         register_role_handlers(custom_bundle.pipeline)
@@ -316,7 +314,6 @@ class TestCustomNamedPipelineHandlerDispatch:
             events = handle_phase(effect, ctx)
             # No diff check fails gracefully → COMMIT_SKIPPED not emitted;
             # missing commit_message artifact → PhaseFailureEvent emitted.
-            from ralph.pipeline.events import PhaseFailureEvent
 
             assert any(isinstance(e, PhaseFailureEvent) for e in events), (
                 "Expected PhaseFailureEvent for missing commit_message artifact"
@@ -328,11 +325,7 @@ class TestCustomNamedPipelineHandlerDispatch:
         self, custom_bundle: PolicyBundle
     ) -> None:
         """handle_phase dispatches audit (analysis-role) via the generic analysis handler."""
-        from unittest.mock import MagicMock
 
-        from ralph.phases import HANDLERS, handle_phase, register_role_handlers
-        from ralph.pipeline.effects import InvokeAgentEffect
-        from ralph.pipeline.events import PhaseFailureEvent
 
         HANDLERS.pop("audit", None)
         register_role_handlers(custom_bundle.pipeline)

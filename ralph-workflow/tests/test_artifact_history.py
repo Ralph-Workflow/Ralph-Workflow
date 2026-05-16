@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.artifacts.history import (
     archive_artifact_before_overwrite,
     clear_artifact_history,
@@ -62,7 +63,6 @@ class TestArchiveArtifactBeforeOverwrite:
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "plan.json").write_text('{"type":"plan"}', encoding="utf-8")
         # Write a handoff file at the known handoff path for 'plan'
-        from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 
         handoff_rel = handoff_path_for_artifact("plan")
         if handoff_rel:

@@ -28,6 +28,7 @@ from ralph.policy.models import (
     PipelinePolicy,
     PolicyBundle,
 )
+from ralph.recovery import controller as recovery_controller_module
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.events import FailureEvent, FalloverEvent
 from ralph.recovery.testing import FakeConnectivityMonitor
@@ -164,7 +165,6 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     - Each cycle produces 2 FailureEvents (one per agent) + 1 FalloverEvent
     - Total: 2 x _CYCLE_CAP FailureEvents + _CYCLE_CAP FalloverEvents
     """
-    from ralph.recovery import controller as recovery_controller_module
 
     bundle = _make_policy_bundle()
 

@@ -14,7 +14,6 @@ Tests cover:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -26,10 +25,18 @@ from ralph.policy.explain import (
     explain_policy,
 )
 from ralph.policy.loader import load_policy
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    ArtifactsPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PhaseVerificationPolicy,
+    PipelinePolicy,
+    PolicyBundle,
+)
 from ralph.policy.render import render_explanation_ascii, render_explanation_text
-
-if TYPE_CHECKING:
-    from ralph.policy.models import PolicyBundle
 
 
 def _get_default_policy_path() -> Path:
@@ -398,17 +405,6 @@ class TestVerificationAsciiAnnotation:
     """Tests that verification phases produce [verify: ...] annotation in ASCII output."""
 
     def _bundle_with_verification(self) -> PolicyBundle:
-        from ralph.policy.models import (
-            AgentChainConfig,
-            AgentDrainConfig,
-            AgentsPolicy,
-            ArtifactsPolicy,
-            PhaseDefinition,
-            PhaseTransition,
-            PhaseVerificationPolicy,
-            PipelinePolicy,
-            PolicyBundle,
-        )
 
         return PolicyBundle(
             agents=AgentsPolicy(

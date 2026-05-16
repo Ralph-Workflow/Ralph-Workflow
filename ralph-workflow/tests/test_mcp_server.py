@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import json as _json
 from pathlib import Path
 from typing import cast
 
@@ -11,7 +12,8 @@ import pytest
 from loguru import logger
 
 # Config imports for multimodal tests
-from ralph.config.mcp_models import McpConfig, MediaConfig
+from ralph.config.mcp_models import McpConfig, McpServerSpec, MediaConfig
+from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     DeliveryMode,
@@ -23,10 +25,16 @@ from ralph.mcp.protocol.capability_mapping import McpCapability
 from ralph.mcp.protocol.env import MCP_SESSION_ENV, WORKER_ARTIFACT_DIR_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
+from ralph.mcp.server.lifecycle import _session_payload_json
+from ralph.mcp.server.runtime import FileBackedSession, _load_runtime_upstream_servers
 from ralph.mcp.tools.coordination import ImageContent, ToolContent, ToolResult
 from ralph.mcp.tools.names import upstream_proxy_tool_name
 from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient, make_upstream_client
-from ralph.mcp.upstream.config import UPSTREAM_MCP_CONFIG_ENV, UpstreamMcpServer
+from ralph.mcp.upstream.config import (
+    UPSTREAM_MCP_CONFIG_ENV,
+    UpstreamMcpServer,
+    serialize_upstream_mcp_servers,
+)
 from ralph.mcp.upstream.models import UpstreamCallError
 from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.phases import PhaseContext
@@ -1274,8 +1282,6 @@ class TestFileBackedSessionModelIdentity:
 
     def test_file_backed_session_restores_known_model_identity(self, tmp_path: Path) -> None:
         """FileBackedSession.model_identity returns the deserialized MultimodalModelIdentity."""
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
-        from ralph.mcp.server.runtime import FileBackedSession
 
         payload = {
             "session_id": "sid-fbs",
@@ -1302,8 +1308,6 @@ class TestFileBackedSessionModelIdentity:
         self, tmp_path: Path
     ) -> None:
         """FileBackedSession.model_identity returns UNKNOWN_IDENTITY when payload omits it."""
-        from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY
-        from ralph.mcp.server.runtime import FileBackedSession
 
         payload = {
             "session_id": "sid-no-mi",
@@ -1320,11 +1324,7 @@ class TestFileBackedSessionModelIdentity:
 
     def test_lifecycle_payload_roundtrip_preserves_model_identity(self, tmp_path: Path) -> None:
         """session_payload_json + FileBackedSession restores the same model identity."""
-        import json as _json
 
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
-        from ralph.mcp.server.lifecycle import _session_payload_json
-        from ralph.mcp.server.runtime import FileBackedSession
 
         agent_session = AgentSession(
             session_id="sid-rt",
@@ -1362,15 +1362,7 @@ class TestFileBackedSessionCapabilityProfile:
         self, tmp_path: Path
     ) -> None:
         """FileBackedSession.capability_profile reads from the serialized payload."""
-        import json
 
-        from ralph.mcp.multimodal.capabilities import (
-            DeliveryMode,
-            MultimodalModelIdentity,
-            ResolvedCapabilityProfile,
-        )
-        from ralph.mcp.server.lifecycle import _session_payload_json
-        from ralph.mcp.server.runtime import FileBackedSession
 
         agent_session = AgentSession(
             session_id="sid-cap",
@@ -1401,13 +1393,7 @@ class TestFileBackedSessionCapabilityProfile:
         self, tmp_path: Path
     ) -> None:
         """FileBackedSession.capability_profile falls back to computing from model_identity."""
-        import json
 
-        from ralph.mcp.multimodal.capabilities import (
-            DeliveryMode,
-            ResolvedCapabilityProfile,
-        )
-        from ralph.mcp.server.runtime import FileBackedSession
 
         # Write a payload that has model_identity but no capability_profile
         payload = {
@@ -1432,10 +1418,6 @@ class TestFileBackedSessionCapabilityProfile:
 
     def test_lifecycle_payload_roundtrip_preserves_capability_profile(self, tmp_path: Path) -> None:
         """_session_payload_json + FileBackedSession preserves the full capability profile."""
-        from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
-        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
-        from ralph.mcp.server.lifecycle import _session_payload_json
-        from ralph.mcp.server.runtime import FileBackedSession
 
         agent_session = AgentSession(
             session_id="sid-rt-cp",
@@ -1459,7 +1441,6 @@ class TestFileBackedSessionCapabilityProfile:
 
 class TestFileBackedSessionWorkerArtifactDir:
     def test_worker_artifact_dir_returns_path_when_env_set(self, tmp_path: Path) -> None:
-        from ralph.mcp.server.runtime import FileBackedSession
 
         session_file = tmp_path / "session.json"
         session_file.write_text(
@@ -1473,7 +1454,6 @@ class TestFileBackedSessionWorkerArtifactDir:
         assert session.worker_artifact_dir == Path("/tmp/artifacts")
 
     def test_worker_artifact_dir_returns_none_when_env_not_set(self, tmp_path: Path) -> None:
-        from ralph.mcp.server.runtime import FileBackedSession
 
         session_file = tmp_path / "session.json"
         session_file.write_text(
@@ -1486,20 +1466,11 @@ class TestFileBackedSessionWorkerArtifactDir:
 
 class TestLoadRuntimeUpstreamServers:
     def test_returns_empty_when_env_not_set(self) -> None:
-        from ralph.config.mcp_models import McpConfig
-        from ralph.mcp.server.runtime import _load_runtime_upstream_servers
 
         result = _load_runtime_upstream_servers(McpConfig(), env={})
         assert result == ()
 
     def test_env_servers_present_when_env_set(self) -> None:
-        from ralph.config.mcp_models import McpConfig
-        from ralph.mcp.server.runtime import _load_runtime_upstream_servers
-        from ralph.mcp.upstream.config import (
-            UPSTREAM_MCP_CONFIG_ENV,
-            UpstreamMcpServer,
-            serialize_upstream_mcp_servers,
-        )
 
         srv = UpstreamMcpServer(name="env-srv", transport="http", url="http://localhost:9")
         serialized = serialize_upstream_mcp_servers([srv])
@@ -1509,13 +1480,6 @@ class TestLoadRuntimeUpstreamServers:
         assert any(s.name == "env-srv" for s in result)
 
     def test_both_env_and_toml_servers_included_when_names_differ(self) -> None:
-        from ralph.config.mcp_models import McpConfig, McpServerSpec
-        from ralph.mcp.server.runtime import _load_runtime_upstream_servers
-        from ralph.mcp.upstream.config import (
-            UPSTREAM_MCP_CONFIG_ENV,
-            UpstreamMcpServer,
-            serialize_upstream_mcp_servers,
-        )
 
         env_srv = UpstreamMcpServer(name="env-srv", transport="http", url="http://env:9")
         serialized = serialize_upstream_mcp_servers([env_srv])
@@ -1525,13 +1489,6 @@ class TestLoadRuntimeUpstreamServers:
         assert {s.name for s in result} == {"env-srv", "toml-srv"}
 
     def test_toml_server_overwrites_env_server_on_name_collision(self) -> None:
-        from ralph.config.mcp_models import McpConfig, McpServerSpec
-        from ralph.mcp.server.runtime import _load_runtime_upstream_servers
-        from ralph.mcp.upstream.config import (
-            UPSTREAM_MCP_CONFIG_ENV,
-            UpstreamMcpServer,
-            serialize_upstream_mcp_servers,
-        )
 
         shared = "shared-srv"
         env_srv = UpstreamMcpServer(name=shared, transport="http", url="http://env:9")

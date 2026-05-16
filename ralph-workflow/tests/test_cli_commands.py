@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
 import tomllib
@@ -10,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+from git import Repo
 from rich.console import Console
 
 from ralph.cli import options as options_module
@@ -254,7 +256,6 @@ def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path
     files committed during an earlier dev iteration do not appear in the prompt
     sent to the commit agent.
     """
-    from git import Repo
 
     repo = Repo(tmp_git_repo)
     (tmp_git_repo / "mid_cycle.py").write_text("mid = 1\n")
@@ -1504,13 +1505,11 @@ def test_diagnose_uses_display_context_console(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """diagnose_command uses the injected DisplayContext's console for all output."""
-    from ralph.display.context import make_display_context
 
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
     ctx = make_display_context(env={"COLUMNS": "120"})
     # Override the context's console with our recording one
-    import dataclasses
 
     recording_ctx = dataclasses.replace(ctx, console=console)
 

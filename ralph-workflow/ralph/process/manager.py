@@ -37,6 +37,32 @@ from loguru import logger
 
 from ralph.process.pty import PtyProcess, spawn_pty_process
 
+
+@dataclass(frozen=True)
+class SpawnOptions:
+    """Options for spawning a synchronous or async child process."""
+
+    cwd: str | None = None
+    env: dict[str, str] | None = None
+    stdin: int | None = None
+    stdout: int | None = None
+    stderr: int | None = None
+    start_new_session: bool = True
+    label: str | None = None
+    text: bool = False
+
+
+@dataclass(frozen=True)
+class PtySpawnOptions:
+    """Options for spawning a PTY-backed child process."""
+
+    cwd: str | None = None
+    env: dict[str, str] | None = None
+    cols: int = 80
+    rows: int = 24
+    label: str | None = None
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Sequence
 
@@ -52,7 +78,7 @@ if TYPE_CHECKING:
         NoSuchProcess: type[BaseException]
         AccessDenied: type[BaseException]
 
-        def Process(self, pid: int) -> _PsutilProcessLike: ...
+        def process_from_pid(self, pid: int) -> _PsutilProcessLike: ...
 
         def wait_procs(
             self,
@@ -111,27 +137,14 @@ if TYPE_CHECKING:
         def __call__(
             self,
             command: Sequence[str],
-            *,
-            cwd: str | None,
-            env: dict[str, str] | None,
-            stdin: int | None,
-            stdout: int | None,
-            stderr: int | None,
-            start_new_session: bool,
-            text: bool,
+            opts: SpawnOptions,
         ) -> _SyncProcessLike: ...
 
     class _AsyncProcessFactory(Protocol):
         async def __call__(
             self,
             command: Sequence[str],
-            *,
-            cwd: str | None,
-            env: dict[str, str] | None,
-            stdin: int | None,
-            stdout: int | None,
-            stderr: int | None,
-            start_new_session: bool,
+            opts: SpawnOptions,
         ) -> _AsyncProcessLike: ...
 
     class _PtyProcessLike(Protocol):
@@ -154,11 +167,7 @@ if TYPE_CHECKING:
         def __call__(
             self,
             command: Sequence[str],
-            *,
-            cwd: str | None,
-            env: dict[str, str] | None,
-            cols: int,
-            rows: int,
+            opts: PtySpawnOptions,
         ) -> _PtyProcessLike: ...
 
 
@@ -173,60 +182,43 @@ else:
 
 def _default_sync_process_factory(
     command: Sequence[str],
-    *,
-    cwd: str | None,
-    env: dict[str, str] | None,
-    stdin: int | None,
-    stdout: int | None,
-    stderr: int | None,
-    start_new_session: bool,
-    text: bool,
+    opts: SpawnOptions,
 ) -> subprocess.Popen[bytes]:
     return cast(
         "subprocess.Popen[bytes]",
         subprocess.Popen(
             command,
-            cwd=cwd,
-            env=env,
-            stdin=stdin,
-            stdout=stdout,
-            stderr=stderr,
-            start_new_session=start_new_session,
-            text=text,
+            cwd=opts.cwd,
+            env=opts.env,
+            stdin=opts.stdin,
+            stdout=opts.stdout,
+            stderr=opts.stderr,
+            start_new_session=opts.start_new_session,
+            text=opts.text,
         ),
     )
 
 
 async def _default_async_process_factory(
     command: Sequence[str],
-    *,
-    cwd: str | None,
-    env: dict[str, str] | None,
-    stdin: int | None,
-    stdout: int | None,
-    stderr: int | None,
-    start_new_session: bool,
+    opts: SpawnOptions,
 ) -> asyncio.subprocess.Process:
     return await asyncio.create_subprocess_exec(
         *command,
-        cwd=cwd,
-        env=env,
-        stdin=stdin,
-        stdout=stdout,
-        stderr=stderr,
-        start_new_session=start_new_session,
+        cwd=opts.cwd,
+        env=opts.env,
+        stdin=opts.stdin,
+        stdout=opts.stdout,
+        stderr=opts.stderr,
+        start_new_session=opts.start_new_session,
     )
 
 
 def _default_pty_process_factory(
     command: Sequence[str],
-    *,
-    cwd: str | None,
-    env: dict[str, str] | None,
-    cols: int,
-    rows: int,
+    opts: PtySpawnOptions,
 ) -> PtyProcess:
-    return spawn_pty_process(command, cwd=cwd, env=env, cols=cols, rows=rows)
+    return spawn_pty_process(command, cwd=opts.cwd, env=opts.env, cols=opts.cols, rows=opts.rows)
 
 
 class ProcessStatus(Enum):
@@ -361,7 +353,7 @@ class ManagedProcess:
         if psutil_mod is None:
             return False
         try:
-            root = psutil_mod.Process(self.pid)
+            root = psutil_mod.process_from_pid(self.pid)
             descendants = root.children(recursive=True)
         except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             return False
@@ -380,7 +372,7 @@ class ManagedProcess:
         if psutil_mod is None:
             return (0, None)
         try:
-            root = psutil_mod.Process(self.pid)
+            root = psutil_mod.process_from_pid(self.pid)
             descendants = root.children(recursive=True)
         except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             return (0, None)
@@ -490,7 +482,7 @@ class ManagedPtyProcess:
         if psutil_mod is None:
             return False
         try:
-            root = psutil_mod.Process(self.pid)
+            root = psutil_mod.process_from_pid(self.pid)
             descendants = root.children(recursive=True)
         except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             return False
@@ -508,7 +500,7 @@ class ManagedPtyProcess:
         if psutil_mod is None:
             return (0, None)
         try:
-            root = psutil_mod.Process(self.pid)
+            root = psutil_mod.process_from_pid(self.pid)
             descendants = root.children(recursive=True)
         except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             return (0, None)
@@ -674,42 +666,26 @@ class ProcessManager:
     def spawn(
         self,
         command: Sequence[str],
-        *,
-        cwd: str | None = None,
-        env: dict[str, str] | None = None,
-        stdin: int | None = None,
-        stdout: int | None = None,
-        stderr: int | None = None,
-        start_new_session: bool = True,
-        label: str | None = None,
-        text: bool = False,
+        opts: SpawnOptions | None = None,
     ) -> ManagedProcess:
         """Spawn a synchronous child process and begin tracking it."""
+        effective = opts or SpawnOptions()
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            proc: _SyncProcessLike = self._sync_process_factory(
-                cmd,
-                cwd=cwd,
-                env=env,
-                stdin=stdin,
-                stdout=stdout,
-                stderr=stderr,
-                start_new_session=start_new_session,
-                text=text,
-            )
+            proc: _SyncProcessLike = self._sync_process_factory(cmd, effective)
         except OSError as exc:
             record = ProcessRecord(
                 pid=-1,
                 pgid=-1,
                 command=cmd,
-                cwd=cwd,
+                cwd=effective.cwd,
                 started_at=now,
                 status=ProcessStatus.FAILED,
                 ended_at=datetime.now(tz=UTC),
                 cause="failed",
                 failure_message=str(exc),
-                label=label,
+                label=effective.label,
             )
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
             raise
@@ -724,10 +700,10 @@ class ProcessManager:
             pid=pid,
             pgid=pgid,
             command=cmd,
-            cwd=cwd,
+            cwd=effective.cwd,
             started_at=now,
             status=ProcessStatus.RUNNING,
-            label=label,
+            label=effective.label,
         )
         self._terminal_records.pop(pid, None)
         self._records[pid] = record
@@ -738,36 +714,26 @@ class ProcessManager:
     def spawn_pty(
         self,
         command: Sequence[str],
-        *,
-        cwd: str | None = None,
-        env: dict[str, str] | None = None,
-        cols: int = 80,
-        rows: int = 24,
-        label: str | None = None,
+        opts: PtySpawnOptions | None = None,
     ) -> ManagedPtyProcess:
         """Spawn a PTY-backed child process and begin tracking it."""
+        effective = opts or PtySpawnOptions()
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            proc = self._pty_process_factory(
-                cmd,
-                cwd=cwd,
-                env=env,
-                cols=cols,
-                rows=rows,
-            )
+            proc = self._pty_process_factory(cmd, effective)
         except OSError as exc:
             record = ProcessRecord(
                 pid=-1,
                 pgid=-1,
                 command=cmd,
-                cwd=cwd,
+                cwd=effective.cwd,
                 started_at=now,
                 status=ProcessStatus.FAILED,
                 ended_at=datetime.now(tz=UTC),
                 cause="failed",
                 failure_message=str(exc),
-                label=label,
+                label=effective.label,
             )
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
             raise
@@ -782,10 +748,10 @@ class ProcessManager:
             pid=pid,
             pgid=pgid,
             command=cmd,
-            cwd=cwd,
+            cwd=effective.cwd,
             started_at=now,
             status=ProcessStatus.RUNNING,
-            label=label,
+            label=effective.label,
         )
         self._terminal_records.pop(pid, None)
         self._records[pid] = record
@@ -796,40 +762,26 @@ class ProcessManager:
     async def spawn_async(
         self,
         command: Sequence[str],
-        *,
-        cwd: str | None = None,
-        env: dict[str, str] | None = None,
-        stdin: int | None = None,
-        stdout: int | None = None,
-        stderr: int | None = None,
-        start_new_session: bool = True,
-        label: str | None = None,
+        opts: SpawnOptions | None = None,
     ) -> ManagedAsyncProcess:
         """Spawn an async child process and begin tracking it."""
+        effective = opts or SpawnOptions()
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            proc = await self._async_process_factory(
-                cmd,
-                cwd=cwd,
-                env=env,
-                stdin=stdin,
-                stdout=stdout,
-                stderr=stderr,
-                start_new_session=start_new_session,
-            )
+            proc = await self._async_process_factory(cmd, effective)
         except OSError as exc:
             record = ProcessRecord(
                 pid=-1,
                 pgid=-1,
                 command=cmd,
-                cwd=cwd,
+                cwd=effective.cwd,
                 started_at=now,
                 status=ProcessStatus.FAILED,
                 ended_at=datetime.now(tz=UTC),
                 cause="failed",
                 failure_message=str(exc),
-                label=label,
+                label=effective.label,
             )
             self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.FAILED)
             raise
@@ -844,10 +796,10 @@ class ProcessManager:
             pid=pid,
             pgid=pgid,
             command=cmd,
-            cwd=cwd,
+            cwd=effective.cwd,
             started_at=now,
             status=ProcessStatus.RUNNING,
-            label=label,
+            label=effective.label,
         )
         self._terminal_records.pop(pid, None)
         self._records[pid] = record
@@ -994,7 +946,7 @@ class ProcessManager:
             return
 
         try:
-            root = psutil_mod.Process(record.pid)
+            root = psutil_mod.process_from_pid(record.pid)
             children = root.children(recursive=True)
         except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             self._mark_killed(record)
@@ -1032,7 +984,7 @@ class ProcessManager:
             return
 
         try:
-            root = psutil_mod.Process(record.pid)
+            root = psutil_mod.process_from_pid(record.pid)
             children = root.children(recursive=True)
         except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             self._mark_killed(record, proc.poll())
@@ -1089,7 +1041,7 @@ class ProcessManager:
 
         def _do_terminate() -> bool:
             try:
-                root = psutil_mod.Process(pid)
+                root = psutil_mod.process_from_pid(pid)
                 children = root.children(recursive=True)
             except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 return False
@@ -1183,14 +1135,20 @@ def _loguru_event_listener(event: ProcessEvent) -> None:
         bound.error("process {} {} rc={}", record.pid, new_status.name, record.returncode)
 
 
-_singleton: ProcessManager | None = None
-_atexit_registered: bool = False
+class _ProcessManagerState:
+    """Mutable holder for module-level singleton and registration flag."""
+
+    instance: ProcessManager | None = None
+    atexit_registered: bool = False
+
+
+_pm_state = _ProcessManagerState()
 
 
 def _atexit_shutdown() -> None:
     """Last-resort safety net: terminate all tracked children at interpreter exit."""
     try:
-        pm = _singleton
+        pm = _pm_state.instance
         if pm is None:
             return
         pm.shutdown_all(grace_period_s=0.5)
@@ -1200,19 +1158,17 @@ def _atexit_shutdown() -> None:
 
 def get_process_manager(*, policy: ProcessManagerPolicy | None = None) -> ProcessManager:
     """Return the module-level ProcessManager singleton, creating it on first call."""
-    global _singleton, _atexit_registered  # noqa: PLW0603
-    if _singleton is None:
-        _singleton = ProcessManager(policy=policy)
-    if not _atexit_registered:
+    if _pm_state.instance is None:
+        _pm_state.instance = ProcessManager(policy=policy)
+    if not _pm_state.atexit_registered:
         atexit.register(_atexit_shutdown)
-        _atexit_registered = True
-    return _singleton
+        _pm_state.atexit_registered = True
+    return _pm_state.instance
 
 
 def reset_process_manager() -> None:
     """Replace the singleton with a fresh instance.  Call from test teardown."""
-    global _singleton  # noqa: PLW0603
-    _singleton = None
+    _pm_state.instance = None
 
 
 @contextmanager

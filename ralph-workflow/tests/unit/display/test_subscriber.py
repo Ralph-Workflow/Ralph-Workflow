@@ -47,7 +47,7 @@ def _make_subscriber(
         "run_id": "test-run",
     }
     if prompt_reader is not None:
-        kwargs["prompt_reader"] = prompt_reader
+        kwargs["_prompt_reader"] = prompt_reader
     sub = PipelineSubscriber(**kwargs)
     return q, sub
 

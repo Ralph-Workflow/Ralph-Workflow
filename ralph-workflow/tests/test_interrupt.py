@@ -90,7 +90,7 @@ def _config_with_agent_policy() -> UnifiedConfig:
 class RunCommandModule(Protocol):
     ckpt: Any
     console: Any
-    _run_func: Any
+    _state: Any
 
     def load_config(self, *args: object, **kwargs: object) -> UnifiedConfig: ...
 
@@ -178,7 +178,7 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
     ) -> int:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(run_command_module, "_run_func", raise_keyboard_interrupt)
+    monkeypatch.setattr(run_command_module._state, "run_func", raise_keyboard_interrupt)
 
     exit_code = run_command_module.run_pipeline(resume=True)
 

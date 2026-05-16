@@ -33,6 +33,33 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class ExitContext:
+    """Optional context for building a PhaseExitModel from a PhaseEntryModel."""
+
+    elapsed_seconds: float = 0.0
+    exit_trigger: str | None = None
+    content_blocks: int = 0
+    thinking_blocks: int = 0
+    tool_calls: int = 0
+    errors: int = 0
+    artifact_outcome: str = ""
+    review_issues_found: bool | None = None
+    routing_note: str | None = None
+    waiting_status_line: str | None = None
+    last_failure_category: str | None = None
+
+
+@dataclass(frozen=True)
+class PhaseActivityCounts:
+    """Activity counter snapshot for a pipeline phase."""
+
+    content_blocks: int = 0
+    thinking_blocks: int = 0
+    tool_calls: int = 0
+    errors: int = 0
+
+
+@dataclass(frozen=True)
 class PhaseEntryModel:
     """Immutable view-model for phase-start banner data.
 
@@ -151,20 +178,10 @@ class PhaseExitModel:
     def from_entry_model(
         cls,
         entry: PhaseEntryModel,
-        *,
-        elapsed_seconds: float = 0.0,
-        exit_trigger: str | None = None,
-        content_blocks: int = 0,
-        thinking_blocks: int = 0,
-        tool_calls: int = 0,
-        errors: int = 0,
-        artifact_outcome: str = "",
-        review_issues_found: bool | None = None,
-        routing_note: str | None = None,
-        waiting_status_line: str | None = None,
-        last_failure_category: str | None = None,
+        context: ExitContext | None = None,
     ) -> PhaseExitModel:
         """Construct a :class:`PhaseExitModel` by extending a :class:`PhaseEntryModel`."""
+        effective_context = context or ExitContext()
         return cls(
             phase_name=entry.phase_name,
             phase_role=entry.phase_role,
@@ -173,17 +190,17 @@ class PhaseExitModel:
             outer_dev_cap=entry.outer_dev_cap,
             inner_analysis=entry.inner_analysis,
             inner_analysis_cap=entry.inner_analysis_cap,
-            elapsed_seconds=elapsed_seconds,
-            exit_trigger=exit_trigger,
-            content_blocks=content_blocks,
-            thinking_blocks=thinking_blocks,
-            tool_calls=tool_calls,
-            errors=errors,
-            artifact_outcome=artifact_outcome,
-            review_issues_found=review_issues_found,
-            routing_note=routing_note,
-            waiting_status_line=waiting_status_line,
-            last_failure_category=last_failure_category,
+            elapsed_seconds=effective_context.elapsed_seconds,
+            exit_trigger=effective_context.exit_trigger,
+            content_blocks=effective_context.content_blocks,
+            thinking_blocks=effective_context.thinking_blocks,
+            tool_calls=effective_context.tool_calls,
+            errors=effective_context.errors,
+            artifact_outcome=effective_context.artifact_outcome,
+            review_issues_found=effective_context.review_issues_found,
+            routing_note=effective_context.routing_note,
+            waiting_status_line=effective_context.waiting_status_line,
+            last_failure_category=effective_context.last_failure_category,
         )
 
 
@@ -245,12 +262,10 @@ class RunCompletionModel:
         *,
         exit_trigger: str,
         elapsed_seconds: float | None = None,
-        content_blocks: int = 0,
-        thinking_blocks: int = 0,
-        tool_calls: int = 0,
-        errors: int = 0,
+        activity: PhaseActivityCounts | None = None,
     ) -> RunCompletionModel:
         """Build a :class:`RunCompletionModel` from a :class:`PipelineSnapshot`."""
+        effective_activity = activity or PhaseActivityCounts()
         budget_progress: dict[str, tuple[int, int]] = {
             name: (bp.completed, bp.cap)
             for name, bp in snapshot.budget_progress.items()
@@ -268,10 +283,10 @@ class RunCompletionModel:
             elapsed_seconds=elapsed_seconds,
             outer_dev_iteration=snapshot.outer_dev_iteration,
             total_agent_calls=snapshot.total_agent_calls,
-            content_blocks=content_blocks,
-            thinking_blocks=thinking_blocks,
-            tool_calls=tool_calls,
-            errors=errors,
+            content_blocks=effective_activity.content_blocks,
+            thinking_blocks=effective_activity.thinking_blocks,
+            tool_calls=effective_activity.tool_calls,
+            errors=effective_activity.errors,
             review_issues_found=snapshot.review_issues_found,
             last_error=snapshot.last_error,
             budget_progress=budget_progress,
@@ -284,6 +299,8 @@ class RunCompletionModel:
 
 
 __all__ = [
+    "ExitContext",
+    "PhaseActivityCounts",
     "PhaseEntryModel",
     "PhaseExitModel",
     "RunCompletionModel",

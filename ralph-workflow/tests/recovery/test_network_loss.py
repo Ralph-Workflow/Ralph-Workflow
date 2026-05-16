@@ -9,7 +9,7 @@ from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.connectivity import ConnectivityState
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEvent, FailureEventBus
 from ralph.recovery.testing import FakeConnectivityMonitor
 
@@ -33,8 +33,7 @@ def test_environmental_failure_does_not_debit_budget() -> None:
     new_state, effects, evt = controller.handle(
         state,
         ConnectionError("connection reset by peer"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert new_state.phase == "development"
@@ -53,8 +52,7 @@ def test_environmental_failure_via_message_substring() -> None:
     new_state, effects, evt = controller.handle(
         state,
         "ECONNREFUSED: connection refused to 127.0.0.1:8080",
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert evt.category == "environmental"
@@ -109,8 +107,7 @@ def test_environmental_failure_no_fallover_record() -> None:
     controller.handle(
         state,
         ConnectionError("Temporary failure in name resolution"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert len(state.fallover_history) == 0
@@ -216,8 +213,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     _, _, evt = controller.handle(
         state,
         ConnectionError("pre-existing connection reset"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Environmental failure - no budget debit

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,7 +50,9 @@ def test_stale_session_clears_last_agent_session_id(
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: deadbeef-1234"
     )
-    new_state, _, _ = controller.handle(state, exc, phase="development", agent="claude")
+    new_state, _, _ = controller.handle(
+        state, exc, FailureContext(phase="development", agent="claude")
+    )
 
     assert new_state.last_agent_session_id is None
 
@@ -71,7 +73,9 @@ def test_stale_session_clears_session_preserve_retry_pending(
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: deadbeef-1234"
     )
-    new_state, _, _ = controller.handle(state, exc, phase="development", agent="claude")
+    new_state, _, _ = controller.handle(
+        state, exc, FailureContext(phase="development", agent="claude")
+    )
 
     assert new_state.session_preserve_retry_pending is False
 
@@ -92,7 +96,7 @@ def test_stale_session_writes_retry_hint_file(
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: abc-session"
     )
-    controller.handle(state, exc, phase="development", agent="claude")
+    controller.handle(state, exc, FailureContext(phase="development", agent="claude"))
 
     hint_file = tmp_path / ".agent" / "tmp" / f"last_retry_error_{'development'}.txt"
     assert hint_file.exists(), "Retry hint file should be written on stale-session failure"
@@ -115,7 +119,7 @@ def test_stale_session_debits_budget(tmp_path: Path, monkeypatch: pytest.MonkeyP
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: stale-id"
     )
-    _, _, evt = controller.handle(state, exc, phase="development", agent="claude")
+    _, _, evt = controller.handle(state, exc, FailureContext(phase="development", agent="claude"))
 
     assert evt.counted_against_budget is True
     budget = controller.budget_registry.get("development", "claude")
@@ -137,7 +141,9 @@ def test_stale_session_allows_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     exc = _AgentInvocationError(
         "Agent 'claude' failed with code 1: No conversation found with session ID: stale-id"
     )
-    new_state, effects, _ = controller.handle(state, exc, phase="development", agent="claude")
+    new_state, effects, _ = controller.handle(
+        state, exc, FailureContext(phase="development", agent="claude")
+    )
 
     assert new_state.phase == "development"
     assert effects == []

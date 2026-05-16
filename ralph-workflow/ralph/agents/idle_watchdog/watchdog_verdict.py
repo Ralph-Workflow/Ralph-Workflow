@@ -1,3 +1,5 @@
+"""Enumeration of idle watchdog verdict outcomes."""
+
 from enum import StrEnum
 
 

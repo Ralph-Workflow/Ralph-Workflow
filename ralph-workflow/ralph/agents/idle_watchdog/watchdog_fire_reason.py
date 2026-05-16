@@ -1,3 +1,5 @@
+"""Enumeration of reasons the idle watchdog fires."""
+
 from enum import StrEnum
 
 

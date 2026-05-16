@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.classifier import ClassifiedFailure, FailureCategory, FailureClassifier
+from ralph.recovery.classifier import (
+    ClassifiedFailure,
+    FailureCategory,
+    FailureClassifier,
+    FailureContext,
+)
 from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import AgentChainState, PipelineState
     from ralph.policy.models import AgentChainConfig, PolicyBundle
@@ -34,16 +40,6 @@ class RecoveryControllerOptions:
     budget_registry: AgentBudgetRegistry | None = None
     policy_bundle: PolicyBundle | None = None
     backoff_attempts: dict[str, int] | None = None
-
-
-@dataclass(frozen=True)
-class FailureContext:
-    """Context for a failure event passed to RecoveryController.handle."""
-
-    phase: str
-    agent: str | None = None
-    retry_in_session: bool = False
-    classified_failure: ClassifiedFailure | None = None
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
@@ -68,7 +64,10 @@ def _build_fallover_record(
 def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], Callable[[str], str]]:
     # Lazy import to avoid circular dependency via ralph.phases import chain
     module = import_module("ralph.phases.required_artifacts")
-    return module.build_retry_hint, module.retry_hint_path
+    namespace = cast("dict[str, object]", module.__dict__)
+    build_retry_hint = cast("Callable[[str, str], str]", namespace["build_retry_hint"])
+    retry_hint_path = cast("Callable[[str], str]", namespace["retry_hint_path"])
+    return build_retry_hint, retry_hint_path
 
 
 def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
@@ -119,30 +118,22 @@ class RecoveryController:
         self,
         state: PipelineState,
         raw_failure: BaseException | str,
-        *,
-        phase: str,
-        agent: str | None,
-        retry_in_session: bool = False,
-        classified_failure: ClassifiedFailure | None = None,
+        context: FailureContext,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         """Classify a failure and compute the recovery transition.
 
         Args:
             state: Current pipeline state.
             raw_failure: The raw exception or string error message.
-            phase: Pipeline phase where the failure occurred.
-            agent: Current agent name, if known.
-            retry_in_session: When True and state carries a captured session ID,
-                the AGENT-category retry path sets session_preserve_retry_pending
-                so the runner reuses the agent session rather than cold-starting.
-            classified_failure: Optional pre-classified failure object for known
-                phase-level failures. When supplied, recovery must honor it
-                directly instead of re-classifying the string reason.
+            context: Phase/agent context and optional pre-classified failure.
 
         Returns:
             Tuple of (new_state, effects, failure_event).
         """
-        failure = classified_failure or self._classifier.classify(
+        phase = context.phase
+        agent = context.agent
+        retry_in_session = context.retry_in_session
+        failure = context.classified_failure or self._classifier.classify(
             raw_failure, phase=phase, agent=agent
         )
 

@@ -111,7 +111,7 @@ def _render_major_transition(
     c: Console,
     from_label: str,
     to_label: str,
-    style: str,
+    _style: str,
     context: dict[str, object] | None,
     arrow: str,
 ) -> None:
@@ -119,11 +119,11 @@ def _render_major_transition(
     title = Text()
     title.append(from_label, style="theme.text.muted")
     title.append(f" {arrow} ", style="theme.text.emphasis")
-    title.append(to_label, style=style)
+    title.append(to_label, style=_style)
     if context:
         detail = "  ".join(format_transition_context_items(context))
         title.append(f"  ({detail})", style="theme.text.muted")
-    c.print(Rule(title=title, style=style))
+    c.print(Rule(title=title, style=_style))
 
 
 def _resolve_console(
@@ -142,7 +142,6 @@ def show_phase_transition(
     to_phase: str,
     *,
     context: dict[str, object] | None = None,
-    console: Console | None = None,
     display_context: DisplayContext | None = None,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
@@ -154,8 +153,10 @@ def show_phase_transition(
     When pipeline_policy is provided, styles and descriptions are derived from
     declared phase roles so renamed phases render correctly.
     """
-    c = _resolve_console(console, display_context)
-    ctx = display_context if display_context is not None else make_display_context(console=c)
+    if display_context is None:
+        raise TypeError("display_context is required")
+    c = display_context.console
+    ctx = display_context
 
     style = _phase_style(to_phase, pipeline_policy)
     from_label = _phase_label(from_phase)
@@ -239,6 +240,54 @@ def show_phase_start(
     c.print(line)
 
 
+def _render_wide_phase_start(
+    entry: PhaseEntryModel,
+    style: str,
+    label: str,
+    display_context: DisplayContext,
+) -> None:
+    """Render the wide-mode phase-start banner (titled Rule + optional agent line)."""
+    c = display_context.console
+    od_glyph = display_context.glyph_for("outer_dev")
+    ia_glyph = display_context.glyph_for("inner_analysis")
+    start_glyph = display_context.glyph_for("start")
+    rule_title = Text()
+    rule_title.append(f"{start_glyph} ", style=style)
+    rule_title.append(label, style=style)
+    if entry.outer_dev_iteration is not None:
+        rule_title.append(
+            _build_outer_iteration_suffix(
+                entry.outer_dev_iteration,
+                entry.outer_dev_cap,
+                od_glyph=od_glyph,
+                qualifier="(outer)",
+            ),
+            style="theme.outer_dev",
+        )
+    if entry.inner_analysis is not None:
+        rule_title.append(
+            _build_inner_analysis_suffix(
+                entry.inner_analysis,
+                entry.inner_analysis_cap,
+                ia_glyph=ia_glyph,
+                qualifier="(inner)",
+            ),
+            style="theme.inner_analysis",
+        )
+    if entry.inner_analysis is not None and entry.inner_analysis_cap is not None:
+        remaining = entry.inner_analysis_cap - entry.inner_analysis
+        if remaining > 0:
+            rule_title.append(f"  [{remaining} left]", style="theme.text.muted")
+        elif remaining == 0:
+            rule_title.append("  [last]", style="theme.level.warn")
+    c.print(Rule(title=rule_title, style=style))
+    if entry.agent_name is not None:
+        agent_line = Text()
+        agent_line.append("    agent: ", style="theme.text.muted")
+        agent_line.append(entry.agent_name, style="theme.text.emphasis")
+        c.print(agent_line)
+
+
 def show_phase_start_from_entry(
     entry: PhaseEntryModel,
     *,
@@ -267,50 +316,12 @@ def show_phase_start_from_entry(
     ia_glyph = display_context.glyph_for("inner_analysis")
 
     if mode == "wide":
-        # All context goes into the Rule title — single source of truth for this phase section.
-        # Qualifiers (outer)/(inner) appear here instead of on a separate redundant banner line.
-        rule_title = Text()
-        rule_title.append(f"{start_glyph} ", style=style)
-        rule_title.append(label, style=style)
-        if entry.outer_dev_iteration is not None:
-            rule_title.append(
-                _build_outer_iteration_suffix(
-                    entry.outer_dev_iteration,
-                    entry.outer_dev_cap,
-                    od_glyph=od_glyph,
-                    qualifier="(outer)",
-                ),
-                style="theme.outer_dev",
-            )
-        if entry.inner_analysis is not None:
-            rule_title.append(
-                _build_inner_analysis_suffix(
-                    entry.inner_analysis,
-                    entry.inner_analysis_cap,
-                    ia_glyph=ia_glyph,
-                    qualifier="(inner)",
-                ),
-                style="theme.inner_analysis",
-            )
-        if entry.inner_analysis is not None and entry.inner_analysis_cap is not None:
-            remaining = entry.inner_analysis_cap - entry.inner_analysis
-            if remaining > 0:
-                rule_title.append(f"  [{remaining} left]", style="theme.text.muted")
-            elif remaining == 0:
-                rule_title.append("  [last]", style="theme.level.warn")
-        c.print(Rule(title=rule_title, style=style))
-        if entry.agent_name is not None:
-            agent_line = Text()
-            agent_line.append("    agent: ", style="theme.text.muted")
-            agent_line.append(entry.agent_name, style="theme.text.emphasis")
-            c.print(agent_line)
+        _render_wide_phase_start(entry, style, label, display_context)
         return
 
-    # Medium mode: blank line provides visual phase boundary without a full separator
     if mode == "medium":
         c.print()
 
-    # Medium and compact mode: banner line with iteration context
     line = Text()
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
@@ -336,7 +347,6 @@ def show_phase_start_from_entry(
         )
         line.append(suffix, style="theme.inner_analysis")
 
-    # Show remaining analysis slots in medium mode when cap is known
     if (
         mode == "medium"
         and entry.inner_analysis is not None

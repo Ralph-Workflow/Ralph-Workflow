@@ -36,6 +36,7 @@ from ralph.policy.models import (
     PhaseDefinition,
     PhaseLoopPolicy,
     PhaseTransition,
+    PhaseVerificationPolicy,
     PipelinePolicy,
     PolicyBundle,
     PostCommitRoute,
@@ -357,7 +358,6 @@ class TestRequirement5CommitSemantics:
 
 class TestRequirement6VerificationSemantics:
     def _bundle_with_verification(self) -> PolicyBundle:
-        from ralph.policy.models import PhaseVerificationPolicy
 
         return PolicyBundle(
             agents=AgentsPolicy(

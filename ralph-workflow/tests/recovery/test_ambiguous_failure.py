@@ -9,7 +9,7 @@ from loguru import logger
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 
 def _make_state(agents: list[str] | None = None) -> PipelineState:
@@ -60,8 +60,7 @@ def test_ambiguous_failure_does_not_debit_budget() -> None:
     _, _, evt = controller.handle(
         state,
         RuntimeError("something unexpected happened"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert evt.counted_against_budget is False
@@ -81,8 +80,7 @@ def test_ambiguous_failure_returns_state_without_phase_change() -> None:
     new_state, effects, evt = controller.handle(
         state,
         OSError("some system error"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert new_state.phase == "development"

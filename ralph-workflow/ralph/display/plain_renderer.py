@@ -201,13 +201,35 @@ class _PhaseCloseCounters:
 
 
 @dataclass(frozen=True)
-class _PhaseCloseOptions:
+class PhaseCloseOptions:
     """Optional parameters for emit_phase_close."""
 
     phase_role: str | None = None
     iteration_context: PhaseIterationContext | None = None
     exit_trigger: str | None = None
     counter_overrides: _PhaseCloseCounters | None = None
+
+
+@dataclass(frozen=True)
+class _StreamingCtx:
+    """Context bundle for streaming block management helpers."""
+
+    unit_id: str
+    kind: str
+    content: str
+    base_tag: str
+    timestamp: str
+
+
+@dataclass(frozen=True)
+class _ActivityLineOptions:
+    """Optional parameter group for emit_activity_line."""
+
+    condensed_ref: str | None = None
+    condensed_flag: bool = False
+    summary_line: str | None = None
+    ai_summary_line: str | None = None
+    tool_signature: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -745,21 +767,16 @@ class PlainLogRenderer:
         phase: str,
         produced: str,
         *,
-        phase_role: str | None = None,
-        iteration_context: PhaseIterationContext | None = None,
-        exit_trigger: str | None = None,
-        counter_overrides: _PhaseCloseCounters | None = None,
+        options: PhaseCloseOptions | None = None,
     ) -> None:
         """Emit a single-line recap after a phase's artifact blocks are rendered.
 
         Args:
             phase: Phase name.
             produced: Human-readable artifact-outcome string.
-            phase_role: Optional phase role for milestone glyph selection.
-            iteration_context: Optional iteration context for labels.
-            exit_trigger: Optional exit trigger string.
-            counter_overrides: Optional counter overrides for activity stats.
+            options: Optional phase_role, iteration_context, exit_trigger, and counter_overrides.
         """
+        opts = options or PhaseCloseOptions()
         self.flush_blocks()
         timestamp = self._format_timestamp(self._clock())
         clean_produced = _sanitize(produced).strip()
@@ -770,29 +787,31 @@ class PlainLogRenderer:
             elapsed_s = 0.0
             counters = _PhaseCounters()
         # Use provided counter values if non-None and non-zero
-        if counter_overrides is not None:
+        if opts.counter_overrides is not None:
             cb = (
-                counter_overrides.content_blocks
-                if counter_overrides.content_blocks
+                opts.counter_overrides.content_blocks
+                if opts.counter_overrides.content_blocks
                 else counters.content_blocks
             )
             tb = (
-                counter_overrides.thinking_blocks
-                if counter_overrides.thinking_blocks
+                opts.counter_overrides.thinking_blocks
+                if opts.counter_overrides.thinking_blocks
                 else counters.thinking_blocks
             )
             tc = (
-                counter_overrides.tool_calls
-                if counter_overrides.tool_calls
+                opts.counter_overrides.tool_calls
+                if opts.counter_overrides.tool_calls
                 else counters.tool_calls
             )
-            err = counter_overrides.errors if counter_overrides.errors else counters.errors
+            err = (
+                opts.counter_overrides.errors if opts.counter_overrides.errors else counters.errors
+            )
         else:
             cb = counters.content_blocks
             tb = counters.thinking_blocks
             tc = counters.tool_calls
             err = counters.errors
-        exit_part = f" exit={exit_trigger}" if exit_trigger is not None else ""
+        exit_part = f" exit={opts.exit_trigger}" if opts.exit_trigger is not None else ""
         suffix = (
             f"{exit_part} (elapsed={elapsed_s}s, content_blocks={cb},"
             f" thinking_blocks={tb}, tool_calls={tc},"
@@ -800,13 +819,13 @@ class PlainLogRenderer:
         )
         glyph_prefix = (
             f"{self._ctx.glyph_for('milestone')} "
-            if phase_role is not None and LEVELS.get(phase_role) == "MILESTONE"
+            if opts.phase_role is not None and LEVELS.get(opts.phase_role) == "MILESTONE"
             else ""
         )
         iter_labels = ""
-        if iteration_context is not None and iteration_context.has_context():
+        if opts.iteration_context is not None and opts.iteration_context.has_context():
             iter_labels = " " + " ".join(
-                f"[{label}]" for label, _ in iteration_context.context_labels()
+                f"[{label}]" for label, _ in opts.iteration_context.context_labels()
             )
         if clean_produced:
             line_suffix = (
@@ -886,10 +905,12 @@ class PlainLogRenderer:
         self.emit_phase_close(
             exit_model.phase_name,
             exit_model.artifact_outcome,
-            phase_role=exit_model.phase_role,
-            iteration_context=iter_ctx if iter_ctx.has_context() else None,
-            exit_trigger=exit_model.exit_trigger,
-            counter_overrides=counter_overrides,
+            options=PhaseCloseOptions(
+                phase_role=exit_model.phase_role,
+                iteration_context=iter_ctx if iter_ctx.has_context() else None,
+                exit_trigger=exit_model.exit_trigger,
+                counter_overrides=counter_overrides,
+            ),
         )
         if exit_model.waiting_status_line or exit_model.last_failure_category:
             timestamp = self._format_timestamp(self._clock())
@@ -1147,169 +1168,184 @@ class PlainLogRenderer:
             self._close_block(unit_id, timestamp)
         self._last_emitted_tool_signature.clear()
 
-    def emit_activity_line(
+    def _handle_new_streaming_block(
+        self,
+        ctx: _StreamingCtx,
+        start_tag: str,
+    ) -> tuple[str, str | None]:
+        """Open a new streaming block and return (tag, sanitized_override | None)."""
+        self._active_block[ctx.unit_id] = (ctx.base_tag, [ctx.content])
+        self._last_checkpoint_chars[ctx.unit_id] = 0
+        self._update_counters(ctx.kind, is_new_block=True)
+        if ctx.kind == "thinking":
+            headline = build_headline_or_placeholder(
+                ctx.content, max_chars=self._ctx.headline_max_chars
+            )
+            return start_tag, f"↳ preview: {_sanitize(headline)}"
+        return start_tag, None
+
+    def _continue_streaming_block(
+        self,
+        ctx: _StreamingCtx,
+        accumulated: list[str],
+        continue_tag: str,
+    ) -> tuple[str, str | None] | None:
+        """Continue an existing streaming block; returns (tag, override) or None for dedup."""
+        if self._ctx.streaming_dedup_enabled and accumulated and accumulated[-1] == ctx.content:
+            return None
+        seq = len(accumulated) + 1
+        accumulated.append(ctx.content)
+        tag = f"{continue_tag}#{seq}"
+        if self._ctx.streaming_checkpoints_enabled:
+            total_chars = sum(len(x) for x in accumulated)
+            last_cp = self._last_checkpoint_chars.get(ctx.unit_id, 0)
+            emit_checkpoint = (
+                seq % self._ctx.streaming_checkpoint_fragments == 0
+                or total_chars - last_cp >= self._ctx.streaming_checkpoint_chars
+            )
+            if emit_checkpoint:
+                self._last_checkpoint_chars[ctx.unit_id] = total_chars
+                headline = build_headline_or_placeholder(
+                    " ".join(accumulated), max_chars=self._ctx.headline_max_chars
+                )
+                cp_tag = f"{ctx.base_tag}-checkpoint#{seq}"
+                cp_suffix = (
+                    f"[{cp_tag}][{ctx.unit_id}]"
+                    f" ({seq} fragments, {total_chars} chars) {headline}"
+                )
+                self._console.print(
+                    self._build_line(ctx.timestamp, "INFO", "CONT", cp_suffix),
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                )
+                if ctx.kind == "thinking":
+                    preview = build_headline_or_placeholder(
+                        " ".join(accumulated), max_chars=self._ctx.headline_max_chars
+                    )
+                    preview_suffix = f"[{cp_tag}][{ctx.unit_id}] ↳ preview: {_sanitize(preview)}"
+                    self._console.print(
+                        self._build_line(ctx.timestamp, "INFO", "CONT", preview_suffix),
+                        markup=False,
+                        highlight=False,
+                        no_wrap=True,
+                    )
+        thinking_min = self._ctx.thinking_preview_min_chars
+        if ctx.kind == "thinking" and len(ctx.content) >= thinking_min:
+            preview = build_headline_or_placeholder(
+                ctx.content, max_chars=self._ctx.headline_max_chars
+            )
+            return tag, f"↳ preview: {_sanitize(preview)}"
+        return tag, None
+
+    def _process_streaming_block(
+        self,
+        ctx: _StreamingCtx,
+        block_tags: tuple[str, str, str],
+    ) -> tuple[str, str | None] | None:
+        """Dispatch streaming block state; returns (tag, override) or None on dedup/early-return."""
+        start_tag, continue_tag, _end_tag = block_tags
+        for other_uid in [uid for uid in self._active_block if uid != ctx.unit_id]:
+            self._close_block(other_uid, ctx.timestamp)
+        if ctx.unit_id not in self._active_block:
+            return self._handle_new_streaming_block(ctx, start_tag)
+        existing_base_tag, accumulated = self._active_block[ctx.unit_id]
+        if existing_base_tag != ctx.base_tag:
+            self._close_block(ctx.unit_id, ctx.timestamp)
+            return self._handle_new_streaming_block(ctx, start_tag)
+        return self._continue_streaming_block(ctx, accumulated, continue_tag)
+
+    def _emit_activity_supplements(
         self,
         unit_id: str,
-        kind: str,
-        content: str,
-        *,
-        condensed_ref: str | None = None,
-        condensed_flag: bool = False,
-        summary_line: str | None = None,
-        ai_summary_line: str | None = None,
-        _tool_signature: tuple[str, str] | None = None,
+        timestamp: str,
+        tag: str,
+        cat: str,
+        opts: _ActivityLineOptions,
     ) -> None:
-        """Emit a kind-tagged, level-badged content line."""
-        timestamp = self._format_timestamp(self._clock())
-        base_tag = _KIND_TO_TAG.get(kind, "content")
-        level = _KIND_TO_LEVEL.get(kind, "INFO")
-        cat = TAG_CATEGORY.get(base_tag, "META")
-        sanitized = _sanitize(content)
-        if condensed_ref is not None and condensed_flag:
-            sanitized = f"{sanitized} [see {condensed_ref}]"
-
-        if kind in _STREAMING_KINDS:
-            if kind == "thinking" and not content.strip():
-                return
-            block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
-            if block_tags is not None:
-                start_tag, continue_tag, _end_tag = block_tags
-                other_units = [uid for uid in self._active_block if uid != unit_id]
-                for other_uid in other_units:
-                    self._close_block(other_uid, timestamp)
-                if unit_id not in self._active_block:
-                    self._active_block[unit_id] = (base_tag, [content])
-                    self._last_checkpoint_chars[unit_id] = 0
-                    tag = start_tag
-                    self._update_counters(kind, is_new_block=True)
-                    if kind == "thinking":
-                        headline = build_headline_or_placeholder(
-                            content, max_chars=self._ctx.headline_max_chars
-                        )
-                        sanitized = f"↳ preview: {_sanitize(headline)}"
-                else:
-                    existing_base_tag, accumulated = self._active_block[unit_id]
-                    if existing_base_tag != base_tag:
-                        self._close_block(unit_id, timestamp)
-                        self._active_block[unit_id] = (base_tag, [content])
-                        self._last_checkpoint_chars[unit_id] = 0
-                        tag = start_tag
-                        self._update_counters(kind, is_new_block=True)
-                        if kind == "thinking":
-                            headline = build_headline_or_placeholder(
-                                content, max_chars=self._ctx.headline_max_chars
-                            )
-                            sanitized = f"↳ preview: {_sanitize(headline)}"
-                    else:
-                        if (
-                            self._ctx.streaming_dedup_enabled
-                            and accumulated
-                            and accumulated[-1] == content
-                        ):
-                            return
-                        seq = len(accumulated) + 1
-                        accumulated.append(content)
-                        tag = f"{continue_tag}#{seq}"
-
-                        if self._ctx.streaming_checkpoints_enabled:
-                            total_chars = sum(len(x) for x in accumulated)
-                            last_cp = self._last_checkpoint_chars.get(unit_id, 0)
-                            emit_checkpoint = (
-                                seq % self._ctx.streaming_checkpoint_fragments == 0
-                                or total_chars - last_cp >= self._ctx.streaming_checkpoint_chars
-                            )
-                            if emit_checkpoint:
-                                self._last_checkpoint_chars[unit_id] = total_chars
-                                headline = build_headline_or_placeholder(
-                                    " ".join(accumulated),
-                                    max_chars=self._ctx.headline_max_chars,
-                                )
-                                cp_tag = f"{base_tag}-checkpoint#{seq}"
-                                cp_suffix = (
-                                    f"[{cp_tag}][{unit_id}]"
-                                    f" ({seq} fragments, {total_chars} chars) {headline}"
-                                )
-                                self._console.print(
-                                    self._build_line(timestamp, "INFO", "CONT", cp_suffix),
-                                    markup=False,
-                                    highlight=False,
-                                    no_wrap=True,
-                                )
-                                if kind == "thinking":
-                                    preview = build_headline_or_placeholder(
-                                        " ".join(accumulated),
-                                        max_chars=self._ctx.headline_max_chars,
-                                    )
-                                    preview_suffix = (
-                                        f"[{cp_tag}][{unit_id}] ↳ preview: {_sanitize(preview)}"
-                                    )
-                                    self._console.print(
-                                        self._build_line(timestamp, "INFO", "CONT", preview_suffix),
-                                        markup=False,
-                                        highlight=False,
-                                        no_wrap=True,
-                                    )
-                        thinking_min = self._ctx.thinking_preview_min_chars
-                        if kind == "thinking" and len(content) >= thinking_min:
-                            preview = build_headline_or_placeholder(
-                                content, max_chars=self._ctx.headline_max_chars
-                            )
-                            sanitized = f"↳ preview: {_sanitize(preview)}"
-            else:
-                tag = base_tag
-                self._update_counters(kind, is_new_block=False)
-
-        else:
-            all_units = list(self._active_block.keys())
-            for uid in all_units:
-                self._close_block(uid, timestamp)
-            tag = base_tag
-            self._update_counters(kind, is_new_block=False)
-
-        if kind == "tool_use" and _tool_signature is not None:
-            tool_name, tool_path = _tool_signature
-            self._last_emitted_tool_signature[unit_id] = (tool_name, tool_path)
-
-        if summary_line is not None:
-            if summary_line:
-                summary_text = _sanitize(summary_line)
+        """Emit optional summary and ai-summary lines before the main activity line."""
+        if opts.summary_line is not None:
+            if opts.summary_line:
+                summary_text = _sanitize(opts.summary_line)
                 self._console.print(
                     self._build_line(
-                        timestamp,
-                        "INFO",
-                        cat,
-                        f"[{tag}][{unit_id}] ↳ summary: {summary_text}",
+                        timestamp, "INFO", cat, f"[{tag}][{unit_id}] ↳ summary: {summary_text}"
                     ),
                     markup=False,
                     highlight=False,
                     no_wrap=True,
                 )
-            elif condensed_flag:
+            elif opts.condensed_flag:
                 self._console.print(
                     self._build_line(
-                        timestamp,
-                        "INFO",
-                        cat,
+                        timestamp, "INFO", cat,
                         f"[{tag}][{unit_id}] ↳ summary: (no headline available)",
                     ),
                     markup=False,
                     highlight=False,
                     no_wrap=True,
                 )
-
-        if ai_summary_line:
-            ai_text = _sanitize(ai_summary_line)
+        if opts.ai_summary_line:
+            ai_text = _sanitize(opts.ai_summary_line)
             self._console.print(
                 self._build_line(
-                    timestamp,
-                    "INFO",
-                    cat,
-                    f"[{tag}][{unit_id}] ↳ ai-summary: {ai_text}",
+                    timestamp, "INFO", cat, f"[{tag}][{unit_id}] ↳ ai-summary: {ai_text}"
                 ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
+
+    def emit_activity_line(
+        self,
+        unit_id: str,
+        kind: str,
+        content: str,
+        *,
+        options: _ActivityLineOptions | None = None,
+    ) -> None:
+        """Emit a kind-tagged, level-badged content line."""
+        opts = options or _ActivityLineOptions()
+        timestamp = self._format_timestamp(self._clock())
+        base_tag = _KIND_TO_TAG.get(kind, "content")
+        level = _KIND_TO_LEVEL.get(kind, "INFO")
+        cat = TAG_CATEGORY.get(base_tag, "META")
+        sanitized = _sanitize(content)
+        if opts.condensed_ref is not None and opts.condensed_flag:
+            sanitized = f"{sanitized} [see {opts.condensed_ref}]"
+
+        if kind in _STREAMING_KINDS:
+            if kind == "thinking" and not content.strip():
+                return
+            block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
+            if block_tags is not None:
+                ctx = _StreamingCtx(
+                    unit_id=unit_id,
+                    kind=kind,
+                    content=content,
+                    base_tag=base_tag,
+                    timestamp=timestamp,
+                )
+                result = self._process_streaming_block(ctx, block_tags)
+                if result is None:
+                    return
+                tag, sanitized_override = result
+                if sanitized_override is not None:
+                    sanitized = sanitized_override
+            else:
+                tag = base_tag
+                self._update_counters(kind, is_new_block=False)
+        else:
+            for uid in list(self._active_block.keys()):
+                self._close_block(uid, timestamp)
+            tag = base_tag
+            self._update_counters(kind, is_new_block=False)
+
+        if kind == "tool_use" and opts.tool_signature is not None:
+            tool_name, tool_path = opts.tool_signature
+            self._last_emitted_tool_signature[unit_id] = (tool_name, tool_path)
+
+        self._emit_activity_supplements(unit_id, timestamp, tag, cat, opts)
 
         self._console.print(
             self._build_line(timestamp, level, cat, f"[{tag}][{unit_id}] {sanitized}"),
@@ -1366,7 +1402,7 @@ class PlainModeAdapter:
 
     def notify(self, state: PipelineState) -> None:
         self._renderer.emit_snapshot(
-            snapshot_from_state(state, prompt_path=None, prompt_preview=(), run_id=None)
+            snapshot_from_state(state)
         )
 
 
@@ -1374,6 +1410,7 @@ __all__ = [
     "LEVELS",
     "TAGS",
     "TAG_CATEGORY",
+    "PhaseCloseOptions",
     "PlainLogRenderer",
     "PlainModeAdapter",
     "RunStartOrientation",

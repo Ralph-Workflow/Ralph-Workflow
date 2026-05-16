@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from ralph.git.operations import GitOperationError, find_repo_root
-from ralph.git.subprocess_runner import run_git
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -97,10 +97,7 @@ def _has_index_conflicts(repo: Repo) -> bool:
             ["diff", "--name-only", "--diff-filter=U"],
             cwd=repo_root,
             label="git-rebase:diff",
-            env=_git_env(),
-            check=True,
-            capture_output=True,
-            text=True,
+            options=GitRunOptions(env=_git_env(), check=True),
         )
         return bool(result.stdout.strip())
     except subprocess.CalledProcessError as exc:
@@ -164,10 +161,7 @@ def continue_rebase_at(repo_root: Path | str) -> None:
             ["rebase", "--continue"],
             cwd=Path(repo_root),
             label="git-rebase:continue",
-            env=_git_env(),
-            check=True,
-            capture_output=True,
-            text=True,
+            options=GitRunOptions(env=_git_env(), check=True),
         )
     except subprocess.CalledProcessError as exc:
         raw_stderr: object = exc.stderr
@@ -190,10 +184,7 @@ def _head_is_descendant(repo_root: Path | str, upstream_branch: str) -> bool:
         ["merge-base", "--is-ancestor", upstream_branch, "HEAD"],
         cwd=repo_root_path,
         label="git-rebase:merge-base",
-        env=_git_env(),
-        check=False,
-        capture_output=True,
-        text=True,
+        options=GitRunOptions(env=_git_env()),
     )
     if result.returncode == 0:
         return True

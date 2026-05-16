@@ -133,9 +133,7 @@ def build_ai_summary(text: str, env: Mapping[str, str]) -> str | None:
         return None
     if result is None:
         return None
-    if len(result) > _AI_SUMMARY_MAX_CHARS:
-        return result[:_AI_SUMMARY_MAX_CHARS] + "…"
-    return result
+    return result[:_AI_SUMMARY_MAX_CHARS] + "…" if len(result) > _AI_SUMMARY_MAX_CHARS else result
 
 
 __all__ = [

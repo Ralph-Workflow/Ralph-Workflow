@@ -37,7 +37,11 @@ from ralph.phases.required_artifacts import (
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
-from ralph.prompts.materialize import _read_and_clear_retry_hint
+from ralph.prompts.materialize import (
+    PromptPhaseContext,
+    PromptPhaseOptions,
+    _read_and_clear_retry_hint,
+)
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -376,11 +380,13 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
 
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(
+        PromptPhaseContext(
             phase="development_analysis",
             workspace=workspace,
             pipeline_policy=policy.pipeline,
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
             workspace_root=tmp_path,
+        ),
         )
 
     rendered = workspace.read(prompt_path)
@@ -406,13 +412,17 @@ def test_development_proof_failure_uses_retry_hint_contract(
 
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(
+        PromptPhaseContext(
             phase="development",
             workspace=workspace,
             pipeline_policy=policy.pipeline,
-            artifacts_policy=policy.artifacts,
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
             workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
             previous_phase="development_analysis",
+        ),
         )
 
     rendered = workspace.read(prompt_path)
@@ -465,12 +475,16 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
 
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(
+        PromptPhaseContext(
             phase=phase,
             workspace=workspace,
             pipeline_policy=policy.pipeline,
-            artifacts_policy=policy.artifacts,
             session_caps=SessionCapabilities.defaults_for_drain(drain),
             workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+        ),
         )
 
     rendered = workspace.read(prompt_path)

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from ralph.display.snapshot import snapshot_from_state
+from ralph.display.snapshot import SnapshotContext, snapshot_from_state
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -89,10 +89,7 @@ def test_snapshot_has_budget_progress_not_legacy_fields(
 
     snap = snapshot_from_state(
         state,
-        prompt_path=None,
-        prompt_preview=(),
-        run_id=None,
-        pipeline_policy=_cycles_bundle.pipeline,
+        SnapshotContext(pipeline_policy=_cycles_bundle.pipeline),
     )
 
     assert hasattr(snap, "budget_progress"), (
@@ -140,9 +137,6 @@ def test_snapshot_budget_progress_empty_when_no_counters() -> None:
     state = PipelineState.from_policy(policy)
     snap = snapshot_from_state(
         state,
-        prompt_path=None,
-        prompt_preview=(),
-        run_id=None,
-        pipeline_policy=policy,
+        SnapshotContext(pipeline_policy=policy),
     )
     assert snap.budget_progress == {}

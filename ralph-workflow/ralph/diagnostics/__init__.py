@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.git.subprocess_runner import run_git
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -105,7 +105,7 @@ def _run_git_command(args: list[str]) -> str | None:
         Command output stripped of whitespace, or None if command failed.
     """
     try:
-        result = run_git(args, cwd=None, label="git-diagnostics", timeout=5, check=False)
+        result = run_git(args, cwd=None, label="git-diagnostics", options=GitRunOptions(timeout=5))
         if result.returncode == 0:
             return result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):

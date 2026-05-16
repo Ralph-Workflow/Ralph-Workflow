@@ -64,29 +64,36 @@ class _RunnerModule(Protocol):
 
 
 _RUN_FUNC_UNSET: object = object()
-_run_func: _RunnerFunc | None | object = _RUN_FUNC_UNSET
+
+
+class _RunFuncState:
+    """Holds the lazily-loaded pipeline runner function."""
+
+    def __init__(self) -> None:
+        self.run_func: _RunnerFunc | None | object = _RUN_FUNC_UNSET
+
+
+_state = _RunFuncState()
 
 
 def _get_run_func() -> _RunnerFunc | None:
     """Return the pipeline runner callable, importing it lazily on first call.
 
-    The module-level ``_run_func`` is exposed so tests can inject a fake runner
-    via ``monkeypatch.setattr``. A sentinel distinguishes "not yet loaded" from
-    the genuine ``None`` produced by an ImportError, ensuring repeated calls do
-    not retry the import after a failure.
+    The module-level ``_state.run_func`` is set so tests can inject a fake runner
+    via ``monkeypatch.setattr(_state, 'run_func', ...)``. A sentinel distinguishes
+    "not yet loaded" from the genuine ``None`` produced by an ImportError, ensuring
+    repeated calls do not retry the import after a failure.
     """
-    global _run_func  # noqa: PLW0603
-
-    if _run_func is not _RUN_FUNC_UNSET:
-        return cast("_RunnerFunc | None", _run_func)
+    if _state.run_func is not _RUN_FUNC_UNSET:
+        return cast("_RunnerFunc | None", _state.run_func)
 
     try:
         module = cast("_RunnerModule", import_module("ralph.pipeline.runner"))
     except ImportError:
-        _run_func = None
+        _state.run_func = None
         return None
 
-    _run_func = module.run
+    _state.run_func = module.run
     return module.run
 
 
@@ -165,6 +172,8 @@ class _LegacyRunPipelineKwargs(TypedDict, total=False):
 
 
 class RunPipelineRequest(NamedTuple):
+    """Parameters for a pipeline run request."""
+
     config_path: Path | None = None
     cli_overrides: ConfigOverrides | None = None
     dry_run: bool = False

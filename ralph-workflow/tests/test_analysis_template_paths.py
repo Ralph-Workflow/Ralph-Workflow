@@ -8,7 +8,11 @@ from unittest.mock import patch
 
 import ralph.prompts.materialize as materialize_module
 from ralph.policy.loader import load_policy
-from ralph.prompts.materialize import materialize_prompt_for_phase
+from ralph.prompts.materialize import (
+    PromptPhaseContext,
+    PromptPhaseOptions,
+    materialize_prompt_for_phase,
+)
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -52,12 +56,16 @@ def _render_development_analysis(
     workspace.write(".agent/artifacts/development_result.json", _MINIMAL_DEV_RESULT)
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         path = materialize_prompt_for_phase(
+        PromptPhaseContext(
             phase="development_analysis",
             workspace=workspace,
             pipeline_policy=policy.pipeline,
-            artifacts_policy=policy.artifacts,
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
             workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+        ),
         )
     return workspace.read(path)
 
@@ -151,12 +159,16 @@ def _render_development_analysis_no_dev_result(tmp_path: Path) -> str:
     # Intentionally do NOT write development_result.json
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         path = materialize_prompt_for_phase(
+        PromptPhaseContext(
             phase="development_analysis",
             workspace=workspace,
             pipeline_policy=policy.pipeline,
-            artifacts_policy=policy.artifacts,
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
             workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+        ),
         )
     return workspace.read(path)
 

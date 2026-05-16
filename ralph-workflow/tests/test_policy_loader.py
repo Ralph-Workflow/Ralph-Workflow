@@ -504,7 +504,6 @@ def test_terminal_recovery_route_rejected(tmp_path: Path) -> None:
 
 def test_build_agents_policy_includes_custom_drains() -> None:
     """build_agents_policy_from_config includes all declared drains unconditionally."""
-    from ralph.policy.loader import build_agents_policy_from_config
 
     config = UnifiedConfig(
         agent_chains={"custom_chain": ["claude"]},

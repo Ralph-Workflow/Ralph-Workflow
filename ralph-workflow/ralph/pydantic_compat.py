@@ -37,34 +37,18 @@ if TYPE_CHECKING:
         def model_validate(
             cls: type[Self],
             obj: object,
-            *,
-            strict: bool | None = None,
-            extra: Literal["allow", "ignore", "forbid"] | None = None,
-            from_attributes: bool | None = None,
-            context: object | None = None,
-            by_alias: bool | None = None,
-            by_name: bool | None = None,
         ) -> Self: ...
 
         @classmethod
         def model_validate_json(
             cls: type[Self],
             json_data: str | bytes | bytearray,
-            *,
-            strict: bool | None = None,
-            extra: Literal["allow", "ignore", "forbid"] | None = None,
-            context: object | None = None,
-            by_alias: bool | None = None,
-            by_name: bool | None = None,
         ) -> Self: ...
 
         @classmethod
         def model_rebuild(
             cls,
             *,
-            force: bool = False,
-            raise_errors: bool = True,
-            _parent_namespace_depth: int = 2,
             _types_namespace: dict[str, object] | None = None,
         ) -> bool | None: ...
 
@@ -72,32 +56,21 @@ if TYPE_CHECKING:
             self,
             *,
             mode: Literal["json", "python"] | str = "python",
-            by_alias: bool | None = None,
             exclude_unset: bool = False,
             exclude_defaults: bool = False,
             exclude_none: bool = False,
-            round_trip: bool = False,
-            warnings: bool | Literal["none", "warn", "error"] = True,
         ) -> dict[str, object]: ...
 
         def model_dump_json(
             self,
             *,
             indent: int | None = None,
-            ensure_ascii: bool = False,
-            by_alias: bool | None = None,
-            exclude_unset: bool = False,
-            exclude_defaults: bool = False,
-            exclude_none: bool = False,
-            round_trip: bool = False,
-            warnings: bool | Literal["none", "warn", "error"] = True,
         ) -> str: ...
 
         def model_copy(
             self: Self,
             *,
             update: dict[str, object] | None = None,
-            deep: bool = False,
         ) -> Self: ...
 else:
     from pydantic import BaseModel as RalphBaseModel

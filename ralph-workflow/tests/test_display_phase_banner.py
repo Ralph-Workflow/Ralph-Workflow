@@ -435,7 +435,11 @@ class TestPolicyDrivenPhaseBanner:
         """execution→analysis transition treated as major when policy provides roles."""
         policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
         console = Console(record=True)
-        show_phase_transition("my_work", "my_check", pipeline_policy=policy, console=console)
+        show_phase_transition(
+            "my_work", "my_check",
+            pipeline_policy=policy,
+            display_context=make_display_context(console=console),
+        )
         output = console.export_text()
         # Major transition produces a Rule with the phase label
         assert "My Work" in output
@@ -444,7 +448,10 @@ class TestPolicyDrivenPhaseBanner:
     def test_transition_without_policy_renders_as_minor(self) -> None:
         """No policy → transition renders as minor (no description)."""
         console = Console(record=True)
-        show_phase_transition("planning", "development", console=console)
+        show_phase_transition(
+            "planning", "development",
+            display_context=make_display_context(console=console),
+        )
         output = console.export_text()
         assert "Planning" in output
         assert "Development" in output

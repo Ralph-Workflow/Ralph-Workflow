@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.pipeline.effects import FanOutEffect
-from ralph.pipeline.runner import _execute_fan_out_sync
+from ralph.pipeline.fan_out import execute_fan_out_sync
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
@@ -152,7 +152,7 @@ class TestParallelResume:
             artifact_unit_ids={"unit-2", "unit-3", "unit-4"},
         )
 
-        _execute_fan_out_sync(
+        execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_FakeDisplay(),
@@ -198,7 +198,7 @@ class TestParallelResume:
             artifact_unit_ids={"unit-0", "unit-1", "unit-2"},
         )
 
-        _execute_fan_out_sync(
+        execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_FakeDisplay(),
@@ -240,7 +240,7 @@ class TestParallelResume:
             artifact_unit_ids={"unit-2", "unit-3", "unit-4"},
         )
 
-        final_state = _execute_fan_out_sync(
+        final_state = execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_FakeDisplay(),

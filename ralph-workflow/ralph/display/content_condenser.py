@@ -96,11 +96,11 @@ def _extract_tail(text: str, tail_cells: int) -> str:
 
 
 def _return_result(
-    visible: str, condensed: bool, options: CondenseOptions
+    visible: str, condensed: bool, options: CondenseOptions, original: str
 ) -> _CondensedResult:
     """Return result tuple, optionally including summary lines."""
     if options.summary:
-        summary_line, ai_summary_line = _build_summaries(visible, options.env)
+        summary_line, ai_summary_line = _build_summaries(original, options.env)
         return (visible, condensed, summary_line, ai_summary_line)
     return (visible, condensed)
 
@@ -109,7 +109,7 @@ def _condense_head_only(text: str, options: CondenseOptions) -> _CondensedResult
     """Condense using head-only truncation."""
     head = _slice_to_cells(text, options.soft_limit)
     visible = head + _truncation_suffix(options.overflow_ref)
-    return _return_result(visible, True, options)
+    return _return_result(visible, True, options, text)
 
 
 def _condense_head_and_tail(
@@ -124,55 +124,44 @@ def _condense_head_and_tail(
 
     omitted = total - cell_len(head) - cell_len(tail)
     visible = head + _elision_suffix(omitted, options.overflow_ref) + tail
-    return _return_result(visible, True, options)
+    return _return_result(visible, True, options, text)
 
 
 def condense_content(
     text: str,
     *,
-    options: CondenseOptions,
+    options: CondenseOptions | None = None,
 ) -> tuple[str, bool] | tuple[str, bool, str | None, str | None]:
     """Condense *text* so it fits within display limits.
 
-    Use the ``options`` parameter to configure condensation behavior via
-    :class:`CondenseOptions`.
+    Pass a :class:`CondenseOptions` to configure limits, overflow ref, and
+    summarization.  Omit to use defaults.
 
-    Returns ``(visible, condensed_flag)`` when ``options.summary`` is False (default).
+    Returns ``(visible, condensed_flag)`` when ``options.summary`` is False.
     Returns ``(visible, condensed_flag, summary_line, ai_summary_line)`` when
-    ``options.summary`` is True, where ``summary_line`` is a non-None headline
-    string only when :func:`should_summarize` returns True for the content, and
-    ``ai_summary_line`` is a non-None AI-generated summary only when the AI hook
-    is configured and ``RALPH_LONG_CONTENT_AI_SUMMARY=1``.
-
-    Truncation suffixes use parentheses ``(...)`` rather than brackets to avoid
-    being misinterpreted as Rich markup tags by downstream renderers.
-
-    When ``options.overflow_ref`` is provided it is embedded in the truncation
-    suffix so direct callers (e.g. tests) can see the reference inline. When it
-    is None the suffix is simply ``(truncated)`` — the caller is expected to
-    surface the reference via
-    ``PlainLogRenderer.emit_activity_line(condensed_ref=...)``.
+    ``options.summary`` is True.
 
     Rules:
-    - If ``cell_len(text) <= options.soft_limit``: return ``(text, False[, None, None])``
-    - If ``cell_len(text) <= options.hard_limit``: head-only truncation with suffix
-    - If ``cell_len(text) > options.hard_limit``: head + tail with middle elided
+    - If ``cell_len(text) <= soft_limit``: return ``(text, False[, None, None])``
+    - If ``cell_len(text) <= hard_limit``: head-only truncation with suffix
+    - If ``cell_len(text) > hard_limit``: head + tail with middle elided
     """
+    opts = options if options is not None else CondenseOptions()
     if not text:
-        return _return_result("", False, options)
+        return _return_result("", False, opts, "")
 
     try:
         total = cell_len(text)
     except Exception:
-        return _return_result(text, False, options)
+        return _return_result(text, False, opts, text)
 
-    if total <= options.soft_limit:
-        return _return_result(text, False, options)
+    if total <= opts.soft_limit:
+        return _return_result(text, False, opts, text)
 
-    if total <= options.hard_limit:
-        return _condense_head_only(text, options)
+    if total <= opts.hard_limit:
+        return _condense_head_only(text, opts)
 
-    return _condense_head_and_tail(text, total, options)
+    return _condense_head_and_tail(text, total, opts)
 
 
 __all__ = ["CondenseOptions", "condense_content"]

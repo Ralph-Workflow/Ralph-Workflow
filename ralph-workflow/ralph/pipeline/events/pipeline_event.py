@@ -1,3 +1,5 @@
+"""Pipeline event type enumeration."""
+
 from enum import StrEnum
 
 

@@ -28,7 +28,9 @@ if TYPE_CHECKING:
 
 from rich.console import Console
 
+from ralph.config.models import UnifiedConfig
 from ralph.mcp.server.factory import McpServerHandle
+from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent, WorkerCompletedEvent, WorkerFailedEvent
@@ -148,7 +150,6 @@ class TestSameWorkspaceFanOutE2E:
 
     def test_two_disjoint_units_emit_fan_out_effect(self) -> None:
         """_determine_effect_from_policy emits FanOutEffect for >=2 work units."""
-        from ralph.config.models import UnifiedConfig
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
@@ -165,7 +166,6 @@ class TestSameWorkspaceFanOutE2E:
 
     def test_single_unit_uses_serial_path(self) -> None:
         """A single work unit must NOT produce fan-out; it falls to the normal dev path."""
-        from ralph.config.models import UnifiedConfig
 
         state = PipelineState(phase="development", work_units=(_make_work_unit("unit-a"),))
         policy_bundle = _make_policy_bundle(max_workers=4)
@@ -508,7 +508,6 @@ class TestRunnerAnalysisHandoffIntegration:
     ) -> None:
         """After two workers succeed, .agent/DEVELOPMENT_RESULT.md must exist
         and contain the parallel summary so the analysis phase can read it."""
-        from ralph.pipeline import checkpoint as ckpt
 
         unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
         unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])
@@ -565,7 +564,6 @@ class TestRunnerAnalysisHandoffIntegration:
     ) -> None:
         """When unit-b fails, DEVELOPMENT_RESULT.md must show any_failed=true
         and all_succeeded=false so the analysis phase sees the honest outcome."""
-        from ralph.pipeline import checkpoint as ckpt
 
         unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
         unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])

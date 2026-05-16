@@ -19,6 +19,7 @@ from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
+    InvokeRuntimeOptions,
     OpenCodeResumableExitError,
     build_invoke_options_from_config,
     extract_session_id,
@@ -34,7 +35,7 @@ from ralph.mcp.artifacts.smoke_test_result import (
     read_smoke_test_result_artifact,
 )
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
-from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
+from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
 from ralph.pipeline import runner as runner_module
@@ -184,7 +185,9 @@ def _start_smoke_bridge(repo_root: Path, *, config: UnifiedConfig) -> SessionBri
         stored_capability_profile=session_mcp_plan.capability_profile,
     )
     workspace = FsWorkspace(repo_root)
-    return start_mcp_server(session, workspace, extra_env=session_mcp_plan.server_env)
+    return start_mcp_server(
+        session, workspace, extras=McpServerExtras(extra_env=session_mcp_plan.server_env)
+    )
 
 
 def _smoke_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
@@ -472,11 +475,13 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
             output_file.unlink()
         options = build_invoke_options_from_config(
             config.general,
-            verbose=False,
-            show_progress=False,
-            workspace_path=workspace_root,
-            extra_env=_smoke_bridge_env(bridge),
-            pure=agent_config.transport == AgentTransport.OPENCODE,
+            InvokeRuntimeOptions(
+                verbose=False,
+                show_progress=False,
+                workspace_path=workspace_root,
+                extra_env=_smoke_bridge_env(bridge),
+                pure=agent_config.transport == AgentTransport.OPENCODE,
+            ),
         )
         options = InvokeOptions(
             model_flag=options.model_flag,

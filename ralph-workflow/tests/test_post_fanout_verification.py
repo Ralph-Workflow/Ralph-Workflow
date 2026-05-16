@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import typing
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from ralph.pipeline.effects import FanOutEffect
-from ralph.pipeline.events import PostFanoutVerificationEvent
+from ralph.pipeline.events import Event, PostFanoutVerificationEvent
+from ralph.pipeline.fan_out import VerificationResult, write_parallel_development_summary
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.workspace.scope import WorkspaceScope
 
@@ -33,9 +36,6 @@ def _minimal_policy() -> PipelinePolicy:
 
 
 _EXIT_CODE_VERIFY_FAIL = 2
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _make_scope(tmp_path: Path) -> WorkspaceScope:
@@ -81,9 +81,7 @@ class TestVerificationRunsOnlyWhenFlagTrue:
 
     def test_policy_post_fanout_verification_defaults_to_false(self) -> None:
         """The default pipeline policy must have post_fanout_verification=False."""
-        from pathlib import Path
 
-        from ralph.policy.loader import load_policy
 
         defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
         bundle = load_policy(defaults_dir)
@@ -174,7 +172,6 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
 
     def test_post_fanout_verification_event_in_event_union(self) -> None:
         """PostFanoutVerificationEvent must be part of the Event union type."""
-        from ralph.pipeline.events import Event
 
         args = typing.get_args(Event)
         assert PostFanoutVerificationEvent in args, (
@@ -183,9 +180,7 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
 
     def test_verification_summary_entry_added_on_failure(self, tmp_path: Path) -> None:
         """When verification ran and failed, parallel_development_summary must include it."""
-        import json
 
-        from ralph.pipeline.runner import _write_parallel_development_summary
 
         effect = FanOutEffect(
             work_units=(
@@ -201,13 +196,11 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=True,
-            verify_passed=False,
-            verify_exit_code=_EXIT_CODE_VERIFY_FAIL,
+            VerificationResult(ran=True, passed=False, exit_code=_EXIT_CODE_VERIFY_FAIL),
         )
 
         summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"

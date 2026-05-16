@@ -5,15 +5,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Never, cast
 from unittest.mock import MagicMock
 
+import ralph.prompts.materialize
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
+from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
 
@@ -427,9 +429,6 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     tmp_path: Path,
 ) -> None:
     """When RALPH_WORKER_NAMESPACE is set, prompt payloads land in the worker's namespace."""
-    from ralph.pipeline import runner as runner_module
-    from ralph.pipeline.effects import PreparePromptEffect
-    from ralph.policy.loader import load_policy
 
     worker_ns = tmp_path / ".agent" / "workers" / "unit-test"
     worker_ns.mkdir(parents=True, exist_ok=True)
@@ -446,7 +445,6 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
         return "/fake/prompt/path"
 
     # Patch materialize and dump to avoid writing files
-    import ralph.prompts.materialize
 
     monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", _fake_dump)
@@ -474,9 +472,6 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
     tmp_path: Path,
 ) -> None:
     """Without RALPH_WORKER_NAMESPACE, worker_namespace is None (shared path used)."""
-    from ralph.pipeline import runner as runner_module
-    from ralph.pipeline.effects import PreparePromptEffect
-    from ralph.policy.loader import load_policy
 
     monkeypatch.delenv(str(WORKER_NAMESPACE_ENV), raising=False)
     recorded_kwargs: list[dict[str, object]] = []
@@ -485,7 +480,6 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
         recorded_kwargs.append(dict(kwargs))
         return "rendered-prompt"
 
-    import ralph.prompts.materialize
 
     monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", lambda *a, **k: "/p")

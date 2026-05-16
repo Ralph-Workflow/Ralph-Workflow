@@ -8,7 +8,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.process.manager import ProcessManager, get_process_manager
+from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -28,6 +28,16 @@ class ProcessResult:
     def succeeded(self) -> bool:
         """Return ``True`` when the process exited successfully."""
         return self.returncode == 0
+
+
+@dataclass(frozen=True)
+class ProcessRunOptions:
+    """Execution options for run_process and run_process_async."""
+
+    cwd: str | Path | None = None
+    env: Mapping[str, str] | None = None
+    timeout: float | None = None
+    capture_output: bool = True
 
 
 @dataclass(frozen=True)
@@ -108,10 +118,12 @@ async def run_process_async(
     try:
         handle = await pm.spawn_async(
             cmd,
-            cwd=_normalize_cwd(cwd),
-            env=_build_env(env),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            SpawnOptions(
+                cwd=_normalize_cwd(cwd),
+                env=_build_env(env),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            ),
         )
     except OSError as exc:
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
@@ -145,45 +157,41 @@ def run_process(
     command: str,
     args: Sequence[str] = (),
     *,
-    cwd: str | Path | None = None,
-    env: Mapping[str, str] | None = None,
-    timeout: float | None = None,
-    capture_output: bool = True,
+    options: ProcessRunOptions | None = None,
     _pm: ProcessManager | None = None,
 ) -> ProcessResult:
     """Run a process synchronously, optionally capturing output.
 
-    When *capture_output* is ``False`` the child process inherits the parent's
-    stdout/stderr so output streams directly to the terminal.  The returned
-    ``ProcessResult`` will have empty ``stdout`` and ``stderr`` strings.
+    When ``options.capture_output`` is ``False`` the child process inherits the
+    parent's stdout/stderr so output streams directly to the terminal.  The
+    returned ``ProcessResult`` will have empty ``stdout`` and ``stderr`` strings.
     """
+    effective_options = options or ProcessRunOptions()
     cmd = _normalize_command(command, args)
     pm = _pm if _pm is not None else get_process_manager()
 
-    pipe = subprocess.PIPE if capture_output else None
+    pipe = subprocess.PIPE if effective_options.capture_output else None
     try:
         handle = pm.spawn(
             cmd,
-            cwd=_normalize_cwd(cwd),
-            env=_build_env(env),
-            stdout=pipe,
-            stderr=pipe,
+            SpawnOptions(
+                cwd=_normalize_cwd(effective_options.cwd),
+                env=_build_env(effective_options.env),
+                stdout=pipe,
+                stderr=pipe,
+            ),
         )
     except OSError as exc:
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
 
     try:
-        stdout_bytes, stderr_bytes = handle.communicate(timeout=timeout)
+        stdout_bytes, stderr_bytes = handle.communicate(timeout=effective_options.timeout)
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
-        # After kill, communicate() drains any buffered pipe data (Python
-        # preserves accumulated data across communicate() calls via
-        # self._fileobj2output).  With inherited streams (capture_output=False)
-        # this simply waits for the process to exit.
         stdout_bytes, stderr_bytes = handle.communicate()
         raise ProcessExecutionError.from_timeout(
             cmd,
-            timeout=timeout,
+            timeout=effective_options.timeout,
             stdout=_decode_output(stdout_bytes),
             stderr=_decode_output(stderr_bytes),
         ) from None
@@ -222,4 +230,10 @@ def _decode_output(output: str | bytes | None) -> str:
     return output
 
 
-__all__ = ["ProcessExecutionError", "ProcessResult", "run_process", "run_process_async"]
+__all__ = [
+    "ProcessExecutionError",
+    "ProcessResult",
+    "ProcessRunOptions",
+    "run_process",
+    "run_process_async",
+]

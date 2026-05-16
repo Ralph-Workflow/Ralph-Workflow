@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
+import pathlib
+import tempfile
+from datetime import timedelta
 from typing import TYPE_CHECKING, cast
 
 import pytest
 from pydantic import ValidationError
 
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+from ralph.config.models import AgentConfig as _AgentConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import HeartbeatPolicy
-from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
+from ralph.mcp.server.lifecycle import (
+    McpRestartPolicy,
+    McpServerError,
+    ProcessLike,
+    RestartAwareMcpBridge,
+    StandaloneMcpProcess,
+)
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.runner import WorkspaceScope
+from ralph.process.mcp_supervisor import McpSupervisor
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -134,7 +145,6 @@ def _make_config_with_watchdog(
 
 def _capture_options_factory(captured: dict[str, object]) -> object:
     """Return a fake_invoke_agent that captures the full options object."""
-    from ralph.config.models import AgentConfig as _AgentConfig
 
     def fake_invoke_agent(
         config: _AgentConfig,
@@ -549,15 +559,7 @@ def test_record_mcp_restart_forwarded_to_subscriber(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """When bridge.restart_count > 0, record_mcp_restart is called on the display subscriber."""
-    import pathlib
-    import tempfile
 
-    from ralph.mcp.server.lifecycle import (
-        McpRestartPolicy,
-        ProcessLike,
-        RestartAwareMcpBridge,
-        StandaloneMcpProcess,
-    )
 
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -646,9 +648,7 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """_execute_agent_effect passes heartbeat_policy_from_env().interval to McpSupervisor."""
-    from datetime import timedelta
 
-    from ralph.process.mcp_supervisor import McpSupervisor
 
     config = _make_config_with_watchdog()
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")

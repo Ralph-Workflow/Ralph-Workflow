@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import typing
 
+from ralph.pipeline import effects
 from ralph.pipeline.effects import FanOutEffect
 
-EFFECTS_PATH = pathlib.Path(__file__).parent.parent / "ralph" / "pipeline" / "effects.py"
+EFFECTS_PATH = (
+    pathlib.Path(__file__).parent.parent / "ralph" / "pipeline" / "effects" / "__init__.py"
+)
 
 
 class TestFanOutEffectIsPhaseAgnostic:
@@ -42,15 +46,12 @@ class TestFanOutEffectIsPhaseAgnostic:
         )
 
     def test_fan_out_effect_is_in_effect_union(self) -> None:
-        import typing
 
-        from ralph.pipeline import effects
 
         args = typing.get_args(effects.Effect)
         assert FanOutEffect in args, "FanOutEffect must be in the Effect union type"
 
     def test_fanout_development_effect_alias_returns_fanout_effect(self) -> None:
-        from ralph.pipeline import effects
 
         alias = effects.FanOutDevelopmentEffect
         assert alias is FanOutEffect, (

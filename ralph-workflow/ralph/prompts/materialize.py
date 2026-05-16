@@ -101,6 +101,28 @@ class MultimodalSidecarEntry:
         }
 
 
+@dataclass(frozen=True)
+class PromptPhaseContext:
+    """Required inputs for prompt materialization: the phase, workspace, and policy bindings."""
+
+    phase: str
+    workspace: Workspace
+    pipeline_policy: PipelinePolicy
+    session_caps: SessionCapabilities
+    workspace_root: Path
+
+
+@dataclass(frozen=True)
+class PromptPhaseOptions:
+    """Optional inputs for prompt materialization with sensible defaults."""
+
+    artifacts_policy: ArtifactsPolicy | None = None
+    worker_namespace: Path | None = None
+    previous_phase: str | None = None
+    resume_existing_phase: bool = False
+    multimodal_entries: list[MultimodalSidecarEntry] | None = None
+
+
 def _sidecar_entry_identity(entry: MultimodalSidecarEntry) -> str:
     """Return the bounded live-set identity for a multimodal sidecar entry."""
     if entry.identity_key:
@@ -187,35 +209,17 @@ def collect_media_entries_for_phase(
 
 
 def materialize_prompt_for_phase(
-    *,
-    phase: str,
-    workspace: Workspace,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None = None,
-    session_caps: SessionCapabilities,
-    workspace_root: Path,
-    worker_namespace: Path | None = None,
-    previous_phase: str | None = None,
-    resume_existing_phase: bool = False,
-    multimodal_entries: list[MultimodalSidecarEntry] | None = None,
+    context: PromptPhaseContext,
+    options: PromptPhaseOptions | None = None,
 ) -> str:
     """Render and persist the prompt for a pipeline phase, returning its dump path."""
-    prompt = _render_prompt_for_phase(
-        phase=phase,
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        artifacts_policy=artifacts_policy,
-        session_caps=session_caps,
-        workspace_root=workspace_root,
-        worker_namespace=worker_namespace,
-        previous_phase=previous_phase,
-        resume_existing_phase=resume_existing_phase,
-    )
-    path = dump_rendered_prompt(workspace, phase, prompt)
-    if multimodal_entries:
-        _write_multimodal_sidecar(workspace, phase, multimodal_entries)
+    opts = options or PromptPhaseOptions()
+    prompt = _render_prompt_for_phase(context, opts)
+    path = dump_rendered_prompt(context.workspace, context.phase, prompt)
+    if opts.multimodal_entries:
+        _write_multimodal_sidecar(context.workspace, context.phase, opts.multimodal_entries)
     else:
-        _clear_multimodal_sidecar(workspace, phase)
+        _clear_multimodal_sidecar(context.workspace, context.phase)
     return path
 
 
@@ -252,17 +256,18 @@ def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
 
 
 def _render_prompt_for_phase(
-    phase: str,
-    workspace: Workspace,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None,
-    session_caps: SessionCapabilities,
-    workspace_root: Path,
-    worker_namespace: Path | None = None,
-    previous_phase: str | None = None,
-    resume_existing_phase: bool = False,
+    context: PromptPhaseContext,
+    options: PromptPhaseOptions,
 ) -> str:
-    context = TemplateContext.default(workspace_root)
+    phase = context.phase
+    workspace = context.workspace
+    pipeline_policy = context.pipeline_policy
+    session_caps = context.session_caps
+    workspace_root = context.workspace_root
+    artifacts_policy = options.artifacts_policy
+    worker_namespace = options.worker_namespace
+    previous_phase = options.previous_phase
+    tmpl_ctx = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
     prompt_content = _read_optional(workspace, "PROMPT.md")
     _clear_completed_planning_history_if_needed(
@@ -288,18 +293,11 @@ def _render_prompt_for_phase(
             analysis_feedback_content,
             analysis_feedback_path,
             template_name,
-        ) = _prepare_planning_prompt_context(
-            phase=phase,
-            workspace=workspace,
-            pipeline_policy=pipeline_policy,
-            artifacts_policy=artifacts_policy,
-            previous_phase=previous_phase,
-            resume_existing_phase=resume_existing_phase,
-        )
+        ) = _prepare_planning_prompt_context(context, options)
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         artifact_history_path = _resolve_planning_history_path(workspace_root)
         return prompt_planning_xml_with_context(
-            context=context,
+            context=tmpl_ctx,
             inputs=PlanningPromptInputs(
                 prompt_content=prompt_content,
                 plan_content=plan_content,
@@ -319,8 +317,8 @@ def _render_prompt_for_phase(
     if phase_role == "commit":
         return prompt_commit_message(
             _commit_phase_diff(workspace_root),
-            template_registry=context.registry,
-            partials=context.partials,
+            template_registry=tmpl_ctx.registry,
+            partials=tmpl_ctx.partials,
             submit_artifact_tool_names=SUBMIT_ARTIFACT_TOOL.prompt_aliases(
                 tool_name_prefix=session_caps.tool_name_prefix,
             ),
@@ -357,7 +355,7 @@ def _render_prompt_for_phase(
         )
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         return prompt_developer_iteration_xml_with_context(
-            context=context,
+            context=tmpl_ctx,
             inputs=DeveloperPromptInputs(
                 prompt_content=prompt_content,
                 plan_content=plan_content,
@@ -376,7 +374,7 @@ def _render_prompt_for_phase(
 
     # Template-based prompt: review, analysis, or other execution-role phases
     if phase_role in (ROLE_REVIEW, "analysis", "execution", "verification"):
-        template = context.registry.get_template(template_name)
+        template = tmpl_ctx.registry.get_template(template_name)
         diff_content = _git_diff(workspace_root)
         latest_artifact_content, latest_artifact_path = _latest_artifact_content(
             workspace, phase, pipeline_policy, artifacts_policy
@@ -401,16 +399,14 @@ def _render_prompt_for_phase(
                 "ANALYSIS_FEEDBACK": analysis_feedback_content,
             },
         )
-        if plan_path:
-            variables["PLAN_PATH"] = plan_path
-        if latest_artifact_path:
-            variables["LATEST_ARTIFACT_PATH"] = latest_artifact_path
-        if issues_path:
-            variables["ISSUES_PATH"] = issues_path
-        if fix_result_path:
-            variables["FIX_RESULT_PATH"] = fix_result_path
-        if analysis_feedback_path:
-            variables["ANALYSIS_FEEDBACK_PATH"] = analysis_feedback_path
+        path_vars = {
+            "PLAN_PATH": plan_path,
+            "LATEST_ARTIFACT_PATH": latest_artifact_path,
+            "ISSUES_PATH": issues_path,
+            "FIX_RESULT_PATH": fix_result_path,
+            "ANALYSIS_FEEDBACK_PATH": analysis_feedback_path,
+        }
+        variables.update({k: v for k, v in path_vars.items() if v})
         if phase_def is not None and phase_def.skip_invocation:
             variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
         variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
@@ -418,7 +414,7 @@ def _render_prompt_for_phase(
         return render_template(
             template,
             _merged_variables(variables, session_caps),
-            context.partials,
+            tmpl_ctx.partials,
         )
 
     msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
@@ -562,14 +558,15 @@ def _should_preserve_planning_context(
 
 
 def _prepare_planning_prompt_context(
-    *,
-    phase: str,
-    workspace: Workspace,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None,
-    previous_phase: str | None,
-    resume_existing_phase: bool,
+    context: PromptPhaseContext,
+    options: PromptPhaseOptions,
 ) -> tuple[str | None, str, str, str, str]:
+    phase = context.phase
+    workspace = context.workspace
+    pipeline_policy = context.pipeline_policy
+    artifacts_policy = options.artifacts_policy
+    previous_phase = options.previous_phase
+    resume_existing_phase = options.resume_existing_phase
     phase_def = pipeline_policy.phases.get(phase)
     template_name = _template_name_for_phase(phase, pipeline_policy)
     preserve_planning_context = _should_preserve_planning_context(

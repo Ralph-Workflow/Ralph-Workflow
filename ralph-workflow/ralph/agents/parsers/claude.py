@@ -441,45 +441,36 @@ class ClaudeParser:
                 metadata=block_obj,
             )
 
-    def _parse_prefixed_transcript_line(self, raw: str) -> list[AgentOutputLine] | None:
-        if raw.startswith("[claude]:"):
+    def _parse_plain_text_prefix(self, raw: str, text: str) -> list[AgentOutputLine]:
+        if text in _LIFECYCLE_MARKERS or text.startswith("system (status="):
             return []
+        return [AgentOutputLine(type="text", content=text, raw=raw)]
 
-        m = _CLAUDE_PREFIX_RE.match(raw)
-        if m is None:
-            return None
-
-        remainder = raw[m.end() :]
-
-        # "claude: text" or "claude/<model>: text"
-        if remainder.startswith(": "):
-            text = remainder[2:]
-            # Suppress known lifecycle markers (carry no user payload)
-            if text in _LIFECYCLE_MARKERS or text.startswith("system (status="):
-                return []
-            return [AgentOutputLine(type="text", content=text, raw=raw)]
-
-        # "claude tool: ..." or "claude/<model> tool: ..."
-        if remainder.startswith(" tool: "):
-            payload = remainder[7:]
-            return self._parse_prefixed_tool_line(raw, payload)
-
-        # "claude user: message=..." or "claude/<model> user: message=..."
+    def _parse_structured_remainder(
+        self, raw: str, remainder: str
+    ) -> list[AgentOutputLine] | None:
         for role in ("user", "assistant"):
             role_prefix = f" {role}: message="
             if remainder.startswith(role_prefix):
                 return self._parse_prefixed_message_line(raw, remainder[len(role_prefix) :])
-
-        # "claude message_delta:..." (old bare format) → suppress
         if remainder.startswith(" message_delta") or remainder.startswith(" system: status="):
             return []
-
-        # "claude/<model> ✗: error text" → error
         if remainder.startswith(" ✗: "):
-            error_text = remainder[4:]
-            return [AgentOutputLine(type="error", content=error_text, raw=raw)]
-
+            return [AgentOutputLine(type="error", content=remainder[4:], raw=raw)]
         return None
+
+    def _parse_prefixed_transcript_line(self, raw: str) -> list[AgentOutputLine] | None:
+        if raw.startswith("[claude]:"):
+            return []
+        m = _CLAUDE_PREFIX_RE.match(raw)
+        if m is None:
+            return None
+        remainder = raw[m.end() :]
+        if remainder.startswith(": "):
+            return self._parse_plain_text_prefix(raw, remainder[2:])
+        if remainder.startswith(" tool: "):
+            return self._parse_prefixed_tool_line(raw, remainder[7:])
+        return self._parse_structured_remainder(raw, remainder)
 
     def _parse_prefixed_tool_line(self, raw: str, payload: str) -> list[AgentOutputLine]:
         payload = payload.strip()

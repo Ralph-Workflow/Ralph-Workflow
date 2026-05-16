@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from ralph.mcp.tools.coordination import (
+    CapabilityDeniedError,
     handle_coordinate,
     handle_declare_complete,
     handle_read_env,
@@ -82,9 +85,7 @@ def test_read_env_returns_not_found_when_missing() -> None:
 
 
 def test_read_env_requires_capability() -> None:
-    import pytest
 
-    from ralph.mcp.tools.coordination import CapabilityDeniedError
 
     with pytest.raises(CapabilityDeniedError):
         handle_read_env(MockDeniedSession(), MockWorkspace(), {"name": "X"}, env={})

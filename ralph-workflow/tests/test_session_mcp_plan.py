@@ -8,8 +8,18 @@ import pytest
 import ralph.api.opencode as opencode_module
 import ralph.mcp.session_plan as session_plan_module
 from ralph.config.enums import AgentTransport
-from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
-from ralph.mcp.session_plan import build_session_mcp_plan, resolve_model_identity
+from ralph.mcp.multimodal.artifacts import (
+    MODALITY_AUDIO,
+    MODALITY_IMAGE,
+    MODALITY_PDF,
+    SUPPORTED_MODALITIES,
+)
+from ralph.mcp.multimodal.capabilities import (
+    DeliveryMode,
+    MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
+)
+from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan, resolve_model_identity
 from ralph.mcp.upstream.config import UPSTREAM_MCP_CONFIG_ENV, load_upstream_mcp_servers
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
@@ -420,11 +430,6 @@ def test_capabilities_use_policy_declared_drain_capability_class(
     resolves MCP capabilities using that class rather than the drain_class.
     """
     del isolated_home
-    from ralph.policy.models import (
-        AgentChainConfig,
-        AgentDrainConfig,
-        AgentsPolicy,
-    )
 
     agents_policy = AgentsPolicy(
         agent_chains={"my_chain": AgentChainConfig(agents=["claude"])},
@@ -459,11 +464,6 @@ def test_capability_class_commit_suppresses_web_search_when_enabled(
     enables them, proving that is_commit uses the resolved capability_class not drain_class.
     """
     del isolated_home
-    from ralph.policy.models import (
-        AgentChainConfig,
-        AgentDrainConfig,
-        AgentsPolicy,
-    )
 
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
@@ -590,7 +590,7 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
             drain="development",
             workspace_path=tmp_path,
             agents_policy=_DEFAULT_AGENTS_POLICY,
-            model_flag="claude-opus-4-7",
+            model_opts=SessionModelOpts(model_flag="claude-opus-4-7"),
         )
 
         assert plan.model_identity.provider == "claude"
@@ -604,7 +604,7 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
             drain="development",
             workspace_path=tmp_path,
             agents_policy=_DEFAULT_AGENTS_POLICY,
-            model_flag="gpt-4o",
+            model_opts=SessionModelOpts(model_flag="gpt-4o"),
         )
 
         assert plan.model_identity.provider == "openai"
@@ -623,8 +623,10 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
             drain="development",
             workspace_path=tmp_path,
             agents_policy=_DEFAULT_AGENTS_POLICY,
-            model_identity=explicit_identity,
-            model_flag="claude-opus-4-7",
+            model_opts=SessionModelOpts(
+                model_identity=explicit_identity,
+                model_flag="claude-opus-4-7",
+            ),
         )
 
         assert plan.model_identity.provider == "custom-provider"
@@ -659,7 +661,7 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
             drain="development",
             workspace_path=tmp_path,
             agents_policy=_DEFAULT_AGENTS_POLICY,
-            model_flag="some-opencode-model",
+            model_opts=SessionModelOpts(model_flag="some-opencode-model"),
         )
 
         assert plan.model_identity.provider == "unknown"
@@ -686,7 +688,7 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
             drain="development",
             workspace_path=tmp_path,
             agents_policy=_DEFAULT_AGENTS_POLICY,
-            model_flag="anthropic/claude-3-5-sonnet",
+            model_opts=SessionModelOpts(model_flag="anthropic/claude-3-5-sonnet"),
         )
 
         assert plan.model_identity.provider == "anthropic"
@@ -734,11 +736,6 @@ class TestSessionMcpPlanCapabilityProfile:
     def test_plan_includes_capability_profile_for_claude_transport(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
-        from ralph.mcp.multimodal.artifacts import MODALITY_AUDIO, MODALITY_IMAGE
-        from ralph.mcp.multimodal.capabilities import (
-            DeliveryMode,
-            ResolvedCapabilityProfile,
-        )
 
         del isolated_home
         plan = build_session_mcp_plan(
@@ -746,7 +743,7 @@ class TestSessionMcpPlanCapabilityProfile:
             drain="development",
             workspace_path=tmp_path,
             agents_policy=_DEFAULT_AGENTS_POLICY,
-            model_flag="claude-opus-4-7",
+            model_opts=SessionModelOpts(model_flag="claude-opus-4-7"),
         )
 
         assert plan.capability_profile is not None
@@ -759,11 +756,6 @@ class TestSessionMcpPlanCapabilityProfile:
     def test_plan_includes_capability_profile_for_openai_codex_transport(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
-        from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE, MODALITY_PDF
-        from ralph.mcp.multimodal.capabilities import (
-            DeliveryMode,
-            ResolvedCapabilityProfile,
-        )
 
         del isolated_home
         plan = build_session_mcp_plan(
@@ -771,7 +763,7 @@ class TestSessionMcpPlanCapabilityProfile:
             drain="development",
             workspace_path=tmp_path,
             agents_policy=_DEFAULT_AGENTS_POLICY,
-            model_flag="gpt-4o",
+            model_opts=SessionModelOpts(model_flag="gpt-4o"),
         )
 
         assert plan.capability_profile is not None
@@ -785,11 +777,6 @@ class TestSessionMcpPlanCapabilityProfile:
     def test_plan_capability_profile_for_unknown_provider_uses_resource_reference(
         self, isolated_home: Path, tmp_path: Path
     ) -> None:
-        from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
-        from ralph.mcp.multimodal.capabilities import (
-            DeliveryMode,
-            ResolvedCapabilityProfile,
-        )
 
         del isolated_home
         plan = build_session_mcp_plan(
@@ -817,7 +804,7 @@ class TestSessionMcpPlanCapabilityProfile:
             drain="development",
             workspace_path=tmp_path,
             agents_policy=_DEFAULT_AGENTS_POLICY,
-            model_flag="claude-opus-4-7",
+            model_opts=SessionModelOpts(model_flag="claude-opus-4-7"),
         )
 
         assert plan.capability_profile is not None

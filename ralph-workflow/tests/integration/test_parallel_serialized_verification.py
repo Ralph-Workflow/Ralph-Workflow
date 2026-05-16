@@ -8,6 +8,7 @@ Verifies that when run_post_fanout_verification=True:
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -15,6 +16,7 @@ from ralph.display.context import make_display_context
 from ralph.executor.process import ProcessResult
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect
+from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.models import PhaseParallelization
@@ -281,7 +283,6 @@ class TestSerializedPostFanoutVerification:
         tmp_path: Path,
     ) -> None:
         """Post-fanout verification must not run when a worker has failed."""
-        from ralph.pipeline.events import WorkerFailedEvent
 
         unit = _make_work_unit("unit-a")
         effect = FanOutEffect(
@@ -439,7 +440,6 @@ class TestSerializedPostFanoutVerification:
         before running verification — so overlap is architecturally impossible. This test
         proves that guarantee holds through the call chain.
         """
-        import time
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")

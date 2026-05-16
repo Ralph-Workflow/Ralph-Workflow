@@ -12,7 +12,10 @@ from typing import Any
 
 from rich.console import Console
 
-from ralph.display.completion_summary import render_completion_summary_group
+from ralph.display.completion_summary import (
+    CompletionSummaryOptions,
+    render_completion_summary_group,
+)
 from ralph.display.context import make_display_context
 from ralph.display.phase_banner import _phase_style
 from ralph.display.snapshot import PipelineSnapshot
@@ -146,8 +149,10 @@ class TestCompletionSummaryRoleDrivenStyling:
         group = render_completion_summary_group(
             snapshot,
             display_context=ctx,
-            pipeline_policy=policy,
-            include_context_sections=True,
+            options=CompletionSummaryOptions(
+                pipeline_policy=policy,
+                include_context_sections=True,
+            ),
         )
         # Just verifying it renders without exception
         console.print(group, markup=False, highlight=False)

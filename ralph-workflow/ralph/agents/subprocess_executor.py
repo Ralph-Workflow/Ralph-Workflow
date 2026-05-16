@@ -16,7 +16,7 @@ from ralph.display.line_sanitizer import sanitize_display_line
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.pipeline.worker_state import WorkerStatus
-from ralph.process.manager import ProcessManager, get_process_manager
+from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -51,7 +51,7 @@ class SubprocessAgentExecutor:
     (artifact submission, git changes) — never from this executor's exit code.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         command: Sequence[str],
         *,
@@ -98,12 +98,14 @@ class SubprocessAgentExecutor:
         try:
             handle = await pm.spawn_async(
                 self._command,
-                cwd=str(self._cwd) if self._cwd is not None else None,
-                env=env,
-                stdout=_PIPE,
-                stderr=_STDOUT,
-                start_new_session=True,
-                label=agent_process_label(unit.unit_id, env),
+                SpawnOptions(
+                    cwd=str(self._cwd) if self._cwd is not None else None,
+                    env=env,
+                    stdout=_PIPE,
+                    stderr=_STDOUT,
+                    start_new_session=True,
+                    label=agent_process_label(unit.unit_id, env),
+                ),
             )
         except OSError as exc:
             on_status(WorkerStatus.FAILED)

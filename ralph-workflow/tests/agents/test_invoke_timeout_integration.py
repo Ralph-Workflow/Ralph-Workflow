@@ -29,9 +29,14 @@ from ralph.agents.idle_watchdog import (
     TimeoutPolicy,
     WaitingStatusEvent,
     WaitingStatusKind,
+    WaitingStatusListener,
     WatchdogFireReason,
 )
-from ralph.agents.invoke import _IdleStreamTimeoutError, _read_lines_from_process
+from ralph.agents.invoke import (
+    _IdleStreamTimeoutError,
+    _ProcessReaderCtx,
+    _read_lines_from_process,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.liveness import FakeLivenessProbe
 
@@ -115,9 +120,23 @@ _TOTAL_LINES_IN_STDOUT = 10
 
 def _read_lines(
     handle: _FakeManagedHandle,
-    **kwargs: object,
+    *,
+    policy: TimeoutPolicy,
+    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
+    liveness_probe: FakeLivenessProbe | None = None,
+    waiting_listener: WaitingStatusListener | None = None,
+    _clock: FakeClock | None = None,
 ) -> Iterator[str]:
-    return _read_lines_from_process(cast("object", handle), **kwargs)
+    return _read_lines_from_process(
+        cast("object", handle),
+        ctx=_ProcessReaderCtx(
+            policy=policy,
+            execution_strategy=execution_strategy,
+            liveness_probe=liveness_probe,
+            waiting_listener=waiting_listener,
+        ),
+        _clock=_clock,
+    )
 
 
 def test_session_ceiling_fires_under_continuous_output() -> None:

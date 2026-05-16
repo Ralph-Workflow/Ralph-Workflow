@@ -155,8 +155,9 @@ def test_load_config_converts_nested_chain_and_drain_tables(
 
     config = load_config(workspace_scope=_scope_for(tmp_path))
 
-    assert config.agent_chains == {"commit_chain": ["claude"]}
-    assert config.agent_drains == {"commit": "commit_chain", "review": "commit_chain"}
+    assert config.agent_chains["commit_chain"].agents == ["claude"]
+    assert config.agent_drains["commit"].chain == "commit_chain"
+    assert config.agent_drains["review"].chain == "commit_chain"
 
 
 def test_load_config_local_normalized_tables_override_xdg_global(
@@ -190,8 +191,8 @@ def test_load_config_local_normalized_tables_override_xdg_global(
 
     config = load_config(workspace_scope=_scope_for(tmp_path))
 
-    assert config.agent_chains["commit_chain"] == ["codex"]
-    assert config.agent_drains["commit"] == "commit_chain"
+    assert config.agent_chains["commit_chain"].agents == ["codex"]
+    assert config.agent_drains["commit"].chain == "commit_chain"
 
 
 def test_unified_config_frozen() -> None:

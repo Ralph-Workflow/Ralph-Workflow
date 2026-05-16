@@ -31,7 +31,7 @@ from ralph.mcp.protocol.startup import (
     probe_mcp_http_endpoint,
 )
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
-from ralph.process.manager import ManagedProcess, get_process_manager
+from ralph.process.manager import ManagedProcess, SpawnOptions, get_process_manager
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -124,6 +124,15 @@ class McpRestartPolicy:
     """Bounded restart policy for the MCP server bridge."""
 
     max_restarts: int = 1000
+
+
+@dataclass(frozen=True)
+class McpServerExtras:
+    """Optional runtime extras for start_mcp_server."""
+
+    phase: str | None = None
+    extra_env: dict[str, str] | None = None
+    restart_policy: McpRestartPolicy | None = None
 
 
 class RestartAwareMcpBridge:
@@ -251,15 +260,14 @@ def start_mcp_server(
     *,
     upstream_registry: UpstreamRegistry | None = None,
     deps: LifecycleDeps | None = None,
-    phase: str | None = None,
-    extra_env: dict[str, str] | None = None,
-    restart_policy: McpRestartPolicy | None = None,
+    extras: McpServerExtras | None = None,
 ) -> RestartAwareMcpBridge:
     """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability.
 
     Returns a :class:`RestartAwareMcpBridge` that can auto-restart the server
-    on crash up to the ``restart_policy`` budget (default: 1000 restarts).
+    on crash up to the ``extras.restart_policy`` budget (default: 1000 restarts).
     """
+    effective_extras = extras or McpServerExtras()
     lifecycle_deps = deps or _default_lifecycle_deps()
     root = _workspace_root(workspace)
     visible_tools = _visible_mcp_tool_names_owned(
@@ -271,18 +279,20 @@ def start_mcp_server(
     # changed MCP_ENDPOINT_ENV value after a mid-run crash and restart.
     port = lifecycle_deps.reserve_port()
     inner = _spawn_mcp_process(
-        root, session, lifecycle_deps, phase, extra_env, visible_tools, port=port
+        root, session, lifecycle_deps,
+        effective_extras.phase, effective_extras.extra_env, visible_tools, port=port
     )
 
     def _restart_fn() -> StandaloneMcpProcess:
         return _spawn_mcp_process(
-            root, session, lifecycle_deps, phase, extra_env, visible_tools, port=port
+            root, session, lifecycle_deps,
+            effective_extras.phase, effective_extras.extra_env, visible_tools, port=port
         )
 
     return RestartAwareMcpBridge(
         inner,
         restart_fn=_restart_fn,
-        restart_policy=restart_policy or McpRestartPolicy(),
+        restart_policy=effective_extras.restart_policy or McpRestartPolicy(),
         probe_fn=lifecycle_deps.probe,
         probe_timeout_fn=lifecycle_deps.probe_timeout,
     )
@@ -293,8 +303,8 @@ def _spawn_mcp_process(
     session: SessionLike,
     deps: LifecycleDeps,
     phase: str | None,
-    extra_env: dict[str, str] | None,
-    visible_tools: list[str],
+    _extra_env: dict[str, str] | None,
+    _visible_tools: list[str],
     *,
     port: int,
 ) -> StandaloneMcpProcess:
@@ -302,10 +312,10 @@ def _spawn_mcp_process(
     endpoint = f"http://127.0.0.1:{port}/mcp"
     session_file = deps.create_session_file(root, session)
     env = deps.subprocess_env(session_file)
-    if extra_env:
+    if _extra_env:
         # Merge extra_env so the subprocess inherits worker-specific env vars
         # (e.g. WORKER_ARTIFACT_DIR for parallel workers).
-        env.update(extra_env)
+        env.update(_extra_env)
     process = deps.spawn_process(
         [
             sys.executable,
@@ -325,7 +335,7 @@ def _spawn_mcp_process(
     bridge = StandaloneMcpProcess(endpoint=endpoint, process=process, session_file=session_file)
 
     try:
-        deps.preflight(endpoint, visible_tools, deps.preflight_timeout())
+        deps.preflight(endpoint, _visible_tools, deps.preflight_timeout())
     except Exception:
         bridge.shutdown()
         raise
@@ -385,12 +395,14 @@ def _spawn_process(
     label = f"phase:{phase}:mcp-server" if phase else "mcp-server"
     return get_process_manager().spawn(
         command,
-        cwd=str(cwd),
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        label=label,
+        SpawnOptions(
+            cwd=str(cwd),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            label=label,
+        ),
     )
 
 
@@ -445,6 +457,7 @@ __all__ = [
     "LifecycleDeps",
     "McpRestartPolicy",
     "McpServerError",
+    "McpServerExtras",
     "RestartAwareMcpBridge",
     "SessionBridgeLike",
     "check_mcp_bridge_health",

@@ -1,3 +1,5 @@
+"""Waiting status event for idle watchdog corroboration."""
+
 from __future__ import annotations
 
 from collections.abc import Callable

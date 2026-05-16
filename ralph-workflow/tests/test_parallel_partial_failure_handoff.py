@@ -6,7 +6,7 @@ import json
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.effects import FanOutEffect
-from ralph.pipeline.runner import _write_parallel_development_summary
+from ralph.pipeline.fan_out import VerificationResult, write_parallel_development_summary
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
@@ -73,13 +73,10 @@ class TestCombinedSummaryHonesty:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=False,
-            verify_passed=None,
-            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -110,13 +107,10 @@ class TestCombinedSummaryHonesty:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=False,
-            verify_passed=None,
-            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -145,13 +139,10 @@ class TestCombinedSummaryHonesty:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=False,
-            verify_passed=None,
-            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -187,13 +178,10 @@ class TestCombinedSummaryHonesty:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=False,
-            verify_passed=None,
-            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -216,13 +204,10 @@ class TestCombinedSummaryHonesty:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=False,
-            verify_passed=None,
-            verify_exit_code=None,
         )
 
         summary = _read_summary(tmp_path)
@@ -241,13 +226,11 @@ class TestCombinedSummaryHonesty:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=True,
-            verify_passed=False,
-            verify_exit_code=_EXIT_CODE_VERIFY_FAIL,
+            VerificationResult(ran=True, passed=False, exit_code=_EXIT_CODE_VERIFY_FAIL),
         )
 
         summary = _read_summary(tmp_path)
@@ -279,13 +262,10 @@ class TestAnalysisHandoffWiring:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=False,
-            verify_passed=None,
-            verify_exit_code=None,
         )
 
         handoff_path = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
@@ -314,13 +294,10 @@ class TestAnalysisHandoffWiring:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=False,
-            verify_passed=None,
-            verify_exit_code=None,
         )
 
         handoff_path = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
@@ -352,13 +329,10 @@ class TestAnalysisHandoffWiring:
             },
         )
         scope = _make_scope(tmp_path)
-        _write_parallel_development_summary(
+        write_parallel_development_summary(
             scope,
             effect,
             state,
-            verify_ran=False,
-            verify_passed=None,
-            verify_exit_code=None,
         )
 
         # parallel_development_summary.json exists separately

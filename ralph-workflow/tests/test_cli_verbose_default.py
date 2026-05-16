@@ -5,7 +5,7 @@ from __future__ import annotations
 from ralph.cli import options as options_module
 from ralph.cli.main import _resolve_effective_verbosity
 from ralph.config.enums import Verbosity
-from ralph.pipeline.runner import _normalize_verbosity, _verbosity_rank
+from ralph.pipeline.phase_rendering import normalize_verbosity, verbosity_rank
 
 
 def test_quiet_flag_forces_quiet_regardless_of_verbosity() -> None:
@@ -59,19 +59,19 @@ _RANK_DEBUG = 4
 
 
 def test_verbosity_rank_orders_quiet_below_verbose_below_debug() -> None:
-    assert _verbosity_rank(Verbosity.QUIET) == _RANK_QUIET
-    assert _verbosity_rank(Verbosity.NORMAL) == _RANK_NORMAL
-    assert _verbosity_rank(Verbosity.VERBOSE) == _RANK_VERBOSE
-    assert _verbosity_rank(Verbosity.FULL) == _RANK_FULL
-    assert _verbosity_rank(Verbosity.DEBUG) == _RANK_DEBUG
-    assert _verbosity_rank(Verbosity.QUIET) < _verbosity_rank(Verbosity.VERBOSE)
-    assert _verbosity_rank(Verbosity.VERBOSE) < _verbosity_rank(Verbosity.DEBUG)
+    assert verbosity_rank(Verbosity.QUIET) == _RANK_QUIET
+    assert verbosity_rank(Verbosity.NORMAL) == _RANK_NORMAL
+    assert verbosity_rank(Verbosity.VERBOSE) == _RANK_VERBOSE
+    assert verbosity_rank(Verbosity.FULL) == _RANK_FULL
+    assert verbosity_rank(Verbosity.DEBUG) == _RANK_DEBUG
+    assert verbosity_rank(Verbosity.QUIET) < verbosity_rank(Verbosity.VERBOSE)
+    assert verbosity_rank(Verbosity.VERBOSE) < verbosity_rank(Verbosity.DEBUG)
 
 
 def test_normalize_verbosity_accepts_enum_int_and_none() -> None:
-    assert _normalize_verbosity(Verbosity.QUIET) == Verbosity.QUIET
-    assert _normalize_verbosity(Verbosity.DEBUG) == Verbosity.DEBUG
-    assert _normalize_verbosity(_RANK_QUIET) == Verbosity.QUIET
-    assert _normalize_verbosity(_RANK_VERBOSE) == Verbosity.VERBOSE
-    assert _normalize_verbosity(_RANK_DEBUG) == Verbosity.DEBUG
-    assert _normalize_verbosity(None) == Verbosity.VERBOSE
+    assert normalize_verbosity(Verbosity.QUIET) == Verbosity.QUIET
+    assert normalize_verbosity(Verbosity.DEBUG) == Verbosity.DEBUG
+    assert normalize_verbosity(_RANK_QUIET) == Verbosity.QUIET
+    assert normalize_verbosity(_RANK_VERBOSE) == Verbosity.VERBOSE
+    assert normalize_verbosity(_RANK_DEBUG) == Verbosity.DEBUG
+    assert normalize_verbosity(None) == Verbosity.VERBOSE

@@ -6,6 +6,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 
 from __future__ import annotations
 
+import json
 import threading
 import time as _time_module
 from itertools import chain, repeat
@@ -32,6 +33,7 @@ from ralph.agents.invoke import (
     _check_process_result,
     _CompletionCheckOptions,
     _IdleStreamTimeoutError,
+    _ProcessReaderCtx,
     _read_lines_from_process,
     _wait_for_descendants_then_recheck,
 )
@@ -906,7 +908,6 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
 
     def test_waiting_on_child_defers_then_active_fires(self) -> None:
         """WAITING_ON_CHILD defers; handle is only terminated when ACTIVE fires afterward."""
-        from ralph.agents.timeout_clock import FakeClock
 
         stop_event = threading.Event()
 
@@ -968,13 +969,15 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
             list(
                 _read_lines_from_process(
                     cast("ManagedProcess", handle),
-                    policy=TimeoutPolicy(
-                        idle_timeout_seconds=1.0,
-                        drain_window_seconds=0.0,
-                        max_waiting_on_child_seconds=1800.0,
+                    ctx=_ProcessReaderCtx(
+                        policy=TimeoutPolicy(
+                            idle_timeout_seconds=1.0,
+                            drain_window_seconds=0.0,
+                            max_waiting_on_child_seconds=1800.0,
+                        ),
+                        execution_strategy=strategy,
+                        liveness_probe=probe,
                     ),
-                    execution_strategy=strategy,
-                    liveness_probe=probe,
                     _clock=fake_clock,
                 )
             )
@@ -1065,9 +1068,11 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
             collected = list(
                 _read_lines_from_process(
                     cast("ManagedProcess", handle),
-                    policy=TimeoutPolicy(idle_timeout_seconds=1.0),
-                    execution_strategy=strategy,
-                    liveness_probe=probe,
+                    ctx=_ProcessReaderCtx(
+                        policy=TimeoutPolicy(idle_timeout_seconds=1.0),
+                        execution_strategy=strategy,
+                        liveness_probe=probe,
+                    ),
                 )
             )
 
@@ -1147,7 +1152,6 @@ class TestRegistryBackedClassifyExit:
 
     def test_observe_line_routes_progress_event_to_registry(self) -> None:
         """A child_progress JSON line routed via observe_line updates registry progress."""
-        import json
 
         t = [0.0]
         reg = ChildLivenessRegistry(
@@ -1172,7 +1176,6 @@ class TestRegistryBackedClassifyExit:
 
     def test_observe_line_routes_terminal_ack_to_registry(self) -> None:
         """A child_complete JSON line routes terminal ack into the registry."""
-        import json
 
         t = [0.0]
         reg = ChildLivenessRegistry(
@@ -1197,7 +1200,6 @@ class TestRegistryBackedClassifyExit:
 
     def test_classify_exit_terminal_complete_when_all_children_acked(self) -> None:
         """classify_exit returns TERMINAL_COMPLETE when registry shows all children done."""
-        import json
 
         t = [0.0]
         reg = ChildLivenessRegistry(
@@ -1225,7 +1227,6 @@ class TestRegistryBackedClassifyExit:
 
     def test_classify_exit_waiting_when_child_has_fresh_progress(self) -> None:
         """classify_exit stays WAITING_ON_CHILD when registry shows fresh progress."""
-        import json
 
         t = [0.0]
         reg = ChildLivenessRegistry(

@@ -8,6 +8,7 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.completion_summary import (
+    CompletionSummaryOptions,
     emit_completion_summary,
     render_completion_summary_group,
 )
@@ -70,9 +71,11 @@ def _render_group(
     ctx = make_display_context(console=console, env={})
     group = render_completion_summary_group(
         snapshot,
-        thinking_block_count=thinking_block_count,
-        overflow_path=overflow_path,
         display_context=ctx,
+        options=CompletionSummaryOptions(
+            thinking_block_count=thinking_block_count,
+            overflow_path=overflow_path,
+        ),
     )
     console.print(group, markup=False, highlight=False)
     return buf.getvalue()
@@ -94,13 +97,15 @@ def _render_group_full(
     ctx = make_display_context(console=console, env={})
     group = render_completion_summary_group(
         snapshot,
-        content_block_count=content_block_count,
-        thinking_block_count=thinking_block_count,
-        tool_call_count=tool_call_count,
-        error_count=error_count,
-        elapsed_seconds=elapsed_seconds,
-        overflow_path=overflow_path,
         display_context=ctx,
+        options=CompletionSummaryOptions(
+            content_block_count=content_block_count,
+            thinking_block_count=thinking_block_count,
+            tool_call_count=tool_call_count,
+            error_count=error_count,
+            elapsed_seconds=elapsed_seconds,
+            overflow_path=overflow_path,
+        ),
     )
     console.print(group, markup=False, highlight=False)
     return buf.getvalue()
@@ -117,8 +122,8 @@ def _render_compact(
     ctx = make_display_context(console=console, env={"COLUMNS": "50"})
     group = render_completion_summary_group(
         snapshot,
-        thinking_block_count=thinking_block_count,
         display_context=ctx,
+        options=CompletionSummaryOptions(thinking_block_count=thinking_block_count),
     )
     console.print(group, markup=False, highlight=False)
     return buf.getvalue()
@@ -262,9 +267,11 @@ def test_emit_completion_summary_accepts_thinking_and_overflow_params() -> None:
     ctx = make_display_context(console=console, env={})
     emit_completion_summary(
         _make_snapshot(),
-        thinking_block_count=3,
-        overflow_path=".agent/raw/u.log",
         display_context=ctx,
+        options=CompletionSummaryOptions(
+            thinking_block_count=3,
+            overflow_path=".agent/raw/u.log",
+        ),
     )
     out = buf.getvalue()
     assert "thinking_blocks=3" in out
@@ -399,8 +406,8 @@ def _render_compact_full(
     ctx = make_display_context(console=console, env={"COLUMNS": "50"})
     group = render_completion_summary_group(
         snapshot,
-        elapsed_seconds=elapsed_seconds,
         display_context=ctx,
+        options=CompletionSummaryOptions(elapsed_seconds=elapsed_seconds),
     )
     console.print(group, markup=False, highlight=False)
     return buf.getvalue()

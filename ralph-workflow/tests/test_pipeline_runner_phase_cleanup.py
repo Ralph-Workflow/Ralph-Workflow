@@ -28,6 +28,7 @@ from ralph.process.manager import (
     ProcessManager,
     ProcessManagerPolicy,
     ProcessStatus,
+    SpawnOptions,
     get_process_manager,
     reset_process_manager,
 )
@@ -110,7 +111,7 @@ def test_runner_phase_scope_kills_phase_labeled_child(
     ) -> PipelineEvent:
         handle = get_process_manager().spawn(
             [PYTHON, "-c", "pass"],
-            label=f"phase:{_TEST_PHASE}:worker",
+            SpawnOptions(label=f"phase:{_TEST_PHASE}:worker"),
         )
         spawned_pid.append(handle.record.pid)
         return PipelineEvent.AGENT_SUCCESS
@@ -130,14 +131,14 @@ def test_runner_phase_scope_kills_phase_labeled_child(
     initial_state.phase = _TEST_PHASE
     initial_state.recovery_epoch = 0
 
-    original_singleton = _mgr._singleton
-    _mgr._singleton = pm
+    original_singleton = _mgr._pm_state.instance
+    _mgr._pm_state.instance = pm
     try:
         exit_code = runner_module.run(
             MagicMock(), initial_state=initial_state, verbosity=Verbosity.QUIET
         )
     finally:
-        _mgr._singleton = original_singleton
+        _mgr._pm_state.instance = original_singleton
 
     assert exit_code == 0
     assert spawned_pid, "Fake handler must have spawned a process"
@@ -162,11 +163,11 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     ) -> PipelineEvent:
         phase_handle = get_process_manager().spawn(
             [PYTHON, "-c", "pass"],
-            label=f"phase:{_TEST_PHASE}:worker",
+            SpawnOptions(label=f"phase:{_TEST_PHASE}:worker"),
         )
         bystander_handle = get_process_manager().spawn(
             [PYTHON, "-c", "pass"],
-            label="other:unrelated",
+            SpawnOptions(label="other:unrelated"),
         )
         spawned["phase"] = phase_handle.record.pid
         spawned["bystander"] = bystander_handle.record.pid
@@ -187,14 +188,14 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     initial_state.phase = _TEST_PHASE
     initial_state.recovery_epoch = 0
 
-    original_singleton = _mgr._singleton
-    _mgr._singleton = pm
+    original_singleton = _mgr._pm_state.instance
+    _mgr._pm_state.instance = pm
     try:
         exit_code = runner_module.run(
             MagicMock(), initial_state=initial_state, verbosity=Verbosity.QUIET
         )
     finally:
-        _mgr._singleton = original_singleton
+        _mgr._pm_state.instance = original_singleton
 
     assert exit_code == 0
     assert spawned, "Fake handler must have spawned processes"
@@ -229,7 +230,7 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     ) -> PipelineEvent:
         handle = get_process_manager().spawn(
             [PYTHON, "-c", "pass"],
-            label="invoke:fake-agent",
+            SpawnOptions(label="invoke:fake-agent"),
         )
         spawned_pid.append(handle.record.pid)
         raise KeyboardInterrupt
@@ -253,14 +254,14 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     saved_states: list[object] = []
     monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
 
-    original_singleton = _mgr._singleton
-    _mgr._singleton = pm
+    original_singleton = _mgr._pm_state.instance
+    _mgr._pm_state.instance = pm
     try:
         exit_code = runner_module.run(
             MagicMock(), initial_state=initial_state, verbosity=Verbosity.QUIET
         )
     finally:
-        _mgr._singleton = original_singleton
+        _mgr._pm_state.instance = original_singleton
 
     assert exit_code == _INTERRUPT_EXIT_CODE
     assert spawned_pid, "Fake handler must have spawned a tracked child"

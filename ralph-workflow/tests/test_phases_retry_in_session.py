@@ -8,13 +8,16 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from ralph.phases import PhaseContext
+from ralph.phases.analysis import handle_generic_analysis_phase
+from ralph.phases.execution import handle_execution_phase
+from ralph.phases.review import handle_review
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 
 @lru_cache(maxsize=1)
@@ -147,9 +150,7 @@ class TestRecoveryControllerSessionPreservingRetry:
         new_state, _, _ = controller.handle(
             state,
             "missing artifact",
-            phase="development_analysis",
-            agent="claude",
-            retry_in_session=True,
+            FailureContext(phase="development_analysis", agent="claude", retry_in_session=True),
         )
 
         assert new_state.session_preserve_retry_pending is True
@@ -161,9 +162,7 @@ class TestRecoveryControllerSessionPreservingRetry:
         new_state, _, _ = controller.handle(
             state,
             "missing artifact",
-            phase="development_analysis",
-            agent="claude",
-            retry_in_session=True,
+            FailureContext(phase="development_analysis", agent="claude", retry_in_session=True),
         )
 
         assert new_state.session_preserve_retry_pending is False
@@ -175,9 +174,7 @@ class TestRecoveryControllerSessionPreservingRetry:
         new_state, _, _ = controller.handle(
             state,
             "missing artifact",
-            phase="development_analysis",
-            agent="claude",
-            retry_in_session=False,
+            FailureContext(phase="development_analysis", agent="claude", retry_in_session=False),
         )
 
         assert new_state.session_preserve_retry_pending is False
@@ -240,7 +237,6 @@ class TestPhaseHandlerRetryInSessionFlags:
     """Phase handlers must emit retry_in_session=True for missing artifact failures."""
 
     def test_development_missing_planning_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.execution import handle_execution_phase
 
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
         ctx = _default_policy_context()
@@ -252,7 +248,6 @@ class TestPhaseHandlerRetryInSessionFlags:
         assert failure_events[0].retry_in_session is True
 
     def test_development_analysis_missing_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.analysis import handle_generic_analysis_phase
 
         effect = MagicMock(spec=InvokeAgentEffect)
         effect.phase = "development_analysis"
@@ -267,7 +262,6 @@ class TestPhaseHandlerRetryInSessionFlags:
         assert failure_events[0].retry_in_session is True
 
     def test_review_analysis_missing_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.analysis import handle_generic_analysis_phase
 
         effect = MagicMock(spec=InvokeAgentEffect)
         effect.phase = "review_analysis"
@@ -282,7 +276,6 @@ class TestPhaseHandlerRetryInSessionFlags:
         assert failure_events[0].retry_in_session is True
 
     def test_review_missing_issues_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.review import handle_review
 
         effect = MagicMock(spec=InvokeAgentEffect)
         effect.phase = "review"
@@ -296,7 +289,6 @@ class TestPhaseHandlerRetryInSessionFlags:
         assert failure_events[0].retry_in_session is True
 
     def test_planning_missing_plan_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.execution import handle_execution_phase
 
         effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="plan.txt")
         ctx = _default_policy_context()

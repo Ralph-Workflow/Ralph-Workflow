@@ -18,11 +18,14 @@ from ralph.mcp.multimodal.capabilities import (
     ResolvedCapabilityProfile,
     resolve_capability_profile,
 )
+from ralph.mcp.tools.coordination import ToolError
+from ralph.mcp.tools.workspace import handle_write_file
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.coordinator import (
     _prepare_executor,
+    _WorkerContext,
     _WorkerFailureError,
 )
 from ralph.pipeline.parallel.mode import ParallelExecutionMode, SameWorkspaceContext
@@ -314,7 +317,6 @@ class TestNoGitStatusFallback:
         self, tmp_path: Path
     ) -> None:
         """Coordinator emits WorkerFailedEvent when exit_code=0 but no artifacts written."""
-        from ralph.pipeline.parallel.coordinator import _WorkerContext
 
         unit = _make_unit("unit-a", ["src/a"])
         ctx = _make_same_workspace_context(tmp_path, executor_command=None)
@@ -591,8 +593,6 @@ class TestRunnerNoMergeStep:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Runner fan-out must never issue git branch/merge/checkout/worktree subprocesses."""
-        import asyncio
-        import subprocess as _subprocess
 
         banned_calls: list[str] = []
 
@@ -637,7 +637,6 @@ class TestRunnerNoMergeStep:
 
     def test_runner_event_stream_has_no_merge_or_worktree_events(self, tmp_path: Path) -> None:
         """Event stream from runner fan-out must not contain merge, worktree, or branch events."""
-        import asyncio
 
         unit = _make_unit("unit-ev", ["src/ev"])
         effect = FanOutEffect(work_units=(unit,), max_workers=1)
@@ -677,8 +676,6 @@ class TestRunnerNoMergeStep:
 class TestMcpToolBoundaryEnforcement:
     def test_mcp_write_tool_denied_outside_allowed_roots(self, tmp_path: Path) -> None:
         """handle_write_file raises ToolError when FsWorkspace rejects out-of-scope write."""
-        from ralph.mcp.tools.coordination import ToolError
-        from ralph.mcp.tools.workspace import handle_write_file
 
         allowed_dir = tmp_path / "src" / "allowed"
         allowed_dir.mkdir(parents=True)
@@ -700,7 +697,6 @@ class TestMcpToolBoundaryEnforcement:
 
     def test_mcp_write_tool_succeeds_inside_allowed_roots(self, tmp_path: Path) -> None:
         """handle_write_file succeeds when FsWorkspace allows the target path."""
-        from ralph.mcp.tools.workspace import handle_write_file
 
         allowed_dir = tmp_path / "src" / "allowed"
         allowed_dir.mkdir(parents=True)

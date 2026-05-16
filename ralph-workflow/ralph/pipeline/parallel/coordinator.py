@@ -237,19 +237,19 @@ def _prepare_executor(
         worker_namespace=worker_namespace,
     )
 
+    _session_cfg = worker_session.WorkerSessionConfig(
+        worker_artifact_dir=worker_namespace / "artifacts",
+        worker_namespace=worker_namespace,
+        session_drain=same_workspace.session_drain,
+        session_capabilities=same_workspace.session_capabilities,
+        session_model_identity=same_workspace.session_model_identity,
+        session_capability_profile=same_workspace.session_capability_profile,
+    )
     if same_workspace.executor_command is None:
         # In-process mode (e.g. tests with FakeAgentExecutor): use the injected
         # mcp_factory directly rather than spinning up a real MCP server.
         bundle = worker_session.build_worker_session(
-            unit,
-            same_workspace.mcp_factory,
-            worker_scope,
-            worker_artifact_dir=worker_namespace / "artifacts",
-            worker_namespace=worker_namespace,
-            session_drain=same_workspace.session_drain,
-            session_capabilities=same_workspace.session_capabilities,
-            session_model_identity=same_workspace.session_model_identity,
-            session_capability_profile=same_workspace.session_capability_profile,
+            unit, same_workspace.mcp_factory, worker_scope, _session_cfg
         )
         return executor, bundle, worker_namespace
 
@@ -259,15 +259,7 @@ def _prepare_executor(
     )
     worker_mcp_factory = factory_impl.DynamicBindingMcpServerFactory(workspace=worker_workspace)
     bundle = worker_session.build_worker_session(
-        unit,
-        worker_mcp_factory,
-        worker_scope,
-        worker_artifact_dir=worker_namespace / "artifacts",
-        worker_namespace=worker_namespace,
-        session_drain=same_workspace.session_drain,
-        session_capabilities=same_workspace.session_capabilities,
-        session_model_identity=same_workspace.session_model_identity,
-        session_capability_profile=same_workspace.session_capability_profile,
+        unit, worker_mcp_factory, worker_scope, _session_cfg
     )
     worker_artifact_dir = worker_namespace / "artifacts"
     agent_label_scope = bundle.session.session_id

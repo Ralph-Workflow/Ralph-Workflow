@@ -185,8 +185,8 @@ async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -
         ),
         async_process_factory=fake_factory,
     )
-    original_singleton = _mgr._singleton
-    _mgr._singleton = pm
+    original_singleton = _mgr._pm_state.instance
+    _mgr._pm_state.instance = pm
 
     executor = SubprocessAgentExecutor(
         ["fake-cmd"],
@@ -220,7 +220,7 @@ async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -
         await asyncio.wait_for(task, timeout=1.0)
         assert finished.is_set() is True
     finally:
-        _mgr._singleton = original_singleton
+        _mgr._pm_state.instance = original_singleton
 
 
 @pytest.mark.asyncio

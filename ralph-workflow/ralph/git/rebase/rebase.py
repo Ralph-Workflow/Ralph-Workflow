@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
-from ralph.git.subprocess_runner import run_git
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 from .rebase_kinds import RebaseErrorKind, RebaseKind, classify_rebase_error
 
@@ -64,10 +64,7 @@ class SubprocessExecutor:
             args,
             cwd=cwd,
             label=f"git-rebase:{subcommand}",
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
+            options=GitRunOptions(env=env),
         )
         return ProcessResult(
             returncode=result.returncode,

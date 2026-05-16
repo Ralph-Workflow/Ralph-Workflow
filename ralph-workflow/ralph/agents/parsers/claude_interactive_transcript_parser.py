@@ -55,6 +55,57 @@ class ClaudeInteractiveTranscriptParser:
                 self._last_emitted_text = text
         return events
 
+    def _events_from_assistant_content_item(
+        self, item: dict[str, object]
+    ) -> list[InteractiveTranscriptEvent]:
+        item_type = str(item.get("type", ""))
+        if item_type == "tool_use":
+            tool_name = str(item.get("name", "tool"))
+            return [InteractiveTranscriptEvent(kind="tool_use", text=f"claude tool: {tool_name}")]
+        if item_type == "text":
+            text = str(item.get("text", "")).strip()
+            if text:
+                return [InteractiveTranscriptEvent(kind="output", text=text)]
+        if item_type == "thinking":
+            text = str(item.get("thinking", "")).strip()
+            if text:
+                return [InteractiveTranscriptEvent(kind="thinking", text=text)]
+        return []
+
+    def _events_from_assistant_message(
+        self, message: object
+    ) -> list[InteractiveTranscriptEvent]:
+        if not isinstance(message, dict):
+            return []
+        content = message.get("content")
+        if not isinstance(content, list):
+            return []
+        events: list[InteractiveTranscriptEvent] = []
+        for item in content:
+            if isinstance(item, dict):
+                events.extend(self._events_from_assistant_content_item(item))
+        return events
+
+    def _events_from_user_message(self, message: object) -> list[InteractiveTranscriptEvent]:
+        if not isinstance(message, dict):
+            return []
+        content = message.get("content")
+        if not isinstance(content, list):
+            return []
+        events: list[InteractiveTranscriptEvent] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            item_dict = cast("dict[str, object]", item)
+            if item_dict.get("type") != "tool_result":
+                continue
+            text = _extract_message_text(item_dict.get("content")).strip()
+            if text:
+                events.append(
+                    InteractiveTranscriptEvent(kind="tool_result", text=f"claude result: {text}")
+                )
+        return events
+
     def _events_from_json(self, raw_text: str) -> list[InteractiveTranscriptEvent]:
         try:
             parsed = cast("object", json.loads(raw_text))
@@ -70,49 +121,9 @@ class ClaudeInteractiveTranscriptParser:
             self.session_id = session_id
             events.append(InteractiveTranscriptEvent(kind="session", text=session_id))
         if event_type == "assistant":
-            message = obj.get("message")
-            if isinstance(message, dict):
-                content = message.get("content")
-                if isinstance(content, list):
-                    for item in content:
-                        if not isinstance(item, dict):
-                            continue
-                        item_type = str(item.get("type", ""))
-                        if item_type == "tool_use":
-                            tool_name = str(item.get("name", "tool"))
-                            events.append(
-                                InteractiveTranscriptEvent(
-                                    kind="tool_use", text=f"claude tool: {tool_name}"
-                                )
-                            )
-                        elif item_type == "text":
-                            text = str(item.get("text", "")).strip()
-                            if text:
-                                events.append(InteractiveTranscriptEvent(kind="output", text=text))
-                        elif item_type == "thinking":
-                            text = str(item.get("thinking", "")).strip()
-                            if text:
-                                events.append(
-                                    InteractiveTranscriptEvent(kind="thinking", text=text)
-                                )
+            events.extend(self._events_from_assistant_message(obj.get("message")))
         elif event_type == "user":
-            message = obj.get("message")
-            if isinstance(message, dict):
-                content = message.get("content")
-                if isinstance(content, list):
-                    for item in content:
-                        if not isinstance(item, dict):
-                            continue
-                        user_item_type: object = item.get("type")
-                        if user_item_type != "tool_result":
-                            continue
-                        text = _extract_message_text(item.get("content")).strip()
-                        if text:
-                            events.append(
-                                InteractiveTranscriptEvent(
-                                    kind="tool_result", text=f"claude result: {text}"
-                                )
-                            )
+            events.extend(self._events_from_user_message(obj.get("message")))
         return [event for event in events if event.text != self._last_emitted_text]
 
     def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:

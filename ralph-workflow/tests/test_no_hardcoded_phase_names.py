@@ -167,19 +167,21 @@ class TestRegisterRoleHandlersIsGeneric:
 
 
 class TestRunnerArtifactHandoffIsGeneric:
-    """_render_phase_artifact_handoff must not hardcode canonical phase name literals."""
+    """render_phase_artifact_handoff must not hardcode canonical phase name literals."""
 
     @pytest.fixture(scope="class")
-    def runner_source(self) -> str:
-        return (RALPH_ROOT / "pipeline" / "runner.py").read_text(encoding="utf-8")
+    def activity_stream_source(self) -> str:
+        return (RALPH_ROOT / "pipeline" / "activity_stream.py").read_text(encoding="utf-8")
 
     def test_render_phase_artifact_handoff_has_no_canonical_phase_literals(
-        self, runner_source: str
+        self, activity_stream_source: str
     ) -> None:
-        literals = _string_literals_in_function(runner_source, "_render_phase_artifact_handoff")
+        literals = _string_literals_in_function(
+            activity_stream_source, "render_phase_artifact_handoff"
+        )
         violations = RUNNER_BANNED_PHASE_NAMES & literals
         assert not violations, (
-            f"_render_phase_artifact_handoff contains canonical phase name literal(s): "
+            f"render_phase_artifact_handoff contains canonical phase name literal(s): "
             f"{sorted(violations)}. "
             "Artifact handoff rendering must use role/artifact-type dispatch, not phase names."
         )

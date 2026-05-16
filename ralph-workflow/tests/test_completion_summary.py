@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 
 from ralph.display.completion_summary import (
+    CompletionSummaryOptions,
     emit_completion_summary,
     render_completion_summary,
 )
@@ -74,7 +75,8 @@ def _make_snapshot(
 
 def _render_plain(snapshot: PipelineSnapshot, *, workspace_root: Path | None = None) -> str:
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
-    console.print(render_completion_summary(snapshot, workspace_root=workspace_root))
+    opts = CompletionSummaryOptions(workspace_root=workspace_root) if workspace_root else None
+    console.print(render_completion_summary(snapshot, options=opts))
     return console.export_text()
 
 
@@ -285,7 +287,11 @@ def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) ->
 
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     ctx = make_display_context(console=console)
-    emit_completion_summary(snapshot, display_context=ctx, workspace_root=tmp_path)
+    emit_completion_summary(
+        snapshot,
+        display_context=ctx,
+        options=CompletionSummaryOptions(workspace_root=tmp_path),
+    )
     out = console.export_text()
     assert "Pipeline Complete" in out
     assert "Development Analysis" in out
@@ -354,7 +360,9 @@ def test_completion_summary_elapsed_appears_before_metrics() -> None:
     """Elapsed line appears before the Metrics line in text mode output."""
     snap = _make_snapshot()
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
-    rendered = render_completion_summary(snap, elapsed_seconds=30.0)
+    rendered = render_completion_summary(
+        snap, options=CompletionSummaryOptions(elapsed_seconds=30.0)
+    )
     console.print(rendered)
     text = console.export_text()
     assert "Elapsed: 30.0s" in text
@@ -519,7 +527,9 @@ def test_completion_summary_exit_trigger_interrupted() -> None:
 def test_completion_summary_exit_trigger_appears_before_elapsed() -> None:
     """Exit: line appears before Elapsed: line in text mode."""
     snap = _make_snapshot()
-    rendered = render_completion_summary(snap, elapsed_seconds=20.0)
+    rendered = render_completion_summary(
+        snap, options=CompletionSummaryOptions(elapsed_seconds=20.0)
+    )
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     console.print(rendered)
     text = console.export_text()

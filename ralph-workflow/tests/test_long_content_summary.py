@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ralph.display.content_condenser import condense_content
+from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.long_content_summary import (
     _AI_SUMMARY_MAX_CHARS,
     build_ai_summary,
@@ -228,7 +228,7 @@ class TestCondenseContentSummaryContract:
         assert isinstance(condensed, bool)
 
     def test_4tuple_returned_when_summary_true(self) -> None:
-        result = condense_content("x" * 6000, summary=True)
+        result = condense_content("x" * 6000, options=CondenseOptions(summary=True))
         assert len(result) == _EXPECTED_4TUPLE
         visible, condensed, summary_line, ai_summary_line = result
         assert isinstance(visible, str)
@@ -237,12 +237,12 @@ class TestCondenseContentSummaryContract:
         assert ai_summary_line is None or isinstance(ai_summary_line, str)
 
     def test_summary_none_for_short_text(self) -> None:
-        result = condense_content("short", summary=True)
+        result = condense_content("short", options=CondenseOptions(summary=True))
         _visible, condensed, summary_line, ai_summary_line = result
         assert condensed is False
         assert summary_line is None
         assert ai_summary_line is None
 
     def test_empty_text_summary_none(self) -> None:
-        result = condense_content("", summary=True)
+        result = condense_content("", options=CondenseOptions(summary=True))
         assert result == ("", False, None, None)

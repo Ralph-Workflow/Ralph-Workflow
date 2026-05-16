@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 from rich.console import Console
 
+from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
@@ -318,7 +319,6 @@ class TestPartialFailureHandoffContent:
         - unit-a (the success) is present and not blamed
         - any_failed: true and all_succeeded: false
         """
-        from ralph.pipeline import checkpoint as ckpt
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
@@ -392,7 +392,6 @@ class TestPartialFailureHandoffContent:
         - unit-a entry has status 'succeeded'
         - unit-b entry has a non-success status
         """
-        from ralph.pipeline import checkpoint as ckpt
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")

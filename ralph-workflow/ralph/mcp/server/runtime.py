@@ -646,17 +646,25 @@ class _StandaloneHttpServer(_FallbackStandaloneServer):
     pass
 
 
+@dataclass(frozen=True)
+class McpServerExtras:
+    """Optional DI parameters for building standalone MCP servers."""
+
+    session: AgentSession | None = None
+    upstream_registry: UpstreamRegistry | None = None
+    mcp_config: McpConfig | None = None
+
+
 def build_standalone_http_server(
     workspace_root: Path,
     *,
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
-    session: AgentSession | None = None,
-    upstream_registry: UpstreamRegistry | None = None,
-    mcp_config: McpConfig | None = None,
+    extras: McpServerExtras | None = None,
 ) -> _StandaloneHttpServer:
     """Build a standalone HTTP MCP server backed by the Ralph tool registry."""
-    effective_session = session or AgentSession(
+    _extras = extras or McpServerExtras()
+    effective_session = _extras.session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
         drain="standalone",
@@ -664,12 +672,12 @@ def build_standalone_http_server(
     )
     workspace = FsWorkspace(workspace_root)
     mcp_cfg = (
-        mcp_config
-        if mcp_config is not None
+        _extras.mcp_config
+        if _extras.mcp_config is not None
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
     upstream_servers = _load_runtime_upstream_servers(mcp_cfg)
-    upstream_reg = (
+    upstream_reg = _extras.upstream_registry or (
         UpstreamRegistry.build(upstream_servers, on_unreachable="warn_and_skip")
         if upstream_servers
         else None
@@ -943,12 +951,11 @@ def build_fastmcp_server(
     *,
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
-    session: AgentSession | None = None,
-    upstream_registry: UpstreamRegistry | None = None,
-    mcp_config: McpConfig | None = None,
+    extras: McpServerExtras | None = None,
 ) -> FastMcpServerLike:
     """Build a standalone FastMCP server exposing Ralph tools over HTTP."""
-    effective_session = session or AgentSession(
+    _extras = extras or McpServerExtras()
+    effective_session = _extras.session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
         drain="standalone",
@@ -956,12 +963,12 @@ def build_fastmcp_server(
     )
     workspace = FsWorkspace(workspace_root)
     mcp_cfg = (
-        mcp_config
-        if mcp_config is not None
+        _extras.mcp_config
+        if _extras.mcp_config is not None
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
     upstream_servers = _load_runtime_upstream_servers(mcp_cfg)
-    upstream_reg = (
+    upstream_reg = _extras.upstream_registry or (
         UpstreamRegistry.build(upstream_servers, on_unreachable="warn_and_skip")
         if upstream_servers
         else None
@@ -1036,7 +1043,10 @@ def run_standalone_server(
         raise ValueError(f"Unsupported transport: {transport}")
 
     server = build_standalone_http_server(
-        workspace_root, host=host, port=port, session=session_from_env()
+        workspace_root,
+        host=host,
+        port=port,
+        extras=McpServerExtras(session=session_from_env()),
     )
     print(f"Ralph MCP server listening on http://{host}:{port}{DEFAULT_MOUNT_PATH}")
     server.run(transport=DEFAULT_TRANSPORT)
@@ -1075,6 +1085,7 @@ __all__ = [
     "SESSION_ENV",
     "SESSION_FILE_ENV",
     "FileBackedSession",
+    "McpServerExtras",
     "build_fastmcp_server",
     "build_standalone_http_server",
     "main",

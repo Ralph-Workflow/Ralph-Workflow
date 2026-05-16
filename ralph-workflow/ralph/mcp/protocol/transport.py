@@ -17,7 +17,12 @@ from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
-from ralph.process.manager import ManagedProcess, ProcessTerminationError, get_process_manager
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessTerminationError,
+    SpawnOptions,
+    get_process_manager,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -224,11 +229,13 @@ def _default_process_factory(command: list[str], cwd: str | None) -> ManagedProc
     label = f"mcp-stdio:{command[0]}"
     return get_process_manager().spawn(
         command,
-        cwd=cwd,
-        stdin=_SUBPROCESS_PIPE,
-        stdout=_SUBPROCESS_PIPE,
-        stderr=_SUBPROCESS_PIPE,
-        label=label,
+        SpawnOptions(
+            cwd=cwd,
+            stdin=_SUBPROCESS_PIPE,
+            stdout=_SUBPROCESS_PIPE,
+            stderr=_SUBPROCESS_PIPE,
+            label=label,
+        ),
     )
 
 

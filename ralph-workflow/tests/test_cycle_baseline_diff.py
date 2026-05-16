@@ -8,6 +8,8 @@ from unittest.mock import patch
 import pytest
 from git import Repo
 
+import ralph.pipeline.runner as runner_module
+import ralph.prompts.materialize as materialize_module
 from ralph.pipeline.cycle_baseline import (
     clear_cycle_baseline,
     read_cycle_baseline,
@@ -78,7 +80,6 @@ class TestCycleBaselineDiff:
         _make_commit(repo, root, "change1.txt", "first change", "first mid-cycle commit")
         _make_commit(repo, root, "change2.txt", "second change", "second mid-cycle commit")
 
-        import ralph.prompts.materialize as materialize_module
 
         real_diff = materialize_module._git_diff(root)
         assert "change1" in real_diff or "change2" in real_diff
@@ -102,7 +103,6 @@ class TestCycleBaselineDiff:
         uncommitted_file.write_text("uncommitted content", encoding="utf-8")
         repo.index.add(["uncommitted.txt"])
 
-        import ralph.prompts.materialize as materialize_module
 
         real_diff = materialize_module._git_diff(root)
         assert "uncommitted" in real_diff
@@ -123,7 +123,6 @@ class TestRunnerCycleStartUsesForceTrue:
             captured_calls.append({"workspace_root": workspace_root, "sha": sha, "force": force})
             original(workspace_root, sha, force=force)
 
-        import ralph.pipeline.runner as runner_module
 
         with patch.object(runner_module, "write_cycle_baseline", recording_write):
             runner_module._write_start_commit_if_absent(root)
@@ -138,7 +137,6 @@ class TestRunnerCycleStartUsesForceTrue:
         existing_sha = str(Repo(root).head.commit.hexsha)
         write_cycle_baseline(root, existing_sha, force=True)
 
-        import ralph.pipeline.runner as runner_module
 
         runner_module._write_start_commit_if_absent(root)
 

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.config.mcp_models import McpConfig
 from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
@@ -95,7 +96,6 @@ def test_visit_url_not_listed_without_capability() -> None:
         drain="development",
         capabilities={"WorkspaceRead"},
     )
-    from ralph.config.mcp_models import McpConfig
 
     bridge = build_ralph_tool_registry(session, _StubWorkspace(), mcp_config=McpConfig())
     tool_names = {t.name for t in bridge.list_definitions()}

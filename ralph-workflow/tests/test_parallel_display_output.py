@@ -9,6 +9,7 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, _strip_markup
+from ralph.display.subscriber import ActivityDetails
 from ralph.pipeline.state import PipelineState
 
 
@@ -71,12 +72,14 @@ def test_record_activity_updates_snapshot_fields() -> None:
 
     pd.subscriber.record_activity(
         unit_id="developer",
-        agent_name="developer",
         line="I am editing foo.py",
-        tool_name="edit_file",
-        path="src/foo.py",
-        workdir="/tmp/project",
-        command="python -m pytest tests/test_foo.py",
+        details=ActivityDetails(
+            agent_name="developer",
+            tool_name="edit_file",
+            path="src/foo.py",
+            workdir="/tmp/project",
+            command="python -m pytest tests/test_foo.py",
+        ),
     )
     state = PipelineState(phase="development")
     pd.subscriber.notify(state)

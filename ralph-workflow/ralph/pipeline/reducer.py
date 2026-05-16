@@ -44,7 +44,7 @@ from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseDefinition, PhaseLoopPolicy
-from ralph.recovery.classifier import ClassifiedFailure
+from ralph.recovery.classifier import ClassifiedFailure, FailureContext
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -114,8 +114,7 @@ def _dispatch_worker_event(
             new_state, effects, _ = recovery.handle(
                 state,
                 phase_failure.reason,
-                phase=phase_failure.phase,
-                agent=state.current_agent(),
+                FailureContext(phase=phase_failure.phase, agent=state.current_agent()),
             )
             # Also mark the individual worker as FAILED in state.
             updated = state.worker_states[event.unit_id].copy_with(
@@ -133,6 +132,89 @@ def _dispatch_worker_event(
         return _restore_work_units(state, new_state), effects
 
     return None
+
+
+def _reduce_post_fanout_verification(
+    state: PipelineState,
+    event: PostFanoutVerificationEvent,
+    pipeline_policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
+    if not event.success:
+        error_msg = event.error or f"workspace verification failed (exit code {event.exit_code})"
+        recovered, _ = _enter_failed_recovery(state, error_msg, pipeline_policy)
+        return _restore_work_units(state, recovered), []
+    return state, []
+
+
+def _reduce_phase_failure(
+    state: PipelineState,
+    event: PhaseFailureEvent,
+    pipeline_policy: PipelinePolicy | None,
+    recovery: RecoveryController | None,
+) -> tuple[PipelineState, list[Effect]]:
+    if recovery is not None:
+        classified_failure = None
+        if event.failure_category is not None:
+            raw_message = event.reason or f"(no reason reported for phase={event.phase})"
+            classified_failure = ClassifiedFailure(
+                category=event.failure_category,
+                reason=f"Artifact validation fault: {raw_message}",
+                attributed_agent=None,
+                attributed_phase=event.phase,
+                counts_against_budget=False,
+                original_exception=None,
+                raw_message=raw_message,
+                reset_session=False,
+            )
+        new_state, effects, _ = recovery.handle(
+            state,
+            event.reason or f"(no reason reported for phase={event.phase})",
+            FailureContext(
+                phase=event.phase,
+                agent=state.current_agent(),
+                retry_in_session=event.retry_in_session,
+                classified_failure=classified_failure,
+            ),
+        )
+        return _restore_work_units(state, new_state), effects
+    return _handle_phase_failure(state, event, policy=pipeline_policy)
+
+
+_EVENT_HANDLERS: dict[
+    PipelineEvent,
+    Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
+] = {}
+
+
+def _get_event_handlers() -> dict[
+    PipelineEvent,
+    Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
+]:
+    if not _EVENT_HANDLERS:
+        _EVENT_HANDLERS.update({
+            PipelineEvent.AGENT_SUCCESS: _handle_agent_success,
+            PipelineEvent.AGENT_FAILURE: _handle_agent_failure,
+            PipelineEvent.AGENT_RETRY: _ignore_policy(_handle_agent_retry),
+            PipelineEvent.ANALYSIS_SUCCESS: _handle_analysis_success,
+            PipelineEvent.ANALYSIS_LOOPBACK: _handle_analysis_loopback,
+            PipelineEvent.REVIEW_CLEAN: _handle_review_clean,
+            PipelineEvent.REVIEW_ISSUES_FOUND: _handle_review_issues_found,
+            PipelineEvent.FIX_SUCCESS: _handle_fix_success,
+            PipelineEvent.FIX_FAILURE: _handle_fix_failure,
+            PipelineEvent.COMMIT_SUCCESS: _handle_commit_success,
+            PipelineEvent.COMMIT_SKIPPED: _handle_commit_skipped,
+            PipelineEvent.COMMIT_FAILURE: _handle_commit_failure,
+            PipelineEvent.CHECKPOINT_SAVED: _ignore_policy(_handle_checkpoint_saved),
+            PipelineEvent.CONTEXT_CLEANED: _return_state,
+            PipelineEvent.INTERRUPTED: _ignore_policy(_handle_interrupted),
+            PipelineEvent.COMPLETE: _handle_complete,
+            PipelineEvent.FAILED: _handle_failed,
+            PipelineEvent.PHASE_ADVANCE: _handle_phase_advance,
+            PipelineEvent.FAN_OUT_STARTED: _ignore_policy(_handle_fan_out_started),
+            PipelineEvent.WORKERS_RESUMED: _ignore_policy(_handle_workers_resumed),
+            PipelineEvent.ALL_WORKERS_COMPLETE: _handle_all_workers_complete,
+        })
+    return _EVENT_HANDLERS
 
 
 def reduce(
@@ -163,85 +245,16 @@ def reduce(
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
-    # Handle PostFanoutVerificationEvent before worker events.
     if isinstance(event, PostFanoutVerificationEvent):
-        if not event.success:
-            error_msg = (
-                event.error or f"workspace verification failed (exit code {event.exit_code})"
-            )
-            recovered, _ = _enter_failed_recovery(state, error_msg, pipeline_policy)
-            return _restore_work_units(state, recovered), []
-        return state, []
-
-    # Handle PhaseFailureEvent before the generic PipelineEvent dispatch.
-    # When a RecoveryController is supplied, delegate to it for classification-aware
-    # recovery (intelligent attribution, budget management). When None, use legacy logic.
+        return _reduce_post_fanout_verification(state, event, pipeline_policy)
     if isinstance(event, PhaseFailureEvent):
-        if recovery is not None:
-            classified_failure = None
-            if event.failure_category is not None:
-                raw_message = event.reason or f"(no reason reported for phase={event.phase})"
-                classified_failure = ClassifiedFailure(
-                    category=event.failure_category,
-                    reason=f"Artifact validation fault: {raw_message}",
-                    attributed_agent=None,
-                    attributed_phase=event.phase,
-                    counts_against_budget=False,
-                    original_exception=None,
-                    raw_message=raw_message,
-                    reset_session=False,
-                )
-            new_state, effects, _ = recovery.handle(
-                state,
-                event.reason or f"(no reason reported for phase={event.phase})",
-                phase=event.phase,
-                agent=state.current_agent(),
-                retry_in_session=event.retry_in_session,
-                classified_failure=classified_failure,
-            )
-            return _restore_work_units(state, new_state), effects
-        return _handle_phase_failure(state, event, policy=pipeline_policy)
-
-    # Handle AnalysisDecisionEvent: route directly through decisions[decision].target.
-    # This is the preferred path for analysis routing. The legacy ANALYSIS_SUCCESS/
-    # ANALYSIS_LOOPBACK enum events route via transitions.on_success/on_loopback only.
+        return _reduce_phase_failure(state, event, pipeline_policy, recovery)
     if isinstance(event, AnalysisDecisionEvent):
         return _handle_analysis_decision(state, event, pipeline_policy)
-
-    # Handle worker events with a unified approach.
-    # Pass recovery to enable classification-aware handling for failure events.
     worker_result = _dispatch_worker_event(state, event, recovery, policy=pipeline_policy)
     if worker_result is not None:
         return worker_result
-
-    handlers: dict[
-        PipelineEvent,
-        Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
-    ] = {
-        PipelineEvent.AGENT_SUCCESS: _handle_agent_success,
-        PipelineEvent.AGENT_FAILURE: _handle_agent_failure,
-        PipelineEvent.AGENT_RETRY: _ignore_policy(_handle_agent_retry),
-        PipelineEvent.ANALYSIS_SUCCESS: _handle_analysis_success,
-        PipelineEvent.ANALYSIS_LOOPBACK: _handle_analysis_loopback,
-        PipelineEvent.REVIEW_CLEAN: _handle_review_clean,
-        PipelineEvent.REVIEW_ISSUES_FOUND: _handle_review_issues_found,
-        PipelineEvent.FIX_SUCCESS: _handle_fix_success,
-        PipelineEvent.FIX_FAILURE: _handle_fix_failure,
-        PipelineEvent.COMMIT_SUCCESS: _handle_commit_success,
-        PipelineEvent.COMMIT_SKIPPED: _handle_commit_skipped,
-        PipelineEvent.COMMIT_FAILURE: _handle_commit_failure,
-        PipelineEvent.CHECKPOINT_SAVED: _ignore_policy(_handle_checkpoint_saved),
-        PipelineEvent.CONTEXT_CLEANED: _return_state,
-        PipelineEvent.INTERRUPTED: _ignore_policy(_handle_interrupted),
-        PipelineEvent.COMPLETE: _handle_complete,
-        PipelineEvent.FAILED: _handle_failed,
-        PipelineEvent.PHASE_ADVANCE: _handle_phase_advance,
-        PipelineEvent.FAN_OUT_STARTED: _ignore_policy(_handle_fan_out_started),
-        PipelineEvent.WORKERS_RESUMED: _ignore_policy(_handle_workers_resumed),
-        PipelineEvent.ALL_WORKERS_COMPLETE: _handle_all_workers_complete,
-    }
-    # At this point, event is a PipelineEvent (PhaseFailureEvent and worker events handled above)
-    handler = handlers.get(cast("PipelineEvent", event))
+    handler = _get_event_handlers().get(cast("PipelineEvent", event))
     if handler is None:
         return state, []
     new_state, effects = handler(state, pipeline_policy)

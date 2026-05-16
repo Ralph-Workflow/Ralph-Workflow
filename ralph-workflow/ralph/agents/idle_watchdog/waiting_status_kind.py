@@ -1,3 +1,5 @@
+"""Enumeration of waiting status kinds for the idle watchdog."""
+
 from enum import StrEnum
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus, FalloverEvent
 
 
@@ -62,8 +62,7 @@ def test_chain_exhaustion_with_two_agents() -> None:
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("claude timed out"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Should have fallen over
@@ -78,8 +77,7 @@ def test_chain_exhaustion_with_two_agents() -> None:
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("opencode timed out"),
-        phase="development",
-        agent="opencode",
+        FailureContext(phase="development", agent="opencode"),
     )
 
     assert state.phase == "failed_terminal"
@@ -102,8 +100,7 @@ def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("agent idle timeout"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert state.phase == "failed_terminal"
@@ -127,8 +124,7 @@ def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert state.recovery_cycle_count == 1
@@ -147,8 +143,7 @@ def test_single_agent_chain_exhaustion_retains_no_fallover_records() -> None:
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("claude timed out"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert state.phase == "failed_terminal"

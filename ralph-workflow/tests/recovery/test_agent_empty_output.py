@@ -9,7 +9,7 @@ from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus, FalloverEvent
 
 
@@ -45,8 +45,7 @@ def test_agent_fault_debits_budget() -> None:
     _, _, evt = controller.handle(
         state,
         _AgentTimeoutError("agent timed out with no output"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert evt.category == "agent"
@@ -81,8 +80,7 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("agent idle timeout"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert len(collected_fallovers) == 1
@@ -110,8 +108,7 @@ def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("agent idle timeout"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert new_state.phase == "failed_terminal"

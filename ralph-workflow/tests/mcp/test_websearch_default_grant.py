@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.config.mcp_models import McpConfig
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.tools.names import WEB_SEARCH_TOOL
@@ -65,7 +66,6 @@ def test_web_search_tool_not_listed_without_capability() -> None:
         drain="development",
         capabilities={"WorkspaceRead"},
     )
-    from ralph.config.mcp_models import McpConfig
 
     bridge = build_ralph_tool_registry(session, _StubWorkspace(), mcp_config=McpConfig())
     tool_names = {t.name for t in bridge.list_definitions()}

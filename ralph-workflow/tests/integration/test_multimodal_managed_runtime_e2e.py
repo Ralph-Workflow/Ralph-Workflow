@@ -36,7 +36,10 @@ from ralph.mcp.server.runtime import (
 )
 from ralph.mcp.tools.names import RalphToolName
 from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.models import UpstreamTool
 from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
+from ralph.prompts.debug_dump import media_session_path
+from ralph.prompts.materialize import collect_media_entries_for_phase
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -332,7 +335,6 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
 
     class _FakeClient:
         def list_tools(self) -> list[object]:
-            from ralph.mcp.upstream.models import UpstreamTool
 
             return [UpstreamTool(name="mix", description="mixed content tool")]
 
@@ -388,7 +390,6 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
 
     class _FakeClient:
         def list_tools(self) -> list[object]:
-            from ralph.mcp.upstream.models import UpstreamTool
 
             return [UpstreamTool(name="pdf_tool", description="returns a PDF URI")]
 
@@ -436,8 +437,6 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
 
 def test_prompt_sidecar_preserves_mixed_modality_metadata_for_runner_handoff() -> None:
     """Sidecar with image + pdf + audio must round-trip all metadata for runner handoff."""
-    from ralph.prompts.debug_dump import media_session_path
-    from ralph.prompts.materialize import collect_media_entries_for_phase
 
     workspace = MemoryWorkspace()
     mixed_payload = json.dumps(

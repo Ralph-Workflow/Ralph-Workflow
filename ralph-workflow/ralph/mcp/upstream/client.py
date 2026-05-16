@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 import httpx
 
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
-from ralph.mcp.multimodal.resources import build_media_identity
+from ralph.mcp.multimodal.resources import MediaEntryExtras, MediaSource, build_media_identity
 from ralph.mcp.protocol.startup import (
     initialize_request,
     initialized_notification,
@@ -29,7 +29,7 @@ from ralph.mcp.protocol.startup import (
     looks_like_legacy_sse_endpoint,
 )
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from ralph.mcp.multimodal.resources import MediaManifest
@@ -274,7 +274,7 @@ def _normalize_media_block(
     idx: int,
     server_name: str,
     tool_name: str,
-    session: HasMediaManifest | None,
+    _session: HasMediaManifest | None,
 ) -> dict[str, object]:
     """Normalize an upstream media block into a resource_reference content block.
 
@@ -306,23 +306,25 @@ def _normalize_media_block(
     raw_bytes = _extract_data(block)
 
     if raw_bytes is not None:
-        if session is None:
+        if _session is None:
             raise UpstreamCallError(
                 f"upstream server '{server_name}' tool '{tool_name}' returned "
                 f"embedded {block_type} content block at index {idx} "
                 f"but no active session is available to store the artifact bytes. "
                 f"Embedded media requires an active session manifest."
             )
-        entry = session.media_manifest.add(
+        entry = _session.media_manifest.add(
             title=title,
             mime_type=mime_type,
             modality=block_type,
             raw_bytes=raw_bytes,
-            identity_key=build_media_identity(
-                modality=block_type,
-                mime_type=mime_type,
-                title=title,
-                raw_bytes=raw_bytes,
+            extras=MediaEntryExtras(
+                identity_key=build_media_identity(
+                    modality=block_type,
+                    mime_type=mime_type,
+                    title=title,
+                    source=MediaSource(raw_bytes=raw_bytes),
+                ),
             ),
         )
         uri = entry.uri
@@ -468,11 +470,13 @@ def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
         env: dict[str, str] = {**os.environ, **server.env}
         handle = get_process_manager().spawn(
             command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            label=f"upstream:{server.name}",
+            SpawnOptions(
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                label=f"upstream:{server.name}",
+            ),
         )
         try:
             stdout_bytes, _stderr = handle.communicate(input=payload.encode(), timeout=30)

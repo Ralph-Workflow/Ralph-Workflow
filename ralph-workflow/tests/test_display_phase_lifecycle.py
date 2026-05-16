@@ -9,7 +9,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel, RunCompletionModel
+from ralph.display.phase_lifecycle import (
+    ExitContext,
+    PhaseActivityCounts,
+    PhaseEntryModel,
+    PhaseExitModel,
+    RunCompletionModel,
+)
 from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
@@ -121,15 +127,17 @@ class TestPhaseExitModel:
         )
         exit_model = PhaseExitModel.from_entry_model(
             entry,
-            elapsed_seconds=12.5,
-            exit_trigger="produced",
-            content_blocks=3,
-            thinking_blocks=1,
-            tool_calls=7,
-            errors=0,
-            artifact_outcome="fix: applied",
-            waiting_status_line="waiting for child",
-            last_failure_category="timeout",
+            ExitContext(
+                elapsed_seconds=12.5,
+                exit_trigger="produced",
+                content_blocks=3,
+                thinking_blocks=1,
+                tool_calls=7,
+                errors=0,
+                artifact_outcome="fix: applied",
+                waiting_status_line="waiting for child",
+                last_failure_category="timeout",
+            ),
         )
         assert exit_model.phase_name == "fix"
         assert exit_model.phase_role == "fix"
@@ -230,10 +238,9 @@ class TestRunCompletionModel:
             snap,
             exit_trigger="completed",
             elapsed_seconds=42.0,
-            content_blocks=5,
-            thinking_blocks=2,
-            tool_calls=15,
-            errors=1,
+            activity=PhaseActivityCounts(
+                content_blocks=5, thinking_blocks=2, tool_calls=15, errors=1
+            ),
         )
 
         assert model.final_phase == "done"
@@ -416,7 +423,7 @@ def test_entry_exit_iteration_context_labels_are_consistent() -> None:
         phase_name="fix",
         outer_dev_iteration=3,
     )
-    exit_model = PhaseExitModel.from_entry_model(entry, elapsed_seconds=10.0)
+    exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(elapsed_seconds=10.0))
     entry_labels = list(entry.to_iteration_context().context_labels())
     exit_labels = list(exit_model.to_iteration_context().context_labels())
     assert entry_labels == exit_labels

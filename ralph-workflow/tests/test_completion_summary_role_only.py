@@ -9,6 +9,7 @@ from typing import Any
 from rich.console import Console
 
 from ralph.display.completion_summary import (
+    CompletionSummaryOptions,
     _style_for_role,
     _style_for_terminal_failure,
     render_completion_summary_group,
@@ -149,7 +150,9 @@ class TestRenderCompletionSummaryRoleOnly:
         console = _console()
         ctx = make_display_context(console=console)
         group = render_completion_summary_group(
-            snapshot, display_context=ctx, pipeline_policy=policy, include_context_sections=True
+            snapshot,
+            display_context=ctx,
+            options=CompletionSummaryOptions(pipeline_policy=policy, include_context_sections=True),
         )
         console.print(group, markup=False, highlight=False)
         output = console.file.getvalue()
@@ -163,7 +166,9 @@ class TestRenderCompletionSummaryRoleOnly:
         console = _console()
         ctx = make_display_context(console=console, force_mode="compact")
         group = render_completion_summary_group(
-            snapshot, display_context=ctx, pipeline_policy=policy
+            snapshot,
+            display_context=ctx,
+            options=CompletionSummaryOptions(pipeline_policy=policy),
         )
         console.print(group, markup=False, highlight=False)
         output = console.file.getvalue()
@@ -188,7 +193,9 @@ class TestRenderCompletionSummaryRoleOnly:
         console = _console()
         ctx = make_display_context(console=console)
         group = render_completion_summary_group(
-            snapshot, display_context=ctx, pipeline_policy=policy
+            snapshot,
+            display_context=ctx,
+            options=CompletionSummaryOptions(pipeline_policy=policy),
         )
         console.print(group, markup=False, highlight=False)
         output = console.file.getvalue()

@@ -19,12 +19,13 @@ from ralph.policy.models import (
     AgentDrainConfig,
     AgentsPolicy,
     ArtifactsPolicy,
+    BudgetCounterConfig,
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
     PolicyBundle,
 )
-from ralph.policy.validation import PolicyValidationError
+from ralph.policy.validation import PolicyValidationError, _validate_cli_counter_overrides
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -187,7 +188,7 @@ def test_run_pipeline_without_resume_ignores_existing_checkpoint(
         seen["initial_state"] = kwargs.get("initial_state")
         return 0
 
-    monkeypatch.setattr(run_module, "_run_func", fake_run)
+    monkeypatch.setattr(run_module._state, "run_func", fake_run)
 
     assert run_module.run_pipeline() == 0
     load_checkpoint.assert_not_called()
@@ -253,7 +254,7 @@ def test_run_pipeline_resume_clears_stale_state_before_loading_checkpoint(
         return 0
 
     monkeypatch.setattr(run_module.ckpt, "load", fake_load)
-    monkeypatch.setattr(run_module, "_run_func", fake_run)
+    monkeypatch.setattr(run_module._state, "run_func", fake_run)
 
     assert run_module.run_pipeline(resume=True) == 0
     assert seen["checkpoint_exists_when_load_called"] is False
@@ -269,7 +270,7 @@ def test_run_pipeline_resume_without_checkpoint_prints_notice(
     console = _CaptureConsole()
     _attach_display_context(monkeypatch, run_module, console)
     monkeypatch.setattr(run_module.ckpt, "load", lambda: None)
-    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(run_module._state, "run_func", lambda *_args, **_kwargs: 0)
 
     assert run_module.run_pipeline(resume=True) == 0
     assert any("No checkpoint found to resume from" in line for line in console.lines)
@@ -285,7 +286,7 @@ def test_run_pipeline_dry_run_reports_summary(
 
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
     monkeypatch.setattr(run_module.ckpt, "load", lambda: state)
-    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(run_module._state, "run_func", lambda *_args, **_kwargs: 0)
 
     console = _CaptureConsole()
     _attach_display_context(monkeypatch, run_module, console)
@@ -318,7 +319,7 @@ def test_run_pipeline_builds_preflight_registry_from_config(
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
     _attach_display_context(monkeypatch, run_module, console)
     monkeypatch.setattr(run_module, "AgentRegistry", _RegistryWithFromConfigOnly)
-    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(run_module._state, "run_func", lambda *_args, **_kwargs: 0)
 
     _RegistryWithFromConfigOnly.called_with = None
 
@@ -359,7 +360,7 @@ def test_run_pipeline_preflight_uses_loaded_policy_bundle_even_when_it_is_not_a_
         lambda bundle, registry: (_ for _ in ()).throw(PolicyValidationError("unknown agent")),
     )
     monkeypatch.setattr(run_module, "validate_recovery_config", lambda bundle: None)
-    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(run_module._state, "run_func", lambda *_args, **_kwargs: 0)
 
     assert run_module.run_pipeline() == _EXIT_PREFLIGHT
     assert _RegistryWithFromConfigOnly.called_with is config
@@ -380,7 +381,7 @@ def test_run_pipeline_loads_policy_with_main_config_as_agents_authority(
 
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
     monkeypatch.setattr(run_module, "load_policy", fake_load_policy)
-    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(run_module._state, "run_func", lambda *_args, **_kwargs: 0)
 
     assert run_module.run_pipeline() == 0
     assert captured == {"policy_dir": scope.root / ".agent", "config": config}
@@ -399,7 +400,7 @@ def test_run_pipeline_runner_unavailable(
     monkeypatch.setattr(
         run_module.logger, "error", lambda message, *args, **kwargs: logged.append(message)
     )
-    monkeypatch.setattr(run_module, "_run_func", None)
+    monkeypatch.setattr(run_module._state, "run_func", None)
 
     assert run_module.run_pipeline() == 1
     assert any("Pipeline runner is unavailable" in line for line in console.lines)
@@ -423,7 +424,7 @@ def test_run_pipeline_runner_exception(
     ) -> None:  # pragma: no cover - raises intentionally
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(run_module, "_run_func", raising_runner)
+    monkeypatch.setattr(run_module._state, "run_func", raising_runner)
     # Suppress any logging to avoid noise in test output
     monkeypatch.setattr(run_module.logger, "critical", lambda *args, **kwargs: None)
     _attach_display_context(monkeypatch, run_module, console)
@@ -446,7 +447,7 @@ def test_run_pipeline_injects_workspace_scope_when_config_path_is_implicit(
 
     monkeypatch.setattr(run_module, "resolve_workspace_scope", lambda: scope)
     monkeypatch.setattr(run_module, "load_config", fake_load_config)
-    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(run_module._state, "run_func", lambda *_args, **_kwargs: 0)
 
     assert run_module.run_pipeline() == 0
     assert captured["kwargs"] == {"workspace_scope": scope}
@@ -468,7 +469,7 @@ class TestInlinePromptPersistence:
         """run_pipeline with inline_prompt writes to .agent/CURRENT_PROMPT.md."""
         scope = _configure_workspace(monkeypatch, tmp_path)
         monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
-        monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+        monkeypatch.setattr(run_module._state, "run_func", lambda *_args, **_kwargs: 0)
 
         run_module.run_pipeline(inline_prompt="do a quick change")
 
@@ -488,7 +489,7 @@ class TestInlinePromptPersistence:
         scope = WorkspaceScope(tmp_path)
         monkeypatch.setattr(run_module, "resolve_workspace_scope", lambda: scope)
         monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
-        monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+        monkeypatch.setattr(run_module._state, "run_func", lambda *_args, **_kwargs: 0)
 
         assert not (tmp_path / "PROMPT.md").exists()
         result = run_module.run_pipeline(dry_run=True, inline_prompt="quick task")
@@ -499,7 +500,6 @@ class TestValidateCounterOverrides:
     """Tests for CLI counter override validation via the shared policy validator."""
 
     def _pipeline_with_counters(self, *counter_names: str) -> PipelinePolicy:
-        from ralph.policy.models import BudgetCounterConfig
 
         return PipelinePolicy(
             phases={
@@ -514,7 +514,6 @@ class TestValidateCounterOverrides:
         )
 
     def test_unknown_counter_raises_policy_validation_error(self) -> None:
-        from ralph.policy.validation import _validate_cli_counter_overrides
 
         policy = self._pipeline_with_counters("declared_counter")
         errors: list[str] = []
@@ -522,7 +521,6 @@ class TestValidateCounterOverrides:
         assert any("unknown_counter" in e for e in errors)
 
     def test_declared_counter_passes_validation(self) -> None:
-        from ralph.policy.validation import _validate_cli_counter_overrides
 
         policy = self._pipeline_with_counters("my_counter")
         errors: list[str] = []
@@ -530,7 +528,6 @@ class TestValidateCounterOverrides:
         assert errors == []
 
     def test_empty_overrides_passes_validation(self) -> None:
-        from ralph.policy.validation import _validate_cli_counter_overrides
 
         policy = self._pipeline_with_counters()
         errors: list[str] = []

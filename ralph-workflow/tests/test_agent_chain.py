@@ -119,7 +119,7 @@ def test_agent_chain_is_exhausted_when_empty() -> None:
     assert chain.is_exhausted
 
 
-def test_agent_chain_waits_on_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_agent_chain_waits_on_backoff() -> None:
     chain = AgentChain(
         agents=["solo"],
         retry_delay_ms=200,
@@ -134,8 +134,7 @@ def test_agent_chain_waits_on_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_sleep(duration: float) -> None:
         called.append(duration)
 
-    monkeypatch.setattr("ralph.agents.chain.time.sleep", fake_sleep)
-    chain.wait_backoff()
+    chain.wait_backoff(_sleep=fake_sleep)
 
     assert called == [chain.calculate_backoff()]
 

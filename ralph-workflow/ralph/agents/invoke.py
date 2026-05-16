@@ -82,6 +82,8 @@ from ralph.process.manager import (
     ManagedPtyProcess,
     ProcessEvent,
     ProcessStatus,
+    PtySpawnOptions,
+    SpawnOptions,
     get_process_manager,
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
@@ -369,6 +371,15 @@ class InteractivePermissionPromptError(AgentInvocationError):
         )
 
 
+@dataclass(frozen=True)
+class InactivityTimeoutOpts:
+    """Optional parameters for AgentInactivityTimeoutError."""
+
+    reason: WatchdogFireReason | None = None
+    session_resume_safe: bool = False
+    diagnostic: dict[str, str | int | float | bool] | None = None
+
+
 class AgentInactivityTimeoutError(AgentInvocationError):
     """Raised when an agent stalls without producing output."""
 
@@ -377,23 +388,21 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         agent_name: str,
         timeout_seconds: float,
         parsed_output: list[str] | None = None,
-        *,
-        reason: WatchdogFireReason | None = None,
-        session_resume_safe: bool = False,
-        diagnostic: dict[str, str | int | float | bool] | None = None,
+        opts: InactivityTimeoutOpts | None = None,
     ) -> None:
+        _opts = opts or InactivityTimeoutOpts()
         self.timeout_seconds = timeout_seconds
-        self.reason = reason
-        self.session_resume_safe = session_resume_safe
-        if reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
+        self.reason = _opts.reason
+        self.session_resume_safe = _opts.session_resume_safe
+        if _opts.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
             duration = f"{timeout_seconds:.0f}s"
             base_msg = f"Agent kept child agents alive without producing output for {duration}"
-            if diagnostic:
-                cum = diagnostic.get("cumulative", "?")
-                scoped = diagnostic.get("scoped_child_active", "?")
-                oldest = diagnostic.get("oldest_child_seconds", "?")
-                ws_delta = diagnostic.get("workspace_event_delta", "?")
-                lo = diagnostic.get("lifecycle_only_activity", "?")
+            if _opts.diagnostic:
+                cum = _opts.diagnostic.get("cumulative", "?")
+                scoped = _opts.diagnostic.get("scoped_child_active", "?")
+                oldest = _opts.diagnostic.get("oldest_child_seconds", "?")
+                ws_delta = _opts.diagnostic.get("workspace_event_delta", "?")
+                lo = _opts.diagnostic.get("lifecycle_only_activity", "?")
                 stderr_msg = (
                     f"{base_msg} (cumulative={cum}s, scoped_child_active={scoped},"
                     f" oldest_child_seconds={oldest}s, workspace_event_delta={ws_delta},"
@@ -401,10 +410,10 @@ class AgentInactivityTimeoutError(AgentInvocationError):
                 )
             else:
                 stderr_msg = base_msg
-        elif reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
+        elif _opts.reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
             duration = f"{timeout_seconds:.0f}s"
             stderr_msg = f"Agent exceeded max session wall-clock of {duration}"
-        elif reason == WatchdogFireReason.PROCESS_EXIT_HANG:
+        elif _opts.reason == WatchdogFireReason.PROCESS_EXIT_HANG:
             duration = f"{timeout_seconds:.0f}s"
             stderr_msg = f"Agent subprocess closed stdout but did not exit within {duration}"
         else:
@@ -701,40 +710,29 @@ def invoke_agent(
     monitor = _start_workspace_monitor(opts.workspace_path)
     policy = _policy_from_options(opts)
 
+    ctx = _AgentRunCtx(
+        config=config,
+        show_progress=opts.show_progress,
+        extra_env=runtime_env,
+        workspace_path=opts.workspace_path,
+        policy=policy,
+        execution_strategy=execution_strategy,
+        liveness_probe=liveness_probe,
+        waiting_listener=opts.waiting_listener,
+        monitor=monitor,
+        required_artifact=opts.required_artifact,
+        clock=_clock,
+    )
     try:
         transport = _agent_transport(config)
         if transport == AgentTransport.CLAUDE_INTERACTIVE:
-            lines_iter = _run_pty_and_read_lines(
-                cmd,
-                config,
-                opts.show_progress,
-                runtime_env,
-                opts.workspace_path,
-                policy=policy,
-                execution_strategy=execution_strategy,
-                liveness_probe=liveness_probe,
-                waiting_listener=opts.waiting_listener,
-                monitor=monitor,
-                required_artifact=opts.required_artifact,
-                _clock=_clock,
+            extras = _PtyExtras(
                 expected_session_id=opts.session_id or opts.initial_session_id,
                 stop_sentinel_path=opts.stop_sentinel_path,
             )
+            lines_iter = _run_pty_and_read_lines(cmd, ctx, extras)
         else:
-            lines_iter = _run_subprocess_and_read_lines(
-                cmd,
-                config,
-                opts.show_progress,
-                runtime_env,
-                opts.workspace_path,
-                policy=policy,
-                execution_strategy=execution_strategy,
-                liveness_probe=liveness_probe,
-                waiting_listener=opts.waiting_listener,
-                monitor=monitor,
-                required_artifact=opts.required_artifact,
-                _clock=_clock,
-            )
+            lines_iter = _run_subprocess_and_read_lines(cmd, ctx)
         yield from lines_iter
 
         _log_workspace_completion(monitor)
@@ -776,67 +774,309 @@ def _start_workspace_monitor(workspace_path: Path | None) -> WorkspaceMonitor | 
     return monitor
 
 
+@dataclass(frozen=True)
+class _AgentRunCtx:
+    config: AgentConfig
+    show_progress: bool
+    extra_env: dict[str, str] | None
+    workspace_path: Path | None
+    policy: TimeoutPolicy
+    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
+    liveness_probe: LivenessProbe | None = None
+    waiting_listener: WaitingStatusListener | None = None
+    monitor: WorkspaceMonitor | None = None
+    required_artifact: RequiredArtifact | None = None
+    clock: Clock | None = None
+
+
+@dataclass(frozen=True)
+class _PtyExtras:
+    expected_session_id: str | None = None
+    stop_sentinel_path: Path | None = None
+    permission_prompt_listener: Callable[[str], None] | None = None
+
+
+@dataclass(frozen=True)
+class _ProcessReaderCtx:
+    policy: TimeoutPolicy
+    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
+    liveness_probe: LivenessProbe | None = None
+    waiting_listener: WaitingStatusListener | None = None
+    monitor: WorkspaceMonitor | None = None
+
+
+class _ProcessLineReader:
+    """Reads lines from a subprocess stdout in a background thread."""
+
+    def __init__(self, handle: ManagedProcess, ctx: _ProcessReaderCtx, clock: Clock) -> None:
+        self._handle = handle
+        self._policy = ctx.policy
+        self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
+        self._probe = ctx.liveness_probe or DefaultLivenessProbe()
+        self._waiting_listener = ctx.waiting_listener
+        self._monitor = ctx.monitor
+        self._clock = clock
+        self._lines_queue: list[str] = []
+        self._lines_lock = threading.Lock()
+        self._lines_event = threading.Event()
+        self._terminal_counter: list[int] = [0]
+        self._last_activity_meaningful: list[bool] = [False]
+        self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
+        self._reader_done: list[bool] = [False]
+        self._last_activity_kind = "none"
+        self._unsubscribe = get_process_manager().register_listener(self._on_process_event)
+
+    def _on_process_event(self, event: ProcessEvent) -> None:
+        if (
+            event.record.label is not None
+            and event.record.label.startswith("invoke:")
+            and event.new_status in _TERMINAL_PROCESS_STATUSES
+        ):
+            self._terminal_counter[0] += 1
+
+    def _on_waiting_event(self, evt: WaitingStatusEvent) -> None:
+        if evt.kind == WaitingStatusKind.HARD_STOP:
+            self._last_hard_stop[0] = evt
+        if self._waiting_listener is not None:
+            self._waiting_listener(evt)
+
+    def _corroborate(self) -> CorroborationSnapshot:
+        ws_count: int | None = self._monitor.event_count if self._monitor is not None else None
+        oldest_secs: float | None = None
+        scoped_active: bool | None = None
+        scoped_count: int | None = None
+        try:
+            desc_count, desc_oldest = self._handle.descendant_snapshot()
+            scoped_count = desc_count
+            scoped_active = desc_count > 0
+            oldest_secs = desc_oldest
+        except Exception:
+            logger.debug("corroborator: process scan failed (suppressed)")
+        alive_by: AliveBy | None = None
+        reg = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
+        if reg is not None:
+            try:
+                label_prefix = cast(
+                    "str | None",
+                    getattr(self._strategy, "_active_label_prefix", lambda: None)(),
+                )
+                reg_snap = reg.snapshot(label_prefix or "")
+                verdict = classify_child_snapshot(reg_snap, has_os_descendants=bool(scoped_active))
+                alive_by = verdict.alive_by
+            except Exception:
+                logger.debug("corroborator: registry snapshot failed (suppressed)")
+        elif scoped_active:
+            alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        return CorroborationSnapshot(
+            workspace_event_count=ws_count,
+            oldest_child_seconds=oldest_secs,
+            scoped_child_active=scoped_active,
+            scoped_child_count=scoped_count,
+            terminal_child_events_total=self._terminal_counter[0],
+            last_activity_was_meaningful=self._last_activity_meaningful[0],
+            alive_by=alive_by,
+        )
+
+    def _read_thread(self) -> None:
+        stdout_pipe = cast("IO[str] | None", self._handle.stdout)
+        if stdout_pipe is None:
+            with self._lines_lock:
+                self._reader_done[0] = True
+            self._lines_event.set()
+            return
+        try:
+            for line in stdout_pipe:
+                with self._lines_lock:
+                    self._lines_queue.append(line)
+                    self._lines_event.set()
+        except Exception:
+            pass
+        finally:
+            with self._lines_lock:
+                self._reader_done[0] = True
+            self._lines_event.set()
+
+    def _classify_quiet(self) -> AgentExecutionState:
+        try:
+            return self._strategy.classify_quiet(self._handle, self._probe)
+        except Exception:
+            logger.opt(exception=True).debug(
+                "idle watchdog: classify_quiet raised; defaulting to WAITING_ON_CHILD"
+            )
+            return AgentExecutionState.WAITING_ON_CHILD
+
+    def _check_fire(
+        self, watchdog: IdleWatchdog, verdict: WatchdogVerdict
+    ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
+        if verdict != WatchdogVerdict.FIRE:
+            return None
+        assert (
+            self._policy.idle_timeout_seconds is not None
+            or self._policy.max_session_seconds is not None
+        )
+        fire_reason = watchdog.last_fire_reason
+        assert fire_reason is not None
+        timeout_val = (
+            self._policy.max_session_seconds
+            if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+            else self._policy.idle_timeout_seconds
+        )
+        assert timeout_val is not None
+        logger.warning(
+            "idle watchdog firing reason={} elapsed={}s cumulative_waiting={}s "
+            "last_activity_kind={} resume_safe=false",
+            fire_reason,
+            round(self._clock.monotonic(), 1),
+            round(watchdog.cumulative_waiting_on_child_seconds, 1),
+            self._last_activity_kind,
+        )
+        with self._lines_lock:
+            pending = list(self._lines_queue)
+            self._lines_queue.clear()
+        self._handle.terminate(grace_period_s=0.5)
+        hs_event = self._last_hard_stop[0]
+        hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
+        return pending, _IdleStreamTimeoutError(
+            timeout_val,
+            fire_reason,
+            diagnostic=hard_stop_diag,
+        )
+
+    def _run_drain_window(
+        self, watchdog: IdleWatchdog, drain_deadline: float | None
+    ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
+        while True:
+            result = self._check_fire(
+                watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
+            )
+            if result is not None:
+                return result
+            if drain_deadline is not None and self._clock.monotonic() >= drain_deadline:
+                return None
+            if self._policy.idle_timeout_seconds is None:
+                return None
+            self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
+
+    def read_lines(self) -> Iterator[str]:
+        reader = threading.Thread(target=self._read_thread, daemon=True)
+        reader.start()
+        watchdog = IdleWatchdog(
+            self._policy,
+            self._clock,
+            listener=self._on_waiting_event,
+            corroborator=self._corroborate,
+        )
+        try:
+            while True:
+                self._lines_event.clear()
+                queued_line: str | None = None
+                is_done = False
+                with self._lines_lock:
+                    if self._lines_queue:
+                        queued_line = self._lines_queue.pop(0)
+                    elif self._reader_done[0]:
+                        is_done = True
+
+                if queued_line is not None:
+                    activity_signal = self._strategy.classify_activity_line(queued_line)
+                    if activity_signal is not None:
+                        self._last_activity_kind = str(activity_signal.kind)
+                        self._last_activity_meaningful[0] = (
+                            activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
+                        )
+                        watchdog.record_activity()
+                    else:
+                        self._last_activity_meaningful[0] = False
+                    self._strategy.observe_line(queued_line)
+                    yield queued_line
+                    result = self._check_fire(
+                        watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
+                    )
+                    if result is not None:
+                        pending_lines, exc = result
+                        yield from pending_lines
+                        raise exc
+                    continue
+
+                if is_done:
+                    drain_deadline = (
+                        self._clock.monotonic() + self._policy.drain_window_seconds
+                        if self._policy.drain_window_seconds
+                        else None
+                    )
+                    result = self._run_drain_window(watchdog, drain_deadline)
+                    if result is not None:
+                        pending_lines, exc = result
+                        yield from pending_lines
+                        raise exc
+                    break
+
+                result = self._check_fire(
+                    watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
+                )
+                if result is not None:
+                    pending_lines, exc = result
+                    yield from pending_lines
+                    raise exc
+
+                self._clock.wait_for_event(
+                    self._lines_event, self._policy.idle_poll_interval_seconds
+                )
+
+            reader.join(timeout=10)
+        finally:
+            self._unsubscribe()
+
+
 def _run_subprocess_and_read_lines(
     cmd: list[str],
-    config: AgentConfig,
-    show_progress: bool,
-    extra_env: dict[str, str] | None,
-    workspace_path: Path | None,
-    *,
-    policy: TimeoutPolicy,
-    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
-    liveness_probe: LivenessProbe | None = None,
-    waiting_listener: WaitingStatusListener | None = None,
-    monitor: WorkspaceMonitor | None = None,
-    required_artifact: RequiredArtifact | None = None,
-    _clock: Clock | None = None,
+    ctx: _AgentRunCtx,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
 
     Args:
         cmd: Command to execute.
-        config: Agent configuration.
-        show_progress: Whether to show progress bar.
-        policy: Consolidated timeout policy for all timeout dimensions.
+        ctx: Agent run context with configuration and options.
 
     Yields:
         Output lines from the subprocess.
     """
+    clock: Clock = ctx.clock or SystemClock()
     handle = get_process_manager().spawn(
         cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        stdin=None,
-        cwd=str(workspace_path) if workspace_path is not None else None,
-        env=_subprocess_env(extra_env),
-        start_new_session=True,
-        label=f"invoke:{_agent_command_name(config)}",
-        text=True,
+        SpawnOptions(
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=None,
+            cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
+            env=_subprocess_env(ctx.extra_env),
+            start_new_session=True,
+            label=f"invoke:{_agent_command_name(ctx.config)}",
+            text=True,
+        ),
     )
-    strategy = execution_strategy or GenericExecutionStrategy()
-    probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
-    clock: Clock = _clock or SystemClock()
+    strategy = ctx.execution_strategy or GenericExecutionStrategy()
+    probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
     with handle:
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
-            raise AgentInvocationError(_agent_command_name(config), -1, msg)
+            raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
-        lines_iter = _read_lines_from_process(
-            handle,
-            policy=policy,
-            execution_strategy=strategy,
-            liveness_probe=probe,
-            waiting_listener=waiting_listener,
-            monitor=monitor,
-            _clock=clock,
+        reader_ctx = _ProcessReaderCtx(
+            policy=ctx.policy,
+            execution_strategy=ctx.execution_strategy,
+            liveness_probe=ctx.liveness_probe,
+            waiting_listener=ctx.waiting_listener,
+            monitor=ctx.monitor,
         )
+        lines_iter = _ProcessLineReader(handle, reader_ctx, clock).read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
         captured_session_id: str | None = None
         try:
-            if show_progress:
-                agent_name = _agent_command_name(config)
+            if ctx.show_progress:
+                agent_name = _agent_command_name(ctx.config)
                 progress_iter = cast(
                     "Iterator[str]",
                     tqdm(
@@ -871,36 +1111,35 @@ def _run_subprocess_and_read_lines(
 
             # Post-EOF: wait for subprocess to exit within policy budget.
             # Prevents hanging when a subprocess closes stdout but never calls exit().
-            post_exit = PostExitWatchdog(policy, clock)
+            post_exit = PostExitWatchdog(ctx.policy, clock)
             verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
             if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                 handle.terminate(grace_period_s=0.5)
                 raise _IdleStreamTimeoutError(
-                    policy.process_exit_wait_seconds,
+                    ctx.policy.process_exit_wait_seconds,
                     WatchdogFireReason.PROCESS_EXIT_HANG,
                 )
         except _IdleStreamTimeoutError as exc:
             raise AgentInactivityTimeoutError(
-                _agent_command_name(config),
+                _agent_command_name(ctx.config),
                 exc.timeout_seconds,
                 _bounded_output_lines(
                     tuple(parsed_output),
                     explicit_completion_seen=explicit_completion_seen,
                 ),
-                reason=exc.reason,
-                diagnostic=exc.diagnostic,
+                InactivityTimeoutOpts(reason=exc.reason, diagnostic=exc.diagnostic),
             ) from exc
 
         _check_process_result(
             handle,
-            _agent_command_name(config),
+            _agent_command_name(ctx.config),
             list(parsed_output),
             _CompletionCheckOptions(
                 execution_strategy=strategy,
-                workspace_path=workspace_path,
+                workspace_path=ctx.workspace_path,
                 liveness_probe=probe,
-                policy=policy,
-                required_artifact=required_artifact,
+                policy=ctx.policy,
+                required_artifact=ctx.required_artifact,
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
             ),
@@ -910,54 +1149,39 @@ def _run_subprocess_and_read_lines(
 
 def _run_pty_and_read_lines(
     cmd: list[str],
-    config: AgentConfig,
-    show_progress: bool,
-    extra_env: dict[str, str] | None,
-    workspace_path: Path | None,
-    *,
-    policy: TimeoutPolicy,
-    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
-    liveness_probe: LivenessProbe | None = None,
-    waiting_listener: WaitingStatusListener | None = None,
-    monitor: WorkspaceMonitor | None = None,
-    required_artifact: RequiredArtifact | None = None,
-    _clock: Clock | None = None,
-    expected_session_id: str | None = None,
-    stop_sentinel_path: Path | None = None,
-    permission_prompt_listener: Callable[[str], None] | None = None,
+    ctx: _AgentRunCtx,
+    extras: _PtyExtras | None = None,
 ) -> Iterator[str]:
-    if stop_sentinel_path is not None:
+    _extras = extras or _PtyExtras()
+    expected_session_id = _extras.expected_session_id
+    if _extras.stop_sentinel_path is not None:
         with contextlib.suppress(FileNotFoundError):
-            stop_sentinel_path.unlink()
+            _extras.stop_sentinel_path.unlink()
+    clock: Clock = ctx.clock or SystemClock()
     handle = get_process_manager().spawn_pty(
         cmd,
-        cwd=str(workspace_path) if workspace_path is not None else None,
-        env=_subprocess_env(extra_env),
-        label=f"invoke:{_agent_command_name(config)}",
+        PtySpawnOptions(
+            cwd=str(ctx.workspace_path) if ctx.workspace_path is not None else None,
+            env=_subprocess_env(ctx.extra_env),
+            label=f"invoke:{_agent_command_name(ctx.config)}",
+        ),
     )
-    strategy = execution_strategy or GenericExecutionStrategy()
-    probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
-    clock: Clock = _clock or SystemClock()
+    strategy = ctx.execution_strategy or GenericExecutionStrategy()
+    probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
     with handle:
-        lines_iter = _read_lines_from_pty_process(
+        lines_iter = _PtyLineReader(
             handle,
-            agent_name=_agent_command_name(config),
-            policy=policy,
-            execution_strategy=strategy,
-            liveness_probe=probe,
-            waiting_listener=waiting_listener,
-            monitor=monitor,
-            _clock=clock,
-            expected_session_id=expected_session_id,
-            stop_sentinel_path=stop_sentinel_path,
-            permission_prompt_listener=permission_prompt_listener,
-        )
+            _agent_command_name(ctx.config),
+            ctx,
+            clock,
+            _extras,
+        ).read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
         captured_session_id: str | None = None
         try:
-            if show_progress:
-                agent_name = _agent_command_name(config)
+            if ctx.show_progress:
+                agent_name = _agent_command_name(ctx.config)
                 progress_iter = cast(
                     "Iterator[str]",
                     tqdm(
@@ -993,36 +1217,35 @@ def _run_pty_and_read_lines(
             if captured_session_id is None:
                 captured_session_id = expected_session_id
 
-            post_exit = PostExitWatchdog(policy, clock)
+            post_exit = PostExitWatchdog(ctx.policy, clock)
             verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
             if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                 handle.terminate(grace_period_s=0.5)
                 raise _IdleStreamTimeoutError(
-                    policy.process_exit_wait_seconds,
+                    ctx.policy.process_exit_wait_seconds,
                     WatchdogFireReason.PROCESS_EXIT_HANG,
                 )
         except _IdleStreamTimeoutError as exc:
             raise AgentInactivityTimeoutError(
-                _agent_command_name(config),
+                _agent_command_name(ctx.config),
                 exc.timeout_seconds,
                 _bounded_output_lines(
                     tuple(parsed_output),
                     explicit_completion_seen=explicit_completion_seen,
                 ),
-                reason=exc.reason,
-                diagnostic=exc.diagnostic,
+                InactivityTimeoutOpts(reason=exc.reason, diagnostic=exc.diagnostic),
             ) from exc
 
         _check_process_result(
             handle,
-            _agent_command_name(config),
+            _agent_command_name(ctx.config),
             list(parsed_output),
             _CompletionCheckOptions(
                 execution_strategy=strategy,
-                workspace_path=workspace_path,
+                workspace_path=ctx.workspace_path,
                 liveness_probe=probe,
-                policy=policy,
-                required_artifact=required_artifact,
+                policy=ctx.policy,
+                required_artifact=ctx.required_artifact,
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
             ),
@@ -1251,6 +1474,46 @@ def _extract_message_text(value: object) -> str:
     return ""
 
 
+def _transcript_lines_from_assistant_content(content: list[object]) -> list[str]:
+    lines: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        item_type = str(item.get("type", ""))
+        if item_type == "tool_use":
+            lines.append(f"claude tool: {item.get('name', 'tool')!s}\n")
+        elif item_type == "text":
+            text = str(item.get("text", "")).strip()
+            if text:
+                lines.append(f"{text}\n")
+    return lines
+
+
+def _transcript_lines_from_user_content(content: list[object]) -> list[str]:
+    lines: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        item_dict = cast("dict[str, object]", item)
+        if item_dict.get("type") != "tool_result":
+            continue
+        result_content = _extract_message_text(item_dict.get("content"))
+        if result_content:
+            lines.append(f"claude tool result: {result_content}\n")
+    return lines
+
+
+def _transcript_lines_from_message(
+    message: object, extractor: Callable[[list[object]], list[str]]
+) -> list[str]:
+    if not isinstance(message, dict):
+        return []
+    content = message.get("content")
+    if not isinstance(content, list):
+        return []
+    return extractor(content)
+
+
 def _transcript_lines_from_event(raw_line: str) -> list[str]:
     try:
         parsed = cast("object", json.loads(raw_line))
@@ -1260,115 +1523,103 @@ def _transcript_lines_from_event(raw_line: str) -> list[str]:
         return []
     obj = cast("dict[str, object]", parsed)
     event_type = str(obj.get("type", ""))
-    if event_type == "permission-mode":
+    if event_type in {"permission-mode", ""}:
         return []
     if event_type == "assistant":
-        message = obj.get("message")
-        if not isinstance(message, dict):
-            return []
-        content = message.get("content")
-        if not isinstance(content, list):
-            return []
-        assistant_lines: list[str] = []
-        for item in content:
-            if not isinstance(item, dict):
-                continue
-            item_type = str(item.get("type", ""))
-            if item_type == "tool_use":
-                tool_name = str(item.get("name", "tool"))
-                assistant_lines.append(f"claude tool: {tool_name}\n")
-            elif item_type == "text":
-                text = str(item.get("text", "")).strip()
-                if text:
-                    assistant_lines.append(f"{text}\n")
-        return assistant_lines
+        return _transcript_lines_from_message(
+            obj.get("message"), _transcript_lines_from_assistant_content
+        )
     if event_type == "user":
-        message = obj.get("message")
-        if not isinstance(message, dict):
-            return []
-        content = message.get("content")
-        if not isinstance(content, list):
-            return []
-        user_lines: list[str] = []
-        for item in content:
-            if not isinstance(item, dict):
-                continue
-            user_item_type: object = item.get("type")
-            if user_item_type != "tool_result":
-                continue
-            result_content = _extract_message_text(item.get("content"))
-            if result_content:
-                user_lines.append(f"claude tool result: {result_content}\n")
-        return user_lines
+        return _transcript_lines_from_message(
+            obj.get("message"), _transcript_lines_from_user_content
+        )
     return []
 
 
-def _read_lines_from_pty_process(
-    handle: ManagedPtyProcess,
-    *,
-    agent_name: str,
-    policy: TimeoutPolicy,
-    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
-    liveness_probe: LivenessProbe | None = None,
-    waiting_listener: WaitingStatusListener | None = None,
-    monitor: WorkspaceMonitor | None = None,
-    _clock: Clock | None = None,
-    expected_session_id: str | None = None,
-    stop_sentinel_path: Path | None = None,
-    permission_prompt_listener: Callable[[str], None] | None = None,
-) -> Iterator[str]:
-    lines_queue: list[str] = []
-    lines_lock = threading.Lock()
-    lines_event = threading.Event()
-    clock: Clock = _clock or SystemClock()
-    input_writer = os.fdopen(os.dup(handle.master_fd), "wb", buffering=0)
-    input_writer_lock = threading.Lock()
+class _PtyLineReader:
+    def __init__(
+        self,
+        handle: ManagedPtyProcess,
+        agent_name: str,
+        ctx: _AgentRunCtx,
+        clock: Clock,
+        extras: _PtyExtras | None,
+    ) -> None:
+        _extras = extras or _PtyExtras()
+        self._handle = handle
+        self._agent_name = agent_name
+        self._policy = ctx.policy
+        self._monitor = ctx.monitor
+        self._clock = clock
+        self._strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy = (
+            ctx.execution_strategy or GenericExecutionStrategy()
+        )
+        self._probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
+        self._waiting_listener = ctx.waiting_listener
+        self._expected_session_id = _extras.expected_session_id
+        self._stop_sentinel_path = _extras.stop_sentinel_path
+        self._permission_prompt_listener = _extras.permission_prompt_listener
+        self._lines_queue: list[str] = []
+        self._lines_lock = threading.Lock()
+        self._lines_event = threading.Event()
+        self._monitor_stop = threading.Event()
+        self._terminal_counter: list[int] = [0]
+        self._last_meaningful: list[bool] = [False]
+        self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
+        self._reader_done: list[bool] = [False]
+        self._input_writer = os.fdopen(os.dup(handle.master_fd), "wb", buffering=0)
+        self._input_writer_lock = threading.Lock()
+        self._auto_mode_prompt_seen = False
+        self._auto_response_menu_seen = False
+        self._auto_mode_menu_screen: str | None = None
+        self._last_auto_mode_response_at: float | None = None
+        self._last_auto_mode_menu_seen_at: float | None = None
+        self._pending_permission_prompt_line: str | None = None
+        self._pending_permission_prompt_started_at: float | None = None
 
-    terminal_child_events_counter: list[int] = [0]
-    last_activity_meaningful: list[bool] = [False]
-    _last_hard_stop_event: list[WaitingStatusEvent | None] = [None]
+    def _start_thread(self, target: Callable[[], None]) -> threading.Thread:
+        t = threading.Thread(target=target, daemon=True)
+        t.start()
+        return t
 
-    def _terminal_listener(event: ProcessEvent) -> None:
+    def _on_process_event(self, event: ProcessEvent) -> None:
         if (
             event.record.label is not None
             and event.record.label.startswith("invoke:")
             and event.new_status in _TERMINAL_PROCESS_STATUSES
         ):
-            terminal_child_events_counter[0] += 1
+            self._terminal_counter[0] += 1
 
-    _unsubscribe_terminal = get_process_manager().register_listener(_terminal_listener)
-
-    def _internal_waiting_listener(evt: WaitingStatusEvent) -> None:
+    def _on_waiting_event(self, evt: WaitingStatusEvent) -> None:
         if evt.kind == WaitingStatusKind.HARD_STOP:
-            _last_hard_stop_event[0] = evt
-        if waiting_listener is not None:
-            waiting_listener(evt)
+            self._last_hard_stop[0] = evt
+        if self._waiting_listener is not None:
+            self._waiting_listener(evt)
 
-    strategy = execution_strategy or GenericExecutionStrategy()
-    probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
-
-    def _corroborate() -> CorroborationSnapshot:
-        ws_count: int | None = monitor.event_count if monitor is not None else None
+    def _corroborate(self) -> CorroborationSnapshot:
+        ws_count: int | None = self._monitor.event_count if self._monitor is not None else None
         oldest_secs: float | None = None
         scoped_active: bool | None = None
         scoped_count: int | None = None
         try:
-            desc_count, desc_oldest = handle.descendant_snapshot()
+            desc_count, desc_oldest = self._handle.descendant_snapshot()
             scoped_count = desc_count
             scoped_active = desc_count > 0
             oldest_secs = desc_oldest
         except Exception:
             logger.debug("corroborator: PTY process scan failed (suppressed)")
         alive_by: AliveBy | None = None
-        reg = cast("ChildLivenessRegistry | None", getattr(strategy, "_registry", None))
+        reg = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if reg is not None:
             try:
                 label_prefix = cast(
                     "str | None",
-                    getattr(strategy, "_active_label_prefix", lambda: None)(),
+                    getattr(self._strategy, "_active_label_prefix", lambda: None)(),
                 )
                 reg_snap = reg.snapshot(label_prefix or "")
-                verdict = classify_child_snapshot(reg_snap, has_os_descendants=bool(scoped_active))
+                verdict = classify_child_snapshot(
+                    reg_snap, has_os_descendants=bool(scoped_active)
+                )
                 alive_by = verdict.alive_by
             except Exception:
                 logger.debug("corroborator: PTY registry snapshot failed (suppressed)")
@@ -1379,113 +1630,99 @@ def _read_lines_from_pty_process(
             oldest_child_seconds=oldest_secs,
             scoped_child_active=scoped_active,
             scoped_child_count=scoped_count,
-            terminal_child_events_total=terminal_child_events_counter[0],
-            last_activity_was_meaningful=last_activity_meaningful[0],
+            terminal_child_events_total=self._terminal_counter[0],
+            last_activity_was_meaningful=self._last_meaningful[0],
             alive_by=alive_by,
         )
 
-    watchdog = IdleWatchdog(
-        policy,
-        clock,
-        listener=_internal_waiting_listener,
-        corroborator=_corroborate,
-    )
-    reader_done: list[bool] = [False]
-    monitor_stop = threading.Event()
-
-    def read_lines_thread() -> None:
+    def _read_thread(self) -> None:
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         pending = ""
         last_snapshot: str | None = None
         try:
             while True:
-                if handle.poll() is not None and not wait_for_master_readable(
-                    handle.master_fd, 0.01
+                if self._handle.poll() is not None and not wait_for_master_readable(
+                    self._handle.master_fd, 0.01
                 ):
                     break
-                if not wait_for_master_readable(handle.master_fd, 0.05):
+                if not wait_for_master_readable(self._handle.master_fd, 0.05):
                     continue
-                chunk = read_master_chunk(handle.master_fd)
+                chunk = read_master_chunk(self._handle.master_fd)
                 if not chunk:
                     break
                 pending += decoder.decode(chunk)
                 completed, pending = _split_complete_vt_lines(pending)
                 if completed:
-                    with lines_lock:
-                        lines_queue.extend(completed)
-                        lines_event.set()
+                    with self._lines_lock:
+                        self._lines_queue.extend(completed)
+                        self._lines_event.set()
                     last_snapshot = None
                     continue
                 snapshot_line = _pending_vt_snapshot_line(pending)
                 if snapshot_line is not None and snapshot_line != last_snapshot:
-                    with lines_lock:
-                        lines_queue.append(snapshot_line)
-                        lines_event.set()
+                    with self._lines_lock:
+                        self._lines_queue.append(snapshot_line)
+                        self._lines_event.set()
                     last_snapshot = snapshot_line
             tail = pending + decoder.decode(b"", final=True)
             if tail:
                 snapshot_line = _pending_vt_snapshot_line(tail)
                 if snapshot_line is None:
                     snapshot_line = tail
-                with lines_lock:
-                    lines_queue.append(snapshot_line)
-                    lines_event.set()
+                with self._lines_lock:
+                    self._lines_queue.append(snapshot_line)
+                    self._lines_event.set()
         except Exception:
             pass
         finally:
-            with lines_lock:
-                reader_done[0] = True
-            lines_event.set()
-            monitor_stop.set()
+            with self._lines_lock:
+                self._reader_done[0] = True
+            self._lines_event.set()
+            self._monitor_stop.set()
 
-    def transcript_thread() -> None:
-        if expected_session_id is None:
+    def _transcript_thread(self) -> None:
+        if self._expected_session_id is None:
             return
         transcript_path: Path | None = None
         file_obj = None
-        while not monitor_stop.is_set():
+        while not self._monitor_stop.is_set():
             if transcript_path is None:
-                transcript_path = _find_claude_transcript_path(expected_session_id)
+                transcript_path = _find_claude_transcript_path(self._expected_session_id)
                 if transcript_path is None:
-                    monitor_stop.wait(0.1)
+                    self._monitor_stop.wait(0.1)
                     continue
                 file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
             assert file_obj is not None
             line = file_obj.readline()
             if not line:
-                monitor_stop.wait(0.1)
+                self._monitor_stop.wait(0.1)
                 continue
             emitted_lines = _transcript_lines_from_event(line)
             if emitted_lines:
-                with lines_lock:
-                    lines_queue.extend(emitted_lines)
-                    lines_event.set()
+                with self._lines_lock:
+                    self._lines_queue.extend(emitted_lines)
+                    self._lines_event.set()
         if file_obj is not None:
             file_obj.close()
 
-    def sentinel_thread() -> None:
-        if stop_sentinel_path is None:
+    def _sentinel_thread(self) -> None:
+        if self._stop_sentinel_path is None:
             return
-        while not monitor_stop.is_set():
-            if stop_sentinel_path.exists():
-                with lines_lock:
-                    lines_queue.append(_TURN_BOUNDARY_MARKER + "\n")
-                    lines_event.set()
+        while not self._monitor_stop.is_set():
+            if self._stop_sentinel_path.exists():
+                with self._lines_lock:
+                    self._lines_queue.append(_TURN_BOUNDARY_MARKER + "\n")
+                    self._lines_event.set()
                 with contextlib.suppress(OSError):
-                    _write_pty_input(input_writer, "/exit\r\n", lock=input_writer_lock)
+                    _write_pty_input(
+                        self._input_writer, "/exit\r\n", lock=self._input_writer_lock
+                    )
                 return
-            monitor_stop.wait(0.05)
+            self._monitor_stop.wait(0.05)
 
-    reader = threading.Thread(target=read_lines_thread, daemon=True)
-    reader.start()
-    transcript_reader = threading.Thread(target=transcript_thread, daemon=True)
-    transcript_reader.start()
-    sentinel_reader = threading.Thread(target=sentinel_thread, daemon=True)
-    sentinel_reader.start()
-
-    def _safe_classify_quiet() -> AgentExecutionState:
+    def _classify_quiet(self) -> AgentExecutionState:
         try:
-            return strategy.classify_quiet(handle, probe)
+            return self._strategy.classify_quiet(self._handle, self._probe)
         except Exception:
             logger.opt(exception=True).debug(
                 "idle watchdog: classify_quiet raised for PTY runtime; "
@@ -1493,25 +1730,30 @@ def _read_lines_from_pty_process(
             )
             return AgentExecutionState.WAITING_ON_CHILD
 
-    def _handle_fire_verdict(
+    def _check_fire(
+        self,
+        watchdog: IdleWatchdog,
         verdict: WatchdogVerdict,
     ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
         if verdict != WatchdogVerdict.FIRE:
             return None
-        assert policy.idle_timeout_seconds is not None or policy.max_session_seconds is not None
+        assert (
+            self._policy.idle_timeout_seconds is not None
+            or self._policy.max_session_seconds is not None
+        )
         fire_reason = watchdog.last_fire_reason
         assert fire_reason is not None
         timeout_val = (
-            policy.max_session_seconds
+            self._policy.max_session_seconds
             if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
-            else policy.idle_timeout_seconds
+            else self._policy.idle_timeout_seconds
         )
         assert timeout_val is not None
-        with lines_lock:
-            pending_lines = list(lines_queue)
-            lines_queue.clear()
-        handle.terminate(grace_period_s=0.5)
-        hs_event = _last_hard_stop_event[0]
+        with self._lines_lock:
+            pending_lines = list(self._lines_queue)
+            self._lines_queue.clear()
+        self._handle.terminate(grace_period_s=0.5)
+        hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
         return pending_lines, _IdleStreamTimeoutError(
             timeout_val,
@@ -1519,164 +1761,215 @@ def _read_lines_from_pty_process(
             diagnostic=hard_stop_diag,
         )
 
-    interrupted = False
-    auto_mode_prompt_seen = False
-    auto_response_menu_seen = False
-    auto_mode_menu_screen: str | None = None
-    last_auto_mode_response_at: float | None = None
-    last_auto_mode_menu_seen_at: float | None = None
-    pending_permission_prompt_line: str | None = None
-    pending_permission_prompt_started_at: float | None = None
-    try:
+    def _run_drain_window(
+        self,
+        watchdog: IdleWatchdog,
+        drain_deadline: float | None,
+    ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
         while True:
-            lines_event.clear()
-            queued_line: str | None = None
-            is_done = False
-            with lines_lock:
-                if lines_queue:
-                    queued_line = lines_queue.pop(0)
-                elif reader_done[0]:
-                    is_done = True
-
-            if queued_line is not None:
-                visible_line = _visible_tui_text(queued_line)
-                if _extract_choice_menu_state(queued_line) is not None:
-                    auto_mode_menu_screen = queued_line
-                    last_auto_mode_menu_seen_at = clock.monotonic()
-                prompt_line_seen = "enable auto mode?" in visible_line.lower()
-                menu_snapshot_seen = _is_auto_mode_menu_snapshot(queued_line)
-                if prompt_line_seen or menu_snapshot_seen:
-                    auto_mode_prompt_seen = True
-                    auto_mode_menu_screen = queued_line
-                    last_auto_mode_menu_seen_at = clock.monotonic()
-                auto_response = _interactive_auto_response_for_prompt(
-                    queued_line,
-                    auto_mode_prompt_seen=auto_mode_prompt_seen,
-                )
-                if auto_response is not None:
-                    auto_response_menu_seen = True
-                    auto_mode_menu_screen = queued_line
-                    last_auto_mode_menu_seen_at = clock.monotonic()
-                if _is_permission_prompt_line(queued_line):
-                    pending_permission_prompt_line = queued_line.rstrip()
-                    pending_permission_prompt_started_at = clock.monotonic()
-                else:
-                    pending_permission_prompt_line = None
-                    pending_permission_prompt_started_at = None
-                activity_signal = strategy.classify_activity_line(queued_line)
-                if activity_signal is not None:
-                    last_activity_meaningful[0] = (
-                        activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
-                    )
-                    watchdog.record_activity()
-                else:
-                    last_activity_meaningful[0] = False
-                strategy.observe_line(queued_line)
-                yield queued_line
-                fire_result = _handle_fire_verdict(
-                    watchdog.evaluate(classify_quiet=_safe_classify_quiet)
-                )
-                if fire_result is not None:
-                    pending_lines, exc = fire_result
-                    yield from pending_lines
-                    raise exc
-                continue
-
-            if is_done:
-                drain_window_deadline = (
-                    clock.monotonic() + policy.drain_window_seconds
-                    if policy.drain_window_seconds
-                    else None
-                )
-                while True:
-                    fire_result = _handle_fire_verdict(
-                        watchdog.evaluate(classify_quiet=_safe_classify_quiet)
-                    )
-                    if fire_result is not None:
-                        pending_lines, exc = fire_result
-                        yield from pending_lines
-                        raise exc
-                    if (
-                        drain_window_deadline is not None
-                        and clock.monotonic() >= drain_window_deadline
-                    ):
-                        break
-                    if policy.idle_timeout_seconds is None:
-                        break
-                    clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
-                break
-
-            if auto_response_menu_seen:
-                now = clock.monotonic()
-                menu_quiescent = (
-                    last_auto_mode_menu_seen_at is not None
-                    and (now - last_auto_mode_menu_seen_at) >= _MENU_QUIESCENCE_SECONDS
-                )
-                if menu_quiescent and (
-                    last_auto_mode_response_at is None or (now - last_auto_mode_response_at) >= 1.0
-                ):
-                    with contextlib.suppress(OSError):
-                        screen = auto_mode_menu_screen or ""
-                        response = (
-                            _interactive_auto_response_for_prompt(
-                                screen,
-                                auto_mode_prompt_seen=auto_mode_prompt_seen,
-                            )
-                            or "\r"
-                        )
-                        _write_pty_input(input_writer, response, lock=input_writer_lock)
-                        action_message = _permission_prompt_action_message(
-                            screen,
-                            auto_mode_prompt_seen=auto_mode_prompt_seen,
-                        )
-                        if action_message is not None:
-                            logger.info(action_message)
-                            if permission_prompt_listener is not None:
-                                permission_prompt_listener(action_message)
-                        pending_permission_prompt_line = None
-                        pending_permission_prompt_started_at = None
-                        last_auto_mode_response_at = now
-            prompt_grace_exceeded = (
-                pending_permission_prompt_started_at is not None
-                and (clock.monotonic() - pending_permission_prompt_started_at)
-                >= _MENU_QUIESCENCE_SECONDS
-            )
-            if (
-                pending_permission_prompt_line is not None
-                and prompt_grace_exceeded
-                and not auto_response_menu_seen
-            ):
-                handle.terminate(grace_period_s=0.5)
-                raise InteractivePermissionPromptError(
-                    agent_name,
-                    [pending_permission_prompt_line],
-                )
-            fire_result = _handle_fire_verdict(
-                watchdog.evaluate(classify_quiet=_safe_classify_quiet)
+            fire_result = self._check_fire(
+                watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
             )
             if fire_result is not None:
-                pending_lines, exc = fire_result
-                yield from pending_lines
-                raise exc
+                return fire_result
+            if drain_deadline is not None and self._clock.monotonic() >= drain_deadline:
+                return None
+            if self._policy.idle_timeout_seconds is None:
+                return None
+            self._clock.wait_for_event(
+                self._lines_event, self._policy.idle_poll_interval_seconds
+            )
 
-            clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
-    except BaseException:
-        interrupted = True
-        monitor_stop.set()
+    def _observe_queued_line(self, queued_line: str) -> None:
+        visible_line = _visible_tui_text(queued_line)
+        if _extract_choice_menu_state(queued_line) is not None:
+            self._auto_mode_menu_screen = queued_line
+            self._last_auto_mode_menu_seen_at = self._clock.monotonic()
+        prompt_line_seen = "enable auto mode?" in visible_line.lower()
+        menu_snapshot_seen = _is_auto_mode_menu_snapshot(queued_line)
+        if prompt_line_seen or menu_snapshot_seen:
+            self._auto_mode_prompt_seen = True
+            self._auto_mode_menu_screen = queued_line
+            self._last_auto_mode_menu_seen_at = self._clock.monotonic()
+        auto_response = _interactive_auto_response_for_prompt(
+            queued_line,
+            auto_mode_prompt_seen=self._auto_mode_prompt_seen,
+        )
+        if auto_response is not None:
+            self._auto_response_menu_seen = True
+            self._auto_mode_menu_screen = queued_line
+            self._last_auto_mode_menu_seen_at = self._clock.monotonic()
+        if _is_permission_prompt_line(queued_line):
+            self._pending_permission_prompt_line = queued_line.rstrip()
+            self._pending_permission_prompt_started_at = self._clock.monotonic()
+        else:
+            self._pending_permission_prompt_line = None
+            self._pending_permission_prompt_started_at = None
+
+    def _maybe_send_auto_response(self) -> None:
+        if self._auto_response_menu_seen:
+            now = self._clock.monotonic()
+            menu_quiescent = (
+                self._last_auto_mode_menu_seen_at is not None
+                and (now - self._last_auto_mode_menu_seen_at) >= _MENU_QUIESCENCE_SECONDS
+            )
+            if menu_quiescent and (
+                self._last_auto_mode_response_at is None
+                or (now - self._last_auto_mode_response_at) >= 1.0
+            ):
+                with contextlib.suppress(OSError):
+                    screen = self._auto_mode_menu_screen or ""
+                    response = (
+                        _interactive_auto_response_for_prompt(
+                            screen,
+                            auto_mode_prompt_seen=self._auto_mode_prompt_seen,
+                        )
+                        or "\r"
+                    )
+                    _write_pty_input(
+                        self._input_writer, response, lock=self._input_writer_lock
+                    )
+                    action_message = _permission_prompt_action_message(
+                        screen,
+                        auto_mode_prompt_seen=self._auto_mode_prompt_seen,
+                    )
+                    if action_message is not None:
+                        logger.info(action_message)
+                        if self._permission_prompt_listener is not None:
+                            self._permission_prompt_listener(action_message)
+                    self._pending_permission_prompt_line = None
+                    self._pending_permission_prompt_started_at = None
+                    self._last_auto_mode_response_at = now
+        prompt_grace_exceeded = (
+            self._pending_permission_prompt_started_at is not None
+            and (
+                self._clock.monotonic() - self._pending_permission_prompt_started_at
+            ) >= _MENU_QUIESCENCE_SECONDS
+        )
+        if (
+            self._pending_permission_prompt_line is not None
+            and prompt_grace_exceeded
+            and not self._auto_response_menu_seen
+        ):
+            self._handle.terminate(grace_period_s=0.5)
+            raise InteractivePermissionPromptError(
+                self._agent_name,
+                [self._pending_permission_prompt_line],
+            )
+
+    def _on_interrupt(self) -> None:
+        self._monitor_stop.set()
         with contextlib.suppress(Exception):
-            handle.close()
-        raise
-    finally:
-        monitor_stop.set()
-        reader.join(timeout=0.1 if interrupted else 10)
-        transcript_reader.join(timeout=0.1 if interrupted else 1)
-        sentinel_reader.join(timeout=0.1 if interrupted else 1)
+            self._handle.close()
+
+    def _cleanup(
+        self,
+        readers: list[threading.Thread],
+        unsubscribe: Callable[[], None],
+        interrupted: bool,
+    ) -> None:
+        self._monitor_stop.set()
+        timeouts = (
+            0.1 if interrupted else 10,
+            0.1 if interrupted else 1,
+            0.1 if interrupted else 1,
+        )
+        for reader, timeout in zip(readers, timeouts, strict=True):
+            reader.join(timeout=timeout)
         with contextlib.suppress(Exception):
-            input_writer.close()
-        if stop_sentinel_path is not None:
+            self._input_writer.close()
+        if self._stop_sentinel_path is not None:
             with contextlib.suppress(FileNotFoundError):
-                stop_sentinel_path.unlink()
-        _unsubscribe_terminal()
+                self._stop_sentinel_path.unlink()
+        unsubscribe()
+
+    def _handle_queued_line(
+        self, queued_line: str, watchdog: IdleWatchdog
+    ) -> Iterator[str]:
+        self._observe_queued_line(queued_line)
+        activity_signal = self._strategy.classify_activity_line(queued_line)
+        if activity_signal is not None:
+            self._last_meaningful[0] = (
+                activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
+            )
+            watchdog.record_activity()
+        else:
+            self._last_meaningful[0] = False
+        self._strategy.observe_line(queued_line)
+        yield queued_line
+        fire_result = self._check_fire(
+            watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
+        )
+        if fire_result is not None:
+            pending_lines, exc = fire_result
+            yield from pending_lines
+            raise exc
+
+    def _handle_done_path(self, watchdog: IdleWatchdog) -> Iterator[str]:
+        drain_deadline = (
+            self._clock.monotonic() + self._policy.drain_window_seconds
+            if self._policy.drain_window_seconds
+            else None
+        )
+        drain_result = self._run_drain_window(watchdog, drain_deadline)
+        if drain_result is not None:
+            pending_lines, exc = drain_result
+            yield from pending_lines
+            raise exc
+
+    def _idle_check_and_wait(self, watchdog: IdleWatchdog) -> Iterator[str]:
+        self._maybe_send_auto_response()
+        fire_result = self._check_fire(
+            watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
+        )
+        if fire_result is not None:
+            pending_lines, exc = fire_result
+            yield from pending_lines
+            raise exc
+        self._clock.wait_for_event(
+            self._lines_event, self._policy.idle_poll_interval_seconds
+        )
+
+    def read_lines(self) -> Iterator[str]:
+        reader = self._start_thread(self._read_thread)
+        transcript_reader = self._start_thread(self._transcript_thread)
+        sentinel_reader = self._start_thread(self._sentinel_thread)
+        watchdog = IdleWatchdog(
+            self._policy,
+            self._clock,
+            listener=self._on_waiting_event,
+            corroborator=self._corroborate,
+        )
+        unsubscribe = get_process_manager().register_listener(self._on_process_event)
+        interrupted = [False]
+        try:
+            while True:
+                self._lines_event.clear()
+                queued_line: str | None = None
+                is_done = False
+                with self._lines_lock:
+                    if self._lines_queue:
+                        queued_line = self._lines_queue.pop(0)
+                    elif self._reader_done[0]:
+                        is_done = True
+
+                if queued_line is not None:
+                    yield from self._handle_queued_line(queued_line, watchdog)
+                    continue
+
+                if is_done:
+                    yield from self._handle_done_path(watchdog)
+                    break
+
+                yield from self._idle_check_and_wait(watchdog)
+        except BaseException:
+            interrupted[0] = True
+            self._on_interrupt()
+            raise
+        finally:
+            self._cleanup(
+                [reader, transcript_reader, sentinel_reader], unsubscribe, interrupted[0]
+            )
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -1790,32 +2083,39 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
+@dataclass(frozen=True)
+class InvokeRuntimeOptions:
+    """Non-timeout runtime options for agent invocation."""
+
+    verbose: bool = False
+    show_progress: bool = True
+    workspace_path: Path | None = None
+    extra_env: dict[str, str] | None = None
+    pure: bool = False
+    session_id: str | None = None
+    system_prompt_file: str | None = None
+    waiting_listener: WaitingStatusListener | None = None
+    permission_prompt_listener: Callable[[str], None] | None = None
+    required_artifact: RequiredArtifact | None = None
+
+
 def build_invoke_options_from_config(
     general_config: GeneralConfig,
-    *,
-    verbose: bool = False,
-    show_progress: bool = True,
-    workspace_path: Path | None = None,
-    extra_env: dict[str, str] | None = None,
-    pure: bool = False,
-    session_id: str | None = None,
-    system_prompt_file: str | None = None,
-    waiting_listener: WaitingStatusListener | None = None,
-    permission_prompt_listener: Callable[[str], None] | None = None,
-    required_artifact: RequiredArtifact | None = None,
+    runtime: InvokeRuntimeOptions | None = None,
 ) -> InvokeOptions:
     """Build InvokeOptions from GeneralConfig, mapping all timeout fields."""
+    rt = runtime if runtime is not None else InvokeRuntimeOptions()
     return InvokeOptions(
-        verbose=verbose,
-        show_progress=show_progress,
-        workspace_path=workspace_path,
-        extra_env=extra_env,
-        pure=pure,
-        session_id=session_id,
-        system_prompt_file=system_prompt_file,
-        waiting_listener=waiting_listener,
-        permission_prompt_listener=permission_prompt_listener,
-        required_artifact=required_artifact,
+        verbose=rt.verbose,
+        show_progress=rt.show_progress,
+        workspace_path=rt.workspace_path,
+        extra_env=rt.extra_env,
+        pure=rt.pure,
+        session_id=rt.session_id,
+        system_prompt_file=rt.system_prompt_file,
+        waiting_listener=rt.waiting_listener,
+        permission_prompt_listener=rt.permission_prompt_listener,
+        required_artifact=rt.required_artifact,
         idle_timeout_seconds=general_config.agent_idle_timeout_seconds,
         drain_window_seconds=general_config.agent_idle_drain_window_seconds,
         max_waiting_on_child_seconds=general_config.agent_idle_max_waiting_on_child_seconds,
@@ -1913,250 +2213,11 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
 def _read_lines_from_process(
     handle: ManagedProcess,
     *,
-    policy: TimeoutPolicy,
-    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
-    liveness_probe: LivenessProbe | None = None,
-    waiting_listener: WaitingStatusListener | None = None,
-    monitor: WorkspaceMonitor | None = None,
+    ctx: _ProcessReaderCtx,
     _clock: Clock | None = None,
 ) -> Iterator[str]:
-    """Read lines from subprocess stdout in a background thread.
-
-    Args:
-        handle: Running managed process.
-        policy: Consolidated timeout policy.
-        _clock: Injectable Clock for testing; production callers omit this.
-
-    Yields:
-        Lines from stdout.
-    """
-    stdout_pipe = cast("IO[str] | None", handle.stdout)
-    lines_queue: list[str] = []
-    lines_lock = threading.Lock()
-    lines_event = threading.Event()
     clock: Clock = _clock or SystemClock()
-
-    terminal_child_events_counter: list[int] = [0]
-    last_activity_meaningful: list[bool] = [False]
-    _last_hard_stop_event: list[WaitingStatusEvent | None] = [None]
-
-    def _terminal_listener(event: ProcessEvent) -> None:
-        if (
-            event.record.label is not None
-            and event.record.label.startswith("invoke:")
-            and event.new_status in _TERMINAL_PROCESS_STATUSES
-        ):
-            terminal_child_events_counter[0] += 1
-
-    _unsubscribe_terminal = get_process_manager().register_listener(_terminal_listener)
-
-    def _internal_waiting_listener(evt: WaitingStatusEvent) -> None:
-        if evt.kind == WaitingStatusKind.HARD_STOP:
-            _last_hard_stop_event[0] = evt
-        if waiting_listener is not None:
-            waiting_listener(evt)
-
-    def _corroborate() -> CorroborationSnapshot:
-        ws_count: int | None = monitor.event_count if monitor is not None else None
-        oldest_secs: float | None = None
-        scoped_active: bool | None = None
-        scoped_count: int | None = None
-        try:
-            desc_count, desc_oldest = handle.descendant_snapshot()
-            scoped_count = desc_count
-            scoped_active = desc_count > 0
-            oldest_secs = desc_oldest
-        except Exception:
-            logger.debug("corroborator: process scan failed (suppressed)")
-        alive_by: AliveBy | None = None
-        reg = cast("ChildLivenessRegistry | None", getattr(strategy, "_registry", None))
-        if reg is not None:
-            try:
-                label_prefix = cast(
-                    "str | None",
-                    getattr(strategy, "_active_label_prefix", lambda: None)(),
-                )
-                reg_snap = reg.snapshot(label_prefix or "")
-                verdict = classify_child_snapshot(reg_snap, has_os_descendants=bool(scoped_active))
-                alive_by = verdict.alive_by
-            except Exception:
-                logger.debug("corroborator: registry snapshot failed (suppressed)")
-        elif scoped_active:
-            alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
-        return CorroborationSnapshot(
-            workspace_event_count=ws_count,
-            oldest_child_seconds=oldest_secs,
-            scoped_child_active=scoped_active,
-            scoped_child_count=scoped_count,
-            terminal_child_events_total=terminal_child_events_counter[0],
-            last_activity_was_meaningful=last_activity_meaningful[0],
-            alive_by=alive_by,
-        )
-
-    watchdog = IdleWatchdog(
-        policy,
-        clock,
-        listener=_internal_waiting_listener,
-        corroborator=_corroborate,
-    )
-    last_activity_kind = "none"
-
-    reader_done: list[bool] = [False]  # mutable for closure capture
-
-    def read_lines_thread() -> None:
-        if stdout_pipe is None:
-            with lines_lock:
-                reader_done[0] = True
-            lines_event.set()
-            return
-        try:
-            for line in stdout_pipe:
-                # Append and set under the same lock so the main loop never
-                # misses a line between the queue check and the wait_for_event call.
-                with lines_lock:
-                    lines_queue.append(line)
-                    lines_event.set()
-        except Exception:
-            pass
-        finally:
-            with lines_lock:
-                reader_done[0] = True
-            lines_event.set()
-
-    reader = threading.Thread(target=read_lines_thread, daemon=True)
-    reader.start()
-
-    strategy = execution_strategy or GenericExecutionStrategy()
-    probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
-
-    def _safe_classify_quiet() -> AgentExecutionState:
-        try:
-            return strategy.classify_quiet(handle, probe)
-        except Exception:
-            logger.opt(exception=True).debug(
-                "idle watchdog: classify_quiet raised; defaulting to WAITING_ON_CHILD"
-            )
-            return AgentExecutionState.WAITING_ON_CHILD
-
-    def _handle_fire_verdict(
-        verdict: WatchdogVerdict,
-    ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
-        if verdict != WatchdogVerdict.FIRE:
-            return None
-        assert policy.idle_timeout_seconds is not None or policy.max_session_seconds is not None
-        fire_reason = watchdog.last_fire_reason
-        assert fire_reason is not None
-        timeout_val = (
-            policy.max_session_seconds
-            if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
-            else policy.idle_timeout_seconds
-        )
-        assert timeout_val is not None
-        logger.warning(
-            "idle watchdog firing reason={} elapsed={}s cumulative_waiting={}s "
-            "last_activity_kind={} resume_safe=false",
-            fire_reason,
-            round(clock.monotonic(), 1),
-            round(watchdog.cumulative_waiting_on_child_seconds, 1),
-            last_activity_kind,
-        )
-        with lines_lock:
-            pending = list(lines_queue)
-            lines_queue.clear()
-        handle.terminate(grace_period_s=0.5)
-        hs_event = _last_hard_stop_event[0]
-        hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
-        return pending, _IdleStreamTimeoutError(
-            timeout_val,
-            fire_reason,
-            diagnostic=hard_stop_diag,
-        )
-
-    try:
-        while True:
-            # Clear event BEFORE checking queue+done so we cannot miss a set() that
-            # races between the check and the wait_for_event call below.
-            lines_event.clear()
-
-            queued_line: str | None = None
-            is_done = False
-            with lines_lock:
-                if lines_queue:
-                    queued_line = lines_queue.pop(0)
-                elif reader_done[0]:
-                    is_done = True
-
-            if queued_line is not None:
-                activity_signal = strategy.classify_activity_line(queued_line)
-                if activity_signal is not None:
-                    last_activity_kind = str(activity_signal.kind)
-                    last_activity_meaningful[0] = (
-                        activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
-                    )
-                    watchdog.record_activity()
-                else:
-                    # Unrecognized output is not meaningful activity — reset to False
-                    # to avoid stale True values from previous meaningful output.
-                    last_activity_meaningful[0] = False
-                strategy.observe_line(queued_line)
-                yield queued_line
-                # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even
-                # under continuous output; classify_quiet still consults the strategy
-                # because a whitespace/no-activity line must not force the ACTIVE branch
-                # when children are alive.
-                fire_result = _handle_fire_verdict(
-                    watchdog.evaluate(classify_quiet=_safe_classify_quiet)
-                )
-                if fire_result is not None:
-                    pending_lines, exc = fire_result
-                    yield from pending_lines
-                    raise exc
-                continue
-
-            if is_done:
-                # Reader finished but idle watchdog hasn't had a chance to fire yet.
-                # Keep evaluating until watchdog fires or we've passed the drain window.
-                drain_window_deadline = (
-                    clock.monotonic() + policy.drain_window_seconds
-                    if policy.drain_window_seconds
-                    else None
-                )
-                while True:
-                    fire_result = _handle_fire_verdict(
-                        watchdog.evaluate(classify_quiet=_safe_classify_quiet)
-                    )
-                    if fire_result is not None:
-                        pending_lines, exc = fire_result
-                        yield from pending_lines
-                        raise exc
-                    # Drain window expired - exit gracefully
-                    if (
-                        drain_window_deadline is not None
-                        and clock.monotonic() >= drain_window_deadline
-                    ):
-                        break
-                    # If no idle timeout is configured, exit the drain loop.
-                    # The watchdog will never fire, so we must not loop forever.
-                    if policy.idle_timeout_seconds is None:
-                        break
-                    # Advance clock and re-evaluate
-                    clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
-                break
-
-            fire_result = _handle_fire_verdict(
-                watchdog.evaluate(classify_quiet=_safe_classify_quiet)
-            )
-            if fire_result is not None:
-                pending_lines, exc = fire_result
-                yield from pending_lines
-                raise exc
-
-            # Wake immediately when a line arrives; FakeClock just advances time.
-            clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
-
-        reader.join(timeout=10)
-    finally:
-        _unsubscribe_terminal()
+    return _ProcessLineReader(handle, ctx, clock).read_lines()
 
 
 def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:

@@ -227,9 +227,8 @@ def _handle_tag(
         if len(stack) > 1 and stack[-1]["type"] == "if_truthy":
             frame = stack.pop()
             frame_node = frame["node"]
-            if not isinstance(frame_node, ConditionalNode):
-                return
-            stack.append({"type": "if_falsy", "nodes": frame_node.falsy, "node": frame_node})
+            if isinstance(frame_node, ConditionalNode):
+                stack.append({"type": "if_falsy", "nodes": frame_node.falsy, "node": frame_node})
         return
 
     if keyword == "endif":

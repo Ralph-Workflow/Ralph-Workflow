@@ -11,8 +11,10 @@ import threading
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import ralph.recovery.controller as recovery_controller_module
 from ralph.config.enums import Verbosity
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -25,7 +27,7 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.recovery.connectivity import ConnectivityState
-from ralph.recovery.events import FailureEvent
+from ralph.recovery.events import FailureEvent, FailureEventBus
 from ralph.recovery.testing import FakeConnectivityMonitor
 from ralph.workspace.scope import WorkspaceScope
 
@@ -80,7 +82,6 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     4. Runner completes successfully (exit code 0).
     5. No FailureEvents are emitted during the offline window.
     """
-    from ralph.pipeline.events import PipelineEvent
 
     bundle = _make_policy_bundle()
 
@@ -192,9 +193,6 @@ def test_offline_window_produces_no_failure_events(
     The offline period must be completely silent — no budget debits,
     no failure events, no fallover records.
     """
-    import ralph.recovery.controller as recovery_controller_module
-    from ralph.pipeline.events import PipelineEvent
-    from ralph.recovery.events import FailureEventBus
 
     bundle = _make_policy_bundle()
 

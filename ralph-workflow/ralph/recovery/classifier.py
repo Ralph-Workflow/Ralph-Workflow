@@ -283,6 +283,16 @@ class FailureClassifier:
         return f"{prefix}: {msg}"
 
 
+@dataclass(frozen=True)
+class FailureContext:
+    """Context for a failure event passed to RecoveryController.handle."""
+
+    phase: str
+    agent: str | None = None
+    retry_in_session: bool = False
+    classified_failure: ClassifiedFailure | None = None
+
+
 def is_retryable_without_budget(failure: ClassifiedFailure) -> bool:
     """Return True if this failure should retry without debiting the agent budget.
 

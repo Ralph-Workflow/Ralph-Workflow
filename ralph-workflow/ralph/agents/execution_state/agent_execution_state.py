@@ -1,3 +1,5 @@
+"""Agent execution state enumeration."""
+
 from enum import StrEnum
 
 

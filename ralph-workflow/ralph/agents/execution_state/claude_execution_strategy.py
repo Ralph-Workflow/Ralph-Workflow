@@ -1,3 +1,5 @@
+"""Execution strategy for Claude agents."""
+
 from __future__ import annotations
 
 import json

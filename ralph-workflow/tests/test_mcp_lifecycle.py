@@ -151,9 +151,11 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
         session,
         workspace,
         deps=deps,
-        extra_env={
-            "RALPH_UPSTREAM_MCP_CONFIG": '[{"name":"docs","transport":"http","url":"http://docs"}]'
-        },
+        extras=lifecycle.McpServerExtras(
+            extra_env={
+                "RALPH_UPSTREAM_MCP_CONFIG": '[{"name":"docs","transport":"http","url":"http://docs"}]'
+            }
+        ),
     )
 
     env = cast("dict[str, str]", seen["env"])

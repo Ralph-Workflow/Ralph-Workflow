@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import time
+from typing import TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class AgentChain:
@@ -112,8 +116,8 @@ class AgentChain:
         delay = self.retry_delay_ms * (self.backoff_multiplier**self.retries)
         return min(delay, self.max_backoff_ms) / 1000.0
 
-    def wait_backoff(self) -> None:
+    def wait_backoff(self, *, _sleep: Callable[[float], None] = time.sleep) -> None:
         """Wait for the backoff period."""
         backoff = self.calculate_backoff()
         logger.debug("Backing off for {:.2f} seconds", backoff)
-        time.sleep(backoff)
+        _sleep(backoff)

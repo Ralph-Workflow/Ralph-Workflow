@@ -19,7 +19,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL
-from ralph.pipeline.progress import apply_commit_outcome
+from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.pipeline.progress import advance_phase, apply_commit_outcome
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import parse_work_units_from_artifact
 from ralph.policy.loader import PolicyValidationError as LoaderPolicyValidationError
@@ -1572,7 +1573,6 @@ class TestAdvancePhaseRequiresPolicyForCommitTargets:
     """Tests that advance_phase raises when policy is None."""
 
     def test_raises_value_error_when_policy_is_none(self) -> None:
-        from ralph.pipeline.progress import advance_phase
 
         state = PipelineState(phase="development_commit")
         with pytest.raises(ValueError, match="requires PipelinePolicy"):
@@ -2561,7 +2561,6 @@ class TestPipelineOwnedArtifactRequiredPolicy:
         self, tmp_path: Path
     ) -> None:
         """resolve_phase_required_artifact threads artifact_required from phase policy."""
-        from ralph.phases.required_artifacts import resolve_phase_required_artifact
 
         bundle = load_policy(tmp_path / ".agent")
         dev_ra = resolve_phase_required_artifact(
@@ -2630,10 +2629,6 @@ class TestSharedDrainHistoryConsistency:
 
     def test_conflicting_history_enabled_on_same_drain_raises(self) -> None:
         """Two phases on the same drain with conflicting artifact_history.enabled raise error."""
-        from ralph.policy.validation import (
-            PolicyValidationError,
-            validate_policy_completeness,
-        )
 
         bundle = self._minimal_bundle(
             history_a=ArtifactHistoryPolicy(enabled=True),
@@ -2645,7 +2640,6 @@ class TestSharedDrainHistoryConsistency:
 
     def test_consistent_history_enabled_on_same_drain_passes(self) -> None:
         """Two phases on the same drain with the same artifact_history.enabled pass."""
-        from ralph.policy.validation import validate_policy_completeness
 
         bundle = self._minimal_bundle(
             history_a=ArtifactHistoryPolicy(enabled=True),
@@ -2655,7 +2649,6 @@ class TestSharedDrainHistoryConsistency:
 
     def test_no_artifact_history_on_phase_is_excluded_from_check(self) -> None:
         """A phase with no artifact_history declared is excluded from drain consistency."""
-        from ralph.policy.validation import validate_policy_completeness
 
         bundle = self._minimal_bundle(
             history_a=ArtifactHistoryPolicy(enabled=True),

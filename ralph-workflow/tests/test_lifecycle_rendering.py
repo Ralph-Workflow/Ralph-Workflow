@@ -20,8 +20,8 @@ from ralph.display.completion_summary import (
     render_completion_summary_group,
 )
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import show_phase_start_from_entry
-from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
+from ralph.display.phase_banner import show_phase_close_banner, show_phase_start_from_entry
+from ralph.display.phase_lifecycle import ExitContext, PhaseEntryModel, PhaseExitModel
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
 
@@ -173,7 +173,7 @@ class TestEmitPhaseCloseFromExit:
         renderer.begin_phase("development")
         entry = PhaseEntryModel(phase_name="development", phase_role="execution")
         exit_model = PhaseExitModel.from_entry_model(
-            entry, exit_trigger="produced", artifact_outcome="dev result"
+            entry, ExitContext(exit_trigger="produced", artifact_outcome="dev result")
         )
         renderer.emit_phase_close_from_exit(exit_model)
         assert "phase=development" in buf.getvalue()
@@ -182,7 +182,7 @@ class TestEmitPhaseCloseFromExit:
         renderer, buf = _make_renderer()
         renderer.begin_phase("planning")
         entry = PhaseEntryModel(phase_name="planning", phase_role="execution")
-        exit_model = PhaseExitModel.from_entry_model(entry, exit_trigger="produced")
+        exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
         renderer.emit_phase_close_from_exit(exit_model)
         assert "exit=produced" in buf.getvalue()
 
@@ -191,7 +191,7 @@ class TestEmitPhaseCloseFromExit:
         renderer.begin_phase("planning")
         entry = PhaseEntryModel(phase_name="planning")
         exit_model = PhaseExitModel.from_entry_model(
-            entry, artifact_outcome="plan: 5 step(s), 2 risk(s)"
+            entry, ExitContext(artifact_outcome="plan: 5 step(s), 2 risk(s)")
         )
         renderer.emit_phase_close_from_exit(exit_model)
         assert "plan: 5 step(s), 2 risk(s)" in buf.getvalue()
@@ -206,7 +206,7 @@ class TestEmitPhaseCloseFromExit:
             inner_analysis=1,
             inner_analysis_cap=4,
         )
-        exit_model = PhaseExitModel.from_entry_model(entry, exit_trigger="produced")
+        exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
         assert "Dev" in out
@@ -219,7 +219,7 @@ class TestEmitPhaseCloseFromExit:
         renderer.emit_activity_line("u1", "tool_use", "read_file path.py")
         renderer.emit_activity_line("u1", "error", "some error")
         entry = PhaseEntryModel(phase_name="development")
-        exit_model = PhaseExitModel.from_entry_model(entry, exit_trigger="produced")
+        exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
         assert "elapsed=" in out
@@ -243,8 +243,7 @@ class TestEmitPhaseCloseFromExit:
         entry = PhaseEntryModel(phase_name="development")
         exit_model = PhaseExitModel.from_entry_model(
             entry,
-            exit_trigger="timeout",
-            waiting_status_line="waiting for tool result",
+            ExitContext(exit_trigger="timeout", waiting_status_line="waiting for tool result"),
         )
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
@@ -257,8 +256,7 @@ class TestEmitPhaseCloseFromExit:
         entry = PhaseEntryModel(phase_name="development")
         exit_model = PhaseExitModel.from_entry_model(
             entry,
-            exit_trigger="failed",
-            last_failure_category="timeout",
+            ExitContext(exit_trigger="failed", last_failure_category="timeout"),
         )
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
@@ -271,9 +269,11 @@ class TestEmitPhaseCloseFromExit:
         entry = PhaseEntryModel(phase_name="fix")
         exit_model = PhaseExitModel.from_entry_model(
             entry,
-            exit_trigger="failed",
-            waiting_status_line="waiting for child",
-            last_failure_category="tool_error",
+            ExitContext(
+                exit_trigger="failed",
+                waiting_status_line="waiting for child",
+                last_failure_category="tool_error",
+            ),
         )
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
@@ -285,7 +285,7 @@ class TestEmitPhaseCloseFromExit:
         renderer, buf = _make_renderer()
         renderer.begin_phase("development")
         entry = PhaseEntryModel(phase_name="development")
-        exit_model = PhaseExitModel.from_entry_model(entry, exit_trigger="produced")
+        exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
         assert "[phase-close] debug" not in out
@@ -296,7 +296,7 @@ class TestEmitPhaseCloseFromExit:
         renderer.begin_phase("review")
         entry = PhaseEntryModel(phase_name="review")
         exit_model = PhaseExitModel.from_entry_model(
-            entry, exit_trigger="completed", review_issues_found=True
+            entry, ExitContext(exit_trigger="completed", review_issues_found=True)
         )
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
@@ -308,7 +308,7 @@ class TestEmitPhaseCloseFromExit:
         renderer.begin_phase("review")
         entry = PhaseEntryModel(phase_name="review")
         exit_model = PhaseExitModel.from_entry_model(
-            entry, exit_trigger="completed", review_issues_found=False
+            entry, ExitContext(exit_trigger="completed", review_issues_found=False)
         )
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
@@ -320,7 +320,7 @@ class TestEmitPhaseCloseFromExit:
         renderer.begin_phase("development")
         entry = PhaseEntryModel(phase_name="development")
         exit_model = PhaseExitModel.from_entry_model(
-            entry, exit_trigger="produced", review_issues_found=None
+            entry, ExitContext(exit_trigger="produced", review_issues_found=None)
         )
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
@@ -422,7 +422,6 @@ class TestRichCloseArtifactOutcome:
             width={"compact": 50, "medium": 80, "wide": 120}[mode],
         )
         ctx = make_display_context(console=console, env={}, force_mode=mode)
-        from ralph.display.phase_banner import show_phase_close_banner
 
         show_phase_close_banner(exit_model, display_context=ctx)
         return console.export_text()
@@ -499,7 +498,7 @@ class TestSymmetricStartCloseTranscriptOrdering:
         renderer.emit_snapshot(snapshot)
         renderer.begin_phase("development")
         entry = PhaseEntryModel(phase_name="development", phase_role="execution")
-        exit_model = PhaseExitModel.from_entry_model(entry, exit_trigger="produced")
+        exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
         renderer.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
         # phase start marker (emit_snapshot emits [phase]) appears before phase-close
@@ -511,11 +510,8 @@ class TestSymmetricStartCloseTranscriptOrdering:
 
     def test_start_and_close_use_same_dev_label_vocabulary(self) -> None:
         """Phase-start banner and [phase-close] transcript line use the same Dev label."""
-        from io import StringIO
 
-        from rich.console import Console
 
-        from ralph.display.phase_banner import show_phase_start_from_entry
 
         # Phase-start banner
         start_buf = StringIO()
@@ -533,7 +529,7 @@ class TestSymmetricStartCloseTranscriptOrdering:
         # Phase-close transcript
         renderer, close_buf = _make_renderer()
         renderer.begin_phase("development")
-        exit_model = PhaseExitModel.from_entry_model(entry, exit_trigger="produced")
+        exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
         renderer.emit_phase_close_from_exit(exit_model)
 
         start_out = start_buf.getvalue()

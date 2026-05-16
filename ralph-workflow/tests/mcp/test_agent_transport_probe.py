@@ -10,6 +10,10 @@ import pytest
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import RetryablePreflightError
+from ralph.mcp.transport.claude import claude_mcp_config as real_claude_config
+from ralph.mcp.transport.opencode import (
+    build_opencode_provider_config as real_opencode,
+)
 from ralph.mcp.upstream.agent_probe import (
     _DEFAULT_TRANSPORTS,
     AgentProbeReport,
@@ -70,7 +74,6 @@ def test_probe_emits_claude_http_config_and_reaches_server(
     captured = _stub_http_handshake_pass(monkeypatch)
     captured_blobs: list[tuple[str, object]] = []
 
-    from ralph.mcp.transport.claude import claude_mcp_config as real_claude_config
 
     def spy_claude(endpoint: str, **kw: object) -> str:
         blob = real_claude_config(endpoint, **kw)
@@ -125,9 +128,6 @@ def test_probe_emits_opencode_config_with_remote_mcp_entry(
     server = _http_server(name="docs", url="http://docs.invalid/mcp")
     captured_endpoint = _stub_http_handshake_pass(monkeypatch)
     captured_configs: list[str] = []
-    from ralph.mcp.transport.opencode import (
-        build_opencode_provider_config as real_opencode,
-    )
 
     def spy_opencode(existing: str | None, endpoint: str) -> tuple[str, tuple[object, ...]]:
         text, ups = real_opencode(existing, endpoint)

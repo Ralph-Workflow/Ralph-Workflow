@@ -13,7 +13,7 @@ from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
@@ -108,8 +108,7 @@ def test_recovery_memory_regression(tmp_path: Path) -> None:
         state, _, _ = controller.handle(
             state,
             _AgentInactivityTimeoutError("claude idle"),
-            phase="development",
-            agent="claude",
+            FailureContext(phase="development", agent="claude"),
         )
         assert state.phase == "development"
         development_chain = state.chain_for_phase("development")
@@ -119,8 +118,7 @@ def test_recovery_memory_regression(tmp_path: Path) -> None:
         state, _, _ = controller.handle(
             state,
             _AgentInactivityTimeoutError("opencode idle"),
-            phase="development",
-            agent="opencode",
+            FailureContext(phase="development", agent="opencode"),
         )
         assert state.phase == "failed_terminal"
         assert state.recovery_cycle_count == cycle

@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -23,40 +23,50 @@ class GitRunResult:
     stderr: str
 
 
+@dataclass(frozen=True)
+class GitRunOptions:
+    """Options for run_git beyond the required args, cwd, and label."""
+
+    phase: str | None = None
+    timeout: float | None = None
+    env: Mapping[str, str] | None = None
+    check: bool = False
+    capture_output: bool = True
+    text: bool = True
+
+
 def run_git(
     args: Sequence[str],
     *,
     cwd: Path | None,
     label: str,
-    phase: str | None = None,
-    timeout: float | None = None,
-    env: Mapping[str, str] | None = None,
-    check: bool = False,
-    capture_output: bool = True,
-    text: bool = True,
+    options: GitRunOptions | None = None,
 ) -> GitRunResult:
     """Spawn a git subprocess through ProcessManager and return the result.
 
-    When ``phase`` is provided, the process is labeled ``phase:<phase>:git:<label>``
-    so that :func:`~ralph.process.manager.process_phase_scope` can terminate it
-    when the phase completes.
+    When ``options.phase`` is provided the process label becomes
+    ``phase:<phase>:git:<label>`` so process_phase_scope can terminate it.
 
     Raises subprocess.TimeoutExpired if timeout is exceeded.
-    Raises subprocess.CalledProcessError if check=True and returncode != 0.
+    Raises subprocess.CalledProcessError if options.check is True and returncode != 0.
     """
+    effective_options = options or GitRunOptions()
+    phase = effective_options.phase
     effective_label = f"phase:{phase}:git:{label}" if phase is not None else label
     cmd = ("git", *args)
     proc = get_process_manager().spawn(
         cmd,
-        cwd=str(cwd) if cwd else None,
-        env=dict(env) if env is not None else None,
-        stdout=subprocess.PIPE if capture_output else None,
-        stderr=subprocess.PIPE if capture_output else None,
-        label=effective_label,
-        text=text,
+        SpawnOptions(
+            cwd=str(cwd) if cwd else None,
+            env=dict(effective_options.env) if effective_options.env is not None else None,
+            stdout=subprocess.PIPE if effective_options.capture_output else None,
+            stderr=subprocess.PIPE if effective_options.capture_output else None,
+            label=effective_label,
+            text=effective_options.text,
+        ),
     )
     try:
-        raw_stdout, raw_stderr = proc.communicate(timeout=timeout)
+        raw_stdout, raw_stderr = proc.communicate(timeout=effective_options.timeout)
     except subprocess.TimeoutExpired:
         raise
 
@@ -69,10 +79,10 @@ def run_git(
     stderr = _str(raw_stderr)
     returncode = proc.returncode if proc.returncode is not None else 0
 
-    if check and returncode != 0:
+    if effective_options.check and returncode != 0:
         raise subprocess.CalledProcessError(returncode, list(cmd), stdout, stderr)
 
     return GitRunResult(args=cmd, returncode=returncode, stdout=stdout, stderr=stderr)
 
 
-__all__ = ["GitRunResult", "run_git"]
+__all__ = ["GitRunOptions", "GitRunResult", "run_git"]

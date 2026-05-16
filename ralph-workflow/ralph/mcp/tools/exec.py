@@ -22,7 +22,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -497,10 +497,12 @@ def _run_subprocess(
 ) -> _CompletedProcessAdapter:
     handle = get_process_manager().spawn(
         command,
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        label=f"mcp-exec:{command[0]}",
+        SpawnOptions(
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            label=f"mcp-exec:{command[0]}",
+        ),
     )
     try:
         stdout, stderr = handle.communicate(timeout=timeout_seconds)

@@ -13,8 +13,8 @@ import json
 from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import AgentInactivityTimeoutError, OpenCodeResumableExitError
+from ralph.pipeline.effect_executor import AgentRecoveryInput, build_agent_recovery_plan
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.runner import _build_agent_recovery_plan
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -39,16 +39,18 @@ class TestBuildAgentRecoveryPlanResumableSession:
         exc = OpenCodeResumableExitError("opencode", session_id="sess-abc")
         effect = _make_effect()
 
-        plan = _build_agent_recovery_plan(
-            exc=exc,
-            attempt_index=0,
-            max_recovery_attempts=3,
-            effect=effect,
-            workspace_root=tmp_path,
-            raw_output=[],
-            rendered_output=[],
-            extracted_session_id=None,
-            inactivity_error_type=AgentInactivityTimeoutError,
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=[],
+                rendered_output=[],
+                extracted_session_id=None,
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
         )
 
         assert plan is not None, "Expected a recovery plan, got None"
@@ -63,16 +65,18 @@ class TestBuildAgentRecoveryPlanResumableSession:
         effect = _make_effect()
         raw_output = [json.dumps({"session_id": "sess-from-output"})]
 
-        plan = _build_agent_recovery_plan(
-            exc=exc,
-            attempt_index=0,
-            max_recovery_attempts=3,
-            effect=effect,
-            workspace_root=tmp_path,
-            raw_output=raw_output,
-            rendered_output=[],
-            extracted_session_id="sess-from-output",
-            inactivity_error_type=AgentInactivityTimeoutError,
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=raw_output,
+                rendered_output=[],
+                extracted_session_id="sess-from-output",
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
         )
 
         assert plan is not None, "Expected a recovery plan, got None"
@@ -84,16 +88,18 @@ class TestBuildAgentRecoveryPlanResumableSession:
         exc = OpenCodeResumableExitError("opencode", session_id="sess-xyz")
         effect = _make_effect()
 
-        plan = _build_agent_recovery_plan(
-            exc=exc,
-            attempt_index=3,
-            max_recovery_attempts=3,
-            effect=effect,
-            workspace_root=tmp_path,
-            raw_output=[],
-            rendered_output=[],
-            extracted_session_id=None,
-            inactivity_error_type=AgentInactivityTimeoutError,
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=3,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=[],
+                rendered_output=[],
+                extracted_session_id=None,
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
         )
 
         assert plan is None
@@ -105,16 +111,18 @@ class TestBuildAgentRecoveryPlanInteractiveClaude:
         exc = OpenCodeResumableExitError("claude", session_id="sess-abc")
         effect = _make_effect(agent_name="claude")
 
-        plan = _build_agent_recovery_plan(
-            exc=exc,
-            attempt_index=0,
-            max_recovery_attempts=3,
-            effect=effect,
-            workspace_root=tmp_path,
-            raw_output=[],
-            rendered_output=[],
-            extracted_session_id=None,
-            inactivity_error_type=AgentInactivityTimeoutError,
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=[],
+                rendered_output=[],
+                extracted_session_id=None,
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
         )
 
         assert plan is not None, "Expected a recovery plan, got None"
@@ -129,16 +137,18 @@ class TestBuildAgentRecoveryPlanInteractiveClaude:
         effect = _make_effect(agent_name="claude")
         raw_output = [json.dumps({"session_id": "sess-from-output"})]
 
-        plan = _build_agent_recovery_plan(
-            exc=exc,
-            attempt_index=0,
-            max_recovery_attempts=3,
-            effect=effect,
-            workspace_root=tmp_path,
-            raw_output=raw_output,
-            rendered_output=[],
-            extracted_session_id="sess-from-output",
-            inactivity_error_type=AgentInactivityTimeoutError,
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=raw_output,
+                rendered_output=[],
+                extracted_session_id="sess-from-output",
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
         )
 
         assert plan is not None, "Expected a recovery plan, got None"
@@ -150,16 +160,18 @@ class TestBuildAgentRecoveryPlanInteractiveClaude:
         exc = OpenCodeResumableExitError("claude", session_id="sess-xyz")
         effect = _make_effect(agent_name="claude")
 
-        plan = _build_agent_recovery_plan(
-            exc=exc,
-            attempt_index=3,
-            max_recovery_attempts=3,
-            effect=effect,
-            workspace_root=tmp_path,
-            raw_output=[],
-            rendered_output=[],
-            extracted_session_id=None,
-            inactivity_error_type=AgentInactivityTimeoutError,
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=3,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=[],
+                rendered_output=[],
+                extracted_session_id=None,
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
         )
 
         assert plan is None
@@ -183,16 +195,18 @@ class TestNonResumableExceptionYieldsNoRecovery:
         exc = RuntimeError("process completed normally")
         effect = _make_effect(phase="development")
 
-        plan = _build_agent_recovery_plan(
-            exc=exc,
-            attempt_index=0,
-            max_recovery_attempts=3,
-            effect=effect,
-            workspace_root=tmp_path,
-            raw_output=[],
-            rendered_output=[],
-            extracted_session_id=None,
-            inactivity_error_type=AgentInactivityTimeoutError,
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=[],
+                rendered_output=[],
+                extracted_session_id=None,
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
         )
 
         assert plan is None
@@ -202,16 +216,18 @@ class TestNonResumableExceptionYieldsNoRecovery:
         exc = OpenCodeResumableExitError("opencode", session_id="sess-def")
         effect = _make_effect(prompt_file=".agent/PROMPT.md")
 
-        plan = _build_agent_recovery_plan(
-            exc=exc,
-            attempt_index=0,
-            max_recovery_attempts=3,
-            effect=effect,
-            workspace_root=tmp_path,
-            raw_output=[],
-            rendered_output=[],
-            extracted_session_id=None,
-            inactivity_error_type=AgentInactivityTimeoutError,
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=[],
+                rendered_output=[],
+                extracted_session_id=None,
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
         )
 
         assert plan is not None

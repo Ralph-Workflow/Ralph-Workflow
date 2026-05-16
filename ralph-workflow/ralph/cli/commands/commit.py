@@ -21,6 +21,7 @@ from rich.text import Text
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
+    InvokeRuntimeOptions,
     build_invoke_options_from_config,
     extract_session_id,
     invoke_agent,
@@ -42,7 +43,7 @@ from ralph.mcp.artifacts.commit_message import (
     read_commit_message_artifact,
 )
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
-from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
+from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
@@ -102,6 +103,17 @@ class CommitAttemptContext:
     repo_root: Path
     verbose: bool
     extra_env: dict[str, str]
+    general_config: GeneralConfig | None = None
+
+
+@dataclass(frozen=True)
+class CommitChainConfig:
+    """Configuration bundle for the commit message chain invocation."""
+
+    registry: AgentRegistry
+    agents: list[str]
+    verbose: bool
+    agents_policy: AgentsPolicy
     general_config: GeneralConfig | None = None
 
 
@@ -223,11 +235,13 @@ def _handle_agent_commit_generation(
     result = _generate_commit_message_with_chain(
         diff=diff,
         repo_root=repo_root,
-        registry=registry,
-        agents=agents,
-        verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
-        agents_policy=load_agents_policy_for_workspace_scope(workspace_scope, config=config),
-        general_config=config.general,
+        chain_config=CommitChainConfig(
+            registry=registry,
+            agents=agents,
+            verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
+            agents_policy=load_agents_policy_for_workspace_scope(workspace_scope, config=config),
+            general_config=config.general,
+        ),
         display_context=ctx,
     )
 
@@ -408,18 +422,14 @@ def _generate_commit_message_with_chain(
     *,
     diff: str,
     repo_root: Path,
-    registry: AgentRegistry,
-    agents: list[str],
-    verbose: bool,
-    agents_policy: AgentsPolicy,
-    general_config: GeneralConfig | None = None,
+    chain_config: CommitChainConfig,
     display_context: DisplayContext,
 ) -> CommitAgentResult:
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
     start_commit_bridge_params = signature(_start_commit_bridge).parameters
     if "agents_policy" in start_commit_bridge_params:
-        bridge = _start_commit_bridge(repo_root, agents_policy=agents_policy)
+        bridge = _start_commit_bridge(repo_root, agents_policy=chain_config.agents_policy)
     else:
         legacy_start_commit_bridge = cast(
             "typing.Callable[[Path], SessionBridgeLike]",
@@ -430,8 +440,8 @@ def _generate_commit_message_with_chain(
     failure_details: list[str] = []
 
     try:
-        for agent_name in agents:
-            cfg = registry.get(agent_name)
+        for agent_name in chain_config.agents:
+            cfg = chain_config.registry.get(agent_name)
             if cfg is None:
                 continue
             prompt = _commit_prompt_for_agent(
@@ -441,13 +451,16 @@ def _generate_commit_message_with_chain(
                 repo_root=repo_root,
             )
             prompt_file = _write_commit_prompt_file(repo_root, prompt)
+            attempt_ctx = CommitAttemptContext(
+                repo_root=repo_root,
+                verbose=chain_config.verbose,
+                extra_env=extra_env,
+                general_config=chain_config.general_config,
+            )
             result = _generate_commit_message_with_agent(
                 cfg,
-                repo_root=repo_root,
                 prompt_file=prompt_file,
-                verbose=verbose,
-                extra_env=extra_env,
-                general_config=general_config,
+                attempt_context=attempt_ctx,
                 display_context=display_context,
             )
             failure_details.extend(result.failure_details)
@@ -465,20 +478,11 @@ def _generate_commit_message_with_chain(
 def _generate_commit_message_with_agent(
     agent: AgentConfig,
     *,
-    repo_root: Path,
     prompt_file: str,
-    verbose: bool,
-    extra_env: dict[str, str],
-    general_config: GeneralConfig | None = None,
+    attempt_context: CommitAttemptContext,
     display_context: DisplayContext,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
-    attempt_context = CommitAttemptContext(
-        repo_root=repo_root,
-        verbose=verbose,
-        extra_env=extra_env,
-        general_config=general_config,
-    )
     initial_attempt = _invoke_commit_agent_attempt(
         agent,
         prompt_file=prompt_file,
@@ -510,7 +514,7 @@ def _generate_commit_message_with_agent(
             return CommitAgentResult(failure_details=failure_details)
 
     summary_prompt_file = _write_commit_prompt_file(
-        repo_root,
+        attempt_context.repo_root,
         _summarized_retry_prompt(
             _read_retry_prompt_text(prompt_file),
             initial_attempt.parsed_output,
@@ -552,12 +556,14 @@ def _invoke_commit_agent_attempt(
     if attempt_context.general_config is not None:
         options = build_invoke_options_from_config(
             attempt_context.general_config,
-            verbose=attempt_context.verbose,
-            workspace_path=attempt_context.repo_root,
-            extra_env=attempt_context.extra_env,
-            pure=_is_opencode_agent(agent),
-            session_id=session_id,
-            system_prompt_file=system_prompt,
+            InvokeRuntimeOptions(
+                verbose=attempt_context.verbose,
+                workspace_path=attempt_context.repo_root,
+                extra_env=attempt_context.extra_env,
+                pure=_is_opencode_agent(agent),
+                session_id=session_id,
+                system_prompt_file=system_prompt,
+            ),
         )
     else:
         options = InvokeOptions(
@@ -959,7 +965,9 @@ def _start_commit_bridge(repo_root: Path, *, agents_policy: AgentsPolicy) -> Ses
         stored_capability_profile=session_mcp_plan.capability_profile,
     )
     workspace = FsWorkspace(repo_root)
-    return start_mcp_server(session, workspace, extra_env=session_mcp_plan.server_env)
+    return start_mcp_server(
+        session, workspace, extras=McpServerExtras(extra_env=session_mcp_plan.server_env)
+    )
 
 
 def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:

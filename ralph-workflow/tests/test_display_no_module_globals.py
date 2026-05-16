@@ -107,7 +107,7 @@ class TestInjectedDisplayContextIsHonored:
                 del args, kwargs
                 raise KeyboardInterrupt
 
-            with patch.object(run_module, "_run_func", _raise_keyboard_interrupt):
+            with patch.object(run_module._state, "run_func", _raise_keyboard_interrupt):
                 exit_code = run_module.run_pipeline(display_context=ctx)
 
             output = recording_console.file.getvalue()

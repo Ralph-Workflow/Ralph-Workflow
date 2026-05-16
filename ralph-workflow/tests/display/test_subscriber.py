@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 from ralph.display.subscriber import PipelineSubscriber
+from ralph.pipeline.state import PipelineState
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -95,7 +96,6 @@ def test_record_waiting_status_kind_specific_lines(tmp_path: Path) -> None:
 
     # EXITED publishes a resumed-activity line, then clears the field.
     # Seed _last_state so the subscriber can build snapshots.
-    from ralph.pipeline.state import PipelineState
 
     state = PipelineState(
         phase="development",
@@ -194,7 +194,6 @@ def test_record_waiting_status_writes_to_waiting_field_not_activity_line(tmp_pat
 
 def test_record_waiting_status_clears_field_on_exited(tmp_path: Path) -> None:
     """EXITED event surfaces a resumed-activity line then clears _waiting_status_line."""
-    from ralph.pipeline.state import PipelineState
 
     sub = _make_subscriber(tmp_path)
     # Seed state so the subscriber can build snapshots.
@@ -223,7 +222,6 @@ def test_record_waiting_status_clears_field_on_exited(tmp_path: Path) -> None:
 
 def test_snapshot_includes_waiting_status_field(tmp_path: Path) -> None:
     """Snapshot built after a PROGRESS event has waiting_status_line populated."""
-    from ralph.pipeline.state import PipelineState
 
     sub = _make_subscriber(tmp_path)
     sub.record_waiting_status(_event(_EventOptions(kind=WaitingStatusKind.PROGRESS)))
@@ -287,7 +285,6 @@ def test_waiting_status_line_property_returns_current_value(tmp_path: Path) -> N
 
 
 def test_record_permission_prompt_action_updates_activity_and_decision_log(tmp_path: Path) -> None:
-    from ralph.pipeline.state import PipelineState
 
     sub = _make_subscriber(tmp_path)
     sub.notify(PipelineState(phase="development"))

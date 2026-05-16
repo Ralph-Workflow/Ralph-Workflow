@@ -114,8 +114,8 @@ async def test_stdio_transport_default_factory_tracks_process_in_manager() -> No
         )
 
         # Replace singleton with our fake-injecting PM
-        original = _mgr._singleton
-        _mgr._singleton = pm
+        original = _mgr._pm_state.instance
+        _mgr._pm_state.instance = pm
 
         try:
             transport = StdioTransport([PYTHON, "-c", "pass"])
@@ -133,7 +133,7 @@ async def test_stdio_transport_default_factory_tracks_process_in_manager() -> No
             assert len(all_mcp) == 1
             assert all_mcp[0].status in (ProcessStatus.EXITED, ProcessStatus.KILLED)
         finally:
-            _mgr._singleton = original
+            _mgr._pm_state.instance = original
     finally:
         with contextlib.suppress(Exception):
             get_process_manager().shutdown_all(grace_period_s=0)

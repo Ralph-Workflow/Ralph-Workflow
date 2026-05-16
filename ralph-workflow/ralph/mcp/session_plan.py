@@ -45,6 +45,14 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class SessionModelOpts:
+    """Optional model resolution parameters for build_session_mcp_plan."""
+
+    model_identity: MultimodalModelIdentity | None = None
+    model_flag: str | None = None
+
+
+@dataclass(frozen=True)
 class SessionMcpPlan:
     """Resolved MCP plan capturing capability grants and server environment for a session."""
 
@@ -108,8 +116,7 @@ def build_session_mcp_plan(
     drain: str,
     workspace_path: Path | None,
     agents_policy: AgentsPolicy | None = None,
-    model_identity: MultimodalModelIdentity | None = None,
-    model_flag: str | None = None,
+    model_opts: SessionModelOpts | None = None,
 ) -> SessionMcpPlan:
     """Build the runtime MCP plan for a new agent session.
 
@@ -152,10 +159,11 @@ def build_session_mcp_plan(
     if upstreams and not is_commit:
         capabilities.add("upstream.tool_use")
 
-    if model_identity is not None:
-        resolved_identity = model_identity
-    elif model_flag is not None:
-        resolved_identity = resolve_model_identity(transport, model_flag)
+    _model_opts = model_opts or SessionModelOpts()
+    if _model_opts.model_identity is not None:
+        resolved_identity = _model_opts.model_identity
+    elif _model_opts.model_flag is not None:
+        resolved_identity = resolve_model_identity(transport, _model_opts.model_flag)
     else:
         resolved_identity = UNKNOWN_IDENTITY
     return SessionMcpPlan(
@@ -226,6 +234,7 @@ def _base_capabilities_for_drain(
 
 __all__ = [
     "SessionMcpPlan",
+    "SessionModelOpts",
     "build_session_mcp_plan",
     "resolve_model_identity",
 ]

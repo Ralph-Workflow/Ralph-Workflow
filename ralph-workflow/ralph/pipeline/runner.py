@@ -26,6 +26,10 @@ from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+if TYPE_CHECKING:
+    from ralph.display.completion_summary import CompletionSummaryOptions
+    from ralph.display.snapshot import SnapshotContext
+
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 from rich.text import Text
@@ -34,6 +38,7 @@ from ralph.agents.chain import ChainManager
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
+    InvokeRuntimeOptions,
     build_invoke_options_from_config,
     extract_session_id,
     invoke_agent,
@@ -58,8 +63,9 @@ from ralph.display.phase_banner import (
     show_phase_start_from_entry,
     show_phase_transition,
 )
-from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
+from ralph.display.phase_lifecycle import ExitContext, PhaseEntryModel, PhaseExitModel
 from ralph.display.plain_renderer import RunStartOrientation
+from ralph.display.subscriber import ActivityDetails
 from ralph.executor.process import run_process_async
 from ralph.git.operations import create_commit, stage_all, stage_files
 from ralph.interrupt import controller_from_process_manager
@@ -80,12 +86,13 @@ from ralph.mcp.protocol.startup import heartbeat_policy_from_env
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.server.lifecycle import (
     McpServerError,
+    McpServerExtras,
     RestartAwareMcpBridge,
     check_mcp_bridge_health,
     shutdown_mcp_server,
     start_mcp_server,
 )
-from ralph.mcp.session_plan import SessionMcpPlan, build_session_mcp_plan
+from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, build_session_mcp_plan
 from ralph.mcp.transport import common as transport_common_module
 from ralph.mcp.upstream.agent_probe import probe_agent_transports
 from ralph.mcp.upstream.validation import (
@@ -154,6 +161,8 @@ from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.debug_dump import multimodal_sidecar_path, prompt_dump_path
 from ralph.prompts.materialize import (
     MissingPlanHandoffError,
+    PromptPhaseContext,
+    PromptPhaseOptions,
     collect_media_entries_for_phase,
     materialize_prompt_for_phase,
     prompt_file_for_phase,
@@ -162,7 +171,7 @@ from ralph.prompts.materialize import (
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
-from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS
+from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS, FailureContext
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
 from ralph.recovery.controller import (
     RecoveryController as _RecoveryController,
@@ -303,22 +312,15 @@ class _EmitCompletionSummaryFn(Protocol):
         self,
         snapshot: PipelineSnapshot,
         *,
-        workspace_root: Path | None = None,
-        dropped_count: int = 0,
-        include_context_sections: bool = True,
-        content_block_count: int = 0,
-        thinking_block_count: int = 0,
-        tool_call_count: int = 0,
-        error_count: int = 0,
-        elapsed_seconds: float | None = None,
         display_context: DisplayContext,
-        pipeline_policy: PipelinePolicy | None = None,
+        options: CompletionSummaryOptions | None = None,
     ) -> None: ...
 
 
 class _CompletionSummaryModule(Protocol):
     """Typed accessor for the lazily imported completion summary module."""
 
+    CompletionSummaryOptions: type[CompletionSummaryOptions]
     emit_completion_summary: _EmitCompletionSummaryFn
 
 
@@ -328,10 +330,7 @@ class _SnapshotFromStateFn(Protocol):
     def __call__(
         self,
         state: PipelineState,
-        *,
-        prompt_path: str | None,
-        prompt_preview: tuple[str, ...],
-        run_id: str | None,
+        context: SnapshotContext = ...,
     ) -> PipelineSnapshot: ...
 
 
@@ -372,12 +371,12 @@ def _parallel_display_cls() -> type[ParallelDisplay]:
     return module.ParallelDisplay
 
 
-def _emit_completion_summary_func() -> _EmitCompletionSummaryFn:
-    module = cast(
+def _load_completion_summary_module() -> _CompletionSummaryModule:
+    return cast(
         "_CompletionSummaryModule",
         import_module("ralph.display.completion_summary"),
     )
-    return module.emit_completion_summary
+
 
 
 def _snapshot_from_state_func() -> _SnapshotFromStateFn:
@@ -866,8 +865,7 @@ def _reduce_runtime_recovery(
         new_state, effects, _ = recovery.handle(
             state,
             raw_failure,
-            phase=state.phase,
-            agent=state.current_agent(),
+            FailureContext(phase=state.phase, agent=state.current_agent()),
         )
         if state.work_units and not new_state.work_units:
             new_state = new_state.copy_with(work_units=state.work_units)
@@ -1464,21 +1462,23 @@ def _build_phase_change_render_data(
     )
     exit_model = PhaseExitModel.from_entry_model(
         entry,
-        elapsed_seconds=elapsed,
-        exit_trigger="produced" if artifact_outcome else "completed",
-        content_blocks=content_blocks,
-        thinking_blocks=thinking_blocks,
-        tool_calls=tool_calls,
-        errors=errors,
-        artifact_outcome=artifact_outcome,
-        review_issues_found=(
-            progress.review_issues_found(state, pipeline_policy)
-            if prev_phase_role == "review"
-            else None
+        ExitContext(
+            elapsed_seconds=elapsed,
+            exit_trigger="produced" if artifact_outcome else "completed",
+            content_blocks=content_blocks,
+            thinking_blocks=thinking_blocks,
+            tool_calls=tool_calls,
+            errors=errors,
+            artifact_outcome=artifact_outcome,
+            review_issues_found=(
+                progress.review_issues_found(state, pipeline_policy)
+                if prev_phase_role == "review"
+                else None
+            ),
+            routing_note=routing_note,
+            waiting_status_line=waiting_status_line,
+            last_failure_category=state.last_failure_category,
         ),
-        routing_note=routing_note,
-        waiting_status_line=waiting_status_line,
-        last_failure_category=state.last_failure_category,
     )
     return _PhaseChangeRenderData(
         previous_phase=previous_phase,
@@ -1595,7 +1595,7 @@ def _emit_final_summary(
     theming rather than creating a new unthemed console.
     """
     try:
-        emit_completion_summary = _emit_completion_summary_func()
+        cs_mod = _load_completion_summary_module()
         parallel_display_cls = _parallel_display_cls()
         snapshot_from_state = _snapshot_from_state_func()
 
@@ -1611,12 +1611,7 @@ def _emit_final_summary(
                     exc_info=True,
                 )
         if snapshot is None:
-            snapshot = snapshot_from_state(
-                state,
-                prompt_path=None,
-                prompt_preview=(),
-                run_id=None,
-            )
+            snapshot = snapshot_from_state(state)
         pipeline_policy = subscriber.pipeline_policy if subscriber is not None else None
         ctx = _get_display_context(display, display_context)
         if isinstance(display, parallel_display_cls):
@@ -1632,8 +1627,7 @@ def _emit_final_summary(
             tool_call_count = 0
             error_count = 0
             elapsed_seconds = None
-        emit_completion_summary(
-            snapshot,
+        cs_opts = cs_mod.CompletionSummaryOptions(
             workspace_root=workspace_root,
             dropped_count=dropped_count,
             include_context_sections=not (
@@ -1644,8 +1638,12 @@ def _emit_final_summary(
             tool_call_count=tool_call_count,
             error_count=error_count,
             elapsed_seconds=elapsed_seconds,
-            display_context=ctx,
             pipeline_policy=pipeline_policy,
+        )
+        cs_mod.emit_completion_summary(
+            snapshot,
+            display_context=ctx,
+            options=cs_opts,
         )
     except Exception:
         logger.debug("Failed to emit completion summary", exc_info=True)
@@ -2133,7 +2131,7 @@ def _build_session_mcp_plan_for_phase(
             drain=drain,
             workspace_path=workspace_scope.root,
             agents_policy=effective_agents_policy,
-            model_flag=model_flag,
+            model_opts=SessionModelOpts(model_flag=model_flag),
         ), drain
     except PolicyValidationError:
         # Fall back to loading agents policy from workspace scope when the
@@ -2146,7 +2144,7 @@ def _build_session_mcp_plan_for_phase(
             drain=drain,
             workspace_path=workspace_scope.root,
             agents_policy=fallback_agents_policy,
-            model_flag=model_flag,
+            model_opts=SessionModelOpts(model_flag=model_flag),
         ), drain
 
 
@@ -2616,10 +2614,21 @@ def _materialize_prepared_prompt(
     worker_namespace = Path(worker_ns_str) if worker_ns_str else None
     media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
     materialize_prompt_for_phase(
+    PromptPhaseContext(
         phase=effect.phase,
         workspace=workspace,
         pipeline_policy=pipeline_policy,
+        session_caps=SessionCapabilities.defaults_for_drain(
+            _prompt_session_drain_for_phase(
+                effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase,
+                agents_policy=agents_policy,
+            )
+        ),
+        workspace_root=workspace_scope.root,
+    ),
+    PromptPhaseOptions(
         artifacts_policy=artifacts_policy,
+        worker_namespace=worker_namespace,
         previous_phase=effect.previous_phase,
         resume_existing_phase=(
             not _prompt_changed_since_last_materialization(workspace_scope.root)
@@ -2631,15 +2640,8 @@ def _materialize_prepared_prompt(
                 artifacts_policy=artifacts_policy,
             )
         ),
-        session_caps=SessionCapabilities.defaults_for_drain(
-            _prompt_session_drain_for_phase(
-                effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase,
-                agents_policy=agents_policy,
-            )
-        ),
-        workspace_root=workspace_scope.root,
-        worker_namespace=worker_namespace,
         multimodal_entries=media_entries,
+    ),
     )
 
 
@@ -2710,19 +2712,10 @@ def _materialize_agent_prompt_if_needed(
 
     media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
     materialize_prompt_for_phase(
+    PromptPhaseContext(
         phase=effect.phase,
         workspace=workspace,
         pipeline_policy=policy_bundle.pipeline,
-        artifacts_policy=policy_bundle.artifacts,
-        previous_phase=state.previous_phase,
-        resume_existing_phase=(
-            not _prompt_changed_since_last_materialization(workspace.root)
-            and _should_resume_existing_planning_phase(
-                effect=effect,
-                state=state,
-                policy_bundle=policy_bundle,
-            )
-        ),
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
                 effect.drain
@@ -2733,7 +2726,20 @@ def _materialize_agent_prompt_if_needed(
             tool_name_prefix=tool_name_prefix,
         ),
         workspace_root=workspace.root,
+    ),
+    PromptPhaseOptions(
+        artifacts_policy=policy_bundle.artifacts,
+        previous_phase=state.previous_phase,
+        resume_existing_phase=(
+            not _prompt_changed_since_last_materialization(workspace.root)
+            and _should_resume_existing_planning_phase(
+                effect=effect,
+                state=state,
+                policy_bundle=policy_bundle,
+            )
+        ),
         multimodal_entries=media_entries,
+    ),
     )
 
 
@@ -3027,18 +3033,15 @@ def _config_agents_for_phase(
     if config is None:
         return []
 
-    drains = config.agent_drains if isinstance(config.agent_drains, dict) else {}
-    chains = config.agent_chains if isinstance(config.agent_chains, dict) else {}
     for drain_name in _config_drain_candidates(phase=phase, policy_drain=policy_drain):
-        chain_name = drains.get(drain_name)
-        if isinstance(chain_name, str):
-            chain_agents = chains.get(chain_name)
-            if isinstance(chain_agents, list):
-                return list(chain_agents)
-
-        direct_chain_agents = chains.get(drain_name)
-        if isinstance(direct_chain_agents, list):
-            return list(direct_chain_agents)
+        drain_cfg = config.agent_drains.get(drain_name)
+        if drain_cfg is not None:
+            chain_cfg = config.agent_chains.get(drain_cfg.chain)
+            if chain_cfg is not None:
+                return list(chain_cfg.agents)
+        direct_chain_cfg = config.agent_chains.get(drain_name)
+        if direct_chain_cfg is not None:
+            return list(direct_chain_cfg.agents)
     return []
 
 
@@ -3444,7 +3447,7 @@ def _execute_agent_effect(
             drain=effect.drain or effect.phase,
             workspace_path=workspace_scope.root,
             agents_policy=effective_agents_policy,
-            model_flag=agent_config.model_flag,
+            model_opts=SessionModelOpts(model_flag=agent_config.model_flag),
         )
         session = AgentSession(
             session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
@@ -3467,8 +3470,10 @@ def _execute_agent_effect(
         bridge = start_mcp_server(
             session,
             workspace,
-            phase=effect.phase,
-            extra_env=session_mcp_plan.server_env,
+            extras=McpServerExtras(
+                phase=effect.phase,
+                extra_env=session_mcp_plan.server_env,
+            ),
         )
 
         for attempt_index in range(max_recovery_attempts + 1):
@@ -3503,27 +3508,29 @@ def _execute_agent_effect(
 
                 options = build_invoke_options_from_config(
                     config.general,
-                    verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
-                    show_progress=False,
-                    workspace_path=workspace_scope.root,
-                    extra_env={
-                        MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
-                        MCP_RUN_ID_ENV: session.run_id,
-                        AGENT_LABEL_SCOPE_ENV: session.run_id,
-                    },
-                    session_id=resume_session_id,
-                    system_prompt_file=system_prompt_file,
-                    waiting_listener=_waiting_listener,
-                    permission_prompt_listener=_permission_prompt_listener,
-                    required_artifact=(
-                        resolve_phase_required_artifact(
-                            policy_bundle.pipeline,
-                            policy_bundle.artifacts,
-                            phase=effect.phase,
-                            drain=effect.drain or effect.phase,
-                        )
-                        if policy_bundle is not None
-                        else None
+                    InvokeRuntimeOptions(
+                        verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
+                        show_progress=False,
+                        workspace_path=workspace_scope.root,
+                        extra_env={
+                            MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
+                            MCP_RUN_ID_ENV: session.run_id,
+                            AGENT_LABEL_SCOPE_ENV: session.run_id,
+                        },
+                        session_id=resume_session_id,
+                        system_prompt_file=system_prompt_file,
+                        waiting_listener=_waiting_listener,
+                        permission_prompt_listener=_permission_prompt_listener,
+                        required_artifact=(
+                            resolve_phase_required_artifact(
+                                policy_bundle.pipeline,
+                                policy_bundle.artifacts,
+                                phase=effect.phase,
+                                drain=effect.drain or effect.phase,
+                            )
+                            if policy_bundle is not None
+                            else None
+                        ),
                     ),
                 )
                 _on_mcp_restart = (
@@ -4028,12 +4035,14 @@ def _record_activity_on_subscriber(
         command = _format_metadata_value(metadata.get("command")) or None
         subscriber.record_activity(
             unit_id=agent_name,
-            agent_name=agent_name,
             line=line_text,
-            tool_name=tool_name,
-            path=path,
-            workdir=workdir,
-            command=command,
+            details=ActivityDetails(
+                agent_name=agent_name,
+                tool_name=tool_name,
+                path=path,
+                workdir=workdir,
+                command=command,
+            ),
         )
     except Exception:  # pragma: no cover - defensive
         logger.debug("subscriber.record_activity failed", exc_info=True)

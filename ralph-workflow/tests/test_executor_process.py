@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import sys
 from typing import TYPE_CHECKING
@@ -9,8 +10,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.executor import ProcessExecutionError, ProcessResult, run_process, run_process_async
+from ralph.executor.process import ProcessRunOptions
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
-from ralph.testing.fake_process import FakeTimeoutPopen
+from ralph.testing.fake_process import FakeControllableAsyncProcess, FakeTimeoutPopen
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -49,7 +51,9 @@ def _make_timeout_pm(partial_stdout: bytes = b"") -> ProcessManager:
 
 def test_run_process_captures_stdout_stderr_and_exit_code(tmp_path: Path) -> None:
     """Synchronous execution should capture output and preserve exit code."""
-    result = run_process(PYTHON, ["-c", SYNC_FAILURE_SCRIPT], cwd=tmp_path)
+    result = run_process(
+        PYTHON, ["-c", SYNC_FAILURE_SCRIPT], options=ProcessRunOptions(cwd=tmp_path)
+    )
 
     assert isinstance(result, ProcessResult)
     assert result.returncode == EXIT_CODE
@@ -86,8 +90,7 @@ def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
     with pytest.raises(ProcessExecutionError) as excinfo:
         run_process(
             "fake-cmd",
-            cwd=tmp_path,
-            timeout=TIMEOUT_S,
+            options=ProcessRunOptions(cwd=tmp_path, timeout=TIMEOUT_S),
             _pm=pm,
         )
 
@@ -108,9 +111,7 @@ async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> Non
     kill_followup_timeout_s > 0 lets _terminate_root_only_async complete
     after terminate() sets the event.
     """
-    import asyncio
 
-    from ralph.testing.fake_process import FakeControllableAsyncProcess
 
     completion = asyncio.Event()  # never set → simulate a hanging process
     proc = FakeControllableAsyncProcess(
@@ -158,7 +159,7 @@ def test_run_process_wraps_missing_command(tmp_path: Path) -> None:
     missing_command = "definitely-not-a-real-command-ralph"
 
     with pytest.raises(ProcessExecutionError) as excinfo:
-        run_process(missing_command, cwd=tmp_path)
+        run_process(missing_command, options=ProcessRunOptions(cwd=tmp_path))
 
     error = excinfo.value
     assert error.timed_out is False

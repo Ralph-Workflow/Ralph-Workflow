@@ -6,7 +6,6 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from types import ModuleType
 
     from ralph.display.context import DisplayContext
@@ -38,7 +37,7 @@ __all__ = [
 class SupportsPrint(Protocol):
     """Protocol for rich-compatible consoles."""
 
-    print: Callable[..., None]
+    def print(self, *args: object, **kwargs: object) -> None: ...
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:

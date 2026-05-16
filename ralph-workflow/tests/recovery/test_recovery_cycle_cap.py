@@ -11,7 +11,7 @@ from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.cycle_cap import CycleCap
 
 
@@ -49,8 +49,7 @@ def test_env_failure_does_not_increment_cycle_count() -> None:
     new_state, effects, _ = controller.handle(
         state,
         ConnectionError("network unreachable"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert new_state.recovery_cycle_count == _EXPECTED_CYCLE_COUNT
@@ -70,8 +69,7 @@ def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert new_state.recovery_cycle_count == 1
@@ -91,8 +89,7 @@ def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
     _new_state, effects, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("idle timeout again"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     exit_effects = [e for e in effects if isinstance(e, ExitFailureEffect)]

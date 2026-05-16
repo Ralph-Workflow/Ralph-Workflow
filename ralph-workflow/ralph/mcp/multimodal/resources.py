@@ -22,6 +22,15 @@ MEDIA_URI_TEMPLATE = "ralph://media/{artifact_id}"
 ByteLoader = Callable[[], bytes | None]
 
 
+@dataclass(frozen=True)
+class MediaSource:
+    """Source data for a media artifact (at most one field is set)."""
+
+    source_path: str = ""
+    source_uri: str = ""
+    raw_bytes: bytes | None = None
+
+
 def build_media_uri(artifact_id: str) -> str:
     """Build a ralph://media/{artifact_id} URI."""
     return f"{_RALPH_MEDIA_PREFIX}{artifact_id}"
@@ -45,17 +54,16 @@ def build_media_identity(
     modality: str,
     mime_type: str,
     title: str,
-    source_path: str = "",
-    source_uri: str = "",
-    raw_bytes: bytes | None = None,
+    source: MediaSource | None = None,
 ) -> str:
     """Build a stable identity for deduping repeated live artifacts."""
-    if source_uri:
-        return f"source-uri:{modality}:{source_uri}"
-    if source_path:
-        return f"source-path:{modality}:{source_path}"
-    if raw_bytes is not None:
-        digest = hashlib.sha256(raw_bytes).hexdigest()
+    src = source or MediaSource()
+    if src.source_uri:
+        return f"source-uri:{modality}:{src.source_uri}"
+    if src.source_path:
+        return f"source-path:{modality}:{src.source_path}"
+    if src.raw_bytes is not None:
+        digest = hashlib.sha256(src.raw_bytes).hexdigest()
         return f"payload:{modality}:{mime_type}:{title}:{digest}"
     return f"artifact:{modality}:{mime_type}:{title}"
 
@@ -120,6 +128,17 @@ class ManifestEntry:
         }
 
 
+@dataclass(frozen=True)
+class MediaEntryExtras:
+    """Optional extras when adding a media artifact to the manifest."""
+
+    cache_path: str = ""
+    source_path: str = ""
+    source_uri: str = ""
+    identity_key: str = ""
+    byte_loader: ByteLoader | None = None
+
+
 @dataclass
 class MediaManifest:
     """Session-scoped manifest of all multimodal resource references."""
@@ -134,20 +153,19 @@ class MediaManifest:
         mime_type: str,
         modality: str,
         raw_bytes: bytes,
-        cache_path: str = "",
-        source_path: str = "",
-        source_uri: str = "",
-        identity_key: str = "",
-        byte_loader: ByteLoader | None = None,
+        extras: MediaEntryExtras | None = None,
     ) -> ManifestEntry:
         """Add or replace an artifact and return its manifest entry."""
-        resolved_identity = identity_key or build_media_identity(
+        xt = extras or MediaEntryExtras()
+        resolved_identity = xt.identity_key or build_media_identity(
             modality=modality,
             mime_type=mime_type,
             title=title,
-            source_path=source_path,
-            source_uri=source_uri,
-            raw_bytes=raw_bytes,
+            source=MediaSource(
+                source_path=xt.source_path,
+                source_uri=xt.source_uri,
+                raw_bytes=raw_bytes,
+            ),
         )
         artifact_id = self._identity_index.get(resolved_identity, new_artifact_id())
         uri = build_media_uri(artifact_id)
@@ -158,11 +176,11 @@ class MediaManifest:
             title=title,
             modality=modality,
             identity_key=resolved_identity,
-            cache_path=cache_path,
-            source_path=source_path,
-            source_uri=source_uri,
+            cache_path=xt.cache_path,
+            source_path=xt.source_path,
+            source_uri=xt.source_uri,
             _raw_bytes=raw_bytes,
-            _byte_loader=byte_loader,
+            _byte_loader=xt.byte_loader,
         )
         self._entries[artifact_id] = entry
         self._identity_index[resolved_identity] = artifact_id
@@ -184,7 +202,9 @@ class MediaManifest:
 __all__ = [
     "MEDIA_URI_TEMPLATE",
     "ManifestEntry",
+    "MediaEntryExtras",
     "MediaManifest",
+    "MediaSource",
     "build_media_identity",
     "build_media_uri",
     "new_artifact_id",

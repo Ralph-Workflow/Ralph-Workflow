@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 from ralph.display.subscriber import PipelineSubscriber
-from ralph.pipeline.runner import _dispatch_waiting_event
+from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -55,7 +55,7 @@ def test_dispatch_calls_subscriber_for_all_kinds(
     monkeypatch.setattr(sub, "record_waiting_status", _record)
 
     for kind in WaitingStatusKind:
-        _dispatch_waiting_event(
+        dispatch_waiting_event(
             _event(kind),
             subscriber=sub,
             unit_id="test-agent",
@@ -67,7 +67,7 @@ def test_dispatch_calls_subscriber_for_all_kinds(
 
 def test_dispatch_with_none_subscriber_does_not_raise() -> None:
     for kind in WaitingStatusKind:
-        _dispatch_waiting_event(
+        dispatch_waiting_event(
             _event(kind),
             subscriber=None,
             unit_id="test-agent",
@@ -83,7 +83,7 @@ def test_subscriber_exception_does_not_propagate(tmp_path: Path) -> None:
 
     sub.record_waiting_status = _boom
 
-    _dispatch_waiting_event(
+    dispatch_waiting_event(
         _event(WaitingStatusKind.SUSPECTED_FROZEN),
         subscriber=sub,
         unit_id="test-agent",

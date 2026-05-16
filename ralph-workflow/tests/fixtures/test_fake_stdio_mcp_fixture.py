@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 
 class TestFakeStdioMcp:
@@ -13,11 +13,13 @@ class TestFakeStdioMcp:
     def test_initialize_then_tools_list_roundtrip(self) -> None:
         handle = get_process_manager().spawn(
             [sys.executable, "-m", "tests.fixtures.fake_stdio_mcp"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            label="test:fake-stdio-mcp",
+            SpawnOptions(
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                label="test:fake-stdio-mcp",
+            ),
         )
         stdin = handle.stdin
         stdout = handle.stdout

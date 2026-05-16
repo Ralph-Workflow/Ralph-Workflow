@@ -100,7 +100,7 @@ STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
     "error": (f"bold {VERMILLION}", "✗", "FAIL"),
     "skipped": (YELLOW, "○", "SKIP"),
     "pending": ("dim", "○", "WAIT"),
-    "info": (BLUE, "ℹ", "INFO"),  # noqa: RUF001
+    "info": (BLUE, "\u2139", "INFO"),
 }
 
 _THEME_STYLES: Final[dict[str, str]] = {

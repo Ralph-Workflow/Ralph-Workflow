@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.executor.process import ProcessResult, run_process
+from ralph.executor.process import ProcessResult, ProcessRunOptions, run_process
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -22,6 +22,17 @@ if TYPE_CHECKING:
             env: dict[str, str] | None = None,
             timeout: float | None = None,
         ) -> ProcessResult: ...
+
+
+def _default_runner(
+    command: str,
+    args: Sequence[str] = (),
+    *,
+    cwd: str | Path | None = None,
+    env: dict[str, str] | None = None,
+    timeout: float | None = None,
+) -> ProcessResult:
+    return run_process(command, args, options=ProcessRunOptions(cwd=cwd, env=env, timeout=timeout))
 
 
 VERIFY_STEPS: tuple[tuple[str, ...], ...] = (
@@ -63,7 +74,7 @@ def format_verify_failure_banner(*, failed_command: str) -> str:
     return _VERIFY_FAILURE_BANNER_TEMPLATE.format(failed_command=failed_command)
 
 
-def run_verify(*, cwd: Path, runner: VerifyRunner = run_process) -> int:
+def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
     """Run all verification steps and return the first non-zero exit code, or 0."""
     print("Running full verification...", flush=True)
     for args in VERIFY_STEPS:
@@ -85,7 +96,7 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = run_process) -> int:
 def main(
     argv: Sequence[str] | None = None,
     *,
-    runner: VerifyRunner = run_process,
+    runner: VerifyRunner = _default_runner,
     cwd: Path | None = None,
 ) -> int:
     """Entry point for the ralph.verify command-line tool."""

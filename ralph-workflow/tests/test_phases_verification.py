@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 import loguru
 import pytest
+from pydantic import ValidationError
 
 from ralph.phases import PhaseContext, get_handler, register_role_handlers
 from ralph.phases.verification import handle_verification_phase
@@ -149,7 +150,6 @@ class TestVerificationArtifactGate:
 
 class TestVerificationMakeTargetKind:
     def test_make_target_kind_is_rejected_by_policy(self) -> None:
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
             PhaseVerificationPolicy(

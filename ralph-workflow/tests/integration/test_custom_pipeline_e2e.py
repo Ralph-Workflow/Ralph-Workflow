@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.explain import explain_policy
@@ -38,6 +38,7 @@ from ralph.policy.models import (
     RecoveryPolicy,
 )
 from ralph.policy.render import render_explanation_text
+from ralph.policy.validation import validate_policy_completeness
 
 _BUILD_LOOP_MAX = 3
 
@@ -322,7 +323,6 @@ class TestCustomPipelineVerificationFailure:
         return state
 
     def test_verification_failure_routes_to_crashed(self, custom_bundle: PolicyBundle) -> None:
-        from ralph.pipeline.events import PhaseFailureEvent
 
         policy = custom_bundle.pipeline
         state = self._advance_to_verify(policy)
@@ -447,7 +447,6 @@ class TestCustomPipelineChainTracking:
         assert chain is None
 
     def test_retry_increments_for_custom_phase(self, custom_bundle: PolicyBundle) -> None:
-        from ralph.pipeline.events import PhaseFailureEvent
 
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
@@ -472,7 +471,6 @@ class TestCustomPipelinePolicyValidation:
     """Policy completeness validation passes for the custom bundle."""
 
     def test_validate_policy_completeness_passes(self, custom_bundle: PolicyBundle) -> None:
-        from ralph.policy.validation import validate_policy_completeness
 
         validate_policy_completeness(custom_bundle)  # must not raise
 

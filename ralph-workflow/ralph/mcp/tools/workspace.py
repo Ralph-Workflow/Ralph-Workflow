@@ -35,7 +35,9 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.multimodal.errors import MultimodalFailureKind
 from ralph.mcp.multimodal.resources import (
+    MediaEntryExtras,
     MediaManifest,
+    MediaSource,
     build_media_identity,
     parse_media_uri,
 )
@@ -684,7 +686,7 @@ def _search_file_content(
     compiled: re.Pattern[str],
     context_before: int,
     context_after: int,
-    max_file_bytes: int,
+    _max_file_bytes: int,
 ) -> list[dict[str, object]] | None:
     """Search a single file for matches; returns None if the file should be skipped."""
     try:
@@ -695,7 +697,7 @@ def _search_file_content(
     if file_stat.get("type") == "dir":
         return None
     size_bytes = file_stat.get("size_bytes", 0)
-    if isinstance(size_bytes, int) and size_bytes > max_file_bytes:
+    if isinstance(size_bytes, int) and size_bytes > _max_file_bytes:
         return None
 
     try:
@@ -1608,16 +1610,14 @@ def _handle_workspace_media(
         modality=modality,
         mime_type=mime_type,
         title=title,
-        source_path=source_path,
-        raw_bytes=raw_bytes,
+        source=MediaSource(source_path=source_path, raw_bytes=raw_bytes),
     )
     entry = manifest.add(
         title=title,
         mime_type=mime_type,
         modality=modality,
         raw_bytes=raw_bytes,
-        source_path=source_path,
-        identity_key=identity_key,
+        extras=MediaEntryExtras(source_path=source_path, identity_key=identity_key),
     )
     block, delivery = _make_non_inline_workspace_block(verdict, entry, mime_type, modality, title)
     artifact_id = entry.uri.rsplit("/", maxsplit=1)[-1]
@@ -1809,7 +1809,7 @@ def persist_upstream_media_artifacts(
                 modality=entry.modality,
                 mime_type=entry.mime_type,
                 title=entry.title,
-                raw_bytes=raw_bytes,
+                source=MediaSource(raw_bytes=raw_bytes),
             )
             entry.set_replay_source(
                 cache_path=cache_path,
@@ -1865,7 +1865,7 @@ def persist_upstream_media_artifacts(
                         modality=modality,
                         mime_type=mime_type,
                         title=title,
-                        source_uri=source_uri,
+                        source=MediaSource(source_uri=source_uri),
                     ),
                 },
             )
