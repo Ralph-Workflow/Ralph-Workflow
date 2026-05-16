@@ -81,3 +81,18 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1t9fl7h/claude_code_agents_going_off_the_rails_overnight/om3bpdb/
 - **Status:** ✅ Published
 - **Notes:** Autoposted from reddit-monitor shortlist: #1 Claude code agents going off the rails overnight: what's biting you? (r/ClaudeCode).
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-16_1415.md`
+- **Scan summary:** 31 candidate Reddit threads/posts scanned, 8 shortlisted, 23 rejected.
+- **Current verdict:** ✅ Strong opportunity found.
+- **Best current discussion fits:**
+  - `r/ClaudeCode` — "Critique my Workflow"
+  - `r/ClaudeCode` — "I let Claude Code on web run overnight and it actually shipped something useful"
+  - `r/codex` — "Anyone else using Claude Code + Codex together?"
+- **Repeated pains worth tracking:** manual Claude/Codex glue, need for workflow critique, reviewable overnight results, trust via checks not branding, worktrees without enough finish discipline.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1u0g0cu/critique_my_workflow/
+- **Status:** ❌ Failed
+- **Notes:** Ran `reddit_autopost.py` against the latest shortlist. It selected `r/ClaudeCode` — "Critique my Workflow" but Playwright timed out waiting for the old Reddit comment textarea, so no comment was published.
