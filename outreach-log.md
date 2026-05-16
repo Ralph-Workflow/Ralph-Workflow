@@ -190,3 +190,16 @@ _Last updated: 2026-05-11 06:29 UTC_
 - Drafted `drafts/2026-05-16_why-worktrees-are-not-enough_site-guide.md`
 - Drafted `drafts/2026-05-16_trial-cta-snippets.md`
 - Purpose: tighten proof/positioning and improve trial conversion instead of just adding more generic awareness content.
+
+### Public repo adoption improvements
+- Shipped conversion improvements to the public RalphWorkflow repo.
+- Commit: `6ca12e02` — `Improve trial conversion docs`
+- Added public `START_HERE.md`
+- Added public `docs/trial-proof.md`
+- Updated root `README.md` and `docs/README.md` to push visitors toward a real first trial and a merge/no-merge evaluation.
+
+### Free and open-source framing cleanup
+- Replaced remaining RalphWorkflow marketing/public wording that used "trial" framing.
+- Public repo commit: `89345ba7` — `Replace trial wording with free OSS framing`
+- Renamed public doc `docs/trial-proof.md` -> `docs/free-open-source-proof.md`
+- Updated public README/docs references and internal marketing materials to use free/open-source adoption wording instead.

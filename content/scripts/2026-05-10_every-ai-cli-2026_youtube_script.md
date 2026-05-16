@@ -3,7 +3,7 @@
 **Target keyword:** `CLI AI coding agents 2026`, `AI coding workflow CLI`
 **Format:** Comparison/guide video — 18–22 min runtime
 **Hook type:** Problem-first (devs feel the pain of disconnected AI tools)
-**CTA:** Install RalphWorkflow (free), try HireAegis Interviewer trial
+**CTA:** Install RalphWorkflow (free and open source), explore HireAegis Interviewer
 
 ---
 
@@ -14,7 +14,7 @@
 - **The 7 tools, one by one** (2:00–15:00): Each tool gets 90 seconds — what it does, who it's for, the gap it leaves
 - **The missing layer** (15:00–17:00): What none of these tools do alone
 - **Demo: Orchestrating them all** (17:00–20:00): RalphWorkflow as the glue
-- **CTA + outro** (20:00–21:00): Install link, hireAegis trial
+- **CTA + outro** (20:00–21:00): Install link, HireAegis link
 
 ---
 
@@ -214,7 +214,7 @@
 
 "HireAegis gives candidates a real IDE, real-time AI assistance if you want it, and gives you as the interviewer a playback of exactly what happened — every keystroke, every compile, every decision. No more whiteboard guessing."
 
-"Free trial in the description. No credit card required."
+"Link in the description if you want to learn more."
 
 **[Sign off]**
 
@@ -244,7 +244,7 @@ Chapters:
 
 Links:
 RalphWorkflow (free CLI): [link]
-HireAegis Interviewer (free trial): [link]
+HireAegis Interviewer: [link]
 
 #AI #coding #developertools #ClaudeCode #Gemini #OpenAI #workflow
 ```

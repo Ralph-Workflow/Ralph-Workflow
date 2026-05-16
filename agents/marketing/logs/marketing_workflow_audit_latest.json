@@ -1,38 +1,68 @@
 {
-  "generated_at": "2026-05-16T23:24:39.321241",
-  "current_bottleneck": "conversion_to_trial",
+  "generated_at": "2026-05-17T00:51:00+02:00",
+  "current_bottleneck": "conversion_to_free_use",
   "articles_logged": 6,
   "reddit_posts_analyzed": 5,
-  "repeated_openings": [
-    "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
+  "adoption_metrics": {
+    "github": {"stars": 0, "watchers": 2, "forks": 0, "open_issues": 0},
+    "codeberg": {"stars": 9, "watchers": 2, "forks": 2, "open_issues": 3}
+  },
+  "what_worked": [
+    "community-first Reddit replies with no product mention required to be worth reading",
+    "owned content assets covering core pain frames: unattended runs, reviewable output, when it works, trial CTA",
+    "market signal research: 6-8 strong shortlist candidates per scan",
+    "proof assets shipped to public repo: START_HERE.md, docs/free-open-source-proof.md, example docs",
+    "REDDIT_LEARNINGS.md update cadence capturing real pattern observations"
   ],
-  "adoption_metrics": [
+  "what_did_not_work": [
+    "repetitive opening line detected across multiple posts creating canned feel",
+    "GitHub 0 stars despite full day of awareness activity",
+    "GitHub account gap: no HN submission, no Dev.to OAuth possible",
+    "browserless Reddit automation unreliable, manual Chromium fallback required",
+    "monitoring frequency vs value: 5+ passes produced same shortlist after pass 2"
+  ],
+  "what_is_repetitive": [
+    "same pain themes in research surfacing repeatedly (worktrees, approval loops, reviewability) — useful signal but reaction keeps generating awareness content instead of conversion content",
+    "Reddit scan output stabilizes quickly; shortlist essentially fixed after pass 2",
+    "owned content drafts keep addressing same pain frames without clear next step for convinced reader"
+  ],
+  "current_bottleneck_detail": {
+    "primary": "conversion_to_free_use",
+    "specific_failures": [
+      "GitHub account gap: HN and Dev.to inaccessible — highest-signal developer distribution channels blocked",
+      "after-star path unclear: START_HERE.md not prominent enough as visible entry point",
+      "owned content not systematically linked from Reddit comments or repo to most action-forcing piece",
+      "Reddit monitoring approaching local maximum — not the binding constraint on adoption right now"
+    ]
+  },
+  "next_moves": [
     {
-      "platform": "GitHub",
-      "stars": 0,
-      "watchers": 2,
-      "forks": 0,
-      "open_issues": 0,
-      "html_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+      "priority": 1,
+      "action": "fix GitHub account gap",
+      "description": "Create a GitHub account for RalphWorkflow marketing activity. Without it: cannot submit to HN, cannot OAuth into Dev.to, cannot interact with GitHub issues/PRs. This is the binding constraint on high-signal developer distribution.",
+      "blocker": true
     },
     {
-      "platform": "Codeberg",
-      "stars": 9,
-      "watchers": 2,
-      "forks": 2,
-      "open_issues": 3,
-      "html_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+      "priority": 2,
+      "action": "make conversion path unmistakable in repo",
+      "description": "Add prominent 'First time? Start here' callout at top of root README linking to START_HERE.md. Ensure 'Get it running' section is clearest path forward. Make write.as trial CTA article the explicit next read after quick-start."
+    },
+    {
+      "priority": 3,
+      "action": "reduce Reddit scan frequency to 2x per day",
+      "description": "One morning and one evening scan sufficient. Shortlist stabilizes after pass 2. Reclaim cycle for conversion work."
+    },
+    {
+      "priority": 4,
+      "action": "do not produce more awareness content until distribution is fixed",
+      "description": "6 owned articles exist. Problem is not content volume — it is that content is not reaching right people through right channels. Focus on distributing what exists."
     }
   ],
-  "reasons": [
-    "Owned content and outreach exist, but repo/public adoption signals are still low.",
-    "GitHub stars remain low, which suggests trust/trial conversion is still the limiting step.",
-    "Proof assets and first-task framing likely matter more right now than more generic awareness work."
+  "what_to_keep_doing": [
+    "community-first Reddit replies with no/low product mention",
+    "market signal tracking — pain themes (overnight drift, merge safety, approval loops, Claude+Codex handoffs) are consistent and reliable",
+    "REDDIT_LEARNINGS.md update cadence",
+    "proof asset shipping to public repo"
   ],
-  "next_moves": [
-    "Improve repo/site conversion surfaces before producing too much additional top-of-funnel content.",
-    "Keep publishing/distributing only when the asset clearly strengthens trial, trust, or adoption.",
-    "Reduce repetitive outreach patterns and keep messaging tied to real workflow pain.",
-    "Favor proof assets: examples, review bundles, first-task guides, and comparison pages."
-  ]
+  "working_question_answer": "Fix the GitHub account gap. Reddit awareness is healthy. Owned content exists. The binding constraint is that the two highest-signal developer distribution channels (HN, Dev.to) are inaccessible because there is no GitHub account for marketing activity. Fix that, then sharpen the conversion surface at the repo so arriving traffic has a clear first-trial path."
 }

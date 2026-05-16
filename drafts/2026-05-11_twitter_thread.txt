@@ -17,6 +17,6 @@ Tweet 6:
 Candidates who write specs first solve the problem 3x faster. Not a typo.
 ---
 Tweet 7:
-HireAegis — watch candidates code live with AI visibility. Free trial in bio.
+HireAegis — watch candidates code live with AI visibility. Learn more in bio.
 
 CHARACTER COUNT: 632 (limit: 280/tweet)

@@ -1,4 +1,4 @@
-# RalphWorkflow Trial CTA Snippets
+# RalphWorkflow Free and Open-Source CTA Snippets
 
 ## Short CTA
 Pick one real backlog task tonight. Run it. Tomorrow, ask one question: **Would you merge this?**
