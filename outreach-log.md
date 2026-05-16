@@ -1,5 +1,13 @@
 # Outreach Log
 
+## 2026-05-16 (Friday)
+
+### RalphWorkflow Distribution
+- **Reddit comment**: Posted a community-first workflow answer in `r/AI_Agents` on the thread "What’s the most useful AI agent workflow you use daily?"
+  - URL: https://old.reddit.com/r/AI_Agents/comments/1tcpehg/whats_the_most_useful_ai_agent_workflow_you_use/om2kp9c/
+  - Status: ✅ Published
+  - Notes: Used old.reddit comment form through the live local Chromium session; no link, product kept secondary, focused on spec -> isolated execute -> verify -> receipt workflow guidance.
+
 ## 2026-05-11 (Monday)
 
 ### RalphWorkflow Distribution
@@ -42,3 +50,13 @@
 ---
 
 _Last updated: 2026-05-11 06:29 UTC_
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-16_0549.md`
+- **Scan summary:** 31 candidate Reddit threads scanned, 8 shortlisted, 23 rejected.
+- **Current verdict:** No strong RalphWorkflow mention opportunity right now.
+- **Best discussion fits if a helpful comment is warranted later:**
+  - `r/ClaudeCode` — "Claude Code + Codex Workflow?"
+  - `r/ClaudeAI` — "Running two Claude Code agents on the same repo simultaneously. Git worktrees make it work."
+- **Repeated pains worth tracking:** approval stalls while away from desk, manual Claude/Codex glue work, worktree setup friction, need for reviewable checkpoints instead of blind trust.
+
