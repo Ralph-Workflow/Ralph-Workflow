@@ -96,15 +96,35 @@ def read_commit_message_from_path(
     message_file: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> str | None:
     """Read a commit message from an arbitrary file path (JSON or plain text)."""
+    payload = read_commit_message_payload_from_path(message_file, backend=backend)
+    if payload is not None:
+        return render_commit_message_content(payload)
+
+    if not backend.exists(message_file) or message_file.suffix == ".json":
+        return None
+    contents = backend.read_text(message_file, encoding="utf-8").strip()
+    return contents or None
+
+
+
+def read_commit_message_payload_from_path(
+    message_file: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
+) -> dict[str, object] | None:
+    """Read and normalize a commit message payload from JSON or plain text."""
     if message_file.suffix == ".json":
         if not backend.exists(message_file):
             return None
-        return _read_commit_message_text_from_json_path(message_file, backend=backend)
+        return _read_commit_message_payload_from_json_path(message_file, backend=backend)
 
     if not backend.exists(message_file):
         return None
     contents = backend.read_text(message_file, encoding="utf-8").strip()
-    return contents or None
+    if not contents:
+        return None
+    try:
+        return normalize_commit_message_content(contents)
+    except ValueError:
+        return None
 
 
 _LEGACY_STALE_GLOBS = (
@@ -178,26 +198,48 @@ def render_commit_message_content(content: dict[str, object]) -> str:
 def _read_commit_message_text_from_json_path(
     message_file: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> str | None:
-    payload = cast(
-        "dict[str, object]", json.loads(backend.read_text(message_file, encoding="utf-8"))
-    )
+    payload = _read_commit_message_payload_from_json_path(message_file, backend=backend)
+    if payload is None:
+        return None
+    return render_commit_message_content(payload)
+
+
+
+def _read_commit_message_payload_from_json_path(
+    message_file: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
+) -> dict[str, object] | None:
+    try:
+        payload = cast(
+            "dict[str, object]", json.loads(backend.read_text(message_file, encoding="utf-8"))
+        )
+    except (TypeError, json.JSONDecodeError):
+        return None
     try:
         artifact = Artifact.from_dict(payload)
     except (KeyError, TypeError, ValueError):
-        return _render_raw_commit_message_payload(payload)
+        return _normalize_raw_commit_message_payload(payload)
 
     if artifact.artifact_type != COMMIT_MESSAGE_TYPE:
-        return _render_raw_commit_message_payload(payload)
+        return _normalize_raw_commit_message_payload(payload)
 
     try:
-        return render_commit_message_content(artifact.content)
+        return normalize_commit_message_content(artifact.content)
     except ValueError:
-        return _render_raw_commit_message_payload(payload)
+        return _normalize_raw_commit_message_payload(payload)
+
 
 
 def _render_raw_commit_message_payload(payload: dict[str, object]) -> str | None:
+    normalized = _normalize_raw_commit_message_payload(payload)
+    if normalized is None:
+        return None
+    return render_commit_message_content(normalized)
+
+
+
+def _normalize_raw_commit_message_payload(payload: dict[str, object]) -> dict[str, object] | None:
     try:
-        return render_commit_message_content(payload)
+        return normalize_commit_message_content(payload)
     except ValueError:
         return None
 

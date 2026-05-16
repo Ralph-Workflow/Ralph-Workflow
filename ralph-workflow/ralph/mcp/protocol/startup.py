@@ -36,6 +36,27 @@ if TYPE_CHECKING:
 JsonRpcResponse = dict[str, object]
 
 
+def _trust_env_for_http_endpoint(endpoint: str) -> bool:
+    """Use httpx environment-derived TLS settings only for HTTPS endpoints."""
+    return urlparse(endpoint).scheme == "https"
+
+
+def _default_http_post(
+    url: str,
+    *,
+    json: JsonRpcResponse,
+    headers: dict[str, str],
+    timeout: float,
+) -> httpx.Response:
+    return httpx.post(
+        url,
+        json=json,
+        headers=headers,
+        timeout=timeout,
+        trust_env=_trust_env_for_http_endpoint(url),
+    )
+
+
 class HttpPostFn(Protocol):
     """Callable protocol for posting JSON-RPC requests over HTTP."""
 
@@ -59,7 +80,7 @@ class HttpJsonRpcWithSessionFn(Protocol):
         payload: JsonRpcResponse | None = None,
         *,
         session_id: str | None = None,
-        post_fn: HttpPostFn = httpx.post,
+        post_fn: HttpPostFn = _default_http_post,
     ) -> tuple[JsonRpcResponse, str | None]: ...
 
 
@@ -252,7 +273,7 @@ def legacy_sse_jsonrpc_exchange(
     timeout = httpx.Timeout(timeout_s, connect=min(timeout_s, 5.0))
     responses: list[JsonRpcResponse] = []
     with (
-        httpx.Client(timeout=timeout) as client,
+        httpx.Client(timeout=timeout, trust_env=_trust_env_for_http_endpoint(endpoint)) as client,
         client.stream("GET", endpoint, headers={"Accept": "text/event-stream"}) as stream,
     ):
         if stream.status_code != _HTTP_OK:
@@ -558,7 +579,7 @@ def post_http_jsonrpc_with_session(
     payload: JsonRpcResponse | None = None,
     *,
     session_id: str | None = None,
-    post_fn: HttpPostFn = httpx.post,
+    post_fn: HttpPostFn = _default_http_post,
 ) -> tuple[JsonRpcResponse, str | None]:
     """Send an HTTP JSON-RPC request and return the response payload and session id."""
     if isinstance(endpoint_or_target, HttpEndpointTarget):

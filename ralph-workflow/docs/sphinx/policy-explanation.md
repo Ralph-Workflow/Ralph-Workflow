@@ -89,7 +89,7 @@ The ASCII diagram is the first visual output from `--explain-policy`. It shows:
 <<< REJOIN
     |
     v
-[loop: counter=development_analysis_iteration, max=3]
+[loop: counter=development_analysis_iteration, max=10]
 +----------------------+
 | development_analysis |
 |    role=analysis     |
@@ -97,7 +97,7 @@ The ASCII diagram is the first visual output from `--explain-policy`. It shows:
     +--[failed]--> development
     +--[request_changes]--> development
     <<==[loopback]== returns to 'development'
-    [LOOPBACK: counter=development_analysis_iteration, max=3]
+    [LOOPBACK: counter=development_analysis_iteration, max=10]
     >> RE-ENTRY at development
     |
     v
@@ -152,7 +152,7 @@ Four sentence forms are generated:
 | Decision route | `Explanation: phase 'development_analysis' routes to 'development_commit' because the configured decision was 'completed'.` |
 | Terminal outcome | `Explanation: when reached, the run terminates because the workflow policy declares phase 'complete' as a terminal 'success' outcome.` |
 | Bypass route | `Explanation: phase 'review' bypasses to 'review_commit' when the configured outcome is 'review_clean'.` |
-| Loopback cap | `Explanation: phase 'development_analysis' loops back to 'development' until 3 attempts are exhausted, after which the run terminates.` |
+| Loopback cap | `Explanation: phase 'development_analysis' loops back to 'development' until 10 attempts are exhausted, after which the run terminates.` |
 
 These sentences make it possible to answer "why did Ralph Workflow route here?" from the explanation output alone, without reading `pipeline.toml` or the runtime code.
 
@@ -203,11 +203,11 @@ PHASES
       completed            → development_commit
       request_changes      → development
       failed               → development
-    Loop       : counter='development_analysis_iteration', max=3
+    Loop       : counter='development_analysis_iteration', max=10
 Explanation: phase 'development_analysis' routes to 'development_commit' because the configured decision was 'completed'.
 Explanation: phase 'development_analysis' routes to 'development' because the configured decision was 'request_changes'.
 Explanation: phase 'development_analysis' routes to 'development' because the configured decision was 'failed'.
-Explanation: phase 'development_analysis' loops back to 'development' until 3 attempts are exhausted, after which the run terminates.
+Explanation: phase 'development_analysis' loops back to 'development' until 10 attempts are exhausted, after which the run terminates.
 
   Phase: development_commit
     Role       : commit (agent commits changes)
@@ -235,8 +235,8 @@ Explanation: when reached, the run terminates because the workflow policy declar
 ----------------------------------------------------------------------
 LOOP COUNTERS
 ----------------------------------------------------------------------
-  development_analysis_iteration: max=3 — Development analysis loop iteration counter
-  planning_analysis_iteration: max=10 — Planning analysis loop iteration counter
+  development_analysis_iteration: max=10 — Development analysis loop iteration counter
+  planning_analysis_iteration: max=3 — Planning analysis loop iteration counter
 
 ----------------------------------------------------------------------
 BUDGET COUNTERS

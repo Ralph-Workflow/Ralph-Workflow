@@ -46,6 +46,7 @@ from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
     prompt_commit_message,
@@ -279,16 +280,38 @@ def _handle_agent_commit_generation(
             )
 
 
-def _resolve_commit_message_agents(config: UnifiedConfig, registry: AgentRegistry) -> list[str]:
-    commit_drain = config.agent_drains.get("commit")
-    commit_chain_name = commit_drain.chain if commit_drain else None
-    commit_chain_config = config.agent_chains.get(commit_chain_name) if commit_chain_name else None
-    commit_chain = commit_chain_config.agents if commit_chain_config else []
+def _resolve_chain_agent_names(config: object, drain_name: str) -> list[str]:
+    raw_agent_drains_obj: object = getattr(config, "agent_drains", {})
+    raw_agent_drains = (
+        cast("dict[str, object]", raw_agent_drains_obj)
+        if isinstance(raw_agent_drains_obj, dict)
+        else {}
+    )
+    raw_agent_chains_obj: object = getattr(config, "agent_chains", {})
+    raw_agent_chains = (
+        cast("dict[str, object]", raw_agent_chains_obj)
+        if isinstance(raw_agent_chains_obj, dict)
+        else {}
+    )
+    drain_binding = raw_agent_drains.get(drain_name)
+    if isinstance(drain_binding, AgentDrainConfig):
+        chain_name = drain_binding.chain
+    elif isinstance(drain_binding, str):
+        chain_name = drain_binding
+    else:
+        return []
 
-    review_drain = config.agent_drains.get("review")
-    review_chain_name = review_drain.chain if review_drain else None
-    review_chain_config = config.agent_chains.get(review_chain_name) if review_chain_name else None
-    review_chain = review_chain_config.agents if review_chain_config else []
+    chain_value = raw_agent_chains.get(chain_name)
+    if isinstance(chain_value, AgentChainConfig):
+        return list(chain_value.agents)
+    if isinstance(chain_value, list):
+        return list(chain_value)
+    return []
+
+
+def _resolve_commit_message_agents(config: UnifiedConfig, registry: AgentRegistry) -> list[str]:
+    commit_chain = _resolve_chain_agent_names(config, "commit")
+    review_chain = _resolve_chain_agent_names(config, "review")
 
     commit_candidates = [
         name for name in commit_chain if _commit_drain_agent_supported(registry, name)

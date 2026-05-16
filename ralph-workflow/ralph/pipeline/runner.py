@@ -61,7 +61,7 @@ from ralph.display.phase_banner import (
 from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
 from ralph.display.plain_renderer import RunStartOrientation
 from ralph.executor.process import run_process_async
-from ralph.git.operations import create_commit, stage_all
+from ralph.git.operations import create_commit, stage_all, stage_files
 from ralph.interrupt import controller_from_process_manager
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.interrupt.controller import install_force_kill_handler
@@ -69,6 +69,7 @@ from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
     read_commit_message_from_path,
+    read_commit_message_payload_from_path,
 )
 from ralph.mcp.artifacts.handoffs import sync_markdown_handoff
 from ralph.mcp.artifacts.store import list_artifacts
@@ -2559,6 +2560,8 @@ def _handle_inline_effect(
         if state.phase == pipeline_policy.recovery.failed_route:
             prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
             target_phase_def = pipeline_policy.phases.get(effect.phase)
+            if target_phase_def is not None and target_phase_def.role == "commit":
+                prepared_state = prepared_state.copy_with(commit=CommitState())
             if target_phase_def is not None and target_phase_def.role == "execution":
                 clear_cycle_baseline(workspace_scope.root)
                 _write_start_commit_if_absent(workspace_scope.root)
@@ -3873,14 +3876,15 @@ def _execute_commit_effect(
     pipeline_policy: PipelinePolicy | None = None,
 ) -> PipelineEvent:
     try:
+        payload = _read_commit_effect_payload(effect)
         message = _read_commit_effect_message(effect)
-        if not message:
+        if payload is None or not message:
             logger.error("Commit message file is empty: {}", effect.message_file)
             return PipelineEvent.COMMIT_FAILURE
         # Late guard: commit agent may have submitted a skip artifact when it
         # saw no pending diff.  Detect it here so we never create a git commit
         # whose subject is literally "SKIP: ...".
-        if message.strip().lower().startswith("skip:"):
+        if payload.get("type") == "skip" or message.strip().lower().startswith("skip:"):
             logger.info("Commit agent requested skip — skipping commit execution")
             _cleanup_commit_message_artifacts(repo_root)
             return PipelineEvent.COMMIT_SKIPPED
@@ -3888,7 +3892,7 @@ def _execute_commit_effect(
             logger.info("Skipping commit because the worktree is empty")
             _cleanup_commit_message_artifacts(repo_root)
             return PipelineEvent.COMMIT_SKIPPED
-        stage_all(str(repo_root))
+        _stage_commit_scope(repo_root, payload, stage_all)
         sha = create_commit(str(repo_root), message)
         logger.info("Created commit: {}", sha[:8])
         with suppress(Exception):
@@ -3904,8 +3908,68 @@ def _execute_commit_effect(
     return PipelineEvent.COMMIT_SUCCESS
 
 
+def _read_commit_effect_payload(effect: CommitEffect) -> dict[str, object] | None:
+    return read_commit_message_payload_from_path(Path(effect.message_file))
+
+
+
 def _read_commit_effect_message(effect: CommitEffect) -> str:
     return read_commit_message_from_path(Path(effect.message_file)) or ""
+
+
+
+def _stage_commit_scope(
+    repo_root: Path,
+    payload: dict[str, object],
+    stage_all_fn: Callable[[str], None],
+) -> None:
+    include_paths = _commit_include_paths(repo_root, payload)
+    if include_paths is None:
+        stage_all_fn(str(repo_root))
+        return
+    stage_files(str(repo_root), include_paths)
+
+
+
+def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[str] | None:
+    raw_files = payload.get("files")
+    if isinstance(raw_files, list):
+        return [path for path in raw_files if isinstance(path, str)]
+
+    raw_excluded = payload.get("excluded_files")
+    if not isinstance(raw_excluded, list):
+        return None
+
+    excluded = {
+        path.strip()
+        for item in raw_excluded
+        if isinstance(item, dict)
+        and isinstance((path := item.get("path")), str)
+        and path.strip()
+    }
+    changed = _changed_commit_paths(repo_root)
+    return [path for path in changed if path not in excluded]
+
+
+
+_PORCELAIN_STATUS_PREFIX_LEN = 3
+
+
+
+def _changed_commit_paths(repo_root: Path) -> list[str]:
+    status_output = cast("str", Repo(repo_root).git.status("--porcelain"))
+    status_lines = status_output.splitlines()
+    changed: list[str] = []
+    for line in status_lines:
+        if len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
+            continue
+        path_part = line[_PORCELAIN_STATUS_PREFIX_LEN:]
+        if " -> " in path_part:
+            _, _, path_part = path_part.partition(" -> ")
+        path = path_part.strip()
+        if path and path not in changed:
+            changed.append(path)
+    return changed
 
 
 def _repo_has_commit_work(repo_root: Path) -> bool:

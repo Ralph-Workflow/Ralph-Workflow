@@ -151,6 +151,21 @@ def stage_all(repo_root: Path | str) -> None:
     logger.debug("Staged all changes in {}", repo_root)
 
 
+
+def stage_files(repo_root: Path | str, files: list[str]) -> None:
+    """Stage only the provided repository-relative paths.
+
+    Uses ``git add --all -- <paths>`` so modified, untracked, and deleted files
+    are all handled consistently for the selected scope.
+    """
+    if not files:
+        logger.debug("No files requested for selective staging in {}", repo_root)
+        return
+    repo = Repo(repo_root)
+    repo.git.add("--all", "--", *files)
+    logger.debug("Staged {} selected paths in {}", len(files), repo_root)
+
+
 def create_commit(
     repo_root: Path | str,
     message: str,

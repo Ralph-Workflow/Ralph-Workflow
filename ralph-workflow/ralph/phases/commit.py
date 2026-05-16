@@ -101,11 +101,31 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
             )
         ]
 
+    # Artifact exists — validate that it can actually be parsed before deferring
+    # to the runner. Otherwise the phase is marked successful and the runner
+    # fails later with a generic "Commit message file is empty" error.
+    message = _read_commit_message(ctx)
+    if message is None or not message.strip():
+        logger.warning(
+            "{} agent produced unreadable or empty {}",
+            phase_name,
+            COMMIT_MESSAGE_ARTIFACT,
+        )
+        return [
+            artifact_validation_failure_event(
+                phase=phase_name,
+                reason=(
+                    f"Invalid or empty commit_message artifact at {COMMIT_MESSAGE_ARTIFACT}; "
+                    "the agent must submit a readable commit_message payload "
+                    "before declaring completion"
+                ),
+            )
+        ]
+
     # Artifact exists — check if the agent submitted a skip response.
     # Without this guard, a skip artifact would be passed to the runner
     # and committed verbatim as a "SKIP: ..." git commit subject.
-    message = _read_commit_message(ctx)
-    if message is not None and message.strip().lower().startswith("skip:"):
+    if message.strip().lower().startswith("skip:"):
         logger.info("{}: commit agent requested skip — skipping", phase_name)
         return [PipelineEvent.COMMIT_SKIPPED]
 

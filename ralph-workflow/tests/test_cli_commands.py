@@ -1719,6 +1719,8 @@ def _copy_defaults(target: Path) -> None:
     for name in ("agents.toml", "pipeline.toml", "artifacts.toml"):
         shutil.copy(_DEFAULTS_DIR / name, target / name)
 
+_POLICY_VALIDATION_EXIT_CODE = 2
+
 
 class TestCheckPolicyCommand:
     """check_policy_command validates the active policy and reports results."""
@@ -1780,7 +1782,7 @@ class TestCheckPolicyCommand:
         )
         code = check_policy_command(tmp_path)
         err = capsys.readouterr().err
-        assert code == 2
+        assert code == _POLICY_VALIDATION_EXIT_CODE
         assert "Policy validation error" in err
 
 
