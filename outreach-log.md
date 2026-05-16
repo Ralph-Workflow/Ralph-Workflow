@@ -167,3 +167,26 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **write.as article**: "When Unattended AI Coding Actually Works" — https://write.as/x5wil6pmtbvo1.md
   - Status: ✅ Published
   - Notes: Owned-content asset focused on when unattended coding is genuinely useful, how to keep it reviewable, and where RalphWorkflow fits.
+
+### RalphWorkflow Distribution
+- **write.as article**: "Reviewable AI Code Output" — https://write.as/lsgmbq5ok5cj7.md
+  - Status: ✅ Published
+  - Notes: Owned-content asset focused on the difference between raw AI output and a result a human can actually review and merge.
+
+### RalphWorkflow Distribution
+- **write.as article**: "Start Here: Try Ralph Workflow on One Real Backlog Task" — https://write.as/9fd522xefd86z.md
+  - Status: ✅ Published
+  - Notes: Conversion-focused owned asset aimed at turning interest into an actual first trial and a merge/no-merge decision.
+
+### Conversion / adoption assets
+- Added root `README.md` for RalphWorkflow with clearer adoption-first framing.
+- Added `START_HERE_RALPHWORKFLOW.md` to turn interest into a first real trial.
+- Added proof assets:
+  - `content/examples/first_task_example.md`
+  - `content/examples/review_bundle_example.md`
+- Purpose: improve conversion from repo/site curiosity into actual trial and adoption.
+
+### Adoption conversion work
+- Drafted `drafts/2026-05-16_why-worktrees-are-not-enough_site-guide.md`
+- Drafted `drafts/2026-05-16_trial-cta-snippets.md`
+- Purpose: tighten proof/positioning and improve trial conversion instead of just adding more generic awareness content.

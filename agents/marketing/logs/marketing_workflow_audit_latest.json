@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-05-16T23:24:39.321241",
+  "current_bottleneck": "conversion_to_trial",
+  "articles_logged": 6,
+  "reddit_posts_analyzed": 5,
+  "repeated_openings": [
+    "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
+  ],
+  "adoption_metrics": [
+    {
+      "platform": "GitHub",
+      "stars": 0,
+      "watchers": 2,
+      "forks": 0,
+      "open_issues": 0,
+      "html_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+    },
+    {
+      "platform": "Codeberg",
+      "stars": 9,
+      "watchers": 2,
+      "forks": 2,
+      "open_issues": 3,
+      "html_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+    }
+  ],
+  "reasons": [
+    "Owned content and outreach exist, but repo/public adoption signals are still low.",
+    "GitHub stars remain low, which suggests trust/trial conversion is still the limiting step.",
+    "Proof assets and first-task framing likely matter more right now than more generic awareness work."
+  ],
+  "next_moves": [
+    "Improve repo/site conversion surfaces before producing too much additional top-of-funnel content.",
+    "Keep publishing/distributing only when the asset clearly strengthens trial, trust, or adoption.",
+    "Reduce repetitive outreach patterns and keep messaging tied to real workflow pain.",
+    "Favor proof assets: examples, review bundles, first-task guides, and comparison pages."
+  ]
+}
