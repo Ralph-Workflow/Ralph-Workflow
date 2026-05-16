@@ -67,6 +67,31 @@ What to do in that flow:
 3. **`PROMPT.md`** should describe one concrete task with clear acceptance criteria.
 4. **`ralph`** directly invokes your configured agent CLIs and supervises the unattended run.
 
+## Start with one real task
+
+The best first test is not a vague demo.
+
+Pick one real backlog task and use Ralph Workflow on that.
+
+Good first tasks:
+- a bounded feature slice
+- a narrow refactor with tests
+- a known cleanup task with clear checks
+- repetitive implementation work where "done" is easy to judge
+
+Bad first tasks:
+- vague product exploration
+- risky production surgery
+- anything where nobody agrees what success looks like
+
+The evaluation question is simple:
+
+> **Would you merge this result?**
+
+If yes, Ralph Workflow is doing useful work. If not, tighten the task, verification, or phase routing and try again.
+
+For a practical walkthrough, read [START_HERE.md](./START_HERE.md).
+
 ## What a good run feels like
 
 You give Ralph Workflow a bounded product or engineering spec. It plans the work, hands implementation to the configured agents, runs review inside the workflow, and leaves you with something concrete to inspect afterward.
@@ -78,14 +103,18 @@ That usually means one of these outcomes:
 - a verified batch of tests, docs, or refactors completed without live supervision
 - a failed run with artifacts and logs that make the failure obvious instead of mysterious
 
-## Good first tasks
+## What good output looks like
 
-Start with boring, bounded work:
+A useful unattended run should not just say it is done.
 
-- add tests to an existing module
-- fix a known batch of lint failures
-- refactor one narrow subsystem
-- update docs that are backed by existing code
+It should leave you with:
+- a real diff
+- changed files you can inspect
+- checks that actually ran
+- clear notes about what changed
+- open questions where uncertainty remains
+
+See [docs/trial-proof.md](./docs/trial-proof.md) for a concrete first-task example and review bundle example.
 
 ## Depth presets
 
