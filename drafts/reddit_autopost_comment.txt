@@ -1,7 +1,7 @@
-I've had better results when I stop asking whether to trust the agent and start asking whether the workflow makes bad work obvious.
+I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units.
 
-For me the reliable version is: small scoped task, explicit done criteria before it starts, one verification pass at the end, and a reviewable diff before anything is treated as finished.
+For me the reliable pattern is: one scoped task per worktree/branch, explicit done criteria before the agent starts, one verification pass at the end, and a short handoff note with the diff and what still needs eyes.
 
-That shifts the problem from blind trust to fast review. If the output is small enough to inspect and the checks are attached, the tool matters a lot less than the structure.
+Worktrees solve the file-conflict part. The bigger win is that each agent leaves behind a small, checkable result instead of a mystery pile of edits.
 
-We've wrapped that pattern into RalphWorkflow, but honestly the main win is the workflow discipline, not the brand name.
+We've wrapped that pattern into RalphWorkflow, but honestly the structure matters more than the specific tool.

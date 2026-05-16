@@ -38,3 +38,7 @@
 {"ts": "2026-05-16T19:00:09.036575", "jobs_checked": 9, "issues_found": 0, "issues": []}
 {"ts": "2026-05-16T19:33:08.280573", "jobs_checked": 9, "issues_found": 1, "issues": [{"job_id": "6a9e1bbe-a907-4e13-bc94-e44bc31170ea", "name": "reddit-monitor", "consecutive_errors": 2, "last_status": "error", "last_error": "cron: job execution timed out", "timeout_seconds": 0, "last_duration_ms": 420348, "likely_cause": "TIMEOUT_TOO_TIGHT: script took 420348ms but limit was 0s - needs more headroom"}]}
 {"ts": "2026-05-16T20:03:58.665474", "jobs_checked": 9, "issues_found": 1, "issues": [{"job_id": "6a9e1bbe-a907-4e13-bc94-e44bc31170ea", "name": "reddit-monitor", "consecutive_errors": 2, "last_status": "error", "last_error": "cron: job execution timed out", "timeout_seconds": 0, "last_duration_ms": 420348, "likely_cause": "TIMEOUT_TOO_TIGHT: script took 420348ms but limit was 0s - needs more headroom"}]}
+{"ts": "2026-05-16T20:09:05.731306", "jobs_checked": 10, "issues_found": 1, "issues": [{"job_id": "6a9e1bbe-a907-4e13-bc94-e44bc31170ea", "name": "reddit-monitor", "consecutive_errors": 2, "last_status": "error", "last_error": "", "timeout_seconds": 600, "last_duration_ms": 420348, "likely_cause": "UNKNOWN: no error details"}]}
+{"ts": "2026-05-16T20:17:20.335736", "jobs_checked": 11, "issues_found": 0, "issues": []}
+{"ts": "2026-05-16T20:32:53.465405", "jobs_checked": 11, "issues_found": 0, "issues": []}
+{"ts": "2026-05-16T21:02:18.428509", "jobs_checked": 11, "issues_found": 0, "issues": []}

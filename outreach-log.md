@@ -96,3 +96,20 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1u0g0cu/critique_my_workflow/
 - **Status:** ❌ Failed
 - **Notes:** Ran `reddit_autopost.py` against the latest shortlist. It selected `r/ClaudeCode` — "Critique my Workflow" but Playwright timed out waiting for the old Reddit comment textarea, so no comment was published.
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-16_2008.md`
+- **Scan summary:** 29 candidate Reddit threads/posts scanned, 8 shortlisted, 21 rejected.
+- **Current verdict:** ✅ 8 credible opportunities found; strongest fit remains workflow-first replies with optional/no product mention.
+- **Best current discussion fits:**
+  - `r/ClaudeCode` — "Critique my Workflow"
+  - `r/ClaudeCode` — "How are you handling merge safety when running multiple coding agents on the same repo?"
+  - `r/codex` — "Use claude code with codex?"
+- **Repeated pains worth tracking:** semantic conflicts after clean merges, approval/draft-state friction, worktree env/handoff friction, need for an independent final review instead of trusting agent self-reports.
+- **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1tdvnnt/critique_my_workflow/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1tdvnnt/critique_my_workflow/om67t5g/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #1 Critique my Workflow (`r/ClaudeCode`).

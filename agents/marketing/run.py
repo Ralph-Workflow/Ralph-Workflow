@@ -32,7 +32,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 BLOCKED_CHANNELS = {
     "dev.to": "Needs API key or OAuth",
     "twitter": "Login/session blocked",
-    "reddit": "Needs account + karma",
+    "reddit": "Posting blocked until the intended main Reddit account is verified live",
     "hackernews": "Needs account",
     "lobsters": "Needs invite/account",
     "producthunt": "Protected flow / manual launch required",

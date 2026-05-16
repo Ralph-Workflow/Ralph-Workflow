@@ -9,7 +9,7 @@ from agents.marketing import generate_content, run, run_posting
 
 class GenerateContentTests(unittest.TestCase):
     def test_build_draft_content_includes_experiment_metadata(self):
-        topic = generate_content.TOPICS[0]
+        topic = generate_content.TOPIC_ROTATION[0]
         content = generate_content.build_draft_content(topic, datetime(2026, 5, 11, 7, 0, 0))
         self.assertIn('experiment_id: "2026-05-11-philosophy"', content)
         self.assertIn('product: "RalphWorkflow"', content)
