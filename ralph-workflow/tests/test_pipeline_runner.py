@@ -3026,6 +3026,51 @@ class TestExecuteCommitEffect:
         assert not message_file.exists()
         assert not text_file.exists()
 
+    def test_stages_only_files_declared_in_commit_artifact(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        stage_all = MagicMock()
+        stage_files = MagicMock()
+        create_commit = MagicMock(return_value="sha")
+        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
+        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(runner_module, "stage_files", stage_files)
+        message_file.write_text(
+            json.dumps(
+                {
+                    "name": "commit_message",
+                    "type": "commit_message",
+                    "content": {
+                        "type": "commit",
+                        "subject": "fix: pipeline artifact message",
+                        "files": ["src/feature.py", "tests/test_feature.py"],
+                    },
+                    "created_at": "STATIC",
+                    "updated_at": "STATIC",
+                    "metadata": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner_module._execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            create_commit,
+            stage_all,
+            tmp_path,
+        )
+
+        assert result == PipelineEvent.COMMIT_SUCCESS
+        stage_all.assert_not_called()
+        stage_files.assert_called_once_with(
+            str(tmp_path),
+            ["src/feature.py", "tests/test_feature.py"],
+        )
+        create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
+
     def test_renders_commit_message_before_cleanup_when_display_is_available(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:
@@ -3114,6 +3159,27 @@ class TestExecuteCommitEffect:
 
         result = runner_module._execute_commit_effect(
             CommitEffect(message_file=str(tmp_path / "missing.txt")),
+            create_commit,
+            stage_all,
+            tmp_path,
+        )
+
+        assert result == PipelineEvent.COMMIT_FAILURE
+        stage_all.assert_not_called()
+        create_commit.assert_not_called()
+
+    def test_returns_failure_when_commit_message_payload_is_invalid(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        stage_all = MagicMock()
+        create_commit = MagicMock()
+        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        message_file.write_text("{not json", encoding="utf-8")
+        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
+
+        result = runner_module._execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
             create_commit,
             stage_all,
             tmp_path,
@@ -4492,6 +4558,39 @@ class TestSkippedExhaustedAnalysisInfo:
             "review_analysis",
             "Review Analysis cap reached, skipping",
         )
+
+
+def test_handle_inline_effect_resets_commit_state_when_recovering_into_commit_phase(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bundle = _load_default_policy_bundle()
+    state = PipelineState(
+        phase=bundle.pipeline.recovery.failed_route,
+        previous_phase="development_commit",
+        current_drain="development_commit",
+        commit=CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True),
+    )
+    monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", MagicMock())
+    monkeypatch.setattr(runner_module, "ckpt", MagicMock())
+
+    result = runner_module._handle_inline_effect(
+        effect=PreparePromptEffect(
+            phase="development_commit",
+            previous_phase="development_commit",
+            drain="development_commit",
+        ),
+        state=state,
+        pipeline_policy=bundle.pipeline,
+        artifacts_policy=bundle.artifacts,
+        agents_policy=bundle.agents,
+        workspace_scope=WorkspaceScope(str(tmp_path)),
+    )
+
+    assert isinstance(result, PipelineState)
+    assert result.phase == "development_commit"
+    assert result.commit == CommitState()
+
 
 
 def test_handle_inline_effect_routes_to_planning_when_plan_handoff_absent(

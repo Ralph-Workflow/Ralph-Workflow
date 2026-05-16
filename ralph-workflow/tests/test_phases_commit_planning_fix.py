@@ -59,6 +59,20 @@ def _stub_context(*, commit_message_present: bool = False) -> PhaseContext:
     workspace.exists.side_effect = lambda path: (
         commit_message_present and path == COMMIT_MESSAGE_ARTIFACT
     )
+    workspace.read.side_effect = lambda path: (
+        json.dumps(
+            {
+                "name": "commit_message",
+                "type": "commit_message",
+                "content": {"type": "commit", "subject": "fix(test): validate commit artifact"},
+                "created_at": "STATIC",
+                "updated_at": "STATIC",
+                "metadata": {},
+            }
+        )
+        if commit_message_present and path == COMMIT_MESSAGE_ARTIFACT
+        else ""
+    )
     return PhaseContext.construct(
         workspace=workspace,
         registry=object(),
@@ -89,7 +103,16 @@ def _fs_context(root: Path, *, write_commit_message: bool = False) -> PhaseConte
         commit_msg_path = root / COMMIT_MESSAGE_ARTIFACT
         commit_msg_path.parent.mkdir(parents=True, exist_ok=True)
         commit_msg_path.write_text(
-            '{"type":"commit_message","content":{"subject":"feat: test commit"}}',
+            json.dumps(
+                {
+                    "name": "commit_message",
+                    "type": "commit_message",
+                    "content": {"type": "commit", "subject": "fix(test): validate commit artifact"},
+                    "created_at": "STATIC",
+                    "updated_at": "STATIC",
+                    "metadata": {},
+                }
+            ),
             encoding="utf-8",
         )
     return PhaseContext.construct(
@@ -102,8 +125,9 @@ def _fs_context(root: Path, *, write_commit_message: bool = False) -> PhaseConte
     )
 
 
-def test_development_commit_defers_to_runner_on_invoke_agent() -> None:
-    ctx = _stub_context(commit_message_present=True)
+def test_development_commit_defers_to_runner_on_invoke_agent(tmp_git_repo: Path) -> None:
+    (tmp_git_repo / "README.md").write_text("dirty")
+    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
@@ -123,8 +147,9 @@ def test_development_commit_ignores_prepare_prompt_effect() -> None:
     assert handle_commit_phase(effect, ctx) == []
 
 
-def test_review_commit_defers_to_runner_on_invoke_agent() -> None:
-    ctx = _stub_context(commit_message_present=True)
+def test_review_commit_defers_to_runner_on_invoke_agent(tmp_git_repo: Path) -> None:
+    (tmp_git_repo / "README.md").write_text("dirty")
+    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
     effect = InvokeAgentEffect(
         agent_name="review",
         phase="review_commit",
@@ -175,6 +200,30 @@ def test_development_commit_missing_commit_message_emits_retry_in_session(
     assert event.phase == "development_commit"
     assert event.recoverable is True
     assert event.retry_in_session is True
+
+
+def test_development_commit_invalid_commit_message_emits_retry_in_session(
+    tmp_git_repo: Path,
+) -> None:
+    (tmp_git_repo / "README.md").write_text("dirty")
+    commit_msg_path = tmp_git_repo / COMMIT_MESSAGE_ARTIFACT
+    commit_msg_path.parent.mkdir(parents=True, exist_ok=True)
+    commit_msg_path.write_text("{not json", encoding="utf-8")
+    ctx = _fs_context(tmp_git_repo)
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit",
+        prompt_file="dev-plan.txt",
+    )
+
+    result = handle_commit_phase(effect, ctx)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.phase == "development_commit"
+    assert event.recoverable is True
+    assert event.retry_in_session is True
+    assert "invalid" in event.reason.lower() or "empty" in event.reason.lower()
 
 
 def test_review_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
@@ -258,8 +307,9 @@ def test_review_commit_emits_skip_when_agent_submits_skip_artifact(
     assert result == [PipelineEvent.COMMIT_SKIPPED]
 
 
-def test_handle_commit_delegates_based_on_phase() -> None:
-    ctx = _stub_context(commit_message_present=True)
+def test_handle_commit_delegates_based_on_phase(tmp_git_repo: Path) -> None:
+    (tmp_git_repo / "README.md").write_text("dirty")
+    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase="development_commit",
