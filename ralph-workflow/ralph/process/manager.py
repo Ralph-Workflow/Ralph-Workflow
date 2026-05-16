@@ -952,12 +952,12 @@ class ProcessManager:
             proc.terminate()
         try:
             rc = proc.wait(timeout=grace_period_s)
-        except subprocess.TimeoutExpired:
+        except (subprocess.TimeoutExpired, TimeoutError):
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()
             try:
                 rc = proc.wait(timeout=self.policy.kill_followup_timeout_s)
-            except subprocess.TimeoutExpired:
+            except (subprocess.TimeoutExpired, TimeoutError):
                 self._mark_killed(record, proc.poll())
                 logger.error("Process {} still alive after kill", record.pid)
                 raise ProcessTerminationError(record.pid, record.pgid) from None
