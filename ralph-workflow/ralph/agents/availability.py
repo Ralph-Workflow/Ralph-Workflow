@@ -10,14 +10,11 @@ from __future__ import annotations
 import shutil
 from typing import Literal, Protocol, runtime_checkable
 
+from .agent_entry import AgentEntry
+
 AgentStatus = Literal["available", "missing_on_path", "no_cmd"]
 
-
-class _AgentEntry(Protocol):
-    """Minimal agent config interface for availability checks."""
-
-    cmd: str
-    display_name: str | None
+__all__ = ["AgentEntry", "AgentStatus", "HasListAgents", "check_agent_availability"]
 
 
 @runtime_checkable
@@ -26,7 +23,7 @@ class HasListAgents(Protocol):
 
     def list_agents(self) -> list[str]: ...
 
-    def get(self, name: str) -> _AgentEntry | None: ...
+    def get(self, name: str) -> AgentEntry | None: ...
 
 
 def check_agent_availability(

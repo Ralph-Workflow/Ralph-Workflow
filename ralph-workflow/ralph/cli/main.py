@@ -26,7 +26,7 @@ from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
 from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
-from ralph.cli.commands.run import run_pipeline
+from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.smoke import smoke_interactive_claude_command
 from ralph.cli.options import display_agents_table, display_providers_table
 from ralph.config.bootstrap import (
@@ -384,7 +384,7 @@ def _handle_early_exit_flags(
         raise typer.Exit(code=check_policy_command(policy_dir, counter_overrides=counter_overrides))
 
 
-def main(  # noqa: PLR0913
+def main(
     ctx: typer.Context,
     prompt: Annotated[
         str | None,
@@ -875,7 +875,7 @@ def _handle_commit_plumbing(
     return 0
 
 
-def _run_pipeline(  # noqa: PLR0913
+def _run_pipeline(
     config: str | None,
     cli_overrides: dict[str, object],
     dry_run: bool,
@@ -904,16 +904,16 @@ def _run_pipeline(  # noqa: PLR0913
     """
     c = display_context.console
     try:
-        exit_code = run_pipeline(
+        request = RunPipelineRequest(
             config_path=_config_path(config),
             cli_overrides=cli_overrides,
             dry_run=dry_run,
             resume=resume and not no_resume,
             verbosity=verbosity,
-            display_context=display_context,
             counter_overrides=counter_overrides or {},
             inline_prompt=inline_prompt,
         )
+        exit_code = run_pipeline(request, display_context=display_context)
         return exit_code
     except KeyboardInterrupt:
         c.print(Text("\nInterrupted by user", style="theme.status.warning"))

@@ -148,7 +148,7 @@ class PhaseExitModel:
         )
 
     @classmethod
-    def from_entry_model(  # noqa: PLR0913
+    def from_entry_model(
         cls,
         entry: PhaseEntryModel,
         *,
@@ -239,7 +239,7 @@ class RunCompletionModel:
     mcp_restart_count: int = 0
 
     @classmethod
-    def from_snapshot(  # noqa: PLR0913
+    def from_snapshot(
         cls,
         snapshot: PipelineSnapshot,
         *,

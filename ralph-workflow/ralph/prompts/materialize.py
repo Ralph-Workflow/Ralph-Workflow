@@ -186,7 +186,7 @@ def collect_media_entries_for_phase(
         return []
 
 
-def materialize_prompt_for_phase(  # noqa: PLR0913
+def materialize_prompt_for_phase(
     *,
     phase: str,
     workspace: Workspace,
@@ -251,7 +251,7 @@ def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
         return ""
 
 
-def _render_prompt_for_phase(  # noqa: PLR0913
+def _render_prompt_for_phase(
     phase: str,
     workspace: Workspace,
     pipeline_policy: PipelinePolicy,
@@ -561,7 +561,7 @@ def _should_preserve_planning_context(
     return is_loopback or preserve_retry_context or resume_existing_phase
 
 
-def _prepare_planning_prompt_context(  # noqa: PLR0913
+def _prepare_planning_prompt_context(
     *,
     phase: str,
     workspace: Workspace,

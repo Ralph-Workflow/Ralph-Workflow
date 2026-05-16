@@ -25,7 +25,7 @@ def test_format_tool_input_truncates_long_values() -> None:
     result = format_tool_input({"path": long_val})
     assert "…" in result
     # Truncated at max_value_chars=120 + ellipsis
-    assert len(result) < 160  # noqa: PLR2004
+    assert len(result) < 160
 
 
 def test_format_tool_input_handles_non_dict_as_empty_string() -> None:
@@ -67,7 +67,7 @@ def test_format_tool_input_total_length_bounded_for_many_values() -> None:
     result = format_tool_input(big_input)
     # Each value truncated at 120 chars + "…" = 121, plus key names and separators
     # 5 * (121 + ~8) = ~645, well under a hard limit of 900
-    assert len(result) < 900  # noqa: PLR2004
+    assert len(result) < 900
 
 
 def test_friendly_tool_name_strips_mcp_ralph_prefix() -> None:

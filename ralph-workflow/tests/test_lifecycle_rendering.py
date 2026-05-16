@@ -46,7 +46,7 @@ def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     return PlainLogRenderer(ctx), buf
 
 
-def _blank_snapshot(  # noqa: PLR0913
+def _blank_snapshot(
     *,
     phase: str = "terminal",
     is_terminal_success: bool = True,

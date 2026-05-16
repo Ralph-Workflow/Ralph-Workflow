@@ -18,16 +18,16 @@ Custom levels registered on first configure_logging() call::
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from loguru import Logger
+
+from .logging_models import LoggingConfig, LoggingPaths, LoggingSession
+from .logging_worker_sink import WorkerSinkHandle, bind_worker_sink, remove_worker_sink
 
 # Verbosity level to loguru minimum level
 _VERBOSITY_LEVELS = {
@@ -50,36 +50,6 @@ def _ensure_custom_levels() -> None:
             logger.level(name)
         except ValueError:
             logger.level(name, no=no, color=color)
-
-
-@dataclass(frozen=True)
-class LoggingPaths:
-    """Resolved file paths for a configured logging session."""
-
-    run_directory: Path | None
-    text_log_path: Path | None
-    structured_log_path: Path | None
-
-
-@dataclass(frozen=True)
-class LoggingConfig:
-    """Logging configuration used to create handlers and run directories."""
-
-    verbosity: int = 1
-    log_directory: Path | None = None
-    run_id: str | None = None
-    structured: bool = False
-    rotation: str | int | None = "10 MB"
-
-
-@dataclass(frozen=True)
-class LoggingSession:
-    """Configured logger bundle for a single Ralph Workflow run."""
-
-    config: LoggingConfig
-    paths: LoggingPaths
-    logger: Logger
-    ralph: RalphLogger
 
 
 def configure_logging(
@@ -155,14 +125,15 @@ def _build_base_extra(run_id: str | None) -> dict[str, str]:
 
 
 def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
-    if config.log_directory is None:
+    log_directory = config.log_directory
+    if log_directory is None:
         return LoggingPaths(
             run_directory=None,
             text_log_path=None,
             structured_log_path=None,
         )
 
-    run_directory = config.log_directory / config.run_id if config.run_id else config.log_directory
+    run_directory = log_directory / config.run_id if config.run_id else log_directory
     run_directory.mkdir(parents=True, exist_ok=True)
 
     text_log_path = run_directory / "ralph.log"
@@ -179,6 +150,7 @@ def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
     structured_log_path: Path | None = None
     if config.structured:
         structured_log_path = run_directory / "ralph.jsonl"
+        assert structured_log_path is not None
         logger.add(
             structured_log_path,
             level=level,
@@ -193,39 +165,6 @@ def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
         text_log_path=text_log_path,
         structured_log_path=structured_log_path,
     )
-
-
-@dataclass(frozen=True)
-class WorkerSinkHandle:
-    """Handle returned by ``bind_worker_sink`` to identify a per-worker loguru sink."""
-
-    sink_id: int
-    log_path: Path
-
-
-def bind_worker_sink(
-    unit_id: str,
-    log_dir: Path,
-    run_id: str = "default",
-) -> WorkerSinkHandle:
-    """Add a per-worker loguru sink that filters to ``unit_id`` and returns its handle."""
-    worker_log_dir = log_dir / run_id / "workers"
-    worker_log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = worker_log_dir / f"unit-{unit_id}.log"
-
-    def worker_filter(record: object) -> bool:
-        record_mapping = cast("Mapping[str, object]", record)
-        extra = cast("Mapping[str, object]", record_mapping["extra"])
-        unit_id_value = extra.get("unit_id")
-        return isinstance(unit_id_value, str) and unit_id_value == unit_id
-
-    sink_id = logger.add(log_path, filter=worker_filter, format="{time} {level} {message}")
-    return WorkerSinkHandle(sink_id=sink_id, log_path=log_path)
-
-
-def remove_worker_sink(handle: WorkerSinkHandle) -> None:
-    """Remove the per-worker loguru sink identified by ``handle``."""
-    logger.remove(handle.sink_id)
 
 
 def get_logger() -> Logger:
@@ -359,3 +298,16 @@ class RalphLogger:
 
     def milestone(self, message: str, **extra: object) -> None:
         self._logger.bind(**extra).log("MILESTONE", message)
+
+
+__all__ = [
+    "LoggingConfig",
+    "LoggingPaths",
+    "LoggingSession",
+    "RalphLogger",
+    "WorkerSinkHandle",
+    "bind_worker_sink",
+    "configure_logging",
+    "get_logger",
+    "remove_worker_sink",
+]

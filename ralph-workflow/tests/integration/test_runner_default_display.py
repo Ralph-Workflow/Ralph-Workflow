@@ -67,7 +67,11 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
 
     invoked_phases: list[str] = []
 
-    def fake_execute_effect(effect, _config, _workspace_scope):
+    def fake_execute_effect(
+        effect: object,
+        _config: object,
+        _workspace_scope: object,
+    ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             invoked_phases.append(effect.phase)
             return PipelineEvent.AGENT_SUCCESS
@@ -76,7 +80,11 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
         msg = f"Unexpected effect: {type(effect)!r}"
         raise AssertionError(msg)
 
-    def fake_phase_event_after_agent_run(*, effect, **_kwargs):
+    def fake_phase_event_after_agent_run(
+        *,
+        effect: InvokeAgentEffect,
+        **_kwargs: object,
+    ) -> PipelineEvent:
         if effect.phase == "development_analysis":
             return PipelineEvent.ANALYSIS_SUCCESS
         if effect.phase == "review_analysis":
@@ -180,10 +188,15 @@ def test_width_refresher_updates_live_display_context(
         def __enter__(self) -> StubDisplay:
             return self
 
-        def __exit__(self, exc_type, exc, tb) -> bool:
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: object,
+        ) -> bool:
             return False
 
-        def emit(self, *_args, **_kwargs) -> None:
+        def emit(self, *_args: object, **_kwargs: object) -> None:
             return None
 
     display = StubDisplay()

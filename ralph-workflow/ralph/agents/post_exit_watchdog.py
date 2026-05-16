@@ -28,12 +28,13 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.idle_watchdog import WatchdogFireReason
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.agents.clock import Clock
     from ralph.agents.idle_watchdog import TimeoutPolicy
-    from ralph.agents.timeout_clock import Clock
 
 __all__ = [
     "PostExitVerdict",
@@ -54,10 +55,6 @@ class PostExitVerdict(StrEnum):
     QUIESCED_NO_SIGNALS = "quiesced_no_signals"  # RESUMABLE_CONTINUE at/after deadline
     # descendant_wait deadline elapsed with WAITING_ON_CHILD persistent
     FIRE_DESCENDANT_HANG = "fire_descendant_hang"
-
-
-# Re-export WatchdogFireReason so callers can reference it without an extra import.
-from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: E402
 
 
 @dataclass

@@ -5,22 +5,19 @@ This module implements the main pipeline execution command.
 
 from __future__ import annotations
 
-import pathlib  # noqa: TC003
 import shutil
 from importlib import import_module
 from inspect import signature
-from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
+from typing import TYPE_CHECKING, NamedTuple, Protocol, TypedDict, cast
 
 from loguru import logger
 from rich.panel import Panel
 from rich.text import Text
 
 from ralph.agents.registry import AgentRegistry
-from ralph.config.enums import Verbosity  # noqa: TC001
 from ralph.config.loader import load_config
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
-from ralph.pipeline.state import PipelineState  # noqa: TC001
 from ralph.policy.loader import (
     load_policy as _dir_load_policy,
 )
@@ -40,8 +37,12 @@ from ralph.policy.validation import (
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
 
 from ralph.display.context import make_display_context
@@ -129,7 +130,51 @@ class _LoadResult(NamedTuple):
     policy_bundle: PolicyBundle | None
 
 
-def _prompt_changed_since_last_materialization(workspace_root: pathlib.Path) -> bool:
+class _PolicyPreflightRequest(NamedTuple):
+    config: UnifiedConfig
+    policy_bundle: PolicyBundle
+    initial_state: PipelineState | None
+    counter_overrides: dict[str, int]
+
+
+class _PreflightRequest(NamedTuple):
+    config: UnifiedConfig
+    workspace_scope: WorkspaceScope | None
+    policy_bundle: object
+    initial_state: PipelineState | None
+    counter_overrides: dict[str, int]
+    inline_prompt: str | None = None
+
+
+class _ExecutePipelineRequest(NamedTuple):
+    config: UnifiedConfig
+    initial_state: PipelineState | None
+    policy_bundle: object
+    verbosity: Verbosity | None
+    counter_overrides: dict[str, int]
+
+
+class _LegacyRunPipelineKwargs(TypedDict, total=False):
+    config_path: Path
+    cli_overrides: ConfigOverrides
+    dry_run: bool
+    resume: bool
+    verbosity: Verbosity
+    counter_overrides: dict[str, int]
+    inline_prompt: str
+
+
+class RunPipelineRequest(NamedTuple):
+    config_path: Path | None = None
+    cli_overrides: ConfigOverrides | None = None
+    dry_run: bool = False
+    resume: bool = False
+    verbosity: Verbosity | None = None
+    counter_overrides: dict[str, int] | None = None
+    inline_prompt: str | None = None
+
+
+def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
     prompt_path = workspace_root / "PROMPT.md"
     current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
     if not prompt_path.exists() or not current_prompt_path.exists():
@@ -142,7 +187,7 @@ def _prompt_changed_since_last_materialization(workspace_root: pathlib.Path) -> 
         return False
 
 
-def _clear_generated_pipeline_state(workspace_root: pathlib.Path) -> None:
+def _clear_generated_pipeline_state(workspace_root: Path) -> None:
     agent_dir = workspace_root / ".agent"
     for relative_dir in _GENERATED_AGENT_STATE_DIRS:
         shutil.rmtree(agent_dir / relative_dir, ignore_errors=True)
@@ -150,7 +195,7 @@ def _clear_generated_pipeline_state(workspace_root: pathlib.Path) -> None:
         (agent_dir / relative_file).unlink(missing_ok=True)
 
 
-def _invalidate_pipeline_state_if_prompt_changed(workspace_root: pathlib.Path) -> bool:
+def _invalidate_pipeline_state_if_prompt_changed(workspace_root: Path) -> bool:
     if not _prompt_changed_since_last_materialization(workspace_root):
         return False
     _clear_generated_pipeline_state(workspace_root)
@@ -158,7 +203,7 @@ def _invalidate_pipeline_state_if_prompt_changed(workspace_root: pathlib.Path) -
 
 
 def _load_configuration(
-    config_path: pathlib.Path | None,
+    config_path: Path | None,
     cli_overrides: ConfigOverrides,
     resume: bool,
     *,
@@ -252,38 +297,38 @@ def _validate_loaded_policy_bundle(policy_bundle: PolicyBundle) -> None:
 
 
 def _run_policy_preflight_checks(
-    config: UnifiedConfig,
-    policy_bundle: PolicyBundle,
-    initial_state: PipelineState | None,
-    counter_overrides: dict[str, int],
+    request: _PolicyPreflightRequest,
     *,
     display_context: DisplayContext,
 ) -> int:
     """Run policy-backed preflight checks against the already loaded bundle."""
     console = display_context.console
     try:
-        agent_registry = AgentRegistry.from_config(config)
-        validate_agent_chains_satisfiable(policy_bundle, agent_registry)
+        agent_registry = AgentRegistry.from_config(request.config)
+        validate_agent_chains_satisfiable(request.policy_bundle, agent_registry)
     except PolicyValidationError as e:
         console.print(_preflight_error_text(e.message), soft_wrap=True)
         return _EXIT_PREFLIGHT
 
     try:
-        validate_recovery_config(policy_bundle)
+        validate_recovery_config(request.policy_bundle)
     except PolicyValidationError as e:
         console.print(_preflight_error_text(e.message), soft_wrap=True)
         return _EXIT_PREFLIGHT
 
-    if counter_overrides:
+    if request.counter_overrides:
         try:
-            validate_policy_completeness(policy_bundle, cli_counter_overrides=counter_overrides)
+            validate_policy_completeness(
+                request.policy_bundle,
+                cli_counter_overrides=request.counter_overrides,
+            )
         except PolicyValidationError as e:
             console.print(_preflight_error_text(e.message), soft_wrap=True)
             return _EXIT_PREFLIGHT
 
-    if initial_state is not None:
+    if request.initial_state is not None:
         try:
-            validate_checkpoint_against_policy(initial_state, policy_bundle)
+            validate_checkpoint_against_policy(request.initial_state, request.policy_bundle)
         except CheckpointPolicyMismatchError as e:
             console.print(_checkpoint_mismatch_text(str(e)), soft_wrap=True)
             return _EXIT_PREFLIGHT
@@ -294,15 +339,10 @@ def _run_policy_preflight_checks(
     return _EXIT_SUCCESS
 
 
-def _run_preflight_checks(  # noqa: PLR0913
-    config: UnifiedConfig,
-    workspace_scope: WorkspaceScope | None,
-    policy_bundle: object,
-    initial_state: PipelineState | None,
-    counter_overrides: dict[str, int],
+def _run_preflight_checks(
+    request: _PreflightRequest,
     *,
     display_context: DisplayContext,
-    inline_prompt: str | None = None,
 ) -> int:
     """Run all preflight validation checks.
 
@@ -311,33 +351,35 @@ def _run_preflight_checks(  # noqa: PLR0913
     """
     console = display_context.console
     # validate_required_inputs requires workspace_scope
-    if workspace_scope is not None and inline_prompt is None:
+    if request.workspace_scope is not None and request.inline_prompt is None:
         # Fresh-state detection: workspace has neither PROMPT.md nor .agent
-        prompt_path = workspace_scope.root / "PROMPT.md"
-        agent_dir = workspace_scope.root / ".agent"
+        prompt_path = request.workspace_scope.root / "PROMPT.md"
+        agent_dir = request.workspace_scope.root / ".agent"
         if not prompt_path.exists() and not agent_dir.exists():
             _print_not_initialized_panel(display_context=display_context)
             return _EXIT_PREFLIGHT
 
         try:
-            validate_required_inputs(workspace_scope)
+            validate_required_inputs(request.workspace_scope)
         except PolicyValidationError as e:
             console.print(_preflight_error_text(e.message), soft_wrap=True)
             return _EXIT_PREFLIGHT
 
     # Only run policy-based validations if we have a loaded policy bundle.
-    if policy_bundle is not None:
-        loaded_policy_bundle = cast("PolicyBundle", policy_bundle)
+    if request.policy_bundle is not None:
+        loaded_policy_bundle = cast("PolicyBundle", request.policy_bundle)
         try:
             _validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:
             console.print(_preflight_error_text(e.message), soft_wrap=True)
             return _EXIT_PREFLIGHT
         return _run_policy_preflight_checks(
-            config,
-            loaded_policy_bundle,
-            initial_state,
-            counter_overrides,
+            _PolicyPreflightRequest(
+                config=request.config,
+                policy_bundle=loaded_policy_bundle,
+                initial_state=request.initial_state,
+                counter_overrides=request.counter_overrides,
+            ),
             display_context=display_context,
         )
 
@@ -360,12 +402,8 @@ def _print_dry_run(
     console.print(_detail_text("Iterations", str(config.general.developer_iters)))
 
 
-def _execute_pipeline(  # noqa: PLR0913
-    config: UnifiedConfig,
-    initial_state: PipelineState | None,
-    policy_bundle: object,
-    verbosity: Verbosity | None,
-    counter_overrides: dict[str, int],
+def _execute_pipeline(
+    request: _ExecutePipelineRequest,
     *,
     display_context: DisplayContext,
 ) -> int:
@@ -384,19 +422,19 @@ def _execute_pipeline(  # noqa: PLR0913
     try:
         kwargs: dict[str, object] = {}
         runner_params = signature(run_func).parameters
-        if verbosity is not None and "verbosity" in runner_params:
-            kwargs["verbosity"] = verbosity
-        if policy_bundle is not None and "policy_bundle" in runner_params:
-            kwargs["policy_bundle"] = policy_bundle
+        if request.verbosity is not None and "verbosity" in runner_params:
+            kwargs["verbosity"] = request.verbosity
+        if request.policy_bundle is not None and "policy_bundle" in runner_params:
+            kwargs["policy_bundle"] = request.policy_bundle
         if "display_context" in runner_params:
             kwargs["display_context"] = display_context
-        if counter_overrides and "counter_overrides" in runner_params:
-            kwargs["counter_overrides"] = counter_overrides
-        return run_func(config, initial_state, **kwargs)
+        if request.counter_overrides and "counter_overrides" in runner_params:
+            kwargs["counter_overrides"] = request.counter_overrides
+        return run_func(request.config, request.initial_state, **kwargs)
     except KeyboardInterrupt:
         console.print(Text("\nInterrupted by user", style="theme.status.warning"))
-        if initial_state is not None:
-            _save_interrupt_checkpoint(initial_state)
+        if request.initial_state is not None:
+            _save_interrupt_checkpoint(request.initial_state)
         return _EXIT_INTERRUPT
     except CheckpointPolicyMismatchError as e:
         console.print(_checkpoint_mismatch_text(str(e)))
@@ -457,68 +495,73 @@ def _detail_text(label: str, detail: str) -> Text:
 
 
 # Backward compatibility: expose run_pipeline for direct invocation
-def run_pipeline(  # noqa: PLR0913
-    config_path: pathlib.Path | None = None,
-    cli_overrides: ConfigOverrides | None = None,
-    dry_run: bool = False,
-    resume: bool = False,
-    verbosity: Verbosity | None = None,
+def run_pipeline(
+    request: RunPipelineRequest | None = None,
     *,
     display_context: DisplayContext | None = None,
-    counter_overrides: dict[str, int] | None = None,
-    inline_prompt: str | None = None,
+    **kwargs: _LegacyRunPipelineKwargs,
 ) -> int:
     """Run the Ralph Workflow pipeline (backward compatibility wrapper).
 
     Args:
-        config_path: Path to configuration file.
-        cli_overrides: CLI flag overrides for config.
-        dry_run: If True, run without invoking agents.
-        resume: If True, resume from checkpoint.
-        verbosity: Optional explicit verbosity passed through to the runner.
+        request: RunPipelineRequest namedtuple with all pipeline options.
         display_context: Display context for consistent rendering. If None, a default
             context is created using make_display_context().
-        counter_overrides: Optional budget counter overrides from --counter flags.
-        inline_prompt: Optional inline prompt text supplied via CLI argument.
+        **kwargs: Additional keyword arguments for backward compatibility.
+            Accepted keys: config_path, cli_overrides, dry_run, resume, verbosity,
+            counter_overrides, inline_prompt.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
     ctx = display_context if display_context is not None else make_display_context()
-    effective_counter_overrides = counter_overrides or {}
+    if request is None:
+        request = RunPipelineRequest(
+            config_path=cast("Path | None", kwargs.get("config_path")),
+            cli_overrides=cast("ConfigOverrides | None", kwargs.get("cli_overrides")),
+            dry_run=cast("bool", kwargs.get("dry_run", False)),
+            resume=cast("bool", kwargs.get("resume", False)),
+            verbosity=cast("Verbosity | None", kwargs.get("verbosity")),
+            counter_overrides=cast("dict[str, int] | None", kwargs.get("counter_overrides")),
+            inline_prompt=cast("str | None", kwargs.get("inline_prompt")),
+        )
+    effective_request = request
+    effective_counter_overrides = effective_request.counter_overrides or {}
 
-    if inline_prompt is not None:
+    if effective_request.inline_prompt is not None:
         workspace_scope = resolve_workspace_scope()
         current_prompt_path = workspace_scope.root / ".agent" / "CURRENT_PROMPT.md"
         current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
-        current_prompt_path.write_text(inline_prompt, encoding="utf-8")
+        current_prompt_path.write_text(effective_request.inline_prompt, encoding="utf-8")
 
     # Phase 1: Load configuration
     load_result = _load_configuration(
-        config_path,
-        cli_overrides or {},
-        resume,
+        effective_request.config_path,
+        effective_request.cli_overrides or {},
+        effective_request.resume,
         display_context=ctx,
-        inline_prompt=inline_prompt,
+        inline_prompt=effective_request.inline_prompt,
     )
     if isinstance(load_result, int):
         return load_result
 
     # Phase 2: Preflight validation (before any pipeline activity)
     preflight_result = _run_preflight_checks(
-        load_result.config,
-        load_result.workspace_scope,
-        load_result.policy_bundle,
-        load_result.initial_state,
-        effective_counter_overrides,
+        _PreflightRequest(
+            config=load_result.config,
+            workspace_scope=load_result.workspace_scope,
+            policy_bundle=load_result.policy_bundle,
+            initial_state=load_result.initial_state,
+            counter_overrides=effective_counter_overrides,
+            inline_prompt=effective_request.inline_prompt,
+        ),
         display_context=ctx,
-        inline_prompt=inline_prompt,
     )
     if preflight_result != _EXIT_SUCCESS:
         return preflight_result
 
     # Phase 3: Handle dry-run
-    if dry_run:
+    if effective_request.dry_run:
         _print_dry_run(
             load_result.initial_state,
             load_result.config,
@@ -529,10 +572,12 @@ def run_pipeline(  # noqa: PLR0913
 
     # Phase 4: Execute pipeline
     return _execute_pipeline(
-        load_result.config,
-        load_result.initial_state,
-        load_result.policy_bundle,
-        verbosity,
-        effective_counter_overrides,
+        _ExecutePipelineRequest(
+            config=load_result.config,
+            initial_state=load_result.initial_state,
+            policy_bundle=load_result.policy_bundle,
+            verbosity=effective_request.verbosity,
+            counter_overrides=effective_counter_overrides,
+        ),
         display_context=ctx,
     )

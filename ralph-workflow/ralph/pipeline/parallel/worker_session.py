@@ -36,7 +36,7 @@ class WorkerSessionBundle:
     workspace_scope: WorkspaceScope
 
 
-def build_worker_session(  # noqa: PLR0913  # too many params but needed for session contract
+def build_worker_session(  # too many params but needed for session contract
     unit: WorkUnit,
     mcp_factory: McpServerFactory,
     workspace_scope: WorkspaceScope,

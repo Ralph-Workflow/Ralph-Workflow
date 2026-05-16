@@ -67,8 +67,8 @@ class TestPhaseEntryModel:
         )
         ctx = m.to_iteration_context()
         assert ctx.outer_dev == 1
-        assert ctx.inner_analysis == 2  # noqa: PLR2004
-        assert ctx.inner_analysis_cap == 4  # noqa: PLR2004
+        assert ctx.inner_analysis == 2
+        assert ctx.inner_analysis_cap == 4
 
     def test_to_iteration_context_has_context_when_any_field_set(self) -> None:
         m = PhaseEntryModel(phase_name="development", outer_dev_iteration=1)
@@ -134,14 +134,14 @@ class TestPhaseExitModel:
         assert exit_model.phase_name == "fix"
         assert exit_model.phase_role == "fix"
         assert exit_model.agent_name == "claude"
-        assert exit_model.outer_dev_iteration == 2  # noqa: PLR2004
+        assert exit_model.outer_dev_iteration == 2
         assert exit_model.inner_analysis == 1
-        assert exit_model.inner_analysis_cap == 3  # noqa: PLR2004
-        assert exit_model.elapsed_seconds == 12.5  # noqa: PLR2004
+        assert exit_model.inner_analysis_cap == 3
+        assert exit_model.elapsed_seconds == 12.5
         assert exit_model.exit_trigger == "produced"
-        assert exit_model.content_blocks == 3  # noqa: PLR2004
+        assert exit_model.content_blocks == 3
         assert exit_model.thinking_blocks == 1
-        assert exit_model.tool_calls == 7  # noqa: PLR2004
+        assert exit_model.tool_calls == 7
         assert exit_model.errors == 0
         assert exit_model.artifact_outcome == "fix: applied"
         assert exit_model.waiting_status_line == "waiting for child"
@@ -150,7 +150,7 @@ class TestPhaseExitModel:
     def test_to_iteration_context_reflects_entry_fields(self) -> None:
         m = PhaseExitModel(phase_name="fix", outer_dev_iteration=3)
         ctx = m.to_iteration_context()
-        assert ctx.outer_dev == 3  # noqa: PLR2004
+        assert ctx.outer_dev == 3
 
     def test_is_frozen(self) -> None:
         m = PhaseExitModel(phase_name="development", elapsed_seconds=5.0)
@@ -239,12 +239,12 @@ class TestRunCompletionModel:
         assert model.final_phase == "done"
         assert not model.is_failure
         assert model.exit_trigger == "completed"
-        assert model.elapsed_seconds == 42.0  # noqa: PLR2004
-        assert model.outer_dev_iteration == 4  # noqa: PLR2004
-        assert model.total_agent_calls == 10  # noqa: PLR2004
-        assert model.content_blocks == 5  # noqa: PLR2004
-        assert model.thinking_blocks == 2  # noqa: PLR2004
-        assert model.tool_calls == 15  # noqa: PLR2004
+        assert model.elapsed_seconds == 42.0
+        assert model.outer_dev_iteration == 4
+        assert model.total_agent_calls == 10
+        assert model.content_blocks == 5
+        assert model.thinking_blocks == 2
+        assert model.tool_calls == 15
         assert model.errors == 1
         assert not model.review_issues_found
         assert model.budget_progress == {"dev_cycles": (3, 10)}
@@ -308,7 +308,7 @@ class TestRunCompletionModel:
 
         model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")
 
-        assert len(model.analysis_decisions) == 2  # noqa: PLR2004
+        assert len(model.analysis_decisions) == 2
         assert model.analysis_decisions[0] == ("development_analysis", "proceed", "tests green")
         assert model.analysis_decisions[1] == ("review_analysis", "revise", "nit fixes")
 
@@ -389,7 +389,7 @@ class TestRunCompletionModel:
         snap.budget_progress = {}
 
         model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")
-        assert model.mcp_restart_count == 2  # noqa: PLR2004
+        assert model.mcp_restart_count == 2
 
 
 # ---------------------------------------------------------------------------

@@ -213,7 +213,7 @@ def test_plain_renderer_exposes_run_counter_properties() -> None:
     assert renderer.thinking_blocks_count == 1, (
         f"Expected thinking_blocks_count=1, got {renderer.thinking_blocks_count}"
     )
-    assert renderer.tool_calls_count == 2, (  # noqa: PLR2004
+    assert renderer.tool_calls_count == 2, (
         f"Expected tool_calls_count=2, got {renderer.tool_calls_count}"
     )
     assert renderer.errors_count == 1, f"Expected errors_count=1, got {renderer.errors_count}"

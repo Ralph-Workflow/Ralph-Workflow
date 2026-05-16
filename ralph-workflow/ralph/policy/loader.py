@@ -33,9 +33,7 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.policy.validation import (
-    PolicyValidationError as PolicyContractValidationError,
-)
-from ralph.policy.validation import (
+    PolicyValidationError,
     validate_drain_contracts,
     validate_policy_completeness,
 )
@@ -44,21 +42,11 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.workspace.scope import WorkspaceScope
 
-
-class PolicyValidationError(Exception):
-    """Raised when policy TOML fails Pydantic validation.
-
-    Attributes:
-        errors: List of validation error messages.
-        source: Which policy file failed (agents, pipeline, artifacts).
-    """
-
-    def __init__(self, message: str, source: str | None = None) -> None:
-        self.message = message
-        self.source = source
-        super().__init__(message)
-
-
+__all__ = [
+    "PolicyValidationError",
+    "load_policy",
+    "load_policy_or_die",
+]
 def _load_toml(path: Path) -> dict[str, object]:
     """Load a TOML file, returning empty dict if absent.
 
@@ -262,11 +250,11 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
     retry_delay_ms = retry_delay_ms_value if isinstance(retry_delay_ms_value, int) else 1000
     chain_configs = {
         name: AgentChainConfig(
-            agents=list(agents),
+            agents=list(chain_config.agents),
             max_retries=retry_budget,
             retry_delay_ms=retry_delay_ms,
         )
-        for name, agents in config.agent_chains.items()
+        for name, chain_config in config.agent_chains.items()
     }
 
     builtin_drain_classes = {
@@ -283,8 +271,11 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
         "commit": "commit",
     }
     drain_configs = {
-        drain: AgentDrainConfig(chain=chain, drain_class=builtin_drain_classes.get(drain))
-        for drain, chain in config.agent_drains.items()
+        drain: AgentDrainConfig(
+            chain=drain_cfg.chain,
+            drain_class=drain_cfg.drain_class or builtin_drain_classes.get(drain),
+        )
+        for drain, drain_cfg in config.agent_drains.items()
     }
 
     return AgentsPolicy(
@@ -401,7 +392,7 @@ def _load_policy_from_paths(
 
     try:
         validate_drain_contracts(bundle)
-    except PolicyContractValidationError as exc:
+    except PolicyValidationError as exc:
         raise PolicyValidationError(
             exc.message,
             source="agents",
@@ -409,7 +400,7 @@ def _load_policy_from_paths(
 
     try:
         validate_policy_completeness(bundle)
-    except PolicyContractValidationError as exc:
+    except PolicyValidationError as exc:
         raise PolicyValidationError(
             exc.message,
             source=exc.source or "completeness",

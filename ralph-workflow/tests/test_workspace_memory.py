@@ -245,7 +245,7 @@ class TestMemoryWorkspaceReadBytes:
         text, meta = ws.read_bytes("file.txt", limit=5)
 
         assert text == "Hello"
-        assert meta["returned_bytes"] == 5  # noqa: PLR2004
+        assert meta["returned_bytes"] == 5
         assert meta["truncated"] is True
 
     def test_offset_and_limit_together(self) -> None:

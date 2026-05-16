@@ -102,7 +102,7 @@ def resolve_model_identity(
     )
 
 
-def build_session_mcp_plan(  # noqa: PLR0913
+def build_session_mcp_plan(
     *,
     transport: AgentTransport | None,
     drain: str,

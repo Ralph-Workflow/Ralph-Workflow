@@ -40,7 +40,7 @@ def new_artifact_id() -> str:
     return str(uuid.uuid4())
 
 
-def build_media_identity(  # noqa: PLR0913
+def build_media_identity(
     *,
     modality: str,
     mime_type: str,
@@ -127,7 +127,7 @@ class MediaManifest:
     _entries: dict[str, ManifestEntry] = field(default_factory=dict)
     _identity_index: dict[str, str] = field(default_factory=dict)
 
-    def add(  # noqa: PLR0913
+    def add(
         self,
         *,
         title: str,

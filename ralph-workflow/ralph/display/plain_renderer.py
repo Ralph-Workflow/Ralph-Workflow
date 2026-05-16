@@ -35,7 +35,7 @@ LEVELS: Final[dict[str, str]] = {
 }
 
 # Closed set of tags for structured log lines
-_TAGS: Final[tuple[str, ...]] = (
+TAGS: Final[tuple[str, ...]] = (
     "phase",
     "phase-close",
     "plan",
@@ -92,7 +92,7 @@ _KIND_TO_LEVEL: Final[dict[str, str]] = {
 }
 
 # Maps tag to display category prefix META or CONT
-_TAG_CATEGORY: Final[dict[str, str]] = {
+TAG_CATEGORY: Final[dict[str, str]] = {
     "phase": "META",
     "phase-close": "META",
     "plan": "META",
@@ -740,7 +740,7 @@ class PlainLogRenderer:
         if self._run_start_time is None:
             self._run_start_time = self._monotonic()
 
-    def emit_phase_close(  # noqa: PLR0913
+    def emit_phase_close(
         self,
         phase: str,
         produced: str,
@@ -1147,7 +1147,7 @@ class PlainLogRenderer:
             self._close_block(unit_id, timestamp)
         self._last_emitted_tool_signature.clear()
 
-    def emit_activity_line(  # noqa: PLR0912, PLR0913, PLR0915
+    def emit_activity_line(
         self,
         unit_id: str,
         kind: str,
@@ -1163,7 +1163,7 @@ class PlainLogRenderer:
         timestamp = self._format_timestamp(self._clock())
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")
-        cat = _TAG_CATEGORY.get(base_tag, "META")
+        cat = TAG_CATEGORY.get(base_tag, "META")
         sanitized = _sanitize(content)
         if condensed_ref is not None and condensed_flag:
             sanitized = f"{sanitized} [see {condensed_ref}]"
@@ -1344,7 +1344,7 @@ class PlainLogRenderer:
     def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
         """Emit a WARN META line for a specific tag."""
         timestamp = self._format_timestamp(self._clock())
-        cat = _TAG_CATEGORY.get(tag, "META")
+        cat = TAG_CATEGORY.get(tag, "META")
         self._console.print(
             self._build_line(timestamp, "WARN", cat, f"[{tag}][{unit_id}] {message}"),
             markup=False,
@@ -1370,4 +1370,11 @@ class PlainModeAdapter:
         )
 
 
-__all__ = ["LEVELS", "_TAGS", "PlainLogRenderer", "PlainModeAdapter", "RunStartOrientation"]
+__all__ = [
+    "LEVELS",
+    "TAGS",
+    "TAG_CATEGORY",
+    "PlainLogRenderer",
+    "PlainModeAdapter",
+    "RunStartOrientation",
+]

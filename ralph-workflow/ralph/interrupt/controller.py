@@ -11,32 +11,20 @@ from __future__ import annotations
 
 import os
 import signal
-from collections.abc import Callable, Iterable
 from contextlib import suppress
 from dataclasses import dataclass
-from types import FrameType
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from ralph.interrupt.state import request_user_interrupt
 from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+    from types import FrameType
+
+    from ralph.interrupt.signal_getter import SignalGetter
+    from ralph.interrupt.signal_setter import SignalSetter
     from ralph.process.manager import ProcessManager
-
-
-type SignalHandler = Callable[[int, FrameType | None], object] | int | None
-
-
-class SignalGetter(Protocol):
-    """Protocol for ``signal.getsignal``-compatible callables."""
-
-    def __call__(self, _signalnum: int, /) -> SignalHandler: ...
-
-
-class SignalSetter(Protocol):
-    """Protocol for ``signal.signal``-compatible callables."""
-
-    def __call__(self, _signalnum: int, handler: SignalHandler, /) -> SignalHandler: ...
 
 
 _DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)

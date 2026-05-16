@@ -120,7 +120,7 @@ def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:
     assert "would you like me to" in prompt.lower()
 
 
-def test_commit_prompt_uses_file_reference_for_large_diff(tmp_path) -> None:
+def test_commit_prompt_uses_file_reference_for_large_diff(tmp_path: object) -> None:
     diff = "x" * (100 * 1024 + 1)
 
     prompt = prompt_commit_message(
@@ -137,7 +137,7 @@ def test_commit_prompt_uses_file_reference_for_large_diff(tmp_path) -> None:
     assert payload_file.read_text(encoding="utf-8") == diff
 
 
-def test_opencode_commit_prompt_uses_file_reference_for_large_diff(tmp_path) -> None:
+def test_opencode_commit_prompt_uses_file_reference_for_large_diff(tmp_path: object) -> None:
     diff = "x" * (100 * 1024 + 1)
 
     prompt = prompt_commit_message_for_opencode(

@@ -8,6 +8,7 @@ Verifies that when run_post_fanout_verification=True:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.display.context import make_display_context
@@ -18,6 +19,11 @@ from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 _MAX_AGENT_RETRIES = 3
 
@@ -50,7 +56,11 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
 
 
 class TestSerializedPostFanoutVerification:
-    def test_verification_runs_once_after_workers_succeed(self, monkeypatch, tmp_path) -> None:
+    def test_verification_runs_once_after_workers_succeed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
         """Post-fanout verification runs exactly once after all workers finish."""
         unit = _make_work_unit("unit-a")
         effect = FanOutEffect(
@@ -65,18 +75,24 @@ class TestSerializedPostFanoutVerification:
         call_order: list[str] = []
 
         class _FakeExecutor:
-            def __init__(self, command, signal_bridge=None) -> None:
+            def __init__(self, command: object, signal_bridge: object | None = None) -> None:
                 del command, signal_bridge
 
         class _FakeMcpFactory:
-            def __init__(self, workspace) -> None:
+            def __init__(self, workspace: object) -> None:
                 del workspace
 
-        async def _fake_run_fan_out(**kwargs):
+        async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+            del kwargs
             call_order.append("fan_out")
             return []
 
-        async def _fake_run_process_async(command, args=(), **kwargs):
+        async def _fake_run_process_async(
+            command: str,
+            args: tuple[object, ...] = (),
+            **kwargs: object,
+        ) -> ProcessResult:
+            del args, kwargs
             call_order.append(f"verify:{command}")
             return ProcessResult(
                 command=(command,),
@@ -111,7 +127,11 @@ class TestSerializedPostFanoutVerification:
         verify_calls = [c for c in call_order if c.startswith("verify:")]
         assert len(verify_calls) == 1, f"Expected exactly 1 verification call, got: {call_order}"
 
-    def test_verification_runs_after_fan_out_not_before(self, monkeypatch, tmp_path) -> None:
+    def test_verification_runs_after_fan_out_not_before(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
         """Verification must run after coordinator.run_fan_out returns, never before."""
         unit = _make_work_unit("unit-a")
         effect = FanOutEffect(
@@ -126,18 +146,24 @@ class TestSerializedPostFanoutVerification:
         call_order: list[str] = []
 
         class _FakeExecutor:
-            def __init__(self, command, signal_bridge=None) -> None:
+            def __init__(self, command: object, signal_bridge: object | None = None) -> None:
                 del command, signal_bridge
 
         class _FakeMcpFactory:
-            def __init__(self, workspace) -> None:
+            def __init__(self, workspace: object) -> None:
                 del workspace
 
-        async def _fake_run_fan_out(**kwargs):
+        async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+            del kwargs
             call_order.append("fan_out")
             return []
 
-        async def _fake_run_process_async(command, args=(), **kwargs):
+        async def _fake_run_process_async(
+            command: str,
+            args: tuple[object, ...] = (),
+            **kwargs: object,
+        ) -> ProcessResult:
+            del args, kwargs
             call_order.append("verify")
             return ProcessResult(command=(command,), returncode=0, stdout="", stderr="")
 
@@ -168,7 +194,9 @@ class TestSerializedPostFanoutVerification:
         )
 
     def test_verification_skipped_when_run_post_fanout_verification_false(
-        self, monkeypatch, tmp_path
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
         """When run_post_fanout_verification=False, no verification command is called."""
         unit = _make_work_unit("unit-a")
@@ -183,17 +211,23 @@ class TestSerializedPostFanoutVerification:
         verify_calls: list[str] = []
 
         class _FakeExecutor:
-            def __init__(self, command, signal_bridge=None) -> None:
+            def __init__(self, command: object, signal_bridge: object | None = None) -> None:
                 del command, signal_bridge
 
         class _FakeMcpFactory:
-            def __init__(self, workspace) -> None:
+            def __init__(self, workspace: object) -> None:
                 del workspace
 
-        async def _fake_run_fan_out(**kwargs):
+        async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+            del kwargs
             return []
 
-        async def _fake_run_process_async(command, args=(), **kwargs):
+        async def _fake_run_process_async(
+            command: str,
+            args: tuple[object, ...] = (),
+            **kwargs: object,
+        ) -> ProcessResult:
+            del args, kwargs
             verify_calls.append(command)
             return ProcessResult(command=(command,), returncode=0, stdout="", stderr="")
 
@@ -223,7 +257,10 @@ class TestSerializedPostFanoutVerification:
             f"Verification should not run when flag is False, got: {verify_calls}"
         )
 
-    def test_determine_effect_enables_post_fanout_verification(self, monkeypatch) -> None:
+    def test_determine_effect_enables_post_fanout_verification(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """_determine_effect_from_policy sets run_post_fanout_verification=True for >=2 units."""
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
@@ -238,7 +275,11 @@ class TestSerializedPostFanoutVerification:
             "for same-workspace parallel execution"
         )
 
-    def test_verification_skipped_when_any_worker_fails(self, monkeypatch, tmp_path) -> None:
+    def test_verification_skipped_when_any_worker_fails(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
         """Post-fanout verification must not run when a worker has failed."""
         from ralph.pipeline.events import WorkerFailedEvent
 
@@ -254,18 +295,23 @@ class TestSerializedPostFanoutVerification:
         verify_calls: list[str] = []
 
         class _FakeExecutor:
-            def __init__(self, command, signal_bridge=None) -> None:
+            def __init__(self, command: object, signal_bridge: object | None = None) -> None:
                 del command, signal_bridge
 
         class _FakeMcpFactory:
-            def __init__(self, workspace) -> None:
+            def __init__(self, workspace: object) -> None:
                 del workspace
 
-        async def _fake_run_fan_out_with_failure(**kwargs):
-            # Return a WorkerFailedEvent to simulate a failed worker
+        async def _fake_run_fan_out_with_failure(**kwargs: object) -> list[WorkerFailedEvent]:
+            del kwargs
             return [WorkerFailedEvent(unit_id="unit-a", exit_code=1, error="worker crashed")]
 
-        async def _fake_run_process_async(command, args=(), **kwargs):
+        async def _fake_run_process_async(
+            command: str,
+            args: tuple[object, ...] = (),
+            **kwargs: object,
+        ) -> ProcessResult:
+            del args, kwargs
             verify_calls.append(command)
             return ProcessResult(command=(command,), returncode=0, stdout="", stderr="")
 
@@ -298,7 +344,9 @@ class TestSerializedPostFanoutVerification:
         )
 
     def test_post_fanout_verification_failure_routes_to_recovery(
-        self, monkeypatch, tmp_path
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
         """When verification fails, the returned state must be "failed"
         with last_error containing the verification failure message."""
@@ -322,17 +370,23 @@ class TestSerializedPostFanoutVerification:
         verify_failure_output = "type check failed: 3 errors found"
 
         class _FakeExecutor:
-            def __init__(self, command, signal_bridge=None) -> None:
+            def __init__(self, command: object, signal_bridge: object | None = None) -> None:
                 del command, signal_bridge
 
         class _FakeMcpFactory:
-            def __init__(self, workspace) -> None:
+            def __init__(self, workspace: object) -> None:
                 del workspace
 
-        async def _fake_run_fan_out(**kwargs):
+        async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+            del kwargs
             return []
 
-        async def _fake_run_process_async(command, args=(), **kwargs):
+        async def _fake_run_process_async(
+            command: str,
+            args: tuple[object, ...] = (),
+            **kwargs: object,
+        ) -> ProcessResult:
+            del args, kwargs
             return ProcessResult(
                 command=(command,),
                 returncode=1,
@@ -373,7 +427,9 @@ class TestSerializedPostFanoutVerification:
         )
 
     def test_verification_runs_after_all_workers_finish_never_concurrently(
-        self, monkeypatch, tmp_path
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
         """Verification starts only after the last worker finishes; never overlaps workers.
 
@@ -400,21 +456,26 @@ class TestSerializedPostFanoutVerification:
         call_order: list[str] = []
 
         class _FakeExecutor:
-            def __init__(self, command, signal_bridge=None) -> None:
+            def __init__(self, command: object, signal_bridge: object | None = None) -> None:
                 del command, signal_bridge
 
         class _FakeMcpFactory:
-            def __init__(self, workspace) -> None:
+            def __init__(self, workspace: object) -> None:
                 del workspace
 
-        async def _fake_run_fan_out(**kwargs):
+        async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+            del kwargs
             timestamps["fan_out_started"] = time.monotonic()
             call_order.append("fan_out")
-            # Simulate two workers completing
             timestamps["fan_out_ended"] = time.monotonic()
             return []
 
-        async def _fake_run_process_async(command, args=(), **kwargs):
+        async def _fake_run_process_async(
+            command: str,
+            args: tuple[object, ...] = (),
+            **kwargs: object,
+        ) -> ProcessResult:
+            del args, kwargs
             timestamps["verify_started"] = time.monotonic()
             call_order.append("verify")
             timestamps["verify_ended"] = time.monotonic()

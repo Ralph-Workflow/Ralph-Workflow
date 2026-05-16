@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from ralph.guidelines import stack
+
+if TYPE_CHECKING:
+    import pytest
 from ralph.guidelines.go import GoGuidelines
 from ralph.guidelines.java import JavaGuidelines
 from ralph.guidelines.javascript import JavaScriptGuidelines
@@ -213,14 +216,14 @@ def test_fallback_detect_stack_reads_signatures_and_frameworks() -> None:
 
 
 def test_detect_stack_with_workspace_uses_fallback_when_language_detector_is_unavailable(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = MemoryWorkspace()
     workspace.write("Cargo.toml", "[package]\nname='demo'")
 
     real_import_module = stack.import_module
 
-    def fake_import_module(module_name: str):
+    def fake_import_module(module_name: str) -> object:
         if module_name == "ralph.language_detector":
             raise ImportError("boom")
         return real_import_module(module_name)
@@ -233,7 +236,9 @@ def test_detect_stack_with_workspace_uses_fallback_when_language_detector_is_una
     assert detected.secondary_languages == []
 
 
-def test_detect_stack_with_workspace_uses_detector_result_when_available(monkeypatch) -> None:
+def test_detect_stack_with_workspace_uses_detector_result_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     workspace = MemoryWorkspace()
 
     detector_module = SimpleNamespace(
@@ -255,7 +260,7 @@ def test_detect_stack_with_workspace_uses_detector_result_when_available(monkeyp
 
 
 def test_get_stack_guidelines_merges_detected_languages_once_and_enables_typescript(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         stack,

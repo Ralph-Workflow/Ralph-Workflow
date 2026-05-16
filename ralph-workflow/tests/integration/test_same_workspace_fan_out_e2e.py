@@ -17,17 +17,17 @@ import io
 import json
 from collections import defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
     import pytest
 
-from pathlib import Path
+    from ralph.display.parallel_display import ParallelDisplay
 
 from rich.console import Console
 
-from ralph.display.parallel_display import ParallelDisplay  # noqa: TC001
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect

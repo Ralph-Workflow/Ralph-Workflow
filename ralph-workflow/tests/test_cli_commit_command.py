@@ -161,7 +161,7 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
 
     captured_options = []
 
-    def fake_invoke_agent(agent, prompt_file, *, options=None):
+    def fake_invoke_agent(agent: object, prompt_file: object, *, options: object=None) -> object:
         captured_options.append(options)
         return iter([])
 

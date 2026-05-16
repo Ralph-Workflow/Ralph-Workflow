@@ -23,7 +23,7 @@ from ralph.pipeline.runner import WorkspaceScope
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 if TYPE_CHECKING:
     import pytest
@@ -567,7 +567,9 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
     )
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(last_session_id=session_id, session_preserve=True)
 
     new_state, _, evt = controller.handle(state, exc, phase="development", agent="claude")

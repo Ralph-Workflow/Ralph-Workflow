@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
 
-def _load_default_policy_bundle():
+def _load_default_policy_bundle() -> object:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
 
@@ -48,7 +48,7 @@ def _config(verbosity: int = 1) -> MagicMock:
     return config
 
 
-def _registry_factory(agent_config: AgentConfig):
+def _registry_factory(agent_config: AgentConfig) -> object:
     class RegistryInstance:
         def get(self, name: str) -> AgentConfig | None:
             del name
@@ -56,7 +56,7 @@ def _registry_factory(agent_config: AgentConfig):
 
     class Registry:
         @classmethod
-        def from_config(cls, config: UnifiedConfig):
+        def from_config(cls, config: UnifiedConfig) -> object:
             del cls, config
             return RegistryInstance()
 
@@ -125,7 +125,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
         _event: object,
         _policy: object,
         recovery: object | None = None,
-    ):
+    ) -> object:
         del recovery
         return current_state.copy_with(phase="complete"), None
 
@@ -200,7 +200,7 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
         _event: object,
         _policy: object,
         recovery: object | None = None,
-    ):
+    ) -> object:
         del recovery
         return next(next_states), None
 
@@ -268,7 +268,7 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
         _event: object,
         _policy: object,
         recovery: object | None = None,
-    ):
+    ) -> object:
         del recovery
         next_state = current_state.copy_with(phase="complete")
         call_order.append(("reduce", next_state.phase))

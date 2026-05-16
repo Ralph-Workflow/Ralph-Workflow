@@ -570,7 +570,7 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
     )
 
 
-def test_emit_phase_transition_shows_final_skip_and_needs_changes_for_capped_planning_analysis_loopback(  # noqa: E501
+def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback(
 ) -> None:
     """The live runner transition banner must show the capped planning-analysis loopback context."""
     display = _StubDisplay()

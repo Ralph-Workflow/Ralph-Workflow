@@ -448,10 +448,10 @@ class TestStartClose:
         bridge = self._make_bridge(transport=transport)
 
         # Simulate one message then close
-        async def mock_recv():
+        async def mock_recv() -> object:
             yield MagicMock()  # One message
 
-        async def mock_send(msg):
+        async def mock_send(msg: object) -> None:
             pass
 
         transport.recv = mock_recv

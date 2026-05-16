@@ -11,6 +11,58 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import IO, TYPE_CHECKING
 
+
+@dataclass
+class SyncProcessOptions:
+    """Options for synchronous subprocess creation."""
+
+    cwd: str | None = None
+    env: dict[str, str] | None = None
+    stdin: int | None = None
+    stdout: int | None = None
+    stderr: int | None = None
+    start_new_session: bool = False
+    text: bool = False
+
+
+@dataclass
+class AsyncProcessOptions:
+    """Options for asynchronous subprocess creation."""
+
+    cwd: str | None = None
+    env: dict[str, str] | None = None
+    stdin: int | None = None
+    stdout: int | None = None
+    stderr: int | None = None
+    start_new_session: bool = False
+
+
+@dataclass
+class ProcessState:
+    """Process state flags."""
+
+    returncode: int | None = None
+    terminated: bool = False
+    killed: bool = False
+
+
+@dataclass
+class ProcessStreams:
+    """Process I/O streams."""
+
+    stdin: IO[bytes] | None = None
+    stdout: IO[bytes] | None = None
+    stderr: IO[bytes] | None = None
+
+
+@dataclass
+class AsyncProcessStreams:
+    """Async process I/O streams."""
+
+    stdin: asyncio.StreamWriter | None = None
+    stdout: asyncio.StreamReader | None = None
+    stderr: asyncio.StreamReader | None = None
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
     from typing import Protocol
@@ -22,30 +74,19 @@ if TYPE_CHECKING:
     )
 
     class _SyncFactoryCallable(Protocol):
-        def __call__(  # noqa: PLR0913
+        def __call__(
             self,
             command: Sequence[str],
             *,
-            cwd: str | None,
-            env: dict[str, str] | None,
-            stdin: int | None,
-            stdout: int | None,
-            stderr: int | None,
-            start_new_session: bool,
-            text: bool,
+            options: SyncProcessOptions,
         ) -> _SyncProcessLike: ...
 
     class _AsyncFactoryCallable(Protocol):
-        async def __call__(  # noqa: PLR0913
+        async def __call__(
             self,
             command: Sequence[str],
             *,
-            cwd: str | None,
-            env: dict[str, str] | None,
-            stdin: int | None,
-            stdout: int | None,
-            stderr: int | None,
-            start_new_session: bool,
+            options: AsyncProcessOptions,
         ) -> _AsyncProcessLike: ...
 
 
@@ -59,7 +100,7 @@ class FakePsutilProcess:
     _create_time: float = 0.0
     _terminated: bool = False
     _killed: bool = False
-    _children: list["FakePsutilProcess"] = field(default_factory=list)  # noqa: UP037
+    _children: list[FakePsutilProcess] = field(default_factory=list)
     stubborn: bool = False
 
     def is_running(self) -> bool:
@@ -80,7 +121,7 @@ class FakePsutilProcess:
     def create_time(self) -> float:
         return self._create_time
 
-    def children(self, recursive: bool = False) -> list["FakePsutilProcess"]:  # noqa: UP037
+    def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
         return self._children
 
     def terminate(self) -> None:
@@ -105,7 +146,7 @@ class FakePsutil:
         self._processes: dict[int, FakePsutilProcess] = {}
         self._next_pid = 1
 
-    def Process(self, pid: int) -> FakePsutilProcess:  # noqa: N802
+    def Process(self, pid: int) -> FakePsutilProcess:
         """Mimics psutil.Process()."""
         if pid not in self._processes:
             self._processes[pid] = FakePsutilProcess(pid=pid)
@@ -134,24 +175,22 @@ class FakePopen:
     Tests control state transitions directly.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         pid: int,
         *,
-        returncode: int | None = None,
-        terminated: bool = False,
-        killed: bool = False,
-        stdin: IO[bytes] | None = None,
-        stdout: IO[bytes] | None = None,
-        stderr: IO[bytes] | None = None,
+        state: ProcessState | None = None,
+        streams: ProcessStreams | None = None,
     ) -> None:
         self.pid = pid
-        self._returncode = returncode
-        self._terminated = terminated
-        self._killed = killed
-        self.stdin = stdin
-        self.stdout = stdout
-        self.stderr = stderr
+        state = state or ProcessState()
+        streams = streams or ProcessStreams()
+        self._returncode = state.returncode
+        self._terminated = state.terminated
+        self._killed = state.killed
+        self.stdin = streams.stdin
+        self.stdout = streams.stdout
+        self.stderr = streams.stderr
 
     @property
     def returncode(self) -> int | None:
@@ -178,28 +217,26 @@ class FakePopen:
 class FakeAsyncProcess:
     """Minimal asyncio.subprocess.Process-like fake for testing."""
 
-    _stdin: "asyncio.StreamWriter | None"  # noqa: UP037
-    _stdout: "asyncio.StreamReader | None"  # noqa: UP037
-    _stderr: "asyncio.StreamReader | None"  # noqa: UP037
+    _stdin: asyncio.StreamWriter | None
+    _stdout: asyncio.StreamReader | None
+    _stderr: asyncio.StreamReader | None
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         pid: int,
         *,
-        returncode: int | None = None,
-        terminated: bool = False,
-        killed: bool = False,
-        stdin: "asyncio.StreamWriter | None" = None,  # noqa: UP037
-        stdout: "asyncio.StreamReader | None" = None,  # noqa: UP037
-        stderr: "asyncio.StreamReader | None" = None,  # noqa: UP037
+        state: ProcessState | None = None,
+        streams: AsyncProcessStreams | None = None,
     ) -> None:
         self.pid = pid
-        self._returncode = returncode
-        self._terminated = terminated
-        self._killed = killed
-        self._stdin = stdin
-        self._stdout = stdout
-        self._stderr = stderr
+        state = state or ProcessState()
+        streams = streams or AsyncProcessStreams()
+        self._returncode = state.returncode
+        self._terminated = state.terminated
+        self._killed = state.killed
+        self._stdin = streams.stdin
+        self._stdout = streams.stdout
+        self._stderr = streams.stderr
 
     @property
     def stdin(self) -> asyncio.StreamWriter | None:
@@ -368,22 +405,18 @@ def make_sync_process_factory(
         killed: Set killed flag on all created processes
     """
 
-    def factory(  # noqa: PLR0913
-        command: "Sequence[str]",  # noqa: UP037
+    def factory(
+        command: Sequence[str],
         *,
-        cwd: str | None,
-        env: dict[str, str] | None,
-        stdin: int | None,
-        stdout: int | None,
-        stderr: int | None,
-        start_new_session: bool,
-        text: bool,
+        options: SyncProcessOptions,
     ) -> FakePopen:
         return FakePopen(
             pid=next(pids),
-            returncode=returncode,
-            terminated=terminated,
-            killed=killed,
+            state=ProcessState(
+                returncode=returncode,
+                terminated=terminated,
+                killed=killed,
+            ),
         )
 
     return factory
@@ -396,17 +429,15 @@ def make_async_process_factory(
 ) -> _AsyncFactoryCallable:
     """Create an async process factory that generates FakeAsyncProcess with sequential PIDs."""
 
-    async def factory(  # noqa: PLR0913
-        command: "Sequence[str]",  # noqa: UP037
+    async def factory(
+        command: Sequence[str],
         *,
-        cwd: str | None,
-        env: dict[str, str] | None,
-        stdin: int | None,
-        stdout: int | None,
-        stderr: int | None,
-        start_new_session: bool,
+        options: AsyncProcessOptions,
     ) -> FakeAsyncProcess:
-        return FakeAsyncProcess(pid=next(pids), returncode=returncode)
+        return FakeAsyncProcess(
+            pid=next(pids),
+            state=ProcessState(returncode=returncode),
+        )
 
     return factory
 
@@ -425,12 +456,17 @@ def make_psutil_factory(
 
 
 __all__ = [
+    "AsyncProcessOptions",
+    "AsyncProcessStreams",
     "FakeAsyncProcess",
     "FakeControllableAsyncProcess",
     "FakePopen",
     "FakePsutil",
     "FakePsutilProcess",
     "FakeTimeoutPopen",
+    "ProcessState",
+    "ProcessStreams",
+    "SyncProcessOptions",
     "make_async_process_factory",
     "make_psutil_factory",
     "make_sync_process_factory",

@@ -260,7 +260,7 @@ def _make_badge_text(badge: str, rest: str) -> Text:
     return t
 
 
-def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
+def render_completion_summary(
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
@@ -357,7 +357,7 @@ def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
     return Text("\n".join(lines))
 
 
-def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
+def _render_compact_group(
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
@@ -468,7 +468,7 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
     return Group(*renderables)
 
 
-def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
+def render_completion_summary_group(
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
@@ -653,7 +653,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     return Group(*renderables)
 
 
-def emit_completion_summary(  # noqa: PLR0913
+def emit_completion_summary(
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,

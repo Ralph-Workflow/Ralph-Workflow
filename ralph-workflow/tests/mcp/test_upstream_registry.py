@@ -202,7 +202,7 @@ class TestUpstreamMultimodalBoundary:
 
         # Image block must be normalized to resource_reference, not rejected
         content = result.get("content", [])
-        assert len(content) == 2  # noqa: PLR2004
+        assert len(content) == 2
         assert content[0].get("type") == "text"
         assert content[1].get("type") == "resource_reference"
         assert str(content[1].get("uri", "")).startswith("ralph://media/")
@@ -541,10 +541,10 @@ class TestUpstreamMultimodalBoundary:
         result = registry.call_tool("ralph_upstream__mix_server__mix", {}, session=_FakeSession())
 
         content = result.get("content", [])
-        assert len(content) == 3  # noqa: PLR2004
+        assert len(content) == 3
         assert content[0].get("type") == "text"
         rr_blocks = [b for b in content if b.get("type") == "resource_reference"]
-        assert len(rr_blocks) == 2  # noqa: PLR2004
+        assert len(rr_blocks) == 2
         modalities = {b.get("modality") for b in rr_blocks}
         assert modalities == {"image", "audio"}
 
@@ -586,7 +586,7 @@ class TestUpstreamMultimodalBoundary:
 
         # Text block passes through; image block becomes resource_reference
         content = result.get("content", [])
-        assert len(content) == 2  # noqa: PLR2004
+        assert len(content) == 2
         assert content[0].get("type") == "text"
         assert content[0].get("text") == "Here is your result"
         assert content[1].get("type") == "resource_reference"
@@ -897,7 +897,7 @@ def test_upstream_mixed_modalities_preserve_order_and_modality_metadata() -> Non
     result = registry.call_tool("ralph_upstream__mix_srv__multi", {}, session=session)
 
     content = result.get("content", [])
-    assert len(content) == 3, f"Expected 3 blocks (order preserved), got: {len(content)}"  # noqa: PLR2004
+    assert len(content) == 3, f"Expected 3 blocks (order preserved), got: {len(content)}"
 
     # Order: text, resource_reference(image), resource_reference(audio)
     assert content[0].get("type") == "text", (

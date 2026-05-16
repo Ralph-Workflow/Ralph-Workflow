@@ -66,7 +66,7 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
         tool_result_headline_min_chars=80,
     )
 
-    def fake_make_display_context(**kwargs):
+    def fake_make_display_context(**kwargs: object) -> object:
         return ctx
 
     monkeypatch.setattr(module, "make_display_context", fake_make_display_context)
@@ -80,8 +80,14 @@ def _simple_config() -> SimpleNamespace:
             git_user_email="user@example.com",
             verbosity=2,
         ),
-        agent_drains={"commit": "commit_chain", "review": "review_chain"},
-        agent_chains={"commit_chain": ["commit_agent"], "review_chain": ["review_agent"]},
+        agent_drains={
+            "commit": AgentDrainConfig(chain="commit_chain"),
+            "review": AgentDrainConfig(chain="review_chain"),
+        },
+        agent_chains={
+            "commit_chain": AgentChainConfig(agents=["commit_agent"]),
+            "review_chain": AgentChainConfig(agents=["review_agent"]),
+        },
     )
 
 
@@ -114,8 +120,8 @@ def test_start_commit_bridge_exposes_write_file_for_commit_session(tmp_path: Pat
     assert {"write_file", "read_file", "ralph_submit_artifact"}.issubset(tool_names)
 
 
-def _artifact_invoke(repo_root: Path, message: str):
-    def _invoke(*_args, **_kwargs):
+def _artifact_invoke(repo_root: Path, message: str) -> object:
+    def _invoke(*_args: object, **_kwargs: object) -> object:
         write_commit_message_artifact(repo_root, message)
         return iter([])
 
@@ -203,10 +209,10 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -299,7 +305,8 @@ def test_generate_commit_uses_commit_drain_agent_chain(
 ) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "find_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
+    simple_config = _simple_config()
+    monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: simple_config)
     _stub_commit_bridge(monkeypatch)
     monkeypatch.setattr(
         commit_module,
@@ -314,10 +321,10 @@ def test_generate_commit_uses_commit_drain_agent_chain(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, name: str):
+        def get(self, name: str) -> object:
             cmd = "codex" if name == "commit_agent" else "claude -p"
             return AgentConfig(
                 cmd=cmd,
@@ -326,7 +333,7 @@ def test_generate_commit_uses_commit_drain_agent_chain(
                 json_parser=JsonParserType.CODEX,
             )
 
-    def fake_invoke_agent(agent_config, *_args, **_kwargs):
+    def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_agents.append(agent_config.cmd)
         write_commit_message_artifact(tmp_path, "fix: commit drain message")
         return iter([])
@@ -372,7 +379,7 @@ def test_generate_commit_uses_direct_opencode_model_from_commit_drain(
 
     invoked_model_flags: list[str | None] = []
 
-    def fake_invoke_agent(agent_config, *_args, **_kwargs):
+    def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_model_flags.append(agent_config.model_flag)
         write_commit_message_artifact(tmp_path, "fix: commit drain message")
         return iter([])
@@ -410,10 +417,10 @@ def test_generate_commit_retries_missing_artifact_in_same_session_when_available
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="claude -p",
                 output_flag="--output-format=stream-json",
@@ -429,7 +436,7 @@ def test_generate_commit_retries_missing_artifact_in_same_session_when_available
 
     seen_session_ids: list[str | None] = []
 
-    def fake_invoke_agent(_agent_config, *_args, **kwargs):
+    def fake_invoke_agent(_agent_config: object, *_args: object, **kwargs: object) -> object:
         options = kwargs.get("options")
         seen_session_ids.append(None if options is None else options.session_id)
         if len(seen_session_ids) == 1:
@@ -482,7 +489,9 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
 
     invoked_agents: list[tuple[str, str | None]] = []
 
-    def fake_invoke_agent(agent_config, prompt_file, *_args, **kwargs):
+    def fake_invoke_agent(
+        agent_config: object, prompt_file: object, *_args: object, **kwargs: object
+    ) -> object:
         options = kwargs.get("options")
         invoked_agents.append((agent_config.cmd, None if options is None else options.session_id))
         if len(invoked_agents) <= _SUMMARY_RETRY_FAILURES:
@@ -548,10 +557,10 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="opencode",
                 output_flag="--json-stream",
@@ -561,7 +570,7 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
 
     seen_extra_env: list[dict[str, str] | None] = []
 
-    def fake_invoke_agent(_agent_config, *_args, **kwargs):
+    def fake_invoke_agent(_agent_config: object, *_args: object, **kwargs: object) -> object:
         options = kwargs.get("options")
         seen_extra_env.append(None if options is None else options.extra_env)
         assert options is not None and options.pure is True
@@ -605,10 +614,10 @@ def test_generate_commit_prompt_mentions_opencode_prefixed_submit_tool(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="opencode",
                 output_flag="--json-stream",
@@ -651,10 +660,10 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="claude -p",
                 output_flag="--output-format=stream-json",
@@ -710,7 +719,7 @@ def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
 
     invoked_commands: list[str] = []
 
-    def fake_invoke_agent(agent_config, *_args, **_kwargs):
+    def fake_invoke_agent(agent_config: object, *_args: object, **_kwargs: object) -> object:
         invoked_commands.append(agent_config.cmd)
         write_commit_message_artifact(tmp_path, "fix: review fallback message")
         return iter([])
@@ -745,10 +754,10 @@ def test_generate_commit_msg_writes_commit_message_artifact(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -800,10 +809,10 @@ def test_generate_commit_msg_extracts_commit_subject_from_markdown_wrapper(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -850,10 +859,10 @@ def test_generate_commit_msg_applies_sanitized_subject_when_committing(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -898,10 +907,10 @@ def test_generate_commit_applies_message_from_persisted_artifact(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -952,10 +961,10 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -963,7 +972,7 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
                 json_parser=JsonParserType.CODEX,
             )
 
-    def fail_commit(_root, _message, **_kwargs):
+    def fail_commit(_root: object, _message: object, **_kwargs: object) -> None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
@@ -1057,10 +1066,10 @@ def test_generate_commit_msg_skip_deletes_existing_artifact(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -1101,10 +1110,10 @@ def test_generate_commit_msg_surfaces_parsed_agent_output_when_artifact_missing(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -1112,7 +1121,7 @@ def test_generate_commit_msg_surfaces_parsed_agent_output_when_artifact_missing(
                 json_parser=JsonParserType.CODEX,
             )
 
-    def fake_invoke_agent(*_args, **_kwargs):
+    def fake_invoke_agent(*_args: object, **_kwargs: object) -> object:
         return iter(
             [
                 '{"type":"response.output_text.delta","delta":"artifact write failed"}\n',
@@ -1152,10 +1161,10 @@ def test_generate_commit_msg_surfaces_agent_invocation_error_details(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="opencode",
                 output_flag="--json-stream",
@@ -1163,7 +1172,7 @@ def test_generate_commit_msg_surfaces_agent_invocation_error_details(
                 json_parser=JsonParserType.OPENCODE,
             )
 
-    def fake_invoke_agent(*_args, **_kwargs):
+    def fake_invoke_agent(*_args: object, **_kwargs: object) -> None:
         raise commit_module.AgentInvocationError("opencode", 1, "stderr exploded")
 
     monkeypatch.setattr(commit_module, "AgentRegistry", FakeRegistry)
@@ -1220,10 +1229,10 @@ def test_generate_commit_msg_preserves_streamed_output_when_agent_exits_nonzero(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -1231,8 +1240,8 @@ def test_generate_commit_msg_preserves_streamed_output_when_agent_exits_nonzero(
                 json_parser=JsonParserType.CODEX,
             )
 
-    def fake_invoke_agent(*_args, **_kwargs):
-        def _generator():
+    def fake_invoke_agent(*_args: object, **_kwargs: object) -> object:
+        def _generator() -> object:
             yield '{"type":"response.output_text.delta","delta":"tool call started"}\n'
             yield '{"type":"error","message":"artifact submission failed"}\n'
             raise commit_module.AgentInvocationError("codex", 1, "process died after output")
@@ -1270,10 +1279,10 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="codex",
                 output_flag="--json-stream",
@@ -1281,7 +1290,7 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
                 json_parser=JsonParserType.CODEX,
             )
 
-    def fake_invoke_agent(*_args, **_kwargs):
+    def fake_invoke_agent(*_args: object, **_kwargs: object) -> object:
         return iter(
             [
                 '{"type":"item.completed","item":'
@@ -1321,10 +1330,10 @@ def test_generate_commit_msg_accepts_raw_commit_payload_written_by_agent(
 
     class FakeRegistry:
         @classmethod
-        def from_config(cls, _config):
+        def from_config(cls, _config: object) -> object:
             return cls()
 
-        def get(self, _name: str):
+        def get(self, _name: str) -> object:
             return AgentConfig(
                 cmd="claude -p",
                 output_flag="--output-format=stream-json",
@@ -1333,7 +1342,7 @@ def test_generate_commit_msg_accepts_raw_commit_payload_written_by_agent(
                 transport=AgentTransport.CLAUDE,
             )
 
-    def fake_invoke_agent(*_args, **_kwargs):
+    def fake_invoke_agent(*_args: object, **_kwargs: object) -> object:
         artifact_path = tmp_path / ".agent" / "tmp" / "commit_message.json"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(
@@ -1771,7 +1780,7 @@ class TestCheckPolicyCommand:
         )
         code = check_policy_command(tmp_path)
         err = capsys.readouterr().err
-        assert code == 2  # noqa: PLR2004
+        assert code == 2
         assert "Policy validation error" in err
 
 

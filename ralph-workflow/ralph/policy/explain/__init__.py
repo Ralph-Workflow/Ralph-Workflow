@@ -1,6 +1,6 @@
 """Policy explanation — converts a PolicyBundle into a structured human-readable description.
 
-This module answers the key questions a user has when looking at an unfamiliar policy:
+This package answers the key questions a user has when looking at an unfamiliar policy:
 - What happens after this phase succeeds?
 - What makes a phase terminal?
 - When is a commit required?
@@ -10,139 +10,22 @@ This module answers the key questions a user has when looking at an unfamiliar p
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+from .budget_counter_explanation import BudgetCounterExplanation
+from .commit_policy_explanation import CommitPolicyExplanation
+from .loop_counter_explanation import LoopCounterExplanation
+from .loop_policy_explanation import LoopPolicyExplanation
+from .parallel_explanation import ParallelExplanation
+from .phase_explanation import PhaseExplanation
+from .policy_explanation import PolicyExplanation
+from .post_commit_route_explanation import PostCommitRouteExplanation
+from .recovery_explanation import RecoveryExplanation
+from .terminal_outcome_explanation import TerminalOutcomeExplanation
+from .verification_explanation import VerificationExplanation
 
 if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
-
-
-@dataclass
-class VerificationExplanation:
-    """Explanation of a phase's verification policy."""
-
-    kind: str
-    gate_for: str
-    on_failure_route: str | None
-
-
-@dataclass
-class PhaseExplanation:
-    """Explanation of a single phase."""
-
-    name: str
-    role: str | None
-    drain: str
-    chain: str | None
-    agents: list[str]
-    max_retries: int
-    skip_invocation: bool
-    on_success: str | None
-    on_failure: str | None
-    on_loopback: str | None
-    bypass_routes: dict[str, str]
-    decisions: dict[str, str]
-    loop_policy: LoopPolicyExplanation | None
-    commit_policy: CommitPolicyExplanation | None
-    terminal_outcome: str | None
-    clean_outcome: str | None = None
-    issues_outcome: str | None = None
-    is_entry: bool = False
-    is_terminal: bool = False
-    verification: VerificationExplanation | None = None
-    has_parallelization: bool = False
-    post_commit_routes_info: list[tuple[str, str]] = field(default_factory=list)
-    workflow_fallback: tuple[str, str | None] | None = None
-
-
-@dataclass
-class LoopPolicyExplanation:
-    """Explanation of a phase's loop policy."""
-
-    max_iterations: int
-    iteration_state_field: str
-    loopback_review_outcome: str | None
-
-
-@dataclass
-class CommitPolicyExplanation:
-    """Explanation of a phase's commit policy."""
-
-    increments_counter: str | None
-    loop_resets: list[str]
-    requires_artifact: bool
-
-
-@dataclass
-class LoopCounterExplanation:
-    """Explanation of a loop counter."""
-
-    name: str
-    default_max: int
-    description: str
-
-
-@dataclass
-class BudgetCounterExplanation:
-    """Explanation of a budget counter."""
-
-    name: str
-    description: str
-    tracks_budget: bool
-    default_max: int = 0
-
-
-@dataclass
-class TerminalOutcomeExplanation:
-    """Explanation of a terminal phase outcome."""
-
-    phase: str
-    outcome: str
-
-
-@dataclass
-class PostCommitRouteExplanation:
-    """Explanation of a single post-commit route entry."""
-
-    phase: str
-    budget_state: str
-    target: str
-
-
-@dataclass
-class ParallelExplanation:
-    """Explanation of the parallel execution policy."""
-
-    phase: str
-    max_parallel_workers: int
-    max_work_units: int
-    require_allowed_directories: bool
-    post_fanout_verification: bool = False
-
-
-@dataclass
-class RecoveryExplanation:
-    """Explanation of the recovery policy."""
-
-    cycle_cap: int
-    terminal_recovery_route: str
-    preserve_session_on_categories: list[str]
-
-
-@dataclass
-class PolicyExplanation:
-    """Complete structured explanation of a PolicyBundle."""
-
-    entry_phase: str
-    terminal_phase: str
-    phases: list[PhaseExplanation] = field(default_factory=list)
-    loop_counters: list[LoopCounterExplanation] = field(default_factory=list)
-    budget_counters: list[BudgetCounterExplanation] = field(default_factory=list)
-    terminal_outcomes: list[TerminalOutcomeExplanation] = field(default_factory=list)
-    parallel_execution: ParallelExplanation | None = None
-    parallel_executions: list[ParallelExplanation] = field(default_factory=list)
-    post_commit_routes: list[PostCommitRouteExplanation] = field(default_factory=list)
-    recovery: RecoveryExplanation | None = None
 
 
 def explain_routing_decision(
@@ -153,21 +36,7 @@ def explain_routing_decision(
     *,
     recovery: bool = False,
 ) -> str:
-    """Build a human-readable routing explanation message.
-
-    Used by reducer and handoffs to emit INFO-level routing logs so users can
-    answer 'why did Ralph route here?' from logs alone.
-
-    Args:
-        phase: The current phase that is routing.
-        target: The target phase being routed to.
-        reason: What triggered the routing (e.g. 'decision', 'signal', 'gate').
-        value: The value of the triggering reason (e.g. 'completed', 'success').
-        recovery: True when this is a terminal failure/recovery route.
-
-    Returns:
-        A formatted routing explanation string.
-    """
+    """Build a human-readable routing explanation message."""
     if recovery:
         return (
             f"policy: '{phase}' routed to '{target}' because recovery was triggered "
@@ -254,14 +123,7 @@ def _explain_phase(
 
 
 def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
-    """Convert a PolicyBundle into a structured human-readable explanation.
-
-    Args:
-        bundle: The loaded policy bundle to explain.
-
-    Returns:
-        PolicyExplanation with all phases, counters, and routing rules described.
-    """
+    """Convert a PolicyBundle into a structured human-readable explanation."""
     pipeline = bundle.pipeline
     agents = bundle.agents
 
@@ -273,7 +135,6 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
     for phase_name, phase_def in pipeline.phases.items():
         explanation.phases.append(_explain_phase(phase_name, phase_def, pipeline, agents))
 
-    # Terminal outcomes — all phases with role='terminal' and a declared outcome
     for phase_name, phase_def in pipeline.phases.items():
         if phase_def.role == "terminal" and phase_def.terminal_outcome is not None:
             explanation.terminal_outcomes.append(
@@ -283,7 +144,6 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
                 )
             )
 
-    # Loop counters — use lc_name/lc_cfg to avoid type narrowing conflict with budget loop
     for lc_name, lc_cfg in pipeline.loop_counters.items():
         explanation.loop_counters.append(
             LoopCounterExplanation(
@@ -293,7 +153,6 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             )
         )
 
-    # Budget counters — use bc_name/bc_cfg to avoid type narrowing conflict with loop counters
     for bc_name, bc_cfg in pipeline.budget_counters.items():
         explanation.budget_counters.append(
             BudgetCounterExplanation(
@@ -304,7 +163,6 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             )
         )
 
-    # Post-commit routes at the policy level
     for route in pipeline.post_commit_routes:
         explanation.post_commit_routes.append(
             PostCommitRouteExplanation(
@@ -314,7 +172,6 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             )
         )
 
-    # Parallel execution — collect all phases, keep first as backward-compat singleton
     for phase_name, phase_def in pipeline.phases.items():
         if phase_def.parallelization is None:
             continue
@@ -330,7 +187,6 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
         if explanation.parallel_execution is None:
             explanation.parallel_execution = pe_expl
 
-    # Recovery
     r = pipeline.recovery
     explanation.recovery = RecoveryExplanation(
         cycle_cap=r.cycle_cap,
@@ -339,3 +195,20 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
     )
 
     return explanation
+
+
+__all__ = [
+    "BudgetCounterExplanation",
+    "CommitPolicyExplanation",
+    "LoopCounterExplanation",
+    "LoopPolicyExplanation",
+    "ParallelExplanation",
+    "PhaseExplanation",
+    "PolicyExplanation",
+    "PostCommitRouteExplanation",
+    "RecoveryExplanation",
+    "TerminalOutcomeExplanation",
+    "VerificationExplanation",
+    "explain_policy",
+    "explain_routing_decision",
+]

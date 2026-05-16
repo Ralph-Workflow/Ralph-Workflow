@@ -3,52 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
 
+from ralph.checkpoint.checkpoint_payload import CheckpointPayload
+from ralph.checkpoint.execution_history import ExecutionHistory
+from ralph.checkpoint.run_context import RunContext
 from ralph.pipeline.progress import derive_run_context_progress
-
-from .execution_history import ExecutionHistory, ExecutionHistoryDict
-from .run_context import RunContext, RunContextDict
 
 if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PipelinePolicy
-
-
-class CheckpointPayloadDict(TypedDict):
-    """Serialisable checkpoint payload written to and read from disk."""
-
-    state: dict[str, object]
-    run_context: RunContextDict
-    execution_history: ExecutionHistoryDict
-    working_dir: str
-    phase: str
-
-
-@dataclass(frozen=True)
-class CheckpointPayload:
-    """Checkpoint payload combining pipeline state with extension metadata."""
-
-    state: PipelineState
-    run_context: RunContext
-    execution_history: ExecutionHistory = field(default_factory=ExecutionHistory.new)
-    working_dir: str = ""
-
-    @property
-    def phase(self) -> str:
-        """Expose the current phase directly for checkpoint summaries."""
-        return self.state.phase
-
-    def to_dict(self) -> CheckpointPayloadDict:
-        """Return a JSON-safe dictionary representation."""
-        payload: CheckpointPayloadDict = {
-            "state": self.state.model_dump(mode="json"),
-            "run_context": self.run_context.to_dict(),
-            "execution_history": self.execution_history.to_dict(),
-            "working_dir": self.working_dir,
-            "phase": self.phase,
-        }
-        return payload
 
 
 @dataclass(frozen=True)

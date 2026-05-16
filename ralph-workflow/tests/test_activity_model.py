@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 
-from ralph.agents.parsers.base import AgentOutputLine
+from ralph.agents.parsers import AgentOutputLine
 from ralph.display.activity_model import (
     ActivityEventKind,
     ActivityProvider,

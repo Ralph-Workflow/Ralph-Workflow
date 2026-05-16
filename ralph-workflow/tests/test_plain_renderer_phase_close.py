@@ -8,7 +8,7 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.phase_status import PhaseIterationContext
-from ralph.display.plain_renderer import _TAG_CATEGORY, _TAGS, PlainLogRenderer
+from ralph.display.plain_renderer import TAG_CATEGORY, TAGS, PlainLogRenderer
 from ralph.display.theme import UNICODE_GLYPHS
 
 
@@ -56,8 +56,8 @@ def test_phase_close_no_ansi() -> None:
 
 
 def test_phase_close_tag_is_registered() -> None:
-    assert "phase-close" in _TAGS
-    assert _TAG_CATEGORY.get("phase-close") == "META"
+    assert "phase-close" in TAGS
+    assert TAG_CATEGORY.get("phase-close") == "META"
 
 
 def test_phase_close_trims_empty_produced() -> None:

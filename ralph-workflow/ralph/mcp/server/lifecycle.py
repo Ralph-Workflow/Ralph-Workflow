@@ -245,7 +245,7 @@ def check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:
         bridge.check_health_and_restart_if_needed()
 
 
-def start_mcp_server(  # noqa: PLR0913
+def start_mcp_server(
     session: SessionLike,
     workspace: WorkspaceLike,
     *,
@@ -288,7 +288,7 @@ def start_mcp_server(  # noqa: PLR0913
     )
 
 
-def _spawn_mcp_process(  # noqa: PLR0913
+def _spawn_mcp_process(
     root: Path,
     session: SessionLike,
     deps: LifecycleDeps,

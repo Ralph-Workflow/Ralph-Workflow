@@ -437,7 +437,7 @@ class TestRunCommand:
     def test_uses_injected_cwd_provider_when_workspace_has_no_root(self) -> None:
         seen: dict[str, object] = {}
 
-        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None):
+        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
             seen["cwd"] = cwd
             return MagicMock(returncode=0, stdout=b"ok", stderr=b"")
 
@@ -456,7 +456,7 @@ class TestRunCommand:
         seen: dict[str, object] = {}
         workspace = MockWorkspaceRoot(tmp_path)
 
-        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None):
+        def fake_runner(command: list[str], cwd: Path, timeout_seconds: float | None) -> object:
             seen["command"] = command
             seen["cwd"] = cwd
             seen["timeout"] = timeout_seconds
@@ -517,7 +517,9 @@ class TestFormatExecResult:
 
 
 class TestHandleExecCommand:
-    def test_exec_with_valid_command_succeeds(self, tmp_path: Path, monkeypatch) -> None:
+    def test_exec_with_valid_command_succeeds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
         params: dict[str, object] = {"command": "echo", "args": ["hello"], "timeout_ms": 5000}
@@ -544,7 +546,9 @@ class TestHandleExecCommand:
         with pytest.raises(CapabilityDeniedError):
             handle_exec_command(session, workspace, params)
 
-    def test_exec_returns_error_on_nonzero_exit(self, tmp_path: Path, monkeypatch) -> None:
+    def test_exec_returns_error_on_nonzero_exit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         session = MockSession({"ProcessExecBounded"})
         workspace = MockWorkspaceRoot(tmp_path)
         params: dict[str, object] = {"command": "false", "args": [], "timeout_ms": 5000}

@@ -15,6 +15,7 @@ from ralph.agents.parsers import (
 from ralph.display.activity_model import (
     ActivityEventKind,
     ActivityProvider,
+    EventOptions,
     make_event,
     render_event_line,
 )
@@ -127,9 +128,11 @@ class ActivityRouter:
                 event = make_event(
                     provider=provider,
                     kind=kind,
-                    content=out.content,
-                    metadata=out.metadata or {},
-                    source=unit_id,
+                    options=EventOptions(
+                        content=out.content,
+                        metadata=out.metadata or {},
+                        source=unit_id,
+                    ),
                 )
                 rendered = render_event_line(event.kind, event.content, timestamp=event.timestamp)
                 buffer.enqueue(rendered)
@@ -142,8 +145,10 @@ class ActivityRouter:
             error_event = make_event(
                 provider=provider,
                 kind=ActivityEventKind.ERROR,
-                content=f"parser error: {exc}",
-                source=unit_id,
+                options=EventOptions(
+                    content=f"parser error: {exc}",
+                    source=unit_id,
+                ),
             )
             rendered = render_event_line(
                 error_event.kind, error_event.content, timestamp=error_event.timestamp

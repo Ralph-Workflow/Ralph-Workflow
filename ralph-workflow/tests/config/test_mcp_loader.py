@@ -20,10 +20,11 @@ from ralph.config.mcp_loader import (
     load_mcp_config,
 )
 from ralph.config.mcp_models import McpConfig
-from ralph.workspace.scope import WorkspaceScope  # noqa: TC001
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.workspace.scope import WorkspaceScope
 
 
 DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB

@@ -53,7 +53,7 @@ def test_validate_sse_server_healthy_returns_zero(
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
-    def passing_validate(servers, *, strict):
+    def passing_validate(servers: object, *, strict: object) -> object:
         return validate_upstream_mcp_servers(
             servers,
             strict=strict,
@@ -80,7 +80,7 @@ def test_validate_sse_server_healthy_logs_no_errors(
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
-    def passing_validate(servers, *, strict):
+    def passing_validate(servers: object, *, strict: object) -> object:
         return validate_upstream_mcp_servers(
             servers,
             strict=strict,

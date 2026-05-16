@@ -80,7 +80,7 @@ def test_snapshot_returns_only_records_matching_scope_prefix() -> None:
     snap_all = reg.snapshot("scope/")
     assert snap_a.active_count == 1
     assert snap_b.active_count == 1
-    assert snap_all.active_count == 2  # noqa: PLR2004
+    assert snap_all.active_count == 2
 
 
 def test_snapshot_excludes_terminal_records_after_exit_reconcile_window() -> None:

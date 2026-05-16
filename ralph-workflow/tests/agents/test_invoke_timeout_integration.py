@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import threading
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -115,9 +115,9 @@ _TOTAL_LINES_IN_STDOUT = 10
 
 def _read_lines(
     handle: _FakeManagedHandle,
-    **kwargs: Any,
-):
-    return _read_lines_from_process(cast("Any", handle), **kwargs)
+    **kwargs: object,
+) -> Iterator[str]:
+    return _read_lines_from_process(cast("object", handle), **kwargs)
 
 
 def test_session_ceiling_fires_under_continuous_output() -> None:

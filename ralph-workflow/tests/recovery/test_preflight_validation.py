@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ralph.cli.commands import run as run_module
+from ralph.cli.commands.run import RunPipelineRequest
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
@@ -286,7 +287,7 @@ def test_run_pipeline_returns_2_on_checkpoint_phase_mismatch(
         mp.setenv("RALPH_CHECKPOINT_PATH", str(checkpoint_json))
 
         mp.chdir(workspace)
-        assert run_module.run_pipeline(resume=True) == _EXIT_PREFLIGHT
+        assert run_module.run_pipeline(request=RunPipelineRequest(resume=True)) == _EXIT_PREFLIGHT
 
 
 def test_run_pipeline_returns_2_on_negative_max_retries(

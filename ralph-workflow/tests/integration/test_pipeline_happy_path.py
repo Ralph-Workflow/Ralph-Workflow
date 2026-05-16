@@ -87,7 +87,7 @@ class MockAgentInvoker:
 
 
 @pytest.fixture
-def default_policy() -> tuple[Any, Any, Any]:
+def default_policy() -> tuple[object, object, object]:
     """Load the default policy bundle.
 
     Returns:
@@ -139,7 +139,7 @@ class TestPipelineHappyPath:
 
     def test_planning_phase_routing(
         self,
-        default_policy: tuple[Any, Any, Any],
+        default_policy: tuple[object, object, object],
         initial_state: PipelineState,
     ) -> None:
         """Test that planning phase routes to development on success."""
@@ -154,7 +154,7 @@ class TestPipelineHappyPath:
 
     def test_development_budget_routing(
         self,
-        default_policy: tuple[Any, Any, Any],
+        default_policy: tuple[object, object, object],
         initial_state: PipelineState,
     ) -> None:
         """development_commit should still run commit even when budget is exhausted."""
@@ -192,7 +192,7 @@ class TestPipelineHappyPath:
 
     def test_policy_loading_smoke_test(
         self,
-        default_policy: tuple[Any, Any, Any],
+        default_policy: tuple[object, object, object],
     ) -> None:
         """Test that default policy loads without error."""
         agents_policy, pipeline_policy, _artifacts_policy = default_policy
@@ -264,7 +264,7 @@ class TestPipelinePhaseTransitions:
 
     def test_development_loopback_stays_in_development(
         self,
-        default_policy: tuple[Any, Any, Any],
+        default_policy: tuple[object, object, object],
         initial_state: PipelineState,
     ) -> None:
         """Test that development on loopback stays in development."""
@@ -281,7 +281,7 @@ class TestPipelinePhaseTransitions:
 
     def test_planning_analysis_routes_to_development(
         self,
-        default_policy: tuple[Any, Any, Any],
+        default_policy: tuple[object, object, object],
         initial_state: PipelineState,
     ) -> None:
         """Test that planning_analysis routes to development on success."""

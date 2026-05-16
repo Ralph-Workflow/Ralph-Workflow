@@ -34,7 +34,7 @@ class _FakeClient:
     def __enter__(self) -> _FakeClient:
         return self
 
-    def __exit__(self, exc_type, exc, _tb) -> None:
+    def __exit__(self, exc_type: object, exc: object, _tb: object) -> None:
         return None
 
     def get(self, url: str) -> _FakeResponse:

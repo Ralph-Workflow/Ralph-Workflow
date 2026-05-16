@@ -7,7 +7,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import loguru
 import pytest
@@ -63,7 +63,7 @@ def make_worker_context(
     log_dir: Path | None = None,
     run_id: str = "default",
     same_workspace: SameWorkspaceContext | None = None,
-) -> Any:
+) -> object:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     ctx_type = module._WorkerContext
     log = None
@@ -438,7 +438,7 @@ async def test_empirical_failure_no_artifact_despite_zero_exit(tmp_path: Path) -
 
 
 async def test_activity_router_is_passed_to_subprocess_worker_executor(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: object
 ) -> None:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     run_fan_out = _load_run_fan_out()
@@ -455,9 +455,9 @@ async def test_activity_router_is_passed_to_subprocess_worker_executor(
     class _RecordingSubprocessExecutor:
         def __init__(
             self,
-            *_args: Any,
+            *_args: object,
             activity_router: ActivityRouter | None = None,
-            **_kwargs: Any,
+            **_kwargs: object,
         ) -> None:
             recorded_activity_routers.append(activity_router)
 
@@ -539,7 +539,7 @@ async def test_worker_logs_are_routed_to_per_worker_sink(tmp_path: Path) -> None
 
 @pytest.mark.asyncio
 async def test_subprocess_worker_receives_ralph_worker_artifact_dir(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: object
 ) -> None:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     run_fan_out = _load_run_fan_out()
@@ -552,9 +552,9 @@ async def test_subprocess_worker_receives_ralph_worker_artifact_dir(
     class _RecordingSubprocessExecutor:
         def __init__(
             self,
-            *_args: Any,
+            *_args: object,
             extra_env: dict[str, str] | None = None,
-            **_kwargs: Any,
+            **_kwargs: object,
         ) -> None:
             recorded_extra_envs.append(dict(extra_env or {}))
 
@@ -626,7 +626,7 @@ async def test_subprocess_worker_receives_ralph_worker_artifact_dir(
 
 @pytest.mark.asyncio
 async def test_subprocess_workers_receive_per_worker_agent_label_scope(
-    tmp_path: Path, monkeypatch: Any
+    tmp_path: Path, monkeypatch: object
 ) -> None:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     run_fan_out = _load_run_fan_out()
@@ -648,9 +648,9 @@ async def test_subprocess_workers_receive_per_worker_agent_label_scope(
     class _RecordingSubprocessExecutor:
         def __init__(
             self,
-            *_args: Any,
+            *_args: object,
             extra_env: dict[str, str] | None = None,
-            **_kwargs: Any,
+            **_kwargs: object,
         ) -> None:
             recorded_extra_envs.append(dict(extra_env or {}))
 

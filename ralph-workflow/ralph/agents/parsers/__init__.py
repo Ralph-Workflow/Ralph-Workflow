@@ -24,13 +24,14 @@ To add a parser for a new agent transport, create a module in this package, impl
 ``AgentParser``, and register the class in both ``get_parser()`` and ``__all__``.
 """
 
-from ralph.agents.parsers.base import AgentOutputLine, AgentParser
-from ralph.agents.parsers.claude import ClaudeParser
-from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
-from ralph.agents.parsers.codex import CodexParser
-from ralph.agents.parsers.gemini import GeminiParser
-from ralph.agents.parsers.generic import GenericParser
-from ralph.agents.parsers.opencode import OpenCodeParser
+from .agent_output_line import AgentOutputLine
+from .base import AgentParser
+from .claude import ClaudeParser
+from .claude_interactive import ClaudeInteractiveParser
+from .codex import CodexParser
+from .gemini import GeminiParser
+from .generic import GenericParser
+from .opencode import OpenCodeParser
 
 __all__ = [
     "AgentOutputLine",

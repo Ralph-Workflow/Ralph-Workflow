@@ -678,7 +678,7 @@ def _collect_files_for_grep(workspace: Workspace, normalized: str) -> list[str]:
         return _collect_files_recursive(workspace, normalized)
 
 
-def _search_file_content(  # noqa: PLR0913
+def _search_file_content(
     workspace: Workspace,
     file_path: str,
     compiled: re.Pattern[str],

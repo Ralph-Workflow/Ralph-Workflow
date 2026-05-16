@@ -445,7 +445,7 @@ class TestHandleReadFilePartial:
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["content"] == "line1\nline2\n"
-        assert payload["returned_lines"] == 2  # noqa: PLR2004
+        assert payload["returned_lines"] == 2
         assert payload["truncated"] is True
 
     def test_tail_returns_last_n_lines(self) -> None:
@@ -495,8 +495,8 @@ class TestHandleReadFilePartial:
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["content"] == "some content"
-        assert payload["total_bytes"] == 200  # noqa: PLR2004
-        assert payload["returned_bytes"] == 100  # noqa: PLR2004
+        assert payload["total_bytes"] == 200
+        assert payload["returned_bytes"] == 100
         assert payload["truncated"] is True
 
     def test_offset_only_reads_from_byte_position(self) -> None:
@@ -514,10 +514,10 @@ class TestHandleReadFilePartial:
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["content"] == "remainder content"
-        assert payload["total_bytes"] == 100  # noqa: PLR2004
+        assert payload["total_bytes"] == 100
         ws.read_bytes.assert_called_once()
         _, kwargs = ws.read_bytes.call_args
-        assert kwargs["offset"] == 17  # noqa: PLR2004
+        assert kwargs["offset"] == 17
         assert kwargs["limit"] is None
 
     def test_conflicting_params_raise_invalid_params(self) -> None:
@@ -562,8 +562,8 @@ class TestHandleReadFilePartial:
         assert payload["content"] == "line2\nline3\n"
         ws.read_lines.assert_called_once()
         _, kwargs = ws.read_lines.call_args
-        assert kwargs["start"] == 2  # noqa: PLR2004
-        assert kwargs["end"] == 3  # noqa: PLR2004
+        assert kwargs["start"] == 2
+        assert kwargs["end"] == 3
 
     def test_head_with_inert_zero_offset_and_limit_succeeds(
         self,
@@ -585,7 +585,7 @@ class TestHandleReadFilePartial:
         assert payload["content"] == "first\nsecond\n"
         ws.read_lines.assert_called_once()
         _, kwargs = ws.read_lines.call_args
-        assert kwargs["head"] == 2  # noqa: PLR2004
+        assert kwargs["head"] == 2
 
     def test_tail_with_inert_zero_offset_succeeds(
         self,
@@ -607,7 +607,7 @@ class TestHandleReadFilePartial:
         assert payload["content"] == "last\nline\n"
         ws.read_lines.assert_called_once()
         _, kwargs = ws.read_lines.call_args
-        assert kwargs["tail"] == 2  # noqa: PLR2004
+        assert kwargs["tail"] == 2
 
     def test_offset_zero_with_positive_limit_uses_byte_window(
         self,
@@ -630,7 +630,7 @@ class TestHandleReadFilePartial:
         ws.read_bytes.assert_called_once()
         _, kwargs = ws.read_bytes.call_args
         assert kwargs["offset"] == 0
-        assert kwargs["limit"] == 100  # noqa: PLR2004
+        assert kwargs["limit"] == 100
 
 
 class TestHandleReadFileNonUtf8:
@@ -683,7 +683,7 @@ class TestHandleReadFileFullReadTruncation:
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["truncated"] is True
-        assert payload["total_bytes"] == 10_000_000  # noqa: PLR2004
+        assert payload["total_bytes"] == 10_000_000
         assert payload["max_bytes"] == _FULL_READ_DEFAULT_MAX_BYTES
         assert payload["reason"] == "oversize"
         assert "content" in payload
@@ -703,7 +703,7 @@ class TestHandleReadFileFullReadTruncation:
         )
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
-        assert payload["max_bytes"] == 1000  # noqa: PLR2004
+        assert payload["max_bytes"] == 1000
         assert payload["truncated"] is True
 
     def test_dir_path_falls_through_to_workspace_read(self) -> None:
@@ -732,7 +732,7 @@ class TestHandleReadMultipleFiles:
         )
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
-        assert len(payload["files"]) == 2  # noqa: PLR2004
+        assert len(payload["files"]) == 2
         assert payload["files"][0]["content"] == "content1"
         assert payload["files"][1]["content"] == "content2"
 
@@ -787,7 +787,7 @@ class TestHandleStat:
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["type"] == "file"
-        assert payload["size_bytes"] == 100  # noqa: PLR2004
+        assert payload["size_bytes"] == 100
 
     def test_stat_missing_file(self) -> None:
         ws = MagicMock()
@@ -962,7 +962,7 @@ class TestHandleSearchFiles:
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["truncated"] is True
-        assert len(payload["matches"]) == 2  # noqa: PLR2004
+        assert len(payload["matches"]) == 2
 
     def test_search_missing_capability_raises(self) -> None:
         ws = MagicMock()
@@ -1098,7 +1098,7 @@ class TestHandleDirectoryTree:
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["type"] == "dir"
         assert "children" in payload
-        assert len(payload["children"]) == 2  # noqa: PLR2004
+        assert len(payload["children"]) == 2
 
     def test_respects_max_depth(self) -> None:
         ws = MagicMock()
@@ -1290,7 +1290,7 @@ class TestHandleAppendFile:
         assert result.is_error is False
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["path"] == "file.txt"
-        assert payload["bytes_appended"] == 8  # noqa: PLR2004
+        assert payload["bytes_appended"] == 8
 
     def test_missing_capability_raises(self) -> None:
         ws = MagicMock()
@@ -1928,7 +1928,7 @@ class TestHandleReadMedia:
         index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
         data = json.loads(index_path.read_text(encoding="utf-8"))
         artifacts = data["artifacts"]
-        assert len(artifacts) == 2  # noqa: PLR2004
+        assert len(artifacts) == 2
         titles = {a["title"] for a in artifacts}
         assert "a.pdf" in titles
         assert "b.pdf" in titles

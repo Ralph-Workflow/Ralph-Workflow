@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any
+
 import pytest
 from loguru import logger
 
@@ -20,7 +23,20 @@ from ralph.agents.idle_watchdog import (
 from ralph.agents.timeout_clock import FakeClock
 
 
-def _make_watchdog(  # noqa: PLR0913
+@dataclass
+class _WatchdogOptions:
+    idle_timeout: Any
+    drain_window: float = 0.5
+    max_waiting: Any = None
+    start: float = 0.0
+    max_session: Any = None
+    listener: Any = None
+    suspect: Any = None
+    status_interval: Any = None
+    no_progress_ceiling: Any = None
+
+
+def _make_watchdog(
     idle_timeout: float | None,
     drain_window: float = 0.5,
     max_waiting: float | None = None,
@@ -29,7 +45,8 @@ def _make_watchdog(  # noqa: PLR0913
     listener: WaitingStatusListener | None = None,
     suspect: float | None = None,
     status_interval: float | None = None,
-    no_progress_ceiling: float | None = None,  # None disables the no-progress ceiling
+    no_progress_ceiling: float | None = None,
+    **kwargs: object,
 ) -> tuple[IdleWatchdog, FakeClock]:
     if max_waiting is None:
         max_waiting = max(1800.0, idle_timeout) if idle_timeout is not None else 1800.0
@@ -639,7 +656,7 @@ def test_consecutive_active_in_drain_does_not_extend_window() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_watchdog_with_listener(  # noqa: PLR0913
+def _make_watchdog_with_listener(
     idle_timeout: float | None,
     drain_window: float = 0.5,
     max_waiting: float = 1800.0,
@@ -648,6 +665,7 @@ def _make_watchdog_with_listener(  # noqa: PLR0913
     suspect: float | None = 600.0,
     listener: list[WaitingStatusEvent] | None = None,
     corroborator: WaitingCorroborator | None = None,
+    **kwargs: object,
 ) -> tuple[IdleWatchdog, FakeClock, list[WaitingStatusEvent]]:
     captured: list[WaitingStatusEvent] = listener if listener is not None else []
     config = TimeoutPolicy(

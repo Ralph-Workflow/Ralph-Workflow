@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,7 +42,9 @@ def test_stale_session_clears_last_agent_session_id(
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(["claude"], last_session_id="deadbeef-1234", session_preserve=True)
 
     exc = _AgentInvocationError(
@@ -61,7 +63,9 @@ def test_stale_session_clears_session_preserve_retry_pending(
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(["claude"], last_session_id="deadbeef-1234", session_preserve=True)
 
     exc = _AgentInvocationError(
@@ -80,7 +84,9 @@ def test_stale_session_writes_retry_hint_file(
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(["claude"], last_session_id="abc-session")
 
     exc = _AgentInvocationError(
@@ -101,7 +107,9 @@ def test_stale_session_debits_budget(tmp_path: Path, monkeypatch: pytest.MonkeyP
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(["claude"], last_session_id="stale-id")
 
     exc = _AgentInvocationError(
@@ -121,7 +129,9 @@ def test_stale_session_allows_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(["claude"], last_session_id="stale-id")
 
     exc = _AgentInvocationError(

@@ -37,7 +37,7 @@ class _HTMLParserProtocol(Protocol):
 _ReadabilityDocument: type[_ReadabilityDocumentProtocol] | None = None
 _HTMLParser: type[_HTMLParserProtocol] | None = None
 try:
-    from readability import Document as _RawDocument  # noqa: I001  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    from readability import Document as _RawDocument
     from selectolax.parser import HTMLParser as _RawHTMLParser
 
     _ReadabilityDocument = cast("type[_ReadabilityDocumentProtocol]", _RawDocument)

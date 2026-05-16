@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _make_snapshot(  # noqa: PLR0913
+def _make_snapshot(
     *,
     phase: str = "complete",
     plan_summary: str | None = "Implement the feature",

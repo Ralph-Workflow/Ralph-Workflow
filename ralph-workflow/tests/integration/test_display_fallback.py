@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import re
 from io import StringIO
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline.worker_state import WorkerStatus
+
+if TYPE_CHECKING:
+    import pytest
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[")
 EXPECTED_LINE_COUNT = 3
@@ -45,7 +49,7 @@ def test_non_tty_no_ansi() -> None:
     assert ANSI_ESCAPE_RE.search(output) is None
 
 
-def test_narrow_no_crash(monkeypatch) -> None:
+def test_narrow_no_crash(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("COLUMNS", "40")
     display, buffer = _make_display(force_terminal=True, columns=40)
 

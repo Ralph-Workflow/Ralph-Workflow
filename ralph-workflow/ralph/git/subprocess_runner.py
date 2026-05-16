@@ -23,7 +23,7 @@ class GitRunResult:
     stderr: str
 
 
-def run_git(  # noqa: PLR0913
+def run_git(
     args: Sequence[str],
     *,
     cwd: Path | None,

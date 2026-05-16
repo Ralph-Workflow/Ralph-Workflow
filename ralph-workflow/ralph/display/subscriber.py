@@ -87,7 +87,7 @@ class PipelineSubscriber:
     snapshot queue without breaking the notify(state) contract.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         queue: Queue[PipelineSnapshot],
@@ -210,7 +210,7 @@ class PipelineSubscriber:
         with self._lock:
             return self._build_snapshot_locked(state)
 
-    def record_activity(  # noqa: PLR0913
+    def record_activity(
         self,
         unit_id: str,
         line: str,

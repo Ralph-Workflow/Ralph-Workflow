@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING
+
+from ralph.pipeline.parallel.parallel_execution_mode import ParallelExecutionMode
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -15,17 +16,6 @@ if TYPE_CHECKING:
         ResolvedCapabilityProfile,
     )
     from ralph.mcp.server.factory import McpServerFactory
-
-
-class ParallelExecutionMode(StrEnum):
-    """Supported parallel execution modes.
-
-    In v1 only SAME_WORKSPACE is supported. Workers share the single checked-out
-    repository root and are isolated only by edit-area path restrictions and
-    per-worker artifact namespaces — not by filesystem isolation or separate git checkouts.
-    """
-
-    SAME_WORKSPACE = "same_workspace"
 
 
 @dataclass(frozen=True)
@@ -48,10 +38,6 @@ class SameWorkspaceContext:
     signal_bridge: SignalBridge | None = None
     worker_namespace_root: Path | None = None
 
-    # Session contract propagated from the parent phase's SessionMcpPlan.
-    # These fields carry the same drain, capabilities, model identity, and
-    # capability profile that the serial AgentSession receives, ensuring
-    # parallel workers are capability-equivalent to serial execution.
     session_drain: str = ""
     session_capabilities: frozenset[str] = frozenset()
     session_model_identity: MultimodalModelIdentity | None = None

@@ -28,75 +28,28 @@ import sys
 from contextlib import contextmanager
 from importlib import import_module
 from io import TextIOBase
-from typing import TYPE_CHECKING, ClassVar, Protocol, cast
+from typing import TYPE_CHECKING, ClassVar, cast
+
+from ralph.display.progress_protocols import (
+    ActivityRenderer,
+    PhaseTracker,
+    ProgressRenderer,
+    TaskID,
+    _ColumnFactory,
+    _ConsoleFactory,
+    _ConsoleProto,
+    _GetIPython,
+    _ProgressFactory,
+    _ProgressProto,
+    _TqdmFactory,
+    _TqdmProto,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from types import ModuleType
 
-    from rich.theme import Theme
-
     from ralph.display.context import DisplayContext
-
-TaskID = int
-
-
-class _ConsoleProto(Protocol):
-    def print(self, *_objects: object, **kwargs: object) -> None: ...
-
-
-class _ProgressProto(Protocol):
-    def __enter__(self) -> _ProgressProto: ...
-
-    def __exit__(self, exc_type: object, exc: object, _tb: object) -> bool | None: ...
-
-    def add_task(
-        self,
-        description: str,
-        *,
-        total: int | None = ...,
-        completed: int = ...,
-        parent: TaskID | None = ...,
-    ) -> TaskID: ...
-
-    def update(
-        self,
-        *,
-        task_id: TaskID,
-        completed: int | None = ...,
-        advance: int | None = ...,
-        description: str | None = ...,
-    ) -> None: ...
-
-
-class _TqdmProto(Protocol):
-    n: int
-
-    def update(self, n: int = ...) -> object: ...
-
-    def close(self) -> None: ...
-
-    def refresh(self) -> None: ...
-
-
-class _ConsoleFactory(Protocol):
-    def __call__(self, *, stderr: bool, theme: Theme | None = ...) -> _ConsoleProto: ...
-
-
-class _ColumnFactory(Protocol):
-    def __call__(self, *args: object, **kwargs: object) -> object: ...
-
-
-class _ProgressFactory(Protocol):
-    def __call__(self, *columns: object, **kwargs: object) -> _ProgressProto: ...
-
-
-class _TqdmFactory(Protocol):
-    def __call__(self, **kwargs: object) -> _TqdmProto: ...
-
-
-class _GetIPython(Protocol):
-    def __call__(self) -> object | None: ...
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object | None:
@@ -163,6 +116,23 @@ _RICH_AVAILABLE = _load_rich_components() is not None
 _TQDM_AVAILABLE = _load_tqdm_factory() is not None
 _GET_IPYTHON = _load_get_ipython()
 _IPYTHON_AVAILABLE = _GET_IPYTHON is not None
+
+__all__ = [
+    "ActivityRenderer",
+    "PhaseTracker",
+    "ProgressRenderer",
+    "RalphProgress",
+    "TaskID",
+    "_ColumnFactory",
+    "_ConsoleFactory",
+    "_ConsoleProto",
+    "_GetIPython",
+    "_ProgressFactory",
+    "_ProgressProto",
+    "_TqdmFactory",
+    "_TqdmProto",
+    "get_progress",
+]
 
 
 class RalphProgress:

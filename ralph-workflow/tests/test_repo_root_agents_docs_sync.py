@@ -29,13 +29,13 @@ class TestCurrentAgentsGuides:
     """Current docs/agents guides must be Python-current guidance."""
 
     @pytest.mark.parametrize("guide", _CURRENT_GUIDES)
-    def test_guide_exists(self, guide: str):
+    def test_guide_exists(self, guide: str) -> None:
         """Each current guide must exist."""
         path = REPO_ROOT_DOCS_AGENTS_DIR / guide
         assert path.exists(), f"Current guide {guide} must exist at {path}"
 
     @pytest.mark.parametrize("guide", _CURRENT_GUIDES)
-    def test_guide_has_python_content(self, guide: str):
+    def test_guide_has_python_content(self, guide: str) -> None:
         """Each current guide must contain Python-relevant content."""
         path = REPO_ROOT_DOCS_AGENTS_DIR / guide
         content = path.read_text().lower()
@@ -49,13 +49,13 @@ class TestRedirectStubs:
     """Redirect stubs must remain explicit and correct."""
 
     @pytest.mark.parametrize("stub", _REDIRECT_STUBS)
-    def test_stub_exists(self, stub: str):
+    def test_stub_exists(self, stub: str) -> None:
         """Each redirect stub must exist."""
         path = REPO_ROOT_DOCS_AGENTS_DIR / stub
         assert path.exists(), f"Redirect stub {stub} must exist at {path}"
 
     @pytest.mark.parametrize("stub", _REDIRECT_STUBS)
-    def test_stub_is_redirect(self, stub: str):
+    def test_stub_is_redirect(self, stub: str) -> None:
         """Each stub must indicate it redirects to canonical guide."""
         path = REPO_ROOT_DOCS_AGENTS_DIR / stub
         content = path.read_text().lower()
@@ -65,7 +65,7 @@ class TestRedirectStubs:
         ), f"Stub {stub} should indicate it redirects to canonical guide"
 
 
-def test_verification_guide_references_make_verify():
+def test_verification_guide_references_make_verify() -> None:
     """verification.md should reference canonical make verify."""
     path = REPO_ROOT_DOCS_AGENTS_DIR / "verification.md"
     content = path.read_text()
@@ -84,7 +84,7 @@ def test_verification_guide_uses_uv_managed_ruff_commands() -> None:
     assert "\nruff format --check ralph/ tests/\n" not in content
 
 
-def test_testing_guide_mentions_ralph_workflow():
+def test_testing_guide_mentions_ralph_workflow() -> None:
     """testing-guide.md should reference ralph-workflow testing patterns."""
     path = REPO_ROOT_DOCS_AGENTS_DIR / "testing-guide.md"
     content = path.read_text()
@@ -93,7 +93,7 @@ def test_testing_guide_mentions_ralph_workflow():
         assert "ralph-workflow" in content.lower() or "ralph" in content.lower()
 
 
-def test_type_ignore_policy_is_python_focused():
+def test_type_ignore_policy_is_python_focused() -> None:
     """type-ignore-policy.md must be Python-focused (not Rust)."""
     path = REPO_ROOT_DOCS_AGENTS_DIR / "type-ignore-policy.md"
     content = path.read_text().lower()
@@ -103,7 +103,7 @@ def test_type_ignore_policy_is_python_focused():
     )
 
 
-def test_parallelization_guide_is_python_current():
+def test_parallelization_guide_is_python_current() -> None:
     """parallelization.md must be Python-current."""
     path = REPO_ROOT_DOCS_AGENTS_DIR / "parallelization.md"
     content = path.read_text()
@@ -112,7 +112,7 @@ def test_parallelization_guide_is_python_current():
     assert "xtask" not in content.lower()
 
 
-def test_workspace_trait_guide_is_python_focused():
+def test_workspace_trait_guide_is_python_focused() -> None:
     """workspace-trait.md should be Python-focused."""
     path = REPO_ROOT_DOCS_AGENTS_DIR / "workspace-trait.md"
     content = path.read_text().lower()

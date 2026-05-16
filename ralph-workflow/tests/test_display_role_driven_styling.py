@@ -60,7 +60,7 @@ def _make_custom_pipeline_policy() -> PipelinePolicy:
     )
 
 
-def _minimal_snapshot(**kwargs: Any) -> PipelineSnapshot:
+def _minimal_snapshot(**kwargs: object) -> PipelineSnapshot:
     defaults: dict[str, Any] = {
         "phase": "done",
         "previous_phase": None,

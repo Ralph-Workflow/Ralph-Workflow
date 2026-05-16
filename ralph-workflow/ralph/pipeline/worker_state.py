@@ -1,21 +1,11 @@
 """Worker execution state model for parallel pipeline workers."""
 
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import ConfigDict, Field
 
+from ralph.pipeline.worker_status import WorkerStatus
 from ralph.pydantic_compat import RalphBaseModel
-
-
-class WorkerStatus(StrEnum):
-    """Execution status of a single parallel worker."""
-
-    PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    SUCCEEDED = "SUCCEEDED"
-    FAILED = "FAILED"
-    CANCELLED = "CANCELLED"
 
 
 class WorkerState(RalphBaseModel):
@@ -47,3 +37,6 @@ class WorkerState(RalphBaseModel):
     def copy_with(self, **updates: object) -> "WorkerState":
         """Return a copy with the given fields replaced."""
         return self.model_copy(update=updates)
+
+
+__all__ = ["WorkerState", "WorkerStatus"]

@@ -469,12 +469,14 @@ class TestArtifactsOnlySuccess:
 
 
 class TestNoMergeStepContract:
-    def test_no_git_branch_merge_or_worktree_subprocess(self, tmp_path: Path, monkeypatch) -> None:
+    def test_no_git_branch_merge_or_worktree_subprocess(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Fan-out path must never issue git branch/merge/checkout or worktree subprocesses."""
         banned_calls: list[str] = []
 
         class _RecordingPopen(_subprocess.Popen):
-            def __init__(self, cmd, *args, **kwargs):
+            def __init__(self, cmd: object, *args: object, **kwargs: object) -> None:
                 cmd_str = " ".join(str(c) for c in cmd) if not isinstance(cmd, str) else cmd
                 banned_calls.extend(
                     cmd_str
@@ -586,7 +588,7 @@ class TestConcurrentWorkerArtifactIsolation:
 
 class TestRunnerNoMergeStep:
     def test_runner_fanout_emits_no_branch_or_worktree_subprocess(
-        self, tmp_path: Path, monkeypatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Runner fan-out must never issue git branch/merge/checkout/worktree subprocesses."""
         import asyncio
@@ -595,7 +597,7 @@ class TestRunnerNoMergeStep:
         banned_calls: list[str] = []
 
         class _RecordingPopen(_subprocess.Popen):
-            def __init__(self, cmd, *args, **kwargs):
+            def __init__(self, cmd: object, *args: object, **kwargs: object) -> None:
                 cmd_str = " ".join(str(c) for c in cmd) if not isinstance(cmd, str) else cmd
                 banned_calls.extend(
                     cmd_str

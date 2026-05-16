@@ -34,7 +34,7 @@ if TYPE_CHECKING:
         ) -> Self: ...
 
         @classmethod
-        def model_validate(  # noqa: PLR0913
+        def model_validate(
             cls: type[Self],
             obj: object,
             *,
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
         ) -> Self: ...
 
         @classmethod
-        def model_validate_json(  # noqa: PLR0913
+        def model_validate_json(
             cls: type[Self],
             json_data: str | bytes | bytearray,
             *,
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
             _types_namespace: dict[str, object] | None = None,
         ) -> bool | None: ...
 
-        def model_dump(  # noqa: PLR0913
+        def model_dump(
             self,
             *,
             mode: Literal["json", "python"] | str = "python",
@@ -80,7 +80,7 @@ if TYPE_CHECKING:
             warnings: bool | Literal["none", "warn", "error"] = True,
         ) -> dict[str, object]: ...
 
-        def model_dump_json(  # noqa: PLR0913
+        def model_dump_json(
             self,
             *,
             indent: int | None = None,

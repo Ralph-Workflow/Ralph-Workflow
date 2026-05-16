@@ -112,7 +112,7 @@ class PipelineSnapshot:
     active_process_labels: tuple[str, ...] = ()
 
 
-def snapshot_from_state(  # noqa: PLR0913
+def snapshot_from_state(
     state: PipelineState,
     *,
     prompt_path: str | None,

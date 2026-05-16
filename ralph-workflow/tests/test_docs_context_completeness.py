@@ -30,14 +30,14 @@ _MIN_REFERENCE_CHARS = 500
 class TestRepoRootCompleteness:
     """Repo-root README must have minimum context."""
 
-    def test_readme_has_install_instructions(self):
+    def test_readme_has_install_instructions(self) -> None:
         """Repo-root README should have install/run instructions."""
         content = REPO_ROOT_README.read_text().lower()
         # Should mention installation
         has_install = any(phrase in content for phrase in ["install", "pip", "uv", "pipx", "clone"])
         assert has_install, "Repo-root README should have install instructions"
 
-    def test_readme_has_verify_reference(self):
+    def test_readme_has_verify_reference(self) -> None:
         """Repo-root README should reference verification."""
         content = REPO_ROOT_README.read_text().lower()
         assert "verify" in content or "test" in content, (
@@ -49,13 +49,13 @@ class TestSphinxPageCompleteness:
     """Sphinx pages must have bounded self-sufficiency."""
 
     @pytest.mark.parametrize("page", _SPHINX_PAGES)
-    def test_page_exists(self, page: str):
+    def test_page_exists(self, page: str) -> None:
         """Each Sphinx page must exist."""
         path = PACKAGE_DOCS_SPHINX_DIR / page
         assert path.exists(), f"Sphinx page {page} must exist"
 
     @pytest.mark.parametrize("page", _SPHINX_PAGES)
-    def test_page_has_substantive_content(self, page: str):
+    def test_page_has_substantive_content(self, page: str) -> None:
         """Each Sphinx page must have substantive content (not just headers)."""
         path = PACKAGE_DOCS_SPHINX_DIR / page
         content = path.read_text()
@@ -63,7 +63,7 @@ class TestSphinxPageCompleteness:
         assert len(content) > _MIN_CONTENT_CHARS, f"{page} appears to lack substantive content"
 
 
-def test_getting_started_has_install_run_verify():
+def test_getting_started_has_install_run_verify() -> None:
     """getting-started.md must contain install/run/verify path."""
     path = PACKAGE_DOCS_SPHINX_DIR / "getting-started.md"
     if not path.exists():
@@ -81,7 +81,7 @@ def test_getting_started_has_install_run_verify():
     )
 
 
-def test_concepts_defines_runtime_nouns():
+def test_concepts_defines_runtime_nouns() -> None:
     """concepts.md must define runtime nouns used elsewhere."""
     path = PACKAGE_DOCS_SPHINX_DIR / "concepts.md"
     if not path.exists():
@@ -95,7 +95,7 @@ def test_concepts_defines_runtime_nouns():
     )
 
 
-def test_reference_is_operator_reference():
+def test_reference_is_operator_reference() -> None:
     """reference.md must be a real operator reference index."""
     path = PACKAGE_DOCS_SPHINX_DIR / "reference.md"
     if not path.exists():
@@ -113,7 +113,7 @@ def test_reference_is_operator_reference():
     assert has_commands, "reference.md should cover CLI/commands"
 
 
-def test_developer_reference_points_to_internals():
+def test_developer_reference_points_to_internals() -> None:
     """developer-reference.md must point developers to internal surfaces."""
     path = PACKAGE_DOCS_SPHINX_DIR / "developer-reference.md"
     if not path.exists():

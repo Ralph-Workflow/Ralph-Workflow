@@ -86,10 +86,10 @@ def _load_default_policy_bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
-def _registry_factory(return_value):
+def _registry_factory(return_value: object) -> object:
     class Registry:
         @classmethod
-        def from_config(cls, config):
+        def from_config(cls, config: object) -> object:
             instance = MagicMock()
             instance.get.return_value = return_value
             return instance
@@ -112,7 +112,7 @@ def _config_with_agents(
     *,
     agent_chains: dict[str, list[str]],
     agent_drains: dict[str, str],
-):
+) -> object:
     config = MagicMock()
     config.agent_chains = agent_chains
     config.agent_drains = agent_drains
@@ -885,7 +885,7 @@ class TestDetermineEffect:
 
     def test_handle_inline_prepare_prompt_updates_current_drain_from_policy(
         self,
-        monkeypatch,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="planning", current_drain="planning")
@@ -1011,7 +1011,7 @@ def test_build_agent_recovery_plan_falls_back_to_original_prompt_when_context_mi
 def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_materialize_prompt_for_phase(**kwargs):
+    def fake_materialize_prompt_for_phase(**kwargs: object) -> object:
         captured.update(kwargs)
         return "PROMPT.md"
 
@@ -1042,7 +1042,9 @@ def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: M
     assert session_caps.tool_name_prefix == claude_tool_name_prefix()
 
 
-def test_execute_agent_effect_uses_single_workspace_root(monkeypatch, tmp_path: Path) -> None:
+def test_execute_agent_effect_uses_single_workspace_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     config = MagicMock()
     config.general.verbosity = 0
     effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.md")
@@ -1055,13 +1057,13 @@ def test_execute_agent_effect_uses_single_workspace_root(monkeypatch, tmp_path: 
 
     class Registry:
         @classmethod
-        def from_config(cls, config):
+        def from_config(cls, config: object) -> object:
             del cls, config
             return RegistryInstance()
 
     seen: dict[str, object] = {}
 
-    def fake_start_mcp_server(session, workspace, **_kwargs):
+    def fake_start_mcp_server(session: object, workspace: object, **_kwargs: object) -> object:
         seen["workspace_root"] = workspace.root
 
         class Bridge:
@@ -1070,7 +1072,7 @@ def test_execute_agent_effect_uses_single_workspace_root(monkeypatch, tmp_path: 
 
         return Bridge()
 
-    def fake_shutdown_mcp_server(_bridge) -> None:
+    def fake_shutdown_mcp_server(_bridge: object) -> None:
         return None
 
     def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
@@ -1082,8 +1084,8 @@ def test_execute_agent_effect_uses_single_workspace_root(monkeypatch, tmp_path: 
         config: AgentConfig,
         prompt_file: str,
         *,
-        options=None,
-    ):
+        options: object = None,
+    ) -> object:
         del config
         seen["prompt_file"] = prompt_file
         seen["workspace_path"] = options.workspace_path if options is not None else None
@@ -1183,7 +1185,7 @@ class TestPipelineRunnerLoop:
             lambda *_args, **_kwargs: effect,
         )
 
-        def fake_invoke(*_args, **_kwargs):
+        def fake_invoke(*_args: object, **_kwargs: object) -> object:
             seen["prompt"] = workspace.read(".agent/tmp/planning_prompt.md")
             return PipelineEvent.AGENT_SUCCESS
 
@@ -1226,23 +1228,25 @@ class TestPipelineRunnerLoop:
 
     def test_save_checkpoint_effect_triggers_checkpoint_and_returns_success(
         self,
-        monkeypatch,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         state = MagicMock()
         state.phase = "planning"
         effects = [SaveCheckpointEffect(), ExitSuccessEffect()]
 
-        def stub_determine_effect(*_args, **_kwargs):
+        def stub_determine_effect(*_args: object, **_kwargs: object) -> object:
             return effects.pop(0)
 
         ckpt_save = MagicMock()
         reducer_events: list[object] = []
 
-        def stub_reducer(current_state, event):
+        def stub_reducer(current_state: object, event: object) -> object:
             reducer_events.append(event)
             return current_state, None
 
-        def stub_reducer_with_policy(current_state, event, _policy=None):
+        def stub_reducer_with_policy(
+            current_state: object, event: object, _policy: object = None
+        ) -> object:
             return stub_reducer(current_state, event)
 
         captured_console = _install_runner_display_context(monkeypatch)
@@ -1263,7 +1267,7 @@ class TestPipelineRunnerLoop:
         printed = captured_console.export_text()
         assert "Pipeline completed successfully" in printed
 
-    def test_exit_failure_effect_enters_recovery(self, monkeypatch) -> None:
+    def test_exit_failure_effect_enters_recovery(self, monkeypatch: pytest.MonkeyPatch) -> None:
         state = PipelineState(phase="planning")
         captured_console = _install_runner_display_context(monkeypatch)
         effects = iter([ExitFailureEffect(reason="bad"), ExitSuccessEffect()])
@@ -1281,13 +1285,15 @@ class TestPipelineRunnerLoop:
         printed = captured_console.export_text()
         assert "Recovery triggered: bad" in printed
 
-    def test_keyboard_interrupt_triggers_checkpoint_and_returns_130(self, monkeypatch) -> None:
+    def test_keyboard_interrupt_triggers_checkpoint_and_returns_130(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = MagicMock()
         state.phase = "planning"
         interrupted_state = MagicMock()
         state.copy_with.return_value = interrupted_state
 
-        def raise_interrupt(*_args, **_kwargs):
+        def raise_interrupt(*_args: object, **_kwargs: object) -> None:
             raise KeyboardInterrupt
 
         ckpt_save = MagicMock()
@@ -1301,7 +1307,7 @@ class TestPipelineRunnerLoop:
         ckpt_save.assert_called_once_with(interrupted_state)
 
     def test_run_converts_system_exit_during_effect_execution_into_recovery(
-        self, monkeypatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         state = PipelineState(
             phase="planning",
@@ -1358,7 +1364,7 @@ class TestPipelineRunnerLoop:
         assert "boom" in recovered_state.last_error
 
     def test_run_converts_system_exit_during_effect_determination_into_recovery(
-        self, monkeypatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         state = PipelineState(
             phase="planning",
@@ -1367,7 +1373,7 @@ class TestPipelineRunnerLoop:
         saved_states: list[PipelineState] = []
         calls = iter([SystemExit("determine blew up"), ExitSuccessEffect()])
 
-        def determine_effect(*_args, **_kwargs):
+        def determine_effect(*_args: object, **_kwargs: object) -> object:
             result = next(calls)
             if isinstance(result, BaseException):
                 raise result
@@ -1396,7 +1402,7 @@ class TestPipelineRunnerLoop:
         assert "determine blew up" in recovered_state.last_error
 
     def test_run_converts_system_exit_during_prepare_prompt_inline_handling_into_recovery(
-        self, monkeypatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         state = PipelineState(
             phase="planning",
@@ -1437,7 +1443,7 @@ class TestPipelineRunnerLoop:
         assert "prompt blew up" in recovered_state.last_error
 
     def test_run_converts_system_exit_during_fanout_dispatch_into_recovery(
-        self, monkeypatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         state = PipelineState(
             phase="development",
@@ -1486,7 +1492,7 @@ class TestPipelineRunnerLoop:
         assert "SystemExit" in recovered_state.last_error
         assert "fanout blew up" in recovered_state.last_error
 
-    def test_failed_state_reenters_recovery_loop(self, monkeypatch) -> None:
+    def test_failed_state_reenters_recovery_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
         state = PipelineState(
             phase="failed",
             previous_phase="development",
@@ -1523,7 +1529,7 @@ class TestPipelineRunnerLoop:
 
     def test_prepare_prompt_effect_advances_state_without_execute_effect(
         self,
-        monkeypatch,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         state = MagicMock()
         state.phase = "planning"
@@ -1536,7 +1542,9 @@ class TestPipelineRunnerLoop:
             ExitSuccessEffect(),
         ]
 
-        def stub_determine_effect(_state, _bundle, _workspace_scope):
+        def stub_determine_effect(
+            _state: object, _bundle: object, _workspace_scope: object
+        ) -> object:
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_FAILURE)
@@ -1565,7 +1573,9 @@ class TestPipelineRunnerLoop:
         reducer.assert_not_called()
         ckpt_save.assert_called_once_with(advanced_state)
 
-    def test_invoke_agent_effect_materializes_prompt_before_execution(self, monkeypatch) -> None:
+    def test_invoke_agent_effect_materializes_prompt_before_execution(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         state = MagicMock()
         state.phase = "planning"
 
@@ -1578,7 +1588,9 @@ class TestPipelineRunnerLoop:
             ExitSuccessEffect(),
         ]
 
-        def stub_determine_effect(_state, _bundle, _workspace_scope):
+        def stub_determine_effect(
+            _state: object, _bundle: object, _workspace_scope: object
+        ) -> object:
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_SUCCESS)
@@ -1602,7 +1614,7 @@ class TestPipelineRunnerLoop:
 
     def test_run_passes_policy_and_recovery_controller_to_reducer(
         self,
-        monkeypatch,
+        monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         state = MagicMock()
@@ -1617,7 +1629,9 @@ class TestPipelineRunnerLoop:
             ExitSuccessEffect(),
         ]
 
-        def stub_determine_effect(_state, _bundle, _workspace_scope):
+        def stub_determine_effect(
+            _state: object, _bundle: object, _workspace_scope: object
+        ) -> object:
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_SUCCESS)
@@ -1647,7 +1661,7 @@ class TestPipelineRunnerLoop:
         assert kwargs.get("recovery") is not None
 
     def test_run_uses_phase_handler_event_after_agent_execution(
-        self, monkeypatch, tmp_path: Path
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         planning_state = PipelineState(
             phase="planning",
@@ -1671,7 +1685,9 @@ class TestPipelineRunnerLoop:
             ExitSuccessEffect(),
         ]
 
-        def stub_determine_effect(_state, _bundle, _workspace_scope):
+        def stub_determine_effect(
+            _state: object, _bundle: object, _workspace_scope: object
+        ) -> object:
             return effects.pop(0)
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_SUCCESS)
@@ -1702,7 +1718,9 @@ class TestPipelineRunnerLoop:
         assert args[2] == policy_bundle.pipeline
         assert kwargs.get("recovery") is not None
 
-    def test_run_notifies_subscriber_with_initial_state_before_loop(self, monkeypatch) -> None:
+    def test_run_notifies_subscriber_with_initial_state_before_loop(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """run() must seed the subscriber with initial state before executing any effects.
 
         Without this seed call, DashboardSubscriber._last_state is None during the first
@@ -1772,7 +1790,9 @@ class TestExecuteAgentEffect:
         config.ccs_aliases = {"mm": "ccs mm"}
         return config
 
-    def test_returns_success_when_invocation_succeeds(self, monkeypatch) -> None:
+    def test_returns_success_when_invocation_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
@@ -1801,7 +1821,9 @@ class TestExecuteAgentEffect:
 
         assert result == PipelineEvent.AGENT_SUCCESS
 
-    def test_development_session_gets_expected_mcp_capabilities(self, monkeypatch) -> None:
+    def test_development_session_gets_expected_mcp_capabilities(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
         captured: dict[str, object] = {}
@@ -1813,7 +1835,7 @@ class TestExecuteAgentEffect:
             def agent_endpoint_uri(self) -> str:
                 return "http://127.0.0.1:12345/mcp"
 
-        def fake_start_mcp_server(session, *_args, **_kwargs):
+        def fake_start_mcp_server(session: object, *_args: object, **_kwargs: object) -> object:
             captured["capabilities"] = session.capabilities
             return FakeBridge()
 
@@ -1850,7 +1872,9 @@ class TestExecuteAgentEffect:
             "media.read",
         }
 
-    def test_custom_phase_uses_bound_drain_capabilities(self, monkeypatch) -> None:
+    def test_custom_phase_uses_bound_drain_capabilities(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         effect = InvokeAgentEffect(
             agent_name="dev",
             phase="custom_phase",
@@ -1867,7 +1891,7 @@ class TestExecuteAgentEffect:
             def agent_endpoint_uri(self) -> str:
                 return "http://127.0.0.1:12345/mcp"
 
-        def fake_start_mcp_server(session, *_args, **_kwargs):
+        def fake_start_mcp_server(session: object, *_args: object, **_kwargs: object) -> object:
             captured["drain"] = session.drain
             captured["capabilities"] = session.capabilities
             return FakeBridge()
@@ -2242,7 +2266,7 @@ class TestExecuteAgentEffect:
             runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
-        def record_invoke(config: AgentConfig, *_args, **_kwargs):
+        def record_invoke(config: AgentConfig, *_args: object, **_kwargs: object) -> object:
             invoked["cmd"] = config.cmd
             invoked["transport"] = config.transport
             return iter(["line"])
@@ -2276,7 +2300,7 @@ class TestExecuteAgentEffect:
             runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
-        def raising_invoke(*_args, **_kwargs):
+        def raising_invoke(*_args: object, **_kwargs: object) -> None:
             raise self.AgentError("boom")
 
         result = runner_module._execute_agent_effect(
@@ -2307,7 +2331,7 @@ class TestExecuteAgentEffect:
             runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
-        def raising_value_error(*_args, **_kwargs):
+        def raising_value_error(*_args: object, **_kwargs: object) -> None:
             raise ValueError("boom")
 
         result = runner_module._execute_agent_effect(
@@ -2324,7 +2348,9 @@ class TestExecuteAgentEffect:
 
         assert result == PipelineEvent.AGENT_FAILURE
 
-    def test_starts_and_shuts_down_mcp_bridge_around_invocation(self, monkeypatch) -> None:
+    def test_starts_and_shuts_down_mcp_bridge_around_invocation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
@@ -2344,7 +2370,7 @@ class TestExecuteAgentEffect:
             def endpoint_uri(self) -> str:
                 return "tcp://127.0.0.1:12345"
 
-        def fake_start_mcp_server(session, workspace, **_kwargs):
+        def fake_start_mcp_server(session: object, workspace: object, **_kwargs: object) -> object:
             bridge = FakeBridge()
             bridge.start()
             return bridge
@@ -2357,7 +2383,7 @@ class TestExecuteAgentEffect:
 
         seen_options: list[object] = []
 
-        def record_invoke(*_args, **kwargs):
+        def record_invoke(*_args: object, **kwargs: object) -> object:
             seen_options.append(kwargs.get("options"))
             return iter(["line"])
 
@@ -2378,7 +2404,9 @@ class TestExecuteAgentEffect:
         assert shutdown["value"] is True
         assert seen_options
 
-    def test_starts_fresh_mcp_server_for_each_invocation(self, monkeypatch) -> None:
+    def test_starts_fresh_mcp_server_for_each_invocation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
@@ -2394,7 +2422,7 @@ class TestExecuteAgentEffect:
             def agent_endpoint_uri(self) -> str:
                 return f"http://127.0.0.1:{12345 + self.marker}/mcp"
 
-        def fake_start_mcp_server(*_args, **_kwargs):
+        def fake_start_mcp_server(*_args: object, **_kwargs: object) -> object:
             marker = len(created)
             created.append(marker)
             return FakeBridge(marker)
@@ -2428,7 +2456,9 @@ class TestExecuteAgentEffect:
         assert second == PipelineEvent.AGENT_SUCCESS
         assert created == [0, 1]
 
-    def test_streams_parsed_agent_activity_to_console_by_default(self, monkeypatch) -> None:
+    def test_streams_parsed_agent_activity_to_console_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         agent_config = AgentConfig(
             cmd="codex",
@@ -2480,7 +2510,7 @@ class TestExecuteAgentEffect:
         assert "thinking" in printed
         assert "bash" in printed
 
-    def test_streams_non_text_parsed_events_too(self, monkeypatch) -> None:
+    def test_streams_non_text_parsed_events_too(self, monkeypatch: pytest.MonkeyPatch) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         agent_config = AgentConfig(
             cmd="codex",
@@ -2537,7 +2567,7 @@ class TestExecuteAgentEffect:
         assert "stop" in printed
 
     def test_retries_transient_connectivity_failures_with_session_resume(
-        self, monkeypatch, tmp_path: Path
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("ship it", encoding="utf-8")
@@ -2564,19 +2594,21 @@ class TestExecuteAgentEffect:
             def agent_endpoint_uri(self) -> str:
                 return "http://127.0.0.1:12345/mcp"
 
-        def fake_start_mcp_server(*_args, **_kwargs):
+        def fake_start_mcp_server(*_args: object, **_kwargs: object) -> object:
             return FakeBridge()
 
         monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
 
         seen_session_ids: list[str | None] = []
 
-        def fake_invoke_agent(config, prompt_file, *, options=None):
+        def fake_invoke_agent(
+            config: object, prompt_file: object, *, options: object = None
+        ) -> object:
             del config, prompt_file
             seen_session_ids.append(None if options is None else options.session_id)
             if len(seen_session_ids) == 1:
 
-                def _first_attempt():
+                def _first_attempt() -> object:
                     yield '{"session_id":"claude-session-42"}'
                     raise AgentInvocationError("claude", 1, "connection refused")
 
@@ -2602,7 +2634,7 @@ class TestExecuteAgentEffect:
 
     def test_retries_inactivity_failures_with_summary_prompt(
         self,
-        monkeypatch,
+        monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         prompt_file = tmp_path / "PROMPT.md"
@@ -2634,12 +2666,14 @@ class TestExecuteAgentEffect:
 
         seen_prompt_files: list[str] = []
 
-        def fake_invoke_agent(config, prompt_file, *, options=None):
+        def fake_invoke_agent(
+            config: object, prompt_file: object, *, options: object = None
+        ) -> object:
             del config, options
             seen_prompt_files.append(prompt_file)
             if len(seen_prompt_files) == 1:
 
-                def _first_attempt():
+                def _first_attempt() -> object:
                     yield '{"type":"text","content":"drafted the fix"}'
                     raise AgentInactivityTimeoutError("codex", 30, ["drafted the fix"])
 
@@ -2832,7 +2866,9 @@ class TestExhaustedAnalysisPhaseAdvanceEffectExecution:
 
 
 class TestEarlySkipCommitEffectExecution:
-    def test_execute_returns_commit_skipped(self, tmp_path: Path, monkeypatch) -> None:
+    def test_execute_returns_commit_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(runner_module, "_cleanup_commit_message_artifacts", lambda _root: None)
         config = MagicMock()
         workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
@@ -2845,7 +2881,9 @@ class TestEarlySkipCommitEffectExecution:
 
         assert result == PipelineEvent.COMMIT_SKIPPED
 
-    def test_execute_cleans_up_stale_commit_artifacts(self, tmp_path: Path, monkeypatch) -> None:
+    def test_execute_cleans_up_stale_commit_artifacts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         cleaned: list[Path] = []
         monkeypatch.setattr(
             runner_module,
@@ -2945,7 +2983,7 @@ class TestPhaseEventAfterAgentRun:
             ),
         ],
     )
-    def test_renders_phase_artifact_handoff_after_phase_handler_returns(  # noqa: PLR0913
+    def test_renders_phase_artifact_handoff_after_phase_handler_returns(
         self,
         tmp_path: Path,
         monkeypatch: MonkeyPatch,
@@ -3094,7 +3132,7 @@ class TestExecuteCommitEffect:
             encoding="utf-8",
         )
 
-        def fail_create(*_):
+        def fail_create(*_: object) -> None:
             raise RuntimeError("boom")
 
         result = runner_module._execute_commit_effect(
@@ -3215,11 +3253,13 @@ class TestExecuteEffect:
         assert result == PipelineEvent.CHECKPOINT_SAVED
 
     def test_execute_effect_with_optional_display_only_passes_supported_kwargs(
-        self, monkeypatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         captured: dict[str, object] = {}
 
-        def fake_execute_effect(effect, config, workspace_scope, *, display):
+        def fake_execute_effect(
+            effect: object, config: object, workspace_scope: object, *, display: object
+        ) -> object:
             captured["effect"] = effect
             captured["config"] = config
             captured["workspace_scope"] = workspace_scope
@@ -3250,11 +3290,13 @@ class TestExecuteEffect:
         }
 
     def test_execute_effect_with_optional_display_passes_context_to_kwargs_handlers(
-        self, monkeypatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         captured: dict[str, object] = {}
 
-        def fake_execute_effect(effect, config, workspace_scope, **kwargs):
+        def fake_execute_effect(
+            effect: object, config: object, workspace_scope: object, **kwargs: object
+        ) -> object:
             captured["effect"] = effect
             captured["config"] = config
             captured["workspace_scope"] = workspace_scope
@@ -3289,20 +3331,22 @@ class TestExecuteEffect:
         assert captured["state"] == state
         assert isinstance(captured["policy_bundle"], PolicyBundle)
 
-    def test_commit_effect_delegates_to_commit_handler(self, monkeypatch) -> None:
+    def test_commit_effect_delegates_to_commit_handler(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         captured: dict[str, bool] = {}
 
-        def stub_commit(  # noqa: PLR0913
-            effect,
-            create_commit,
-            stage_all,
-            repo_root,
-            display=None,
+        def stub_commit(
+            effect: object,
+            create_commit: object,
+            stage_all: object,
+            repo_root: object,
+            display: object = None,
             *,
-            verbosity=None,
-            phase_name="commit",
-            state=None,
-            pipeline_policy=None,
+            verbosity: object = None,
+            phase_name: object = "commit",
+            state: object = None,
+            pipeline_policy: object = None,
         ) -> PipelineEvent:
             del create_commit, stage_all, repo_root, display, verbosity, phase_name
             del state, pipeline_policy
@@ -3590,7 +3634,7 @@ class TestStartCommitCapture:
 
         written: list[tuple[str, str]] = []
 
-        def _spy_write(workspace_root, sha, *, force: bool = False):
+        def _spy_write(workspace_root: object, sha: object, *, force: bool = False) -> None:
             written.append((str(workspace_root), sha))
             _real_write(workspace_root, sha, force=force)
 
@@ -3644,7 +3688,7 @@ class TestStartCommitCapture:
 
         written: list[tuple[str, str]] = []
 
-        def _spy_write(workspace_root, sha, *, force: bool = False):
+        def _spy_write(workspace_root: object, sha: object, *, force: bool = False) -> None:
             written.append((str(workspace_root), sha))
             _real_write(workspace_root, sha, force=force)
 
@@ -3951,7 +3995,7 @@ class TestCycleBaselineLifecycle:
 
         cleared: list[bool] = []
 
-        def _spy_clear(workspace_root):
+        def _spy_clear(workspace_root: object) -> None:
             cleared.append(True)
             baseline_path.unlink(missing_ok=True)
 
@@ -3989,14 +4033,14 @@ class TestCycleBaselineLifecycle:
 
         cleared: list[bool] = []
 
-        def _spy_clear(workspace_root):
+        def _spy_clear(workspace_root: object) -> None:
             cleared.append(True)
             baseline_path.unlink(missing_ok=True)
 
         commit_effect = CommitEffect(message_file="/dev/null")
         call_count = {"n": 0}
 
-        def _fake_determine_effect(_state, _bundle, _scope):
+        def _fake_determine_effect(_state: object, _bundle: object, _scope: object) -> object:
             call_count["n"] += 1
             if call_count["n"] == 1:
                 return commit_effect
@@ -4039,7 +4083,7 @@ class TestCycleBaselineLifecycle:
         )
 
 
-def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(  # noqa: PLR0915
+def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -4062,7 +4106,9 @@ def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(  #
     analysis_prompt_snapshot: tuple[int, str] | None = None
     original_determine = runner_module._call_determine_effect_from_policy
 
-    def stop_after_development_prompt(state, bundle, workspace_scope, config):
+    def stop_after_development_prompt(
+        state: object, bundle: object, workspace_scope: object, config: object
+    ) -> object:
         development_prompt = tmp_path / ".agent" / "tmp" / "development_prompt.md"
         if state.phase == "development_analysis" and development_prompt.exists():
             return ExitSuccessEffect()
@@ -4073,7 +4119,9 @@ def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(  #
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    def fake_execute_effect(effect, _config, _workspace_scope, **_kwargs):
+    def fake_execute_effect(
+        effect: object, _config: object, _workspace_scope: object, **_kwargs: object
+    ) -> object:
         nonlocal planning_analysis_calls, analysis_prompt_snapshot
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "planning":
@@ -4190,7 +4238,7 @@ def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(  #
     assert development_state.get_loop_iteration("planning_analysis_iteration") == 0
 
 
-def test_runner_resumed_planning_success_skips_planning_analysis_after_cap(  # noqa: PLR0915
+def test_runner_resumed_planning_success_skips_planning_analysis_after_cap(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -4220,7 +4268,9 @@ def test_runner_resumed_planning_success_skips_planning_analysis_after_cap(  # n
     planning_prompt_snapshot: str | None = None
     original_determine = runner_module._call_determine_effect_from_policy
 
-    def stop_after_development_prompt(state, bundle, workspace_scope, config):
+    def stop_after_development_prompt(
+        state: object, bundle: object, workspace_scope: object, config: object
+    ) -> object:
         development_prompt = tmp_path / ".agent" / "tmp" / "development_prompt.md"
         if state.phase == "development_analysis" and development_prompt.exists():
             return ExitSuccessEffect()
@@ -4231,7 +4281,9 @@ def test_runner_resumed_planning_success_skips_planning_analysis_after_cap(  # n
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    def fake_execute_effect(effect, _config, _workspace_scope, **_kwargs):
+    def fake_execute_effect(
+        effect: object, _config: object, _workspace_scope: object, **_kwargs: object
+    ) -> object:
         nonlocal planning_analysis_calls, planning_prompt_snapshot
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "planning":
@@ -4746,7 +4798,7 @@ def test_materialize_agent_prompt_carries_multiple_media_entries(
 
     sidecar_path = tmp_path / ".agent" / "tmp" / "development_multimodal_handoff.json"
     data = json.loads(sidecar_path.read_text(encoding="utf-8"))
-    assert len(data["artifacts"]) == 2  # noqa: PLR2004
+    assert len(data["artifacts"]) == 2
     ids = {a["artifact_id"] for a in data["artifacts"]}
     assert "sess-img-001" in ids
     assert "sess-pdf-002" in ids
@@ -4803,7 +4855,7 @@ def test_materialize_agent_prompt_preserves_multimodal_metadata_across_preparati
     assert sidecar_path.exists(), "Sidecar must be created for mixed-modality session index"
     data = json.loads(sidecar_path.read_text(encoding="utf-8"))
 
-    assert len(data["artifacts"]) == 3, (  # noqa: PLR2004
+    assert len(data["artifacts"]) == 3, (
         f"Expected 3 artifacts (image + pdf + audio), got {len(data['artifacts'])}"
     )
 

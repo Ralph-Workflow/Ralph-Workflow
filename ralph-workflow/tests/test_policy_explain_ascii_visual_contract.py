@@ -25,7 +25,7 @@ from ralph.policy.render import render_explanation_ascii
 _ASCII_MAX = 127
 
 
-def _make_phase(  # noqa: PLR0913
+def _make_phase(
     name: str,
     *,
     role: str = "execution",
@@ -393,7 +393,7 @@ class TestAsciiDecisionAlignment:
             for line in lines
             if line.startswith("    +--[") and "-->" in line and "workflow_fallback" not in line
         ]
-        assert len(decision_lines) >= 2  # noqa: PLR2004
+        assert len(decision_lines) >= 2
         # Find the position of '-->' in each line
         arrow_positions = [line.index("-->") for line in decision_lines]
         assert len(set(arrow_positions)) == 1, (

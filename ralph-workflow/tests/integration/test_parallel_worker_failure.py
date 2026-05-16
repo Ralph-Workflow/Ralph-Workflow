@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from ralph.display.parallel_display import ParallelDisplay  # noqa: TC001
+if TYPE_CHECKING:
+    from ralph.display.parallel_display import ParallelDisplay
+
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
     Event,

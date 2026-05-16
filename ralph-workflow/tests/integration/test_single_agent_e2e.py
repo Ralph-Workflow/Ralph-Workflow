@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.config.enums import Verbosity
@@ -24,6 +25,11 @@ from ralph.policy.models import (
 )
 from ralph.prompts.debug_dump import media_session_path
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 
 def _policy_bundle() -> SimpleNamespace:
@@ -55,8 +61,8 @@ def _policy_bundle() -> SimpleNamespace:
 
 
 def test_run_completes_in_serial_mode_without_fan_out(
-    tmp_git_repo,
-    monkeypatch,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     prompt = tmp_git_repo / "PROMPT.md"
     prompt.write_text("# Test Prompt\n\nRun the serial path.")
@@ -100,7 +106,12 @@ def test_run_completes_in_serial_mode_without_fan_out(
 
     monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
 
-    def _fake_execute_effect(effect, config, workspace_scope, **kwargs: object) -> PipelineEvent:
+    def _fake_execute_effect(
+        effect: object,
+        config: object,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
         del config, workspace_scope, kwargs
         handled_phases.append(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
@@ -128,8 +139,8 @@ def test_run_completes_in_serial_mode_without_fan_out(
 
 
 def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_output(
-    tmp_git_repo,
-    monkeypatch,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Serial unattended run reaches 'complete' even when the development phase produces
     multimodal placeholder output (e.g. '[image: image/png]') from the parser.
@@ -179,7 +190,12 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
 
     monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
 
-    def _fake_execute_effect(effect, config, workspace_scope, **kwargs: object) -> PipelineEvent:
+    def _fake_execute_effect(
+        effect: object,
+        config: object,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
         del config, workspace_scope, kwargs
         handled_phases.append(effect.phase)
         # Simulate successful completion even when the development phase encountered
@@ -209,8 +225,8 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
 
 
 def test_development_phase_receives_multimodal_handoff_metadata(
-    tmp_git_repo,
-    monkeypatch,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Runner-owned prompt seam carries delivery/block_type/URI metadata to dev phase.
 
@@ -329,7 +345,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
 
     # (a) development phase received multimodal entries via the runner-owned seam.
     dev_entries = [e for e in captured_entries if hasattr(e, "uri")]
-    assert len(dev_entries) >= 2, (  # noqa: PLR2004
+    assert len(dev_entries) >= 2, (
         f"Expected at least 2 multimodal entries for development phase, got {len(dev_entries)}: "
         f"{dev_entries}"
     )
@@ -361,8 +377,8 @@ def test_development_phase_receives_multimodal_handoff_metadata(
 
 
 def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
-    tmp_git_repo,
-    monkeypatch,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unsupported provider/modality combinations are carried through the runner handoff seam.
 

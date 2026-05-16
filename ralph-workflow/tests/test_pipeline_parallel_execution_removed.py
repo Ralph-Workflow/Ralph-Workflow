@@ -10,13 +10,13 @@ from ralph.policy.loader import PolicyValidationError, load_policy
 from ralph.policy.models import PhaseParallelization, PipelinePolicy
 
 
-def _load_default_bundle():
+def _load_default_bundle() -> object:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
 
 
 def test_loading_pipeline_toml_with_global_parallel_execution_block_raises(
-    tmp_path,
+    tmp_path: object,
 ) -> None:
     toml = tmp_path / "pipeline.toml"
     toml.write_text(

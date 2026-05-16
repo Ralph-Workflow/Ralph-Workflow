@@ -43,7 +43,7 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 @pytest.fixture(autouse=True)
-def _reset_pm():
+def _reset_pm() -> object:
     """Ensure each test starts and ends with a clean singleton."""
     reset_process_manager()
     yield

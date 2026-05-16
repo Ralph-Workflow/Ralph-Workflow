@@ -572,7 +572,7 @@ def test_cli_run_in_fresh_dir_shows_init_hint(
 
     result = runner.invoke(app, [], catch_exceptions=False)
 
-    assert result.exit_code == 2, (  # noqa: PLR2004
+    assert result.exit_code == 2, (
         f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
     )
     assert "Ralph Workflow is not initialized here yet" in result.output, (
@@ -634,7 +634,7 @@ def test_cli_run_with_only_prompt_shows_init_hint(
     result = runner.invoke(app, [], catch_exceptions=False)
 
     # Exit 2 = preflight validation failure
-    assert result.exit_code == 2, (  # noqa: PLR2004
+    assert result.exit_code == 2, (
         f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
     )
     # Validation error message from validate_required_inputs references ralph --init.

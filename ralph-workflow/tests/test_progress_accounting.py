@@ -391,7 +391,7 @@ def test_checkpoint_builder_derives_progress_from_policy_with_custom_counter_nam
     )
 
     # 'design_cycles' is the first tracked counter in BFS commit order → developer runs
-    assert payload.run_context.actual_developer_runs == 3  # noqa: PLR2004
+    assert payload.run_context.actual_developer_runs == 3
     # 'audit_passes' is the second tracked counter → reviewer runs
     assert payload.run_context.actual_reviewer_runs == 1
 

@@ -8,7 +8,7 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.plain_renderer import _TAG_CATEGORY, _TAGS, PlainLogRenderer
+from ralph.display.plain_renderer import TAG_CATEGORY, TAGS, PlainLogRenderer
 
 
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
@@ -39,13 +39,13 @@ def test_emit_run_end_emits_phase_and_elapsed() -> None:
 
 
 def test_run_end_tag_is_registered_in_tags() -> None:
-    """'run-end' is present in _TAGS."""
-    assert "run-end" in _TAGS
+    """'run-end' is present in TAGS."""
+    assert "run-end" in TAGS
 
 
 def test_run_end_tag_maps_to_meta_category() -> None:
-    """'run-end' maps to 'META' in _TAG_CATEGORY."""
-    assert _TAG_CATEGORY.get("run-end") == "META"
+    """'run-end' maps to 'META' in TAG_CATEGORY."""
+    assert TAG_CATEGORY.get("run-end") == "META"
 
 
 def test_emit_run_end_pr_url_none_omits_pr_line() -> None:

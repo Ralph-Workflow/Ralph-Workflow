@@ -27,6 +27,7 @@ from __future__ import annotations
 import re
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from rich.cells import cell_len
@@ -45,21 +46,25 @@ _SENTENCE_END = re.compile(r"[.!?\n]")
 
 AiSummaryHook = Callable[[str], "str | None"]
 
-_ai_hook: AiSummaryHook | None = None
+@dataclass
+class _AiHookState:
+    hook: AiSummaryHook | None = None
+
+
+_AI_HOOK_STATE = _AiHookState()
 _ai_hook_lock = threading.Lock()
 
 
 def set_ai_summary_hook(hook: AiSummaryHook | None) -> None:
     """Register (or clear) the AI summary hook. Thread-safe."""
-    global _ai_hook  # noqa: PLW0603
     with _ai_hook_lock:
-        _ai_hook = hook
+        _AI_HOOK_STATE.hook = hook
 
 
 def get_ai_summary_hook() -> AiSummaryHook | None:
     """Return the current AI summary hook. Thread-safe atomic read."""
     with _ai_hook_lock:
-        return _ai_hook
+        return _AI_HOOK_STATE.hook
 
 
 def should_summarize(text: str, env: Mapping[str, str]) -> bool:
@@ -107,7 +112,7 @@ def build_headline_or_placeholder(text: str, max_chars: int = 120) -> str:
     return result if result else _PLACEHOLDER_HEADLINE
 
 
-def build_ai_summary(text: str, env: Mapping[str, str]) -> str | None:  # noqa: PLR0911
+def build_ai_summary(text: str, env: Mapping[str, str]) -> str | None:
     """Return an AI-generated summary string, or None when disabled/unavailable.
 
     Requires RALPH_LONG_CONTENT_AI_SUMMARY=1 in env AND a registered hook AND

@@ -3,21 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import TypedDict
 from uuid import uuid4
-
-
-class RunContextDict(TypedDict):
-    """JSON-safe representation of run lineage data for checkpointing."""
-
-    run_id: str
-    parent_run_id: str | None
-    resume_count: int
-    actual_developer_runs: int
-    actual_reviewer_runs: int
-    recovery_cycle_count: int
-    fallover_history: list[dict[str, object]]
-    last_failure_category: str | None
 
 
 @dataclass(frozen=True)
@@ -60,7 +46,7 @@ class RunContext:
         """Return a copy with one more completed reviewer pass."""
         return replace(self, actual_reviewer_runs=self.actual_reviewer_runs + 1)
 
-    def to_dict(self) -> RunContextDict:
+    def to_dict(self) -> dict[str, object]:
         """Return a JSON-safe dictionary representation."""
         return {
             "run_id": self.run_id,

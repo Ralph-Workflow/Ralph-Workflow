@@ -40,7 +40,7 @@ class TestArchivalTooling:
     """Archival tooling files must be explicitly labeled historical."""
 
     @pytest.mark.parametrize("tool", _ARCHIVAL_TOOLING)
-    def test_archival_tooling_exists(self, tool: str):
+    def test_archival_tooling_exists(self, tool: str) -> None:
         """Archival tooling files should exist if retained."""
         path = REPO_ROOT_DOCS_TOOLING_DIR / tool
         if path.exists():
@@ -62,13 +62,13 @@ class TestArchivalTooling:
 class TestCodeStyleIndex:
     """docs/code-style/index.md must state the family's Python status."""
 
-    def test_index_exists(self):
+    def test_index_exists(self) -> None:
         """code-style/index.md must exist."""
         assert _CODE_STYLE_INDEX.exists(), (
             "docs/code-style/index.md must exist as the family entrypoint"
         )
 
-    def test_index_states_python_status(self):
+    def test_index_states_python_status(self) -> None:
         """index.md must accurately state the family's Python status."""
         content = _CODE_STYLE_INDEX.read_text().lower()
         # Should indicate this is Python guidance or archival/historical
@@ -91,7 +91,7 @@ class TestCodeStyleLeaves:
     """Archival code-style leaves must have in-body historical markers."""
 
     @pytest.mark.parametrize("leaf", _CODE_STYLE_LEAVES)
-    def test_leaf_has_historical_marker(self, leaf: str):
+    def test_leaf_has_historical_marker(self, leaf: str) -> None:
         """Each archival leaf must contain a historical Rust-era marker."""
         path = REPO_ROOT_DOCS_CODE_STYLE_DIR / leaf
         if not path.exists():

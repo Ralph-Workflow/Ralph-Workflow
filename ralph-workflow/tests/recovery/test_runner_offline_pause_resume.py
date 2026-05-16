@@ -8,7 +8,7 @@ must resume and complete normally with no false-positive FailureEvents.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.config.enums import Verbosity
@@ -95,7 +95,7 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
 
     invocation_count = 0
 
-    def _fake_execute(*args: Any, **kwargs: Any) -> PipelineEvent:
+    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
         nonlocal invocation_count
         invocation_count += 1
         return PipelineEvent.AGENT_SUCCESS
@@ -128,7 +128,7 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     listener_registered = threading.Event()
     original_add_listener = monitor.add_listener
 
-    def _intercepted_add_listener(cb: Any) -> Any:
+    def _intercepted_add_listener(cb: object) -> object:
         unsub = original_add_listener(cb)
         listener_registered.set()
         return unsub
@@ -220,7 +220,7 @@ def test_offline_window_produces_no_failure_events(
 
     monkeypatch.setattr(recovery_controller_module, "FailureEventBus", _CapturingBus)
 
-    def _fake_execute(*args: Any, **kwargs: Any) -> PipelineEvent:
+    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
@@ -249,7 +249,7 @@ def test_offline_window_produces_no_failure_events(
     listener_registered = threading.Event()
     original_add_listener = monitor.add_listener
 
-    def _intercepted_add_listener(cb: Any) -> Any:
+    def _intercepted_add_listener(cb: object) -> object:
         unsub = original_add_listener(cb)
         listener_registered.set()
         return unsub

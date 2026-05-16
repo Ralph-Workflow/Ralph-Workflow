@@ -9,7 +9,7 @@ from loguru import logger
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 
 def _make_state(agents: list[str] | None = None) -> PipelineState:
@@ -52,7 +52,9 @@ def test_generic_exception_message_ambiguous() -> None:
 def test_ambiguous_failure_does_not_debit_budget() -> None:
     """Ambiguous failures must not count against the agent budget."""
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state()
 
     _, _, evt = controller.handle(
@@ -73,7 +75,7 @@ def test_ambiguous_failure_does_not_debit_budget() -> None:
 
 def test_ambiguous_failure_returns_state_without_phase_change() -> None:
     """Ambiguous failures keep the pipeline running in the same phase."""
-    controller = RecoveryController(cycle_cap=10)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state()
 
     new_state, effects, evt = controller.handle(

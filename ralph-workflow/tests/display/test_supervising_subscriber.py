@@ -11,6 +11,7 @@ from ralph.supervising import InstanceStatus, WorkflowInstanceView, instance_vie
 _EXPECTED_NOTIFICATION_COUNT = 3
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.display.snapshot import PipelineSnapshot
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 def _make_subscriber(
     tmp_path: Path,
     run_id: str = "run-test",
-    on_snapshot=None,
+    on_snapshot: Callable[[PipelineSnapshot], None] | None = None,
 ) -> PipelineSubscriber:
     q: queue.Queue[PipelineSnapshot] = queue.Queue(maxsize=64)
     return PipelineSubscriber(

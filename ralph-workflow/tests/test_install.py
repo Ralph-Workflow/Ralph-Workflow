@@ -123,7 +123,7 @@ def test_install_module_imports_without_process_manager_dependency(
         locals_dict: dict[str, object] | None = None,
         fromlist: tuple[str, ...] = (),
         level: int = 0,
-    ) -> Any:
+    ) -> object:
         if name == "psutil":
             raise ModuleNotFoundError(f"No module named {name}")
         return original_import(name, globals_dict, locals_dict, fromlist, level)
@@ -274,7 +274,7 @@ def test_installed_wheel_plain_ralph_bootstraps_without_unbound_drain_failure(
     env["HOME"] = str(home)
 
     plain = _run_subprocess((str(installed_wheel_python), "-m", "ralph"), cwd=project, env=env)
-    assert plain.returncode == 2, plain.stderr or plain.stdout  # noqa: PLR2004
+    assert plain.returncode == 2, plain.stderr or plain.stdout
     assert "not initialized" in plain.stdout.lower(), plain.stdout
     assert "Preflight error:" not in plain.stdout, plain.stdout
     assert "unbound drains" not in plain.stdout, plain.stdout
@@ -328,7 +328,7 @@ def test_installed_wheel_migrates_legacy_global_config_before_plain_ralph(
     env["HOME"] = str(home)
 
     plain = _run_subprocess((str(installed_wheel_python), "-m", "ralph"), cwd=project, env=env)
-    assert plain.returncode == 2, plain.stderr or plain.stdout  # noqa: PLR2004
+    assert plain.returncode == 2, plain.stderr or plain.stdout
     assert "not initialized" in plain.stdout.lower(), plain.stdout
     assert "unbound drains" not in plain.stdout, plain.stdout
     assert "unbound drains" not in plain.stderr, plain.stderr

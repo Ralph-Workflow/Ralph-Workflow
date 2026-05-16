@@ -107,7 +107,7 @@ def _resolve_transition_meta(
     return (from_role, to_role) in _MAJOR_ROLE_PAIRS
 
 
-def _render_major_transition(  # noqa: PLR0913
+def _render_major_transition(
     c: Console,
     from_label: str,
     to_label: str,
@@ -137,7 +137,7 @@ def _resolve_console(
     raise TypeError("console or display_context is required")
 
 
-def show_phase_transition(  # noqa: PLR0913
+def show_phase_transition(
     from_phase: str,
     to_phase: str,
     *,
@@ -239,7 +239,7 @@ def show_phase_start(
     c.print(line)
 
 
-def show_phase_start_from_entry(  # noqa: PLR0912
+def show_phase_start_from_entry(
     entry: PhaseEntryModel,
     *,
     display_context: DisplayContext,

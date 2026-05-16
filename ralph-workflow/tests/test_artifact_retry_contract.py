@@ -75,20 +75,20 @@ def _load_default_optional_artifact_phases() -> set[str]:
 REQUIRED_ARTIFACTS = _load_default_artifact_registry()
 
 
-def _analysis_handler_for(phase_name: str):
+def _analysis_handler_for(phase_name: str) -> object:
     """Return a wrapper around handle_generic_analysis_phase with phase/drain pre-set."""
 
-    def _handler(effect, ctx):
+    def _handler(effect: object, ctx: object) -> object:
         real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
         return handle_generic_analysis_phase(real_effect, ctx)
 
     return _handler
 
 
-def _execution_handler_for(phase_name: str):
+def _execution_handler_for(phase_name: str) -> object:
     """Return a wrapper around handle_execution_phase with the correct phase set."""
 
-    def _handler(effect, ctx):
+    def _handler(effect: object, ctx: object) -> object:
         real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
         return handle_execution_phase(real_effect, ctx)
 
@@ -178,7 +178,7 @@ _PHASE_VALID_ARTIFACT: dict[str, str] = {
 }
 
 
-def _make_ctx(workspace: MemoryWorkspace, policy=None) -> PhaseContext:
+def _make_ctx(workspace: MemoryWorkspace, policy: object=None) -> PhaseContext:
     if policy is None:
         with tempfile.TemporaryDirectory() as tmp:
             policy = load_policy(Path(tmp) / ".agent")

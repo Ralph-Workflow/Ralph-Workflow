@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.pipeline.effects import FanOutEffect
@@ -86,7 +86,7 @@ def _make_mock_policy_bundle() -> MagicMock:
 
 def _setup_patches(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
+    tmp_path: Path,
     fake_executor: FakeAgentExecutor,
     *,
     artifact_unit_ids: set[str] | None = None,
@@ -125,7 +125,7 @@ class TestParallelResume:
     def test_resume_skips_succeeded_workers(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Any,
+        tmp_path: Path,
     ) -> None:
         units = tuple(_make_work_unit(f"unit-{i}") for i in range(5))
         worker_states = {
@@ -173,7 +173,7 @@ class TestParallelResume:
     def test_resume_resets_running_to_pending(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Any,
+        tmp_path: Path,
     ) -> None:
         units = tuple(_make_work_unit(f"unit-{i}") for i in range(3))
         worker_states = {
@@ -213,7 +213,7 @@ class TestParallelResume:
     def test_resume_completes_all_units(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Any,
+        tmp_path: Path,
     ) -> None:
         units = tuple(_make_work_unit(f"unit-{i}") for i in range(5))
         worker_states = {

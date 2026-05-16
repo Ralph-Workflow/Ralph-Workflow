@@ -6,7 +6,6 @@ import sys
 from typing import TYPE_CHECKING
 
 from ralph.cli.commands.explain import _resolve_policy_dir
-from ralph.policy.loader import PolicyValidationError as LoaderValidationError
 from ralph.policy.loader import load_policy, load_policy_for_workspace_scope
 from ralph.policy.validation import PolicyValidationError, validate_policy_completeness
 from ralph.workspace.scope import resolve_workspace_scope
@@ -78,7 +77,7 @@ def check_policy_command(
 
         return 0
 
-    except (PolicyValidationError, LoaderValidationError) as exc:
+    except PolicyValidationError as exc:
         print(f"Policy validation error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:

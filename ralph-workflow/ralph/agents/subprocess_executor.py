@@ -51,7 +51,7 @@ class SubprocessAgentExecutor:
     (artifact submission, git changes) — never from this executor's exit code.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         command: Sequence[str],
         *,

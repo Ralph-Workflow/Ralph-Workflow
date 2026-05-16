@@ -92,7 +92,7 @@ def test_budget_counter_config_requires_default_max() -> None:
 def test_budget_counter_config_with_explicit_default_max_succeeds() -> None:
     """Constructing BudgetCounterConfig with an explicit default_max succeeds."""
     cfg = BudgetCounterConfig(tracks_budget=True, description="test", default_max=5)
-    assert cfg.default_max == 5  # noqa: PLR2004
+    assert cfg.default_max == 5
 
 
 def test_budget_counter_config_zero_default_max_is_valid_for_untracked() -> None:

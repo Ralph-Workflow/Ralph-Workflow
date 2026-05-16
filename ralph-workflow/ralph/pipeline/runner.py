@@ -163,7 +163,12 @@ from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
-from ralph.recovery.controller import RecoveryController as _RecoveryController
+from ralph.recovery.controller import (
+    RecoveryController as _RecoveryController,
+)
+from ralph.recovery.controller import (
+    RecoveryControllerOptions,
+)
 from ralph.recovery.events import FailureEvent as _FailureEvent
 from ralph.recovery.events import FalloverEvent as _FalloverEvent
 from ralph.workspace import FsWorkspace
@@ -198,6 +203,9 @@ if TYPE_CHECKING:
 
     class _PipelineSubscriber(Protocol):
         def notify(self, state: PipelineState) -> None: ...
+
+
+MIN_WORK_UNITS_FOR_PARALLELIZATION = 2
 
 
 class _PhaseCountersProtocol(Protocol):
@@ -290,7 +298,7 @@ class _ParallelDisplayModule(Protocol):
 class _EmitCompletionSummaryFn(Protocol):
     """Callable signature for the completion summary emitter."""
 
-    def __call__(  # noqa: PLR0913
+    def __call__(
         self,
         snapshot: PipelineSnapshot,
         *,
@@ -675,7 +683,7 @@ def _build_default_display(
         return _LegacyConsoleDisplay(display_context)
 
 
-def _execute_effect_with_optional_display(  # noqa: PLR0911, PLR0913
+def _execute_effect_with_optional_display(
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -783,7 +791,7 @@ def _execute_effect_with_optional_display(  # noqa: PLR0911, PLR0913
     return _execute_effect(effect, config, workspace_scope)
 
 
-def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
+def _invoke_execute_effect_with_optional_display(
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -928,7 +936,7 @@ def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -
         logger.warning("Interrupt controller raised during KeyboardInterrupt")
 
 
-def _run_pipeline_step(  # noqa: PLR0912,PLR0913
+def _run_pipeline_step(
     *,
     state: PipelineState,
     policy_bundle: PolicyBundle,
@@ -1668,7 +1676,7 @@ def _load_policy_bundle_for_run(
     return load_policy_for_workspace_scope(workspace_scope, config=config)
 
 
-def run(  # noqa: PLR0912, PLR0913, PLR0915
+def run(
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
@@ -1749,9 +1757,11 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
 
         _monitor_stop = _stop_mon
     _controller = _RecoveryController(
-        cycle_cap=_cycle_cap,
-        policy_bundle=policy_bundle,
-        budget_registry=_seed_budget_registry(policy_bundle),
+        options=RecoveryControllerOptions(
+            cycle_cap=_cycle_cap,
+            policy_bundle=policy_bundle,
+            budget_registry=_seed_budget_registry(policy_bundle),
+        )
     )
 
     def _log_recovery_event(evt: object) -> None:
@@ -2193,7 +2203,7 @@ def _resume_fan_out_state(
     return resumed_state, resume_units
 
 
-def _write_parallel_development_summary(  # noqa: PLR0913
+def _write_parallel_development_summary(
     workspace_scope: WorkspaceScope,
     effect: FanOutEffect,
     state: PipelineState,
@@ -2304,7 +2314,7 @@ async def _run_post_fanout_verification(workspace_scope: WorkspaceScope) -> str 
     return None
 
 
-async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
+async def _run_fan_out_async(
     *,
     effect: FanOutEffect,
     state: PipelineState,
@@ -2459,7 +2469,7 @@ async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
         return recovered
 
 
-def _execute_fan_out_sync(  # noqa: PLR0913
+def _execute_fan_out_sync(
     *,
     effect: FanOutEffect,
     state: PipelineState,
@@ -2496,7 +2506,7 @@ def _parallel_worker_command() -> tuple[str, ...]:
     return (sys.executable, "-m", "ralph")
 
 
-def _handle_inline_effect(  # noqa: PLR0913
+def _handle_inline_effect(
     *,
     effect: Effect,
     state: PipelineState,
@@ -2584,7 +2594,7 @@ def _handle_inline_effect(  # noqa: PLR0913
     return None
 
 
-def _materialize_prepared_prompt(  # noqa: PLR0913
+def _materialize_prepared_prompt(
     effect: PreparePromptEffect,
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy,
@@ -2860,7 +2870,7 @@ def _current_analysis_phase_advance_effect(
     return ExhaustedAnalysisPhaseAdvanceEffect(phase=state.phase)
 
 
-def _determine_effect_from_policy(  # noqa: PLR0911
+def _determine_effect_from_policy(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope | None = None,
@@ -2897,7 +2907,7 @@ def _determine_effect_from_policy(  # noqa: PLR0911
         scope = workspace_scope or resolve_workspace_scope()
         return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
 
-    if len(state.work_units) >= 2:  # noqa: PLR2004
+    if len(state.work_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
         phase_para = phase_def.parallelization
         if phase_para is None:
             return ExitFailureEffect(
@@ -3062,7 +3072,7 @@ def _agent_name_for_phase_from_policy(
     return chain_config.agents[0]
 
 
-def _phase_event_after_agent_run(  # noqa: PLR0913
+def _phase_event_after_agent_run(
     *,
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
@@ -3140,7 +3150,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
     return event
 
 
-def _render_phase_artifact_handoff(  # noqa: PLR0913
+def _render_phase_artifact_handoff(
     phase: str,
     event: Event,
     workspace_root: Path,
@@ -3198,7 +3208,7 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
         )
 
 
-def _render_success_artifact(  # noqa: PLR0913
+def _render_success_artifact(
     artifact_type: str,
     workspace_root: Path,
     display_context: DisplayContext,
@@ -3267,7 +3277,7 @@ def _commit_effect(workspace_root: Path) -> CommitEffect:
     return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
 
 
-def _execute_effect(  # noqa: PLR0911,PLR0913
+def _execute_effect(
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
@@ -3358,7 +3368,7 @@ def _dispatch_waiting_event(
             logger.debug("_dispatch_waiting_event.record_waiting_status failed", exc_info=True)
 
 
-def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
+def _execute_agent_effect(
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
     deps: _AgentExecutionDeps,
@@ -3599,7 +3609,7 @@ def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
     return raw if isinstance(raw, int) and raw >= 0 else 1
 
 
-def _build_agent_recovery_plan(  # noqa: PLR0913
+def _build_agent_recovery_plan(
     *,
     exc: Exception,
     attempt_index: int,
@@ -3850,7 +3860,7 @@ def _default_mcp_capabilities_for_phase(
     )
 
 
-def _execute_commit_effect(  # noqa: PLR0913
+def _execute_commit_effect(
     effect: CommitEffect,
     create_commit: Callable[[str, str], str],
     stage_all: Callable[[str], None],
@@ -3965,7 +3975,7 @@ def _record_activity_on_subscriber(
         logger.debug("subscriber.record_activity failed", exc_info=True)
 
 
-def _stream_parsed_agent_activity(  # noqa: PLR0913
+def _stream_parsed_agent_activity(
     lines: Iterable[object],
     parser_type: str,
     agent_name: str,

@@ -56,14 +56,14 @@ def test_coordinate_accepts_injected_timestamp() -> None:
 class MockCapableSession:
     session_id = "session-env"
 
-    def check_capability(self, cap):
+    def check_capability(self, cap: object) -> object:
         return "approved"
 
 
 class MockDeniedSession:
     session_id = "denied"
 
-    def check_capability(self, cap):
+    def check_capability(self, cap: object) -> object:
         return "denied"
 
 

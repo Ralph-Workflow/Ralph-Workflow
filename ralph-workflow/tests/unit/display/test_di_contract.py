@@ -51,7 +51,7 @@ class DIResult(NamedTuple):
 _EMPTY = inspect.Parameter.empty
 
 
-def _check_renderer_signature(renderer_module, renderer_name: str) -> DIResult:
+def _check_renderer_signature(renderer_module: object, renderer_name: str) -> DIResult:
     """Check that a renderer requires display_context as a keyword-only parameter.
 
     Returns DIResult: passed=True if the signature requires display_context,
@@ -115,7 +115,7 @@ class TestRenderersRequireDisplayContext:
         ],
     )
     def test_renderer_signature_requires_display_context(
-        self, renderer_module, renderer_name
+        self, renderer_module: object, renderer_name: object
     ) -> None:
         """Each renderer must require display_context keyword arg (no Console fallback)."""
         result = _check_renderer_signature(renderer_module, renderer_name)

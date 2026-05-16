@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Never, cast
 from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
@@ -16,6 +16,11 @@ from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 
 def _legacy_display() -> runner_module._LegacyConsoleDisplay:
@@ -122,7 +127,8 @@ class TestFanOutRouting:
 
 
 def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
-    monkeypatch, tmp_path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     unit = _make_work_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
@@ -139,18 +145,18 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     mcp_factory_calls: list[dict[str, object]] = []
 
     class _FakeExecutor:
-        def __init__(self, command, signal_bridge=None) -> None:
+        def __init__(self, command: object, signal_bridge: object | None = None) -> None:
             executor_calls.append({"command": tuple(command), "signal_bridge": signal_bridge})
 
     class _FakeMcpFactory:
-        def __init__(self, workspace) -> None:
+        def __init__(self, workspace: object) -> None:
             mcp_factory_calls.append({"workspace": workspace})
 
-    def _fake_install(loop, root_task, bridge) -> None:
+    def _fake_install(loop: object, root_task: object, bridge: object) -> None:
         install_calls.append((loop, root_task, bridge))
 
-    async def _fake_run_fan_out(**kwargs):
-        coordinator_calls.append(kwargs)
+    async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+        coordinator_calls.append(dict(kwargs))
         return []
 
     monkeypatch.setattr(runner_module, "install_signal_handlers", _fake_install)
@@ -171,7 +177,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     assert len(executor_calls) == 1
     assert executor_calls[0]["signal_bridge"] is install_calls[0][2]
     assert mcp_factory_calls
-    ctx = cast("Any", coordinator_calls[0]["ctx"])
+    ctx = cast("object", coordinator_calls[0]["ctx"])
     assert ctx.same_workspace is not None
     # Verify session contract fields are properly threaded from the runner's
     # _build_session_mcp_plan_for_phase into SameWorkspaceContext.
@@ -182,7 +188,8 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
 
 
 def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_recovery_state(
-    monkeypatch, tmp_path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     unit = _make_work_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
@@ -195,14 +202,14 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
     workspace_scope = WorkspaceScope(tmp_path)
 
     class _FakeExecutor:
-        def __init__(self, command, signal_bridge=None) -> None:
+        def __init__(self, command: object, signal_bridge: object | None = None) -> None:
             del command, signal_bridge
 
     class _FakeMcpFactory:
-        def __init__(self, workspace) -> None:
+        def __init__(self, workspace: object) -> None:
             del workspace
 
-    async def _boom(**kwargs):
+    async def _boom(**kwargs: object) -> Never:
         del kwargs
         raise RuntimeError("fanout exploded")
 
@@ -233,7 +240,8 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
 
 
 def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
-    monkeypatch, tmp_path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     resumed_event = getattr(PipelineEvent, "WORKERS_RESUMED", None)
     assert resumed_event is not None
@@ -251,18 +259,22 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
     original_reduce = runner_module.reducer_reduce
 
     class _FakeExecutor:
-        def __init__(self, command, signal_bridge=None) -> None:
+        def __init__(self, command: object, signal_bridge: object | None = None) -> None:
             del command, signal_bridge
 
     class _FakeMcpFactory:
-        def __init__(self, workspace) -> None:
+        def __init__(self, workspace: object) -> None:
             del workspace
 
-    async def _fake_run_fan_out(**kwargs):
+    async def _fake_run_fan_out(**kwargs: object) -> list[object]:
         del kwargs
         return []
 
-    def _recording_reduce(current_state, event, pipeline_policy=None):
+    def _recording_reduce(
+        current_state: object,
+        event: object,
+        pipeline_policy: object | None = None,
+    ) -> object:
         seen_events.append(event)
         return original_reduce(current_state, event, pipeline_policy)
 
@@ -290,7 +302,8 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
 
 
 def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided(
-    monkeypatch, tmp_path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     unit = _make_work_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
@@ -304,18 +317,18 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
             notified_phases.append(state.phase)
 
     class _FakeParallelDisplay:
-        def __init__(self, *_args, **_kwargs) -> None:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
             self.subscriber = _Subscriber()
 
     class _FakeExecutor:
-        def __init__(self, command, signal_bridge=None) -> None:
+        def __init__(self, command: object, signal_bridge: object | None = None) -> None:
             del command, signal_bridge
 
     class _FakeMcpFactory:
-        def __init__(self, workspace) -> None:
+        def __init__(self, workspace: object) -> None:
             del workspace
 
-    async def _fake_run_fan_out(**kwargs):
+    async def _fake_run_fan_out(**kwargs: object) -> list[PipelineEvent]:
         del kwargs
         return [PipelineEvent.AGENT_SUCCESS]
 
@@ -349,7 +362,8 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
 
 
 def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
-    monkeypatch, tmp_path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     unit = _make_work_unit("unit-a")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
@@ -364,18 +378,22 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
             notified_phases.append(state.phase)
 
     class _FakeExecutor:
-        def __init__(self, command, signal_bridge=None) -> None:
+        def __init__(self, command: object, signal_bridge: object | None = None) -> None:
             del command, signal_bridge
 
     class _FakeMcpFactory:
-        def __init__(self, workspace) -> None:
+        def __init__(self, workspace: object) -> None:
             del workspace
 
-    async def _fake_run_fan_out(**kwargs):
+    async def _fake_run_fan_out(**kwargs: object) -> list[PipelineEvent]:
         del kwargs
         return [PipelineEvent.AGENT_SUCCESS]
 
-    def _recording_reduce(current_state, event, pipeline_policy=None):
+    def _recording_reduce(
+        current_state: PipelineState,
+        event: object,
+        pipeline_policy: object | None = None,
+    ) -> tuple[PipelineState, None]:
         del event, pipeline_policy
         next_state = current_state.copy_with(phase=current_state.phase)
         reduced_phases.append(next_state.phase)
@@ -404,7 +422,10 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
     assert notified_phases == reduced_phases
 
 
-def test_materialize_prepared_prompt_uses_worker_namespace_from_env(monkeypatch, tmp_path) -> None:
+def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     """When RALPH_WORKER_NAMESPACE is set, prompt payloads land in the worker's namespace."""
     from ralph.pipeline import runner as runner_module
     from ralph.pipeline.effects import PreparePromptEffect
@@ -414,13 +435,14 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(monkeypatch,
     worker_ns.mkdir(parents=True, exist_ok=True)
     shared_payload_dir = tmp_path / ".agent" / "tmp" / "prompt_payloads"
 
-    recorded_kwargs: list[dict] = []
+    recorded_kwargs: list[dict[str, object]] = []
 
-    def _fake_materialize(**kwargs):
-        recorded_kwargs.append(kwargs)
+    def _fake_materialize(**kwargs: object) -> str:
+        recorded_kwargs.append(dict(kwargs))
         return "rendered-prompt"
 
-    def _fake_dump(workspace, phase, prompt):
+    def _fake_dump(workspace: object, phase: object, prompt: object) -> str:
+        del workspace, phase, prompt
         return "/fake/prompt/path"
 
     # Patch materialize and dump to avoid writing files
@@ -447,17 +469,20 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(monkeypatch,
     )
 
 
-def test_materialize_prepared_prompt_no_namespace_without_env(monkeypatch, tmp_path) -> None:
+def test_materialize_prepared_prompt_no_namespace_without_env(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     """Without RALPH_WORKER_NAMESPACE, worker_namespace is None (shared path used)."""
     from ralph.pipeline import runner as runner_module
     from ralph.pipeline.effects import PreparePromptEffect
     from ralph.policy.loader import load_policy
 
     monkeypatch.delenv(str(WORKER_NAMESPACE_ENV), raising=False)
-    recorded_kwargs: list[dict] = []
+    recorded_kwargs: list[dict[str, object]] = []
 
-    def _fake_materialize(**kwargs):
-        recorded_kwargs.append(kwargs)
+    def _fake_materialize(**kwargs: object) -> str:
+        recorded_kwargs.append(dict(kwargs))
         return "rendered-prompt"
 
     import ralph.prompts.materialize

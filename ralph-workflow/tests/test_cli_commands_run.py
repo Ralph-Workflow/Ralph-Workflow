@@ -125,7 +125,7 @@ def _attach_display_context(
         tool_result_headline_min_chars=80,
     )
 
-    def fake_make_display_context(**kwargs):
+    def fake_make_display_context(**kwargs: object) -> object:
         return ctx
 
     monkeypatch.setattr(module, "make_display_context", fake_make_display_context)
@@ -183,7 +183,7 @@ def test_run_pipeline_without_resume_ignores_existing_checkpoint(
     monkeypatch.setattr(run_module.ckpt, "load", load_checkpoint)
     seen: dict[str, object] = {}
 
-    def fake_run(*_args, **kwargs):
+    def fake_run(*_args: object, **kwargs: object) -> object:
         seen["initial_state"] = kwargs.get("initial_state")
         return 0
 
@@ -248,7 +248,7 @@ def test_run_pipeline_resume_clears_stale_state_before_loading_checkpoint(
     def fake_load() -> None:
         seen["checkpoint_exists_when_load_called"] = (agent_dir / "checkpoint.json").exists()
 
-    def fake_run(*_args, **kwargs):
+    def fake_run(*_args: object, **kwargs: object) -> object:
         seen["initial_state"] = kwargs.get("initial_state")
         return 0
 
@@ -373,7 +373,7 @@ def test_run_pipeline_loads_policy_with_main_config_as_agents_authority(
     config = _fake_config()
     captured: dict[str, object] = {}
 
-    def fake_load_policy(policy_dir, *, config=None):
+    def fake_load_policy(policy_dir: object, *, config: object=None) -> object:
         captured["policy_dir"] = policy_dir
         captured["config"] = config
         return _policy_bundle_for_testing()
@@ -434,7 +434,7 @@ def test_run_pipeline_runner_exception(
 
 def test_run_pipeline_injects_workspace_scope_when_config_path_is_implicit(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path,
+    tmp_path: object,
 ) -> None:
     captured: dict[str, object] = {}
     (tmp_path / "PROMPT.md").write_text("Prompt\n")

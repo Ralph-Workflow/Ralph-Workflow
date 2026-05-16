@@ -20,7 +20,7 @@ def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
-def _make_snapshot(**kwargs: Any) -> PipelineSnapshot:
+def _make_snapshot(**kwargs: object) -> PipelineSnapshot:
     defaults: dict[str, Any] = {
         "phase": "design",
         "previous_phase": None,

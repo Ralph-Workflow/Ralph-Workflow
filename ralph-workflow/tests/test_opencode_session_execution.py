@@ -275,7 +275,7 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
         )
 
     def test_unscoped_run_uses_descendant_and_lease_evidence(self) -> None:
-        """Without a scope, strategy uses registry-wide snapshot; empty registry + no descendants -> ACTIVE."""  # noqa: E501
+        """Unscoped: empty registry + no descendants -> ACTIVE."""
         strategy = OpenCodeExecutionStrategy()  # no label_scope
         # FakeLivenessProbe with active=False: child_snapshot('') returns has_process=False
         probe = FakeLivenessProbe(active=False)
@@ -284,7 +284,7 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
         state = strategy.classify_quiet(handle, probe)
 
         assert state == AgentExecutionState.ACTIVE, (
-            f"Unscoped strategy with empty registry and no descendants must return ACTIVE; got {state!r}"  # noqa: E501
+            f"Unscoped empty registry + no descendants must be ACTIVE; got {state!r}"
         )
 
 
@@ -1271,7 +1271,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
         probe = FakeLivenessProbe(active=True)  # Always active
 
         # Fake evaluate_completion to always return no signals
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             return CompletionSignals(False, False, ())
 
         monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
@@ -1286,7 +1288,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
         monotonic_vals = iter([0.0, 0.1, 0.2])
 
-        def _fake_event_wait(self, timeout=None):
+        def _fake_event_wait(self: object, timeout: object = None) -> object:
             if timeout is not None and timeout == _DESCENDANT_WAIT_POLL_SECONDS:
                 call_count[0] += 1
                 return None
@@ -1327,7 +1329,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         evaluate_calls = [0]
 
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             evaluate_calls[0] += 1
             return CompletionSignals(False, False, ())
 
@@ -1339,7 +1343,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         monotonic_vals = iter([0.0, 0.5, 1.0])
         poll_count = [0]
 
-        def _fake_event_wait(self, timeout=None):
+        def _fake_event_wait(self: object, timeout: object = None) -> None:
             if timeout is not None and timeout == _DESCENDANT_WAIT_POLL_SECONDS:
                 poll_count[0] += 1
 
@@ -1386,7 +1390,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
         """
         probe = FakeLivenessProbe(active=True)  # Always active
 
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             return CompletionSignals(False, False, ())
 
         monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
@@ -1400,7 +1406,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         monotonic_vals = iter([0.0, 0.05, 0.1, 0.15])
         poll_count = [0]
 
-        def _fake_event_wait(self, timeout=None):
+        def _fake_event_wait(self: object, timeout: object = None) -> object:
             if timeout is not None and timeout == _DESCENDANT_WAIT_POLL_SECONDS:
                 poll_count[0] += 1
                 return None
@@ -1454,7 +1460,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
         _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
 
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
                 # Simulate artifact appearing between polls 1 and 2
@@ -1495,7 +1503,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
         _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
 
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
                 # Simulate explicit_complete appearing between polls
@@ -1549,8 +1559,8 @@ class TestCheckProcessResultWaitsForLiveChildren:
         _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
 
         def _fake_evaluate_completion_with_artifact(
-            workspace, raw_output, *, required_artifact=None
-        ):
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
                 # After descendants finish, artifact appears
@@ -1594,7 +1604,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
         _artifact_appears_on = 2  # first loop poll + final recheck
 
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             call_count[0] += 1
             # First poll (inside wait loop): no completion
             # Second call (final recheck after deadline): completion appears!
@@ -1608,7 +1620,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         # t[2]=0.5: loop check False -> final recheck (call 2) -> artifact -> TERMINAL_COMPLETE
         monotonic_vals = iter([0.0, 0.0, 0.5])
 
-        def _fake_event_wait(self, timeout=None):
+        def _fake_event_wait(self: object, timeout: object = None) -> object:
             return None
 
         with (
@@ -1648,7 +1660,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         call_count = [0]
 
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             call_count[0] += 1
             if call_count[0] == 1:
                 return CompletionSignals(False, False, ())
@@ -1658,7 +1672,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         monotonic_vals = iter([0.0, 0.5, 1.0])
 
-        def _fake_event_wait(self, timeout=None):
+        def _fake_event_wait(self: object, timeout: object = None) -> None:
             pass
 
         with (
@@ -1690,14 +1704,16 @@ class TestCheckProcessResultWaitsForLiveChildren:
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)
 
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             return CompletionSignals(False, False, ())
 
         monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         monotonic_vals = iter([0.0, 0.5, 1.0])
 
-        def _fake_event_wait(self, timeout=None):
+        def _fake_event_wait(self: object, timeout: object = None) -> object:
             return None
 
         with (
@@ -1763,7 +1779,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)
 
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             return CompletionSignals(False, False, ())
 
         monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
@@ -1773,7 +1791,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         # [4] descendant loop exit -> final recheck -> RESUMABLE_CONTINUE
         monotonic_vals = iter([0.0, 0.5, 0.5, 1.0, 2.5])
 
-        def _fake_event_wait(self, timeout=None):
+        def _fake_event_wait(self: object, timeout: object = None) -> object:
             return None
 
         with (
@@ -2280,7 +2298,9 @@ class TestOptionalArtifactCompletion:
             artifact_required=True,
         )
 
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+        def _fake_evaluate_completion(
+            workspace: object, raw_output: object, *, required_artifact: object = None
+        ) -> object:
             return CompletionSignals(False, False, ())
 
         monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
@@ -2291,7 +2311,7 @@ class TestOptionalArtifactCompletion:
 
         monotonic_vals = iter([0.0, 0.5, 1.0])
 
-        def _fake_event_wait(self, timeout=None):
+        def _fake_event_wait(self: object, timeout: object = None) -> object:
             return None
 
         with (

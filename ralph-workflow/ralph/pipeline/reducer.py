@@ -135,7 +135,7 @@ def _dispatch_worker_event(
     return None
 
 
-def reduce(  # noqa: PLR0911
+def reduce(
     state: PipelineState,
     event: Event,
     pipeline_policy: PipelinePolicy | None = None,

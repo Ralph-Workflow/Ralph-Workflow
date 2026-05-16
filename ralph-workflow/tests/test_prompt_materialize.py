@@ -1068,7 +1068,7 @@ def test_prompt_file_for_phase_uses_agent_tmp_file_name() -> None:
 
 def test_materialize_commit_phase_tolerates_empty_diff(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -1090,7 +1090,7 @@ def test_materialize_commit_phase_tolerates_empty_diff(
 
 def test_materialize_commit_phase_with_claude_prefix_includes_both_tool_aliases(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -1625,7 +1625,7 @@ def test_pending_diff_falls_back_when_not_a_git_repo(tmp_path: Path) -> None:
 
 def test_git_diff_strips_lone_surrogates_from_gitpython_output(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     surrogate_diff = "diff --git a/file.txt b/file.txt\n@@\n+\udca4 byte\n"
 
@@ -1647,7 +1647,7 @@ def test_git_diff_strips_lone_surrogates_from_gitpython_output(
 
 def test_materialize_commit_phase_handles_surrogate_diff(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -1674,7 +1674,7 @@ def test_materialize_commit_phase_handles_surrogate_diff(
 
 def test_materialize_commit_phase_with_oversized_surrogate_diff(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -1953,7 +1953,7 @@ def test_missing_history_does_not_break_fresh_planning(
 # ---------------------------------------------------------------------------
 
 
-def _make_sidecar_entry(  # noqa: PLR0913
+def _make_sidecar_entry(
     *,
     artifact_id: str = "abc123",
     uri: str = "ralph://media/abc123",
@@ -2111,7 +2111,7 @@ def test_materialize_sidecar_contains_all_artifacts(
     )
 
     data = json.loads(workspace.read(multimodal_sidecar_path("development")))
-    assert len(data["artifacts"]) == 2  # noqa: PLR2004
+    assert len(data["artifacts"]) == 2
     assert data["artifacts"][0]["artifact_id"] == "img1"
     assert data["artifacts"][1]["artifact_id"] == "pdf1"
 
@@ -2293,7 +2293,7 @@ def test_materialize_sidecar_preserves_delivery_reason_and_block_type_for_mixed_
 
     entries = collect_media_entries_for_phase(workspace, "development")
 
-    assert len(entries) == 3, f"Expected 3 entries, got {len(entries)}"  # noqa: PLR2004
+    assert len(entries) == 3, f"Expected 3 entries, got {len(entries)}"
 
     by_modality = {e.modality: e for e in entries}
 
@@ -2476,7 +2476,7 @@ def test_collect_media_entries_preserves_failure_kind_through_sidecar_round_trip
 
     entries = collect_media_entries_for_phase(workspace, "development")
 
-    assert len(entries) == 2  # noqa: PLR2004
+    assert len(entries) == 2
     by_modality = {e.modality: e for e in entries}
 
     video_e = by_modality["video"]

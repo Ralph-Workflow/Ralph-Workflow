@@ -5,7 +5,6 @@ from __future__ import annotations
 import tempfile
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 from ralph.phases import PhaseContext
@@ -15,16 +14,16 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 
 @lru_cache(maxsize=1)
-def _default_policy_bundle() -> Any:
+def _default_policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as tmp:
         return load_policy(Path(tmp) / ".agent")
 
 
-def _default_policy_context(workspace=None) -> PhaseContext:
+def _default_policy_context(workspace: object=None) -> PhaseContext:
     policy = _default_policy_bundle()
     ws = workspace if workspace is not None else MagicMock()
     if workspace is None:
@@ -139,7 +138,7 @@ class TestRecoveryControllerSessionPreservingRetry:
     """Via RecoveryController.handle() directly."""
 
     def _make_controller(self) -> RecoveryController:
-        return RecoveryController(cycle_cap=10)
+        return RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
 
     def test_retry_in_session_sets_pending_flag_when_session_id_present(self) -> None:
         controller = self._make_controller()

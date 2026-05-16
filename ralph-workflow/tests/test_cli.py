@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 import rich_click as click
@@ -37,6 +37,9 @@ from ralph.config.enums import Verbosity
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from ralph.cli.commands.run import RunPipelineRequest
 
 RUN_PIPELINE_SUCCESS = 42
 KEYBOARD_INTERRUPT_EXIT_CODE = 130
@@ -69,7 +72,7 @@ class CliRunner:
         return CliResult(result.exit_code, result.stdout, stderr)
 
     @contextmanager
-    def _pushd(self, path: Path):
+    def _pushd(self, path: Path) -> object:
         original_cwd = Path.cwd()
         try:
             os.chdir(path)
@@ -78,7 +81,7 @@ class CliRunner:
             os.chdir(original_cwd)
 
     @contextmanager
-    def isolated_filesystem(self, temp_dir: Path):
+    def isolated_filesystem(self, temp_dir: Path) -> object:
         temp_dir.mkdir(parents=True, exist_ok=True)
         with self._runner.isolated_filesystem(temp_dir):
             yield temp_dir
@@ -260,7 +263,9 @@ def test_handle_list_agents_success(monkeypatch: pytest.MonkeyPatch) -> None:
         called["kwargs"] = kwargs
         return SimpleNamespace(agents=sentinel)
 
-    def fake_display_agents_table(agents: dict[str, object], *, display_context=None) -> None:
+    def fake_display_agents_table(
+        agents: dict[str, object], *, display_context: object = None
+    ) -> None:
         called["agents"] = agents
 
     monkeypatch.setattr("ralph.cli.main.load_config", fake_load_config)
@@ -377,7 +382,7 @@ def test_handle_list_providers_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ralph.cli.main.fetch_providers", lambda: ["opencode"])
     recorded: list[object] = []
 
-    def fake_display_providers_table(providers: object, *, display_context=None) -> None:
+    def fake_display_providers_table(providers: object, *, display_context: object = None) -> None:
         recorded.append(providers)
 
     monkeypatch.setattr("ralph.cli.main.display_providers_table", fake_display_providers_table)
@@ -411,7 +416,7 @@ def test_handle_commit_plumbing_invokes_commit(monkeypatch: pytest.MonkeyPatch) 
     calls: list[CommitPlumbingOptions] = []
 
     def fake_commit_plumbing(
-        *, options: CommitPlumbingOptions | None = None, display_context=None
+        *, options: CommitPlumbingOptions | None = None, display_context: object = None
     ) -> None:
         calls.append(options or CommitPlumbingOptions())
 
@@ -434,7 +439,7 @@ def test_handle_commit_plumbing_no_flags_does_not_call_commit(
     called = False
 
     def fake_commit_plumbing(
-        *, options: CommitPlumbingOptions | None = None, display_context=None
+        *, options: CommitPlumbingOptions | None = None, display_context: object = None
     ) -> None:
         nonlocal called
         called = True
@@ -455,21 +460,15 @@ def test_run_pipeline_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     recorded: dict[str, object] = {}
 
-    def fake_run_pipeline(  # noqa: PLR0913
+    def fake_run_pipeline(
+        request: RunPipelineRequest,
         *,
-        config_path,
-        cli_overrides,
-        dry_run,
-        resume,
-        verbosity=None,
-        display_context=None,
-        counter_overrides=None,
-        inline_prompt=None,
-    ):
-        recorded["config_path"] = config_path
-        recorded["cli_overrides"] = cli_overrides
-        recorded["dry_run"] = dry_run
-        recorded["resume"] = resume
+        display_context: DisplayContext | None = None,
+    ) -> object:
+        recorded["config_path"] = request.config_path
+        recorded["cli_overrides"] = request.cli_overrides
+        recorded["dry_run"] = request.dry_run
+        recorded["resume"] = request.resume
         return RUN_PIPELINE_SUCCESS
 
     monkeypatch.setattr("ralph.cli.main.run_pipeline", fake_run_pipeline)
@@ -551,7 +550,7 @@ def test_build_cli_overrides_sets_values() -> None:
     execution = cast("dict[str, object]", general["execution"])
     assert general["git_user_name"] == "Jane"
     assert general["git_user_email"] == "jane@example.com"
-    assert general["developer_iters"] == 7  # noqa: PLR2004
+    assert general["developer_iters"] == 7
     assert execution == {}
     assert overrides["developer_agent"] == "dev"
     assert overrides["developer_model"] == "dev-model"
@@ -687,7 +686,7 @@ class TestIterationCounterFlags:
             _build_cli_overrides(CLIOverrideInput(developer_iters=3)),
         )
         general = cast("dict[str, object]", overrides["general"])
-        assert general["developer_iters"] == 3  # noqa: PLR2004
+        assert general["developer_iters"] == 3
 
     def test_counter_flag_passes_overrides_to_run_pipeline(
         self, monkeypatch: pytest.MonkeyPatch
@@ -695,7 +694,7 @@ class TestIterationCounterFlags:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
             "ralph.cli.main.run_pipeline",
-            lambda **kw: captured.update(kw) or 0,
+            lambda request, **kw: captured.update({"request": request, **kw}) or 0,
         )
         monkeypatch.setattr(
             "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
@@ -709,7 +708,7 @@ class TestIterationCounterFlags:
             catch_exceptions=False,
         )
 
-        assert captured.get("counter_overrides") == {"iteration": 2, "reviewer_pass": 1}
+        assert captured.get("request").counter_overrides == {"iteration": 2, "reviewer_pass": 1}
 
 
 class TestPrepareInitArgs:
@@ -769,7 +768,7 @@ class TestQuickModeSemantics:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
             "ralph.cli.main.run_pipeline",
-            lambda **kw: captured.update(kw) or 0,
+            lambda request, **kw: captured.update({"request": request, **kw}) or 0,
         )
         monkeypatch.setattr(
             "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
@@ -779,7 +778,7 @@ class TestQuickModeSemantics:
         runner = TyperCliRunner()
         runner.invoke(app, ["-Q", "--prompt", "do a task", "--dry-run"], catch_exceptions=False)
 
-        cli_overrides = cast("dict[str, object]", captured.get("cli_overrides"))
+        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
         general = cast("dict[str, object]", cli_overrides["general"])
         assert general["developer_iters"] == 1
 
@@ -789,7 +788,7 @@ class TestQuickModeSemantics:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
             "ralph.cli.main.run_pipeline",
-            lambda **kw: captured.update(kw) or 0,
+            lambda request, **kw: captured.update({"request": request, **kw}) or 0,
         )
         monkeypatch.setattr(
             "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
@@ -803,7 +802,7 @@ class TestQuickModeSemantics:
             catch_exceptions=False,
         )
 
-        cli_overrides = cast("dict[str, object]", captured.get("cli_overrides"))
+        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
         general = cast("dict[str, object]", cli_overrides["general"])
         assert general["developer_iters"] == 1
 
@@ -813,7 +812,7 @@ class TestQuickModeSemantics:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
             "ralph.cli.main.run_pipeline",
-            lambda **kw: captured.update(kw) or 0,
+            lambda request, **kw: captured.update({"request": request, **kw}) or 0,
         )
         monkeypatch.setattr(
             "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
@@ -827,11 +826,11 @@ class TestQuickModeSemantics:
             catch_exceptions=False,
         )
 
-        assert captured.get("inline_prompt") == "do a quick change"
+        assert captured.get("request").inline_prompt == "do a quick change"
 
     def test_prompt_without_quick_raises_usage_error(self, cli_runner: CliRunner) -> None:
         result = cli_runner.invoke(app, ["--prompt", "some text"])
-        assert result.exit_code == 2  # noqa: PLR2004
+        assert result.exit_code == 2
         assert (
             "--prompt requires --quick/-Q" in result.stderr or "--prompt requires" in result.stdout
         )
@@ -844,7 +843,7 @@ class TestThoroughModeSemantics:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
             "ralph.cli.main.run_pipeline",
-            lambda **kw: captured.update(kw) or 0,
+            lambda request, **kw: captured.update({"request": request, **kw}) or 0,
         )
         monkeypatch.setattr(
             "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
@@ -854,7 +853,7 @@ class TestThoroughModeSemantics:
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "--dry-run"], catch_exceptions=False)
 
-        cli_overrides = cast("dict[str, object]", captured.get("cli_overrides"))
+        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
         general = cast("dict[str, object]", cli_overrides["general"])
         assert general["developer_iters"] == _THOROUGH_DEVELOPER_ITERS
 
@@ -864,7 +863,7 @@ class TestThoroughModeSemantics:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
             "ralph.cli.main.run_pipeline",
-            lambda **kw: captured.update(kw) or 0,
+            lambda request, **kw: captured.update({"request": request, **kw}) or 0,
         )
         monkeypatch.setattr(
             "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
@@ -874,13 +873,13 @@ class TestThoroughModeSemantics:
         runner = TyperCliRunner()
         runner.invoke(app, ["-T", "-D", "3", "--dry-run"], catch_exceptions=False)
 
-        cli_overrides = cast("dict[str, object]", captured.get("cli_overrides"))
+        cli_overrides = cast("dict[str, object]", captured.get("request").cli_overrides)
         general = cast("dict[str, object]", cli_overrides["general"])
         assert general["developer_iters"] == _THOROUGH_DEVELOPER_ITERS
 
     def test_quick_and_thorough_together_raise_usage_error(self, cli_runner: CliRunner) -> None:
         result = cli_runner.invoke(app, ["-Q", "-T", "--prompt", "task"])
-        assert result.exit_code == 2  # noqa: PLR2004
+        assert result.exit_code == 2
         assert "--quick/-Q and --thorough/-T cannot be used together" in (
             result.stderr or result.stdout
         )
@@ -893,7 +892,7 @@ class TestAdditionalShortcutAliases:
         captured: dict[str, object] = {}
         monkeypatch.setattr(
             "ralph.cli.main.run_pipeline",
-            lambda **kw: captured.update(kw) or 0,
+            lambda request, **kw: captured.update({"request": request, **kw}) or 0,
         )
         monkeypatch.setattr(
             "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
@@ -903,7 +902,7 @@ class TestAdditionalShortcutAliases:
         runner = TyperCliRunner()
         runner.invoke(app, ["-r", "--dry-run"], catch_exceptions=False)
 
-        assert captured.get("resume") is True
+        assert captured.get("request").resume is True
 
     def test_short_check_config_alias_runs_check_config(
         self, monkeypatch: pytest.MonkeyPatch

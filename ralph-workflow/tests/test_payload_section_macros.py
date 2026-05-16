@@ -65,15 +65,17 @@ class TestRenderPayloadPath:
 
 class TestRenderPayloadSection:
     def test_inlines_content_when_path_absent(self) -> None:
+        tpl = "{{ render_payload_section('LATEST ARTIFACT', LA, LAP) }}"
         result = _render(
-            "{{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}",  # noqa: E501
+            tpl,
             {"LATEST_ARTIFACT": "artifact body", "LATEST_ARTIFACT_PATH": ""},
         )
         assert "artifact body" in result
 
     def test_uses_file_reference_when_path_present(self) -> None:
+        tpl = "{{ render_payload_section('LATEST ARTIFACT', LA, LAP) }}"
         result = _render(
-            "{{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}",  # noqa: E501
+            tpl,
             {
                 "LATEST_ARTIFACT": "artifact body",
                 "LATEST_ARTIFACT_PATH": ".agent/ARTIFACT.md",

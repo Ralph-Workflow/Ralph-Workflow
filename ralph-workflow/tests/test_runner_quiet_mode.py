@@ -41,10 +41,12 @@ def _config() -> UnifiedConfig:
     )
 
 
-def _install_runner_stubs(monkeypatch, policy_bundle, tmp_path: Path) -> list[str]:
+def _install_runner_stubs(
+    monkeypatch: MonkeyPatch, policy_bundle: object, tmp_path: Path
+) -> list[str]:
     invoked_phases: list[str] = []
 
-    def fake_execute_effect(effect, _config, _workspace_scope):
+    def fake_execute_effect(effect: object, _config: object, _workspace_scope: object) -> object:
         if isinstance(effect, InvokeAgentEffect):
             invoked_phases.append(effect.phase)
             return PipelineEvent.AGENT_SUCCESS
@@ -53,7 +55,7 @@ def _install_runner_stubs(monkeypatch, policy_bundle, tmp_path: Path) -> list[st
         msg = f"Unexpected effect: {type(effect)!r}"
         raise AssertionError(msg)
 
-    def fake_phase_event_after_agent_run(*, effect, **_kwargs):
+    def fake_phase_event_after_agent_run(*, effect: object, **_kwargs: object) -> object:
         if effect.phase in {"development_analysis", "review_analysis"}:
             return PipelineEvent.ANALYSIS_SUCCESS
         return PipelineEvent.AGENT_SUCCESS

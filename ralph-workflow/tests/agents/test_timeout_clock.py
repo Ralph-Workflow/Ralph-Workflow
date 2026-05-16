@@ -1,4 +1,4 @@
-"""Tests for the Clock protocol and implementations in timeout_clock.py."""
+"""Tests for the clock protocol and timeout clock implementations."""
 
 from __future__ import annotations
 

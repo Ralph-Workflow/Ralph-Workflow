@@ -6,7 +6,6 @@ budget_counters using their default_max values and counter_overrides.
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,7 +25,7 @@ _CONFIG_REVIEWS = 1
 _CUSTOM_MAX = 7
 
 
-def _minimal_policy(**extra: Any) -> PipelinePolicy:
+def _minimal_policy(**extra: object) -> PipelinePolicy:
     return PipelinePolicy(
         phases={
             "start": PhaseDefinition(
@@ -158,6 +157,6 @@ class TestLegacyCheckpointMigration:
             {"phase": "planning", "total_iterations": 5, "total_reviewer_passes": 2},
         ],
     )
-    def test_no_crash_on_partial_legacy_data(self, raw: dict[str, Any]) -> None:
+    def test_no_crash_on_partial_legacy_data(self, raw: dict[str, object]) -> None:
         state = PipelineState.model_validate(raw)
         assert state.phase in ("development", "planning")

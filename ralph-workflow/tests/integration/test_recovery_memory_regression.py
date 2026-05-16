@@ -13,7 +13,7 @@ from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
@@ -66,9 +66,11 @@ def _make_controller() -> RecoveryController:
         .set_budget("development", "opencode", max_retries=1)
     )
     return RecoveryController(
-        cycle_cap=_RECOVERY_CYCLE_CAP,
-        budget_registry=registry,
-        policy_bundle=_load_default_policy_bundle(),
+        options=RecoveryControllerOptions(
+            cycle_cap=_RECOVERY_CYCLE_CAP,
+            budget_registry=registry,
+            policy_bundle=_load_default_policy_bundle(),
+        )
     )
 
 

@@ -7,13 +7,13 @@ for all guide families and is the authoritative file-level map.
 from tests.doc_roots import REPO_ROOT_DOCS_DIR
 
 
-def test_docs_readme_exists():
+def test_docs_readme_exists() -> None:
     """docs/README.md must exist as the authoritative documentation map."""
     path = REPO_ROOT_DOCS_DIR / "README.md"
     assert path.exists(), "docs/README.md must exist"
 
 
-def test_docs_readme_maps_agents_family():
+def test_docs_readme_maps_agents_family() -> None:
     """docs/README.md must explicitly cover the docs/agents family."""
     path = REPO_ROOT_DOCS_DIR / "README.md"
     content = path.read_text()
@@ -23,7 +23,7 @@ def test_docs_readme_maps_agents_family():
     )
 
 
-def test_docs_readme_distinguishes_current_vs_archival():
+def test_docs_readme_distinguishes_current_vs_archival() -> None:
     """docs/README.md must distinguish current Python guidance from historical."""
     path = REPO_ROOT_DOCS_DIR / "README.md"
     content = path.read_text().lower()
@@ -45,7 +45,7 @@ def test_docs_readme_distinguishes_current_vs_archival():
     )
 
 
-def test_docs_readme_covers_code_style_family():
+def test_docs_readme_covers_code_style_family() -> None:
     """docs/README.md must cover the docs/code-style family status."""
     path = REPO_ROOT_DOCS_DIR / "README.md"
     content = path.read_text()
@@ -55,7 +55,7 @@ def test_docs_readme_covers_code_style_family():
     )
 
 
-def test_docs_readme_covers_tooling_family():
+def test_docs_readme_covers_tooling_family() -> None:
     """docs/README.md must cover the docs/tooling family."""
     path = REPO_ROOT_DOCS_DIR / "README.md"
     content = path.read_text()
@@ -63,7 +63,7 @@ def test_docs_readme_covers_tooling_family():
     assert "tooling" in content.lower(), "docs/README.md should cover docs/tooling family"
 
 
-def test_docs_readme_covers_performance_family():
+def test_docs_readme_covers_performance_family() -> None:
     """docs/README.md must cover the docs/performance family."""
     path = REPO_ROOT_DOCS_DIR / "README.md"
     content = path.read_text()

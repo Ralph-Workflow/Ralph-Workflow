@@ -243,7 +243,7 @@ def _make_standalone(
 
 def test_mcp_restart_policy_default_is_1000() -> None:
     policy = lifecycle.McpRestartPolicy()
-    assert policy.max_restarts == 1000  # noqa: PLR2004
+    assert policy.max_restarts == 1000
 
 
 def test_restart_aware_bridge_returns_false_when_process_alive() -> None:
@@ -284,7 +284,7 @@ def test_restart_aware_bridge_raises_when_budget_exhausted() -> None:
     bridge.check_health_and_restart_if_needed()  # restart 2
     with pytest.raises(lifecycle.McpServerError) as exc_info:
         bridge.check_health_and_restart_if_needed()  # budget exhausted
-    assert exc_info.value.restart_count == 2  # noqa: PLR2004
+    assert exc_info.value.restart_count == 2
 
 
 def test_restart_aware_bridge_calls_restart_fn_on_each_restart() -> None:
@@ -390,8 +390,8 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
 
     # Trigger a restart: process is dead (poll_result=1), so health check restarts
     bridge.check_health_and_restart_if_needed()
-    assert len(preflight_calls) == 2, "preflight runs again after restart"  # noqa: PLR2004
-    assert spawn_call_count[0] == 2, "spawn called twice (initial + restart)"  # noqa: PLR2004
+    assert len(preflight_calls) == 2, "preflight runs again after restart"
+    assert spawn_call_count[0] == 2, "spawn called twice (initial + restart)"
 
 
 def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Path) -> None:

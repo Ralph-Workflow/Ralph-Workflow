@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.agents.parsers.base import AgentOutputLine
+from ralph.agents.parsers import AgentOutputLine
 from ralph.display.activity_model import ActivityProvider
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 

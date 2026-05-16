@@ -332,7 +332,79 @@ ralph.pipeline.cycle_baseline
 ralph.pipeline.effects
 ~~~~~~~~~~~~~~~~~~~~~~
 
+.. Note: ralph.pipeline.effects re-exports from its effect modules; using
+   :no-members: avoids duplicate cross-reference warnings.
+
 .. automodule:: ralph.pipeline.effects
+   :no-members:
+
+ralph.pipeline.effects.commit_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.commit_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effects.early_skip_commit_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.early_skip_commit_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effects.exhausted_analysis_phase_advance_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.exhausted_analysis_phase_advance_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effects.exit_failure_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.exit_failure_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effects.exit_success_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.exit_success_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effects.fan_out_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.fan_out_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effects.invoke_agent_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.invoke_agent_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effects.prepare_prompt_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.prepare_prompt_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effects.push_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.push_effect
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effects.save_checkpoint_effect
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effects.save_checkpoint_effect
    :members:
    :show-inheritance:
 

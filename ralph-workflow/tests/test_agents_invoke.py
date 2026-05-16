@@ -10,6 +10,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Literal, cast
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 import pytest
 from loguru import logger
 
@@ -91,7 +94,7 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     prompt_file.write_text("hello", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    def fake_run_subprocess_and_read_lines(  # noqa: PLR0913
+    def fake_run_subprocess_and_read_lines(
         cmd: list[str],
         cfg: AgentConfig,
         show_progress: bool,
@@ -143,7 +146,7 @@ def test_invoke_agent_probe_and_strategy_share_same_registry(
     prompt_file.write_text("hello", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    def fake_run_subprocess_and_read_lines(  # noqa: PLR0913
+    def fake_run_subprocess_and_read_lines(
         cmd: list[str],
         cfg: object,
         show_progress: bool,
@@ -205,7 +208,7 @@ def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     prompt_file.write_text("hello", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    def fake_run_subprocess_and_read_lines(  # noqa: PLR0913
+    def fake_run_subprocess_and_read_lines(
         cmd: list[str],
         cfg: AgentConfig,
         show_progress: bool,
@@ -260,7 +263,7 @@ def test_invoke_agent_without_session_scope_ignores_unrelated_agent_labels(
     prompt_file.write_text("hello", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    def fake_run_subprocess_and_read_lines(  # noqa: PLR0913
+    def fake_run_subprocess_and_read_lines(
         cmd: list[str],
         cfg: AgentConfig,
         show_progress: bool,
@@ -342,7 +345,7 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
         lambda *args, **kwargs: FakeProcess(),
     )
 
-    def fake_read_lines_from_process(*args: object, **kwargs: object):
+    def fake_read_lines_from_process(*args: object, **kwargs: object) -> Iterator[str]:
         del args, kwargs
         yield "idle line\n"
         from ralph.agents.idle_watchdog import WatchdogFireReason
@@ -4783,16 +4786,19 @@ class TestResolveInvocationRuntime:
     ) -> None:
         from ralph.agents.invoke import AgentTransport
         from ralph.config.models import AgentConfig
+
         config = AgentConfig(
-        cmd="opencode",
-        output_flag="--json-stream",
-        transport=AgentTransport.OPENCODE,
-    )
+            cmd="opencode",
+            output_flag="--json-stream",
+            transport=AgentTransport.OPENCODE,
+        )
         extra_env = {str(MCP_ENDPOINT_ENV): "http://localhost:9999"}
         captured: list[str | None] = []
+
         def fake_build(config_content: str | None, endpoint: str) -> tuple[str, list[object]]:
             captured.append(config_content)
             return ("{}", [])
+
         monkeypatch.setattr(invoke_module, "build_opencode_provider_config", fake_build)
         monkeypatch.setattr(invoke_module, "mcp_toml_as_upstreams", lambda p: [])
         monkeypatch.setattr(invoke_module, "merge_mcp_toml_into_upstreams", lambda u, m: u)
@@ -4805,27 +4811,28 @@ class TestResolveInvocationRuntime:
         )
         assert captured[0] == "injected-content"
 
-    def test_codex_uses_home_from_base_env(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_codex_uses_home_from_base_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from ralph.agents.invoke import AgentTransport
         from ralph.config.models import AgentConfig
+
         config = AgentConfig(
-        cmd="codex",
-        output_flag="",
-        transport=AgentTransport.CODEX,
-    )
+            cmd="codex",
+            output_flag="",
+            transport=AgentTransport.CODEX,
+        )
         extra_env = {str(MCP_ENDPOINT_ENV): "http://localhost:9999"}
         captured: list[str | None] = []
+
         def fake_prepare(
-        endpoint: str | None,
-        *,
-        workspace_path: object,
-        existing_home: str | None,
-        system_prompt_file: object,
-    ) -> tuple[str, list[object]]:
+            endpoint: str | None,
+            *,
+            workspace_path: object,
+            existing_home: str | None,
+            system_prompt_file: object,
+        ) -> tuple[str, list[object]]:
             captured.append(existing_home)
             return ("/fake/home", [])
+
         monkeypatch.setattr(invoke_module, "prepare_codex_home_with_upstreams", fake_prepare)
         monkeypatch.setattr(invoke_module, "mcp_toml_as_upstreams", lambda p: [])
         monkeypatch.setattr(invoke_module, "merge_mcp_toml_into_upstreams", lambda u, m: u)
@@ -4834,4 +4841,3 @@ class TestResolveInvocationRuntime:
             config, extra_env, None, _base_env={"CODEX_HOME": "/injected/home"}
         )
         assert captured[0] == "/injected/home"
-

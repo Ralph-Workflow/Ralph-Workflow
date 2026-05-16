@@ -646,7 +646,7 @@ class _StandaloneHttpServer(_FallbackStandaloneServer):
     pass
 
 
-def build_standalone_http_server(  # noqa: PLR0913
+def build_standalone_http_server(
     workspace_root: Path,
     *,
     host: str = DEFAULT_HOST,
@@ -938,7 +938,7 @@ def _create_tool(registry: ToolBridge, definition: ToolDefinition) -> ToolBuilde
     return tool
 
 
-def build_fastmcp_server(  # noqa: PLR0913
+def build_fastmcp_server(
     workspace_root: Path,
     *,
     host: str = DEFAULT_HOST,

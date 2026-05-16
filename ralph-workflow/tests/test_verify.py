@@ -44,7 +44,7 @@ def _result(
     )
 
 
-def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys) -> None:
+def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys: object) -> None:
     runner = StubRunner(
         [
             _result(args=("lint",), returncode=0, stdout="lint ok\n"),
@@ -70,7 +70,9 @@ def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys) -> N
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
 
 
-def test_main_prints_agent_fix_banner_when_verify_step_fails(tmp_path: Path, capsys) -> None:
+def test_main_prints_agent_fix_banner_when_verify_step_fails(
+    tmp_path: Path, capsys: object
+) -> None:
     runner = StubRunner(
         [
             _result(args=("lint",), returncode=0, stdout="lint ok\n"),

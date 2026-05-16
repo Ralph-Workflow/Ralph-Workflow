@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
-from ralph.display.content_condenser import condense_content
+from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
@@ -191,12 +191,18 @@ class ParallelDisplay:
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
 
-        visible, condensed_flag, summary_line, ai_summary_line = condense_content(
-            text,
-            soft_limit=self._ctx.condenser_soft_limit,
-            hard_limit=self._ctx.condenser_hard_limit,
-            summary=True,
-            env=self._ctx.env,
+        visible, condensed_flag, summary_line, ai_summary_line = cast(
+            "tuple[str, bool, str | None, str | None]",
+            condense_content(
+                text,
+                options=CondenseOptions(
+                    soft_limit=self._ctx.condenser_soft_limit,
+                    hard_limit=self._ctx.condenser_hard_limit,
+                    summary=True,
+                    env=self._ctx.env,
+                    overflow_ref=overflow_ref,
+                ),
+            ),
         )
 
         if condensed_flag:

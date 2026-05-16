@@ -280,11 +280,15 @@ def _handle_agent_commit_generation(
 
 
 def _resolve_commit_message_agents(config: UnifiedConfig, registry: AgentRegistry) -> list[str]:
-    commit_chain_name = config.agent_drains.get("commit")
-    commit_chain = config.agent_chains.get(commit_chain_name, []) if commit_chain_name else []
+    commit_drain = config.agent_drains.get("commit")
+    commit_chain_name = commit_drain.chain if commit_drain else None
+    commit_chain_config = config.agent_chains.get(commit_chain_name) if commit_chain_name else None
+    commit_chain = commit_chain_config.agents if commit_chain_config else []
 
-    review_chain_name = config.agent_drains.get("review")
-    review_chain = config.agent_chains.get(review_chain_name, []) if review_chain_name else []
+    review_drain = config.agent_drains.get("review")
+    review_chain_name = review_drain.chain if review_drain else None
+    review_chain_config = config.agent_chains.get(review_chain_name) if review_chain_name else None
+    review_chain = review_chain_config.agents if review_chain_config else []
 
     commit_candidates = [
         name for name in commit_chain if _commit_drain_agent_supported(registry, name)
@@ -377,7 +381,7 @@ def _submit_artifact_tool_names_for_transport(
     return (SUBMIT_ARTIFACT_TOOL,)
 
 
-def _generate_commit_message_with_chain(  # noqa: PLR0913
+def _generate_commit_message_with_chain(
     *,
     diff: str,
     repo_root: Path,
@@ -435,7 +439,7 @@ def _generate_commit_message_with_chain(  # noqa: PLR0913
     return CommitAgentResult(failure_details=failure_details)
 
 
-def _generate_commit_message_with_agent(  # noqa: PLR0913
+def _generate_commit_message_with_agent(
     agent: AgentConfig,
     *,
     repo_root: Path,

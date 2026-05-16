@@ -38,14 +38,14 @@ _VALID_DEV_RESULT_JSON = json.dumps(
 
 
 @lru_cache(maxsize=1)
-def _default_policy_bundle() -> Any:
+def _default_policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as tmp:
         return load_policy(Path(tmp) / ".agent")
 
 
 class TestHandleDevelopment:
     @classmethod
-    def _make_context(cls, workspace=None, console=None) -> PhaseContext:
+    def _make_context(cls, workspace: object=None, console: object=None) -> PhaseContext:
         policy = _default_policy_bundle()
         ws = workspace if workspace is not None else MagicMock()
         registry: Any = object()

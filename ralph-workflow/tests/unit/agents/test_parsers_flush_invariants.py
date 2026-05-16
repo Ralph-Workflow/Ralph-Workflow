@@ -41,7 +41,7 @@ class TestParagraphBoundaryFlush:
         "parser_factory",
         [ClaudeParser, CodexParser, OpenCodeParser, GeminiParser, GenericParser],
     )
-    def test_paragraph_boundary_flushes_accumulated_text(self, parser_factory) -> None:
+    def test_paragraph_boundary_flushes_accumulated_text(self, parser_factory: object) -> None:
         """All parsers must flush accumulated text when paragraph boundary is reached."""
         parser = parser_factory()
 
@@ -91,7 +91,7 @@ class TestIteratorExhaustionFlush:
         "parser_factory",
         [ClaudeParser, CodexParser, OpenCodeParser, GeminiParser, GenericParser],
     )
-    def test_iterator_exhaustion_flushes_pending_accumulator(self, parser_factory) -> None:
+    def test_iterator_exhaustion_flushes_pending_accumulator(self, parser_factory: object) -> None:
         """All parsers must flush remaining accumulator when iterator ends."""
         parser = parser_factory()
 
@@ -145,7 +145,7 @@ class TestEmptyFlushSuppression:
         "parser_factory",
         [ClaudeParser, CodexParser, OpenCodeParser, GeminiParser, GenericParser],
     )
-    def test_empty_content_at_boundary_not_emitted(self, parser_factory) -> None:
+    def test_empty_content_at_boundary_not_emitted(self, parser_factory: object) -> None:
         """All parsers must suppress empty lines at boundaries."""
         parser = parser_factory()
 
@@ -204,7 +204,7 @@ class TestNoMidTokenSplit:
         "parser_factory",
         [ClaudeParser, CodexParser, OpenCodeParser, GeminiParser, GenericParser],
     )
-    def test_delta_accumulation_produces_coherent_output(self, parser_factory) -> None:
+    def test_delta_accumulation_produces_coherent_output(self, parser_factory: object) -> None:
         """All parsers must accumulate deltas into coherent blocks, not split tokens."""
         parser = parser_factory()
 

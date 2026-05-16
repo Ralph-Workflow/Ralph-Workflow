@@ -12,9 +12,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ralph.display.parallel_display import ParallelDisplay
+
 from ralph.agents.executor import WorkerResult
 from ralph.agents.subprocess_executor import agent_process_label
-from ralph.display.parallel_display import ParallelDisplay  # noqa: TC001
 from ralph.pipeline import checkpoint
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.parallel import coordinator

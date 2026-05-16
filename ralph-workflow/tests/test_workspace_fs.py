@@ -238,8 +238,8 @@ class TestFsWorkspaceReadLines:
 
             content, meta = ws.read_lines("lines.txt")
             assert content == "line1\nline2\nline3\n"
-            assert meta["total_lines"] == 3  # noqa: PLR2004
-            assert meta["returned_lines"] == 3  # noqa: PLR2004
+            assert meta["total_lines"] == 3
+            assert meta["returned_lines"] == 3
             assert meta["truncated"] is False
 
     def test_read_lines_head_returns_first_n(self) -> None:
@@ -249,7 +249,7 @@ class TestFsWorkspaceReadLines:
 
             content, meta = ws.read_lines("lines.txt", head=2)
             assert content == "line1\nline2\n"
-            assert meta["returned_lines"] == 2  # noqa: PLR2004
+            assert meta["returned_lines"] == 2
             assert meta["truncated"] is True
 
     def test_read_lines_tail_returns_last_n(self) -> None:
@@ -259,7 +259,7 @@ class TestFsWorkspaceReadLines:
 
             content, meta = ws.read_lines("lines.txt", tail=2)
             assert content == "line2\nline3\n"
-            assert meta["returned_lines"] == 2  # noqa: PLR2004
+            assert meta["returned_lines"] == 2
             assert meta["truncated"] is True
 
     def test_read_lines_start_end_returns_range(self) -> None:
@@ -269,8 +269,8 @@ class TestFsWorkspaceReadLines:
 
             content, meta = ws.read_lines("lines.txt", start=2, end=3)
             assert content == "line2\nline3\n"
-            assert meta["total_lines"] == 3  # noqa: PLR2004
-            assert meta["returned_lines"] == 2  # noqa: PLR2004
+            assert meta["total_lines"] == 3
+            assert meta["returned_lines"] == 2
 
     def test_read_lines_conflicting_params_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -297,7 +297,7 @@ class TestFsWorkspaceStat:
 
             result = ws.stat("file.txt")
             assert result["type"] == "file"
-            assert result["size_bytes"] == 5  # noqa: PLR2004
+            assert result["size_bytes"] == 5
             assert "created_unix" in result
             assert "modified_unix" in result
             assert "mode" in result
@@ -448,7 +448,7 @@ class TestFsWorkspaceAllowedRoots:
 
             roots = ws.allowed_roots()
 
-            assert len(roots) == 2  # noqa: PLR2004
+            assert len(roots) == 2
 
 
 class TestFsWorkspaceIterFiles:
@@ -520,7 +520,7 @@ class TestFsWorkspaceReadBytes:
             text, meta = ws.read_bytes("file.txt", limit=5)
 
             assert text == "Hello"
-            assert meta["returned_bytes"] == 5  # noqa: PLR2004
+            assert meta["returned_bytes"] == 5
             assert meta["truncated"] is True
 
     def test_offset_and_limit_read(self) -> None:
@@ -531,7 +531,7 @@ class TestFsWorkspaceReadBytes:
             text, meta = ws.read_bytes("file.txt", offset=7, limit=5)
 
             assert text == "World"
-            assert meta["returned_bytes"] == 5  # noqa: PLR2004
+            assert meta["returned_bytes"] == 5
             assert meta["truncated"] is True
 
     def test_missing_file_raises_file_not_found(self) -> None:
@@ -549,6 +549,6 @@ class TestFsWorkspaceReadBytes:
 
             _, meta = ws.read_bytes("large.txt", limit=100)
 
-            assert meta["total_bytes"] == 1000  # noqa: PLR2004
-            assert meta["returned_bytes"] == 100  # noqa: PLR2004
+            assert meta["total_bytes"] == 1000
+            assert meta["returned_bytes"] == 100
             assert meta["truncated"] is True

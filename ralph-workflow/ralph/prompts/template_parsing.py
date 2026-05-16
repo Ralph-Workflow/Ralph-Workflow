@@ -194,7 +194,7 @@ def _handle_variable(token: _Token, context: _AstFrame) -> None:
         context["nodes"].append(VariableNode(name=name, default=default, placeholder=token.value))
 
 
-def _handle_tag(  # noqa: PLR0911
+def _handle_tag(
     token: _Token, context: _AstFrame, stack: list[_AstFrame]
 ) -> None:
     """Handle a tag token."""

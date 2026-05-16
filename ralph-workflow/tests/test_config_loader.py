@@ -364,22 +364,22 @@ def test_load_config_suspect_threshold_roundtrips(
 
 def test_general_config_child_progress_ttl_default() -> None:
     cfg = GeneralConfig()
-    assert cfg.agent_child_progress_ttl_seconds == 45.0  # noqa: PLR2004
+    assert cfg.agent_child_progress_ttl_seconds == 45.0
 
 
 def test_general_config_child_heartbeat_ttl_default() -> None:
     cfg = GeneralConfig()
-    assert cfg.agent_child_heartbeat_ttl_seconds == 15.0  # noqa: PLR2004
+    assert cfg.agent_child_heartbeat_ttl_seconds == 15.0
 
 
 def test_general_config_child_stale_label_ttl_default() -> None:
     cfg = GeneralConfig()
-    assert cfg.agent_child_stale_label_ttl_seconds == 10.0  # noqa: PLR2004
+    assert cfg.agent_child_stale_label_ttl_seconds == 10.0
 
 
 def test_general_config_child_exit_reconcile_default() -> None:
     cfg = GeneralConfig()
-    assert cfg.agent_child_exit_reconcile_seconds == 5.0  # noqa: PLR2004
+    assert cfg.agent_child_exit_reconcile_seconds == 5.0
 
 
 def test_load_config_child_progress_ttl_roundtrips(
@@ -398,7 +398,7 @@ def test_load_config_child_progress_ttl_roundtrips(
 
     config = load_config(workspace_scope=_scope_for(tmp_path))
 
-    assert config.general.agent_child_progress_ttl_seconds == 90.0  # noqa: PLR2004
+    assert config.general.agent_child_progress_ttl_seconds == 90.0
 
 
 # ---------------------------------------------------------------------------

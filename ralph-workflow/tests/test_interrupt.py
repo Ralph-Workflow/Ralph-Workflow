@@ -97,7 +97,7 @@ class RunCommandModule(Protocol):
     def run_pipeline(
         self,
         config_path: Path | None = None,
-        cli_overrides: dict[str, Any] | None = None,
+        cli_overrides: dict[str, object] | None = None,
         dry_run: bool = False,
         resume: bool = False,
     ) -> int: ...

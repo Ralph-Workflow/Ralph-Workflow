@@ -12,6 +12,8 @@ from ralph.pipeline.runner import _dispatch_waiting_event
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
     from ralph.display.snapshot import PipelineSnapshot
 
 
@@ -39,11 +41,15 @@ def _make_subscriber(tmp_path: Path) -> PipelineSubscriber:
     return PipelineSubscriber(queue=q, workspace_root=tmp_path, run_id="test-run")
 
 
-def test_dispatch_calls_subscriber_for_all_kinds(tmp_path: Path, monkeypatch) -> None:
+def test_dispatch_calls_subscriber_for_all_kinds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     calls: list[WaitingStatusEvent] = []
     sub = _make_subscriber(tmp_path)
 
-    def _record(event: WaitingStatusEvent, *, unit_id=None, agent_name=None) -> None:
+    def _record(
+        event: WaitingStatusEvent, *, unit_id: object = None, agent_name: object = None
+    ) -> None:
         calls.append(event)
 
     monkeypatch.setattr(sub, "record_waiting_status", _record)

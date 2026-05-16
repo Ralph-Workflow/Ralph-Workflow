@@ -11,6 +11,8 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 _MAIN_WAITING_INTERVAL = 45.0
 _CHILD_WAITING_INTERVAL = 90.0
 _CUSTOM_WAITING_INTERVAL = 60.0
@@ -20,7 +22,7 @@ _CUSTOM_NO_PROGRESS_CEILING = 300.0
 
 
 def test_load_config_uses_main_worktree_as_propagation_layer(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     main_repo = tmp_path / "main"
@@ -51,7 +53,7 @@ def test_load_config_uses_main_worktree_as_propagation_layer(
 
 
 def test_load_config_prefers_child_worktree_local_override(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     main_repo = tmp_path / "main"

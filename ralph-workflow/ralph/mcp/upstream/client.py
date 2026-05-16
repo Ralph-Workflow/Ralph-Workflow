@@ -268,7 +268,7 @@ def _get_block_title(block: Mapping[str, object], tool_name: str, idx: int, bloc
     return f"{tool_name}_{block_type}_{idx}"
 
 
-def _normalize_media_block(  # noqa: PLR0913
+def _normalize_media_block(
     block: Mapping[str, object],
     block_type: str,
     idx: int,

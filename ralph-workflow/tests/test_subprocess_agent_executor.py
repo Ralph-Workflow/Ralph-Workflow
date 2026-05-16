@@ -167,7 +167,16 @@ async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -
         completion_event=completion,
     )
 
-    async def fake_factory(command, *, cwd, env, stdin, stdout, stderr, start_new_session):  # noqa: PLR0913
+    async def fake_factory(
+        command: str,
+ *,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        stdin: int | None,
+        stdout: int | None,
+        stderr: int | None,
+        start_new_session: bool,
+    ) -> object:
         return proc
 
     pm = ProcessManager(
@@ -250,7 +259,7 @@ async def test_activity_router_receives_valid_ndjson_and_non_json_lines(
 
 @pytest.mark.asyncio
 async def test_activity_router_raw_log_is_bounded(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
 ) -> None:
     """Executor-owned raw logs must stop growing once the shared byte cap is reached."""
     router = ActivityRouter()

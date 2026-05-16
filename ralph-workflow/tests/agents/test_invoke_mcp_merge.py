@@ -240,7 +240,7 @@ def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
     )
     seen_env: list[dict[str, str]] = []
 
-    def fake_run_pty_and_read_lines(*args: object, **kwargs: object):
+    def fake_run_pty_and_read_lines(*args: object, **kwargs: object) -> object:
         del kwargs
         env = args[3]
         assert isinstance(env, dict)

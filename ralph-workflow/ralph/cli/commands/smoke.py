@@ -75,6 +75,19 @@ _CRASH_MARKERS = (
 
 
 @dataclass(frozen=True)
+class SmokeRunParams:
+    """Grouped parameters for a smoke run."""
+
+    agent_name: str
+    config: AgentConfig
+    workspace_root: Path
+    prompt_file: Path
+    output_file: Path
+    options: InvokeOptions
+    display_context: DisplayContext
+
+
+@dataclass(frozen=True)
 class SmokeRunResult:
     """Observed results from the interactive Claude smoke run."""
 
@@ -217,39 +230,34 @@ def _with_session_id(options: InvokeOptions, session_id: str | None) -> InvokeOp
     )
 
 
-def _run_smoke_agent(  # noqa: PLR0912,PLR0913,PLR0915
-    agent_name: str,
-    config: AgentConfig,
-    *,
-    workspace_root: Path,
-    prompt_file: Path,
-    output_file: Path,
-    options: InvokeOptions,
-    display_context: DisplayContext,
-) -> SmokeRunResult:
+def _execute_smoke_turns(
+    params: SmokeRunParams,
+    current_session_id: str | None,
+) -> tuple[list[str], list[str], str | None, AgentInvocationError | None]:
+    """Execute smoke test turns and return collected lines and state."""
     all_lines: list[str] = []
     live_output_lines: list[str] = []
-    current_session_id: str | None = None
     final_exception: AgentInvocationError | None = None
+
     for _attempt in range(_SMOKE_MAX_TURNS):
         raw_lines: list[str] = []
         rendered_lines: list[str] = []
         try:
             line_iter = invoke_agent(
-                config,
-                str(prompt_file),
-                options=_with_session_id(options, current_session_id),
+                params.config,
+                str(params.prompt_file),
+                options=_with_session_id(params.options, current_session_id),
             )
             runner_module._stream_parsed_agent_activity(
                 line_iter,
-                parser_type=str(config.json_parser),
-                agent_name=agent_name,
+                parser_type=str(params.config.json_parser),
+                agent_name=params.agent_name,
                 display=None,
-                transport=config.transport,
-                display_context=display_context,
+                transport=params.config.transport,
+                display_context=params.display_context,
                 raw_output_sink=raw_lines,
                 rendered_output_sink=rendered_lines,
-                session_id_sink=lambda session_id: None,
+                session_id_sink=lambda sid: None,
             )
             all_lines.extend(raw_lines)
             live_output_lines.extend(rendered_lines)
@@ -266,54 +274,92 @@ def _run_smoke_agent(  # noqa: PLR0912,PLR0913,PLR0915
             final_exception = exc
             break
 
-    lines = all_lines
-    session_id = current_session_id or extract_session_id(lines)
-    explicit_completion_seen = any("Task declared complete:" in line for line in lines)
-    parsed_event_count = _count_parsed_events(config, lines) if lines else 0
-    tool_activity_seen = _tool_activity_seen(config, lines) if lines else False
-    submitted_artifact = read_smoke_test_result_artifact(workspace_root) is not None
-    meaningful_output_lines = [line for line in live_output_lines if line.strip()][
-        :_MAX_MEANINGFUL_OUTPUT_LINES
-    ]
-    if not meaningful_output_lines:
-        meaningful_output_lines = _meaningful_output_lines(config, lines) if lines else []
+    return all_lines, live_output_lines, current_session_id, final_exception
 
+
+def _detect_smoke_errors(
+    params: SmokeRunParams,
+    lines: list[str],
+    live_output_lines: list[str],
+    session_id: str | None,
+    final_exception: AgentInvocationError | None,
+) -> list[str]:
+    """Detect errors in smoke run results."""
     errors = _detect_break_indicators(lines)
     if final_exception is not None:
         errors.append(str(final_exception))
-    if not output_file.exists():
+    if not params.output_file.exists():
         errors.append("expected todo-list.js was not created")
     if session_id is None:
         errors.append("session ID was not observed")
+
+    explicit_completion_seen = any("Task declared complete:" in line for line in lines)
     if not explicit_completion_seen:
         errors.append("declare_complete marker was not observed")
+
+    parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
     if parsed_event_count == 0:
         errors.append("no parser events were observed")
+
+    tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
     if not tool_activity_seen:
         errors.append("no tool activity was observed")
-    if not submitted_artifact:
+
+    if not read_smoke_test_result_artifact(params.workspace_root):
         errors.append("smoke_test_result artifact was not submitted")
-    if len(meaningful_output_lines) < _MIN_MEANINGFUL_OUTPUT_LINES:
+
+    meaningful_output = [line for line in live_output_lines if line.strip()]
+    meaningful_output = meaningful_output[:_MAX_MEANINGFUL_OUTPUT_LINES]
+    if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES:
         errors.append("fewer than 3 meaningful output lines were observed")
+
     visible_output_count = len([line for line in live_output_lines if line.strip()])
     if visible_output_count > _MAX_VISIBLE_OUTPUT_LINES:
         errors.append(
             "interactive output overran into too many visible lines; "
             "semantic output parity is still insufficient"
         )
+    return errors
 
+
+def _run_smoke_agent(params: SmokeRunParams) -> SmokeRunResult:
+    """Run the smoke agent and return results."""
+    all_lines, live_output_lines, current_session_id, final_exception = _execute_smoke_turns(
+        params, None
+    )
+
+    lines = all_lines
+    session_id = current_session_id or extract_session_id(lines)
+    explicit_completion_seen = any("Task declared complete:" in line for line in lines)
+    parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
+    tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
+    meaningful_output_lines = [line for line in live_output_lines if line.strip()][
+        :_MAX_MEANINGFUL_OUTPUT_LINES
+    ]
+    if not meaningful_output_lines:
+        meaningful_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
+
+    errors = _detect_smoke_errors(
+        params,
+        lines,
+        live_output_lines,
+        session_id,
+        final_exception,
+    )
+
+    config = params.config
     transport_name = config.transport.value if config.transport is not None else "generic"
     return SmokeRunResult(
-        agent_name=agent_name,
+        agent_name=params.agent_name,
         transport=transport_name,
-        output_file=output_file,
-        file_created=output_file.exists(),
+        output_file=params.output_file,
+        file_created=params.output_file.exists(),
         session_id=session_id,
         explicit_completion_seen=explicit_completion_seen,
-        raw_line_count=visible_output_count,
+        raw_line_count=len([line for line in live_output_lines if line.strip()]),
         parsed_event_count=parsed_event_count,
         tool_activity_seen=tool_activity_seen,
-        artifact_submitted=submitted_artifact,
+        artifact_submitted=read_smoke_test_result_artifact(params.workspace_root) is not None,
         meaningful_output_lines=meaningful_output_lines,
         errors=errors,
     )
@@ -464,13 +510,15 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
         )
         results = [
             _run_smoke_agent(
-                _INTERACTIVE_AGENT,
-                agent_config,
-                workspace_root=workspace_root,
-                prompt_file=prompt_file,
-                output_file=output_file,
-                options=options,
-                display_context=ctx,
+                SmokeRunParams(
+                    agent_name=_INTERACTIVE_AGENT,
+                    config=agent_config,
+                    workspace_root=workspace_root,
+                    prompt_file=prompt_file,
+                    output_file=output_file,
+                    options=options,
+                    display_context=ctx,
+                )
             )
         ]
     finally:
@@ -481,6 +529,7 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
 
 
 __all__ = [
+    "SmokeRunParams",
     "SmokeRunResult",
     "_build_smoke_prompt",
     "_render_smoke_report",

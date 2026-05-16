@@ -26,7 +26,7 @@ UNICODE_GLYPHS: Final[dict[str, str]] = {
     "warning": "⚠",  # ⚠
     "running": "◐",  # ◐
     "pending": "○",  # ○
-    "info": "ℹ",  # noqa: RUF001
+    "info": "i",
     "milestone": "◆",  # ◆
     "arrow": "→",  # →
     "start": "▶",  # ▶

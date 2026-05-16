@@ -10,8 +10,6 @@ Tests cover:
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from ralph.pipeline.effects import (
@@ -162,7 +160,7 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
     )
 
 
-def _make_state(phase: str = "planning", **overrides: Any) -> PipelineState:
+def _make_state(phase: str = "planning", **overrides: object) -> PipelineState:
     """Create a pipeline state for testing."""
     return PipelineState(phase=phase, **overrides)
 

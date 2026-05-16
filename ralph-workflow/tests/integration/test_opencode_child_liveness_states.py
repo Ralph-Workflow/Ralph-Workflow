@@ -604,7 +604,9 @@ class TestStuckChildPromptLogScenario:
 
         # Enter WAITING: no scoped Ralph evidence + OS descendants → WAITING_ON_CHILD.
         clock.advance(1.5)
-        classify_quiet = lambda: strategy.classify_quiet(handle, probe)  # noqa: E731
+        def classify_quiet() -> bool:
+            return strategy.classify_quiet(handle, probe)
+
         result = watchdog.evaluate(classify_quiet=classify_quiet)
         assert result == WatchdogVerdict.WAITING_ON_CHILD, (
             f"Expected WAITING_ON_CHILD at entry; got {result!r}"

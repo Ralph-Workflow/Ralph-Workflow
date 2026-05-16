@@ -372,7 +372,7 @@ class InteractivePermissionPromptError(AgentInvocationError):
 class AgentInactivityTimeoutError(AgentInvocationError):
     """Raised when an agent stalls without producing output."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         agent_name: str,
         timeout_seconds: float,
@@ -776,7 +776,7 @@ def _start_workspace_monitor(workspace_path: Path | None) -> WorkspaceMonitor | 
     return monitor
 
 
-def _run_subprocess_and_read_lines(  # noqa: PLR0913
+def _run_subprocess_and_read_lines(
     cmd: list[str],
     config: AgentConfig,
     show_progress: bool,
@@ -908,7 +908,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
         )
 
 
-def _run_pty_and_read_lines(  # noqa: PLR0913
+def _run_pty_and_read_lines(
     cmd: list[str],
     config: AgentConfig,
     show_progress: bool,
@@ -1251,7 +1251,7 @@ def _extract_message_text(value: object) -> str:
     return ""
 
 
-def _transcript_lines_from_event(raw_line: str) -> list[str]:  # noqa: PLR0911,PLR0912
+def _transcript_lines_from_event(raw_line: str) -> list[str]:
     try:
         parsed = cast("object", json.loads(raw_line))
     except json.JSONDecodeError:
@@ -1303,7 +1303,7 @@ def _transcript_lines_from_event(raw_line: str) -> list[str]:  # noqa: PLR0911,P
     return []
 
 
-def _read_lines_from_pty_process(  # noqa: PLR0912,PLR0913,PLR0915
+def _read_lines_from_pty_process(
     handle: ManagedPtyProcess,
     *,
     agent_name: str,
@@ -1790,7 +1790,7 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
-def build_invoke_options_from_config(  # noqa: PLR0913
+def build_invoke_options_from_config(
     general_config: GeneralConfig,
     *,
     verbose: bool = False,
@@ -1910,7 +1910,7 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
     )
 
 
-def _read_lines_from_process(  # noqa: PLR0912,PLR0913,PLR0915
+def _read_lines_from_process(
     handle: ManagedProcess,
     *,
     policy: TimeoutPolicy,

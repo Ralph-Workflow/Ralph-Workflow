@@ -168,8 +168,10 @@ def fetch_url(
     headers = {"User-Agent": user_agent}
 
     try:
-        with httpx.Client(follow_redirects=True, timeout=timeout) as client:  # noqa: SIM117
-            with client.stream("GET", url, headers=headers) as response:
+        with (
+            httpx.Client(follow_redirects=True, timeout=timeout) as client,
+            client.stream("GET", url, headers=headers) as response,
+        ):
                 effective_url: str = str(response.url)
                 http_status: int = response.status_code
                 content_type_header: str | None = response.headers.get("content-type")

@@ -1,84 +1,19 @@
-"""Transport-aware execution state model for agent lifecycle management.
-
-Provides AgentExecutionState (active/waiting/resumable/terminal),
-the ExecutionStrategy protocol, and concrete GenericExecutionStrategy and
-OpenCodeExecutionStrategy implementations.
-"""
-
 from __future__ import annotations
 
 import json
-from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.agents.parsers.claude_interactive import ClaudeInteractiveTranscriptParser
-from ralph.config.enums import AgentTransport
 from ralph.process.child_liveness import classify_child_snapshot
 
-if TYPE_CHECKING:
-    from typing import Protocol
+from .agent_execution_state import AgentExecutionState
 
+if TYPE_CHECKING:
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.process.child_liveness import ChildLivenessRegistry
     from ralph.process.liveness import LivenessProbe
 
-    class _LiveDescendantHandle(Protocol):
-        def has_live_descendants(self) -> bool: ...
-
-
-class AgentExecutionState(StrEnum):
-    """Execution state for an agent run."""
-
-    ACTIVE = "active"
-    WAITING_ON_CHILD = "waiting_on_child"
-    RESUMABLE_CONTINUE = "resumable_continue"
-    TERMINAL_COMPLETE = "terminal_complete"
-
-
-class GenericExecutionStrategy:
-    """Default strategy: single-process lifetime, exit 0 is terminal success.
-
-    Replicates the behaviour that existed before the session-aware model was
-    introduced so that Claude/Codex paths are unaffected.
-    """
-
-    def observe_line(self, line: str) -> None:
-        """Observe a raw provider line for optional strategy-specific state updates."""
-        del line
-
-    def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
-        """Classify a raw output line for idle-watchdog activity.
-
-        Generic transports treat any non-blank line as activity while rejecting
-        whitespace-only heartbeats so a process cannot evade the idle deadline
-        without emitting meaningful provider output.
-        """
-        return _non_blank_output_signal(line)
-
-    def classify_quiet(
-        self,
-        handle: _LiveDescendantHandle,
-        liveness_probe: LivenessProbe,
-    ) -> AgentExecutionState:
-        if hasattr(handle, "has_live_descendants"):
-            try:
-                if bool(handle.has_live_descendants()):
-                    return AgentExecutionState.WAITING_ON_CHILD
-            except Exception:
-                pass
-        return AgentExecutionState.ACTIVE
-
-    def classify_exit(
-        self,
-        handle: _LiveDescendantHandle,
-        completion_signals: CompletionSignals,
-        liveness_probe: LivenessProbe | None = None,
-    ) -> AgentExecutionState:
-        return AgentExecutionState.TERMINAL_COMPLETE
-
-    def supports_session_continuation(self) -> bool:
-        return False
+    from ._live_descendant_handle import _LiveDescendantHandle
 
 
 _AGENT_LABEL_PREFIX = "agent:"
@@ -96,187 +31,6 @@ _CLAUDE_LIFECYCLE_EVENTS = frozenset(
         "system",
     }
 )
-
-
-class ClaudeExecutionStrategy(GenericExecutionStrategy):
-    """Claude-aware activity classification for watchdog control flow."""
-
-    def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
-        stripped = line.strip()
-        if not stripped:
-            return None
-
-        prefixed_signal = _classify_claude_prefixed_line(stripped)
-        if prefixed_signal is not None:
-            return prefixed_signal
-
-        try:
-            parsed = cast("object", json.loads(stripped, strict=False))
-        except json.JSONDecodeError:
-            return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=line)
-
-        if not isinstance(parsed, dict):
-            return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=line)
-
-        obj = cast("dict[str, object]", parsed)
-        return _classify_claude_json_object(obj, line)
-
-
-class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
-    """Interactive Claude session strategy.
-
-    Uses a VT-aware transcript parser before falling back to the headless Claude
-    classifier so TUI repaint noise does not downgrade meaningful tool/lifecycle
-    lines into generic output.
-    """
-
-    def __init__(self) -> None:
-        self._transcript_parser = ClaudeInteractiveTranscriptParser()
-
-    def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
-        events = self._transcript_parser.feed(line)
-        if events:
-            event = events[-1]
-            if event.kind == "tool_use":
-                return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=event.text)
-            if event.kind == "lifecycle":
-                return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=event.text)
-            if event.kind == "session":
-                return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=event.text)
-            return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=event.text)
-        return super().classify_activity_line(line)
-
-    def supports_session_continuation(self) -> bool:
-        return True
-
-    def classify_exit(
-        self,
-        handle: _LiveDescendantHandle,
-        completion_signals: CompletionSignals,
-        liveness_probe: LivenessProbe | None = None,
-    ) -> AgentExecutionState:
-        del handle, liveness_probe
-        if _check_signals_terminal(completion_signals):
-            return AgentExecutionState.TERMINAL_COMPLETE
-        return AgentExecutionState.RESUMABLE_CONTINUE
-
-
-class OpenCodeExecutionStrategy:
-    """OpenCode-aware strategy.
-
-    Idle classification checks the injectable LivenessProbe before falling
-    back to the psutil-based has_live_descendants(), so unit tests can inject
-    a FakeLivenessProbe without spawning real processes.
-
-    Exit classification uses evidence precedence:
-      1. terminal_ack_seen or schema-valid required artifact -> TERMINAL_COMPLETE
-      2. fresh progress in registry -> WAITING_ON_CHILD
-      3. live OS descendants with no fresh progress -> RESUMABLE_CONTINUE (stale)
-      4. else -> RESUMABLE_CONTINUE
-
-    ``label_scope`` narrows the Ralph-tracked liveness check to processes whose
-    labels start with ``agent:{label_scope}:``. When no scope is available,
-    the empty-prefix registry-wide snapshot is consulted; the strategy never
-    returns ACTIVE based on a never-matching sentinel.
-    """
-
-    def __init__(
-        self,
-        *,
-        label_scope: str | None = None,
-        registry: ChildLivenessRegistry | None = None,
-    ) -> None:
-        self._label_scope = label_scope
-        self._registry = registry
-
-    def _active_label_prefix(self) -> str | None:
-        if self._label_scope is None:
-            return None
-        return f"{_AGENT_LABEL_PREFIX}{self._label_scope}:"
-
-    def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
-        """Classify OpenCode output for idle-watchdog activity."""
-        signal = _classify_opencode_child_signal(line)
-        if signal is not None:
-            return signal
-        return _non_blank_output_signal(line)
-
-    def observe_line(self, line: str) -> None:
-        """Route a parsed output line into the child liveness registry."""
-        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
-        if registry is None:
-            return
-        _route_opencode_line_to_registry(line, registry, self._active_label_prefix() or "")
-
-    def classify_quiet(
-        self,
-        handle: _LiveDescendantHandle,
-        liveness_probe: LivenessProbe,
-    ) -> AgentExecutionState:
-        prefix = self._active_label_prefix()
-        probe_prefix = prefix if prefix is not None else ""
-
-        scoped_child_evidence_stale = False
-
-        # Check own registry first for fresh child evidence
-        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
-        if registry is not None:
-            had_scoped_records = registry.has_records(probe_prefix)
-            try:
-                reg_snap = registry.snapshot(probe_prefix)
-                verdict = classify_child_snapshot(reg_snap)
-                if verdict.all_children_terminal:
-                    return AgentExecutionState.ACTIVE
-                if verdict.deferral_allowed:
-                    return AgentExecutionState.WAITING_ON_CHILD
-                if had_scoped_records:
-                    scoped_child_evidence_stale = True
-            except Exception:
-                pass
-
-        # Use child_snapshot if the probe supports it (DefaultLivenessProbe/FakeLivenessProbe)
-        probe_state, probe_stale = _probe_check_quiet(liveness_probe, probe_prefix)
-        if probe_state is not None:
-            return probe_state
-        scoped_child_evidence_stale = scoped_child_evidence_stale or probe_stale
-
-        # Only fall back to psutil-based descendant check when there is NO scoped
-        # Ralph child evidence at all. When scoped evidence exists but is stale,
-        # raw OS descendant presence alone is insufficient to keep deferring timeout.
-        if scoped_child_evidence_stale:
-            return AgentExecutionState.ACTIVE
-        return _os_descendant_state(handle, AgentExecutionState.ACTIVE)
-
-    def classify_exit(
-        self,
-        handle: _LiveDescendantHandle,
-        completion_signals: CompletionSignals,
-        liveness_probe: LivenessProbe | None = None,
-    ) -> AgentExecutionState:
-        registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
-        label_prefix = self._active_label_prefix()
-        return _evidence_precedence(
-            handle, completion_signals, liveness_probe, label_prefix, registry=registry
-        )
-
-    def supports_session_continuation(self) -> bool:
-        return True
-
-
-def strategy_for_transport(
-    transport: object,
-    *,
-    label_scope: str | None = None,
-    registry: ChildLivenessRegistry | None = None,
-) -> GenericExecutionStrategy | OpenCodeExecutionStrategy:
-    """Return the appropriate ExecutionStrategy for an agent transport."""
-    if transport == AgentTransport.OPENCODE:
-        return OpenCodeExecutionStrategy(label_scope=label_scope, registry=registry)
-    if transport == AgentTransport.CLAUDE:
-        return ClaudeExecutionStrategy()
-    if transport == AgentTransport.CLAUDE_INTERACTIVE:
-        return ClaudeInteractiveExecutionStrategy()
-    return GenericExecutionStrategy()
 
 
 def _non_blank_output_signal(line: str) -> AgentActivitySignal | None:
@@ -484,8 +238,6 @@ def _evidence_precedence(
             return state
         stale = stale or probe_stale
 
-    # When scoped Ralph evidence exists but is stale, do not fall back to raw
-    # descendants - return RESUMABLE_CONTINUE so the timeout can fire.
     if stale:
         return AgentExecutionState.RESUMABLE_CONTINUE
     return _os_descendant_state(handle, AgentExecutionState.RESUMABLE_CONTINUE)
@@ -540,14 +292,3 @@ def _claude_activity_kind_for_content_block(obj: dict[str, object]) -> AgentActi
         if block_type == "tool_result":
             return AgentActivityKind.TOOL_RESULT
     return AgentActivityKind.LIFECYCLE
-
-
-__all__ = [
-    "AgentExecutionState",
-    "ClaudeExecutionStrategy",
-    "ClaudeInteractiveExecutionStrategy",
-    "GenericExecutionStrategy",
-    "OpenCodeExecutionStrategy",
-    "_route_opencode_line_to_registry",
-    "strategy_for_transport",
-]

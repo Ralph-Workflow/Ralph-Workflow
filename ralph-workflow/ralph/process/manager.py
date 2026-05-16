@@ -52,7 +52,7 @@ if TYPE_CHECKING:
         NoSuchProcess: type[BaseException]
         AccessDenied: type[BaseException]
 
-        def Process(self, pid: int) -> _PsutilProcessLike: ...  # noqa: N802
+        def Process(self, pid: int) -> _PsutilProcessLike: ...
 
         def wait_procs(
             self,
@@ -108,7 +108,7 @@ if TYPE_CHECKING:
         def kill(self) -> None: ...
 
     class _SyncProcessFactory(Protocol):
-        def __call__(  # noqa: PLR0913
+        def __call__(
             self,
             command: Sequence[str],
             *,
@@ -122,7 +122,7 @@ if TYPE_CHECKING:
         ) -> _SyncProcessLike: ...
 
     class _AsyncProcessFactory(Protocol):
-        async def __call__(  # noqa: PLR0913
+        async def __call__(
             self,
             command: Sequence[str],
             *,
@@ -171,7 +171,7 @@ else:
     psutil = cast("_PsutilModuleLike", _psutil)
 
 
-def _default_sync_process_factory(  # noqa: PLR0913
+def _default_sync_process_factory(
     command: Sequence[str],
     *,
     cwd: str | None,
@@ -197,7 +197,7 @@ def _default_sync_process_factory(  # noqa: PLR0913
     )
 
 
-async def _default_async_process_factory(  # noqa: PLR0913
+async def _default_async_process_factory(
     command: Sequence[str],
     *,
     cwd: str | None,
@@ -671,7 +671,7 @@ class ProcessManager:
 
         return unsubscribe
 
-    def spawn(  # noqa: PLR0913
+    def spawn(
         self,
         command: Sequence[str],
         *,
@@ -735,7 +735,7 @@ class ProcessManager:
         self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.RUNNING)
         return ManagedProcess(proc, record, self)
 
-    def spawn_pty(  # noqa: PLR0913
+    def spawn_pty(
         self,
         command: Sequence[str],
         *,
@@ -793,7 +793,7 @@ class ProcessManager:
         self._emit(record, ProcessStatus.SPAWNED, ProcessStatus.RUNNING)
         return ManagedPtyProcess(proc, record, self)
 
-    async def spawn_async(  # noqa: PLR0913
+    async def spawn_async(
         self,
         command: Sequence[str],
         *,

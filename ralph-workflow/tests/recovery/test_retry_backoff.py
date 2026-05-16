@@ -16,7 +16,19 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController, compute_backoff_ms
+from ralph.recovery.controller import (
+    RecoveryController,
+    RecoveryControllerOptions,
+    compute_backoff_ms,
+)
+
+# Test constants for backoff computation
+_BASE_MS = 1000
+_MAX_MS = 30_000
+_ATTEMPT_0_EXPECTED = 1000
+_ATTEMPT_1_EXPECTED = 2000
+_ATTEMPT_2_EXPECTED = 4000
+_ATTEMPT_3_EXPECTED = 8000
 
 
 def _make_state(agents: list[str]) -> PipelineState:
@@ -63,21 +75,21 @@ def _make_bundle_with_retry_delay(
 
 def test_compute_backoff_ms_doubles_each_attempt() -> None:
     """Backoff doubles with each retry attempt."""
-    assert compute_backoff_ms(base_ms=1000, attempt=0, max_ms=30_000) == 1000  # noqa: PLR2004
-    assert compute_backoff_ms(base_ms=1000, attempt=1, max_ms=30_000) == 2000  # noqa: PLR2004
-    assert compute_backoff_ms(base_ms=1000, attempt=2, max_ms=30_000) == 4000  # noqa: PLR2004
-    assert compute_backoff_ms(base_ms=1000, attempt=3, max_ms=30_000) == 8000  # noqa: PLR2004
+    assert compute_backoff_ms(base_ms=_BASE_MS, attempt=0, max_ms=_MAX_MS) == _ATTEMPT_0_EXPECTED
+    assert compute_backoff_ms(base_ms=_BASE_MS, attempt=1, max_ms=_MAX_MS) == _ATTEMPT_1_EXPECTED
+    assert compute_backoff_ms(base_ms=_BASE_MS, attempt=2, max_ms=_MAX_MS) == _ATTEMPT_2_EXPECTED
+    assert compute_backoff_ms(base_ms=_BASE_MS, attempt=3, max_ms=_MAX_MS) == _ATTEMPT_3_EXPECTED
 
 
 def test_compute_backoff_ms_caps_at_max() -> None:
     """Backoff is capped at max_ms."""
-    assert compute_backoff_ms(base_ms=1000, attempt=10, max_ms=30_000) == 30_000  # noqa: PLR2004
-    assert compute_backoff_ms(base_ms=1000, attempt=100, max_ms=30_000) == 30_000  # noqa: PLR2004
+    assert compute_backoff_ms(base_ms=_BASE_MS, attempt=10, max_ms=_MAX_MS) == _MAX_MS
+    assert compute_backoff_ms(base_ms=_BASE_MS, attempt=100, max_ms=_MAX_MS) == _MAX_MS
 
 
 def test_retry_delay_ms_zero_without_policy_bundle() -> None:
     """FailureEvent has retry_delay_ms=0 when no policy bundle is configured."""
-    controller = RecoveryController(cycle_cap=10)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):
@@ -98,7 +110,7 @@ def test_retry_delay_ms_zero_without_policy_bundle() -> None:
 
 def test_environmental_failure_has_zero_delay() -> None:
     """Environmental failures should not have a retry delay."""
-    controller = RecoveryController(cycle_cap=10)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
 
     _, _, evt = controller.handle(
@@ -115,7 +127,7 @@ def test_environmental_failure_has_zero_delay() -> None:
 
 def test_reset_backoff_clears_counter() -> None:
     """reset_backoff clears the backoff counter for subsequent success."""
-    controller = RecoveryController(cycle_cap=10)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):
@@ -136,7 +148,7 @@ def test_reset_backoff_clears_counter() -> None:
 
 def test_backoff_attempts_tracked_per_agent() -> None:
     """Backoff attempts are tracked separately per agent."""
-    controller = RecoveryController(cycle_cap=10)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude", "opencode"])
 
     class _AgentTimeoutError(Exception):
@@ -158,14 +170,16 @@ def test_backoff_attempts_tracked_per_agent() -> None:
     )
 
     # Verify backoff attempts
-    assert controller._backoff_attempts.get(f"{'development'}:claude") == 2  # noqa: PLR2004
+    assert controller._backoff_attempts.get(f"{'development'}:claude") == 2
     assert controller._backoff_attempts.get(f"{'development'}:opencode") == 1
 
 
 def test_backoff_resets_on_fallover() -> None:
     """Backoff counter resets when agent chain falls over to next agent."""
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(["claude", "opencode"])
 
     class _AgentTimeoutError(Exception):
@@ -196,7 +210,9 @@ def test_retry_delay_ms_from_policy_bundle() -> None:
     the event should have retry_delay_ms=500.
     """
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
-    controller = RecoveryController(cycle_cap=10, policy_bundle=bundle)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+    )
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):
@@ -212,13 +228,15 @@ def test_retry_delay_ms_from_policy_bundle() -> None:
     )
 
     # retry_delay_ms should be 500 (base delay for first attempt)
-    assert evt.retry_delay_ms == 500  # noqa: PLR2004
+    assert evt.retry_delay_ms == 500
 
 
 def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
     """retry_delay_ms doubles on each retry attempt for the same agent."""
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
-    controller = RecoveryController(cycle_cap=10, policy_bundle=bundle)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+    )
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):
@@ -233,7 +251,7 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
         phase="development",
         agent="claude",
     )
-    assert evt1.retry_delay_ms == 500  # noqa: PLR2004
+    assert evt1.retry_delay_ms == 500
 
     # Second failure (attempt 1 -> base_ms * 2^1 = 1000)
     _, _, evt2 = controller.handle(
@@ -242,7 +260,7 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
         phase="development",
         agent="claude",
     )
-    assert evt2.retry_delay_ms == 1000  # noqa: PLR2004
+    assert evt2.retry_delay_ms == 1000
 
     # Third failure (attempt 2 -> base_ms * 2^2 = 2000)
     _, _, evt3 = controller.handle(
@@ -251,13 +269,15 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
         phase="development",
         agent="claude",
     )
-    assert evt3.retry_delay_ms == 2000  # noqa: PLR2004
+    assert evt3.retry_delay_ms == 2000
 
 
 def test_retry_delay_ms_caps_at_max_backoff() -> None:
     """retry_delay_ms is capped at 30_000 ms even on many retries."""
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=1000, max_retries=10)
-    controller = RecoveryController(cycle_cap=10, policy_bundle=bundle)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+    )
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):
@@ -277,14 +297,16 @@ def test_retry_delay_ms_caps_at_max_backoff() -> None:
     # The backoff_attempts key for this agent should have count=10
     # compute_backoff_ms(1000, 10, 30000) = min(1000 * 2^10, 30000) = 30000
     key = f"{'development'}:claude"
-    assert controller._backoff_attempts.get(key) == 10  # noqa: PLR2004
-    assert compute_backoff_ms(1000, 10, 30_000) == 30_000  # noqa: PLR2004
+    assert controller._backoff_attempts.get(key) == 10
+    assert compute_backoff_ms(1000, 10, 30_000) == 30_000
 
 
 def test_retry_delay_ms_reset_after_successful_invocation() -> None:
     """reset_backoff clears the backoff counter so next failure starts fresh."""
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
-    controller = RecoveryController(cycle_cap=10, policy_bundle=bundle)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+    )
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):
@@ -298,7 +320,7 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
 
     # Verify backoff is at attempt 2
     key = f"{'development'}:claude"
-    assert controller._backoff_attempts.get(key) == 2  # noqa: PLR2004
+    assert controller._backoff_attempts.get(key) == 2
 
     # Reset backoff (simulate successful invocation)
     controller.reset_backoff("development", "claude")
@@ -313,7 +335,7 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
         phase="development",
         agent="claude",
     )
-    assert evt.retry_delay_ms == 500  # back to base, not 2000  # noqa: PLR2004
+    assert evt.retry_delay_ms == 500  # back to base, not 2000
 
 
 def test_retry_delay_ms_applied_via_injected_sleep() -> None:
@@ -324,7 +346,9 @@ def test_retry_delay_ms_applied_via_injected_sleep() -> None:
     and the runner applies it via the sleep function.
     """
     bundle = _make_bundle_with_retry_delay(retry_delay_ms=500, max_retries=3)
-    controller = RecoveryController(cycle_cap=10, policy_bundle=bundle)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, policy_bundle=bundle)
+    )
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):
@@ -344,7 +368,7 @@ def test_retry_delay_ms_applied_via_injected_sleep() -> None:
     )
 
     # The event carries the correct computed delay
-    assert evt.retry_delay_ms == 1000  # noqa: PLR2004
+    assert evt.retry_delay_ms == 1000
 
     # Simulate the runner applying the delay via injected sleep
     sleep_calls: list[float] = []
@@ -364,7 +388,9 @@ def test_retry_delay_ms_applied_via_injected_sleep() -> None:
 
 def test_zero_retry_delay_skips_sleep() -> None:
     """When retry_delay_ms is 0, the runner should skip the sleep."""
-    controller = RecoveryController(cycle_cap=10)  # No policy bundle -> delay=0
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10)
+    )  # No policy bundle -> delay=0
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):

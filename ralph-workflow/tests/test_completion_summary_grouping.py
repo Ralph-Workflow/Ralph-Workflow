@@ -16,7 +16,7 @@ from ralph.display.snapshot import BudgetProgress, PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 
 
-def _make_snapshot(  # noqa: PLR0913
+def _make_snapshot(
     *,
     phase: str = "complete",
     plan_summary: str | None = "Build the feature",
@@ -78,7 +78,7 @@ def _render_group(
     return buf.getvalue()
 
 
-def _render_group_full(  # noqa: PLR0913
+def _render_group_full(
     snapshot: PipelineSnapshot,
     *,
     content_block_count: int = 0,

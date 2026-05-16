@@ -286,14 +286,14 @@ class TestRequirement4AnalysisLoopBehavior:
         audit_def = policy_with_renamed_phases.pipeline.phases["audit"]
         assert audit_def.loop_policy is not None
         assert audit_def.loop_policy.iteration_state_field == "audit_round"
-        assert policy_with_renamed_phases.pipeline.loop_counters["audit_round"].default_max == 3  # noqa: PLR2004
+        assert policy_with_renamed_phases.pipeline.loop_counters["audit_round"].default_max == 3
 
     def test_explain_exposes_loop_policy(self, policy_with_renamed_phases: PolicyBundle) -> None:
         """explain_policy surfaces loop policy from the policy declaration."""
         exp = explain_policy(policy_with_renamed_phases)
         audit = next(p for p in exp.phases if p.name == "audit")
         assert audit.loop_policy is not None
-        assert audit.loop_policy.max_iterations == 3  # noqa: PLR2004
+        assert audit.loop_policy.max_iterations == 3
 
     def test_loop_counter_is_policy_declared(
         self, policy_with_renamed_phases: PolicyBundle
@@ -301,7 +301,7 @@ class TestRequirement4AnalysisLoopBehavior:
         """Loop counter 'audit_round' is declared in policy, not hardcoded."""
         assert "audit_round" in policy_with_renamed_phases.pipeline.loop_counters
         lc = policy_with_renamed_phases.pipeline.loop_counters["audit_round"]
-        assert lc.default_max == 3  # noqa: PLR2004
+        assert lc.default_max == 3
 
 
 # =============================================================================
@@ -781,7 +781,7 @@ class TestAcceptanceEDocumentation:
         exp = explain_policy(policy_with_renamed_phases)
         assert exp.entry_phase == "design"
         assert exp.terminal_phase == "done"
-        assert len(exp.phases) == 7  # noqa: PLR2004
+        assert len(exp.phases) == 7
 
 
 # =============================================================================

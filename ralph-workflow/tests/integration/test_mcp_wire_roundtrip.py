@@ -96,7 +96,7 @@ def _do_initialize(server: McpServer) -> ServerState:
     return state
 
 
-def _do_tools_list(server: McpServer, state: ServerState) -> list[dict[str, Any]]:
+def _do_tools_list(server: McpServer, state: ServerState) -> list[dict[str, object]]:
     req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=2)
     resp, _ = server.handle_request(req, state)
     assert resp is not None and resp.result is not None, f"tools/list failed: {resp}"
@@ -109,7 +109,7 @@ def _do_tool_call(
     call_id: list[int],
     name: str,
     args: dict[str, object],
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Make a tools/call request and return the MCP result object."""
     call_id[0] += 1
     req = JsonRpcRequest(
@@ -243,7 +243,7 @@ def _seed_extended_workspace(workspace: Path) -> None:
     (workspace / "README.md").write_text("# Project\nHello World\n")
 
 
-def _assert_new_workspace_tools_present(tools: list[dict[str, Any]]) -> None:
+def _assert_new_workspace_tools_present(tools: list[dict[str, object]]) -> None:
     """Assert that all new workspace tools appear in the tools/list response."""
     tool_names = {t["name"] for t in tools}
     expected = {
@@ -432,7 +432,7 @@ def _do_workspace_write_roundtrips(
     assert json.loads(result["content"][0]["text"]).get("deleted") is True
 
 
-def _assert_tool_descriptions(tools: list[dict[str, Any]]) -> None:
+def _assert_tool_descriptions(tools: list[dict[str, object]]) -> None:
     """Assert every tool description meets the quality bar."""
     for tool in tools:
         desc = tool.get("description", "")

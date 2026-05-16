@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import import_module
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.pipeline.effects import ExitFailureEffect
+from ralph.pipeline.state import FalloverRecord
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import ClassifiedFailure, FailureCategory, FailureClassifier
 from ralph.recovery.cycle_cap import CycleCap
@@ -16,6 +22,53 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import AgentChainState, PipelineState
     from ralph.policy.models import AgentChainConfig, PolicyBundle
+
+
+@dataclass(frozen=True)
+class RecoveryControllerOptions:
+    """Options for constructing a RecoveryController."""
+
+    cycle_cap: int = 200
+    classifier: FailureClassifier | None = None
+    event_bus: FailureEventBus | None = None
+    budget_registry: AgentBudgetRegistry | None = None
+    policy_bundle: PolicyBundle | None = None
+    backoff_attempts: dict[str, int] | None = None
+
+
+@dataclass(frozen=True)
+class FailureContext:
+    """Context for a failure event passed to RecoveryController.handle."""
+
+    phase: str
+    agent: str | None = None
+    retry_in_session: bool = False
+    classified_failure: ClassifiedFailure | None = None
+
+
+def _build_exit_failure_effect(*, reason: str) -> Effect:
+    return ExitFailureEffect(reason=reason)
+
+
+def _build_fallover_record(
+    *,
+    phase: str,
+    from_agent: str,
+    to_agent: str,
+    timestamp_iso: str,
+) -> FalloverRecord:
+    return FalloverRecord(
+        phase=phase,
+        from_agent=from_agent,
+        to_agent=to_agent,
+        timestamp_iso=timestamp_iso,
+    )
+
+
+def _get_required_artifact_helpers() -> tuple[Callable[[str, str], str], Callable[[str], str]]:
+    # Lazy import to avoid circular dependency via ralph.phases import chain
+    module = import_module("ralph.phases.required_artifacts")
+    return module.build_retry_hint, module.retry_hint_path
 
 
 def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
@@ -41,22 +94,18 @@ class RecoveryController:
     Delegates nothing to the reducer's internal retry counter when active.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
-        cycle_cap: int = 200,
-        classifier: FailureClassifier | None = None,
-        event_bus: FailureEventBus | None = None,
-        budget_registry: AgentBudgetRegistry | None = None,
-        policy_bundle: PolicyBundle | None = None,
-        backoff_attempts: dict[str, int] | None = None,
+        options: RecoveryControllerOptions | None = None,
     ) -> None:
-        self._cap = CycleCap(cap=cycle_cap)
-        self._classifier = classifier or FailureClassifier()
-        self._bus = event_bus or FailureEventBus()
-        self._registry = budget_registry or AgentBudgetRegistry()
-        self._policy_bundle = policy_bundle
-        self._backoff_attempts: dict[str, int] = backoff_attempts or {}
+        opts = options or RecoveryControllerOptions()
+        self._cap = CycleCap(cap=opts.cycle_cap)
+        self._classifier = opts.classifier or FailureClassifier()
+        self._bus = opts.event_bus or FailureEventBus()
+        self._registry = opts.budget_registry or AgentBudgetRegistry()
+        self._policy_bundle = opts.policy_bundle
+        self._backoff_attempts: dict[str, int] = opts.backoff_attempts or {}
 
     @property
     def event_bus(self) -> FailureEventBus:
@@ -66,7 +115,7 @@ class RecoveryController:
     def budget_registry(self) -> AgentBudgetRegistry:
         return self._registry
 
-    def handle(  # noqa: PLR0913
+    def handle(
         self,
         state: PipelineState,
         raw_failure: BaseException | str,
@@ -93,9 +142,6 @@ class RecoveryController:
         Returns:
             Tuple of (new_state, effects, failure_event).
         """
-        # Lazy import: ralph.pipeline.effects depends transitively on recovery types.
-        from ralph.pipeline.effects import ExitFailureEffect  # noqa: PLC0415
-
         failure = classified_failure or self._classifier.classify(
             raw_failure, phase=phase, agent=agent
         )
@@ -207,7 +253,7 @@ class RecoveryController:
             # Cycle exceeded: no retry delay
             return (
                 new_state.copy_with(last_retry_delay_ms=0),
-                [ExitFailureEffect(reason=exit_reason)],
+                [_build_exit_failure_effect(reason=exit_reason)],
                 failure_evt,
             )
 
@@ -281,13 +327,7 @@ class RecoveryController:
             phase: Pipeline phase where the failure occurred.
             failure: Classified failure with stale-session detail.
         """
-        # Lazy imports: ralph.phases depends transitively on ralph.recovery.
-        from pathlib import Path  # noqa: PLC0415
-
-        from ralph.phases.required_artifacts import (  # noqa: PLC0415
-            build_retry_hint,
-            retry_hint_path,
-        )
+        build_retry_hint, retry_hint_path = _get_required_artifact_helpers()
 
         detail = (
             "Previous session id was invalid; restart with fresh session."
@@ -311,9 +351,6 @@ class RecoveryController:
         retry_in_session: bool = False,
     ) -> tuple[PipelineState, list[Effect]]:
         """Handle agent failure with budget debit and chain progression."""
-        # Lazy import: ralph.pipeline.state depends transitively on recovery types.
-        from ralph.pipeline.state import FalloverRecord  # noqa: PLC0415
-
         chain = state.chain_for_phase(phase)
         if chain is None:
             return state, []
@@ -343,7 +380,7 @@ class RecoveryController:
         if chain.current_index + 1 < len(chain.agents):
             next_agent = chain.agents[chain.current_index + 1]
             from_agent = current_agent or f"agent[{chain.current_index}]"
-            fallover_record = FalloverRecord(
+            fallover_record = _build_fallover_record(
                 phase=phase,
                 from_agent=from_agent,
                 to_agent=next_agent,

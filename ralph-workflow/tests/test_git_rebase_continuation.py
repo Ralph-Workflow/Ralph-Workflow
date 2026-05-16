@@ -48,7 +48,7 @@ def test_continue_rebase_finishes_conflicted_rebase(
     monkeypatch.setattr(continuation_module, "_has_index_conflicts", lambda _repo: False)
     monkeypatch.setattr(continuation_module, "_head_is_descendant", lambda *_args: True)
 
-    def fake_run_git(*_args, **_kwargs) -> GitRunResult:
+    def fake_run_git(*_args: object, **_kwargs: object) -> GitRunResult:
         state["in_progress"] = False
         return _CONTINUE_OK
 

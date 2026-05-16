@@ -11,160 +11,24 @@ no default chains. If a drain is not bound, DrainNotBoundError is raised.
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING
 
-from loguru import logger
+from ralph.policy.models import AgentChainConfig, AgentsPolicy, DrainName
 
-from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy, DrainName
+from .agent_chain import AgentChain
+from .drain_not_bound_error import DrainNotBoundError
+from .unknown_agent_error import UnknownAgentError
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
-
-class DrainNotBoundError(Exception):
-    """Raised when a drain has no explicit chain binding.
-
-    Attributes:
-        drain: The unbound drain name.
-        available_drains: Names of all bound drains.
-    """
-
-    def __init__(self, drain: str, available_drains: set[str]) -> None:
-        self.drain = drain
-        self.available_drains = available_drains
-        available = sorted(available_drains)
-        msg = (
-            f"Drain '{drain}' is not bound to any agent chain in agents.toml. "
-            f"Available drains: {available}. "
-            f"Add a binding for '{drain}' in agent_drains or use a bound drain."
-        )
-        super().__init__(msg)
-
-
-class UnknownAgentError(Exception):
-    """Raised when an agent name is not found in the registry.
-
-    Attributes:
-        agent_name: The unknown agent name.
-    """
-
-    def __init__(self, agent_name: str) -> None:
-        self.agent_name = agent_name
-        msg = f"Unknown agent: '{agent_name}'. Register the agent in the configuration."
-        super().__init__(msg)
-
-
-class AgentChain:
-    """Manages agent fallback chain with retry logic.
-
-    The chain maintains an ordered list of agents and handles:
-    - Current agent selection
-    - Retry counting and limits
-    - Exponential backoff between retries
-    - Fallback to next agent on exhaustion
-
-    Attributes:
-        agents: List of agent names in the chain.
-        current_index: Index of the currently selected agent.
-        retries: Number of retries for current agent.
-        max_retries: Maximum retries before falling back.
-        retry_delay_ms: Base delay between retries in milliseconds.
-        backoff_multiplier: Multiplier for exponential backoff.
-        max_backoff_ms: Maximum backoff delay in milliseconds.
-    """
-
-    def __init__(
-        self,
-        agents: list[str],
-        max_retries: int = 3,
-        retry_delay_ms: int = 1000,
-        backoff_multiplier: float = 2.0,
-        max_backoff_ms: int = 60000,
-    ) -> None:
-        """Initialize agent chain.
-
-        Args:
-            agents: List of agent names in fallback order.
-            max_retries: Maximum retries per agent before fallback.
-            retry_delay_ms: Base delay between retries in milliseconds.
-            backoff_multiplier: Multiplier for exponential backoff.
-            max_backoff_ms: Maximum backoff delay in milliseconds.
-        """
-        self.agents = agents
-        self.current_index = 0
-        self.retries = 0
-        self.max_retries = max_retries
-        self.retry_delay_ms = retry_delay_ms
-        self.backoff_multiplier = backoff_multiplier
-        self.max_backoff_ms = max_backoff_ms
-
-    @property
-    def current_agent(self) -> str | None:
-        """Get the current agent name.
-
-        Returns:
-            Agent name or None if chain is exhausted.
-        """
-        if not self.agents or self.current_index >= len(self.agents):
-            return None
-        return self.agents[self.current_index]
-
-    @property
-    def is_exhausted(self) -> bool:
-        """Check if all agents in chain are exhausted.
-
-        Returns:
-            True if no agents remain.
-        """
-        return self.current_agent is None
-
-    def can_retry(self) -> bool:
-        """Check if current agent can be retried.
-
-        Returns:
-            True if retries remain for current agent.
-        """
-        return self.retries < self.max_retries
-
-    def advance(self) -> bool:
-        """Advance to the next agent in the chain.
-
-        Returns:
-            True if advanced successfully, False if chain exhausted.
-        """
-        if self.current_index + 1 < len(self.agents):
-            self.current_index += 1
-            self.retries = 0
-            logger.debug("Advanced to next agent: {}", self.current_agent)
-            return True
-        logger.debug("Agent chain exhausted")
-        return False
-
-    def record_retry(self) -> None:
-        """Record a retry attempt for current agent."""
-        self.retries += 1
-        logger.debug(
-            "Retry {} of {} for agent {}",
-            self.retries,
-            self.max_retries,
-            self.current_agent,
-        )
-
-    def calculate_backoff(self) -> float:
-        """Calculate backoff delay in seconds.
-
-        Returns:
-            Backoff delay in seconds.
-        """
-        delay = self.retry_delay_ms * (self.backoff_multiplier**self.retries)
-        return min(delay, self.max_backoff_ms) / 1000.0
-
-    def wait_backoff(self) -> None:
-        """Wait for the backoff period."""
-        backoff = self.calculate_backoff()
-        logger.debug("Backing off for {:.2f} seconds", backoff)
-        time.sleep(backoff)
+__all__ = [
+    "AgentChain",
+    "ChainManager",
+    "DrainNotBoundError",
+    "UnknownAgentError",
+    "create_chain_from_config",
+]
 
 
 class ChainManager:
@@ -200,13 +64,9 @@ class ChainManager:
         Returns:
             ChainManager instance.
         """
-        agent_chains: dict[str, AgentChainConfig] = {}
-        for name, agents in config.agent_chains.items():
-            agent_chains[name] = AgentChainConfig(agents=agents)
+        agent_chains = dict(config.agent_chains)
 
-        agent_drains: dict[DrainName, AgentDrainConfig] = {}
-        for drain, chain in config.agent_drains.items():
-            agent_drains[drain] = AgentDrainConfig(chain=chain)
+        agent_drains = dict(config.agent_drains)
 
         policy = AgentsPolicy(
             agent_chains=agent_chains,
@@ -283,12 +143,12 @@ def create_chain_from_config(
     Returns:
         AgentChain instance or None if chain not found.
     """
-    agent_names = config.agent_chains.get(chain_name)
-    if not agent_names:
+    chain_config = config.agent_chains.get(chain_name)
+    if chain_config is None:
         return None
 
     return AgentChain(
-        agents=agent_names,
+        agents=chain_config.agents,
         max_retries=config.general.max_retries,
         retry_delay_ms=config.general.retry_delay_ms,
         backoff_multiplier=config.general.backoff_multiplier,

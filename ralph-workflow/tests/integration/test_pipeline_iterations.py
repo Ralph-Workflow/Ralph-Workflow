@@ -104,7 +104,7 @@ class DevelopmentAnalysisAlwaysLoopbackInvoker(MockAgentInvoker):
 
 
 @lru_cache(maxsize=1)
-def _default_policy_bundle():
+def _default_policy_bundle() -> object:
     return load_policy(DEFAULT_POLICY_DIR)
 
 
@@ -112,7 +112,7 @@ def _config() -> UnifiedConfig:
     return UnifiedConfig()
 
 
-def _run_pipeline(  # noqa: PLR0913
+def _run_pipeline(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     mock_agent_invoker: MockAgentInvoker,
@@ -123,7 +123,11 @@ def _run_pipeline(  # noqa: PLR0913
     saved_states: list[PipelineState] = []
     policy_bundle = _default_policy_bundle()
 
-    def fake_execute_effect(effect, _config, _workspace_scope):
+    def fake_execute_effect(
+        effect: object,
+        _config: object,
+        _workspace_scope: object,
+    ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             mock_agent_invoker.invoke(effect.agent_name, effect.phase)
             return PipelineEvent.AGENT_SUCCESS
@@ -135,7 +139,11 @@ def _run_pipeline(  # noqa: PLR0913
         msg = f"Unexpected effect type: {type(effect)!r}"
         raise AssertionError(msg)
 
-    def fake_phase_event_after_agent_run(*, effect, **_kwargs):
+    def fake_phase_event_after_agent_run(
+        *,
+        effect: InvokeAgentEffect,
+        **_kwargs: object,
+    ) -> AnalysisDecisionEvent | PipelineEvent:
         analysis_event_for = getattr(mock_agent_invoker, "analysis_event_for", None)
         analysis_phases = {"planning_analysis", "development_analysis"}
         if callable(analysis_event_for) and effect.phase in analysis_phases:
@@ -306,7 +314,12 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
     planning_analysis_calls = 0
     original_determine = runner._call_determine_effect_from_policy
 
-    def stop_at_development(state, bundle, workspace_scope, config):
+    def stop_at_development(
+        state: PipelineState,
+        bundle: object,
+        workspace_scope: object,
+        config: UnifiedConfig,
+    ) -> object:
         if state.phase == "development":
             return ExitSuccessEffect()
         return original_determine(state, bundle, workspace_scope, config)
@@ -316,7 +329,12 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload))
 
-    def fake_execute_effect(effect, _config, _workspace_scope, **_kwargs):
+    def fake_execute_effect(
+        effect: object,
+        _config: object,
+        _workspace_scope: object,
+        **_kwargs: object,
+    ) -> PipelineEvent:
         nonlocal planning_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "planning":
@@ -526,7 +544,12 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
     development_analysis_calls = 0
     original_determine = runner._call_determine_effect_from_policy
 
-    def stop_at_development_commit(state, bundle, workspace_scope, config):
+    def stop_at_development_commit(
+        state: PipelineState,
+        bundle: object,
+        workspace_scope: object,
+        config: UnifiedConfig,
+    ) -> object:
         if state.phase == "development_commit":
             return ExitSuccessEffect()
         return original_determine(state, bundle, workspace_scope, config)
@@ -536,7 +559,12 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload))
 
-    def fake_execute_effect(effect, _config, _workspace_scope, **_kwargs):
+    def fake_execute_effect(
+        effect: object,
+        _config: object,
+        _workspace_scope: object,
+        **_kwargs: object,
+    ) -> PipelineEvent:
         nonlocal development_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "development":

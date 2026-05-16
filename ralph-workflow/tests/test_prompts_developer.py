@@ -87,7 +87,7 @@ PLANNING_EDIT_ISSUE_MAPPING_TEXT = (
 )
 
 
-def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_path):
+def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_path: object) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -111,7 +111,9 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
     assert "content_path" not in prompt
 
 
-def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work(tmp_path):
+def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work(
+    tmp_path: object,
+) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -133,7 +135,7 @@ def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work
     assert "analysis_items_addressed" in prompt
 
 
-def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path):
+def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: object) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -152,7 +154,7 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path):
     assert "ralph_finalize_plan" in prompt
 
 
-def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path):
+def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: object) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -183,7 +185,7 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path):
     assert "`summary.scope_items` must contain at least 3 concrete items" in prompt
 
 
-def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path):
+def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: object) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -234,7 +236,7 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path):
     assert workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md") in prompt
 
 
-def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path):
+def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path: object) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -259,7 +261,7 @@ def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path):
     assert "<ralph-plan>" not in prompt
 
 
-def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path):
+def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: object) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(
@@ -293,7 +295,7 @@ def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path):
     assert "{%" not in prompt
 
 
-def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path):
+def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path: object) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -318,7 +320,9 @@ def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path):
     assert "<ralph-development-result>" not in prompt
 
 
-def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(tmp_path):
+def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(
+    tmp_path: object,
+) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(
@@ -424,7 +428,9 @@ def test_planning_edit_prompt_with_artifact_history_path_includes_history(tmp_pa
     assert history_dir in prompt
 
 
-def test_developer_iteration_prompt_with_artifact_history_path_shows_history_section(tmp_path):
+def test_developer_iteration_prompt_with_artifact_history_path_shows_history_section(
+    tmp_path: object,
+) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -450,7 +456,9 @@ def test_developer_iteration_prompt_with_artifact_history_path_shows_history_sec
     assert history_dir in prompt
 
 
-def test_developer_iteration_prompt_without_history_path_omits_history_section(tmp_path):
+def test_developer_iteration_prompt_without_history_path_omits_history_section(
+    tmp_path: object,
+) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -468,7 +476,9 @@ def test_developer_iteration_prompt_without_history_path_omits_history_section(t
     assert "ARTIFACT HISTORY" not in prompt
 
 
-def test_developer_fallback_prompt_with_artifact_history_path_shows_history_section(tmp_path):
+def test_developer_fallback_prompt_with_artifact_history_path_shows_history_section(
+    tmp_path: object,
+) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -498,7 +508,9 @@ def test_developer_fallback_prompt_with_artifact_history_path_shows_history_sect
     assert history_dir in prompt
 
 
-def test_developer_fallback_prompt_without_history_path_omits_history_section(tmp_path):
+def test_developer_fallback_prompt_without_history_path_omits_history_section(
+    tmp_path: object,
+) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)

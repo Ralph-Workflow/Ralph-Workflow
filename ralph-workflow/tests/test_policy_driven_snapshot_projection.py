@@ -102,7 +102,7 @@ def test_snapshot_has_budget_progress_not_legacy_fields(
         "budget_progress does not contain the 'cycles' counter."
     )
     assert snap.budget_progress["cycles"].completed == 1
-    assert snap.budget_progress["cycles"].cap == 3  # noqa: PLR2004
+    assert snap.budget_progress["cycles"].cap == 3
 
     assert not hasattr(snap, "iteration"), (
         "PipelineSnapshot still has legacy 'iteration' scalar field."

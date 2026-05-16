@@ -11,11 +11,11 @@ from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.cycle_cap import CycleCap
 
 
-def _minimal_policy_bundle():
+def _minimal_policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
 
@@ -43,7 +43,7 @@ _AgentInactivityTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
 def test_env_failure_does_not_increment_cycle_count() -> None:
     """Environmental failures never increment recovery_cycle_count."""
-    controller = RecoveryController(cycle_cap=_CYCLE_CAP)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=_CYCLE_CAP))
     state = _make_state(["claude"], cycle_count=_EXPECTED_CYCLE_COUNT)
 
     new_state, effects, _ = controller.handle(
@@ -61,7 +61,9 @@ def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
     """Agent chain exhaustion increments recovery_cycle_count."""
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
-        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        options=RecoveryControllerOptions(
+            cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        )
     )
     state = _make_state(["claude"])
 
@@ -79,7 +81,9 @@ def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
     """When recovery_cycle_count >= cap, an ExitFailureEffect is produced."""
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
-        cycle_cap=_CYCLE_CAP, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        options=RecoveryControllerOptions(
+            cycle_cap=_CYCLE_CAP, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        )
     )
 
     state = _make_state(["claude"], cycle_count=_EXPECTED_CYCLE_COUNT)

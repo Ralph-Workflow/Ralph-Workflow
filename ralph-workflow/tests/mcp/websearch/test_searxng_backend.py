@@ -6,7 +6,7 @@ from importlib import import_module
 import pytest
 
 
-def _import_searxng_module():
+def _import_searxng_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.searxng")
     except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase

@@ -28,7 +28,9 @@ from ralph.workspace.memory import MemoryWorkspace
 from tests.integration.test_pipeline_happy_path import MockAgentInvoker
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from pathlib import Path
+    from types import FrameType
 
 
 class TestExecutionTimeoutError(TimeoutError):
@@ -36,7 +38,7 @@ class TestExecutionTimeoutError(TimeoutError):
 
 
 @pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_call(item: pytest.Item):
+def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
     if threading.current_thread() is not threading.main_thread():
         yield
         return
@@ -47,7 +49,7 @@ def pytest_runtest_call(item: pytest.Item):
     else:
         timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
 
-    def _handle_timeout(signum: int, frame) -> None:
+    def _handle_timeout(signum: int, frame: FrameType | None) -> None:
         del signum, frame
         raise TestExecutionTimeoutError(f"test exceeded {timeout_seconds} seconds: {item.nodeid}")
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import tempfile
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -30,7 +29,7 @@ from ralph.policy.models import (
 
 
 @lru_cache(maxsize=1)
-def _default_policy_bundle() -> Any:
+def _default_policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as tmp:
         return load_policy(Path(tmp) / ".agent")
 

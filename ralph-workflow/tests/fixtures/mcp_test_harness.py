@@ -16,6 +16,8 @@ import httpx
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.mcp.upstream.config import UpstreamMcpServer
 
 _PROTOCOL_VERSION = "2024-11-05"
@@ -42,7 +44,7 @@ class StubUpstreamClient:
     def __init__(
         self,
         tools: list[UpstreamTool] | None = None,
-        call_result: dict[str, Any] | None = None,
+        call_result: dict[str, object] | None = None,
     ) -> None:
         self._tools = tools if tools is not None else [FAKE_TOOL]
         self._call_result = call_result or HTTP_CALL_RESULT
@@ -59,8 +61,8 @@ class StubUpstreamClient:
 
 def make_stub_client_factory(
     tools: list[UpstreamTool] | None = None,
-    call_result: dict[str, Any] | None = None,
-):
+    call_result: dict[str, object] | None = None,
+) -> Callable[[UpstreamMcpServer], StubUpstreamClient]:
     """Return a client_factory suitable for UpstreamRegistry.build()."""
     _tools = tools
     _result = call_result
@@ -72,7 +74,7 @@ def make_stub_client_factory(
     return factory
 
 
-def make_fake_http_post_fn(server_name: str = "fake-http-mcp"):
+def make_fake_http_post_fn(server_name: str = "fake-http-mcp") -> Callable[..., httpx.Response]:
     """Return a post_fn for post_http_jsonrpc_with_session that emulates _McpHandler.
 
     Implements the MCP JSON-RPC response protocol in-process: no TCP port,

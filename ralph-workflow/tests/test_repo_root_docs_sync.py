@@ -12,7 +12,7 @@ from tests.doc_roots import (
 )
 
 
-def test_repo_root_readme_points_to_maintained_workflow():
+def test_repo_root_readme_points_to_maintained_workflow() -> None:
     """Repo-root README must direct readers to the maintained Python workflow."""
     content = REPO_ROOT_README.read_text()
     # Should reference ralph-workflow as the maintained package
@@ -25,7 +25,7 @@ def test_repo_root_readme_points_to_maintained_workflow():
     )
 
 
-def test_repo_root_contributing_points_to_ralph_workflow():
+def test_repo_root_contributing_points_to_ralph_workflow() -> None:
     """Repo-root CONTRIBUTING must point contributors to the maintained Python workflow."""
     content = REPO_ROOT_CONTRIBUTING.read_text()
     # Should reference the maintained package
@@ -36,7 +36,7 @@ def test_repo_root_contributing_points_to_ralph_workflow():
     )
 
 
-def test_code_style_encodes_documentation_contract():
+def test_code_style_encodes_documentation_contract() -> None:
     """CODE_STYLE must encode the live documentation policy."""
     content = REPO_ROOT_CODE_STYLE.read_text()
     # Public docstrings should be self-sufficient
@@ -49,7 +49,7 @@ def test_code_style_encodes_documentation_contract():
     )
 
 
-def test_repo_root_readme_has_no_stale_rust_references():
+def test_repo_root_readme_has_no_stale_rust_references() -> None:
     """Repo-root README must not contain stale Rust-era workflow references."""
     content = REPO_ROOT_README.read_text().lower()
     # Should not reference cargo/xtask
@@ -59,7 +59,7 @@ def test_repo_root_readme_has_no_stale_rust_references():
     assert "xtask" not in content, "Repo-root README.md should not reference Rust-era xtask"
 
 
-def test_contributing_has_no_stale_verification_flags():
+def test_contributing_has_no_stale_verification_flags() -> None:
     """Repo-root CONTRIBUTING must not document stale verification flags.
 
     The canonical verification story is `make verify` which includes docs and

@@ -3,13 +3,30 @@
 from __future__ import annotations
 
 from io import StringIO
+from typing import cast
 
 from rich.console import Console
 
 from ralph import __version__
-from ralph.banner import render_banner, show_banner
+from ralph.banner import (
+    RichGroupProto,
+    RichPanelProto,
+    RichTextProto,
+    SupportsPrint,
+    render_banner,
+    show_banner,
+)
 from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
+from ralph.rich_protocols import (
+    RichGroupProto as ImportedRichGroupProto,
+)
+from ralph.rich_protocols import (
+    RichPanelProto as ImportedRichPanelProto,
+)
+from ralph.rich_protocols import (
+    RichTextProto as ImportedRichTextProto,
+)
 
 
 def _create_console(buffer: StringIO) -> Console:
@@ -46,8 +63,15 @@ def test_show_banner_prints_to_provided_console() -> None:
     console = _create_console(buffer)
     ctx = make_display_context(console=console, env={})
 
-    show_banner(display_context=ctx, console=console)
+    show_banner(display_context=ctx, console=cast("SupportsPrint", console))
 
     output = buffer.getvalue()
     assert "Ralph" in output
     assert "Welcome to Ralph Workflow" in output
+
+
+def test_banner_reexports_rich_protocols_for_backward_compatibility() -> None:
+    """banner should continue exporting the rich protocol types after the split."""
+    assert RichTextProto is ImportedRichTextProto
+    assert RichPanelProto is ImportedRichPanelProto
+    assert RichGroupProto is ImportedRichGroupProto

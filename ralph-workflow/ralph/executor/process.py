@@ -141,7 +141,7 @@ async def run_process_async(
     )
 
 
-def run_process(  # noqa: PLR0913
+def run_process(
     command: str,
     args: Sequence[str] = (),
     *,

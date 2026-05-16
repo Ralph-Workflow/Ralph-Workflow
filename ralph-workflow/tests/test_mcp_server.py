@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 from loguru import logger
@@ -68,8 +68,8 @@ def _session(run_id: str = "run-1", capabilities: set[str] | None = None) -> Age
 
 
 def _http_call(
-    endpoint: str, method: str, params: dict[str, Any] | None = None, *, msg_id: int = 1
-) -> dict[str, Any]:
+    endpoint: str, method: str, params: dict[str, object] | None = None, *, msg_id: int = 1
+) -> dict[str, object]:
     target = startup.parse_http_endpoint(endpoint)
     return startup.post_http_jsonrpc(
         target,
@@ -231,7 +231,7 @@ def test_file_backed_session_accepts_injected_fallback_id_factories() -> None:
 
 
 def test_build_fastmcp_server_falls_back_without_mcp_dependency(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = _session(capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress"})
 
@@ -432,7 +432,9 @@ def test_build_fastmcp_server_preserves_registry_input_schema(tmp_path: Path) ->
     assert submit_artifact_schema["required"] == ["artifact_type", "content"]
 
 
-def test_runtime_main_launches_streamable_http_server(monkeypatch, tmp_path: Path) -> None:
+def test_runtime_main_launches_streamable_http_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.chdir(tmp_path)
     observed: dict[str, object] = {}
 
@@ -1458,24 +1460,26 @@ class TestFileBackedSessionCapabilityProfile:
 class TestFileBackedSessionWorkerArtifactDir:
     def test_worker_artifact_dir_returns_path_when_env_set(self, tmp_path: Path) -> None:
         from ralph.mcp.server.runtime import FileBackedSession
+
         session_file = tmp_path / "session.json"
         session_file.write_text(
-        '{"session_id":"s","run_id":"r","drain":"d","capabilities":[]}',
-        encoding="utf-8",
-    )
+            '{"session_id":"s","run_id":"r","drain":"d","capabilities":[]}',
+            encoding="utf-8",
+        )
         session = FileBackedSession(
-        session_file,
-        env_getter=lambda k: "/tmp/artifacts" if k == WORKER_ARTIFACT_DIR_ENV else None,
-    )
+            session_file,
+            env_getter=lambda k: "/tmp/artifacts" if k == WORKER_ARTIFACT_DIR_ENV else None,
+        )
         assert session.worker_artifact_dir == Path("/tmp/artifacts")
 
     def test_worker_artifact_dir_returns_none_when_env_not_set(self, tmp_path: Path) -> None:
         from ralph.mcp.server.runtime import FileBackedSession
+
         session_file = tmp_path / "session.json"
         session_file.write_text(
-        '{"session_id":"s","run_id":"r","drain":"d","capabilities":[]}',
-        encoding="utf-8",
-    )
+            '{"session_id":"s","run_id":"r","drain":"d","capabilities":[]}',
+            encoding="utf-8",
+        )
         session = FileBackedSession(session_file, env_getter=lambda k: None)
         assert session.worker_artifact_dir is None
 
@@ -1484,6 +1488,7 @@ class TestLoadRuntimeUpstreamServers:
     def test_returns_empty_when_env_not_set(self) -> None:
         from ralph.config.mcp_models import McpConfig
         from ralph.mcp.server.runtime import _load_runtime_upstream_servers
+
         result = _load_runtime_upstream_servers(McpConfig(), env={})
         assert result == ()
 
@@ -1495,11 +1500,12 @@ class TestLoadRuntimeUpstreamServers:
             UpstreamMcpServer,
             serialize_upstream_mcp_servers,
         )
+
         srv = UpstreamMcpServer(name="env-srv", transport="http", url="http://localhost:9")
         serialized = serialize_upstream_mcp_servers([srv])
         result = _load_runtime_upstream_servers(
-        McpConfig(), env={UPSTREAM_MCP_CONFIG_ENV: serialized}
-    )
+            McpConfig(), env={UPSTREAM_MCP_CONFIG_ENV: serialized}
+        )
         assert any(s.name == "env-srv" for s in result)
 
     def test_both_env_and_toml_servers_included_when_names_differ(self) -> None:
@@ -1510,6 +1516,7 @@ class TestLoadRuntimeUpstreamServers:
             UpstreamMcpServer,
             serialize_upstream_mcp_servers,
         )
+
         env_srv = UpstreamMcpServer(name="env-srv", transport="http", url="http://env:9")
         serialized = serialize_upstream_mcp_servers([env_srv])
         toml_spec = McpServerSpec(name="toml-srv", transport="http", url="http://toml:9")
@@ -1525,6 +1532,7 @@ class TestLoadRuntimeUpstreamServers:
             UpstreamMcpServer,
             serialize_upstream_mcp_servers,
         )
+
         shared = "shared-srv"
         env_srv = UpstreamMcpServer(name=shared, transport="http", url="http://env:9")
         serialized = serialize_upstream_mcp_servers([env_srv])
@@ -1533,4 +1541,3 @@ class TestLoadRuntimeUpstreamServers:
         result = _load_runtime_upstream_servers(config, env={UPSTREAM_MCP_CONFIG_ENV: serialized})
         assert len(result) == 1
         assert result[0].url == "http://toml:9"
-

@@ -119,7 +119,7 @@ def test_agent_chain_is_exhausted_when_empty() -> None:
     assert chain.is_exhausted
 
 
-def test_agent_chain_waits_on_backoff(monkeypatch) -> None:
+def test_agent_chain_waits_on_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
     chain = AgentChain(
         agents=["solo"],
         retry_delay_ms=200,

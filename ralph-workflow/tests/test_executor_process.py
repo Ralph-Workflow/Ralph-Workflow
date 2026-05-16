@@ -31,7 +31,17 @@ def _make_timeout_pm(partial_stdout: bytes = b"") -> ProcessManager:
     """Build a PM whose sync factory returns a FakeTimeoutPopen."""
     pid_iter = itertools.count(1)
 
-    def factory(command, *, cwd, env, stdin, stdout, stderr, start_new_session, text):  # noqa: PLR0913
+    def factory(
+        command: str,
+ *,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        stdin: int | None,
+        stdout: int | None,
+        stderr: int | None,
+        start_new_session: bool,
+        text: bool,
+    ) -> object:
         return FakeTimeoutPopen(next(pid_iter), partial_stdout=partial_stdout)
 
     return ProcessManager(policy=_FAST_POLICY, sync_process_factory=factory)
@@ -109,7 +119,16 @@ async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> Non
         completion_event=completion,
     )
 
-    async def factory(command, *, cwd, env, stdin, stdout, stderr, start_new_session):  # noqa: PLR0913
+    async def factory(
+        command: str,
+ *,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        stdin: int | None,
+        stdout: int | None,
+        stderr: int | None,
+        start_new_session: bool,
+    ) -> object:
         return proc
 
     # kill_followup_timeout_s > 0 so _terminate_root_only_async can finish

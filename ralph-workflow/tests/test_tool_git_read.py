@@ -152,7 +152,7 @@ class TestRunGitCommand:
         seen: dict[str, object] = {}
         workspace = MockWorkspaceRoot(tmp_path)
 
-        def fake_runner(command: list[str], cwd: Path):
+        def fake_runner(command: list[str], cwd: Path) -> object:
             seen["command"] = command
             seen["cwd"] = cwd
             return MagicMock(returncode=0, stdout=b"git ok", stderr=b"")
@@ -166,7 +166,7 @@ class TestRunGitCommand:
     def test_uses_injected_cwd_provider_when_workspace_has_no_root(self) -> None:
         seen: dict[str, object] = {}
 
-        def fake_runner(command: list[str], cwd: Path):
+        def fake_runner(command: list[str], cwd: Path) -> object:
             seen["cwd"] = cwd
             return MagicMock(returncode=0, stdout=b"git ok", stderr=b"")
 
