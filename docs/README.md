@@ -6,7 +6,7 @@ This repository contains both **current Python documentation** and **legacy Rust
 
 Start here for the maintained package:
 
-- `../START_HERE.md` — fastest path to a real first trial
+- `../START_HERE.md` — fastest path to using Ralph Workflow for free on a real task
 - `../ralph-workflow/README.md` — installation, development, and API overview
 - `../ralph-workflow/CONTRIBUTING.md` — contributor workflow for the Python package
 - `agents/verification.md` — required verification commands
@@ -61,7 +61,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `quick-reference.md` — command quick reference
 - `template-guide.md` — template usage
 - `git-workflow.md` — Git workflow with Ralph
-- `trial-proof.md` — how to evaluate a first real Ralph Workflow run and what reviewable output should look like
+- `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
 
 ## Architecture family (mixed state — see docs/architecture/README.md for explicit classification)
 

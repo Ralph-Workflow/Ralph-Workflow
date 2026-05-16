@@ -114,7 +114,7 @@ It should leave you with:
 - clear notes about what changed
 - open questions where uncertainty remains
 
-See [docs/trial-proof.md](./docs/trial-proof.md) for a concrete first-task example and review bundle example.
+See [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete first-task example and review bundle example.
 
 ## Depth presets
 

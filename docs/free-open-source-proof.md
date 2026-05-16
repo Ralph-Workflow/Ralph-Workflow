@@ -1,4 +1,4 @@
-# Trial Proof: What Good Ralph Workflow Output Looks Like
+# Free and Open-Source Proof: What Good Ralph Workflow Output Looks Like
 
 The fastest honest way to evaluate Ralph Workflow is not to ask whether it generated code.
 

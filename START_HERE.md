@@ -1,4 +1,4 @@
-# Start Here: Try Ralph Workflow on One Real Task
+# Start Here: Use Ralph Workflow on One Real Task
 
 If you want to know whether Ralph Workflow is useful, do not start with a vague demo.
 
@@ -58,4 +58,4 @@ A useful Ralph Workflow run should leave you with:
 
 - [README.md](./README.md)
 - [docs/quick-reference.md](./docs/quick-reference.md)
-- [docs/trial-proof.md](./docs/trial-proof.md)
+- [docs/free-open-source-proof.md](./docs/free-open-source-proof.md)
