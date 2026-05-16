@@ -1,7 +1,7 @@
-I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units.
+The stuff that bites overnight is usually the same few things: vague done criteria, retry loops, scope drift, and no hard stop when verification gets weak.
 
-For me the reliable pattern is: one scoped task per worktree/branch, explicit done criteria before the agent starts, one verification pass at the end, and a short handoff note with the diff and what still needs eyes.
+What helped me most was separating planning from execution, capping loop depth, forcing the agent to reread the task each pass, and requiring a final check bundle (tests/lint/summary/diff) before the run can call itself done.
 
-Worktrees solve the file-conflict part. The bigger win is that each agent leaves behind a small, checkable result instead of a mystery pile of edits.
+That doesn't make runs magic, but it does make the morning-after result a lot more reviewable.
 
-We've wrapped that pattern into RalphWorkflow, but honestly the structure matters more than the specific tool.
+That's the direction we've taken with RalphWorkflow too, but the checklist itself is the real value.

@@ -65,3 +65,19 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1t1g6fv/are_you_all_still_managing_multiple_agent/om2to0p/
 - **Status:** ✅ Published
 - **Notes:** Autoposted from reddit-monitor shortlist: #1 Are you all still managing multiple agent sessions manually? (r/ClaudeCode).
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-16_0917.md`
+- **Scan summary:** 34 candidate Reddit threads/posts scanned, 7 shortlisted, 27 rejected.
+- **Current verdict:** ✅ Strong opportunity found.
+- **Best current discussion fits:**
+  - `r/ClaudeCode` — "Claude code agents going off the rails overnight: what's biting you?"
+  - `r/ClaudeCode` — "Claude Code + Codex Workflow?"
+  - `r/codex` — "How many of you “Trust” Codex?"
+- **Repeated pains worth tracking:** overnight drift, weak verification before "done", approval drag, review-in-big-batches, worktrees without scope control.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1t9fl7h/claude_code_agents_going_off_the_rails_overnight/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1t9fl7h/claude_code_agents_going_off_the_rails_overnight/om3bpdb/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #1 Claude code agents going off the rails overnight: what's biting you? (r/ClaudeCode).
