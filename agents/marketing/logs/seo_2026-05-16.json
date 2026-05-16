@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-16T09:00:27.319224",
+  "timestamp": "2026-05-16T22:29:41.700705",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Unattended AI coding CLI for finished features \u2014 Ralph Workflow",
-      "meta_description": "Ralph Workflow helps developers hand AI a real coding task and come back to a finished feature they can review instead of a giant diff.",
+      "title": "Ralph Workflow \u2014 Unattended AI coding CLI that finishes the job \u2014 Ralph Workflow",
+      "meta_description": "Ralph Workflow runs your AI coding agent through planning, building, and verification \u2014 unattended. You get a merge-ready diff, not a session to babysit.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Ralph Workflow helps developers hand AI a real coding task and come back to a finished feature they can review instead of a giant diff.",
-        "title": "Unattended AI coding CLI for finished features",
+        "description": "Ralph Workflow runs your AI coding agent through planning, building, and verification \u2014 unattended. You get a merge-ready diff, not a session to babysit.",
+        "title": "Ralph Workflow \u2014 Unattended AI coding CLI that finishes the job",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 3473,
+      "word_count": 3569,
       "has_nav": true,
       "has_main": true,
       "lang_attr": ""
@@ -70,7 +70,7 @@
       }
     ],
     "recommendations": [
-      "Keep title under 60 characters (current: 63 chars)"
+      "Keep title under 60 characters (current: 80 chars)"
     ]
   },
   "ranks": {

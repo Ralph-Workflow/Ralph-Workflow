@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-16T09:00:27.271290",
+  "timestamp": "2026-05-16T22:29:41.656540",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -38,7 +38,7 @@
   "blocked_channels": {
     "dev.to": "Needs API key or OAuth",
     "twitter": "Login/session blocked",
-    "reddit": "Needs account + karma",
+    "reddit": "Posting blocked until the intended main Reddit account is verified live",
     "hackernews": "Needs account",
     "lobsters": "Needs invite/account",
     "producthunt": "Protected flow / manual launch required"
@@ -71,7 +71,7 @@
   },
   "posting": {
     "returncode": 0,
-    "stdout": "{\n  \"timestamp\": \"2026-05-16T09:00:34.311369\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-16_usecase_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"d715545922a85e15ea7220c1c1413b69d798dec79a74f5fd5e94d35b3ac29e09\",\n      \"experiment_id\": \"2026-05-16-usecase\"\n    }\n  ]\n}",
+    "stdout": "{\n  \"timestamp\": \"2026-05-16T22:29:49.278530\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-16_usecase_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"d715545922a85e15ea7220c1c1413b69d798dec79a74f5fd5e94d35b3ac29e09\",\n      \"experiment_id\": \"2026-05-16-usecase\"\n    }\n  ]\n}",
     "stderr": ""
   }
 }

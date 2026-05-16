@@ -1,0 +1,18 @@
+Possible Lobsters angle:
+
+Title:
+The workflow gap in AI coding tools is not generation, it is reviewability
+
+Angle:
+A technical writeup focused on why worktree isolation, explicit acceptance criteria, verification loops, and reviewable diffs matter more than just stacking more coding agents.
+
+Keep it non-promotional:
+- emphasize workflow design
+- emphasize failure modes
+- emphasize proof over claims
+- only mention Ralph Workflow lightly, if at all
+
+Core points:
+- worktrees solve collisions, not semantic trust
+- one-shot prompting lacks a finish discipline
+- unattended coding only works when the result lands in a small, checkable review state

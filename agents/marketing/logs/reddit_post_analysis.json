@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-05-16T22:44:16.350065",
+  "count": 5,
+  "by_account": {
+    "Clear-Past7954": 3,
+    "Informal-Salt827": 2
+  },
+  "by_community": {
+    "r/AI_Agents": 1,
+    "r/ClaudeCode": 3,
+    "r/codex": 1
+  },
+  "top_title_words": [
+    "agent",
+    "workflow",
+    "claude",
+    "code",
+    "most",
+    "useful",
+    "daily",
+    "managing",
+    "multiple",
+    "sessions",
+    "manually",
+    "agents",
+    "going",
+    "rails",
+    "overnight"
+  ],
+  "top_body_tokens": [
+    "agent",
+    "pattern",
+    "small",
+    "criteria",
+    "task",
+    "pass",
+    "done",
+    "before",
+    "workflow",
+    "work",
+    "explicit",
+    "each",
+    "wrapped",
+    "structure",
+    "tool",
+    "stop",
+    "optimizing",
+    "reviewable",
+    "verification",
+    "diff"
+  ],
+  "phrase_hits": {
+    "worktree": 3,
+    "diff": 5,
+    "verify": 1,
+    "handoff": 3,
+    "reviewable": 4,
+    "done criteria": 4,
+    "scope": 4,
+    "final check": 1,
+    "overnight": 1,
+    "review bundle": 1,
+    "trust": 1,
+    "small scoped": 1
+  },
+  "repeated_openings": [
+    "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
+  ],
+  "account_switches": [
+    {
+      "from": "Clear-Past7954",
+      "to": "Informal-Salt827",
+      "timestamp": "2026-05-16T20:17:09.076737"
+    }
+  ],
+  "recent_posts": [
+    {
+      "timestamp": "2026-05-16T05:30:00+02:00",
+      "account": "Clear-Past7954",
+      "community": "r/AI_Agents",
+      "title": "What’s the most useful AI agent workflow you use daily?",
+      "comment_url": "https://old.reddit.com/r/AI_Agents/comments/1tcpehg/whats_the_most_useful_ai_agent_workflow_you_use/om2kp9c/",
+      "opening_line": "The workflow that’s stuck for me is a spec -> isolated execute -> verify -> receipt loop for coding agents."
+    },
+    {
+      "timestamp": "2026-05-16T06:46:00+02:00",
+      "account": "Clear-Past7954",
+      "community": "r/ClaudeCode",
+      "title": "Are you all still managing multiple agent sessions manually?",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t1g6fv/are_you_all_still_managing_multiple_agent/om2to0p/",
+      "opening_line": "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
+    },
+    {
+      "timestamp": "2026-05-16T09:18:46.013856",
+      "account": "Clear-Past7954",
+      "community": "r/ClaudeCode",
+      "title": "Claude code agents going off the rails overnight: what's biting you?",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t9fl7h/claude_code_agents_going_off_the_rails_overnight/om3bpdb/",
+      "opening_line": "The stuff that bites overnight is usually the same few things: vague done criteria, retry loops, scope drift, and no hard stop when verification gets weak."
+    },
+    {
+      "timestamp": "2026-05-16T20:17:09.076737",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Critique my Workflow",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tdvnnt/critique_my_workflow/om67t5g/",
+      "opening_line": "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
+    },
+    {
+      "timestamp": "2026-05-16T22:20:25.224106",
+      "account": "Informal-Salt827",
+      "community": "r/codex",
+      "title": "Use claude code with codex?",
+      "comment_url": "https://old.reddit.com/r/codex/comments/1tath73/use_claude_code_with_codex/om6v981/",
+      "opening_line": "I've had better results when I stop asking whether to trust the agent and start asking whether the workflow makes bad work obvious."
+    }
+  ],
+  "recommendations": [
+    "Avoid reusing the same opening line; vary the first paragraph deliberately.",
+    "ClaudeCode is the strongest current venue, but avoid stacking too many similar comments there without fresh thread-specific advice.",
+    "Treat pre-switch Clear-Past7954 posts as historical only; future retros and posting rules should optimize for Informal-Salt827 only.",
+    "Before each autopost, compare the candidate body against the last 3 logged bodies and rewrite if the opening, structure, or closing feel too similar.",
+    "Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments."
+  ]
+}

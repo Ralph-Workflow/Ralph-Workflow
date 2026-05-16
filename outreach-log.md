@@ -113,3 +113,57 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1tdvnnt/critique_my_workflow/om67t5g/
 - **Status:** ✅ Published
 - **Notes:** Autoposted from reddit-monitor shortlist: #1 Critique my Workflow (`r/ClaudeCode`).
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-16_2218.md`
+- **Scan summary:** 29 candidate Reddit threads/posts scanned, 8 shortlisted, 21 rejected.
+- **Current verdict:** ✅ 8 credible opportunities still available; shortlist remained stable versus the 19:15 and 20:08 CEST scans.
+- **Best current discussion fits:**
+  - `r/ClaudeCode` — "Critique my Workflow"
+  - `r/ClaudeCode` — "How are you handling merge safety when running multiple coding agents on the same repo?"
+  - `r/codex` — "Use claude code with codex?"
+- **Repeated pains worth tracking:** merge-safety beyond worktrees, draft-state/approval-loop friction, independent final review, manual Claude/Codex glue, and clean re-entry after unattended runs.
+- **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-16_2215.md`
+- **Scan summary:** 30 candidate Reddit threads/posts scanned, 6 shortlisted, 24 rejected.
+- **Current verdict:** ✅ 6 credible opportunities found; strongest late-night fits are direct workflow-question threads, not showcase posts.
+- **Best current discussion fits:**
+  - `r/ClaudeCode` — "Claude Code + Codex Workflow?"
+  - `r/ClaudeCode` — "Worktrees in Claude Code Desktop App"
+  - `r/ClaudeCode` — "Run both Claude code and codex"
+- **Repeated pains worth tracking:** approval/draft-state review loops, Claude/Codex handoff glue work, worktree env/bootstrap friction, need for independent review before trusting unattended output.
+- **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/codex/comments/1tath73/use_claude_code_with_codex/
+- **Comment URL:** https://old.reddit.com/r/codex/comments/1tath73/use_claude_code_with_codex/om6v981/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #3 Use claude code with codex? (`r/codex`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### Marketing momentum watchdog
+- **When:** 2026-05-16 22:26:56
+- **Note:** Momentum check found: no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.
+
+### RalphWorkflow Distribution
+- **write.as article**: "Claude Code + Codex Workflow: Plan, Build, Review" — https://write.as/vesqh0lzrm4en.md
+  - Status: ✅ Published
+  - Notes: Owned-content asset published as the primary non-Reddit marketing piece; positioned around reviewable output, proof over claims, and unattended runs that actually hold up.
+
+### RalphWorkflow Distribution
+- **write.as article**: "How to Tell if an AI Coding Task Is Actually Done" — https://write.as/7pqpd2y0v0re2.md
+  - Status: ✅ Published
+  - Notes: Second owned-content asset published; focused on proof of completion, reviewability, and the merge test as the real definition of done.
+
+### Owned-content drafting
+- Drafted site-guide assets:
+  - `drafts/2026-05-16_unattended-ai-coding-when-it-works_site-guide.md`
+  - `drafts/2026-05-16_reviewable-ai-code-output_site-guide.md`
+- Purpose: convert current market pain into durable owned pages that can drive adoption beyond Reddit.
+
+### RalphWorkflow Distribution
+- **write.as article**: "When Unattended AI Coding Actually Works" — https://write.as/x5wil6pmtbvo1.md
+  - Status: ✅ Published
+  - Notes: Owned-content asset focused on when unattended coding is genuinely useful, how to keep it reviewable, and where RalphWorkflow fits.

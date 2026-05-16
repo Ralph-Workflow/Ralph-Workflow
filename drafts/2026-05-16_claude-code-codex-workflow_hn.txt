@@ -1,0 +1,15 @@
+Title:
+How do you know an AI coding task is actually done?
+
+URL target:
+[use owned article after publish]
+
+Submission text / framing notes:
+A lot of AI coding discussion still focuses on model quality or prompt quality, but the real workflow gap seems to be simpler: agents say they are done long before the result is something you'd actually merge.
+
+This piece is about a boring workflow that helps: sharpen the task first, run one scoped task in isolation, build and verify in the same loop, and end with a reviewable diff plus checks.
+
+Best comment angles to prepare:
+- worktrees solve file conflicts, not trust
+- code review is still the bar, but the workflow should hand you something reviewable instead of making you reconstruct what happened
+- the goal is not more automation theater; it is proof the result actually holds up
