@@ -23,6 +23,7 @@ from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
 if TYPE_CHECKING:
     import socket
+    from pathlib import Path
 
 EXPECTED_PREFLIGHT_ATTEMPTS = 2
 
@@ -281,6 +282,21 @@ def test_post_http_jsonrpc_accepts_injected_http_post() -> None:
 
     assert response[0]["result"] == {"ok": True}
     assert seen["url"] == "http://demo/mcp"
+
+
+def test_post_http_jsonrpc_with_session_ignores_missing_ssl_cert_env_for_plain_http(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    missing_cert = tmp_path / "missing-ca.pem"
+    endpoint = "http://127.0.0.1:9/mcp"
+    monkeypatch.setenv("SSL_CERT_FILE", str(missing_cert))
+
+    with pytest.raises(startup.RetryablePreflightError, match="failed to connect"):
+        startup.post_http_jsonrpc_with_session(
+            endpoint,
+            startup.parse_http_endpoint(endpoint),
+            startup.initialize_request(),
+        )
 
 
 def test_preflight_tcp_attempt_accepts_injected_connector() -> None:
