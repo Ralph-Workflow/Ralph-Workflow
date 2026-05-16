@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-16T04:52:51.547454",
+  "timestamp": "2026-05-16T06:38:20.584507",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "AI agent orchestration CLI for unattended coding workflows \u2014 Ralph Workflow",
-      "meta_description": "Ralph Workflow is a repo-native AI agent orchestration CLI for spec-driven planning, unattended coding workflows, and reviewable handoffs. Run long code changes with planning loops, verification gates, and git-backed evidence instead of babysitting every agent step.",
+      "title": "Unattended AI coding CLI for finished features \u2014 Ralph Workflow",
+      "meta_description": "Ralph Workflow helps developers hand AI a real coding task and come back to a finished feature they can review instead of a giant diff.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Ralph Workflow is a repo-native AI agent orchestration CLI for spec-driven planning, unattended coding workflows, and reviewable handoffs. Run long code changes with planning loops, verification gates, and git-backed evidence instead of babysitting every agent step.",
-        "title": "AI agent orchestration CLI for unattended coding workflows",
+        "description": "Ralph Workflow helps developers hand AI a real coding task and come back to a finished feature they can review instead of a giant diff.",
+        "title": "Unattended AI coding CLI for finished features",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 7385,
+      "word_count": 3467,
       "has_nav": true,
       "has_main": true,
       "lang_attr": ""
@@ -30,11 +30,12 @@
     },
     "sitemap": {
       "status": 200,
-      "url_count": 251,
+      "url_count": 252,
       "urls": [
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/privacy",
         "https://ralphworkflow.com/terms",
+        "https://ralphworkflow.com/install",
         "https://ralphworkflow.com/aider-alternative",
         "https://ralphworkflow.com/conductor-alternative",
         "https://ralphworkflow.com/hermes-alternative",
@@ -50,23 +51,17 @@
         "https://ralphworkflow.com/docs/_modules/ralph/agents/idle_watchdog",
         "https://ralphworkflow.com/docs/_modules/ralph/agents/invoke",
         "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/base",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/claude",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/codex"
+        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/claude"
       ]
     }
   },
   "onpage": {
-    "score": 65,
-    "grade": "C",
+    "score": 75,
+    "grade": "B",
     "issues": [
       {
         "severity": "error",
         "item": "Title too long"
-      },
-      {
-        "severity": "warning",
-        "item": "Meta description too long",
-        "detail": "Keep between 150-160 characters"
       },
       {
         "severity": "warning",
@@ -75,7 +70,7 @@
       }
     ],
     "recommendations": [
-      "Keep title under 60 characters (current: 75 chars)"
+      "Keep title under 60 characters (current: 63 chars)"
     ]
   },
   "ranks": {
@@ -166,6 +161,7 @@
   "content_gap": {
     "gaps": [
       "unattended coding agent",
+      "AI agent orchestration CLI",
       "spec-driven AI agent",
       "AI coding workflow automation",
       "Claude Code automation",
@@ -173,10 +169,9 @@
       "AI agent workflow composer"
     ],
     "covered": [
-      "AI agent orchestration CLI",
       "Ralph Workflow"
     ],
-    "coverage_pct": 25.0
+    "coverage_pct": 12.5
   },
   "serp": {
     "position": null,
@@ -185,8 +180,7 @@
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
-    "Fix top on-page SEO issues (current score: 65/100)",
-    "Create content targeting: unattended coding agent, spec-driven AI agent, AI coding workflow automation",
+    "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]
 }

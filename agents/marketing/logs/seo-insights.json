@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-05-16T04:52:58.205711",
+  "generated_at": "2026-05-16T06:38:26.860611",
   "priority_keywords": [
-    "Fix top on-page SEO issues (current score: 65/100)",
-    "Create content targeting: unattended coding agent, spec-driven AI agent, AI coding workflow automation",
+    "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
     "Build backlinks: submit to directories, guest post, earn citations"
   ],
   "gaps": [
     "unattended coding agent",
+    "AI agent orchestration CLI",
     "spec-driven AI agent",
     "AI coding workflow automation",
     "Claude Code automation",
     "Claude Code unattended",
     "AI agent workflow composer"
   ],
-  "onpage_score": "65/100 (C)",
+  "onpage_score": "75/100 (B)",
   "ranked_keywords": 0,
   "backlinks_approx": 0,
   "weekly_decisions": []

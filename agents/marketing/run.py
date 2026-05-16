@@ -480,17 +480,31 @@ def main() -> int:
     insights_path = write_seo_insights(seo_current, decisions)
     print(f"[run.py] SEO insights written to {insights_path}", flush=True)
 
-    # On Mondays: trigger content generation targeting SEO gaps
-    if is_monday:
-        print("[run.py] Monday — triggering content generation from SEO insights...", flush=True)
-        result = subprocess.run(
-            [sys.executable, str(AGENTS_DIR / "generate_content.py")],
-            capture_output=True, text=True, timeout=60,
-        )
-        if result.returncode == 0:
-            print(f"[run.py] Content generated (stdout: {result.stdout[:200]})", flush=True)
-        else:
-            print(f"[run.py] Content generation warning: {result.stderr[:200]}", flush=True)
+    # Trigger content generation every day so the loop can actually hand work to posting.
+    print("[run.py] Triggering content generation from SEO insights...", flush=True)
+    generation_result = subprocess.run(
+        [sys.executable, str(AGENTS_DIR / "generate_content.py")],
+        capture_output=True, text=True, timeout=60,
+    )
+    generation_stdout = (generation_result.stdout or "").strip()
+    generation_stderr = (generation_result.stderr or "").strip()
+    if generation_result.returncode == 0:
+        print(f"[run.py] Content generation stdout: {generation_stdout[:200]}", flush=True)
+    else:
+        print(f"[run.py] Content generation warning: {generation_stderr[:200]}", flush=True)
+
+    # Try the posting step after generation so the daily marketing loop can actually publish.
+    print("[run.py] Triggering posting step...", flush=True)
+    posting_result = subprocess.run(
+        [sys.executable, str(AGENTS_DIR / "run_posting.py")],
+        capture_output=True, text=True, timeout=120,
+    )
+    posting_stdout = (posting_result.stdout or "").strip()
+    posting_stderr = (posting_result.stderr or "").strip()
+    if posting_result.returncode == 0:
+        print(f"[run.py] Posting stdout: {posting_stdout[:200]}", flush=True)
+    else:
+        print(f"[run.py] Posting warning: {posting_stderr[:200]}", flush=True)
 
     # Build payload
     payload = {
@@ -512,6 +526,16 @@ def main() -> int:
             "seo_daily_error": seo_error,
             "sitemap_urls": (site_health.get("sitemap") or {}).get("url_count", 0) if isinstance(site_health.get("sitemap"), dict) else 0,
             "competitor_analysis": competitor_data,
+        },
+        "content_generation": {
+            "returncode": generation_result.returncode,
+            "stdout": generation_stdout,
+            "stderr": generation_stderr,
+        },
+        "posting": {
+            "returncode": posting_result.returncode,
+            "stdout": posting_stdout,
+            "stderr": posting_stderr,
         },
     }
 

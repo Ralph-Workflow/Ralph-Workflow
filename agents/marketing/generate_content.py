@@ -41,8 +41,8 @@ class Topic:
     body: str
 
 
-TOPICS: dict[int, Topic] = {
-    0: Topic(
+TOPIC_ROTATION: list[Topic] = [
+    Topic(
         slug="philosophy",
         content_type="philosophy",
         angle="Why AI agents need structure, not just prompts",
@@ -83,7 +83,7 @@ With a spec and a diff, you can review in 5 minutes. Without them, you're debugg
 This is what Ralph Workflow is built around — not better AI, better workflow structure.
 """,
     ),
-    2: Topic(
+    Topic(
         slug="technical",
         content_type="technical",
         angle="How nested analysis loops catch bugs before they commit",
@@ -134,7 +134,7 @@ Without this, unattended runs are just unattended bug creation. With it, the loo
 This is the difference between \"it ran\" and \"it's correct.\"
 """,
     ),
-    4: Topic(
+    Topic(
         slug="usecase",
         content_type="usecase",
         angle="How a solo dev shipped 23 commits in 4 hours with no supervision",
@@ -182,7 +182,7 @@ You don't need to watch AI code. You need to give it a spec and let it work.
 The 4 hours I wasn't watching was the 4 hours it was actually productive.
 """,
     ),
-}
+]
 
 
 def build_metadata(topic: Topic, now: datetime) -> dict[str, str]:
@@ -217,12 +217,12 @@ def build_draft_content(topic: Topic, now: datetime) -> str:
 def generate_draft(now: Optional[datetime] = None) -> Optional[Path]:
     now = now or datetime.now()
     # SEO-informed topic selection: prioritize gaps identified by run.py
-    topic = TOPICS.get(now.weekday())
+    topic = TOPIC_ROTATION[now.weekday() % len(TOPIC_ROTATION)]
     insights = load_seo_insights()
     gap_keywords = insights.get('gaps', [])
     if gap_keywords:
         # Find a topic whose angle/body mentions a gap keyword
-        for idx, t in TOPICS.items():
+        for t in TOPIC_ROTATION:
             for gap in gap_keywords:
                 if gap.lower() in (t.angle + t.body).lower():
                     topic = t

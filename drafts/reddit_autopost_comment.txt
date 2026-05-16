@@ -1,0 +1,7 @@
+I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units.
+
+For me the reliable pattern is: one scoped task per worktree/branch, explicit done criteria before the agent starts, one verification pass at the end, and a short handoff note with the diff and what still needs eyes.
+
+Worktrees solve the file-conflict part. The bigger win is that each agent leaves behind a small, checkable result instead of a mystery pile of edits.
+
+We've wrapped that pattern into RalphWorkflow, but honestly the structure matters more than the specific tool.

@@ -60,3 +60,8 @@ _Last updated: 2026-05-11 06:29 UTC_
   - `r/ClaudeAI` — "Running two Claude Code agents on the same repo simultaneously. Git worktrees make it work."
 - **Repeated pains worth tracking:** approval stalls while away from desk, manual Claude/Codex glue work, worktree setup friction, need for reviewable checkpoints instead of blind trust.
 
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1t1g6fv/are_you_all_still_managing_multiple_agent/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1t1g6fv/are_you_all_still_managing_multiple_agent/om2to0p/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #1 Are you all still managing multiple agent sessions manually? (r/ClaudeCode).

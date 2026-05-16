@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-05-16T06:38:26.936894",
+  "results": [
+    {
+      "draft": "2026-05-16_usecase_draft.md",
+      "ok": true,
+      "status": "already_posted",
+      "draft_hash": "d715545922a85e15ea7220c1c1413b69d798dec79a74f5fd5e94d35b3ac29e09",
+      "experiment_id": "2026-05-16-usecase"
+    }
+  ]
+}
