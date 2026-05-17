@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-17T13:20:07.925322",
-  "current_bottleneck": "conversion_to_free_use",
+  "generated_at": "2026-05-17T14:20:06.856844",
+  "current_bottleneck": "distribution_to_GitHub_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 9,
   "repeated_openings": [
@@ -25,15 +25,16 @@
     }
   ],
   "reasons": [
-    "Owned content and outreach exist, but repo/public adoption signals are still low.",
-    "GitHub stars remain low, which suggests trust-to-free-use conversion is still the limiting step.",
-    "Proof assets and first-task framing likely matter more right now than more generic awareness work."
+    "Conversion surfaces are now strong (proof bundle, first-task templates, task-fit guide, Aider comparison, homepage CTAs, GitHub mirror surfaced).",
+    "GitHub stars still 0 despite strong conversion work and Reddit activity \u2014 Reddit posts are not linking to the GitHub mirror, so awareness does not convert to GitHub stars.",
+    "write.as articles are published but not submitted to HN/Lobsters \u2014 owned content is sitting without distribution beyond its own URL.",
+    "Broad dev communities (r/programming, r/Python, r/devops) are untouched; reach is narrow."
   ],
   "next_moves": [
-    "Improve repo/site conversion surfaces before producing too much additional top-of-funnel content.",
-    "Keep publishing/distributing only when the asset clearly strengthens free use, trust, or adoption.",
-    "Reduce repetitive outreach patterns and keep messaging tied to real workflow pain.",
-    "Favor proof assets: examples, review bundles, first-task guides, and comparison pages."
+    "Link to GitHub mirror in Reddit posts where contextually natural so awareness converts to GitHub stars.",
+    "Submit write.as articles to Hacker News and Lobsters \u2014 owned content has zero external distribution.",
+    "Broader community distribution (r/Python, r/devops, r/opensource as secondary targets).",
+    "Stop adding conversion assets \u2014 surfaces are strong, further conversion work has diminishing returns."
   ],
   "four_marketing_questions": {
     "what_is_it": "free and open-source tool that orchestrates existing agents on your machine",

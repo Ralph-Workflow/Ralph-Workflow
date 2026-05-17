@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-05-17T13:35:06.915707",
-  "count": 9,
+  "generated_at": "2026-05-17T14:35:07.207999",
+  "count": 10,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 6
+    "Informal-Salt827": 7
   },
   "by_community": {
     "r/AI_Agents": 1,
     "r/ClaudeCode": 6,
-    "r/codex": 2
+    "r/codex": 3
   },
   "top_title_words": [
-    "code",
     "claude",
+    "code",
     "codex",
     "agent",
     "workflow",
@@ -28,39 +28,39 @@
     "rails"
   ],
   "top_body_tokens": [
-    "agent",
     "diff",
+    "agent",
     "done",
     "before",
-    "small",
     "task",
+    "workflow",
+    "small",
     "pass",
-    "handoff",
-    "trust",
     "criteria",
     "after",
     "changed",
     "needs",
-    "pattern",
-    "part",
-    "tool",
-    "short",
-    "checks",
-    "workflow",
-    "receipt"
+    "handoff",
+    "trust",
+    "receipt",
+    "agents",
+    "work",
+    "explicit",
+    "human",
+    "pattern"
   ],
   "phrase_hits": {
     "worktree": 4,
-    "diff": 9,
+    "diff": 10,
     "verify": 1,
     "handoff": 6,
-    "reviewable": 4,
-    "done criteria": 5,
-    "scope": 5,
+    "reviewable": 5,
+    "done criteria": 6,
+    "scope": 6,
     "final check": 1,
     "overnight": 1,
     "review bundle": 1,
-    "trust": 4,
+    "trust": 5,
     "small scoped": 1
   },
   "repeated_openings": [
@@ -145,6 +145,14 @@
       "title": "How many of you \"Trust\" Codex?",
       "comment_url": "https://old.reddit.com/r/codex/comments/1t5uwtc/how_many_of_you_trust_codex/omaao0k/",
       "opening_line": "Honestly I don’t trust Codex as a verdict machine. I trust it as an implementation engine when the task is narrow enough that a human can still judge the result quickly."
+    },
+    {
+      "timestamp": "2026-05-17T14:27:15.942846",
+      "account": "Informal-Salt827",
+      "community": "r/codex",
+      "title": "Codex Feels Like a Vibe Coder’s Dream After Months of Fighting Claude",
+      "comment_url": "https://old.reddit.com/r/codex/comments/1tf4l2i/codex_feels_like_a_vibe_coders_dream_after_months/omanifm/",
+      "opening_line": "That line about building an entire workflow around babysitting the model is the real tell."
     }
   ],
   "recommendations": [
