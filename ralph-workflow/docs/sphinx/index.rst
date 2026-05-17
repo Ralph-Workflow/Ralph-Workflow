@@ -14,6 +14,12 @@ Ralph Workflow
      <p class="hero-proof-note">Prefer to inspect the code before installing? <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">Review the GitHub mirror</a> or <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">read the primary Codeberg repo</a>.</p>
    </section>
 
+Choose the first path that matches how you already work tonight:
+
+- Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
+- Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
+- Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
+
 .. note::
 
    New here? Read :doc:`getting-started` first — it gets you from install to first run quickly,

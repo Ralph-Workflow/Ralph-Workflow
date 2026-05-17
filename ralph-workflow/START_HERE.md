@@ -35,6 +35,12 @@ Because it is free and open source, works with the agents you already trust, and
 
 That is a better evaluation than reading more marketing copy.
 
+If you already know your first question is really about tool fit, do not dig through the full docs first:
+
+- Already using one agent and want the lowest-friction setup? Read [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md)
+- Already splitting work across Claude Code and Codex? Read [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md)
+- Want proof before setup? Open the [Example Review Bundle](docs/sphinx/example-review-bundle.md)
+
 If you want to inspect the project where you already follow open-source work, Ralph Workflow is published on Codeberg and mirrored on GitHub:
 
 - Primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
