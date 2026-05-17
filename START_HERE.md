@@ -89,6 +89,7 @@ If you want copy-paste starter specs instead of drafting from scratch, read [doc
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 If you already use worktrees or separate agent sessions and want to know what Ralph Workflow adds beyond that, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
+If you already run multiple coding agents and the real pain is review/reconstruction, read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
 If you already use Aider and want to know when Ralph Workflow is the better fit, read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
 
 ## Run the fastest honest first test
@@ -164,4 +165,5 @@ A useful Ralph Workflow run should leave you with:
 - [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md)
 - [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md)
 - [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md)
+- [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md)
 - [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md)

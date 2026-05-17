@@ -21,6 +21,7 @@ Important expectation for evaluators: Ralph Workflow is free and open source, bu
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
 - `claude-code-codex-workflow.md` — practical guide for developers already pairing Claude Code and Codex who want a cleaner finish than manual glue
+- `what-breaks-first-with-multiple-coding-agents.md` — shared-boundary drift, merged-state checks, finish receipts, and the trust failures that show up before raw Git conflicts
 - `ralph-workflow-vs-aider.md` — clearest comparison if your current baseline is interactive AI pair programming
 
 ## Current Python docs
@@ -89,6 +90,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task
 - `why-worktrees-are-not-enough.md` — practical comparison for teams already using worktrees who still need a reviewable unattended handoff
 - `claude-code-codex-workflow.md` — practical guide for splitting Claude Code and Codex across plan/build/review without manual glue chaos
+- `what-breaks-first-with-multiple-coding-agents.md` — practical guide for teams already running parallel agents who need a cleaner merged-state and morning-after handoff
 - `ralph-workflow-vs-aider.md` — comparison page for developers deciding between interactive pair programming and unattended reviewable handoff
 
 ## Architecture family (mixed state — see docs/architecture/README.md for explicit classification)

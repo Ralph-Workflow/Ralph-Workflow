@@ -18,6 +18,7 @@ Choose the first path that matches how you already work tonight:
 
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
+- Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
 
 .. note::
@@ -167,6 +168,12 @@ Then come back and ask one question:
 
       See how to keep the role split but get a cleaner finish than manual copy-paste glue.
 
+   .. grid-item-card:: Running multiple agents already?
+      :link: what-breaks-first-with-multiple-coding-agents
+      :link-type: doc
+
+      See why trust usually breaks on shared boundaries, merged-state checks, and weak handoffs before raw Git conflicts.
+
    .. grid-item-card:: Start from a copy-paste prompt
       :link: first-task-prompt-templates
       :link-type: doc
@@ -218,6 +225,7 @@ Then come back and ask one question:
    first-task-guide
    which-agent-should-i-start-with
    claude-code-codex-workflow
+   what-breaks-first-with-multiple-coding-agents
    first-task-prompt-templates
    ralph-workflow-vs-aider
    reviewable-output
