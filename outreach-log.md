@@ -3,6 +3,15 @@
 ## 2026-05-17 (Sunday)
 
 ### RalphWorkflow Conversion
+- **Public repo onboarding improvement**: Updated `START_HERE.md` with a four-question opening, the fastest honest first-run command path, and a copy-paste `PROMPT.md` example for a real first backlog task.
+  - Commit: `aea17f7a` — `Tighten start-here first-run conversion`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and the repo’s public start path still asked visitors to “write a one-paragraph spec” without giving them the exact command flow and spec shape to use tonight. This makes the first run more concrete and lowers the gap between interest and actual use.
+
+- **Hosted docs/site conversion improvement**: Added and pushed two new public Sphinx docs pages — `first-task-guide.md` and `reviewable-output.md` — then linked them from the docs homepage, getting-started flow, and quickstart.
+  - Commit: `83a3fb4a` — `Add hosted docs proof assets`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the main bottleneck is still conversion to free use, and the live hosted docs path was still weaker than the repo landing path. This puts the strongest proof assets directly in the high-intent docs journey: what Ralph is, who it is for, why it is different, why use it now, how to pick a first task, and what a trustworthy reviewable handoff should look like.
 - **Public repo conversion improvement**: Added and pushed a real root-level `START_HERE.md` plus a stronger README opening that explicitly answers the four marketing questions and drives visitors into the first-task / merge-test path.
   - Commit: `01d8bd8e` — `Add start-here conversion entry point`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -232,4 +241,12 @@ _Last updated: 2026-05-11 06:29 UTC_
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-17 04:35:07
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 05:05:06
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 05:35:07
 - **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
