@@ -11,6 +11,7 @@ Ralph Workflow
        <a class="hero-cta hero-cta-secondary" href="example-review-bundle.html">See a public review bundle first</a>
      </div>
      <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
+     <p class="hero-proof-note">Prefer to inspect the code before installing? <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">Review the GitHub mirror</a> or <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">read the primary Codeberg repo</a>.</p>
    </section>
 
 .. note::

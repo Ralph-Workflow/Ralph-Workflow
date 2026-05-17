@@ -16,6 +16,8 @@ Start with **one real backlog task** you already care about.
 
 If the only thing you are stuck on right now is agent choice, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md) and pick the agent that is already working on your machine.
 
+If you want to inspect the project before you install anything, open the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) or the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first.
+
 ## The fastest honest first run
 
 If you want the shortest path from curiosity to a real evaluation, use this exact flow in a real repo you already care about:
