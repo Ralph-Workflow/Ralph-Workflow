@@ -3,6 +3,14 @@
 ## 2026-05-17 (Sunday)
 
 ### RalphWorkflow Conversion
+- **Public repo/docs trust-path improvement**: Clarified and pushed the real first-run prerequisite across the public README, `START_HERE.md`, docs map, hosted docs homepage, and hosted getting-started page: Ralph Workflow is free/open source, but you still need one supported agent CLI already installed and authenticated on your own machine before the first run.
+  - Commit: `c12a1e2d` — `Clarify first-run agent prerequisites`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and the public promise was drifting a little too close to “install and go” without making the upstream agent prerequisite obvious enough. Tightening that expectation should reduce trust loss and first-run bounce from high-intent visitors who are ready to try Ralph tonight but would otherwise hit avoidable setup confusion.
+- **Public proof-asset improvement**: Strengthened the public `free-open-source-proof` / hosted `reviewable-output` assets with a concrete morning-after review path, including the expected `.agent/` artifact bundle, what to open first, and the exact merge-test flow; also tightened README / START_HERE / docs-map links to point at that proof asset more explicitly.
+  - Commit: `69782b30` — `Strengthen reviewable output proof asset`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and the existing proof page described reviewability in the abstract. High-intent visitors need to see the actual handoff shape — diff, `.agent/DEVELOPMENT_RESULT.md`, artifact files, and the morning-after review order — so they can picture what “reviewable output” means before deciding to try Ralph tonight.
 - **Public repo/site first-run conversion improvement**: Added and pushed a copy-paste "fastest honest first run" block to the main public README, root `START_HERE.md`, and hosted docs homepage (`ralph-workflow/docs/sphinx/index.rst`).
   - Commit: `e9a9043c` — `Tighten first-run conversion path`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -265,4 +273,12 @@ _Last updated: 2026-05-11 06:29 UTC_
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-17 06:35:07
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 07:05:06
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 07:35:07
 - **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.

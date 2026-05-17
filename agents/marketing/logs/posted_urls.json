@@ -64,7 +64,23 @@
       "keyword": "ai coding workflow",
       "cta": "install_ralphworkflow",
       "hypothesis": "Concrete use-case posts should attract the strongest engagement because they show results, not just theory."
+    },
+    {
+      "date": "2026-05-17",
+      "draft": "2026-05-17_philosophy_draft.md",
+      "title": "Why AI Agents Need Structure, Not Just Prompts",
+      "platform": "write.as",
+      "ok": true,
+      "status": "posted",
+      "url": "https://write.as/ymuli3yv4pd8x",
+      "error": null,
+      "draft_hash": "2dce5c1faddaa1fb30423b26df15630eb1c4a09384a928de0fa83f5088f6ff0f",
+      "experiment_id": "2026-05-17-philosophy",
+      "content_type": "philosophy",
+      "keyword": "ai agent workflow",
+      "cta": "install_ralphworkflow",
+      "hypothesis": "Philosophy posts clarify positioning and should build baseline awareness."
     }
   ],
-  "last_run": "2026-05-16T22:38:47.527544"
+  "last_run": "2026-05-17T08:02:57.797280"
 }
