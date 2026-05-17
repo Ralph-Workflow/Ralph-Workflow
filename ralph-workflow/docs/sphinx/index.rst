@@ -9,9 +9,10 @@ Ralph Workflow
      <div class="hero-actions">
        <a class="hero-cta" href="getting-started.html">Run your first real task →</a>
        <a class="hero-cta hero-cta-secondary" href="example-review-bundle.html">See a public review bundle first</a>
+       <a class="hero-cta hero-cta-secondary" href="https://github.com/Ralph-Workflow/Ralph-Workflow">Inspect on GitHub</a>
      </div>
      <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
-     <p class="hero-proof-note">Prefer to inspect the code before installing? <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">Review the GitHub mirror</a> or <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">read the primary Codeberg repo</a>.</p>
+     <p class="hero-proof-note">Prefer to inspect the code before installing or follow the project where you already evaluate open source? <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">Review, star, or watch the GitHub mirror</a> or <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">read the primary Codeberg repo</a>.</p>
    </section>
 
 Choose the first path that matches how you already work tonight:
