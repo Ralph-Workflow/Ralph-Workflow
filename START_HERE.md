@@ -14,6 +14,8 @@ If you want to know whether Ralph Workflow is useful, do not start with a vague 
 
 Start with **one real backlog task** you already care about.
 
+If the only thing you are stuck on right now is agent choice, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md) and pick the agent that is already working on your machine.
+
 ## The fastest honest first run
 
 If you want the shortest path from curiosity to a real evaluation, use this exact flow in a real repo you already care about:
@@ -23,6 +25,8 @@ Checklist before you run it:
 - Python 3.12+
 - a git repo you can safely test in
 - at least one supported agent CLI already working on your machine
+
+If you are unsure which one to start with, use the one you already trust and see [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
 
 ```bash
 pipx install ralph-workflow
@@ -76,6 +80,7 @@ Bad first tasks:
 - mixed multi-part work
 - anything where no one agrees what “done” means
 
+If you are still hesitating over Claude Code vs Codex vs OpenCode, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 If you already use worktrees or separate agent sessions and want to know what Ralph Workflow adds beyond that, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
@@ -147,6 +152,7 @@ A useful Ralph Workflow run should leave you with:
 
 - [README.md](./README.md)
 - [docs/quick-reference.md](./docs/quick-reference.md)
+- [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md)
 - [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
 - [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) — see the concrete artifact bundle and morning-after review path
 - [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md)

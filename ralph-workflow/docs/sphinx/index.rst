@@ -115,6 +115,12 @@ Then come back and ask one question:
 
       Pick a real backlog task that is small enough to judge, clear enough to verify, and worth trying tonight.
 
+   .. grid-item-card:: Choose your first agent path
+      :link: which-agent-should-i-start-with
+      :link-type: doc
+
+      Do not over-optimize the provider choice: start with the agent already installed and authenticated on your machine.
+
    .. grid-item-card:: Start from a copy-paste prompt
       :link: first-task-prompt-templates
       :link-type: doc
@@ -157,6 +163,7 @@ Then come back and ask one question:
 
    getting-started
    first-task-guide
+   which-agent-should-i-start-with
    first-task-prompt-templates
    reviewable-output
    example-review-bundle

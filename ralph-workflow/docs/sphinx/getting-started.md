@@ -42,6 +42,7 @@ Bad first tasks:
 - anything where nobody agrees what success looks like
 
 If you want a sharper pass/fail filter before you install, read [Choose Your First Ralph Workflow Task](first-task-guide.md).
+If you are unsure whether to start with Claude Code, Codex, or OpenCode, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [First-Task Prompt Templates](first-task-prompt-templates.md).
 If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fix artifacts before you run Ralph yourself, read [Example Review Bundle](example-review-bundle.md).
 
@@ -51,7 +52,9 @@ You will need:
 
 - **Python 3.12 or newer** — check with `python --version`
 - **A git repository** — Ralph Workflow runs inside a git repo
-- **At least one supported AI agent on your PATH** — usually `claude` (Claude Code) or `opencode` (OpenCode). If you want the documented non-interactive Claude path, configure `claude-headless`.
+- **At least one supported AI agent on your PATH** — usually `claude` (Claude Code), Codex CLI, or `opencode` (OpenCode). If you want the documented non-interactive Claude path, configure `claude-headless`.
+
+If you are unsure which one to start with, use the agent that is already installed, already authenticated, and already familiar, then read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 
 Install links:
 
@@ -201,6 +204,7 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 ## Next steps
 
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean merge/no-merge evaluation
+- [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — choose the first agent path with the least setup friction
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste `PROMPT.md` shapes for strong first runs
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — shorter proof overview and the merge test
 - [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts
