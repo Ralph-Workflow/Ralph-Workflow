@@ -18,6 +18,7 @@ Important expectation for evaluators: Ralph Workflow is free and open source, bu
 - `example-review-bundle.md` — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
 - `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
 - `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
+- `review-ai-coding-output-before-merge.md` — five-minute merge review path for the morning-after handoff
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
 - `claude-code-codex-workflow.md` — practical guide for developers already pairing Claude Code and Codex who want a cleaner finish than manual glue
@@ -87,6 +88,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `which-agent-should-i-start-with.md` — practical first-run agent-choice guide for Claude Code, Codex, and OpenCode users
 - `first-task-prompt-templates.md` — copy-paste starter prompt shapes for feature work, validation, refactors, tests, and docs
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
+- `review-ai-coding-output-before-merge.md` — practical merge-review checklist for deciding whether the handoff is trustworthy
 - `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task
 - `why-worktrees-are-not-enough.md` — practical comparison for teams already using worktrees who still need a reviewable unattended handoff
 - `claude-code-codex-workflow.md` — practical guide for splitting Claude Code and Codex across plan/build/review without manual glue chaos

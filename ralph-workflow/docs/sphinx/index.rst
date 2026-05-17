@@ -19,6 +19,7 @@ Choose the first path that matches how you already work tonight:
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
+- Want a clearer **merge decision** for the morning-after handoff? Read :doc:`review-ai-coding-output-before-merge`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
 
 .. note::
@@ -192,6 +193,12 @@ Then come back and ask one question:
 
       See the kind of diff, checks, notes, and merge decision a trustworthy unattended run should hand back.
 
+   .. grid-item-card:: Review AI output before merge
+      :link: review-ai-coding-output-before-merge
+      :link-type: doc
+
+      Use the five-minute merge check: diff, finish receipt, real checks, shared boundaries, then the merge question.
+
    .. grid-item-card:: Inspect a real review bundle
       :link: example-review-bundle
       :link-type: doc
@@ -229,6 +236,7 @@ Then come back and ask one question:
    first-task-prompt-templates
    ralph-workflow-vs-aider
    reviewable-output
+   review-ai-coding-output-before-merge
    example-review-bundle
    quickstart
    concepts

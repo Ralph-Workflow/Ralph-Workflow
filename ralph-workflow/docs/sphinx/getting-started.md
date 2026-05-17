@@ -45,6 +45,7 @@ If you want a sharper pass/fail filter before you install, read [Choose Your Fir
 If you are unsure whether to start with Claude Code, Codex, or OpenCode, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md).
 If you already run multiple agents and the real pain is review/reconstruction rather than branch collisions, read [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md).
+If the part you still do not trust is the morning-after merge decision, read [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [First-Task Prompt Templates](first-task-prompt-templates.md).
 If you already use Aider for interactive work and want the clearest contrast, read [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md).
 If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fix artifacts before you run Ralph yourself, read [Example Review Bundle](example-review-bundle.md).
@@ -212,6 +213,7 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste `PROMPT.md` shapes for strong first runs
 - [Claude Code + Codex Workflow](claude-code-codex-workflow.md) — practical guide for keeping the role split but improving the morning-after handoff
 - [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, merged-state checks, finish receipts, and the trust failures that show up before raw merge conflicts
+- [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — practical five-minute merge checklist for the morning-after handoff
 - [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md) — the clearest comparison if your current baseline is interactive AI pair programming
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — shorter proof overview and the merge test
 - [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts
