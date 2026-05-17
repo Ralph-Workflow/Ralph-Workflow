@@ -3,6 +3,10 @@
 ## 2026-05-17 (Sunday)
 
 ### RalphWorkflow Conversion
+- **Public proof-asset publish + distribution improvement**: Published and pushed a real `example-review-bundle` proof asset into the public repo, including a sample `PROMPT.md`, morning-after result notes, review/fix handoff files, and artifact JSONs; then surfaced it from the public README, `START_HERE.md`, docs map, docs homepage, getting-started path, quickstart, first-task guide, and reviewable-output page.
+  - Commit: `f239c27a` — `Publish example review bundle proof asset`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and the strongest missing trust surface was a public proof asset people could inspect before installing. Abstract claims about “reviewable output” are weaker than a real morning-after bundle high-intent visitors can open and judge with the merge test.
 - **Public repo/docs trust-path improvement**: Clarified and pushed the real first-run prerequisite across the public README, `START_HERE.md`, docs map, hosted docs homepage, and hosted getting-started page: Ralph Workflow is free/open source, but you still need one supported agent CLI already installed and authenticated on your own machine before the first run.
   - Commit: `c12a1e2d` — `Clarify first-run agent prerequisites`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -281,4 +285,12 @@ _Last updated: 2026-05-11 06:29 UTC_
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-17 07:35:07
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 08:05:07
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 08:36:09
 - **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.

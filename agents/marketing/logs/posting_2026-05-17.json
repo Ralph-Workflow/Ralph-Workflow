@@ -1,21 +1,12 @@
 {
-  "timestamp": "2026-05-17T08:02:57.797280",
+  "timestamp": "2026-05-17T09:01:28.033417",
   "results": [
     {
-      "date": "2026-05-17",
       "draft": "2026-05-17_philosophy_draft.md",
-      "title": "Why AI Agents Need Structure, Not Just Prompts",
-      "platform": "write.as",
       "ok": true,
-      "status": "posted",
-      "url": "https://write.as/ymuli3yv4pd8x",
-      "error": null,
+      "status": "already_posted",
       "draft_hash": "2dce5c1faddaa1fb30423b26df15630eb1c4a09384a928de0fa83f5088f6ff0f",
-      "experiment_id": "2026-05-17-philosophy",
-      "content_type": "philosophy",
-      "keyword": "ai agent workflow",
-      "cta": "install_ralphworkflow",
-      "hypothesis": "Philosophy posts clarify positioning and should build baseline awareness."
+      "experiment_id": "2026-05-17-philosophy"
     }
   ]
 }
