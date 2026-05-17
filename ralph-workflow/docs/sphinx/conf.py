@@ -54,6 +54,7 @@ html_theme_options = {
     "navigation_with_keys": True,
 }
 html_title = "Ralph Workflow"
+language = "en"
 html_show_sourcelink = True
 html_show_sphinx = False
 html_baseurl = "https://ralphworkflow.com/docs/"

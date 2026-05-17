@@ -23,6 +23,7 @@ Choose the first path that matches how you already work tonight:
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
 - Want a clearer **merge decision** for the morning-after handoff? Read :doc:`review-ai-coding-output-before-merge`.
 - Want the cleanest possible **finish receipt / re-entry path** before you trust the run? Read :doc:`what-a-good-ai-coding-finish-receipt-looks-like`.
+- Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
 
 .. note::
@@ -258,6 +259,7 @@ Then come back and ask one question:
 
    getting-started
    when-unattended-coding-fits
+   unattended-coding-agent
    first-task-guide
    which-agent-should-i-start-with
    ralph-workflow-vs-claude-code
