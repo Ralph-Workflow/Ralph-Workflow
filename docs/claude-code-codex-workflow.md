@@ -87,6 +87,7 @@ Then:
 If you want the shortest first-run path, start with [../START_HERE.md](../START_HERE.md).
 If you want help choosing the first agent path, read [which-agent-should-i-start-with.md](./which-agent-should-i-start-with.md).
 If you want to inspect a public proof asset before your own run, open [example-review-bundle.md](./example-review-bundle.md).
+If you already follow open-source tooling on GitHub, inspect Ralph Workflow on the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) and **star or watch it there** if this Claude Code + Codex handoff problem is exactly the one you want solved.
 
 ## The practical takeaway
 

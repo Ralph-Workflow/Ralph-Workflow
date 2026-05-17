@@ -31,6 +31,8 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 - **I want to inspect the project where I already follow open-source tools.** Review the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) or the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
 - **I want to see what a good result looks like before I try it.** Read [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete morning-after review path.
 
+If you already judge open-source tools on GitHub, open the mirror first. If Ralph looks like a fit for your workflow, **star or watch it there before your first run** so you can track updates while you test it on a real backlog task.
+
 ## Tonight's first run in five minutes
 
 If you want the shortest honest test, do this in a real repo you already care about:
@@ -234,7 +236,7 @@ Keep this README for onboarding. Use these when you want the full reference:
 - **Docs:** <https://ralphworkflow.com/docs>
 - **Issues:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Repository:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow> — inspect, star, or watch Ralph Workflow where you already follow open-source tools
 - **PyPI package:** <https://pypi.org/project/ralph-workflow/>
 
 ## License

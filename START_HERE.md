@@ -18,6 +18,8 @@ If the only thing you are stuck on right now is agent choice, read [docs/which-a
 
 If you want to inspect the project before you install anything, open the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) or the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first.
 
+If GitHub is where you already evaluate open-source tools, use the mirror as your inspection path and **star or watch it there** if Ralph looks worth trying on your next overnight backlog task.
+
 ## The fastest honest first run
 
 If you want the shortest path from curiosity to a real evaluation, use this exact flow in a real repo you already care about:
