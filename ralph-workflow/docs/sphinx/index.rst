@@ -17,8 +17,8 @@ Ralph Workflow
 
    New here? Read :doc:`getting-started` first — it gets you from install to first run quickly,
    without making you learn the internals first. If you are still deciding whether Ralph Workflow
-   fits your work, start with :doc:`first-task-guide`, :doc:`first-task-prompt-templates`, and
-   :doc:`reviewable-output`.
+   fits your work, start with :doc:`when-unattended-coding-fits`, :doc:`first-task-guide`,
+   :doc:`first-task-prompt-templates`, and :doc:`reviewable-output`.
 
 What Ralph Workflow is for
 ==========================
@@ -58,6 +58,29 @@ run again.
 
 If you want proof before your own first run, inspect the public :doc:`example-review-bundle` and
 judge whether that handoff looks like something you would actually trust yourself to review.
+
+Know whether your task is a good fit
+====================================
+
+Ralph Workflow is strongest when the job is substantial enough to hand off but still bounded enough
+to review honestly in the morning.
+
+Good first runs usually look like:
+
+- one backlog task with a clear stopping point
+- acceptance criteria you can verify quickly
+- a result that should come back as a clean diff, not a research memo
+- work you already wanted done, not a synthetic demo
+
+Poor first runs usually look like:
+
+- vague exploration with no clear definition of done
+- risky production surgery where rollback would be painful
+- broad multi-part projects with too many moving pieces for one overnight pass
+- anything where the human reviewer could not confidently answer: **would I merge this?**
+
+If you are unsure, read :doc:`when-unattended-coding-fits` before you install. It is the fastest
+way to avoid wasting your first run on the wrong task shape.
 
 Your fastest honest first run
 =============================
@@ -108,6 +131,12 @@ Then come back and ask one question:
       :link-type: doc
 
       Install Ralph Workflow, point it at a repo, write ``PROMPT.md``, and launch your first unattended run.
+
+   .. grid-item-card:: Is my task a good fit?
+      :link: when-unattended-coding-fits
+      :link-type: doc
+
+      Use a quick good-fit vs bad-fit filter before you spend time on setup or a weak first run.
 
    .. grid-item-card:: Choose a good first task
       :link: first-task-guide
@@ -162,6 +191,7 @@ Then come back and ask one question:
    :caption: Get Started
 
    getting-started
+   when-unattended-coding-fits
    first-task-guide
    which-agent-should-i-start-with
    first-task-prompt-templates
