@@ -25,6 +25,7 @@ Bad first tasks:
 - anything where no one agrees what “done” means
 
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
+If you already use worktrees or separate agent sessions and want to know what Ralph Workflow adds beyond that, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 
 ## Write the task like a one-paragraph spec
 
@@ -62,3 +63,4 @@ A useful Ralph Workflow run should leave you with:
 - [docs/quick-reference.md](./docs/quick-reference.md)
 - [docs/free-open-source-proof.md](./docs/free-open-source-proof.md)
 - [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md)
+- [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md)

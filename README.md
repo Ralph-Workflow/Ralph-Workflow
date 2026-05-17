@@ -92,6 +92,7 @@ If yes, Ralph Workflow is doing useful work. If not, tighten the task, verificat
 
 For a practical walkthrough, read [START_HERE.md](./START_HERE.md).
 If you are not sure whether your task is a good fit for unattended execution, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
+If you already use worktrees and want to understand what Ralph adds beyond isolation, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 
 ## What a good run feels like
 
@@ -117,6 +118,7 @@ It should leave you with:
 
 See [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete first-task example and review bundle example.
 See [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md) for a simple good-task vs bad-task decision guide.
+See [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md) for the practical difference between simple workspace isolation and a reviewable unattended handoff.
 
 ## Depth presets
 
@@ -161,7 +163,7 @@ Keep this README for onboarding. Use these when you want the full reference:
 - **Docs:** <https://ralphworkflow.com/docs>
 - **Issues:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Repository:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **GitHub mirror:** <https://github.com/mistlight/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 - **PyPI package:** <https://pypi.org/project/ralph-workflow/>
 
 ## License
