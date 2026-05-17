@@ -1,5 +1,17 @@
 # Outreach Log
 
+## 2026-05-17 (Sunday)
+
+### RalphWorkflow Conversion
+- **Public repo/docs improvement**: Added and pushed `docs/why-worktrees-are-not-enough.md` plus README / START_HERE / docs index links.
+  - Commit: `e93df0dc` — `Add worktrees comparison conversion guide`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: Repeated market pain is "we already use worktrees / multiple agent sessions, so what does Ralph actually add?" A direct comparison asset is a stronger trust/conversion move than another generic post because it answers the differentiation question for high-intent users already close to trying the product.
+- **Public repo/docs improvement**: Added and pushed `docs/when-unattended-coding-fits.md` plus README / START_HERE / docs index links.
+  - Commit: `62cb7cb4` — `Add first-task fit guide`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: The current bottleneck is conversion to free use, so a simple good-task vs bad-task decision guide is higher leverage than another generic awareness post. It gives interested visitors a clearer first task, sharper fit test, and a faster path to an honest merge/no-merge evaluation.
+
 ## 2026-05-16 (Friday)
 
 ### RalphWorkflow Distribution
@@ -203,3 +215,9 @@ _Last updated: 2026-05-11 06:29 UTC_
 - Public repo commit: `89345ba7` — `Replace trial wording with free OSS framing`
 - Renamed public doc `docs/trial-proof.md` -> `docs/free-open-source-proof.md`
 - Updated public README/docs references and internal marketing materials to use free/open-source adoption wording instead.
+
+### RalphWorkflow Conversion
+- **Public docs/site conversion improvement**: Updated the Sphinx docs homepage and getting-started page to answer the four marketing questions earlier, push the right first-task framing, and anchor evaluation on the merge test.
+  - Commit: `55967acb` — `Sharpen docs conversion messaging`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: current bottleneck is conversion to free use, and docs visitors were landing on a mostly technical path before seeing the strongest fit / trust / why-now framing. This makes the docs surface act more like a serious adoption entry point instead of just reference material.
