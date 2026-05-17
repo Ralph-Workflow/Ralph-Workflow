@@ -320,3 +320,9 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Status:** ✅ Published
 - **Notes:** Autoposted from reddit-monitor shortlist: #2 How are you handling merge safety when running multiple coding agents on the same repo? (`r/ClaudeCode`).
 - **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Conversion
+- **Hosted docs trust/fit-path improvement**: Added and pushed a dedicated Sphinx `when-unattended-coding-fits.md` page, then surfaced it directly on the hosted docs homepage with a new good-fit/bad-fit section, a prominent fit-check card, and homepage copy that routes uncertain visitors into the fit filter before they waste a first run.
+  - Commit: `d088768f` — `Surface task-fit guidance on docs homepage`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and the hosted docs homepage was strong on setup and proof but still weak at qualifying whether a visitor’s first task was a good unattended fit. Making the fit filter visible earlier should improve trust, reduce bad first-run experiences, and help high-intent evaluators reach a cleaner merge/no-merge test faster.

@@ -1,9 +1,9 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-17T09:20:09.047715
+- Generated: 2026-05-17T10:20:09.597769
 - Current bottleneck: **conversion_to_free_use**
 - Owned articles logged: **6**
-- Reddit posts analyzed: **5**
+- Reddit posts analyzed: **6**
 
 ## Why this is the bottleneck
 - Owned content and outreach exist, but repo/public adoption signals are still low.
