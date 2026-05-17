@@ -1,5 +1,13 @@
 # Start Here: Use Ralph Workflow on One Real Task
 
+Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+
+It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
+
+What makes it different is the handoff: Ralph Workflow is built to bring back a **reviewable result** — a real diff, checks, artifacts, and enough context to decide whether you would merge it.
+
+Why use it now? Because you can install it for free, hand off one real backlog task tonight, and judge the result honestly tomorrow.
+
 If you want to know whether Ralph Workflow is useful, do not start with a vague demo.
 
 Start with **one real backlog task** you already care about.
@@ -27,6 +35,20 @@ Bad first tasks:
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 If you already use worktrees or separate agent sessions and want to know what Ralph Workflow adds beyond that, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 
+## Run the fastest honest first test
+
+```bash
+pipx install ralph-workflow
+cd /path/to/your/project
+ralph --init
+ralph --diagnose
+$EDITOR PROMPT.md
+ralph
+```
+
+Use a real repo and a real backlog item. The point is not to watch the run live.
+The point is to come back to something you can review like normal engineering work.
+
 ## Write the task like a one-paragraph spec
 
 Before the run starts, write down:
@@ -34,6 +56,24 @@ Before the run starts, write down:
 - what should stay untouched
 - what done looks like
 - what checks matter
+
+Use a simple structure like this in `PROMPT.md`:
+
+```markdown
+# Goal
+
+Add validation so the CLI rejects empty project names before creating files.
+Keep the rest of the create flow unchanged.
+
+## Acceptance criteria
+
+- Empty or whitespace-only project names fail with a clear error
+- No project files are created for invalid names
+- Existing valid-name behavior stays unchanged
+- Tests cover the new validation
+```
+
+That level of specificity is enough for a strong first run.
 
 ## How to judge the result honestly
 
