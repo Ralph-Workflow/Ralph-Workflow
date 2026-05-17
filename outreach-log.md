@@ -3,6 +3,14 @@
 ## 2026-05-17 (Sunday)
 
 ### RalphWorkflow Conversion
+- **Public repo/site first-run conversion improvement**: Added and pushed a copy-paste "fastest honest first run" block to the main public README, root `START_HERE.md`, and hosted docs homepage (`ralph-workflow/docs/sphinx/index.rst`).
+  - Commit: `e9a9043c` — `Tighten first-run conversion path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and even after stronger proof assets the highest-intent visitors still had to click around to reconstruct the exact first-run flow. This puts the install commands, a concrete `PROMPT.md` example, and the merge-test question directly on the primary public entry points so someone can go from curiosity to a real overnight run with less guesswork.
+- **Public repo/docs conversion improvement**: Added and pushed `docs/first-task-prompt-templates.md` plus a hosted Sphinx `first-task-prompt-templates.md`, then linked the new asset from README, `START_HERE.md`, docs index, docs homepage, getting-started, quickstart, and first-task guide.
+  - Commit: `8b0b38f7` — `Add first-task prompt templates`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and even a stronger start-here path still left high-intent visitors staring at a blank `PROMPT.md`. Copy-paste prompt shapes for feature work, validation, refactors, tests, and docs reduce first-run friction and make tonight’s first backlog-task run more concrete.
 - **Public repo onboarding improvement**: Updated `START_HERE.md` with a four-question opening, the fastest honest first-run command path, and a copy-paste `PROMPT.md` example for a real first backlog task.
   - Commit: `aea17f7a` — `Tighten start-here first-run conversion`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -250,3 +258,11 @@ _Last updated: 2026-05-11 06:29 UTC_
 ### Marketing momentum watchdog
 - **When:** 2026-05-17 05:35:07
 - **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 06:05:07
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 06:35:07
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.
