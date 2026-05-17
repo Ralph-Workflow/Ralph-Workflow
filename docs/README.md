@@ -9,6 +9,8 @@ If you are evaluating Ralph Workflow rather than maintaining it, start with thes
 - **Why is it different?** Ralph is built to return a reviewable result in the repo — not just a transcript and a "done" claim.
 - **Why use it now?** You can try it for free on one real backlog task and judge it with one question: would you merge this?
 
+Important expectation for evaluators: Ralph Workflow is free and open source, but it orchestrates coding agents you already have on your own machine. For the cleanest first impression, have at least one supported agent CLI already installed and already authenticated before you start the first-run docs.
+
 ## Best first docs for evaluators
 
 - `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task

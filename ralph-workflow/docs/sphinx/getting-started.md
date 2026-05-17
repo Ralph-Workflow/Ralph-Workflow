@@ -12,6 +12,8 @@ What makes it different from a normal AI coding chat is the handoff: Ralph Workf
 
 Why use it now? Because you can try it with the agents you already trust on your own machine, on one real backlog task, and decide tomorrow whether the result is something you would actually merge.
 
+Important expectation before you install: Ralph Workflow is free and open source, but it does **not** replace the coding agent itself. For the fastest honest first run, have at least one supported agent CLI already installed and already authenticated on your own machine before you continue.
+
 It works well for substantial work in **existing repositories** as well as new ones: feature work, refactors, test expansion, documentation passes, and similar multi-file tasks.
 
 ## Choose the right first task

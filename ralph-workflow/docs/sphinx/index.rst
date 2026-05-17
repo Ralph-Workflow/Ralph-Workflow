@@ -29,6 +29,10 @@ context you can inspect in your normal engineering process.
 Why try it now? Because you can use the agents you already trust on your own machine, run one real
 backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
+Important first-run expectation: Ralph Workflow is free and open source, but it does not replace
+the coding agents you already use. Before you start, have at least one supported agent CLI already
+installed and already authenticated on your own machine.
+
 Your best first test
 ====================
 
@@ -53,6 +57,12 @@ Your fastest honest first run
 
 If you want the shortest path from curiosity to a real evaluation, use this exact flow in a real
 repo you already care about:
+
+Before you run it, make sure you already have:
+
+- Python 3.12+
+- a git repo you can safely test in
+- at least one supported agent CLI already installed and already authenticated
 
 .. code-block:: bash
 

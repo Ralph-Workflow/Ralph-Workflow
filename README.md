@@ -10,6 +10,8 @@ Ralph Workflow is an agent-agnostic orchestration CLI for spec-driven planning, 
 
 The point is not to generate a throwaway demo. Ralph Workflow is built for the kind of work that should leave you with a serious starting point for production: a working feature, a refactor in progress, a verified batch of tests, or a reviewable implementation foundation your team can keep pushing forward.
 
+**Important first-run expectation:** Ralph Workflow is free and open source, but it does **not** replace the coding agents you already use. Before your first run, have at least one supported agent CLI already installed and already authenticated on your own machine. Ralph orchestrates that agent and hands back a reviewable result.
+
 ## Quick answer: is this for you?
 
 - **What is it?** A free and open-source orchestration CLI that runs the coding agents you already use on your own machine.
@@ -28,6 +30,12 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 ## Tonight's first run in five minutes
 
 If you want the shortest honest test, do this in a real repo you already care about:
+
+Prerequisites before you start:
+
+- Python 3.12+
+- a git repo you can safely test in
+- at least one supported agent CLI already installed and already authenticated (for example Claude Code, Codex CLI, or OpenCode)
 
 ```bash
 pipx install ralph-workflow

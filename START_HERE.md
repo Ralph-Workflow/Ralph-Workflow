@@ -8,6 +8,8 @@ What makes it different is the handoff: Ralph Workflow is built to bring back a 
 
 Why use it now? Because you can install it for free, hand off one real backlog task tonight, and judge the result honestly tomorrow.
 
+Before you start: Ralph Workflow does **not** replace Claude Code, Codex CLI, OpenCode, or whichever coding agent you want to use. It orchestrates the agent you already have on **your own machine**. For the fastest honest first run, make sure one supported agent CLI is already installed and already authenticated before you continue.
+
 If you want to know whether Ralph Workflow is useful, do not start with a vague demo.
 
 Start with **one real backlog task** you already care about.
@@ -15,6 +17,12 @@ Start with **one real backlog task** you already care about.
 ## The fastest honest first run
 
 If you want the shortest path from curiosity to a real evaluation, use this exact flow in a real repo you already care about:
+
+Checklist before you run it:
+
+- Python 3.12+
+- a git repo you can safely test in
+- at least one supported agent CLI already working on your machine
 
 ```bash
 pipx install ralph-workflow
