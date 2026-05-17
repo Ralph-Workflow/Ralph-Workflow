@@ -32,18 +32,21 @@ from ralph.pipeline.legacy_console_display import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.config.models import UnifiedConfig
     from ralph.display.artifact_reader import AnalysisDecisionSummary, PlanSummary
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.pipeline.effects import Effect
     from ralph.pipeline.events import Event
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.workspace import FsWorkspace
     from ralph.workspace.scope import WorkspaceScope
+
+
+class _HandlePhaseFn(Protocol):
+    def __call__(self, effect: Effect, ctx: PhaseContext) -> list[Event]: ...
 
 
 class _ReadLatestAnalysisDecisionFn(Protocol):
@@ -84,7 +87,7 @@ def _phase_event_after_agent_run(
     display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
-    handle_phase_fn: Callable[..., object] | None = None,
+    handle_phase_fn: _HandlePhaseFn | None = None,
 ) -> Event:
     ctx = PhaseContext.model_construct(
         workspace=workspace,

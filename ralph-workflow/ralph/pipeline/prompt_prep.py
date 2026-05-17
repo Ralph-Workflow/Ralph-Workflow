@@ -20,17 +20,27 @@ from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Mapping
 
     from ralph.config.models import AgentConfig
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, ArtifactsPolicy, PipelinePolicy, PolicyBundle
+    from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
     from ralph.workspace.scope import WorkspaceScope
 
 
 class _RegistryLike(Protocol):
     def get(self, name: str) -> AgentConfig | None: ...
+
+
+class _MaterializePromptFn(Protocol):
+    def __call__(
+        self,
+        context: PromptPhaseContext | None = ...,
+        options: PromptPhaseOptions | None = ...,
+        **kwargs: object,
+    ) -> str: ...
 
 
 def _prompt_session_drain_for_phase(
@@ -118,7 +128,7 @@ def _materialize_prepared_prompt(
     agents_policy: AgentsPolicy | None = None,
     state: PipelineState | None = None,
     env: Mapping[str, str] | None = None,
-    materialize_fn: Callable[..., None] | None = None,
+    materialize_fn: _MaterializePromptFn | None = None,
 ) -> None:
     env_map = os.environ if env is None else env
     workspace = FsWorkspace(
@@ -166,7 +176,7 @@ def _materialize_agent_prompt_if_needed(
     policy_bundle: PolicyBundle,
     registry: _RegistryLike,
     *,
-    materialize_fn: Callable[..., None] | None = None,
+    materialize_fn: _MaterializePromptFn | None = None,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
         return

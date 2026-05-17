@@ -30,12 +30,12 @@ from ralph.interrupt import controller_from_process_manager
 from ralph.interrupt.asyncio_bridge import install_signal_handlers
 from ralph.interrupt.controller import install_force_kill_handler
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
+from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.server.lifecycle import (
     check_mcp_bridge_health,
     shutdown_mcp_server,
     start_mcp_server,
 )
-from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.transport import common as transport_common_module
 from ralph.mcp.upstream.agent_probe import AgentProbeReport, probe_agent_transports
@@ -122,6 +122,8 @@ from ralph.pipeline.phase_transition import (
 )
 from ralph.pipeline.prompt_prep import (
     _materialize_prepared_prompt as _materialize_prepared_prompt_impl,
+)
+from ralph.pipeline.prompt_prep import (
     materialize_agent_prompt_if_needed,
     prompt_session_drain_for_phase,
 )
@@ -144,7 +146,7 @@ from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
     from pathlib import Path
 
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -158,6 +160,8 @@ if TYPE_CHECKING:
         _ShutdownMcpServerFn,
         _StartMcpServerFn,
     )
+    from ralph.pipeline.phase_agent_handler import _HandlePhaseFn
+    from ralph.pipeline.prompt_prep import _MaterializePromptFn
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
@@ -174,8 +178,10 @@ __all__ = [
     "PENDING_PHASE_TRANSITION_METADATA_ATTR",
     "AgentExecutionDeps",
     "AgentRegistry",
+    "DynamicBindingMcpServerFactory",
     "McpSupervisor",
     "PendingPhaseTransitionMetadata",
+    "SubprocessAgentExecutor",
     "available_width",
     "build_agent_recovery_plan",
     "build_session_mcp_plan",
@@ -190,6 +196,8 @@ __all__ = [
     "execute_commit_effect",
     "handle_phase",
     "heartbeat_policy_from_env",
+    "install_signal_handlers",
+    "install_width_refresher",
     "make_display_context",
     "materialize_prompt_for_phase",
     "materialize_system_prompt",
@@ -197,6 +205,7 @@ __all__ = [
     "phase_output_artifact_paths",
     "prompt_session_drain_for_phase",
     "record_activity_on_subscriber",
+    "reducer_reduce",
     "register_role_handlers",
     "render_agent_activity_line",
     "render_commit_message",
@@ -204,6 +213,7 @@ __all__ = [
     "resolve_display",
     "resolve_workspace_scope",
     "run",
+    "run_process_async",
     "show_phase_close_banner",
     "show_phase_transition",
     "shutdown_mcp_server",
@@ -939,13 +949,40 @@ def _materialize_agent_prompt_if_needed(
     workspace: FsWorkspace,
     policy_bundle: PolicyBundle,
     registry: _RegistryLike,
-    **kwargs: object,
+    *,
+    materialize_fn: _MaterializePromptFn | None = None,
 ) -> None:
-    materialize_agent_prompt_if_needed(effect, state, workspace, policy_bundle, registry, **kwargs)
+    materialize_agent_prompt_if_needed(
+        effect, state, workspace, policy_bundle, registry,
+        materialize_fn=materialize_fn,
+    )
 
 
-def _phase_event_after_agent_run(**kwargs: object) -> Event:
-    return phase_event_after_agent_run(**kwargs)
+def _phase_event_after_agent_run(
+    *,
+    effect: InvokeAgentEffect,
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle,
+    workspace: FsWorkspace,
+    workspace_scope: WorkspaceScope | None = None,
+    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display_context: DisplayContext | None = None,
+    verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
+    handle_phase_fn: _HandlePhaseFn | None = None,
+) -> Event:
+    return phase_event_after_agent_run(
+        effect=effect,
+        config=config,
+        policy_bundle=policy_bundle,
+        workspace=workspace,
+        workspace_scope=workspace_scope,
+        display=display,
+        display_context=display_context,
+        verbosity=verbosity,
+        state=state,
+        handle_phase_fn=handle_phase_fn,
+    )
 
 
 def _execute_fan_out_sync(
@@ -965,9 +1002,9 @@ def materialize_prepared_prompt(
     workspace_scope: WorkspaceScope,
     agents_policy: AgentsPolicy | None = None,
     state: PipelineState | None = None,
-    **kwargs: object,
+    env: Mapping[str, str] | None = None,
 ) -> None:
-    """Wrap _materialize_prepared_prompt, injecting runner's patchable materialize_prompt_for_phase."""
+    """Delegate to _materialize_prepared_prompt, injecting the patchable prompt function."""
     _mat_fn = (
         materialize_prompt_for_phase
         if materialize_prompt_for_phase is not _original_materialize_prompt_for_phase
@@ -980,8 +1017,8 @@ def materialize_prepared_prompt(
         workspace_scope,
         agents_policy=agents_policy,
         state=state,
+        env=env,
         materialize_fn=_mat_fn,
-        **kwargs,
     )
 
 

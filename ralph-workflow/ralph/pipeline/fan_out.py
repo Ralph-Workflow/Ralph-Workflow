@@ -313,7 +313,9 @@ def _resume_fan_out_state(
     pipeline_policy: PipelinePolicy,
     subscriber: _PipelineSubscriberLike | None,
 ) -> tuple[PipelineState, tuple[WorkUnit, ...]]:
-    resumed_state, _ = _runner_module.reducer_reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
+    resumed_state, _ = _runner_module.reducer_reduce(
+        state, PipelineEvent.WORKERS_RESUMED, pipeline_policy
+    )
     _notify_subscriber(subscriber, resumed_state)
     completed_ids = {
         uid

@@ -28,7 +28,6 @@ from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
 from ralph.prompts.debug_dump import multimodal_sidecar_path, prompt_dump_path
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.display.completion_summary import CompletionSummaryOptions
@@ -46,6 +45,28 @@ class _PhaseCountersProtocol(Protocol):
     thinking_blocks: int
     tool_calls: int
     errors: int
+
+
+class _ShowCloseBannerFn(Protocol):
+    def __call__(
+        self,
+        exit_model: PhaseExitModel,
+        *,
+        display_context: DisplayContext,
+        pipeline_policy: PipelinePolicy | None = ...,
+    ) -> None: ...
+
+
+class _ShowTransitionFn(Protocol):
+    def __call__(
+        self,
+        from_phase: str,
+        to_phase: str,
+        *,
+        context: dict[str, object] | None = ...,
+        display_context: DisplayContext | None = ...,
+        pipeline_policy: PipelinePolicy | None = ...,
+    ) -> None: ...
 
 
 class _ParallelDisplayModule(Protocol):
@@ -493,8 +514,8 @@ def _emit_phase_change_surfaces(
     *,
     display_context: DisplayContext,
     pipeline_policy: PipelinePolicy,
-    show_close_banner_fn: Callable[..., None] | None = None,
-    show_transition_fn: Callable[..., None] | None = None,
+    show_close_banner_fn: _ShowCloseBannerFn | None = None,
+    show_transition_fn: _ShowTransitionFn | None = None,
 ) -> None:
     phase_close_already_emitted: bool = (
         display.phase_close_emitted
@@ -530,8 +551,8 @@ def _emit_phase_transition_if_changed(
     *,
     verbosity: Verbosity,
     pipeline_policy: PipelinePolicy,
-    show_close_banner_fn: Callable[..., None] | None = None,
-    show_transition_fn: Callable[..., None] | None = None,
+    show_close_banner_fn: _ShowCloseBannerFn | None = None,
+    show_transition_fn: _ShowTransitionFn | None = None,
 ) -> str:
     """Emit the canonical close+transition display when the phase changes.
 
