@@ -13,7 +13,8 @@ Ralph Workflow
 
    New here? Read :doc:`getting-started` first — it gets you from install to first run quickly,
    without making you learn the internals first. If you are still deciding whether Ralph Workflow
-   fits your work, start with :doc:`first-task-guide` and :doc:`reviewable-output`.
+   fits your work, start with :doc:`first-task-guide`, :doc:`first-task-prompt-templates`, and
+   :doc:`reviewable-output`.
 
 What Ralph Workflow is for
 ==========================
@@ -62,6 +63,12 @@ run again.
 
       Pick a real backlog task that is small enough to judge, clear enough to verify, and worth trying tonight.
 
+   .. grid-item-card:: Start from a copy-paste prompt
+      :link: first-task-prompt-templates
+      :link-type: doc
+
+      Use ready-made `PROMPT.md` shapes for the most common high-confidence first runs.
+
    .. grid-item-card:: Know what good output looks like
       :link: reviewable-output
       :link-type: doc
@@ -92,6 +99,7 @@ run again.
 
    getting-started
    first-task-guide
+   first-task-prompt-templates
    reviewable-output
    quickstart
    concepts

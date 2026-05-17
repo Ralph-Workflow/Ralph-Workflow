@@ -40,6 +40,7 @@ Bad first tasks:
 - anything where nobody agrees what success looks like
 
 If you want a sharper pass/fail filter before you install, read [Choose Your First Ralph Workflow Task](first-task-guide.md).
+If you want copy-paste starter specs instead of drafting from scratch, read [First-Task Prompt Templates](first-task-prompt-templates.md).
 
 ## Before you start
 
@@ -119,6 +120,8 @@ A strong first spec says:
 - what `done` looks like
 - what checks prove it worked
 
+If a blank page slows you down, start from [First-Task Prompt Templates](first-task-prompt-templates.md) and adapt the closest shape to your repo.
+
 **Important:** remove the `<!-- ralph:starter-prompt ... -->` comment at the top. Ralph Workflow refuses to run while that sentinel is still present so you do not accidentally launch the placeholder task.
 
 ### 4. Verify the environment
@@ -195,6 +198,7 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 ## Next steps
 
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean merge/no-merge evaluation
+- [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste `PROMPT.md` shapes for strong first runs
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — example review bundle and the merge test
 - [Quickstart](quickstart.md) — shorter repeat-use reference
 - [Concepts](concepts.md) — the terms you will see most often

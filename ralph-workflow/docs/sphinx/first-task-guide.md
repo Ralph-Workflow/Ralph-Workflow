@@ -104,4 +104,5 @@ That is the real product test.
 ## Next step
 
 - Continue with [Getting Started](getting-started.md) for the install and first-run flow
+- Read [First-Task Prompt Templates](first-task-prompt-templates.md) if you want copy-paste starter specs instead of drafting from scratch
 - Read [What Good Output Looks Like](reviewable-output.md) to see the kind of handoff you should expect

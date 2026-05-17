@@ -32,6 +32,7 @@ Bad first tasks:
 - mixed multi-part work
 - anything where no one agrees what “done” means
 
+If you want copy-paste starter specs instead of drafting from scratch, read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 If you already use worktrees or separate agent sessions and want to know what Ralph Workflow adds beyond that, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 
@@ -74,6 +75,7 @@ Keep the rest of the create flow unchanged.
 ```
 
 That level of specificity is enough for a strong first run.
+If you want more ready-made shapes for feature work, validation, refactors, tests, or docs, use [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
 
 ## How to judge the result honestly
 
@@ -101,6 +103,7 @@ A useful Ralph Workflow run should leave you with:
 
 - [README.md](./README.md)
 - [docs/quick-reference.md](./docs/quick-reference.md)
+- [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
 - [docs/free-open-source-proof.md](./docs/free-open-source-proof.md)
 - [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md)
 - [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md)
