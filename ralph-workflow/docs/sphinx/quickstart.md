@@ -22,7 +22,7 @@ Checklist before you start:
 - a git repo you can safely test in
 - at least one supported agent CLI already working on your machine
 
-If you are unsure which agent to start with, use the one already installed and read [Which Agent Should I Start With?](which-agent-should-i-start-with.md). If Claude Code is already your default and you want the clearest reason to add Ralph, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md). If you already split work between Claude Code and Codex, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md). If you already run multiple agents and the trust gap is in the morning-after handoff, read [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md). If the merge decision itself still feels fuzzy, read [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md).
+If you are unsure which agent to start with, use the one already installed and read [Which Agent Should I Start With?](which-agent-should-i-start-with.md). If Claude Code is already your default and you want the clearest reason to add Ralph, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md). If you already split work between Claude Code and Codex, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md). If you already run multiple agents and the trust gap is in the morning-after handoff, read [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md). If the merge decision itself still feels fuzzy, read [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md). If the missing piece is a short trustworthy re-entry summary, read [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md).
 
 ## Install
 
@@ -120,6 +120,7 @@ That is the real first-run test.
 - [Claude Code + Codex Workflow](claude-code-codex-workflow.md) — practical guide for reducing manual handoff glue between implementation and review
 - [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — practical guide for the trust/reconstruction failures that show up before raw Git conflicts
 - [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — practical five-minute merge checklist for the morning-after handoff
+- [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md) — the exact short handoff that should tell you what changed, what passed, and what still needs judgment
 - [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md) — the clearest comparison if your current baseline is interactive AI pair programming
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see the shorter proof overview and the merge test
 - [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run

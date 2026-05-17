@@ -92,6 +92,7 @@ If you already use worktrees or separate agent sessions and want to know what Ra
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
 If you already run multiple coding agents and the real pain is review/reconstruction, read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
 If the handoff still feels hard to judge at merge time, read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
+If you want the cleanest possible morning-after re-entry point, read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
 If you already use Aider and want to know when Ralph Workflow is the better fit, read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
 
 ## Run the fastest honest first test
@@ -165,6 +166,7 @@ A useful Ralph Workflow run should leave you with:
 - [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
 - [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) — see the concrete artifact bundle and morning-after review path
 - [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md) — use the five-minute merge check on the morning-after handoff
+- [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md) — see the exact short handoff that should save you from replaying the whole night
 - [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md)
 - [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md)
 - [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md)

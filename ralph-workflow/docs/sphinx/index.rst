@@ -22,6 +22,7 @@ Choose the first path that matches how you already work tonight:
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
 - Want a clearer **merge decision** for the morning-after handoff? Read :doc:`review-ai-coding-output-before-merge`.
+- Want the cleanest possible **finish receipt / re-entry path** before you trust the run? Read :doc:`what-a-good-ai-coding-finish-receipt-looks-like`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
 
 .. note::
@@ -207,6 +208,12 @@ Then come back and ask one question:
 
       Use the five-minute merge check: diff, finish receipt, real checks, shared boundaries, then the merge question.
 
+   .. grid-item-card:: Know what a good finish receipt says
+      :link: what-a-good-ai-coding-finish-receipt-looks-like
+      :link-type: doc
+
+      See the short morning-after handoff that should tell you what changed, what passed, and what still needs judgment.
+
    .. grid-item-card:: Inspect a real review bundle
       :link: example-review-bundle
       :link-type: doc
@@ -246,6 +253,7 @@ Then come back and ask one question:
    ralph-workflow-vs-aider
    reviewable-output
    review-ai-coding-output-before-merge
+   what-a-good-ai-coding-finish-receipt-looks-like
    example-review-bundle
    quickstart
    concepts
