@@ -140,6 +140,6 @@ A useful Ralph Workflow run should leave you with:
 - [README.md](./README.md)
 - [docs/quick-reference.md](./docs/quick-reference.md)
 - [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
-- [docs/free-open-source-proof.md](./docs/free-open-source-proof.md)
+- [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) — see the concrete artifact bundle and morning-after review path
 - [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md)
 - [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md)

@@ -22,27 +22,56 @@ When a user runs the project creation flow, reject empty or whitespace-only proj
 
 A useful unattended result should not just say “done.”
 
-It should look more like this:
+It should leave behind a small review surface you can inspect in a few minutes:
 
-### Task
+```text
+.
+├── cli/create.py
+├── tests/test_create.py
+└── .agent/
+    ├── PLAN.md
+    ├── DEVELOPMENT_RESULT.md
+    ├── ISSUES.md              # only if review found problems
+    ├── FIX_RESULT.md          # only if a fix pass ran
+    └── artifacts/
+        ├── plan.json
+        ├── development_result.json
+        ├── issues.json
+        └── fix_result.json
+```
+
+### What you should be able to review quickly
+
+#### Task
 Add empty-project-name validation to the CLI create flow.
 
-### Changed files
+#### Changed files
 - `cli/create.py`
 - `tests/test_create.py`
 
-### What changed
-- added validation for empty / whitespace-only names before file creation
-- returned a clear user-facing error message
-- kept the rest of the flow unchanged
+#### What changed
+- validation rejects empty and whitespace-only names before file creation
+- the user gets a clear error instead of partial output
+- existing valid-name behavior stays unchanged
 
-### Checks run
-- unit tests for create flow
-- lint / formatting checks if applicable
+#### Checks run
+- create-flow unit tests
+- lint or formatting checks if applicable
 
-### Open questions
-- should the same validation also reject reserved names?
-- should the UI prompt trim whitespace before validation?
+#### Open questions
+- should reserved names also be rejected?
+- should the input be trimmed before validation?
+
+## What to open first in the morning
+
+1. Open the diff and confirm the changed files match the task.
+2. Read `.agent/DEVELOPMENT_RESULT.md` for the implementation summary.
+3. Read `.agent/ISSUES.md` and `.agent/FIX_RESULT.md` if the review/fix loop ran.
+4. Run the relevant tests yourself.
+5. Ask one question: **would I merge this?**
+
+If that path feels fast and honest, Ralph Workflow did its job.
+If it feels murky, the handoff is still too weak.
 
 ## Final review question
 

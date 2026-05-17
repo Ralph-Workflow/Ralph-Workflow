@@ -13,7 +13,7 @@ If you are evaluating Ralph Workflow rather than maintaining it, start with thes
 
 - `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
 - `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
-- `free-open-source-proof.md` — example first task and what a reviewable result should look like
+- `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
 
