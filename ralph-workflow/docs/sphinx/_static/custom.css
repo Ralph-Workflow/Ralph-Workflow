@@ -98,10 +98,17 @@ div.tip {
     margin-top: 0;
 }
 
+/* Hero CTA layout */
+.hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+}
+
 /* Hero CTA pill button */
 .hero-cta {
     display: inline-block;
-    margin-top: 1.5rem;
     padding: 0.625rem 1.5rem;
     background: var(--color-brand-primary);
     color: #fff !important;
@@ -109,12 +116,30 @@ div.tip {
     font-weight: 600;
     font-size: 0.9rem;
     text-decoration: none !important;
-    transition: background 150ms, box-shadow 150ms;
+    transition: background 150ms, box-shadow 150ms, color 150ms;
 }
 
 .hero-cta:hover {
     background: var(--color-brand-content);
     box-shadow: 0 4px 12px rgba(8, 145, 178, 0.35);
+}
+
+.hero-cta-secondary {
+    background: transparent;
+    color: var(--color-foreground-primary) !important;
+    border: 1px solid var(--color-background-border, var(--color-sidebar-background-border));
+}
+
+.hero-cta-secondary:hover {
+    background: var(--color-background-secondary);
+    color: var(--color-brand-primary) !important;
+    box-shadow: none;
+}
+
+.hero-proof-note {
+    margin-top: 1rem;
+    color: var(--color-foreground-secondary);
+    font-size: 0.95rem;
 }
 
 /* Headings */
@@ -187,6 +212,15 @@ a:hover {
 @media (max-width: 48em) {
     .hero-headline {
         font-size: 2rem;
+    }
+
+    .hero-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .hero-cta {
+        text-align: center;
     }
 }
 

@@ -5,8 +5,12 @@ Ralph Workflow
 
    <section class="hero">
      <h1 class="hero-headline">Run bigger AI coding tasks without babysitting the terminal</h1>
-     <p class="hero-subtitle">Ralph Workflow keeps the workflow in your repo: write the task in <code>PROMPT.md</code>, let Ralph Workflow run planning, coding, and agent review, then come back to completed work, logs, and artifacts you can inspect in your normal git workflow.</p>
-     <a class="hero-cta" href="getting-started.html">Get started →</a>
+     <p class="hero-subtitle">Ralph Workflow is free and open source. It orchestrates the coding agents you already use on your own machine, runs planning + development + review as one unattended flow, and brings back a reviewable result instead of just a transcript and a done claim.</p>
+     <div class="hero-actions">
+       <a class="hero-cta" href="getting-started.html">Run your first real task →</a>
+       <a class="hero-cta hero-cta-secondary" href="example-review-bundle.html">See a public review bundle first</a>
+     </div>
+     <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
    </section>
 
 .. note::
