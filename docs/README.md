@@ -20,6 +20,7 @@ Important expectation for evaluators: Ralph Workflow is free and open source, bu
 - `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
+- `ralph-workflow-vs-aider.md` — clearest comparison if your current baseline is interactive AI pair programming
 
 ## Current Python docs
 
@@ -86,6 +87,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
 - `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task
 - `why-worktrees-are-not-enough.md` — practical comparison for teams already using worktrees who still need a reviewable unattended handoff
+- `ralph-workflow-vs-aider.md` — comparison page for developers deciding between interactive pair programming and unattended reviewable handoff
 
 ## Architecture family (mixed state — see docs/architecture/README.md for explicit classification)
 

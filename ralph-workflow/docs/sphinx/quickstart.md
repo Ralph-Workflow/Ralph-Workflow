@@ -116,6 +116,7 @@ That is the real first-run test.
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean pass/fail evaluation
 - [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — pick the first agent path with the least setup friction
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste starter specs for common good-fit tasks
+- [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md) — the clearest comparison if your current baseline is interactive AI pair programming
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see the shorter proof overview and the merge test
 - [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
 - [Getting Started](getting-started.md) — fuller first-run walkthrough

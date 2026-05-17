@@ -160,6 +160,12 @@ Then come back and ask one question:
 
       Use ready-made `PROMPT.md` shapes for the most common high-confidence first runs.
 
+   .. grid-item-card:: Already use Aider?
+      :link: ralph-workflow-vs-aider
+      :link-type: doc
+
+      See when interactive AI pair programming is enough and when an unattended reviewable handoff is the better fit.
+
    .. grid-item-card:: Know what good output looks like
       :link: reviewable-output
       :link-type: doc
@@ -199,6 +205,7 @@ Then come back and ask one question:
    first-task-guide
    which-agent-should-i-start-with
    first-task-prompt-templates
+   ralph-workflow-vs-aider
    reviewable-output
    example-review-bundle
    quickstart
