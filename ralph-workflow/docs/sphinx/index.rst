@@ -155,6 +155,12 @@ Then come back and ask one question:
 
       Do not over-optimize the provider choice: start with the agent already installed and authenticated on your machine.
 
+   .. grid-item-card:: Already split work across Claude Code and Codex?
+      :link: claude-code-codex-workflow
+      :link-type: doc
+
+      See how to keep the role split but get a cleaner finish than manual copy-paste glue.
+
    .. grid-item-card:: Start from a copy-paste prompt
       :link: first-task-prompt-templates
       :link-type: doc
@@ -205,6 +211,7 @@ Then come back and ask one question:
    when-unattended-coding-fits
    first-task-guide
    which-agent-should-i-start-with
+   claude-code-codex-workflow
    first-task-prompt-templates
    ralph-workflow-vs-aider
    reviewable-output

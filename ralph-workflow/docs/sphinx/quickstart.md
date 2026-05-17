@@ -22,7 +22,7 @@ Checklist before you start:
 - a git repo you can safely test in
 - at least one supported agent CLI already working on your machine
 
-If you are unsure which agent to start with, use the one already installed and read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
+If you are unsure which agent to start with, use the one already installed and read [Which Agent Should I Start With?](which-agent-should-i-start-with.md). If you already split work between Claude Code and Codex, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md).
 
 ## Install
 
@@ -116,6 +116,7 @@ That is the real first-run test.
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean pass/fail evaluation
 - [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — pick the first agent path with the least setup friction
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste starter specs for common good-fit tasks
+- [Claude Code + Codex Workflow](claude-code-codex-workflow.md) — practical guide for reducing manual handoff glue between implementation and review
 - [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md) — the clearest comparison if your current baseline is interactive AI pair programming
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see the shorter proof overview and the merge test
 - [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
