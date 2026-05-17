@@ -75,3 +75,4 @@ Secondary: Ensure the Reddit autoposter includes the GitHub mirror URL in commen
 
 - 2026-05-17 12:25 UTC: Identified distribution as bottleneck, not conversion surfaces. Correct.
 - 2026-05-17 18:20 UTC: Confirmed. Conversion surfaces are strong. Distribution-to-GitHub conversion is still the blocking issue. write.as distribution is the highest-leverage move remaining.
+- 2026-05-17 21:20 UTC: GitHub link injection confirmed working in last 5 posts. Bottleneck is write.as articles with zero platform distribution. HN submission is the next move; Lobsters requires invitation (longer path). Cooldown-limited on Reddit. Stop adding conversion assets.

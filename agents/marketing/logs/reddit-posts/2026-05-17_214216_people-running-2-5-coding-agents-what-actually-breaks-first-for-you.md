@@ -1,0 +1,29 @@
+# Reddit Post Log — 2026-05-17 21:42:16
+
+- Account: `Informal-Salt827`
+- Thread URL: https://old.reddit.com/r/ClaudeCode/comments/1stu0cr/people_running_25_coding_agents_what_actually/
+- Comment URL: https://old.reddit.com/r/ClaudeCode/comments/1stu0cr/people_running_25_coding_agents_what_actually/omcywrd/
+- Note: Manual post on fresh r/ClaudeCode thread: People running 2–5 coding agents: what actually breaks first for you?
+- Report: /home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-17_2115.md
+- Rank: 1
+- Title: People running 2–5 coding agents: what actually breaks first for you?
+- Community: r/ClaudeCode
+- Angle: the hard part is not running the agents; it is coming back to a result you can reconstruct and trust
+
+## Comment body
+
+What breaks first for me is confidence in the merged state, not the individual agent runs.
+
+Worktrees and role splits got the execution side mostly livable. The painful part the next morning is answering four boring questions fast:
+- what touched shared boundaries
+- who was allowed to touch them
+- what global check says the merged state still makes sense
+- what still needs a human decision
+
+The biggest improvement was forcing every run to end with a tiny finish receipt instead of a heroic transcript: touched areas, checks run, assumptions made, and unresolved risks. Then I keep config/schema/migrations under one explicit owner. Other agents can suggest or leave notes, but they do not silently "help" there.
+
+That combination cut way more review pain for me than adding more routing logic.
+
+I ended up building RalphWorkflow around exactly that morning-after problem. It's free and open source, runs the agent CLIs you already use on your own machine, and is meant for work that's too big to babysit but too risky to trust blindly — the goal is to wake up to something reviewable instead of reconstructing the whole night from scattered sessions.
+
+https://github.com/Ralph-Workflow/Ralph-Workflow

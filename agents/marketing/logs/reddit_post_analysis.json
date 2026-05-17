@@ -1,66 +1,66 @@
 {
-  "generated_at": "2026-05-17T20:35:06.196105",
-  "count": 12,
+  "generated_at": "2026-05-17T21:57:57.536332",
+  "count": 14,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 9
+    "Informal-Salt827": 11
   },
   "by_community": {
     "r/AI_Agents": 1,
-    "r/ClaudeCode": 7,
-    "r/codex": 4
+    "r/ClaudeCode": 8,
+    "r/codex": 5
   },
   "top_title_words": [
     "claude",
     "codex",
     "code",
+    "agents",
     "agent",
     "workflow",
     "multiple",
-    "agents",
+    "running",
+    "coding",
+    "both",
+    "actually",
+    "after",
     "anyone",
     "most",
-    "useful",
-    "daily",
-    "managing",
-    "sessions",
-    "manually",
-    "going"
+    "useful"
   ],
   "top_body_tokens": [
-    "diff",
     "workflow",
     "agent",
+    "diff",
     "tool",
+    "ralph",
+    "before",
+    "trust",
     "task",
+    "after",
     "pass",
     "done",
-    "before",
-    "small",
-    "after",
-    "trust",
-    "agents",
-    "changed",
-    "needs",
-    "handoff",
     "ralphworkflow",
+    "agents",
+    "small",
+    "needs",
+    "better",
+    "handoff",
+    "reviewable",
     "checks",
-    "ralph",
-    "loop",
-    "criteria"
+    "work"
   ],
   "phrase_hits": {
-    "worktree": 4,
-    "diff": 12,
+    "worktree": 5,
+    "diff": 13,
     "verify": 1,
-    "handoff": 7,
-    "reviewable": 7,
+    "handoff": 8,
+    "reviewable": 9,
     "done criteria": 6,
     "scope": 6,
     "final check": 1,
     "overnight": 1,
     "review bundle": 1,
-    "trust": 6,
+    "trust": 8,
     "small scoped": 1
   },
   "repeated_openings": [
@@ -74,22 +74,6 @@
     }
   ],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-16T09:18:46.013856",
-      "account": "Clear-Past7954",
-      "community": "r/ClaudeCode",
-      "title": "Claude code agents going off the rails overnight: what's biting you?",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t9fl7h/claude_code_agents_going_off_the_rails_overnight/om3bpdb/",
-      "opening_line": "The stuff that bites overnight is usually the same few things: vague done criteria, retry loops, scope drift, and no hard stop when verification gets weak."
-    },
-    {
-      "timestamp": "2026-05-16T20:17:09.076737",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeCode",
-      "title": "Critique my Workflow",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tdvnnt/critique_my_workflow/om67t5g/",
-      "opening_line": "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
-    },
     {
       "timestamp": "2026-05-16T22:20:25.224106",
       "account": "Informal-Salt827",
@@ -153,6 +137,22 @@
       "title": "Did anyone here moved from claude to codex recently? And why?",
       "comment_url": "https://old.reddit.com/r/codex/comments/1tao42q/did_anyone_here_moved_from_claude_to_codex/omc9mon/",
       "opening_line": "I didn’t fully switch so much as change which tool owns which phase."
+    },
+    {
+      "timestamp": "2026-05-17T20:57:01.999101",
+      "account": "Informal-Salt827",
+      "community": "r/codex",
+      "title": "Codex vs Claude Code: my current take after watching both mature",
+      "comment_url": "https://old.reddit.com/r/codex/comments/1t8n9rs/codex_vs_claude_code_my_current_take_after/omcpyg9/",
+      "opening_line": "The sharpest difference for me isn’t model IQ, it’s operating posture."
+    },
+    {
+      "timestamp": "2026-05-17T21:42:16.276253",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "People running 2–5 coding agents: what actually breaks first for you?",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1stu0cr/people_running_25_coding_agents_what_actually/omcywrd/",
+      "opening_line": "What breaks first for me is confidence in the merged state, not the individual agent runs."
     }
   ],
   "recommendations": [

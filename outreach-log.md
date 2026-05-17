@@ -397,6 +397,17 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Notes:** Fresh body — no thesis opener, no soft last-paragraph Ralph mention. Review-first angle targeting skeptical audience.
 - **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
 
+## 2026-05-17 (Sunday) — Evening Audit — 21:20 UTC
+- **Bottleneck verdict:** distribution-to-free-use conversion, not surface quality. GitHub stars: 0. Codeberg stars: 9.
+- **What's working:** Reddit distribution with fresh bodies, pacing guards, varied shapes. Conversion surfaces genuinely strong.
+- **What's broken:** 6 write.as articles (May 11-16) have zero distribution — never submitted to HN, Lobsters, or any real-reach platform. Dead weight.
+- **Repetition risk:** repeated opening line still alive in autoposter; body-template fix needs end-to-end verification, not just compile check.
+- **What to stop:** adding conversion assets. Diminishing returns. Surfaces are strong enough.
+- **Next highest-leverage move:** (1) Submit strongest write.as articles to HN and Lobsters with GitHub mirror links. (2) Verify autoposter auto-injects GitHub CTA in every high-fit Reddit body end-to-end.
+- **Rules triggered:** four marketing questions still answered in all assets. Free OSS framing preserved. Bottleneck shift confirmed.
+
+---
+
 ## 2026-05-17 (Sunday) — Fresh Reddit Posts (Audit Response)
 
 ### RalphWorkflow Distribution
@@ -489,6 +500,18 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Repeated pains worth tracking:** review/reconstruction overhead, shared-boundary drift, finish receipts, manual Claude/Codex glue, and weak stop conditions on overnight runs.
 - **Risk note:** repeat-pattern risk is now the full **small scope -> checks -> diff -> receipt -> human decides** cadence, not just reused phrases.
 - **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-17_2115.md`
+- **Scan summary:** 30 candidate Reddit threads/posts scanned, 7 shortlisted, 23 rejected.
+- **Current verdict:** ✅ 7 credible opportunities found; strongest live fits are still workflow-question threads, especially `r/ClaudeCode` discussions about what breaks first, Claude→Codex→Claude handoff, and mixed-agent team handoff state.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "People running 2–5 coding agents: what actually breaks first for you?"
+  - `r/ClaudeCode` — "Claude -> Codex -> Claude"
+  - `r/ClaudeCode` — "Claude Code Agent Teams W/ Gemini and Codex"
+- **Repeated pains worth tracking:** review/reconstruction overhead, shared-boundary drift, finish receipts, manual Claude/Codex glue, overnight drift, and mixed-agent permission/session-state mismatch.
+- **Risk note:** repeat-pattern risk now includes the broader **phase split -> checks -> diff -> receipt** cadence plus the familiar **"that’s why I built RalphWorkflow"** product-mention slot.
+- **Posting note:** No posting attempted from this monitor pass.
 - **Public repo/docs workflow-fit improvement**: Added and pushed a new public `Claude Code + Codex workflow` guide across the repo docs and hosted Sphinx docs, then surfaced it from the main README, `START_HERE.md`, docs map, docs homepage, getting-started path, and quickstart.
   - Commit: `430a3c14` — `Add Claude Code + Codex workflow trust path`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -557,3 +580,15 @@ _Last updated: 2026-05-11 06:29 UTC_
   - URL: https://old.reddit.com/r/codex/comments/1t8n9rs/codex_vs_claude_code_my_current_take_after/omcpyg9/
   - Status: ✅ Published
   - Why: the current bottleneck is distribution-to-GitHub conversion, and this still-relevant comparison thread gave room for a fresh phase-ownership answer plus a direct GitHub inspection path to the free open-source project.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1stu0cr/people_running_25_coding_agents_what_actually/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1stu0cr/people_running_25_coding_agents_what_actually/omcywrd/
+- **Status:** ✅ Published
+- **Notes:** Manual post on fresh r/ClaudeCode thread: People running 2–5 coding agents: what actually breaks first for you?
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution Infrastructure
+- **Reddit autopost cadence + GitHub CTA guardrail**: Upgraded `agents/marketing/reddit_autopost.py` so high-fit `r/ClaudeCode` workflow threads now keep the GitHub mirror CTA while the generator also rejects semantically repetitive concept cadences across the last logged Reddit bodies (not just repeated wording/openers).
+  - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`; functional generation check against `seo-reports/reddit_monitor_2026-05-17_2115.md` now yields non-repetitive bodies with `LINK: True` and `REGEN: False` for the top live `r/ClaudeCode` / `Claude -> Codex -> Claude` opportunities
+  - Why: the current bottleneck is distribution-to-adoption, and the repeat risk had moved from phrase reuse to whole body cadence. This keeps future Reddit replies fresher while preserving the inspect/star/watch path on the highest-fit workflow threads instead of dropping the GitHub CTA during regeneration.
