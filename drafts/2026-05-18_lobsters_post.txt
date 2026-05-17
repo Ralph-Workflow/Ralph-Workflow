@@ -1,3 +1,5 @@
+=== LOBSTERS SUBMISSION PACKET ===
+
 Primary asset:
 - Article: How to Tell if an AI Coding Task Is Actually Done
 - Article URL: https://write.as/7pqpd2y0v0re2.md
@@ -16,13 +18,24 @@ ai, programming, tools
 URL:
 https://write.as/7pqpd2y0v0re2.md
 
+Why this asset:
+- technical enough for Lobsters if kept workflow-first and non-promotional
+- centers on verification, reviewability, and merge judgment instead of model hype
+- gives interested readers a free/open-source implementation path on their own machine via the GitHub mirror
+
 Suggested story/comment framing:
 This is the workflow question I keep finding more useful than "which coding agent is best?" — what evidence do you need before an AI-generated change is actually ready to merge?
 
 The implementation behind the essay is Ralph Workflow, a free and open-source tool that orchestrates existing coding agents on your own machine for unattended project-scale work and reviewable morning-after output. Source: https://github.com/Ralph-Workflow/Ralph-Workflow
 
-Likely reply angles:
+Likely reply angles if discussion starts:
 - worktrees help isolation but do not prove the merged result holds up
 - verification should happen inside the run, not only after the agent declares victory
 - reviewable output matters more than verbose agent summaries
 - good unattended tasks are bounded backlog work, refactors with tests, and other changes you can judge honestly
+
+Manual posting steps:
+1. Open https://lobste.rs/stories/new
+2. Submit as a link post with the title, tags, and URL above
+3. Keep any follow-up explanation technical and workflow-first
+4. Avoid product-heavy replies unless someone explicitly asks how you implement the workflow

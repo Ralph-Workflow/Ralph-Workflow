@@ -1,5 +1,14 @@
 # Outreach Log
 
+## 2026-05-18 (Monday)
+
+### RalphWorkflow Conversion
+- **Hosted docs SEO + free-use landing page**: Added and pushed a new public Sphinx page, `unattended-coding-agent`, then surfaced it from the docs homepage and set `language = "en"` in Sphinx config to address the missing docs lang attribute.
+  - Commit: `9836c95e` — `Add unattended coding agent landing page`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `python3 -m py_compile docs/sphinx/conf.py`; keyword/link presence checks in `docs/sphinx/index.rst` and `docs/sphinx/unattended-coding-agent.md`; local build/test unverified in this environment due to missing `uv`
+  - Why: Reddit distribution was already pacing-limited, the current bottleneck is still conversion to free use, and the latest SEO audit showed zero coverage for the exact "unattended coding agent" intent plus a missing lang attribute. This turns a live search-gap term into a durable proof-led conversion page that answers what Ralph Workflow is, who it is for, why it is different, and why to try it now.
+
 ## 2026-05-17 (Sunday)
 
 ### Site messaging review — 18:15 UTC
@@ -628,3 +637,8 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Reddit autopost anti-repetition upgrade**: Tightened `agents/marketing/reddit_autopost.py` so the generator now looks back across the last 5 logged Reddit bodies, penalizes repeated GitHub CTA paragraphs and repeated sentence-level overlap, and picks from a wider set of category-aware GitHub mirror snippets instead of drifting back to the same product close.
   - Verification: `python3 -m py_compile agents/marketing/reddit_autopost.py agents/marketing/tests/test_reddit_autopost.py`; `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`; functional generation probe against the latest monitor shortlist now shows `cta_repeat False` / `regen False` on the top live `r/ClaudeCode` and `r/codex` opportunities.
   - Why: the evening audit showed distribution was still the bottleneck, but Reddit body repetition had moved from openers into the GitHub CTA itself. Fixing the generator is higher leverage than another one-off post because it improves future distribution quality while preserving the free/open-source GitHub conversion path.
+
+### RalphWorkflow Distribution Infrastructure
+- **HN/Lobsters submission packet refresh**: Replaced the stale non-Reddit submission drafts with a current packet built around the strongest owned trust asset, `How to Tell if an AI Coding Task Is Actually Done` (`https://write.as/7pqpd2y0v0re2.md`), and added fresh dated checklists in `drafts/2026-05-18_hackernews_post.txt` and `drafts/2026-05-18_lobsters_post.txt` with the article URL, GitHub mirror CTA, and channel-specific follow-up angles.
+  - Verification: `grep -nE "How to Tell if an AI Coding Task Is Actually Done|GitHub mirror|reviewable" marketing/content-drafts/hackernews.txt marketing/content-drafts/lobsters.txt drafts/2026-05-18_hackernews_post.txt drafts/2026-05-18_lobsters_post.txt`; live endpoint check confirmed HN submit is currently rate-limited from this host (`HTTP 429`) and Lobsters routes `/stories/new` to the login page, so the packets are now the ready-to-fire distribution path for the next authenticated/manual submission.
+  - Why: the current bottleneck is still owned-essay distribution into high-intent technical communities, and the existing HN/Lobsters copy was stale, product-heavy, and out of step with the stronger free/open-source trust framing now live across RalphWorkflow. Refreshing the packets keeps the next non-Reddit distribution move aligned to the four marketing questions and gives GitHub-native evaluators a clean inspect/star/watch path from the first comment.
