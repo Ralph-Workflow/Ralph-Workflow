@@ -3,6 +3,10 @@
 ## 2026-05-17 (Sunday)
 
 ### RalphWorkflow Conversion
+- **Hosted docs/site conversion improvement**: Strengthened the live docs homepage hero so the two highest-intent next steps are above the fold: a primary CTA to run a real first task and a secondary CTA to inspect a public example review bundle before installing.
+  - Commit: `cc3daafe` — `Strengthen docs homepage proof CTA`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and the live homepage was still asking visitors to choose a generic “Get started” path before seeing the strongest trust asset. Putting the free/open-source positioning, proof-first CTA, and the “would I merge this?” evaluation directly in the hero should reduce drop-off from high-intent visitors who want either the fastest honest first run or proof before they commit time.
 - **Public proof-asset publish + distribution improvement**: Published and pushed a real `example-review-bundle` proof asset into the public repo, including a sample `PROMPT.md`, morning-after result notes, review/fix handoff files, and artifact JSONs; then surfaced it from the public README, `START_HERE.md`, docs map, docs homepage, getting-started path, quickstart, first-task guide, and reviewable-output page.
   - Commit: `f239c27a` — `Publish example review bundle proof asset`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -294,3 +298,25 @@ _Last updated: 2026-05-11 06:29 UTC_
 ### Marketing momentum watchdog
 - **When:** 2026-05-17 08:36:09
 - **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 09:05:07
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-17_0915.md`
+- **Scan summary:** 28 candidate Reddit threads/posts scanned, 6 shortlisted, 22 rejected.
+- **Current verdict:** ✅ 6 credible opportunities found; strongest fits are merge-safety, workflow-critique, and Claude/Codex handoff threads.
+- **Best current discussion fits:**
+  - `r/ClaudeCode` — "Critique my Workflow"
+  - `r/ClaudeCode` — "How are you handling merge safety when running multiple coding agents on the same repo?"
+  - `r/ClaudeCode` — "Claude Code + Codex Workflow?"
+- **Repeated pains worth tracking:** merge-safe finish beyond worktrees, approval/draft-state friction, manual Claude/Codex review glue, weak overnight stop conditions, and need for a clean morning-after re-entry point.
+- **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1t9prcp/how_are_you_handling_merge_safety_when_running/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1t9prcp/how_are_you_handling_merge_safety_when_running/om9n4uw/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #2 How are you handling merge safety when running multiple coding agents on the same repo? (`r/ClaudeCode`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`

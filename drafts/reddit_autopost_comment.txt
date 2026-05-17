@@ -1,7 +1,7 @@
-I've had better results when I stop asking whether to trust the agent and start asking whether the workflow makes bad work obvious.
+What helped me more than extra agent cleverness was tightening the merge path.
 
-For me the reliable version is: small scoped task, explicit done criteria before it starts, one verification pass at the end, and a reviewable diff before anything is treated as finished.
+I try to make every task end with explicit acceptance criteria, one isolated worktree or branch, and one final review bundle with the diff, checks run, and anything still uncertain. That catches a lot of the "clean merge, wrong result" problem.
 
-That shifts the problem from blind trust to fast review. If the output is small enough to inspect and the checks are attached, the tool matters a lot less than the structure.
+Worktrees prevent collisions, but the trust layer comes from the final handoff being small enough to review quickly.
 
-We've wrapped that pattern into RalphWorkflow, but honestly the main win is the workflow discipline, not the brand name.
+That's the pattern we've leaned into with RalphWorkflow, but the main value is the review path, not the label.

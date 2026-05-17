@@ -1,59 +1,59 @@
 {
-  "generated_at": "2026-05-17T08:36:09.954669",
-  "count": 5,
+  "generated_at": "2026-05-17T09:47:06.960698",
+  "count": 6,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 2
+    "Informal-Salt827": 3
   },
   "by_community": {
     "r/AI_Agents": 1,
-    "r/ClaudeCode": 3,
+    "r/ClaudeCode": 4,
     "r/codex": 1
   },
   "top_title_words": [
     "agent",
     "workflow",
+    "multiple",
     "claude",
     "code",
+    "agents",
     "most",
     "useful",
     "daily",
     "managing",
-    "multiple",
     "sessions",
     "manually",
-    "agents",
     "going",
     "rails",
     "overnight"
   ],
   "top_body_tokens": [
     "agent",
+    "before",
     "pattern",
+    "done",
+    "diff",
     "small",
     "criteria",
     "task",
     "pass",
-    "done",
-    "before",
+    "stop",
+    "branch",
+    "ralphworkflow",
     "workflow",
     "work",
     "explicit",
     "each",
     "wrapped",
+    "part",
     "structure",
-    "tool",
-    "stop",
-    "optimizing",
-    "reviewable",
-    "verification",
-    "diff"
+    "tool"
   ],
   "phrase_hits": {
-    "worktree": 3,
-    "diff": 5,
+    "worktree": 4,
+    "diff": 6,
     "verify": 1,
-    "handoff": 3,
+    "handoff": 4,
     "reviewable": 4,
     "done criteria": 4,
     "scope": 4,
@@ -113,6 +113,14 @@
       "title": "Use claude code with codex?",
       "comment_url": "https://old.reddit.com/r/codex/comments/1tath73/use_claude_code_with_codex/om6v981/",
       "opening_line": "I've had better results when I stop asking whether to trust the agent and start asking whether the workflow makes bad work obvious."
+    },
+    {
+      "timestamp": "2026-05-17T09:27:18.195313",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "How are you handling merge safety when running multiple coding agents on the same repo?",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t9prcp/how_are_you_handling_merge_safety_when_running/om9n4uw/",
+      "opening_line": "That exact signature-drift case is why I stopped calling a branch “safe” just because its own CI is green."
     }
   ],
   "recommendations": [

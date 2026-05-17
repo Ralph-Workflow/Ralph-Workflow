@@ -1,9 +1,9 @@
 {
-  "last_attempt_at": "2026-05-16T22:20:25.299977",
-  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-16_2218.md",
-  "last_thread_url": "https://www.reddit.com/r/codex/comments/1tath73/use_claude_code_with_codex/",
-  "last_comment_url": "https://old.reddit.com/r/codex/comments/1tath73/use_claude_code_with_codex/om6v981/",
-  "last_attempt_status": "posted",
-  "last_poster_status": "posted",
-  "last_detail": ""
+  "last_attempt_at": "2026-05-17T09:47:07.067821",
+  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-17_0915.md",
+  "last_thread_url": "<https://www.reddit.com/r/ClaudeCode/comments/1tdvnnt/critique_my_workflow/>",
+  "last_comment_url": null,
+  "last_attempt_status": "already_logged",
+  "last_poster_status": "already_logged",
+  "last_detail": "Thread already exists in outreach-log.md"
 }

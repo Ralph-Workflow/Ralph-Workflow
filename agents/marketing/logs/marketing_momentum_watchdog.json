@@ -1,11 +1,8 @@
 {
-  "generated_at": "2026-05-17T08:36:09.934943+02:00",
-  "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-16_2218.md",
-  "report_age_hours": 10.29,
-  "latest_post_age_hours": 10.26,
-  "actions": [
-    "reddit_monitor_stale",
-    "no_recent_reddit_post"
-  ],
-  "status": "needs_attention"
+  "generated_at": "2026-05-17T09:35:07.232248+02:00",
+  "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-17_0915.md",
+  "report_age_hours": 0.27,
+  "latest_post_age_hours": 0.13,
+  "actions": [],
+  "status": "healthy"
 }
