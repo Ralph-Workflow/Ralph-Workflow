@@ -3,6 +3,14 @@
 ## 2026-05-17 (Sunday)
 
 ### RalphWorkflow Conversion
+- **Public repo conversion improvement**: Added and pushed a real root-level `START_HERE.md` plus a stronger README opening that explicitly answers the four marketing questions and drives visitors into the first-task / merge-test path.
+  - Commit: `01d8bd8e` — `Add start-here conversion entry point`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and the live repo still lacked a true public start-here asset despite prior internal notes. This closes that gap on the public repo itself and gives high-intent visitors a sharper “what is it / who is it for / why different / why now / what should I do tonight?” path.
+- **Public repo/docs improvement**: Added and pushed a new top-of-README and docs index conversion block that explicitly answers the four marketing questions and routes visitors into the right proof asset for their current objection.
+  - Commit: `d7f2ac77` — `Sharpen repo conversion entry points`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: current bottleneck is still conversion to free use, so the highest-leverage move was tightening the very first repo/docs screens. Visitors now get an immediate "what is it / who is it for / why different / why now" answer plus direct paths for first run, task fit, worktrees comparison, and proof of reviewable output.
 - **Public repo/docs improvement**: Added and pushed `docs/why-worktrees-are-not-enough.md` plus README / START_HERE / docs index links.
   - Commit: `e93df0dc` — `Add worktrees comparison conversion guide`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -221,3 +229,7 @@ _Last updated: 2026-05-11 06:29 UTC_
   - Commit: `55967acb` — `Sharpen docs conversion messaging`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Why: current bottleneck is conversion to free use, and docs visitors were landing on a mostly technical path before seeing the strongest fit / trust / why-now framing. This makes the docs surface act more like a serious adoption entry point instead of just reference material.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-17 04:35:07
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
