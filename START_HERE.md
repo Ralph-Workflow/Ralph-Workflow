@@ -87,6 +87,7 @@ Bad first tasks:
 If you are still hesitating over Claude Code vs Codex vs OpenCode, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
+If Claude Code is already your default and you want the clearest reason to add Ralph Workflow instead of just staying in one live session, read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
 If you already use worktrees or separate agent sessions and want to know what Ralph Workflow adds beyond that, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
 If you already run multiple coding agents and the real pain is review/reconstruction, read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
@@ -165,6 +166,7 @@ A useful Ralph Workflow run should leave you with:
 - [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) — see the concrete artifact bundle and morning-after review path
 - [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md) — use the five-minute merge check on the morning-after handoff
 - [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md)
+- [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md)
 - [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md)
 - [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md)
 - [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md)

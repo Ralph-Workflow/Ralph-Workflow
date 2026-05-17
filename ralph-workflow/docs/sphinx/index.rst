@@ -17,6 +17,7 @@ Ralph Workflow
 Choose the first path that matches how you already work tonight:
 
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
+- Already using **Claude Code** and deciding whether you even need Ralph? Start with :doc:`ralph-workflow-vs-claude-code`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
 - Want a clearer **merge decision** for the morning-after handoff? Read :doc:`review-ai-coding-output-before-merge`.
@@ -163,6 +164,12 @@ Then come back and ask one question:
 
       Do not over-optimize the provider choice: start with the agent already installed and authenticated on your machine.
 
+   .. grid-item-card:: Already use Claude Code?
+      :link: ralph-workflow-vs-claude-code
+      :link-type: doc
+
+      See when staying interactive in Claude Code is enough and when a reviewable unattended handoff is the better fit.
+
    .. grid-item-card:: Already split work across Claude Code and Codex?
       :link: claude-code-codex-workflow
       :link-type: doc
@@ -231,6 +238,7 @@ Then come back and ask one question:
    when-unattended-coding-fits
    first-task-guide
    which-agent-should-i-start-with
+   ralph-workflow-vs-claude-code
    claude-code-codex-workflow
    what-breaks-first-with-multiple-coding-agents
    first-task-prompt-templates

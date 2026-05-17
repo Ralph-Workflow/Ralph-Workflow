@@ -43,6 +43,7 @@ Bad first tasks:
 
 If you want a sharper pass/fail filter before you install, read [Choose Your First Ralph Workflow Task](first-task-guide.md).
 If you are unsure whether to start with Claude Code, Codex, or OpenCode, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
+If Claude Code is already your default and you want the clearest answer to “why add Ralph at all?”, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md).
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md).
 If you already run multiple agents and the real pain is review/reconstruction rather than branch collisions, read [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md).
 If the part you still do not trust is the morning-after merge decision, read [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md).
@@ -211,6 +212,7 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean merge/no-merge evaluation
 - [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — choose the first agent path with the least setup friction
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste `PROMPT.md` shapes for strong first runs
+- [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md) — the clearest comparison if your baseline is a live Claude Code session and you want to know when an unattended handoff is better
 - [Claude Code + Codex Workflow](claude-code-codex-workflow.md) — practical guide for keeping the role split but improving the morning-after handoff
 - [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, merged-state checks, finish receipts, and the trust failures that show up before raw merge conflicts
 - [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — practical five-minute merge checklist for the morning-after handoff
