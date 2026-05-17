@@ -83,6 +83,68 @@ class RedditAutopostTests(unittest.TestCase):
         self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, body)
         self.assertFalse(reddit_autopost.concept_cadence_repeats(body, recent))
 
+    def test_build_comment_avoids_reusing_identical_github_cta(self):
+        opp = reddit_autopost.Opportunity(
+            rank=1,
+            title="Claude -> Codex -> Claude",
+            url="https://www.reddit.com/r/ClaudeCode/comments/example/",
+            community="r/ClaudeCode",
+            angle="use separate build and review phases",
+            freshness="today",
+            mention_fit="**high**",
+        )
+        repeated_cta = (
+            "If the useful part here is \"one tool builds, one checks, then judge the result like a PR,\" RalphWorkflow is my free/open-source take on that loop. "
+            "It keeps the agents on your own machine and pushes toward reviewable output rather than another long transcript.\n\n"
+            f"{reddit_autopost.GITHUB_MIRROR_URL}"
+        )
+        recent = [
+            "Previous body.\n\n" + repeated_cta,
+            "Another previous body.\n\n" + repeated_cta,
+        ]
+        body = reddit_autopost.build_comment(opp, recent=recent)
+        self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, body)
+        self.assertNotIn("If the useful part here is \"one tool builds, one checks, then judge the result like a PR,\"", body)
+        self.assertFalse(reddit_autopost.github_cta_repeats(body, recent))
+
+    def test_detect_category_separates_handoff_and_mixed_team_threads(self):
+        self.assertEqual(reddit_autopost.detect_category("Claude -> Codex -> Claude"), "handoff")
+        self.assertEqual(
+            reddit_autopost.detect_category("Claude Code Agent Teams W/ Gemini and Codex"),
+            "mixed_team",
+        )
+        self.assertEqual(
+            reddit_autopost.detect_category("People running 2–5 coding agents: what actually breaks first for you?"),
+            "breaks_first",
+        )
+
+    def test_live_high_fit_threads_generate_distinct_bodies(self):
+        handoff = reddit_autopost.Opportunity(
+            rank=2,
+            title="Claude -> Codex -> Claude",
+            url="https://www.reddit.com/r/ClaudeCode/comments/handoff/",
+            community="r/ClaudeCode",
+            angle="cap review loops and keep the handoff small",
+            freshness="today",
+            mention_fit="**high**",
+        )
+        mixed_team = reddit_autopost.Opportunity(
+            rank=3,
+            title="Claude Code Agent Teams W/ Gemini and Codex",
+            url="https://www.reddit.com/r/ClaudeCode/comments/team/",
+            community="r/ClaudeCode",
+            angle="stable handoff contract > clever choreography",
+            freshness="today",
+            mention_fit="**high**",
+        )
+        handoff_body = reddit_autopost.build_comment(handoff, recent=[])
+        mixed_team_body = reddit_autopost.build_comment(mixed_team, recent=[])
+        self.assertNotEqual(handoff_body, mixed_team_body)
+        self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, handoff_body)
+        self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, mixed_team_body)
+        self.assertIn("free/open-source", handoff_body)
+        self.assertIn("free/open-source", mixed_team_body)
+
 
 if __name__ == "__main__":
     unittest.main()

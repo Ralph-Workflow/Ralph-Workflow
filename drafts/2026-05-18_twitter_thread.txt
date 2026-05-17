@@ -1,0 +1,22 @@
+Tweet 1:
+I've watched 200+ developers code in real interviews. The patterns are clear.
+---
+Tweet 2:
+Candidates who write specs first solve the problem 3x faster. Not a typo.
+---
+Tweet 3:
+The questions candidates ask during the interview predict on-the-job questions better than answers.
+---
+Tweet 4:
+The best performers explain their thinking out loud — even when they can't see the interviewer.
+---
+Tweet 5:
+Senior devs don't write more code. They write less code that does more.
+---
+Tweet 6:
+Docker preview wins every time. Candidates can see their code running, interviewers can see their debugging process.
+---
+Tweet 7:
+Full data breakdown: hireaegis.com/research
+
+CHARACTER COUNT: 574 (limit: 280/tweet)

@@ -1,66 +1,67 @@
 {
-  "generated_at": "2026-05-17T22:35:05.807421",
-  "count": 14,
+  "generated_at": "2026-05-17T23:58:38.737880",
+  "count": 15,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 11
+    "Informal-Salt827": 12
   },
   "by_community": {
     "r/AI_Agents": 1,
     "r/ClaudeCode": 8,
-    "r/codex": 5
+    "r/codex": 5,
+    "r/ClaudeAI": 1
   },
   "top_title_words": [
     "claude",
     "codex",
     "code",
     "agents",
+    "running",
     "agent",
     "workflow",
     "multiple",
-    "running",
     "coding",
+    "same",
+    "repo",
     "both",
     "actually",
     "after",
-    "anyone",
-    "most",
-    "useful"
+    "anyone"
   ],
   "top_body_tokens": [
     "workflow",
     "agent",
     "diff",
-    "tool",
     "ralph",
+    "tool",
     "before",
     "trust",
+    "instead",
+    "done",
+    "work",
     "task",
     "after",
     "pass",
-    "done",
+    "needs",
+    "reviewable",
     "ralphworkflow",
+    "checks",
     "agents",
     "small",
-    "needs",
-    "better",
-    "handoff",
-    "reviewable",
-    "checks",
-    "work"
+    "better"
   ],
   "phrase_hits": {
-    "worktree": 5,
-    "diff": 13,
+    "worktree": 6,
+    "diff": 14,
     "verify": 1,
     "handoff": 8,
-    "reviewable": 9,
+    "reviewable": 10,
     "done criteria": 6,
     "scope": 6,
     "final check": 1,
-    "overnight": 1,
+    "overnight": 2,
     "review bundle": 1,
-    "trust": 8,
+    "trust": 9,
     "small scoped": 1
   },
   "repeated_openings": [
@@ -74,14 +75,6 @@
     }
   ],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-16T22:20:25.224106",
-      "account": "Informal-Salt827",
-      "community": "r/codex",
-      "title": "Use claude code with codex?",
-      "comment_url": "https://old.reddit.com/r/codex/comments/1tath73/use_claude_code_with_codex/om6v981/",
-      "opening_line": "I've had better results when I stop asking whether to trust the agent and start asking whether the workflow makes bad work obvious."
-    },
     {
       "timestamp": "2026-05-17T09:27:18.195313",
       "account": "Informal-Salt827",
@@ -153,6 +146,14 @@
       "title": "People running 2–5 coding agents: what actually breaks first for you?",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1stu0cr/people_running_25_coding_agents_what_actually/omcywrd/",
       "opening_line": "What breaks first for me is confidence in the merged state, not the individual agent runs."
+    },
+    {
+      "timestamp": "2026-05-17T22:58:04.849315",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeAI",
+      "title": "Running two Claude Code agents on the same repo simultaneously. Git worktrees make it work.",
+      "comment_url": "https://old.reddit.com/r/ClaudeAI/comments/1t9tolw/running_two_claude_code_agents_on_the_same_repo/omddojv/",
+      "opening_line": "Git worktrees definitely solve the collision problem, but the thing that bites me later is semantic invalidation."
     }
   ],
   "recommendations": [

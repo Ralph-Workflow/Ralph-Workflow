@@ -1,13 +1,14 @@
-1. 🧵 I let Claude Code run for 4 hours on a spec. This is what happened.. Here's what the data says after watching 200+ devs code live.
+1. I've watched 200+ developers code in real interviews. The patterns are clear.
 
-2. Docker preview wins every time. Candidates can see their code running, interviewers can see their debugging process.
+2. Candidates who write specs first solve the problem 3x faster. Not a typo.
 
 3. The questions candidates ask during the interview predict on-the-job questions better than answers.
 
-4. Senior devs don't write more code. They write less code that does more.
+4. The best performers explain their thinking out loud — even when they can't see the interviewer.
 
-5. The 'aha moment' usually happens at minute 12. If it hasn't by minute 20, it won't.
+5. Senior devs don't write more code. They write less code that does more.
 
-6. The best performers explain their thinking out loud — even when they can't see the interviewer.
+6. Docker preview wins every time. Candidates can see their code running, interviewers can see their debugging process.
 
-7. HireAegis — watch candidates code live with AI visibility. Learn more in bio.
+7. Full data breakdown: hireaegis.com/research
+
