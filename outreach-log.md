@@ -2,6 +2,13 @@
 
 ## 2026-05-17 (Sunday)
 
+### RalphWorkflow Adoption Signals
+- **GitHub star/watch CTA improvement on high-intent trust paths**: Added and pushed explicit GitHub-native inspect/star/watch calls to action on the public README, `START_HERE.md`, `docs/claude-code-codex-workflow.md`, and `docs/which-agent-should-i-start-with.md` so visitors arriving from workflow/trust discussions have a cleaner path from “this fits” to a visible GitHub adoption action.
+  - Commit: `228a8d95` — `Add GitHub adoption CTA on trust paths`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- README.md START_HERE.md docs/claude-code-codex-workflow.md docs/which-agent-should-i-start-with.md`; `grep -nE "star or watch it there|inspect Ralph Workflow on the \[GitHub mirror\]|open the mirror first" ...` across all four files
+  - Why: Reddit posting was already volume-limited (`volume_guard_active:4_posts_in_6h`), conversion surfaces were broadly strong, and the clearest remaining gap was distribution-to-GitHub adoption. This tightened the inspect/star/watch path exactly where current Claude Code / Codex evaluators are most likely to land.
+
 ### RalphWorkflow Conversion
 - **Public trust/adoption CTA improvement**: Surfaced repo-inspection links earlier across the hosted docs homepage hero, the main public README, and `START_HERE.md` so GitHub-native and source-first evaluators can inspect/star/watch Ralph Workflow before install instead of hunting for the repo links later in the page.
   - Commit: `2067e490` — `Surface repo inspection CTA earlier`
@@ -462,3 +469,8 @@ _Last updated: 2026-05-11 06:29 UTC_
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- README.md START_HERE.md docs/README.md docs/claude-code-codex-workflow.md ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/getting-started.md ralph-workflow/docs/sphinx/quickstart.md ralph-workflow/docs/sphinx/claude-code-codex-workflow.md`; link-presence check across README / START_HERE / docs map / docs homepage / getting-started / quickstart; local build/test unverified in this environment due to missing `sphinx`
   - Why: Reddit posting was temporarily volume-limited (`volume_guard_active:4_posts_in_6h`), and the freshest live demand is still Claude Code + Codex workflow pain. Turning that active distribution angle into a durable public trust asset gives future Reddit / SEO / GitHub visitors a specific answer to a real workflow question instead of another generic onboarding page.
+- **Public repo/site agent-path conversion improvement**: Surfaced the highest-intent agent-specific first-run paths earlier on the hosted docs homepage hero follow-up, the public README start block, and `START_HERE.md`, pointing Claude Code / Codex visitors straight to `Which Agent Should I Start With?`, `Claude Code + Codex Workflow`, and the public review bundle.
+  - Commit: `8ff13f97` — `Surface agent-path CTA on adoption entry points`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- README.md START_HERE.md docs/sphinx/index.rst`; link-presence check for `which-agent-should-i-start-with`, `claude-code-codex-workflow`, and `example-review-bundle` across all three files; local build/test unverified in this environment due to missing `sphinx`
+  - Why: Reddit distribution is temporarily volume-limited (`volume_guard_active:4_posts_in_6h`), and current inbound demand is heavily Claude Code / Codex workflow-shaped. Surfacing the matching paths earlier should reduce bounce from high-intent visitors who already know their agent setup and just need the fastest trustworthy way to try Ralph tonight.

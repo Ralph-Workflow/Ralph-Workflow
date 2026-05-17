@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-17T09:01:20.323264",
+  "timestamp": "2026-05-17T17:00:47.016353",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -77,7 +77,7 @@
   },
   "posting": {
     "returncode": 0,
-    "stdout": "{\n  \"timestamp\": \"2026-05-17T09:01:28.033417\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-17_philosophy_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"2dce5c1faddaa1fb30423b26df15630eb1c4a09384a928de0fa83f5088f6ff0f\",\n      \"experiment_id\": \"2026-05-17-philosophy\"\n    }\n  ]\n}",
+    "stdout": "{\n  \"timestamp\": \"2026-05-17T17:00:54.723132\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-17_philosophy_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"2dce5c1faddaa1fb30423b26df15630eb1c4a09384a928de0fa83f5088f6ff0f\",\n      \"experiment_id\": \"2026-05-17-philosophy\"\n    }\n  ]\n}",
     "stderr": ""
   }
 }
