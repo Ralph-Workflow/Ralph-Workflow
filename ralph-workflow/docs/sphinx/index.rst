@@ -32,6 +32,20 @@ Choose the first path that matches how you already work tonight:
    fits your work, start with :doc:`when-unattended-coding-fits`, :doc:`first-task-guide`,
    :doc:`first-task-prompt-templates`, and :doc:`reviewable-output`.
 
+Want the deeper workflow argument before you install?
+=====================================================
+
+If you want a longer answer to what Ralph Workflow is, who it is for, why it is different, and why
+it is worth trying now, these are the best supporting reads right now:
+
+- `How to Tell if an AI Coding Task Is Actually Done <https://write.as/7pqpd2y0v0re2.md>`_
+- `Claude Code + Codex Workflow: Plan, Build, Review <https://write.as/vesqh0lzrm4en.md>`_
+- `When Unattended AI Coding Actually Works <https://write.as/x5wil6pmtbvo1.md>`_
+
+Those essays all drive back to the same practical free-use path: use the agents you already have on
+your own machine, run one real backlog task tonight, and ask tomorrow whether you would merge the
+result.
+
 What Ralph Workflow is for
 ==========================
 

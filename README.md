@@ -37,6 +37,16 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 
 If you already judge open-source tools on GitHub, open the mirror first. If Ralph looks like a fit for your workflow, **star or watch it there before your first run** so you can track updates while you test it on a real backlog task.
 
+## Want the longer argument before you install?
+
+If you are still deciding what Ralph Workflow is for, whether unattended coding is a good fit, or how to judge the result honestly, these are the best deeper reads right now:
+
+- [How to Tell if an AI Coding Task Is Actually Done](https://write.as/7pqpd2y0v0re2.md) — trust the finish line, not the model's confidence.
+- [Claude Code + Codex Workflow: Plan, Build, Review](https://write.as/vesqh0lzrm4en.md) — a practical phase-split workflow for people already using both tools.
+- [When Unattended AI Coding Actually Works](https://write.as/x5wil6pmtbvo1.md) — when to use an overnight run, and when not to.
+
+They all point back to the same free/open-source evaluation path: use the agents you already have on your own machine, run one real backlog task tonight, and ask tomorrow whether you would merge the result.
+
 ## Tonight's first run in five minutes
 
 If you want the shortest honest test, do this in a real repo you already care about:

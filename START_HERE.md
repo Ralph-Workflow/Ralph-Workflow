@@ -20,6 +20,16 @@ If you want to inspect the project before you install anything, open the [GitHub
 
 If GitHub is where you already evaluate open-source tools, use the mirror as your inspection path and **star or watch it there** if Ralph looks worth trying on your next overnight backlog task.
 
+## Want the deeper workflow argument first?
+
+If you want a stronger answer to "what is this, who is it for, why is it different, and why should I try it now?" before you install, start with these:
+
+- [How to Tell if an AI Coding Task Is Actually Done](https://write.as/7pqpd2y0v0re2.md) — how to judge whether the morning-after result is actually trustworthy.
+- [Claude Code + Codex Workflow: Plan, Build, Review](https://write.as/vesqh0lzrm4en.md) — the cleanest long-form explanation of the plan/build/review split.
+- [When Unattended AI Coding Actually Works](https://write.as/x5wil6pmtbvo1.md) — the quickest fit check before you spend a night on the wrong task.
+
+They all lead back to the same honest test: install Ralph Workflow for free, run one real backlog task on your own machine, and decide tomorrow whether you would merge it.
+
 ## The fastest honest first run
 
 If you want the shortest path from curiosity to a real evaluation, use this exact flow in a real repo you already care about:
