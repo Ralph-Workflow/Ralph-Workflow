@@ -3,6 +3,13 @@
 ## 2026-05-17 (Sunday)
 
 ### RalphWorkflow Adoption Signals
+- **Public multi-agent trust-path asset**: Added and pushed a new public guide, `what-breaks-first-with-multiple-coding-agents`, across the repo docs and hosted Sphinx docs, then surfaced it from README, `START_HERE.md`, docs map, hosted docs homepage, getting-started, and quickstart.
+  - Commit: `08e23231` — `Add multi-agent trust-break guide`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- README.md START_HERE.md docs/README.md docs/what-breaks-first-with-multiple-coding-agents.md ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/getting-started.md ralph-workflow/docs/sphinx/quickstart.md ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md`; link-presence checks across all surfaced entry points; local build/test unverified in this environment due to missing `sphinx`
+  - Why: Reddit posting was already pacing-limited, and the freshest live market pain is no longer just "how do I run more agents?" but "what breaks first when I come back to parallel agent work?" This turns that active pain into a durable trust/conversion asset focused on shared-boundary drift, merged-state checks, finish receipts, and clean morning-after re-entry.
+
+### RalphWorkflow Adoption Signals
 - **GitHub star/watch CTA improvement on high-intent trust paths**: Added and pushed explicit GitHub-native inspect/star/watch calls to action on the public README, `START_HERE.md`, `docs/claude-code-codex-workflow.md`, and `docs/which-agent-should-i-start-with.md` so visitors arriving from workflow/trust discussions have a cleaner path from “this fits” to a visible GitHub adoption action.
   - Commit: `228a8d95` — `Add GitHub adoption CTA on trust paths`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -474,3 +481,8 @@ _Last updated: 2026-05-11 06:29 UTC_
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- README.md START_HERE.md docs/sphinx/index.rst`; link-presence check for `which-agent-should-i-start-with`, `claude-code-codex-workflow`, and `example-review-bundle` across all three files; local build/test unverified in this environment due to missing `sphinx`
   - Why: Reddit distribution is temporarily volume-limited (`volume_guard_active:4_posts_in_6h`), and current inbound demand is heavily Claude Code / Codex workflow-shaped. Surfacing the matching paths earlier should reduce bounce from high-intent visitors who already know their agent setup and just need the fastest trustworthy way to try Ralph tonight.
+- **Public repo/docs merge-trust improvement**: Added and pushed a new public `How to Review AI Coding Output Before You Merge` guide across the repo docs and hosted Sphinx docs, then surfaced it from the main README, `START_HERE.md`, docs map, docs homepage, getting-started path, and quickstart.
+  - Commit: `9f9c7981` — `Add merge-review trust path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- README.md START_HERE.md docs/README.md docs/review-ai-coding-output-before-merge.md ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/getting-started.md ralph-workflow/docs/sphinx/quickstart.md ralph-workflow/docs/sphinx/review-ai-coding-output-before-merge.md`; link-presence check for `review-ai-coding-output-before-merge` across all surfaced entry points; local build/test unverified in this environment due to missing `sphinx`
+  - Why: the latest Reddit/market pain is shifting from "can I run more agents?" toward "how do I know the morning-after result is actually safe to merge?" With Reddit pacing still active, the highest-leverage move was a durable public trust asset that gives high-intent evaluators a concrete five-minute merge check: diff, finish receipt, real checks, shared-boundary review, then the merge question.
