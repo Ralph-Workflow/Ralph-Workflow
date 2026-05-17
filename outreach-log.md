@@ -2,6 +2,12 @@
 
 ## 2026-05-17 (Sunday)
 
+### Site messaging review — 18:15 UTC
+- Reviewed live https://ralphworkflow.com against current marketing assumptions in REDDIT_LEARNINGS.md and outreach-log.md
+- **Verdict:** No meaningful messaging changes. Core positioning ("unattended AI coding CLI that finishes the job"), three-phase flow, PR-review framing, and "would you merge it?" evaluation are all consistent with current marketing direction.
+- Market pain signals from recent Reddit threads (review/reconstruction overhead, shared-boundary drift, "finish receipts") are covered functionally by existing site features (decision log, test suite, review bundle) but not named as marketing concepts — worth watching but no action needed now.
+- **No updates required to REDDIT_LEARNINGS.md or outreach-log.md.**
+
 ### RalphWorkflow Adoption Signals
 - **Public multi-agent trust-path asset**: Added and pushed a new public guide, `what-breaks-first-with-multiple-coding-agents`, across the repo docs and hosted Sphinx docs, then surfaced it from README, `START_HERE.md`, docs map, hosted docs homepage, getting-started, and quickstart.
   - Commit: `08e23231` — `Add multi-agent trust-break guide`
@@ -10,7 +16,7 @@
   - Why: Reddit posting was already pacing-limited, and the freshest live market pain is no longer just "how do I run more agents?" but "what breaks first when I come back to parallel agent work?" This turns that active pain into a durable trust/conversion asset focused on shared-boundary drift, merged-state checks, finish receipts, and clean morning-after re-entry.
 
 ### RalphWorkflow Adoption Signals
-- **GitHub star/watch CTA improvement on high-intent trust paths**: Added and pushed explicit GitHub-native inspect/star/watch calls to action on the public README, `START_HERE.md`, `docs/claude-code-codex-workflow.md`, and `docs/which-agent-should-i-start-with.md` so visitors arriving from workflow/trust discussions have a cleaner path from “this fits” to a visible GitHub adoption action.
+- **GitHub star/watch CTA improvement on high-intent trust paths**: Added and pushed explicit GitHub-native inspect/star/watch calls to action on the public README, `START_HERE.md`, `docs/claude-code-codex-workflow.md`, and `docs/which-agent-should-i-start-with.md` so visitors arriving from workflow/trust discussions have a cleaner path from "this fits" to a visible GitHub adoption action.
   - Commit: `228a8d95` — `Add GitHub adoption CTA on trust paths`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- README.md START_HERE.md docs/claude-code-codex-workflow.md docs/which-agent-should-i-start-with.md`; `grep -nE "star or watch it there|inspect Ralph Workflow on the \[GitHub mirror\]|open the mirror first" ...` across all four files
@@ -21,11 +27,11 @@
   - Commit: `2067e490` — `Surface repo inspection CTA earlier`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- README.md START_HERE.md ralph-workflow/docs/sphinx/index.rst`; link-presence check across all three files; local build/test unverified in this environment due to missing `sphinx`
-  - Why: Reddit distribution is currently volume-limited (`volume_guard_active:5_posts_in_6h`), and GitHub adoption signals are still weak. The next best move was tightening the first-screen trust path for people already arriving on Ralph’s public surfaces, especially developers who judge open-source tools by inspecting the repo before they install.
+  - Why: Reddit distribution is currently volume-limited (`volume_guard_active:5_posts_in_6h`), and GitHub adoption signals are still weak. The next best move was tightening the first-screen trust path for people already arriving on Ralph's public surfaces, especially developers who judge open-source tools by inspecting the repo before they install.
 
 ### RalphWorkflow Distribution Infrastructure
 - **Reddit GitHub-link autopost upgrade**: Updated `agents/marketing/reddit_autopost.py` so the autoposter now parses `Mention fit`, identifies high-fit `r/codex` / `r/ClaudeCode` trust-workflow threads, and automatically generates a contextual GitHub mirror CTA that answers the four core marketing questions instead of leaving GitHub conversion to manual posts.
-  - Verification: `python3 -m py_compile agents/marketing/reddit_autopost.py agents/marketing/tests/test_reddit_autopost.py`; `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`; functional generation check against `seo-reports/reddit_monitor_2026-05-17_1215.md` now produces a linked body for `How many of you “Trust” Codex?`
+  - Verification: `python3 -m py_compile agents/marketing/reddit_autopost.py agents/marketing/tests/test_reddit_autopost.py`; `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`; functional generation check against `seo-reports/reddit_monitor_2026-05-17_1215.md` now produces a linked body for `How many of you "Trust" Codex?`
   - Why: the current bottleneck is distribution-to-GitHub conversion, and the autoposter was still shipping useful process-first replies without a reliable inspect/star/watch path. Automating the contextual GitHub mirror link is higher leverage than another one-off conversion asset because it upgrades future Reddit distribution into a repeatable GitHub-adoption surface.
 
 ### RalphWorkflow Conversion
@@ -36,19 +42,19 @@
 - **Hosted docs/site conversion improvement**: Strengthened the live docs homepage hero so the two highest-intent next steps are above the fold: a primary CTA to run a real first task and a secondary CTA to inspect a public example review bundle before installing.
   - Commit: `cc3daafe` — `Strengthen docs homepage proof CTA`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
-  - Why: the current bottleneck is still conversion to free use, and the live homepage was still asking visitors to choose a generic “Get started” path before seeing the strongest trust asset. Putting the free/open-source positioning, proof-first CTA, and the “would I merge this?” evaluation directly in the hero should reduce drop-off from high-intent visitors who want either the fastest honest first run or proof before they commit time.
+  - Why: the current bottleneck is still conversion to free use, and the live homepage was still asking visitors to choose a generic "Get started" path before seeing the strongest trust asset. Putting the free/open-source positioning, proof-first CTA, and the "would I merge this?" evaluation directly in the hero should reduce drop-off from high-intent visitors who want either the fastest honest first run or proof before they commit time.
 - **Public proof-asset publish + distribution improvement**: Published and pushed a real `example-review-bundle` proof asset into the public repo, including a sample `PROMPT.md`, morning-after result notes, review/fix handoff files, and artifact JSONs; then surfaced it from the public README, `START_HERE.md`, docs map, docs homepage, getting-started path, quickstart, first-task guide, and reviewable-output page.
   - Commit: `f239c27a` — `Publish example review bundle proof asset`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
-  - Why: the current bottleneck is still conversion to free use, and the strongest missing trust surface was a public proof asset people could inspect before installing. Abstract claims about “reviewable output” are weaker than a real morning-after bundle high-intent visitors can open and judge with the merge test.
+  - Why: the current bottleneck is still conversion to free use, and the strongest missing trust surface was a public proof asset people could inspect before installing. Abstract claims about "reviewable output" are weaker than a real morning-after bundle high-intent visitors can open and judge with the merge test.
 - **Public repo/docs trust-path improvement**: Clarified and pushed the real first-run prerequisite across the public README, `START_HERE.md`, docs map, hosted docs homepage, and hosted getting-started page: Ralph Workflow is free/open source, but you still need one supported agent CLI already installed and authenticated on your own machine before the first run.
   - Commit: `c12a1e2d` — `Clarify first-run agent prerequisites`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
-  - Why: the current bottleneck is still conversion to free use, and the public promise was drifting a little too close to “install and go” without making the upstream agent prerequisite obvious enough. Tightening that expectation should reduce trust loss and first-run bounce from high-intent visitors who are ready to try Ralph tonight but would otherwise hit avoidable setup confusion.
+  - Why: the current bottleneck is still conversion to free use, and the public promise was drifting a little too close to "install and go" without making the upstream agent prerequisite obvious enough. Tightening that expectation should reduce trust loss and first-run bounce from high-intent visitors who are ready to try Ralph tonight but would otherwise hit avoidable setup confusion.
 - **Public proof-asset improvement**: Strengthened the public `free-open-source-proof` / hosted `reviewable-output` assets with a concrete morning-after review path, including the expected `.agent/` artifact bundle, what to open first, and the exact merge-test flow; also tightened README / START_HERE / docs-map links to point at that proof asset more explicitly.
   - Commit: `69782b30` — `Strengthen reviewable output proof asset`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
-  - Why: the current bottleneck is still conversion to free use, and the existing proof page described reviewability in the abstract. High-intent visitors need to see the actual handoff shape — diff, `.agent/DEVELOPMENT_RESULT.md`, artifact files, and the morning-after review order — so they can picture what “reviewable output” means before deciding to try Ralph tonight.
+  - Why: the current bottleneck is still conversion to free use, and the existing proof page described reviewability in the abstract. High-intent visitors need to see the actual handoff shape — diff, `.agent/DEVELOPMENT_RESULT.md`, artifact files, and the morning-after review order — so they can picture what "reviewable output" means before deciding to try Ralph tonight.
 - **Public repo/site first-run conversion improvement**: Added and pushed a copy-paste "fastest honest first run" block to the main public README, root `START_HERE.md`, and hosted docs homepage (`ralph-workflow/docs/sphinx/index.rst`).
   - Commit: `e9a9043c` — `Tighten first-run conversion path`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -56,11 +62,11 @@
 - **Public repo/docs conversion improvement**: Added and pushed `docs/first-task-prompt-templates.md` plus a hosted Sphinx `first-task-prompt-templates.md`, then linked the new asset from README, `START_HERE.md`, docs index, docs homepage, getting-started, quickstart, and first-task guide.
   - Commit: `8b0b38f7` — `Add first-task prompt templates`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
-  - Why: the current bottleneck is still conversion to free use, and even a stronger start-here path still left high-intent visitors staring at a blank `PROMPT.md`. Copy-paste prompt shapes for feature work, validation, refactors, tests, and docs reduce first-run friction and make tonight’s first backlog-task run more concrete.
+  - Why: the current bottleneck is still conversion to free use, and even a stronger start-here path still left high-intent visitors staring at a blank `PROMPT.md`. Copy-paste prompt shapes for feature work, validation, refactors, tests, and docs reduce first-run friction and make tonight's first backlog-task run more concrete.
 - **Public repo onboarding improvement**: Updated `START_HERE.md` with a four-question opening, the fastest honest first-run command path, and a copy-paste `PROMPT.md` example for a real first backlog task.
   - Commit: `aea17f7a` — `Tighten start-here first-run conversion`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
-  - Why: the current bottleneck is still conversion to free use, and the repo’s public start path still asked visitors to “write a one-paragraph spec” without giving them the exact command flow and spec shape to use tonight. This makes the first run more concrete and lowers the gap between interest and actual use.
+  - Why: the current bottleneck is still conversion to free use, and the repo's public start path still asked visitors to "write a one-paragraph spec" without giving them the exact command flow and spec shape to use tonight. This makes the first run more concrete and lowers the gap between interest and actual use.
 
 - **Hosted docs/site conversion improvement**: Added and pushed two new public Sphinx docs pages — `first-task-guide.md` and `reviewable-output.md` — then linked them from the docs homepage, getting-started flow, and quickstart.
   - Commit: `83a3fb4a` — `Add hosted docs proof assets`
@@ -69,7 +75,7 @@
 - **Public repo conversion improvement**: Added and pushed a real root-level `START_HERE.md` plus a stronger README opening that explicitly answers the four marketing questions and drives visitors into the first-task / merge-test path.
   - Commit: `01d8bd8e` — `Add start-here conversion entry point`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
-  - Why: the current bottleneck is still conversion to free use, and the live repo still lacked a true public start-here asset despite prior internal notes. This closes that gap on the public repo itself and gives high-intent visitors a sharper “what is it / who is it for / why different / why now / what should I do tonight?” path.
+  - Why: the current bottleneck is still conversion to free use, and the live repo still lacked a true public start-here asset despite prior internal notes. This closes that gap on the public repo itself and gives high-intent visitors a sharper "what is it / who is it for / why different / why now / what should I do tonight?" path.
 - **Public repo/docs improvement**: Added and pushed a new top-of-README and docs index conversion block that explicitly answers the four marketing questions and routes visitors into the right proof asset for their current objection.
   - Commit: `d7f2ac77` — `Sharpen repo conversion entry points`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -86,7 +92,7 @@
 ## 2026-05-16 (Friday)
 
 ### RalphWorkflow Distribution
-- **Reddit comment**: Posted a community-first workflow answer in `r/AI_Agents` on the thread "What’s the most useful AI agent workflow you use daily?"
+- **Reddit comment**: Posted a community-first workflow answer in `r/AI_Agents` on the thread "What's the most useful AI agent workflow you use daily?"
   - URL: https://old.reddit.com/r/AI_Agents/comments/1tcpehg/whats_the_most_useful_ai_agent_workflow_you_use/om2kp9c/
   - Status: ✅ Published
   - Notes: Used old.reddit comment form through the live local Chromium session; no link, product kept secondary, focused on spec -> isolated execute -> verify -> receipt workflow guidance.
@@ -156,7 +162,7 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Best current discussion fits:**
   - `r/ClaudeCode` — "Claude code agents going off the rails overnight: what's biting you?"
   - `r/ClaudeCode` — "Claude Code + Codex Workflow?"
-  - `r/codex` — "How many of you “Trust” Codex?"
+  - `r/codex` — "How many of you "Trust" Codex?"
 - **Repeated pains worth tracking:** overnight drift, weak verification before "done", approval drag, review-in-big-batches, worktrees without scope control.
 
 ### Reddit autopost
@@ -242,8 +248,8 @@ _Last updated: 2026-05-11 06:29 UTC_
 
 ### Owned-content drafting
 - Drafted site-guide assets:
-  - `drafts/2026-05-16_unattended-ai-coding-when-it-works_site-guide.md`
-  - `drafts/2026-05-16_reviewable-ai-code-output_site-guide.md`
+  - `drafts/2026-05-16_unattended-ai-coding-when-it-works_site_guide.md`
+  - `drafts/2026-05-16_reviewable-ai-code-output_site_guide.md`
 - Purpose: convert current market pain into durable owned pages that can drive adoption beyond Reddit.
 
 ### RalphWorkflow Distribution
@@ -270,7 +276,7 @@ _Last updated: 2026-05-11 06:29 UTC_
 - Purpose: improve conversion from repo/site curiosity into actual trial and adoption.
 
 ### Adoption conversion work
-- Drafted `drafts/2026-05-16_why-worktrees-are-not-enough_site-guide.md`
+- Drafted `drafts/2026-05-16_why-worktrees-are-not-enough_site_guide.md`
 - Drafted `drafts/2026-05-16_trial-cta-snippets.md`
 - Purpose: tighten proof/positioning and improve trial conversion instead of just adding more generic awareness content.
 
@@ -331,7 +337,7 @@ _Last updated: 2026-05-11 06:29 UTC_
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-17 09:05:07
-- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post. Keep research/posting pressure on RalphWorkflow.
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
 
 ### Reddit monitoring
 - **Report:** `seo-reports/reddit_monitor_2026-05-17_0915.md`
@@ -355,7 +361,7 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Hosted docs trust/fit-path improvement**: Added and pushed a dedicated Sphinx `when-unattended-coding-fits.md` page, then surfaced it directly on the hosted docs homepage with a new good-fit/bad-fit section, a prominent fit-check card, and homepage copy that routes uncertain visitors into the fit filter before they waste a first run.
   - Commit: `d088768f` — `Surface task-fit guidance on docs homepage`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
-  - Why: the current bottleneck is still conversion to free use, and the hosted docs homepage was strong on setup and proof but still weak at qualifying whether a visitor’s first task was a good unattended fit. Making the fit filter visible earlier should improve trust, reduce bad first-run experiences, and help high-intent evaluators reach a cleaner merge/no-merge test faster.
+  - Why: the current bottleneck is still conversion to free use, and the hosted docs homepage was strong on setup and proof but still weak at qualifying whether a visitor's first task was a good unattended fit. Making the fit filter visible earlier should improve trust, reduce bad first-run experiences, and help high-intent evaluators reach a cleaner merge/no-merge test faster.
 - **Public repo/docs adoption-signal improvement**: Surfaced the synced GitHub mirror on the main public README, `START_HERE.md`, hosted docs homepage, and hosted getting-started page so visitors who evaluate open-source tools on GitHub can inspect, star, or watch Ralph Workflow without hunting for the mirror.
   - Commit: `8985452f` — `Surface GitHub mirror on adoption entry points`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -372,7 +378,7 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Best current discussion fits:**
   - `r/ClaudeCode` — "Run both Claude code and codex"
   - `r/ClaudeCode` — "Do you actually read and review the code generated by AI Agent or just trust whatever the AI Agent give to you?"
-  - `r/codex` — "How many of you “Trust” Codex?"
+  - `r/codex` — "How many of you "Trust" Codex?"
 - **Repeated pains worth tracking:** approval/draft-state friction, trust without blind faith, Claude/Codex handoff glue, merge-safe finish beyond worktrees, and the need for a clean morning-after re-entry point.
 - **Risk note:** prior RalphWorkflow Reddit bodies are now repeating the same full structure too often; future drafts need a freshness gate, prior-use gate, and body-shape variation check.
 - **Posting note:** No posting attempted from this monitor pass.
@@ -443,7 +449,7 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
 
 ### RalphWorkflow Distribution
-- **Reddit comment**: Posted on fresh `r/codex` thread "Codex Feels Like a Vibe Coder’s Dream After Months of Fighting Claude"
+- **Reddit comment**: Posted on fresh `r/codex` thread "Codex Feels Like a Vibe Coders Dream After Months of Fighting Claude"
   - URL: https://old.reddit.com/r/codex/comments/1tf4l2i/codex_feels_like_a_vibe_coders_dream_after_months/omanifm/
   - Status: ✅ Published
   - Why: distribution-to-GitHub conversion is the current bottleneck, and this was a same-day high-attention workflow/trust thread where a GitHub mirror link fit naturally. The reply stayed process-first, answered the trust pain, and gave interested readers a direct path to inspect/star/watch the free open-source project on GitHub.
@@ -525,8 +531,29 @@ _Last updated: 2026-05-11 06:29 UTC_
   - Why: live demand is still strongest around Claude-vs-Codex workflow choice, and this same-day migration thread had active discussion plus room for a process-first answer. The reply shifted the frame from model fandom to phase ownership and reviewable handoff, then gave interested readers a direct GitHub path to inspect the free open-source project.
 
 ### RalphWorkflow Conversion
+
 - **Homepage GitHub-inspection CTA improvement**: Added and pushed a new `Inspect on GitHub` hero button plus stronger `review, star, or watch` mirror language on the hosted docs homepage so GitHub-native evaluators have an above-the-fold adoption path before install.
   - Commit: `6bc5aad7` — `Strengthen homepage GitHub inspection CTA`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- ralph-workflow/docs/sphinx/index.rst`; `grep -n "Inspect on GitHub\|Review, star, or watch the GitHub mirror" ralph-workflow/docs/sphinx/index.rst`; local build/test unverified in this environment due to missing `sphinx`
   - Why: the site already answers the four core questions well, but GitHub adoption signals are still the weakest public proof point. Putting a GitHub inspection CTA directly in the homepage hero is a cleaner bridge from high-intent site traffic to inspect/star/watch behavior than adding another generic asset.
+
+### RalphWorkflow Trust Path
+- **Public finish-receipt trust asset**: Added and pushed a new public guide, `what-a-good-ai-coding-finish-receipt-looks-like`, across the repo docs and hosted Sphinx docs, then surfaced it from README, `START_HERE.md`, docs map, hosted docs homepage, getting-started, and quickstart.
+  - Commit: `efcd852d` — `Add finish receipt trust path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- README.md START_HERE.md docs/README.md docs/what-a-good-ai-coding-finish-receipt-looks-like.md ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/getting-started.md ralph-workflow/docs/sphinx/quickstart.md ralph-workflow/docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md`; repo link check (`LINK_CHECK_OK`); local build/test unverified in this environment due to missing `pytest`
+  - Why: live workflow pain has shifted from just "can I run more agents?" to "what should the morning-after handoff actually say so I do not have to reconstruct the whole night?" A dedicated finish-receipt page is a more reusable trust/conversion asset than another generic explainer because it turns reviewability into a concrete inspection standard high-intent evaluators can use immediately.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/codex/comments/1t8n9rs/codex_vs_claude_code_my_current_take_after/
+- **Comment URL:** https://old.reddit.com/r/codex/comments/1t8n9rs/codex_vs_claude_code_my_current_take_after/omcpyg9/
+- **Status:** ✅ Published
+- **Notes:** Manual post on workflow/trust comparison thread: Codex vs Claude Code: my current take after watching both mature.
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution
+- **Reddit comment**: Posted on `r/codex` thread "Codex vs Claude Code: my current take after watching both mature"
+  - URL: https://old.reddit.com/r/codex/comments/1t8n9rs/codex_vs_claude_code_my_current_take_after/omcpyg9/
+  - Status: ✅ Published
+  - Why: the current bottleneck is distribution-to-GitHub conversion, and this still-relevant comparison thread gave room for a fresh phase-ownership answer plus a direct GitHub inspection path to the free open-source project.

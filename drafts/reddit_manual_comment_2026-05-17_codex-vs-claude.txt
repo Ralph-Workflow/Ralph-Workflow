@@ -1,0 +1,9 @@
+The sharpest difference for me isn’t model IQ, it’s operating posture.
+
+Claude still feels better when the problem is under-shaped and you need someone to pressure-test the approach. Codex feels better when the job is already boxed and you want raw forward motion inside the repo.
+
+Where people get burned is asking the same tool to invent, implement, and certify its own output. I get better results when one phase owns the move and the next phase tries to break the assumptions before I touch main.
+
+That gap is exactly why I built RalphWorkflow. It’s free/open source, runs the agent CLIs you already use on your own machine, and is for work that’s too big to babysit but too risky to trust blindly. The point isn’t another chat window; it’s waking up to a substantial, reviewable handoff instead of a persuasive transcript.
+
+https://github.com/Ralph-Workflow/Ralph-Workflow
