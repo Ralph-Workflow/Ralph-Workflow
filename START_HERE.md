@@ -24,6 +24,8 @@ Bad first tasks:
 - mixed multi-part work
 - anything where no one agrees what “done” means
 
+If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
+
 ## Write the task like a one-paragraph spec
 
 Before the run starts, write down:
@@ -59,3 +61,4 @@ A useful Ralph Workflow run should leave you with:
 - [README.md](./README.md)
 - [docs/quick-reference.md](./docs/quick-reference.md)
 - [docs/free-open-source-proof.md](./docs/free-open-source-proof.md)
+- [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md)

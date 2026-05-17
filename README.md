@@ -91,6 +91,7 @@ The evaluation question is simple:
 If yes, Ralph Workflow is doing useful work. If not, tighten the task, verification, or phase routing and try again.
 
 For a practical walkthrough, read [START_HERE.md](./START_HERE.md).
+If you are not sure whether your task is a good fit for unattended execution, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 
 ## What a good run feels like
 
@@ -115,6 +116,7 @@ It should leave you with:
 - open questions where uncertainty remains
 
 See [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete first-task example and review bundle example.
+See [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md) for a simple good-task vs bad-task decision guide.
 
 ## Depth presets
 

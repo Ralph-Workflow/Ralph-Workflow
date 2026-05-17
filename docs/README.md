@@ -62,6 +62,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `template-guide.md` — template usage
 - `git-workflow.md` — Git workflow with Ralph
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
+- `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task
 
 ## Architecture family (mixed state — see docs/architecture/README.md for explicit classification)
 
