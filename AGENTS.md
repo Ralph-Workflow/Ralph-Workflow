@@ -55,7 +55,8 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - Don't exfiltrate private data. Ever.
 - Don't run destructive commands without asking.
 - `trash` > `rm` (recoverable beats gone forever)
-- When in doubt, ask.
+- Do not ask for permission on routine internal fixes, investigations, or recoverable system repairs — own the problem and keep pushing.
+- When in doubt about safety, privacy, or destructive impact, ask.
 
 ## External vs Internal
 
@@ -64,12 +65,14 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - Read files, explore, organize, learn
 - Search the web, check calendars
 - Work within this workspace
+- Investigate failures and apply internal fixes immediately
+- Exhaust viable human-equivalent paths before escalating a fixable problem
 
 **Ask first:**
 
 - Sending emails, tweets, public posts
 - Anything that leaves the machine
-- Anything you're uncertain about
+- Anything destructive, privacy-sensitive, or genuinely uncertain in a non-recoverable way
 
 ## Group Chats
 

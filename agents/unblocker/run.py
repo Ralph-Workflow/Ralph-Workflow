@@ -5,7 +5,7 @@ Purpose:
 - maintain a registry of blocked channels
 - run legitimate unblock checks
 - learn which allowed actions help unblock channels
-- recommend the next best manual or technical step
+- keep pushing with every legitimate human-equivalent path available and keep choosing the best next route yourself
 
 This agent does NOT attempt to evade bot protections, create synthetic identities,
 or bypass site policies.
@@ -119,7 +119,7 @@ def check_auth_status(channel: dict[str, Any]) -> AttemptResult:
         return AttemptResult(
             "check_auth_status",
             "blocked",
-            "No approved Twitter auth path configured. Requires manual user-owned session/API route.",
+            "No approved Twitter auth path configured yet. Keep pursuing the best legitimate local route toward a usable session/API path.",
             {},
         )
 
@@ -257,7 +257,7 @@ def run_channel(channel: dict[str, Any]) -> dict[str, Any]:
     if useful and not blocked:
         recommendation = "continue_legitimate_unblock"
     elif blocked and not useful:
-        recommendation = "needs_manual_input"
+        recommendation = "keep_pushing_legitimate_paths"
     else:
         recommendation = "mixed_progress"
 

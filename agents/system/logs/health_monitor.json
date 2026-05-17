@@ -71,3 +71,9 @@
 {"ts": "2026-05-17T10:02:55.696983", "jobs_checked": 16, "issues_found": 0, "issues": []}
 {"ts": "2026-05-17T10:32:11.463996", "jobs_checked": 16, "issues_found": 1, "issues": [{"job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854", "name": "marketing-active-loop", "consecutive_errors": 2, "last_status": "error", "last_error": "cron: job execution timed out", "timeout_seconds": 420, "last_duration_ms": 420345, "likely_cause": "TIMEOUT_TOO_TIGHT: script took 420345ms but limit was 420s - needs more headroom"}]}
 {"ts": "2026-05-17T11:02:29.421297", "jobs_checked": 16, "issues_found": 1, "issues": [{"job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854", "name": "marketing-active-loop", "consecutive_errors": 3, "last_status": "error", "last_error": "cron classifier: denial token \"could not run\" detected in summary", "timeout_seconds": 600, "last_duration_ms": 252991, "likely_cause": "UNKNOWN: cron classifier: denial token \"could not run\" detected in summary"}]}
+{"ts": "2026-05-17T11:30:08.593365", "jobs_checked": 16, "issues_found": 1, "issues": [{"job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854", "name": "marketing-active-loop", "consecutive_errors": 4, "last_status": "error", "last_error": "cron classifier: denial token \"could not run\" detected in summary", "timeout_seconds": 600, "last_duration_ms": 228454, "likely_cause": "UNKNOWN: cron classifier: denial token \"could not run\" detected in summary"}]}
+{"ts": "2026-05-17T11:38:34.465639", "jobs_checked": 16, "issues_found": 0, "issues": []}
+{"ts": "2026-05-17T11:40:51.013584", "jobs_checked": 16, "issues_found": 0, "issues": []}
+{"ts": "2026-05-17T11:43:17.361939", "jobs_checked": 16, "issues_found": 0, "issues": []}
+{"ts": "2026-05-17T11:43:23.404414", "jobs_checked": 16, "issues_found": 0, "issues": []}
+{"ts": "2026-05-17T12:00:18.919498", "jobs_checked": 16, "issues_found": 0, "issues": []}

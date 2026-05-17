@@ -3,6 +3,10 @@
 ## 2026-05-17 (Sunday)
 
 ### RalphWorkflow Conversion
+- **Hosted docs quickstart conversion improvement**: Tightened the public Sphinx `quickstart.md` so high-intent visitors get the four-question framing, the real prerequisite that one supported agent is already installed/authenticated on their own machine, a concrete first backlog-task prompt example, and the merge-test evaluation directly on the short-path page.
+  - Commit: `862632f0` — `Tighten quickstart first-run conversion`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and the quickstart path was still too mechanical for first-time evaluators. It told people how to click through setup, but not clearly enough what Ralph is, who it is for, why it is different, why to try it now, or how to judge the first run honestly. Tightening that shortest path should reduce bounce from visitors who are already ready to test Ralph tonight.
 - **Hosted docs/site conversion improvement**: Strengthened the live docs homepage hero so the two highest-intent next steps are above the fold: a primary CTA to run a real first task and a secondary CTA to inspect a public example review bundle before installing.
   - Commit: `cc3daafe` — `Strengthen docs homepage proof CTA`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -326,3 +330,11 @@ _Last updated: 2026-05-11 06:29 UTC_
   - Commit: `d088768f` — `Surface task-fit guidance on docs homepage`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Why: the current bottleneck is still conversion to free use, and the hosted docs homepage was strong on setup and proof but still weak at qualifying whether a visitor’s first task was a good unattended fit. Making the fit filter visible earlier should improve trust, reduce bad first-run experiences, and help high-intent evaluators reach a cleaner merge/no-merge test faster.
+- **Public repo/docs adoption-signal improvement**: Surfaced the synced GitHub mirror on the main public README, `START_HERE.md`, hosted docs homepage, and hosted getting-started page so visitors who evaluate open-source tools on GitHub can inspect, star, or watch Ralph Workflow without hunting for the mirror.
+  - Commit: `8985452f` — `Surface GitHub mirror on adoption entry points`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, but public adoption signals are also weak — especially on GitHub. The public entry surfaces were still effectively Codeberg-only even though a healthy synced GitHub mirror exists. Making that mirror explicit should reduce trust friction for GitHub-native evaluators and create an easier path to stars/watches from people who already like the free/open-source positioning and proof assets.
+- **Public repo/docs differentiation improvement**: Added and pushed a public `Ralph Workflow vs Aider` comparison page into both the repo docs and hosted Sphinx docs, then surfaced it from the main README, `START_HERE.md`, docs map, docs homepage, getting-started flow, and quickstart.
+  - Commit: `cd50c00d` — `Add Aider comparison trust path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: the current bottleneck is still conversion to free use, and high-intent evaluators who already like interactive AI coding tools need a crisp answer to a common trust question: "why use Ralph instead of Aider?" A direct comparison asset tightens differentiation on a real competitor frame, answers the four marketing questions in that context, and gives repo/docs visitors a cleaner path from curiosity to an honest first overnight run.
