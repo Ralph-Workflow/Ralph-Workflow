@@ -83,3 +83,5 @@
 {"ts": "2026-05-17T14:00:08.965914", "jobs_checked": 16, "issues_found": 0, "issues": []}
 {"ts": "2026-05-17T14:32:58.585913", "jobs_checked": 16, "issues_found": 0, "issues": []}
 {"ts": "2026-05-17T15:01:11.466651", "jobs_checked": 16, "issues_found": 0, "issues": []}
+{"ts": "2026-05-17T15:30:07.707282", "jobs_checked": 16, "issues_found": 1, "issues": [{"job_id": "6a9e1bbe-a907-4e13-bc94-e44bc31170ea", "name": "reddit-monitor", "consecutive_errors": 2, "last_status": "error", "last_error": "\u26a0\ufe0f \ud83d\udcdd Edit: in ~/.openclaw/workspace/agents/marketing/REDDIT_LEARNINGS.md failed", "timeout_seconds": 600, "last_duration_ms": 383449, "likely_cause": "UNKNOWN: \u26a0\ufe0f \ud83d\udcdd Edit: in ~/.openclaw/workspace/agents/marketing/REDDIT_LEARNINGS.md failed"}]}
+{"ts": "2026-05-17T16:00:09.302218", "jobs_checked": 16, "issues_found": 0, "issues": []}

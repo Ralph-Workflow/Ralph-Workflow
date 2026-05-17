@@ -2,6 +2,13 @@
 
 ## 2026-05-17 (Sunday)
 
+### RalphWorkflow Conversion
+- **Public trust/adoption CTA improvement**: Surfaced repo-inspection links earlier across the hosted docs homepage hero, the main public README, and `START_HERE.md` so GitHub-native and source-first evaluators can inspect/star/watch Ralph Workflow before install instead of hunting for the repo links later in the page.
+  - Commit: `2067e490` — `Surface repo inspection CTA earlier`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- README.md START_HERE.md ralph-workflow/docs/sphinx/index.rst`; link-presence check across all three files; local build/test unverified in this environment due to missing `sphinx`
+  - Why: Reddit distribution is currently volume-limited (`volume_guard_active:5_posts_in_6h`), and GitHub adoption signals are still weak. The next best move was tightening the first-screen trust path for people already arriving on Ralph’s public surfaces, especially developers who judge open-source tools by inspecting the repo before they install.
+
 ### RalphWorkflow Distribution Infrastructure
 - **Reddit GitHub-link autopost upgrade**: Updated `agents/marketing/reddit_autopost.py` so the autoposter now parses `Mention fit`, identifies high-fit `r/codex` / `r/ClaudeCode` trust-workflow threads, and automatically generates a contextual GitHub mirror CTA that answers the four core marketing questions instead of leaving GitHub conversion to manual posts.
   - Verification: `python3 -m py_compile agents/marketing/reddit_autopost.py agents/marketing/tests/test_reddit_autopost.py`; `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`; functional generation check against `seo-reports/reddit_monitor_2026-05-17_1215.md` now produces a linked body for `How many of you “Trust” Codex?`
@@ -426,3 +433,32 @@ _Last updated: 2026-05-11 06:29 UTC_
   - URL: https://old.reddit.com/r/codex/comments/1tf4l2i/codex_feels_like_a_vibe_coders_dream_after_months/omanifm/
   - Status: ✅ Published
   - Why: distribution-to-GitHub conversion is the current bottleneck, and this was a same-day high-attention workflow/trust thread where a GitHub mirror link fit naturally. The reply stayed process-first, answered the trust pain, and gave interested readers a direct path to inspect/star/watch the free open-source project on GitHub.
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-17_1515.md`
+- **Scan summary:** 29 candidate Reddit threads/posts scanned, 7 shortlisted, 22 rejected.
+- **Current verdict:** ✅ 7 credible opportunities found, but only the top few are still strong live-outreach targets after freshness and prior-use filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Using Claude with Codex, anyone else?"
+  - `r/ClaudeCode` — "People running 2–5 coding agents: what actually breaks first for you?"
+  - `r/ClaudeCode` — "Claude -> Codex -> Claude"
+- **Repeated pains worth tracking:** review/reconstruction overhead, config/schema/shared-boundary drift, merged-state checks, finish receipts, and clean morning-after re-entry.
+- **Risk note:** many older trust/workflow threads are now either already used or aging out, so freshness + prior-use must outrank raw topical fit.
+- **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-17_1534.md`
+- **Scan summary:** 30 candidate Reddit threads/posts scanned, 7 shortlisted, 23 rejected.
+- **Current verdict:** ✅ 7 credible opportunities found today; top live fits are still workflow-question threads, not showcase posts.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Using Claude with Codex, anyone else?"
+  - `r/ClaudeCode` — "People running 2–5 coding agents: what actually breaks first for you?"
+  - `r/ClaudeCode` — "Claude -> Codex -> Claude"
+- **Repeated pains worth tracking:** review/reconstruction overhead, shared-boundary drift, finish receipts, merged-state confidence, and clean morning-after re-entry.
+- **Risk note:** prior post risk is now about repeated *concept cadence* as well as wording; even fresh phrasing can feel canned if it replays the same diff/checks/receipt structure.
+- **Posting note:** No posting attempted from this monitor pass.
+- **Public repo/docs workflow-fit improvement**: Added and pushed a new public `Claude Code + Codex workflow` guide across the repo docs and hosted Sphinx docs, then surfaced it from the main README, `START_HERE.md`, docs map, docs homepage, getting-started path, and quickstart.
+  - Commit: `430a3c14` — `Add Claude Code + Codex workflow trust path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- README.md START_HERE.md docs/README.md docs/claude-code-codex-workflow.md ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/getting-started.md ralph-workflow/docs/sphinx/quickstart.md ralph-workflow/docs/sphinx/claude-code-codex-workflow.md`; link-presence check across README / START_HERE / docs map / docs homepage / getting-started / quickstart; local build/test unverified in this environment due to missing `sphinx`
+  - Why: Reddit posting was temporarily volume-limited (`volume_guard_active:4_posts_in_6h`), and the freshest live demand is still Claude Code + Codex workflow pain. Turning that active distribution angle into a durable public trust asset gives future Reddit / SEO / GitHub visitors a specific answer to a real workflow question instead of another generic onboarding page.
