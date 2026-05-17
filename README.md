@@ -25,6 +25,41 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 - **I already use worktrees or multiple agent sessions. What does Ralph add?** Read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 - **I want to see what a good result looks like before I try it.** Read [docs/free-open-source-proof.md](./docs/free-open-source-proof.md).
 
+## Tonight's first run in five minutes
+
+If you want the shortest honest test, do this in a real repo you already care about:
+
+```bash
+pipx install ralph-workflow
+cd /path/to/your/project
+ralph --init
+ralph --diagnose
+$EDITOR PROMPT.md
+ralph
+```
+
+Paste a spec this small into `PROMPT.md`:
+
+```markdown
+# Goal
+
+Add validation so the CLI rejects empty project names before creating files.
+Keep the rest of the flow unchanged.
+
+## Acceptance criteria
+
+- Empty or whitespace-only project names fail with a clear error
+- No project files are created for invalid names
+- Existing valid-name behavior stays unchanged
+- Tests cover the new validation
+```
+
+Then come back and ask one question:
+
+> **Would I merge this?**
+
+If yes, Ralph Workflow is useful for your codebase. If not, tighten the spec or task choice and run again.
+
 ## Why teams use Ralph Workflow
 
 - **Write a spec, not a babysitting script.** Define the task and acceptance criteria once, then let the run continue without constant prompting.

@@ -48,6 +48,41 @@ The evaluation question is simple:
 If yes, Ralph Workflow earned a bigger task. If not, tighten the spec, checks, or task choice and
 run again.
 
+Your fastest honest first run
+=============================
+
+If you want the shortest path from curiosity to a real evaluation, use this exact flow in a real
+repo you already care about:
+
+.. code-block:: bash
+
+   pipx install ralph-workflow
+   cd /path/to/your/project
+   ralph --init
+   ralph --diagnose
+   $EDITOR PROMPT.md
+   ralph
+
+Paste a spec this small into ``PROMPT.md``:
+
+.. code-block:: markdown
+
+   # Goal
+
+   Add validation so the CLI rejects empty project names before creating files.
+   Keep the rest of the flow unchanged.
+
+   ## Acceptance criteria
+
+   - Empty or whitespace-only project names fail with a clear error
+   - No project files are created for invalid names
+   - Existing valid-name behavior stays unchanged
+   - Tests cover the new validation
+
+Then come back and ask one question:
+
+   **Would I merge this?**
+
 .. grid:: 1 2 2 2
    :gutter: 3
 

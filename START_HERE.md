@@ -12,6 +12,42 @@ If you want to know whether Ralph Workflow is useful, do not start with a vague 
 
 Start with **one real backlog task** you already care about.
 
+## The fastest honest first run
+
+If you want the shortest path from curiosity to a real evaluation, use this exact flow in a real repo you already care about:
+
+```bash
+pipx install ralph-workflow
+cd /path/to/your/project
+ralph --init
+ralph --diagnose
+$EDITOR PROMPT.md
+ralph
+```
+
+Paste a small real spec into `PROMPT.md`:
+
+```markdown
+# Goal
+
+Add validation so the CLI rejects empty project names before creating files.
+Keep the rest of the flow unchanged.
+
+## Acceptance criteria
+
+- Empty or whitespace-only project names fail with a clear error
+- No project files are created for invalid names
+- Existing valid-name behavior stays unchanged
+- Tests cover the new validation
+```
+
+Then review the result like normal engineering work and ask one question:
+
+> **Would I merge this?**
+
+If yes, give Ralph Workflow a harder task tomorrow night.
+If not, tighten the task or checks and run again.
+
 ## Pick the right first task
 
 Choose something that is:
