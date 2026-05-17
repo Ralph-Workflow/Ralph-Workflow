@@ -1,0 +1,11 @@
+I didn’t fully switch so much as change which tool owns which phase.
+
+If the problem is ambiguous or architecture-heavy, I still like Claude first because it forces the shape of the task. If the job is a bounded implementation sprint, Codex is usually the one I trust to push it through faster.
+
+The bigger change for me was moving the trust check to the finish line. Whoever writes the code doesn’t get the final word. I want a small diff, one merged-state test pass, and a short note saying what changed and what still needs judgment. That made “Codex builds, Claude challenges” more useful than trying to pick one permanent winner.
+
+So I didn’t really move from Claude to Codex as much as from “one tool does everything” to “one tool builds, another interrogates the handoff.” If the morning-after re-entry is clean, the stack is working.
+
+That loop is basically why I built RalphWorkflow — free/open source, runs the agents on your own machine, and tries to bring back something reviewable instead of another long transcript.
+
+https://github.com/Ralph-Workflow/Ralph-Workflow

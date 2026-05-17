@@ -510,3 +510,23 @@ _Last updated: 2026-05-11 06:29 UTC_
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- README.md START_HERE.md docs/README.md docs/ralph-workflow-vs-claude-code.md ralph-workflow/README.md ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/getting-started.md ralph-workflow/docs/sphinx/quickstart.md ralph-workflow/docs/sphinx/ralph-workflow-vs-claude-code.md`; link-presence check for `ralph-workflow-vs-claude-code` across all surfaced entry points; local build/test unverified in this environment due to missing `sphinx`
   - Why: live demand is heavily Claude Code-shaped, and high-intent evaluators still need a crisp answer to the question "why add Ralph instead of just staying in Claude Code?" A direct comparison asset is a stronger conversion move than another generic article because it answers the fit, differentiation, and why-now questions exactly where current workflow interest already exists.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/codex/comments/1tao42q/did_anyone_here_moved_from_claude_to_codex/
+- **Comment URL:** https://old.reddit.com/r/codex/comments/1tao42q/did_anyone_here_moved_from_claude_to_codex/omc9mon/
+- **Status:** ✅ Published
+- **Notes:** Manual post on fresh r/codex migration thread: Claude-to-Codex workflow answer with reviewable-handoff angle.
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution
+- **Reddit comment**: Posted on fresh `r/codex` thread "Did anyone here moved from claude to codex recently? And why?"
+  - URL: https://old.reddit.com/r/codex/comments/1tao42q/did-anyone-here-moved-from-claude-to-codex-recently-and-why/omc9mon/
+  - Status: ✅ Published
+  - Why: live demand is still strongest around Claude-vs-Codex workflow choice, and this same-day migration thread had active discussion plus room for a process-first answer. The reply shifted the frame from model fandom to phase ownership and reviewable handoff, then gave interested readers a direct GitHub path to inspect the free open-source project.
+
+### RalphWorkflow Conversion
+- **Homepage GitHub-inspection CTA improvement**: Added and pushed a new `Inspect on GitHub` hero button plus stronger `review, star, or watch` mirror language on the hosted docs homepage so GitHub-native evaluators have an above-the-fold adoption path before install.
+  - Commit: `6bc5aad7` — `Strengthen homepage GitHub inspection CTA`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- ralph-workflow/docs/sphinx/index.rst`; `grep -n "Inspect on GitHub\|Review, star, or watch the GitHub mirror" ralph-workflow/docs/sphinx/index.rst`; local build/test unverified in this environment due to missing `sphinx`
+  - Why: the site already answers the four core questions well, but GitHub adoption signals are still the weakest public proof point. Putting a GitHub inspection CTA directly in the homepage hero is a cleaner bridge from high-intent site traffic to inspect/star/watch behavior than adding another generic asset.

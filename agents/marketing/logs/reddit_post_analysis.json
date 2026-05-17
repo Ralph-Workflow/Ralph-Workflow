@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-05-17T18:35:06.115299",
-  "count": 11,
+  "generated_at": "2026-05-17T19:35:07.494651",
+  "count": 12,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 8
+    "Informal-Salt827": 9
   },
   "by_community": {
     "r/AI_Agents": 1,
     "r/ClaudeCode": 7,
-    "r/codex": 3
+    "r/codex": 4
   },
   "top_title_words": [
     "claude",
@@ -18,49 +18,49 @@
     "workflow",
     "multiple",
     "agents",
+    "anyone",
     "most",
     "useful",
     "daily",
     "managing",
     "sessions",
     "manually",
-    "going",
-    "rails"
+    "going"
   ],
   "top_body_tokens": [
     "diff",
-    "agent",
     "workflow",
-    "done",
-    "before",
+    "agent",
+    "tool",
     "task",
     "pass",
+    "done",
+    "before",
     "small",
     "after",
-    "tool",
-    "checks",
+    "trust",
     "agents",
-    "criteria",
     "changed",
     "needs",
-    "part",
     "handoff",
     "ralphworkflow",
-    "trust",
-    "receipt"
+    "checks",
+    "ralph",
+    "loop",
+    "criteria"
   ],
   "phrase_hits": {
     "worktree": 4,
-    "diff": 11,
+    "diff": 12,
     "verify": 1,
-    "handoff": 6,
-    "reviewable": 6,
+    "handoff": 7,
+    "reviewable": 7,
     "done criteria": 6,
     "scope": 6,
     "final check": 1,
     "overnight": 1,
     "review bundle": 1,
-    "trust": 5,
+    "trust": 6,
     "small scoped": 1
   },
   "repeated_openings": [
@@ -74,14 +74,6 @@
     }
   ],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-16T06:46:00+02:00",
-      "account": "Clear-Past7954",
-      "community": "r/ClaudeCode",
-      "title": "Are you all still managing multiple agent sessions manually?",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t1g6fv/are_you_all_still_managing_multiple_agent/om2to0p/",
-      "opening_line": "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
-    },
     {
       "timestamp": "2026-05-16T09:18:46.013856",
       "account": "Clear-Past7954",
@@ -153,6 +145,14 @@
       "title": "Using Claude with Codex, anyone else?",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tf720n/using_claude_with_codex_anyone_else/ombxdri/",
       "opening_line": "The cleanest split I've found is boring on purpose: one tool writes, the other challenges."
+    },
+    {
+      "timestamp": "2026-05-17T19:28:34.972968",
+      "account": "Informal-Salt827",
+      "community": "r/codex",
+      "title": "Did anyone here moved from claude to codex recently? And why?",
+      "comment_url": "https://old.reddit.com/r/codex/comments/1tao42q/did_anyone_here_moved_from_claude_to_codex/omc9mon/",
+      "opening_line": "I didn’t fully switch so much as change which tool owns which phase."
     }
   ],
   "recommendations": [
