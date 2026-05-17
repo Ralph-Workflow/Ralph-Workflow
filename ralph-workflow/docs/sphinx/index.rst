@@ -12,7 +12,8 @@ Ralph Workflow
 .. note::
 
    New here? Read :doc:`getting-started` first — it gets you from install to first run quickly,
-   without making you learn the internals first.
+   without making you learn the internals first. If you are still deciding whether Ralph Workflow
+   fits your work, start with :doc:`first-task-guide` and :doc:`reviewable-output`.
 
 What Ralph Workflow is for
 ==========================
@@ -55,6 +56,18 @@ run again.
 
       Install Ralph Workflow, point it at a repo, write ``PROMPT.md``, and launch your first unattended run.
 
+   .. grid-item-card:: Choose a good first task
+      :link: first-task-guide
+      :link-type: doc
+
+      Pick a real backlog task that is small enough to judge, clear enough to verify, and worth trying tonight.
+
+   .. grid-item-card:: Know what good output looks like
+      :link: reviewable-output
+      :link-type: doc
+
+      See the kind of diff, checks, notes, and merge decision a trustworthy unattended run should hand back.
+
    .. grid-item-card:: Learn the concepts
       :link: concepts
       :link-type: doc
@@ -73,23 +86,13 @@ run again.
 
       Start with the common failure modes and the shortest path to a fix.
 
-   .. grid-item-card:: Choose a good first task
-      :link: getting-started
-      :link-type: doc
-
-      See how to pick a small real backlog item, write a one-paragraph spec, and judge the result honestly.
-
-   .. grid-item-card:: Know what good output looks like
-      :link: quickstart
-      :link-type: doc
-
-      Learn the basic install/run flow, then check whether the result is a real diff with checks you would trust.
-
 .. toctree::
    :maxdepth: 2
    :caption: Get Started
 
    getting-started
+   first-task-guide
+   reviewable-output
    quickstart
    concepts
 

@@ -39,6 +39,8 @@ Bad first tasks:
 - broad multi-part work with no clear stopping point
 - anything where nobody agrees what success looks like
 
+If you want a sharper pass/fail filter before you install, read [Choose Your First Ralph Workflow Task](first-task-guide.md).
+
 ## Before you start
 
 You will need:
@@ -151,6 +153,8 @@ Ask:
 
 That is the real product test.
 
+If you want to see what a trustworthy handoff looks like before your first run, read [What Good Ralph Workflow Output Looks Like](reviewable-output.md).
+
 ## What happens during a run
 
 You do not need the full internal model to operate Ralph Workflow. The short version is:
@@ -190,6 +194,8 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 
 ## Next steps
 
+- [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean merge/no-merge evaluation
+- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — example review bundle and the merge test
 - [Quickstart](quickstart.md) — shorter repeat-use reference
 - [Concepts](concepts.md) — the terms you will see most often
 - [CLI Reference](cli.md) — commands and flags

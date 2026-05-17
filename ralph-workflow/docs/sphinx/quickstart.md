@@ -36,7 +36,7 @@ That command creates `.agent/ralph-workflow.toml` as the project-local main-conf
 
 ## Edit `PROMPT.md`
 
-Open `PROMPT.md` and replace the example with your real task. The starter template has two required sections:
+Open `PROMPT.md` and replace the example with your real task. If you are unsure what a good first task looks like, read [Choose Your First Ralph Workflow Task](first-task-guide.md) first. The starter template has two required sections:
 
 ```markdown
 # Goal
@@ -75,6 +75,8 @@ ralph --resume
 
 ## Where to go next
 
+- [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean pass/fail evaluation
+- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see the review bundle you should expect from a trustworthy run
 - [Getting Started](getting-started.md) — fuller first-run walkthrough
 - [Concepts](concepts.md) — terminology and mental model
 - [CLI Reference](cli.md) — all flags and sub-commands
