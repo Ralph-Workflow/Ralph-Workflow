@@ -10,6 +10,20 @@ Ralph Workflow is an agent-agnostic orchestration CLI for spec-driven planning, 
 
 The point is not to generate a throwaway demo. Ralph Workflow is built for the kind of work that should leave you with a serious starting point for production: a working feature, a refactor in progress, a verified batch of tests, or a reviewable implementation foundation your team can keep pushing forward.
 
+## Quick answer: is this for you?
+
+- **What is it?** A free and open-source orchestration CLI that runs the coding agents you already use on your own machine.
+- **Who is it for?** Developers and technical teams with work too big to babysit and too risky to trust blindly.
+- **Why is it different?** It is repo-native and built to hand back a reviewable result — diff, checks, artifacts, and traceable reasoning — not just a transcript and a claim that the task is done.
+- **Why use it now?** You can install it for free, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+
+## Start here in the path that matches your question
+
+- **I want the fastest honest first run.** Read [START_HERE.md](./START_HERE.md).
+- **I am not sure whether my task is a good fit for unattended execution.** Read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
+- **I already use worktrees or multiple agent sessions. What does Ralph add?** Read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
+- **I want to see what a good result looks like before I try it.** Read [docs/free-open-source-proof.md](./docs/free-open-source-proof.md).
+
 ## Why teams use Ralph Workflow
 
 - **Write a spec, not a babysitting script.** Define the task and acceptance criteria once, then let the run continue without constant prompting.

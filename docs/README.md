@@ -2,6 +2,20 @@
 
 This repository contains both **current Python documentation** and **legacy Rust-era reference material**.
 
+If you are evaluating Ralph Workflow rather than maintaining it, start with these four questions first:
+
+- **What is it?** A free and open-source tool that orchestrates coding agents you already run on your own machine.
+- **Who is it for?** Developers and technical teams handing off engineering work that is too big to babysit and too risky to trust blindly.
+- **Why is it different?** Ralph is built to return a reviewable result in the repo — not just a transcript and a "done" claim.
+- **Why use it now?** You can try it for free on one real backlog task and judge it with one question: would you merge this?
+
+## Best first docs for evaluators
+
+- `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
+- `free-open-source-proof.md` — example first task and what a reviewable result should look like
+- `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
+- `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
+
 ## Current Python docs
 
 Start here for the maintained package:
