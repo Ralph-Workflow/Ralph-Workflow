@@ -389,6 +389,9 @@ _Last updated: 2026-05-11 06:29 UTC_
   - Verification: `python3 -m py_compile agents/marketing/reddit_autopost.py` plus a functional dry-run import check against `seo-reports/reddit_monitor_2026-05-17_1215.md`
   - Result: the autoposter now selects the fresh `Run both Claude code and codex` opportunity and produces a non-repetitive body with `body_needs_regeneration: false`
   - Why: distribution is the bottleneck right now, and repetitive Reddit bodies were degrading quality. Fixing the autopost generator is higher leverage than adding another conversion asset because it improves every future distribution pass.
+- **Reddit autopost stale-thread guardrail**: Tightened `agents/marketing/reddit_autopost.py` and `reddit_watchdog.py` so the system now refuses to fall through to stale leftover shortlist entries after the genuinely fresh threads from a report have already been used, and it records terminal skip states instead of repeatedly nudging the same aging report.
+  - Verification: `python3 -m py_compile agents/marketing/reddit_autopost.py agents/marketing/reddit_watchdog.py`; probe against `seo-reports/reddit_monitor_2026-05-17_1215.md` now scores freshness correctly (`Moving from claude code to codex` / `People running 2–5 coding agents...` = stale) and returns `fresh_rate_limited` instead of selecting an old thread.
+  - Why: distribution is the current bottleneck, but low-quality stale Reddit replies are worse than waiting for the next genuinely fresh opportunity. This protects account quality and keeps the marketer from burning distribution energy on aging threads just because the report still has unused rows.
 
 ### Reddit autopost
 - **Thread:** https://old.reddit.com/r/codex/comments/1t5uwtc/how_many_of_you_trust_codex/
@@ -402,3 +405,6 @@ _Last updated: 2026-05-11 06:29 UTC_
   - URL: https://old.reddit.com/r/codex/comments/1t5uwtc/how_many_of_you_trust_codex/omaao0k/
   - Status: ✅ Published
   - Why: distribution is the current bottleneck, and this was the strongest still-unused trust thread in the latest shortlist. The reply keeps Ralph secondary, answers the blind-trust pain directly, and reinforces the core promise: walk away and come back to a reviewable result instead of a transcript that only sounds done.
+- **Reddit distribution infrastructure improvement**: Added and verified pacing guards in `agents/marketing/reddit_autopost.py` / `reddit_watchdog.py` so the autoposter now skips when the account has posted too recently, caps burst volume in the last 6 hours, and prefers communities that have not just been hit.
+  - Verification: `python3 -m py_compile agents/marketing/reddit_autopost.py agents/marketing/reddit_watchdog.py`; live autopost check returned `cooldown_skip` with `global_cooldown_active:30m_since_last_post`; watchdog now treats that as already handled.
+  - Why: distribution is the current bottleneck, but posting several Reddit comments in a tight window is a quality/account-risk pattern. Throttling the autoposter is higher leverage than forcing another weak or spammy reply because it protects future distribution quality across every run.

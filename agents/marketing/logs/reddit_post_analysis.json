@@ -1,23 +1,23 @@
 {
-  "generated_at": "2026-05-17T12:35:07.944515",
-  "count": 8,
+  "generated_at": "2026-05-17T13:35:06.915707",
+  "count": 9,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 5
+    "Informal-Salt827": 6
   },
   "by_community": {
     "r/AI_Agents": 1,
     "r/ClaudeCode": 6,
-    "r/codex": 1
+    "r/codex": 2
   },
   "top_title_words": [
     "code",
     "claude",
+    "codex",
     "agent",
     "workflow",
     "multiple",
     "agents",
-    "codex",
     "most",
     "useful",
     "daily",
@@ -30,37 +30,37 @@
   "top_body_tokens": [
     "agent",
     "diff",
+    "done",
     "before",
     "small",
-    "pass",
-    "done",
     "task",
+    "pass",
+    "handoff",
+    "trust",
     "criteria",
-    "pattern",
-    "tool",
-    "receipt",
-    "work",
-    "explicit",
     "after",
-    "each",
     "changed",
     "needs",
+    "pattern",
     "part",
-    "handoff",
-    "stop"
+    "tool",
+    "short",
+    "checks",
+    "workflow",
+    "receipt"
   ],
   "phrase_hits": {
     "worktree": 4,
-    "diff": 8,
+    "diff": 9,
     "verify": 1,
-    "handoff": 5,
+    "handoff": 6,
     "reviewable": 4,
     "done criteria": 5,
     "scope": 5,
     "final check": 1,
     "overnight": 1,
     "review bundle": 1,
-    "trust": 3,
+    "trust": 4,
     "small scoped": 1
   },
   "repeated_openings": [
@@ -137,6 +137,14 @@
       "title": "Do you actually read and review the code",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t7fi55/do_you_actually_read_and_review_the_code/oma6in3/",
       "opening_line": "Most of the time the real answer is: review the diff, not the agent."
+    },
+    {
+      "timestamp": "2026-05-17T12:56:35.022150",
+      "account": "Informal-Salt827",
+      "community": "r/codex",
+      "title": "How many of you \"Trust\" Codex?",
+      "comment_url": "https://old.reddit.com/r/codex/comments/1t5uwtc/how_many_of_you_trust_codex/omaao0k/",
+      "opening_line": "Honestly I don’t trust Codex as a verdict machine. I trust it as an implementation engine when the task is narrow enough that a human can still judge the result quickly."
     }
   ],
   "recommendations": [
