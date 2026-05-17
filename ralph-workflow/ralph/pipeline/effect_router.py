@@ -48,6 +48,7 @@ def determine_effect_from_policy(
     *,
     config: UnifiedConfig | None = None,
 ) -> Effect:
+    """Select the next pipeline effect based on current state and policy."""
     terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
     if terminal is not None:
         return terminal
@@ -298,10 +299,21 @@ def _config_agents_for_phase(
     for drain_name in _config_drain_candidates(phase=phase, policy_drain=policy_drain):
         drain_cfg = config.agent_drains.get(drain_name)
         if drain_cfg is not None:
-            chain_cfg = config.agent_chains.get(drain_cfg.chain)
+            chain_name = drain_cfg if isinstance(drain_cfg, str) else drain_cfg.chain
+            chain_cfg = config.agent_chains.get(chain_name)
             if chain_cfg is not None:
-                return list(chain_cfg.agents)
+                agents = chain_cfg if isinstance(chain_cfg, list) else chain_cfg.agents
+                return list(agents)
         direct_chain_cfg = config.agent_chains.get(drain_name)
         if direct_chain_cfg is not None:
-            return list(direct_chain_cfg.agents)
+            agents = (
+                direct_chain_cfg
+                if isinstance(direct_chain_cfg, list)
+                else direct_chain_cfg.agents
+            )
+            return list(agents)
     return []
+
+
+agents_for_phase = _agents_for_phase
+config_agents_for_phase = _config_agents_for_phase

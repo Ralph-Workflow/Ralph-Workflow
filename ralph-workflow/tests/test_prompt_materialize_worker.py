@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
-from ralph.prompts.materialize import _phase_payload_variables, render_worker_prompt
+from ralph.prompts.materialize import phase_payload_variables, render_worker_prompt
 from ralph.prompts.payload_refs import MAX_INLINE_PROMPT_BYTES
 
 BASE_PROMPT = "Base context: only work on your assigned unit."
@@ -76,7 +76,7 @@ def test_worker_namespace_routes_payloads(tmp_path: Path) -> None:
     worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
     workspace_root = tmp_path
 
-    _phase_payload_variables(
+    phase_payload_variables(
         phase="review",
         workspace_root=workspace_root,
         worker_namespace=worker_ns,
@@ -97,7 +97,7 @@ def test_phase_payload_variables_without_namespace_uses_shared_path(tmp_path: Pa
     """Without worker_namespace, oversized payloads go to the shared singleton path."""
     workspace_root = tmp_path
 
-    _phase_payload_variables(
+    phase_payload_variables(
         phase="review",
         workspace_root=workspace_root,
         values={"PLAN": _LARGE_CONTENT, "DIFF": "small diff"},
@@ -113,13 +113,13 @@ def test_two_concurrent_namespaces_dont_collide(tmp_path: Path) -> None:
     ns_b = tmp_path / ".agent" / "workers" / "unit-b"
     workspace_root = tmp_path
 
-    _phase_payload_variables(
+    phase_payload_variables(
         phase="review",
         workspace_root=workspace_root,
         worker_namespace=ns_a,
         values={"PLAN": _LARGE_CONTENT, "DIFF": "diff-a"},
     )
-    _phase_payload_variables(
+    phase_payload_variables(
         phase="review",
         workspace_root=workspace_root,
         worker_namespace=ns_b,

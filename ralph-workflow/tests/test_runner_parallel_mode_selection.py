@@ -34,7 +34,7 @@ class TestRunnerBoundaryPreflightRejection:
                 WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/api/auth"]),
             ),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, ExitFailureEffect)
         assert "parallel preflight rejected plan:" in effect.reason
 
@@ -47,7 +47,7 @@ class TestRunnerBoundaryPreflightRejection:
                 WorkUnit(unit_id="unit-b", description="B", allowed_directories=[]),
             ),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, ExitFailureEffect)
         assert "parallel preflight rejected plan:" in effect.reason
 
@@ -60,7 +60,7 @@ class TestRunnerBoundaryPreflightRejection:
                 WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
             ),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, ExitFailureEffect)
         assert "parallel preflight rejected plan:" in effect.reason
 
@@ -73,7 +73,7 @@ class TestRunnerBoundaryPreflightRejection:
                 WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
             ),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, FanOutEffect)
         assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
 
@@ -87,7 +87,7 @@ class TestRunnerBoundaryPreflightRejection:
                 WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/shared"]),
             ),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert not isinstance(effect, InvokeAgentEffect), (
             "Rejected parallel plan must not fall back to a single development invocation"
         )
@@ -100,7 +100,7 @@ class TestRunnerBoundaryPreflightRejection:
             phase="development",
             work_units=(WorkUnit(unit_id="unit-a", description="A"),),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, InvokeAgentEffect), (
             "Single work unit must use normal serial development (no fan-out)"
         )
@@ -115,7 +115,7 @@ class TestRunnerBoundaryPreflightRejection:
                 WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
             ),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, FanOutEffect)
         assert effect.run_post_fanout_verification is False, (
             "run_post_fanout_verification must default to False so tests never run make verify"
@@ -132,7 +132,7 @@ class TestRunnerBoundaryPreflightRejection:
                 WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
             ),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, ExitFailureEffect)
         assert "does not declare parallelization" in effect.reason
 
@@ -156,7 +156,7 @@ class TestRunnerBoundaryPreflightRejection:
                 WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
             ),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, FanOutEffect)
         assert effect.max_workers == 1
 
@@ -179,6 +179,6 @@ class TestRunnerBoundaryPreflightRejection:
                 WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
             ),
         )
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module.determine_effect_from_policy(state, bundle)
         assert isinstance(effect, FanOutEffect)
         assert effect.run_post_fanout_verification is True

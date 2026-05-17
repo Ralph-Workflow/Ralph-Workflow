@@ -10,12 +10,12 @@ Verifies that the policy explanation includes:
 from __future__ import annotations
 
 from ralph.policy.explain import PolicyExplanation, explain_policy
-from ralph.policy.loader import _default_dir, load_policy
+from ralph.policy.loader import default_dir, load_policy
 from ralph.policy.render import render_explanation_ascii, render_explanation_text
 
 
 def _default_explanation() -> PolicyExplanation:
-    bundle = load_policy(_default_dir())
+    bundle = load_policy(default_dir())
     return explain_policy(bundle)
 
 

@@ -1303,9 +1303,22 @@ class PlainLogRenderer:
         content: str,
         *,
         options: _ActivityLineOptions | None = None,
+        condensed_ref: str | None = None,
+        condensed_flag: bool = False,
+        summary_line: str | None = None,
+        ai_summary_line: str | None = None,
+        tool_signature: tuple[str, str] | None = None,
     ) -> None:
         """Emit a kind-tagged, level-badged content line."""
-        opts = options or _ActivityLineOptions()
+        if options is None:
+            options = _ActivityLineOptions(
+                condensed_ref=condensed_ref,
+                condensed_flag=condensed_flag,
+                summary_line=summary_line,
+                ai_summary_line=ai_summary_line,
+                tool_signature=tool_signature,
+            )
+        opts = options
         timestamp = self._format_timestamp(self._clock())
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")

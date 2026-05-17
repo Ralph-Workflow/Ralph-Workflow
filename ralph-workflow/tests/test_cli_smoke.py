@@ -43,7 +43,7 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
 
 
 def test_build_smoke_prompt_targets_tmp_javascript_todo_list() -> None:
-    prompt = smoke_module._build_smoke_prompt(
+    prompt = smoke_module.build_smoke_prompt(
         "tmp/interactive-claude-smoke/todo-list.js",
         submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
     )
@@ -75,7 +75,7 @@ def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
         errors=["missing tool activity"],
     )
 
-    report = smoke_module._render_smoke_report([result])
+    report = smoke_module.render_smoke_report([result])
 
     assert "Headless semantic guide" in report
     assert "Observed working" in report

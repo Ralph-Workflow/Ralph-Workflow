@@ -1,0 +1,65 @@
+"""Session ID extraction and bounded output utilities."""
+
+from __future__ import annotations
+
+import json
+import re
+from typing import cast
+
+_EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
+_TURN_BOUNDARY_MARKER = "[claude turn boundary]"
+_SESSION_ID_PATTERNS = (
+    re.compile(r"session\s+id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
+    re.compile(r"--resume\s+([A-Za-z0-9._:-]+)"),
+)
+
+
+def _find_session_id(value: object) -> str | None:
+    if isinstance(value, dict):
+        for key in ("session_id", "sessionId"):
+            session_id = value.get(key)
+            if isinstance(session_id, str) and session_id:
+                return session_id
+        for nested in value.values():
+            session_id = _find_session_id(nested)
+            if session_id:
+                return session_id
+    if isinstance(value, list):
+        for item in value:
+            session_id = _find_session_id(item)
+            if session_id:
+                return session_id
+    return None
+
+
+def _extract_session_id_from_line(line: str) -> str | None:
+    try:
+        parsed = cast("object", json.loads(line))
+    except json.JSONDecodeError:
+        stripped = line.strip()
+        for pattern in _SESSION_ID_PATTERNS:
+            match = pattern.search(stripped)
+            if match is not None:
+                return match.group(1)
+        return None
+    return _find_session_id(parsed)
+
+
+def extract_session_id(raw_output: list[str] | tuple[str, ...]) -> str | None:
+    """Extract a nested session identifier from raw NDJSON output lines."""
+    for line in raw_output:
+        session_id = _extract_session_id_from_line(line)
+        if session_id:
+            return session_id
+    return None
+
+
+def _bounded_output_lines(
+    raw_output: list[str] | tuple[str, ...],
+    *,
+    explicit_completion_seen: bool = False,
+) -> list[str]:
+    lines = list(raw_output)
+    if explicit_completion_seen and not any(_EXPLICIT_COMPLETION_MARKER in line for line in lines):
+        lines.append(_EXPLICIT_COMPLETION_MARKER)
+    return lines

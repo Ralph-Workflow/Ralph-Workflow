@@ -65,10 +65,10 @@ def make_worker_context(
     same_workspace: SameWorkspaceContext | None = None,
 ) -> object:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
-    ctx_type = module._WorkerContext
+    ctx_type = module.WorkerContext
     log = None
     if log_dir is not None:
-        log_type = module._WorkerLog
+        log_type = module.WorkerLog
         log = log_type(log_dir=log_dir, run_id=run_id)
     return ctx_type(log=log, same_workspace=same_workspace)
 

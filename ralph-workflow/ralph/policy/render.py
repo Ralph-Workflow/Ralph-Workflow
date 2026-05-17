@@ -401,7 +401,7 @@ def render_explanation_text(exp: PolicyExplanation) -> str:
     return "\n".join(lines)
 
 
-def _render_explanation_sentences(phase: PhaseExplanation) -> list[str]:
+def render_explanation_sentences(phase: PhaseExplanation) -> list[str]:
     """Generate explanation sentences for a phase per Required Product Outcome D.
 
     Produces sentences for decisions, terminal outcomes, bypass_routes, and
@@ -656,5 +656,5 @@ def _render_phase_text(phase: object, lines: list[str]) -> None:
 
     _render_phase_verification(phase, lines)
 
-    sentences = _render_explanation_sentences(phase)
+    sentences = render_explanation_sentences(phase)
     lines.extend(sentences)

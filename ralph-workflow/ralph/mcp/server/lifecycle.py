@@ -425,11 +425,12 @@ def _create_session_file(root: Path, session: SessionLike) -> Path:
     fd, temp_path = tempfile.mkstemp(prefix="ralph-mcp-session-", suffix=".json", dir=session_dir)
     os.close(fd)
     path = Path(temp_path)
-    path.write_text(_session_payload_json(session), encoding="utf-8")
+    path.write_text(session_payload_json(session), encoding="utf-8")
     return path
 
 
-def _session_payload_json(session: SessionLike) -> str:
+def session_payload_json(session: SessionLike) -> str:
+    """Serialize the session metadata to a compact JSON string for MCP handshake."""
     session_payload: dict[str, object] = {
         "session_id": session.session_id,
         "run_id": session.run_id,
@@ -461,6 +462,7 @@ __all__ = [
     "RestartAwareMcpBridge",
     "SessionBridgeLike",
     "check_mcp_bridge_health",
+    "session_payload_json",
     "shutdown_mcp_server",
     "start_mcp_server",
 ]

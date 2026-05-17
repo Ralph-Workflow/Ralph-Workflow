@@ -23,7 +23,6 @@ from ralph.display.artifact_renderer import (
     render_plan_artifact,
     render_review_artifact,
 )
-from ralph.display.subscriber import ActivityDetails
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.legacy_console_display import (
@@ -292,13 +291,11 @@ def _record_activity_on_subscriber(
         subscriber.record_activity(
             unit_id=agent_name,
             line=line_text,
-            details=ActivityDetails(
-                agent_name=agent_name,
-                tool_name=tool_name,
-                path=path,
-                workdir=workdir,
-                command=command,
-            ),
+            agent_name=agent_name,
+            tool_name=tool_name,
+            path=path,
+            workdir=workdir,
+            command=command,
         )
     except Exception:
         logger.debug("subscriber.record_activity failed", exc_info=True)
@@ -460,3 +457,14 @@ def _styled_prefix(label: str, style: str) -> Text:
     text = Text()
     text.append(f"{label}: ", style=f"bold {style}")
     return text
+
+
+render_agent_activity_line = _render_agent_activity_line
+record_activity_on_subscriber = _record_activity_on_subscriber
+metadata_summary = _metadata_summary
+truncate = _truncate
+available_width = _available_width
+terminal_width = _terminal_width
+MAX_TEXT_LENGTH = _MAX_TEXT_LENGTH
+MAX_TOOL_RESULT_BRIEF = _MAX_TOOL_RESULT_BRIEF
+MAX_METADATA_SUMMARY_LENGTH = _MAX_METADATA_SUMMARY_LENGTH

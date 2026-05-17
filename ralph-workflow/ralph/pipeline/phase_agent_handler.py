@@ -1,0 +1,283 @@
+"""Phase artifact rendering and post-agent-run event handling."""
+
+from __future__ import annotations
+
+import json
+from contextlib import suppress
+from importlib import import_module
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
+
+from loguru import logger
+
+from ralph.agents.chain import ChainManager
+from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import Verbosity
+from ralph.display.artifact_renderer import (
+    render_analysis_decision,
+    render_development_artifact,
+    render_fix_artifact,
+    render_plan_artifact,
+    render_review_artifact,
+)
+from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
+from ralph.phases import PhaseContext, handle_phase
+from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.legacy_console_display import (
+    LegacyConsoleDisplay,
+    display_console,
+    get_display_context,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ralph.config.models import UnifiedConfig
+    from ralph.display.artifact_reader import AnalysisDecisionSummary, PlanSummary
+    from ralph.display.context import DisplayContext
+    from ralph.display.parallel_display import ParallelDisplay
+    from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.pipeline.events import Event
+    from ralph.pipeline.state import PipelineState
+    from ralph.policy.models import PolicyBundle
+    from ralph.workspace import FsWorkspace
+    from ralph.workspace.scope import WorkspaceScope
+
+
+class _ReadLatestAnalysisDecisionFn(Protocol):
+    def __call__(
+        self,
+        workspace_root: Path,
+        drain: str,
+    ) -> AnalysisDecisionSummary | None: ...
+
+
+class _ReadPlanArtifactFn(Protocol):
+    def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
+
+
+class _ArtifactReaderModule(Protocol):
+    read_latest_analysis_decision: _ReadLatestAnalysisDecisionFn
+    read_plan_artifact: _ReadPlanArtifactFn
+
+
+def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:
+    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
+    return module.read_latest_analysis_decision
+
+
+def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
+    module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
+    return module.read_plan_artifact
+
+
+def _phase_event_after_agent_run(
+    *,
+    effect: InvokeAgentEffect,
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle,
+    workspace: FsWorkspace,
+    workspace_scope: WorkspaceScope | None = None,
+    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display_context: DisplayContext | None = None,
+    verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
+    handle_phase_fn: Callable[..., object] | None = None,
+) -> Event:
+    ctx = PhaseContext.model_construct(
+        workspace=workspace,
+        registry=AgentRegistry.from_config(config),
+        chain_manager=ChainManager(policy_bundle.agents),
+        pipeline_policy=policy_bundle.pipeline,
+        agents_policy=policy_bundle.agents,
+        artifacts_policy=policy_bundle.artifacts,
+        config=config,
+        console=display_console(display, display_context),
+    )
+    try:
+        _hp = handle_phase_fn or handle_phase
+        events = _hp(effect, ctx)
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:
+        logger.exception(
+            "Phase handler crashed in phase={phase}: {err}",
+            phase=effect.phase,
+            err=exc,
+        )
+        events = [
+            PhaseFailureEvent(
+                phase=effect.phase,
+                reason=f"Phase handler crashed: {type(exc).__name__}: {exc}",
+                recoverable=True,
+            )
+        ]
+    event: Event = events[0] if events else PipelineEvent.AGENT_SUCCESS
+
+    with suppress(Exception):
+        _render_phase_artifact_handoff(
+            effect.phase,
+            event,
+            Path(workspace.absolute_path(".")),
+            display,
+            display_context=display_context,
+            verbosity=verbosity,
+            drain=effect.drain,
+            policy_bundle=policy_bundle,
+            state=state,
+        )
+
+    if (
+        display is not None
+        and workspace_scope is not None
+        and event in (PipelineEvent.ANALYSIS_SUCCESS, PipelineEvent.ANALYSIS_LOOPBACK)
+        and hasattr(display, "emit_analysis_result")
+    ):
+        try:
+            drain = effect.drain or effect.phase
+            read_latest_analysis_decision = _read_latest_analysis_decision_func()
+            summary = read_latest_analysis_decision(workspace_scope.root, drain)
+            if summary is not None:
+                cast("ParallelDisplay", display).emit_analysis_result(
+                    phase=effect.phase,
+                    decision=summary.decision,
+                    reason=summary.reason,
+                )
+        except Exception:
+            logger.debug("Failed to emit analysis result", exc_info=True)
+
+    return event
+
+
+def _render_phase_artifact_handoff(
+    phase: str,
+    event: Event,
+    workspace_root: Path,
+    display: ParallelDisplay | LegacyConsoleDisplay | None,
+    *,
+    display_context: DisplayContext | None = None,
+    verbosity: Verbosity = Verbosity.VERBOSE,
+    drain: str | None = None,
+    policy_bundle: PolicyBundle | None = None,
+    state: PipelineState | None = None,
+) -> None:
+    ctx = get_display_context(display, display_context)
+    effective_drain = drain or phase
+    required_artifact = (
+        resolve_phase_required_artifact(
+            policy_bundle.pipeline,
+            policy_bundle.artifacts,
+            phase=phase,
+            drain=effective_drain,
+        )
+        if policy_bundle is not None
+        else None
+    )
+
+    if required_artifact is None:
+        if event != PipelineEvent.AGENT_SUCCESS:
+            return
+        if policy_bundle is not None:
+            phase_def = policy_bundle.pipeline.phases.get(phase)
+            role = phase_def.role if phase_def is not None else None
+            if role == "analysis":
+                render_analysis_decision(workspace_root, effective_drain, ctx)
+            else:
+                logger.debug(
+                    "policy: no renderer for phase '{}' (role={});"
+                    " skipping artifact handoff render",
+                    phase,
+                    role,
+                )
+        return
+
+    artifact_type = required_artifact.artifact_type
+    if artifact_type.endswith("_analysis_decision"):
+        render_analysis_decision(workspace_root, effective_drain, ctx)
+        return
+
+    if event == PipelineEvent.AGENT_SUCCESS:
+        _render_success_artifact(
+            artifact_type,
+            workspace_root,
+            ctx,
+            display,
+            verbosity,
+            required_artifact,
+        )
+
+
+def _render_success_artifact(
+    artifact_type: str,
+    workspace_root: Path,
+    display_context: DisplayContext,
+    display: ParallelDisplay | LegacyConsoleDisplay | None,
+    verbosity: Verbosity,
+    ra: RequiredArtifact,
+) -> None:
+    def _emit_close(produced: str) -> None:
+        if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
+            with suppress(Exception):
+                cast("ParallelDisplay", display).record_artifact_outcome(produced)
+
+    if artifact_type == "plan":
+        render_plan_artifact(workspace_root, display_context)
+        with suppress(Exception):
+            read_plan_artifact = _read_plan_artifact_func()
+            plan = read_plan_artifact(workspace_root)
+            produced = (
+                f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
+                if plan is not None
+                else "(no plan artifact on disk)"
+            )
+            _emit_close(produced)
+        return
+
+    if artifact_type == "development_result":
+        render_development_artifact(workspace_root, display_context)
+        produced = (
+            "result produced" if (workspace_root / ra.json_path).exists() else "no result artifact"
+        )
+        _emit_close(produced)
+        return
+
+    if artifact_type == "issues":
+        render_review_artifact(workspace_root, display_context)
+        with suppress(Exception):
+            issue_count = 0
+            issues_path = workspace_root / ra.json_path
+            if issues_path.exists():
+                try:
+                    issues_text = issues_path.read_text(encoding="utf-8")
+                    issues_data = cast("object", json.loads(issues_text))
+                    content_obj = (
+                        cast("dict[str, object]", issues_data).get("content")
+                        if isinstance(issues_data, dict)
+                        else issues_data
+                    )
+                    issues_list = (
+                        cast("dict[str, object]", content_obj).get("issues")
+                        if isinstance(content_obj, dict)
+                        else content_obj
+                    )
+                    if isinstance(issues_list, list):
+                        issue_count = len(issues_list)
+                except Exception:
+                    pass
+            _emit_close(f"{issue_count} issue(s)")
+        return
+
+    if artifact_type == "fix_result":
+        render_fix_artifact(workspace_root, display_context)
+        _emit_close("applied")
+
+
+def _commit_effect(workspace_root: Path) -> CommitEffect:
+    return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
+
+
+phase_event_after_agent_run = _phase_event_after_agent_run
+render_phase_artifact_handoff = _render_phase_artifact_handoff
+commit_effect = _commit_effect

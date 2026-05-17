@@ -62,11 +62,11 @@ def _install_runner_stubs(
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
-    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
-        runner_module, "_phase_event_after_agent_run", fake_phase_event_after_agent_run
+        runner_module, "phase_event_after_agent_run", fake_phase_event_after_agent_run
     )
     return invoked_phases
 
@@ -140,17 +140,17 @@ def test_quiet_mode_renders_completion_summary_on_failure(
 
     monkeypatch.setattr(
         runner_module,
-        "_call_determine_effect_from_policy",
+        "call_determine_effect_from_policy",
         lambda *_a, **_kw: next(effects),
     )
     monkeypatch.setattr(
         runner_module,
-        "_materialize_prepared_prompt",
+        "materialize_prepared_prompt",
         lambda *_a, **_kw: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_emit_phase_transition_if_changed",
+        "emit_phase_transition_if_changed",
         lambda *args, **kwargs: args[1],
     )
 

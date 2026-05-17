@@ -155,9 +155,9 @@ def _run_pipeline(
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "_materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_execute_effect", fake_execute_effect)
-    monkeypatch.setattr(runner, "_phase_event_after_agent_run", fake_phase_event_after_agent_run)
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner, "phase_event_after_agent_run", fake_phase_event_after_agent_run)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)
 
@@ -312,7 +312,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
     (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted planning analysis.")
 
     planning_analysis_calls = 0
-    original_determine = runner._call_determine_effect_from_policy
+    original_determine = runner.call_determine_effect_from_policy
 
     def stop_at_development(
         state: PipelineState,
@@ -396,10 +396,10 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "_materialize_prepared_prompt", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_execute_effect", fake_execute_effect)
-    monkeypatch.setattr(runner, "_call_determine_effect_from_policy", stop_at_development)
+    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner, "call_determine_effect_from_policy", stop_at_development)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)
 
@@ -542,7 +542,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
     )
 
     development_analysis_calls = 0
-    original_determine = runner._call_determine_effect_from_policy
+    original_determine = runner.call_determine_effect_from_policy
 
     def stop_at_development_commit(
         state: PipelineState,
@@ -610,10 +610,10 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "_materialize_prepared_prompt", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_execute_effect", fake_execute_effect)
-    monkeypatch.setattr(runner, "_call_determine_effect_from_policy", stop_at_development_commit)
+    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner, "call_determine_effect_from_policy", stop_at_development_commit)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)
 

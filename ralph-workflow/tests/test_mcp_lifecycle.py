@@ -13,7 +13,7 @@ from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.mcp.server.lifecycle import _session_payload_json
+from ralph.mcp.server.lifecycle import session_payload_json
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
@@ -625,7 +625,7 @@ def test_session_payload_json_includes_model_identity_when_known() -> None:
             provider="anthropic", model_id="claude-3-5-sonnet", transport="cli"
         ),
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     assert "model_identity" in payload
     assert payload["model_identity"]["provider"] == "anthropic"
     assert payload["model_identity"]["model_id"] == "claude-3-5-sonnet"
@@ -633,19 +633,19 @@ def test_session_payload_json_includes_model_identity_when_known() -> None:
 
 
 def test_session_payload_json_omits_model_identity_when_unknown() -> None:
-    """_session_payload_json omits model_identity for UNKNOWN_IDENTITY sessions."""
+    """session_payload_json omits model_identity for UNKNOWN_IDENTITY sessions."""
     session = AgentSession(
         session_id="sid-unknown",
         run_id="run-unknown",
         drain="development",
         capabilities={"WorkspaceRead"},
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     assert "model_identity" not in payload
 
 
 def test_session_payload_json_omits_model_identity_for_sessions_without_attribute() -> None:
-    """_session_payload_json is safe when session lacks model_identity attribute."""
+    """session_payload_json is safe when session lacks model_identity attribute."""
 
     class _MinimalSession:
         session_id = "sid-min"
@@ -656,7 +656,7 @@ def test_session_payload_json_omits_model_identity_for_sessions_without_attribut
         def __init__(self) -> None:
             self.capabilities = set()
 
-    payload = json.loads(_session_payload_json(_MinimalSession()))
+    payload = json.loads(session_payload_json(_MinimalSession()))
     assert "model_identity" not in payload
 
 
@@ -676,7 +676,7 @@ def test_session_payload_json_includes_capability_profile_for_known_provider() -
             provider="claude", model_id="claude-opus-4-7", transport="claude"
         ),
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     assert "capability_profile" in payload
     profile = payload["capability_profile"]
     assert profile["provider"] == "claude"
@@ -703,7 +703,7 @@ def test_session_payload_json_includes_profile_for_unknown_provider_with_rr_deli
         drain="development",
         capabilities={"WorkspaceRead"},
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     assert "capability_profile" in payload
     profile = payload["capability_profile"]
     assert profile["provider"] == "unknown"
@@ -723,7 +723,7 @@ def test_session_payload_json_capability_profile_verdicts_cover_all_modalities()
         capabilities={"WorkspaceRead"},
         model_identity=MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash"),
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     verdicts = payload["capability_profile"]["verdicts"]
     for modality in SUPPORTED_MODALITIES:
         assert modality in verdicts, f"modality {modality!r} missing from serialized profile"

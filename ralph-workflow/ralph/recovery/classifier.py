@@ -40,7 +40,7 @@ _ENV_ERRNOS: frozenset[int] = frozenset(
 # Substrings that indicate a stale/invalid agent session ID was used for resume.
 # Claude Code uses "No conversation found with session ID:"; OpenCode uses
 # "Session not found", "Unknown session", and "session does not exist".
-_SESSION_NOT_FOUND_SUBSTRINGS: tuple[str, ...] = (
+SESSION_NOT_FOUND_SUBSTRINGS: tuple[str, ...] = (
     "No conversation found with session ID:",
     "Session not found",
     "Unknown session",
@@ -162,7 +162,7 @@ def _is_artifact_validation_message(raw_message: str) -> bool:
 
 def _is_stale_session_message(raw_message: str) -> bool:
     """Return True if the message indicates a stale agent session ID was used."""
-    return any(s in raw_message for s in _SESSION_NOT_FOUND_SUBSTRINGS)
+    return any(s in raw_message for s in SESSION_NOT_FOUND_SUBSTRINGS)
 
 
 class FailureClassifier:

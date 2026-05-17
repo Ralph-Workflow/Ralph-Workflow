@@ -51,8 +51,8 @@ def test_sse_entry_probe_agent_transports_sees_server_as_reachable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
-    monkeypatch.setattr("ralph.mcp.upstream.agent_probe._http_handshake", lambda _endpoint: None)
-    monkeypatch.setattr("ralph.mcp.upstream.agent_probe._server_handshake", lambda _server: None)
+    monkeypatch.setattr("ralph.mcp.upstream.agent_probe.http_handshake", lambda _endpoint: None)
+    monkeypatch.setattr("ralph.mcp.upstream.agent_probe.server_handshake", lambda _server: None)
 
     _write_mcp_toml(tmp_path, "docs-sse", _FAKE_SSE_URL)
 

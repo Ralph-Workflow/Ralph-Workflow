@@ -101,7 +101,7 @@ def _stub_commit_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
         def shutdown(self) -> None:
             return None
 
-    monkeypatch.setattr(commit_module, "_start_commit_bridge", lambda _repo_root: FakeBridge())
+    monkeypatch.setattr(commit_module, "start_commit_bridge", lambda _repo_root: FakeBridge())
 
 
 def test_start_commit_bridge_exposes_write_file_for_commit_session(tmp_path: Path) -> None:
@@ -202,11 +202,11 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     monkeypatch.setattr(commit_module, "stage_all", fake_stage_all, raising=False)
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
 
     class FakeRegistry:
@@ -264,7 +264,7 @@ def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path
     (tmp_git_repo / "pending.py").write_text("pending = 2\n")
     repo.index.add(["pending.py"])
 
-    diff = commit_module._working_tree_diff(tmp_git_repo)
+    diff = commit_module.working_tree_diff(tmp_git_repo)
 
     assert "pending.py" in diff
     assert "mid_cycle.py" not in diff
@@ -311,11 +311,11 @@ def test_generate_commit_uses_commit_drain_agent_chain(
     _stub_commit_bridge(monkeypatch)
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
 
     invoked_agents: list[str] = []
@@ -370,11 +370,11 @@ def test_generate_commit_uses_direct_opencode_model_from_commit_drain(
     )
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -406,7 +406,7 @@ def test_generate_commit_retries_missing_artifact_in_same_session_when_available
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
@@ -473,7 +473,7 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
     )
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     _stub_commit_bridge(monkeypatch)
@@ -486,7 +486,7 @@ def test_generate_commit_retries_with_summarized_failure_before_fallback(
         prompt_file.write_text(prompt, encoding="utf-8")
         return str(prompt_file)
 
-    monkeypatch.setattr(commit_module, "_write_commit_prompt_file", fake_write_commit_prompt_file)
+    monkeypatch.setattr(commit_module, "write_commit_prompt_file", fake_write_commit_prompt_file)
 
     invoked_agents: list[tuple[str, str | None]] = []
 
@@ -548,11 +548,11 @@ def test_generate_commit_passes_mcp_endpoint_to_opencode_agent(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -601,7 +601,7 @@ def test_generate_commit_prompt_mentions_opencode_prefixed_submit_tool(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     captured_prompt: list[str] = []
@@ -610,7 +610,7 @@ def test_generate_commit_prompt_mentions_opencode_prefixed_submit_tool(
         captured_prompt.append(prompt)
         return "PROMPT.md"
 
-    monkeypatch.setattr(commit_module, "_write_commit_prompt_file", fake_write_commit_prompt_file)
+    monkeypatch.setattr(commit_module, "write_commit_prompt_file", fake_write_commit_prompt_file)
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:
@@ -647,7 +647,7 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     captured_prompt: list[str] = []
@@ -656,7 +656,7 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
         captured_prompt.append(prompt)
         return "PROMPT.md"
 
-    monkeypatch.setattr(commit_module, "_write_commit_prompt_file", fake_write_commit_prompt_file)
+    monkeypatch.setattr(commit_module, "write_commit_prompt_file", fake_write_commit_prompt_file)
     _stub_commit_bridge(monkeypatch)
 
     class FakeRegistry:
@@ -710,11 +710,11 @@ def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
     )
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -745,11 +745,11 @@ def test_generate_commit_msg_writes_commit_message_artifact(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -800,11 +800,11 @@ def test_generate_commit_msg_extracts_commit_subject_from_markdown_wrapper(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -847,11 +847,11 @@ def test_generate_commit_msg_applies_sanitized_subject_when_committing(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
     _stub_commit_bridge(monkeypatch)
@@ -897,11 +897,11 @@ def test_generate_commit_applies_message_from_persisted_artifact(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
     _stub_commit_bridge(monkeypatch)
@@ -951,11 +951,11 @@ def test_generate_commit_preserves_artifacts_when_commit_fails(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     monkeypatch.setattr(commit_module, "stage_all", lambda _root: None)
     _stub_commit_bridge(monkeypatch)
@@ -1057,11 +1057,11 @@ def test_generate_commit_msg_skip_deletes_existing_artifact(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -1101,11 +1101,11 @@ def test_generate_commit_msg_surfaces_parsed_agent_output_when_artifact_missing(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -1151,12 +1151,12 @@ def test_generate_commit_msg_surfaces_agent_invocation_error_details(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     prompt_path = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: str(prompt_path)
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: str(prompt_path)
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -1190,8 +1190,8 @@ def test_generate_commit_msg_surfaces_agent_invocation_error_details(
 
 
 def test_write_commit_prompt_file_uses_unique_path(tmp_path: Path) -> None:
-    first = Path(commit_module._write_commit_prompt_file(tmp_path, "alpha"))
-    second = Path(commit_module._write_commit_prompt_file(tmp_path, "beta"))
+    first = Path(commit_module.write_commit_prompt_file(tmp_path, "alpha"))
+    second = Path(commit_module.write_commit_prompt_file(tmp_path, "beta"))
 
     assert first != second
     assert not first.exists()
@@ -1205,7 +1205,7 @@ def test_write_commit_prompt_file_clears_stale_commit_prompts(tmp_path: Path) ->
     stale = tmp_dir / "commit_prompt_stale.md"
     stale.write_text("stale", encoding="utf-8")
 
-    fresh = Path(commit_module._write_commit_prompt_file(tmp_path, "fresh"))
+    fresh = Path(commit_module.write_commit_prompt_file(tmp_path, "fresh"))
 
     assert not stale.exists()
     assert fresh.exists()
@@ -1220,11 +1220,11 @@ def test_generate_commit_msg_preserves_streamed_output_when_agent_exits_nonzero(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -1270,11 +1270,11 @@ def test_generate_commit_msg_surfaces_structured_tool_results_when_artifact_miss
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -1321,11 +1321,11 @@ def test_generate_commit_msg_accepts_raw_commit_payload_written_by_agent(
     monkeypatch.setattr(commit_module, "load_config", lambda *args, **kwargs: _simple_config())
     monkeypatch.setattr(
         commit_module,
-        "_working_tree_diff",
+        "working_tree_diff",
         lambda _root: "diff --git a/src/app.py b/src/app.py\n+print('hi')",
     )
     monkeypatch.setattr(
-        commit_module, "_write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
+        commit_module, "write_commit_prompt_file", lambda _root, _prompt: "PROMPT.md"
     )
     _stub_commit_bridge(monkeypatch)
 
@@ -1384,7 +1384,7 @@ def test_check_git_repo_errors(monkeypatch: pytest.MonkeyPatch) -> None:
         raise RuntimeError("missing")
 
     monkeypatch.setattr(diagnose_module, "find_repo_root", raise_repo)
-    diagnose_module._check_git_repo(display_context=ctx)
+    diagnose_module.check_git_repo(display_context=ctx)
     assert "Git Repository" in stream.getvalue()
     assert "Error" in stream.getvalue()
 
@@ -1396,7 +1396,7 @@ def test_check_git_repo_clean_state(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     monkeypatch.setattr(diagnose_module, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(diagnose_module, "is_repo_clean", lambda root: True)
 
-    diagnose_module._check_git_repo(display_context=ctx)
+    diagnose_module.check_git_repo(display_context=ctx)
     output = stream.getvalue()
     assert "Working tree" in output
     assert "Clean" in output
@@ -1413,7 +1413,7 @@ def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     )
     monkeypatch.setattr(diagnose_module, "load_config", lambda *args, **kwargs: config)
-    diagnose_module._check_configuration(None, {}, display_context=ctx)
+    diagnose_module.check_configuration(None, {}, display_context=ctx)
     output = stream.getvalue()
     assert "Config loaded" in output
     assert "Developer iters" in output
@@ -1429,7 +1429,7 @@ def test_check_configuration_failure(monkeypatch: pytest.MonkeyPatch) -> None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(diagnose_module, "load_config", raise_config)
-    diagnose_module._check_configuration(None, {}, display_context=ctx)
+    diagnose_module.check_configuration(None, {}, display_context=ctx)
     assert "Error" in stream.getvalue()
 
 
@@ -1442,7 +1442,7 @@ def test_check_agents_no_agents(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         diagnose_module, "AgentRegistry", SimpleNamespace(from_config=lambda c: fake_registry)
     )
-    diagnose_module._check_agents({}, display_context=ctx)
+    diagnose_module.check_agents({}, display_context=ctx)
     assert "No agents configured" in stream.getvalue()
 
 
@@ -1462,7 +1462,7 @@ def test_check_agents_with_configured_agent(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(
         diagnose_module, "check_agent_availability", lambda r: [("alpha", "available")]
     )
-    diagnose_module._check_agents({}, display_context=ctx)
+    diagnose_module.check_agents({}, display_context=ctx)
     output = stream.getvalue()
     assert "Configured" in output
     assert "alpha" in output
@@ -1477,7 +1477,7 @@ def test_check_agents_failure(monkeypatch: pytest.MonkeyPatch) -> None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(diagnose_module, "load_config", raise_config)
-    diagnose_module._check_agents({}, display_context=ctx)
+    diagnose_module.check_agents({}, display_context=ctx)
     assert "Error" in stream.getvalue()
 
 
@@ -1493,7 +1493,7 @@ def test_check_workspace_files_reports_status(
     agent_dir.mkdir()
     (agent_dir / "ralph-workflow.toml").write_text("config")
 
-    diagnose_module._check_workspace_files(display_context=ctx)
+    diagnose_module.check_workspace_files(display_context=ctx)
     output = stream.getvalue()
     assert "PROMPT.md" in output
     assert "Exists" in output

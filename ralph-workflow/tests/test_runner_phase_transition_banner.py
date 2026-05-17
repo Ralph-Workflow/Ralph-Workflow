@@ -92,8 +92,8 @@ def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:
         budget_caps={"iteration": 1},
     )
 
-    result = runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    result = runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -117,8 +117,8 @@ def test_emit_phase_transition_populates_last_failure_category_from_state() -> N
         last_failure_category="timeout",
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -139,8 +139,8 @@ def test_emit_phase_transition_populates_waiting_status_from_subscriber() -> Non
         budget_caps={"iteration": 1},
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -161,8 +161,8 @@ def test_emit_phase_transition_populates_activity_counters_from_display() -> Non
         budget_caps={"iteration": 1},
     )
 
-    result = runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    result = runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -188,8 +188,8 @@ def test_emit_phase_transition_propagates_artifact_outcome_from_display() -> Non
         budget_caps={"iteration": 1},
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -211,8 +211,8 @@ def test_emit_phase_transition_uses_produced_exit_trigger_when_artifact_present(
         budget_caps={"iteration": 1},
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -235,8 +235,8 @@ def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() ->
         budget_caps={"iteration": 1},
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -276,14 +276,14 @@ def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
 
     with (
         patch("ralph.pipeline.runner.render_commit_message"),
-        patch("ralph.pipeline.runner._repo_has_commit_work", return_value=True),
+        patch("ralph.pipeline.runner.repo_has_commit_work", return_value=True),
     ):
-        runner_module._execute_commit_effect(
+        runner_module.execute_commit_effect(
             effect,
             _fake_create_commit,
             _fake_stage_all,
             Path("/tmp"),
-            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
             verbosity=runner_module.Verbosity.VERBOSE,
             phase_name="development_commit",
         )
@@ -359,14 +359,14 @@ def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
 
     with (
         patch("ralph.pipeline.runner.render_commit_message"),
-        patch("ralph.pipeline.runner._repo_has_commit_work", return_value=True),
+        patch("ralph.pipeline.runner.repo_has_commit_work", return_value=True),
     ):
-        runner_module._execute_commit_effect(
+        runner_module.execute_commit_effect(
             effect,
             _fake_create_commit,
             _fake_stage_all,
             Path("/tmp"),
-            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
             verbosity=runner_module.Verbosity.VERBOSE,
             phase_name="development_commit",
             state=state,
@@ -394,8 +394,8 @@ def test_emit_phase_transition_shows_rich_transition_banner_for_major_routing() 
         budget_caps={"iteration": 1},
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -430,8 +430,8 @@ def test_emit_phase_transition_calls_canonical_rich_phase_change_surfaces() -> N
         patch("ralph.pipeline.runner.show_phase_close_banner") as mock_close,
         patch("ralph.pipeline.runner.show_phase_transition") as mock_transition,
     ):
-        runner_module._emit_phase_transition_if_changed(
-            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+        runner_module.emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
             "planning",
             state,
             verbosity=runner_module.Verbosity.VERBOSE,
@@ -487,8 +487,8 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
 
     console_print_patch = patch("rich.console.Console.print", side_effect=_capture_print)
     with console_print_patch:
-        runner_module._emit_phase_transition_if_changed(
-            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+        runner_module.emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
             "development",
             state,
             verbosity=runner_module.Verbosity.VERBOSE,
@@ -544,8 +544,8 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
         review_outcome="issues",
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "review",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -572,8 +572,8 @@ def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback(
 
     setattr(
         display,
-        runner_module._PENDING_PHASE_TRANSITION_METADATA_ATTR,
-        runner_module._PendingPhaseTransitionMetadata(
+        runner_module.PENDING_PHASE_TRANSITION_METADATA_ATTR,
+        runner_module.PendingPhaseTransitionMetadata(
             previous_phase="planning_analysis",
             current_phase="planning",
             transition_context={
@@ -583,8 +583,8 @@ def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback(
         ),
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning_analysis",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -607,8 +607,8 @@ def test_emit_phase_transition_review_issues_found_none_for_non_review_phase() -
         review_outcome="issues",  # Set but should be ignored for non-review phases
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
@@ -632,8 +632,8 @@ def test_emit_phase_transition_shows_bypass_metadata_without_fake_decision() -> 
     )
     setattr(
         display,
-        runner_module._PENDING_PHASE_TRANSITION_METADATA_ATTR,
-        runner_module._PendingPhaseTransitionMetadata(
+        runner_module.PENDING_PHASE_TRANSITION_METADATA_ATTR,
+        runner_module.PendingPhaseTransitionMetadata(
             previous_phase="planning",
             current_phase="development",
             transition_context={"Planning Analysis": "cap reached, skipping"},
@@ -641,8 +641,8 @@ def test_emit_phase_transition_shows_bypass_metadata_without_fake_decision() -> 
         ),
     )
 
-    runner_module._emit_phase_transition_if_changed(
-        cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+    runner_module.emit_phase_transition_if_changed(
+        cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,

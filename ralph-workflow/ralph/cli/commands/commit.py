@@ -215,7 +215,7 @@ def _handle_agent_commit_generation(
         return
 
     delete_commit_message_artifacts(repo_root)
-    diff = _working_tree_diff(repo_root)
+    diff = working_tree_diff(repo_root)
     if not diff.strip():
         console.print(Text("No changes to commit", style="theme.status.warning"))
         return
@@ -427,13 +427,13 @@ def _generate_commit_message_with_chain(
 ) -> CommitAgentResult:
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
-    start_commit_bridge_params = signature(_start_commit_bridge).parameters
+    start_commit_bridge_params = signature(start_commit_bridge).parameters
     if "agents_policy" in start_commit_bridge_params:
-        bridge = _start_commit_bridge(repo_root, agents_policy=chain_config.agents_policy)
+        bridge = start_commit_bridge(repo_root, agents_policy=chain_config.agents_policy)
     else:
         legacy_start_commit_bridge = cast(
             "typing.Callable[[Path], SessionBridgeLike]",
-            _start_commit_bridge,
+            start_commit_bridge,
         )
         bridge = legacy_start_commit_bridge(repo_root)
     extra_env = _commit_bridge_env(bridge)
@@ -450,7 +450,7 @@ def _generate_commit_message_with_chain(
                 template_registry=template_registry,
                 repo_root=repo_root,
             )
-            prompt_file = _write_commit_prompt_file(repo_root, prompt)
+            prompt_file = write_commit_prompt_file(repo_root, prompt)
             attempt_ctx = CommitAttemptContext(
                 repo_root=repo_root,
                 verbose=chain_config.verbose,
@@ -513,7 +513,7 @@ def _generate_commit_message_with_agent(
         if not _is_missing_commit_artifact_failure(session_retry.failure_detail):
             return CommitAgentResult(failure_details=failure_details)
 
-    summary_prompt_file = _write_commit_prompt_file(
+    summary_prompt_file = write_commit_prompt_file(
         attempt_context.repo_root,
         _summarized_retry_prompt(
             _read_retry_prompt_text(prompt_file),
@@ -975,3 +975,10 @@ def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
         MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
         MCP_RUN_ID_ENV: "commit-plumbing",
     }
+
+
+start_commit_bridge = _start_commit_bridge
+write_commit_prompt_file = _write_commit_prompt_file
+working_tree_diff = _working_tree_diff
+submit_artifact_tool_name_for_transport = _submit_artifact_tool_name_for_transport
+render_commit_agent_activity_line = _render_commit_agent_activity_line

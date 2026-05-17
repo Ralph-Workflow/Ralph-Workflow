@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import deque
-from contextlib import suppress
+from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
@@ -14,6 +14,7 @@ from loguru import logger
 
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
+    InvokeOptions,
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
     extract_session_id,
@@ -58,7 +59,7 @@ from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.system_prompt import materialize_system_prompt
-from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS
+from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
@@ -68,6 +69,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
+    from ralph.mcp.protocol.startup import HeartbeatPolicy
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
@@ -97,8 +99,8 @@ class _InvokeAgentFn(Protocol):
         config: AgentConfig,
         prompt_file: str,
         *,
-        options: object | None = None,
-    ) -> Iterable[object]: ...
+        options: InvokeOptions | None = None,
+    ) -> Iterable[str]: ...
 
 
 class _RegistryLike(Protocol):
@@ -122,17 +124,73 @@ class _ShowPhaseStartFn(Protocol):
     ) -> None: ...
 
 
+class _StartMcpServerFn(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> RestartAwareMcpBridge: ...
+
+
+class _CreateCommitFn(Protocol):
+    def __call__(self, repo_root: Path | str, message: str, **kwargs: object) -> str: ...
+
+
+class _StageAllFn(Protocol):
+    def __call__(self, repo_root: Path | str) -> None: ...
+
+
+class _HasCommitWorkFn(Protocol):
+    def __call__(self, repo_root: Path) -> bool: ...
+
+
+class _RenderCommitMessageFn(Protocol):
+    def __call__(self, repo_root: Path, display_context: object) -> None: ...
+
+
+class _ShutdownMcpServerFn(Protocol):
+    def __call__(self, bridge: object) -> None: ...
+
+
+class _CheckMcpBridgeHealthFn(Protocol):
+    def __call__(self, bridge: object) -> None: ...
+
+
+class _MaterializeSystemPromptFn(Protocol):
+    def __call__(self, *, workspace_root: Path, name: str) -> str: ...
+
+
+class _McpSupervisorFactory(Protocol):
+    def __call__(
+        self,
+        bridge: object,
+        *,
+        check_interval: object,
+        on_restart: object,
+    ) -> AbstractContextManager[None]: ...
+
+
+class _HeartbeatPolicyFromEnvFn(Protocol):
+    def __call__(self) -> HeartbeatPolicy: ...
+
+
 @dataclass(frozen=True)
 class AgentExecutionDeps:
+    """Injectable dependencies for executing an agent-invocation effect."""
+
     invoke_agent: _InvokeAgentFn
     agent_invocation_error: type[Exception]
     agent_registry: _AgentRegistryFactory
     show_phase_start_cb: _ShowPhaseStartFn | None = None
     set_session_id_cb: Callable[[str | None], None] | None = None
+    start_mcp_server_fn: _StartMcpServerFn | None = None
+    shutdown_mcp_server_fn: _ShutdownMcpServerFn | None = None
+    check_mcp_bridge_health_fn: _CheckMcpBridgeHealthFn | None = None
+    materialize_system_prompt_fn: _MaterializeSystemPromptFn | None = None
+    mcp_supervisor_factory: _McpSupervisorFactory | None = None
+    heartbeat_policy_from_env_fn: _HeartbeatPolicyFromEnvFn | None = None
 
 
 @dataclass(frozen=True)
 class AgentRecoveryPlan:
+    """Resolved retry plan for a failed agent invocation."""
+
     prompt_file: str
     session_id: str | None
     reason: str
@@ -140,6 +198,8 @@ class AgentRecoveryPlan:
 
 @dataclass(frozen=True)
 class AgentRecoveryInput:
+    """All inputs required to determine whether and how to retry an agent invocation."""
+
     exc: Exception
     attempt_index: int
     max_recovery_attempts: int
@@ -190,6 +250,7 @@ def execute_agent_effect(
     workspace_scope: WorkspaceScope,
     **opts: object,
 ) -> PipelineEvent:
+    """Execute an agent-invocation effect end-to-end, including MCP server lifecycle."""
     display = cast("ParallelDisplay | LegacyConsoleDisplay | None", opts.get("display"))
     display_context = cast("DisplayContext | None", opts.get("display_context"))
     verbosity = cast("Verbosity", opts.get("verbosity", Verbosity.VERBOSE))
@@ -259,7 +320,8 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
     )
     bridge = None
     try:
-        system_prompt_file = materialize_system_prompt(
+        _materialize = ctx.deps.materialize_system_prompt_fn or materialize_system_prompt
+        system_prompt_file = _materialize(
             workspace_root=ctx.workspace_scope.root, name=str(ctx.effect.phase)
         )
         session_mcp_plan = build_session_mcp_plan(
@@ -283,7 +345,10 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
         clear_phase_output_artifacts(
             workspace, ctx.effect.phase, drain=ctx.effect.drain, policy_bundle=ctx.policy_bundle
         )
-        bridge = start_mcp_server(
+        _start_mcp: _StartMcpServerFn = cast(
+            "_StartMcpServerFn", ctx.deps.start_mcp_server_fn or start_mcp_server
+        )
+        bridge = _start_mcp(
             session,
             workspace,
             extras=McpServerExtras(phase=ctx.effect.phase, extra_env=session_mcp_plan.server_env),
@@ -303,8 +368,12 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
         logger.exception("Unexpected error during agent invocation: {}")
         return PipelineEvent.AGENT_FAILURE
     finally:
+        _shutdown: _ShutdownMcpServerFn = cast(
+            "_ShutdownMcpServerFn",
+            ctx.deps.shutdown_mcp_server_fn or shutdown_mcp_server,
+        )
         if bridge is not None:
-            shutdown_mcp_server(bridge)
+            _shutdown(bridge)
     return PipelineEvent.AGENT_FAILURE
 
 
@@ -324,7 +393,11 @@ def _run_attempt(
         extracted_session_id = session_id
 
     try:
-        check_mcp_bridge_health(bridge_ctx.bridge)
+        _check_health: _CheckMcpBridgeHealthFn = cast(
+            "_CheckMcpBridgeHealthFn",
+            ctx.deps.check_mcp_bridge_health_fn or check_mcp_bridge_health,
+        )
+        _check_health(bridge_ctx.bridge)
         if (
             isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
             and bridge_ctx.bridge.restart_count > 0
@@ -376,9 +449,14 @@ def _run_attempt(
             if ctx.display_subscriber is not None
             else None
         )
-        with McpSupervisor(
+        _supervisor: _McpSupervisorFactory = cast(
+            "_McpSupervisorFactory",
+            ctx.deps.mcp_supervisor_factory or McpSupervisor,
+        )
+        _get_heartbeat = ctx.deps.heartbeat_policy_from_env_fn or heartbeat_policy_from_env
+        with _supervisor(
             bridge_ctx.bridge,
-            check_interval=heartbeat_policy_from_env().interval,
+            check_interval=_get_heartbeat().interval,
             on_restart=_on_mcp_restart,
         ):
             output_lines = ctx.deps.invoke_agent(
@@ -413,17 +491,21 @@ def _run_attempt(
         )
         return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
     except ctx.deps.agent_invocation_error as exc:
-        recovery_plan = build_agent_recovery_plan(AgentRecoveryInput(
-            exc=exc,
-            attempt_index=attempt_index,
-            max_recovery_attempts=ctx.max_recovery_attempts,
-            effect=ctx.effect,
-            workspace_root=ctx.workspace_scope.root,
-            raw_output=list(raw_output),
-            rendered_output=list(rendered_output),
-            extracted_session_id=(extracted_session_id or extract_session_id(tuple(raw_output))),
-            inactivity_error_type=AgentInactivityTimeoutError,
-        ))
+        recovery_plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=attempt_index,
+                max_recovery_attempts=ctx.max_recovery_attempts,
+                effect=ctx.effect,
+                workspace_root=ctx.workspace_scope.root,
+                raw_output=list(raw_output),
+                rendered_output=list(rendered_output),
+                extracted_session_id=(
+                    extracted_session_id or extract_session_id(tuple(raw_output))
+                ),
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
+        )
         if recovery_plan is None:
             logger.error("Agent invocation failed: {}", exc)
             return _AttemptResult(
@@ -442,30 +524,43 @@ def _run_attempt(
         return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
 
 
-def build_agent_recovery_plan(inp: AgentRecoveryInput) -> AgentRecoveryPlan | None:
-    if inp.attempt_index >= inp.max_recovery_attempts:
+def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecoveryPlan | None:
+    """Determine whether and how to retry a failed agent invocation."""
+    if recovery_input.attempt_index >= recovery_input.max_recovery_attempts:
         return None
-    reason = _retryable_agent_failure_reason(inp.exc, inp.inactivity_error_type)
+    reason = _retryable_agent_failure_reason(
+        recovery_input.exc, recovery_input.inactivity_error_type
+    )
     if reason is None:
         return None
-    context_lines = _recovery_context_lines(inp.exc, inp.raw_output, inp.rendered_output)
+    context_lines = _recovery_context_lines(
+        recovery_input.exc, recovery_input.raw_output, recovery_input.rendered_output
+    )
     prompt_file = _retry_prompt_file_for_context(
-        workspace_root=inp.workspace_root,
-        prompt_file=inp.effect.prompt_file,
+        workspace_root=recovery_input.workspace_root,
+        prompt_file=recovery_input.effect.prompt_file,
         reason=reason,
         context_lines=context_lines,
     )
-    session_id = _resolve_recovery_session_id(inp)
+    session_id = _resolve_recovery_session_id(
+        recovery_input.exc,
+        recovery_input.extracted_session_id,
+        recovery_input.inactivity_error_type,
+    )
     return AgentRecoveryPlan(prompt_file=prompt_file, session_id=session_id, reason=reason)
 
 
-def _resolve_recovery_session_id(inp: AgentRecoveryInput) -> str | None:
-    if _failure_requires_fresh_session(inp.exc, inp.inactivity_error_type):
+def _resolve_recovery_session_id(
+    exc: Exception,
+    extracted_session_id: str | None,
+    inactivity_error_type: type[Exception],
+) -> str | None:
+    if _failure_requires_fresh_session(exc, inactivity_error_type):
         return None
-    resumable_session_id = cast("object", getattr(inp.exc, "resumable_session_id", None))
+    resumable_session_id = cast("object", getattr(exc, "resumable_session_id", None))
     if isinstance(resumable_session_id, str) and resumable_session_id:
         return resumable_session_id
-    return inp.extracted_session_id or None
+    return extracted_session_id or None
 
 
 def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
@@ -513,7 +608,10 @@ def _recovery_context_lines(
     exc: Exception,
     raw_output: list[str],
     rendered_output: list[str],
+    *,
+    _fn: Callable[[Exception], list[str]] | None = None,
 ) -> list[str]:
+    _error_parts_fn = _fn or _recovery_error_parts
     if rendered_output:
         return rendered_output[-_RECOVERY_CONTEXT_LINES:]
     parsed_output = cast("object", getattr(exc, "parsed_output", None))
@@ -522,7 +620,7 @@ def _recovery_context_lines(
     stripped_raw = [line.strip() for line in raw_output if line.strip()]
     if stripped_raw:
         return stripped_raw[-_RECOVERY_CONTEXT_LINES:]
-    error_parts = [part.strip() for part in _recovery_error_parts(exc) if part.strip()]
+    error_parts = [part.strip() for part in _error_parts_fn(exc) if part.strip()]
     return error_parts[-_RECOVERY_CONTEXT_LINES:]
 
 
@@ -578,7 +676,20 @@ def execute_commit_effect(
     display: ParallelDisplay | LegacyConsoleDisplay | None = None,
     **opts: object,
 ) -> PipelineEvent:
+    """Execute a commit effect, creating or skipping a git commit."""
     verbosity = cast("Verbosity", opts.get("verbosity", Verbosity.VERBOSE))
+    _raw_create = opts.get("create_commit_fn")
+    _create_commit_fn: _CreateCommitFn = cast(
+        "_CreateCommitFn", _raw_create if callable(_raw_create) else create_commit
+    )
+    _raw_stage = opts.get("stage_all_fn")
+    _stage_all_fn: _StageAllFn = cast(
+        "_StageAllFn", _raw_stage if callable(_raw_stage) else stage_all
+    )
+    _raw_has_work = opts.get("has_commit_work_fn")
+    _has_commit_work_fn: _HasCommitWorkFn = cast(
+        "_HasCommitWorkFn", _raw_has_work if callable(_raw_has_work) else _repo_has_commit_work
+    )
     try:
         payload = _read_commit_effect_payload(effect)
         message = _read_commit_effect_message(effect)
@@ -589,15 +700,20 @@ def execute_commit_effect(
             logger.info("Commit agent requested skip — skipping commit execution")
             cleanup_commit_message_artifacts(repo_root)
             return PipelineEvent.COMMIT_SKIPPED
-        if not _repo_has_commit_work(repo_root):
+        if not _has_commit_work_fn(repo_root):
             logger.info("Skipping commit because the worktree is empty")
             cleanup_commit_message_artifacts(repo_root)
             return PipelineEvent.COMMIT_SKIPPED
-        _stage_commit_scope(repo_root, payload, stage_all)
-        sha = create_commit(str(repo_root), message)
+        _stage_commit_scope(repo_root, payload, _stage_all_fn)
+        sha = _create_commit_fn(str(repo_root), message)
         logger.info("Created commit: {}", sha[:8])
+        _raw_render = opts.get("render_commit_message_fn")
+        _render_commit_fn = cast(
+            "_RenderCommitMessageFn",
+            _raw_render if callable(_raw_render) else render_commit_message,
+        )
         with suppress(Exception):
-            render_commit_message(repo_root, get_display_context(display))
+            _render_commit_fn(repo_root, get_display_context(display))
         if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
                 cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")
@@ -619,7 +735,7 @@ def _read_commit_effect_message(effect: CommitEffect) -> str:
 def _stage_commit_scope(
     repo_root: Path,
     payload: dict[str, object],
-    stage_all_fn: Callable[[str], None],
+    stage_all_fn: _StageAllFn,
 ) -> None:
     include_paths = _commit_include_paths(repo_root, payload)
     if include_paths is None:
@@ -667,6 +783,7 @@ def _repo_has_commit_work(repo_root: Path) -> bool:
 
 
 def cleanup_commit_message_artifacts(repo_root: Path) -> None:
+    """Remove commit message artifacts left by a prior commit phase."""
     delete_commit_message_artifacts(repo_root)
 
 
@@ -683,6 +800,7 @@ def should_early_skip_commit(workspace_root: Path) -> bool:
 
 
 def commit_effect(workspace_root: Path) -> CommitEffect:
+    """Build a CommitEffect pointing at the standard commit message artifact path."""
     return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
 
 
@@ -721,6 +839,7 @@ def clear_phase_output_artifacts(
 def phase_output_artifact_paths(
     phase: str, *, drain: str | None = None, policy_bundle: PolicyBundle | None = None
 ) -> tuple[str, ...]:
+    """Return paths of all output artifacts produced by a phase."""
     paths: list[str] = []
     effective_drain = drain or phase
     ra = (
@@ -747,6 +866,7 @@ def default_mcp_capabilities_for_phase(
     *,
     agents_policy: AgentsPolicy | None = None,
 ) -> set[str]:
+    """Return the default MCP capability set for a given phase."""
     return set(
         build_session_mcp_plan(
             transport=None,
@@ -755,3 +875,11 @@ def default_mcp_capabilities_for_phase(
             agents_policy=agents_policy,
         ).capabilities
     )
+
+
+repo_has_commit_work = _repo_has_commit_work
+recovery_error_parts = _recovery_error_parts
+retryable_agent_failure_reason = _retryable_agent_failure_reason
+resolve_recovery_session_id = _resolve_recovery_session_id
+recovery_context_lines = _recovery_context_lines
+retry_prompt_file_for_context = _retry_prompt_file_for_context

@@ -104,21 +104,21 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
-    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
-    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: bundle)
     monkeypatch.setattr(
         runner_module,
         "AgentRegistry",
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-    monkeypatch.setattr(runner_module, "_execute_effect_with_optional_display", _fake_execute)
+    monkeypatch.setattr(runner_module, "execute_effect_with_optional_display", _fake_execute)
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
@@ -224,21 +224,21 @@ def test_offline_window_produces_no_failure_events(
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
-    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
-    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: bundle)
     monkeypatch.setattr(
         runner_module,
         "AgentRegistry",
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-    monkeypatch.setattr(runner_module, "_execute_effect_with_optional_display", _fake_execute)
+    monkeypatch.setattr(runner_module, "execute_effect_with_optional_display", _fake_execute)
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 

@@ -75,19 +75,19 @@ def _apply_runner_stubs(
 ) -> None:
     complete_state = PipelineState(phase="complete")
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
-    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
-    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
     _mock_bundle = MagicMock()
     _mock_bundle.pipeline.terminal_phase = "complete"
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda *a, **kw: _mock_bundle)
     monkeypatch.setattr(runner_module, "AgentRegistry", MagicMock())
     monkeypatch.setattr(
-        runner_module, "_determine_effect_from_policy", _stub_determine_effect(effects)
+        runner_module, "determine_effect_from_policy", _stub_determine_effect(effects)
     )
-    monkeypatch.setattr(runner_module, "_execute_agent_effect", fake_execute_agent_effect)
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "execute_agent_effect", fake_execute_agent_effect)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(
-        runner_module, "_phase_event_after_agent_run", lambda **kw: PipelineEvent.AGENT_SUCCESS
+        runner_module, "phase_event_after_agent_run", lambda **kw: PipelineEvent.AGENT_SUCCESS
     )
     monkeypatch.setattr(runner_module, "reducer_reduce", lambda *a, **kw: (complete_state, []))
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _: None)

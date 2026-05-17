@@ -1,116 +1,88 @@
-"""Main pipeline runner and effect handlers.
+"""Pipeline runner: orchestration glue that wires extracted submodules together.
 
-This module implements the event loop that drives the pipeline:
-determine_effect(state) -> Effect -> Handler -> Event -> reduce(state, event) -> new_state
-
-The runner coordinates between the orchestrator (pure effect determination),
-the handlers (I/O execution), and the reducer (state transitions).
+This module coordinates effect dispatch, step execution, and policy resolution.
+Heavy lifting is delegated to focused submodules; runner.py owns only the
+plumbing that connects them.
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
 import os
-import shutil
 import signal
-import sys
 import threading
-import time
-import uuid
-from collections import deque
 from contextlib import suppress
-from dataclasses import dataclass
-from importlib import import_module
 from inspect import signature
-from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
-
-if TYPE_CHECKING:
-    from ralph.display.completion_summary import CompletionSummaryOptions
-    from ralph.display.snapshot import SnapshotContext
 
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
-from rich.text import Text
 
-from ralph.agents.chain import ChainManager
-from ralph.agents.invoke import (
-    AgentInactivityTimeoutError,
-    AgentInvocationError,
-    InvokeRuntimeOptions,
-    build_invoke_options_from_config,
-    extract_session_id,
-    invoke_agent,
-)
-from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
+from ralph.agents.invoke import AgentInvocationError, invoke_agent
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
-from ralph.config.enums import AgentTransport, Verbosity
-from ralph.display import context as display_context_module
-from ralph.display.activity_router import map_parser_type_to_kind
-from ralph.display.artifact_renderer import (
-    render_analysis_decision,
-    render_commit_message,
-    render_development_artifact,
-    render_fix_artifact,
-    render_plan_artifact,
-    render_review_artifact,
-)
-from ralph.display.context import DisplayContext, make_display_context
-from ralph.display.phase_banner import (
-    show_phase_close_banner,
-    show_phase_start_from_entry,
-    show_phase_transition,
-)
-from ralph.display.phase_lifecycle import ExitContext, PhaseEntryModel, PhaseExitModel
-from ralph.display.plain_renderer import RunStartOrientation
-from ralph.display.subscriber import ActivityDetails
+from ralph.config.enums import Verbosity
+from ralph.display.artifact_renderer import render_commit_message
+from ralph.display.context import install_width_refresher, make_display_context
+from ralph.display.phase_banner import show_phase_close_banner, show_phase_transition
 from ralph.executor.process import run_process_async
-from ralph.git.operations import create_commit, stage_all, stage_files
+from ralph.git.operations import create_commit, stage_all
 from ralph.interrupt import controller_from_process_manager
-from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
+from ralph.interrupt.asyncio_bridge import install_signal_handlers
 from ralph.interrupt.controller import install_force_kill_handler
-from ralph.mcp.artifacts.commit_message import (
-    COMMIT_MESSAGE_ARTIFACT,
-    delete_commit_message_artifacts,
-    read_commit_message_from_path,
-    read_commit_message_payload_from_path,
-)
-from ralph.mcp.artifacts.handoffs import sync_markdown_handoff
-from ralph.mcp.artifacts.store import list_artifacts
-from ralph.mcp.protocol.capability_mapping import DrainClass
-from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, WORKER_NAMESPACE_ENV
-from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
-from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.server.lifecycle import (
-    McpServerError,
-    McpServerExtras,
-    RestartAwareMcpBridge,
     check_mcp_bridge_health,
     shutdown_mcp_server,
     start_mcp_server,
 )
-from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, build_session_mcp_plan
+from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
+from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.transport import common as transport_common_module
-from ralph.mcp.upstream.agent_probe import probe_agent_transports
+from ralph.mcp.upstream.agent_probe import AgentProbeReport, probe_agent_transports
 from ralph.mcp.upstream.validation import (
     UpstreamValidationError,
     strict_mode_from_env,
     validate_upstream_mcp_servers,
 )
-from ralph.phases import PhaseContext, handle_phase, register_role_handlers
-from ralph.phases.required_artifacts import (
-    build_required_artifacts,
-    resolve_phase_required_artifact,
-)
+from ralph.phases import handle_phase, register_role_handlers
 from ralph.pipeline import checkpoint as ckpt
-from ralph.pipeline import progress
+from ralph.pipeline.activity_stream import (
+    MAX_METADATA_SUMMARY_LENGTH,
+    MAX_TEXT_LENGTH,
+    MAX_TOOL_RESULT_BRIEF,
+    metadata_summary,
+    record_activity_on_subscriber,
+    render_agent_activity_line,
+    terminal_width,
+    truncate,
+)
 from ralph.pipeline.cycle_baseline import (
     clear_cycle_baseline,
     read_cycle_baseline,
     write_cycle_baseline,
+)
+from ralph.pipeline.effect_executor import (
+    AgentExecutionDeps,
+    AgentRecoveryPlan,
+    cleanup_commit_message_artifacts,
+    commit_effect,
+    default_mcp_capabilities_for_phase,
+    phase_output_artifact_paths,
+    recovery_context_lines,
+    recovery_error_parts,
+    repo_has_commit_work,
+    resolve_recovery_session_id,
+    retry_prompt_file_for_context,
+    retryable_agent_failure_reason,
+)
+from ralph.pipeline.effect_executor import (
+    execute_agent_effect as _ee_execute_agent_effect,
+)
+from ralph.pipeline.effect_executor import (
+    execute_commit_effect as _ee_execute_commit_effect,
+)
+from ralph.pipeline.effect_router import (
+    determine_effect_from_policy,
 )
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -124,128 +96,126 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import (
-    AnalysisDecisionEvent,
-    Event,
-    PhaseFailureEvent,
-    PipelineEvent,
-    PostFanoutVerificationEvent,
-    WorkerFailedEvent,
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.fan_out import execute_fan_out_sync
+from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
+from ralph.pipeline.legacy_console_display import (
+    LegacyConsoleDisplay,
+    emit_display_line,
+    resolve_display,
+    status_text,
 )
-from ralph.pipeline.handoffs import (
-    ExhaustedAnalysisBypassResult,
-    resolve_exhausted_analysis_bypass,
-    resolve_next_phase,
-    resolve_phase_drain,
+from ralph.pipeline.phase_agent_handler import (
+    phase_event_after_agent_run,
 )
-from ralph.pipeline.parallel import coordinator
-from ralph.pipeline.parallel.mode import SameWorkspaceContext
+from ralph.pipeline.phase_transition import (
+    PENDING_PHASE_TRANSITION_METADATA_ATTR,
+    PendingPhaseTransitionMetadata,
+    clear_phase_materialization_outputs,
+    emit_final_summary,
+    record_phase_transition_metadata,
+    show_phase_start_with_context,
+    skipped_exhausted_analysis_info,
+)
+from ralph.pipeline.phase_transition import (
+    emit_phase_transition_if_changed as _pt_emit_phase_transition_if_changed,
+)
+from ralph.pipeline.prompt_prep import (
+    _materialize_prepared_prompt as _materialize_prepared_prompt_impl,
+    materialize_agent_prompt_if_needed,
+    prompt_session_drain_for_phase,
+)
 from ralph.pipeline.reducer import reduce as reducer_reduce
-from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
-from ralph.pipeline.work_units import (
-    WorkUnitsPlan,
-    WorkUnitsValidationError,
-    validate_for_same_workspace,
-)
-from ralph.pipeline.worker_state import WorkerStatus
+from ralph.pipeline.run_loop import run
+from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
+from ralph.pipeline.state_init import create_initial_state
 from ralph.policy.loader import (
-    load_agents_policy_for_workspace_scope,
     load_policy_for_workspace_scope,
 )
 from ralph.policy.loader import (
     load_policy_or_die as _dir_load_policy_or_die,
 )
-from ralph.policy.validation import PolicyValidationError
 from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.process.mcp_supervisor import McpSupervisor
-from ralph.prompts.debug_dump import multimodal_sidecar_path, prompt_dump_path
-from ralph.prompts.materialize import (
-    MissingPlanHandoffError,
-    PromptPhaseContext,
-    PromptPhaseOptions,
-    collect_media_entries_for_phase,
-    materialize_prompt_for_phase,
-    prompt_file_for_phase,
-    tool_name_prefix_for_transport,
-)
+from ralph.prompts.materialize import MissingPlanHandoffError, materialize_prompt_for_phase
 from ralph.prompts.system_prompt import materialize_system_prompt
-from ralph.prompts.types import SessionCapabilities, SessionDrain
-from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
-from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS, FailureContext
-from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
-from ralph.recovery.controller import (
-    RecoveryController as _RecoveryController,
-)
-from ralph.recovery.controller import (
-    RecoveryControllerOptions,
-)
-from ralph.recovery.events import FailureEvent as _FailureEvent
-from ralph.recovery.events import FalloverEvent as _FalloverEvent
+from ralph.recovery.classifier import FailureContext
 from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator, Mapping
+    from collections.abc import Callable, Iterable
+    from pathlib import Path
 
-    from rich.console import Console
-
-    from ralph.agents.executor import AgentExecutor
-    from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
-    from ralph.display.artifact_reader import AnalysisDecisionSummary, PlanSummary
+    from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.display.snapshot import PipelineSnapshot
-    from ralph.display.subscriber import PipelineSubscriber
-    from ralph.mcp.upstream.agent_probe import AgentProbeReport
     from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.mcp.upstream.validation import UpstreamValidationReport
-    from ralph.phases.required_artifacts import RequiredArtifact
-    from ralph.pipeline.parallel import coordinator as parallel_coordinator
-    from ralph.pipeline.work_units import WorkUnit
+    from ralph.pipeline.effect_executor import (
+        _CheckMcpBridgeHealthFn,
+        _McpSupervisorFactory,
+        _ShutdownMcpServerFn,
+        _StartMcpServerFn,
+    )
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
-        PhaseDefinition,
         PipelinePolicy,
         PolicyBundle,
     )
     from ralph.recovery.controller import RecoveryController
 
-    class _PipelineSubscriber(Protocol):
-        def notify(self, state: PipelineState) -> None: ...
+
+__all__ = [
+    "MAX_METADATA_SUMMARY_LENGTH",
+    "MAX_TEXT_LENGTH",
+    "MAX_TOOL_RESULT_BRIEF",
+    "PENDING_PHASE_TRANSITION_METADATA_ATTR",
+    "AgentExecutionDeps",
+    "AgentRegistry",
+    "McpSupervisor",
+    "PendingPhaseTransitionMetadata",
+    "available_width",
+    "build_agent_recovery_plan",
+    "build_session_mcp_plan",
+    "check_mcp_bridge_health",
+    "clear_cycle_baseline",
+    "commit_effect",
+    "create_initial_state",
+    "default_mcp_capabilities_for_phase",
+    "emit_final_summary",
+    "emit_phase_transition_if_changed",
+    "execute_agent_effect",
+    "execute_commit_effect",
+    "handle_phase",
+    "heartbeat_policy_from_env",
+    "make_display_context",
+    "materialize_prompt_for_phase",
+    "materialize_system_prompt",
+    "metadata_summary",
+    "phase_output_artifact_paths",
+    "prompt_session_drain_for_phase",
+    "record_activity_on_subscriber",
+    "register_role_handlers",
+    "render_agent_activity_line",
+    "render_commit_message",
+    "repo_has_commit_work",
+    "resolve_display",
+    "resolve_workspace_scope",
+    "run",
+    "show_phase_close_banner",
+    "show_phase_transition",
+    "shutdown_mcp_server",
+    "skipped_exhausted_analysis_info",
+    "start_mcp_server",
+    "terminal_width",
+    "truncate",
+]
 
 
-MIN_WORK_UNITS_FOR_PARALLELIZATION = 2
-
-
-class _PhaseCountersProtocol(Protocol):
-    """Protocol for phase activity counters."""
-
-    content_blocks: int
-    thinking_blocks: int
-    tool_calls: int
-    errors: int
-
-
-class _ConsoleLikeDisplay(Protocol):
-    console: Console
-
-
-class _ConnectivityMonitorLike(Protocol):
-    @property
-    def current_state(self) -> ConnectivityState: ...
-
-    def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
-
-
-class _InvokeAgentFn(Protocol):
-    def __call__(
-        self,
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
-    ) -> Iterable[object]: ...
+class _PipelineSubscriber(Protocol):
+    def notify(self, state: PipelineState) -> None: ...
 
 
 class _RegistryLike(Protocol):
@@ -267,229 +237,34 @@ class _ExecuteEffectKwargsFn(Protocol):
     ) -> Event: ...
 
 
-class _PhaseAwareDisplay(Protocol):
-    def begin_phase(self, phase: str) -> None: ...
+class _ConnectivityMonitorLike(Protocol):
+    @property
+    def current_state(self) -> object: ...
+
+    def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
 
 
-class _RunEndDisplay(Protocol):
-    def emit_run_end(
-        self,
-        *,
-        phase: str,
-        total_agent_calls: int,
-        pr_url: str | None = None,
-        exit_trigger: str | None = None,
-        outer_dev_iteration: int | None = None,
-    ) -> None: ...
+_LEGACY_EXECUTE_EFFECT_ARITY = 3
+_POLICY_LOADER_CONFIG_ARITY = 2
+
+load_policy_or_die = _dir_load_policy_or_die
 
 
 class _SessionCapture(threading.local):
     session_id: str | None = None
 
 
-class _DisplayContextOwner(Protocol):
-    _ctx: DisplayContext
-
-
-class _PlainRendererContextOwner(Protocol):
-    _ctx: DisplayContext
-
-
-class _DisplayWithPlainRenderer(_DisplayContextOwner, Protocol):
-    _plain_renderer: _PlainRendererContextOwner
-
-
-class _ParallelDisplayModule(Protocol):
-    """Typed accessor for the lazily imported parallel display module."""
-
-    ParallelDisplay: type[ParallelDisplay]
-
-
-class _EmitCompletionSummaryFn(Protocol):
-    """Callable signature for the completion summary emitter."""
-
-    def __call__(
-        self,
-        snapshot: PipelineSnapshot,
-        *,
-        display_context: DisplayContext,
-        options: CompletionSummaryOptions | None = None,
-    ) -> None: ...
-
-
-class _CompletionSummaryModule(Protocol):
-    """Typed accessor for the lazily imported completion summary module."""
-
-    CompletionSummaryOptions: type[CompletionSummaryOptions]
-    emit_completion_summary: _EmitCompletionSummaryFn
-
-
-class _SnapshotFromStateFn(Protocol):
-    """Callable signature for building a pipeline snapshot."""
-
-    def __call__(
-        self,
-        state: PipelineState,
-        context: SnapshotContext = ...,
-    ) -> PipelineSnapshot: ...
-
-
-class _SnapshotModule(Protocol):
-    """Typed accessor for the lazily imported snapshot module."""
-
-    snapshot_from_state: _SnapshotFromStateFn
-
-
-class _ReadLatestAnalysisDecisionFn(Protocol):
-    """Callable signature for reading the latest analysis decision artifact."""
-
-    def __call__(
-        self,
-        workspace_root: Path,
-        drain: str,
-    ) -> AnalysisDecisionSummary | None: ...
-
-
-class _ReadPlanArtifactFn(Protocol):
-    """Callable signature for reading the plan artifact summary."""
-
-    def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
-
-
-class _ArtifactReaderModule(Protocol):
-    """Typed accessor for the lazily imported artifact reader module."""
-
-    read_latest_analysis_decision: _ReadLatestAnalysisDecisionFn
-    read_plan_artifact: _ReadPlanArtifactFn
-
-
-def _parallel_display_cls() -> type[ParallelDisplay]:
-    module = cast(
-        "_ParallelDisplayModule",
-        import_module("ralph.display.parallel_display"),
-    )
-    return module.ParallelDisplay
-
-
-def _load_completion_summary_module() -> _CompletionSummaryModule:
-    return cast(
-        "_CompletionSummaryModule",
-        import_module("ralph.display.completion_summary"),
-    )
-
-
-
-def _snapshot_from_state_func() -> _SnapshotFromStateFn:
-    module = cast("_SnapshotModule", import_module("ralph.display.snapshot"))
-    return module.snapshot_from_state
-
-
-def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:
-    module = cast(
-        "_ArtifactReaderModule",
-        import_module("ralph.display.artifact_reader"),
-    )
-    return module.read_latest_analysis_decision
-
-
-def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
-    module = cast(
-        "_ArtifactReaderModule",
-        import_module("ralph.display.artifact_reader"),
-    )
-    return module.read_plan_artifact
-
-
-install_width_refresher = display_context_module.install_width_refresher
-
 _session_capture_local = _SessionCapture()
-_VERBOSE_LOG_LEVEL = 2
-_AGENT_ACTIVITY_LOG_LEVEL = 1
-_MAX_METADATA_PARTS = 3
-_MAX_TEXT_LENGTH = 200
-_MAX_TOOL_INPUT_LENGTH = 120
-_MAX_TOOL_RESULT_LENGTH = 150
-_MAX_TOOL_RESULT_BRIEF = 80
-_TOOL_RESULT_BRIEF_THRESHOLD = 500
-_MAX_METADATA_SUMMARY_LENGTH = 120
-_LEGACY_EXECUTE_EFFECT_ARITY = 3
-_POLICY_LOADER_CONFIG_ARITY = 2
-load_policy_or_die = _dir_load_policy_or_die
-_RECOVERY_CONTEXT_LINES = 12
-_AGENT_RAW_OUTPUT_TAIL_LINES = 256
-_AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
-_MIN_WORK_UNITS_FOR_PARALLEL_PREFLIGHT = 2
-_TRANSIENT_CONNECTIVITY_MARKERS = (
-    "connection refused",
-    "network is unreachable",
-    "temporary failure in name resolution",
-    "name or service not known",
-    "timed out",
-    "timeout",
-    "offline",
-    "econnreset",
-    "enotfound",
-    "socket hang up",
-)
-_VERBOSITY_RANK: dict[Verbosity, int] = {
-    Verbosity.QUIET: 0,
-    Verbosity.NORMAL: 1,
-    Verbosity.VERBOSE: 2,
-    Verbosity.FULL: 3,
-    Verbosity.DEBUG: 4,
-}
 
 
-def _verbosity_rank(verbosity: Verbosity) -> int:
-    """Return a numeric rank for a Verbosity enum value (QUIET=0 .. DEBUG=4)."""
-    return _VERBOSITY_RANK.get(verbosity, _VERBOSITY_RANK[Verbosity.VERBOSE])
+def _set_last_captured_session_id(session_id: str | None) -> None:
+    _session_capture_local.session_id = session_id
 
 
-def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
-    """Keep the runner's active display and nested renderer on the same context."""
-    display._ctx = ctx
-    if hasattr(display, "_plain_renderer"):
-        cast("_DisplayWithPlainRenderer", display)._plain_renderer._ctx = ctx
-
-
-def _normalize_verbosity(value: Verbosity | int | None) -> Verbosity:
-    """Coerce a Verbosity enum, integer rank, or None into a Verbosity value.
-
-    The legacy ``GeneralConfig.verbosity`` field is an integer (0-4); the new
-    CLI surface is the ``Verbosity`` StrEnum. This helper accepts either and
-    falls back to ``Verbosity.VERBOSE`` for unknown / unset inputs.
-    """
-    if isinstance(value, Verbosity):
-        return value
-    if isinstance(value, int):
-        for vb, rank in _VERBOSITY_RANK.items():
-            if rank == value:
-                return vb
-    return Verbosity.VERBOSE
-
-
-def _terminal_width() -> int:
-    """Return the current terminal width with a safe fallback."""
-    return shutil.get_terminal_size().columns or 80
-
-
-def _available_width(prefix_len: int) -> int:
-    """Return available width for content after a prefix, with a floor of 40."""
-    return max(40, _terminal_width() - prefix_len - 2)
-
-
-@dataclass(frozen=True)
-class _AgentExecutionDeps:
-    invoke_agent: _InvokeAgentFn
-    agent_invocation_error: type[Exception]
-    agent_registry: _AgentRegistryFactory
-
-
-@dataclass(frozen=True)
-class _AgentRecoveryPlan:
-    prompt_file: str
-    session_id: str | None
-    reason: str
+def _pop_last_captured_session_id() -> str | None:
+    session_id = _session_capture_local.session_id
+    _session_capture_local.session_id = None
+    return session_id
 
 
 def _write_start_commit_if_absent(workspace_root: Path) -> None:
@@ -504,30 +279,39 @@ def _write_start_commit_if_absent(workspace_root: Path) -> None:
     write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
 
 
-def _set_last_captured_session_id(session_id: str | None) -> None:
-    _session_capture_local.session_id = session_id
+def _default_validate_mcp(
+    servers: Iterable[UpstreamMcpServer], *, strict: bool
+) -> UpstreamValidationReport:
+    return validate_upstream_mcp_servers(servers, strict=strict)
 
 
-def _pop_last_captured_session_id() -> str | None:
-    session_id = _session_capture_local.session_id
-    _session_capture_local.session_id = None
-    return session_id
+def _default_probe_agent_transports(
+    servers: Iterable[UpstreamMcpServer], *, workspace_path: Path | None
+) -> tuple[AgentProbeReport, ...]:
+    return probe_agent_transports(servers, workspace_path=workspace_path)
+
+
+VALIDATE_MCP = _default_validate_mcp
+PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
+_VALIDATE_MCP = _default_validate_mcp
+_PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
 
 
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     """Fail-fast validation of custom MCP servers + per-agent transports.
 
     Returns the exit code the runner should propagate (0 to continue, 1 to abort).
-    Tests can monkeypatch ``_VALIDATE_MCP`` and ``_PROBE_AGENT_TRANSPORTS`` to
-    drive deterministic outcomes without spawning real upstream servers.
     """
     upstreams = transport_common_module.mcp_toml_as_upstreams(workspace_root)
     if not upstreams:
         return 0
 
     strict = strict_mode_from_env()
+    _effective_validate = (
+        VALIDATE_MCP if VALIDATE_MCP is not _default_validate_mcp else _VALIDATE_MCP
+    )
     try:
-        upstream_report = _VALIDATE_MCP(upstreams, strict=strict)
+        upstream_report = _effective_validate(upstreams, strict=strict)
     except UpstreamValidationError as exc:
         logger.error("Custom MCP servers failed startup validation:\n{}", exc)
         return 1
@@ -537,7 +321,12 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     if not healthy_servers:
         return 0
 
-    probe_results = _PROBE_AGENT_TRANSPORTS(healthy_servers, workspace_path=workspace_root)
+    _effective_probe = (
+        PROBE_AGENT_TRANSPORTS
+        if PROBE_AGENT_TRANSPORTS is not _default_probe_agent_transports
+        else _PROBE_AGENT_TRANSPORTS
+    )
+    probe_results = _effective_probe(healthy_servers, workspace_path=workspace_root)
     failures = [p for p in probe_results if not p.ok]
     if failures and strict:
         for failure in failures:
@@ -558,129 +347,63 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     return 0
 
 
-def _default_validate_mcp(
-    servers: Iterable[UpstreamMcpServer], *, strict: bool
-) -> UpstreamValidationReport:
-    return validate_upstream_mcp_servers(servers, strict=strict)
+validate_custom_mcp_servers = _validate_custom_mcp_servers
 
 
-def _default_probe_agent_transports(
-    servers: Iterable[UpstreamMcpServer], *, workspace_path: Path | None
-) -> tuple[AgentProbeReport, ...]:
-    return probe_agent_transports(servers, workspace_path=workspace_path)
-
-
-_VALIDATE_MCP = _default_validate_mcp
-_PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
-
-
-class _LegacyConsoleDisplay:
-    """Legacy console display that uses a caller-provided DisplayContext."""
-
-    def __init__(self, display_context: DisplayContext) -> None:
-        self._ctx = display_context
-
-    @property
-    def console(self) -> Console:
-        return self._ctx.console
-
-    def __enter__(self) -> _LegacyConsoleDisplay:
-        return self
-
-    def __exit__(self, _exc_type: object, _exc_val: object, _exc_tb: object) -> None:
-        return None
-
-    def emit(self, unit_id: str | None, line: Text | str) -> None:
-        c = self.console
-        if unit_id is None:
-            c.print(line)
-            return
-        c.print(f"[{unit_id}] {line}")
-
-
-def _display_console(
-    display: ParallelDisplay | _LegacyConsoleDisplay | None,
-    display_context: DisplayContext | None = None,
-) -> Console:
-    if display is None:
-        if display_context is None:
-            raise TypeError("display_context is required when display is None")
-        return display_context.console
-    return display.console
-
-
-def _get_display_context(
-    display: ParallelDisplay | _LegacyConsoleDisplay | None,
-    display_context: DisplayContext | None = None,
-) -> DisplayContext:
-    """Extract DisplayContext from display or use the caller-provided context."""
-    if display is None:
-        if display_context is None:
-            raise TypeError("display_context is required when display is None")
-        return display_context
-    ctx = display._ctx
-    assert ctx is not None
-    return ctx
-
-
-def _emit_display_line(
-    display: ParallelDisplay | _LegacyConsoleDisplay | None,
-    unit_id: str | None,
-    line: Text | str,
-    display_context: DisplayContext | None = None,
-) -> None:
-    if display is None:
-        if display_context is None:
-            raise TypeError("display_context is required when display is None")
-        c = display_context.console
-        if unit_id is None:
-            c.print(line)
-            return
-        c.print(f"[{unit_id}] {line}")
-        return
-    if isinstance(display, _LegacyConsoleDisplay):
-        display.emit(unit_id, line)
-        return
-    display.emit(unit_id or "run", line.plain if isinstance(line, Text) else line)
-
-
-def _resolve_display(
-    display: ParallelDisplay | None,
-    display_context: DisplayContext | None = None,
-) -> ParallelDisplay | _LegacyConsoleDisplay:
-    if display is not None:
-        return display
-    if display_context is None:
-        raise TypeError("display_context is required when display is None")
-    return _LegacyConsoleDisplay(display_context)
-
-
-def _build_default_display(
-    workspace_root: Path,
-    display_context: DisplayContext,
-    pipeline_policy: PolicyBundle | None = None,
-) -> ParallelDisplay | _LegacyConsoleDisplay:
-    """Construct the default ParallelDisplay for the verbose run path.
-
-    Falls back to the legacy console display if ParallelDisplay (or its
-    transitive Rich/panel dependencies) cannot be imported or initialized.
-    The display owns its own PipelineSubscriber so the runner and the live
-    render thread share a single subscriber.
-    """
-    try:
-        parallel_display_cls = _parallel_display_cls()
-        return parallel_display_cls(
-            display_context,
-            workspace_root=workspace_root,
-            run_id=str(uuid.uuid4()),
-            pipeline_policy=pipeline_policy.pipeline if pipeline_policy is not None else None,
+def _execute_effect(
+    effect: Effect,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    *,
+    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
+    policy_bundle: PolicyBundle | None = None,
+) -> PipelineEvent:
+    deps = AgentExecutionDeps(
+        invoke_agent=invoke_agent,
+        agent_invocation_error=AgentInvocationError,
+        agent_registry=AgentRegistry,
+        show_phase_start_cb=show_phase_start_with_context,
+        set_session_id_cb=_set_last_captured_session_id,
+    )
+    if isinstance(effect, InvokeAgentEffect):
+        return execute_agent_effect(
+            effect,
+            config,
+            deps,
+            workspace_scope,
+            display=display,
+            verbosity=verbosity,
+            state=state,
+            policy_bundle=policy_bundle,
         )
-    except Exception:
-        logger.debug(
-            "ParallelDisplay unavailable or failed to initialize; falling back to legacy console",
-            exc_info=True,
+    if isinstance(effect, CommitEffect):
+        return execute_commit_effect(
+            effect, create_commit, stage_all, workspace_scope.root, display, verbosity=verbosity
         )
-        return _LegacyConsoleDisplay(display_context)
+    if isinstance(effect, EarlySkipCommitEffect):
+        logger.info("Skipping commit early: worktree is clean")
+        _cleanup_commit_message_artifacts(workspace_scope.root)
+        return PipelineEvent.COMMIT_SKIPPED
+    if isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect):
+        if state is not None and policy_bundle is not None:
+            bypass = resolve_exhausted_analysis_bypass(state, effect.phase, policy_bundle.pipeline)
+            logger.info(
+                "Skipping exhausted analysis phase '{}' and reducing PHASE_ADVANCE to '{}'",
+                effect.phase,
+                bypass.target_phase,
+            )
+        else:
+            logger.warning(
+                "Skipping exhausted analysis phase '{}' without routing context", effect.phase
+            )
+        return PipelineEvent.PHASE_ADVANCE
+    if isinstance(effect, SaveCheckpointEffect):
+        return PipelineEvent.CHECKPOINT_SAVED
+
+    logger.warning("Unknown effect type: {}", type(effect))
+    return PipelineEvent.AGENT_FAILURE
 
 
 def _execute_effect_with_optional_display(
@@ -688,107 +411,48 @@ def _execute_effect_with_optional_display(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     *,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
     display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
 ) -> Event:
-    params = signature(_execute_effect).parameters
-    kwargs_execute_effect = cast("_ExecuteEffectKwargsFn", _execute_effect)
-    accepts_kwargs = any(param.kind == param.VAR_KEYWORD for param in params.values())
-    optional_kwargs = {
+    fn = execute_effect
+    params = signature(fn).parameters
+    accepts_kwargs = any(p.kind == p.VAR_KEYWORD for p in params.values())
+    all_opts: dict[str, object] = {
         "display": display,
         "display_context": display_context,
         "verbosity": verbosity,
         "state": state,
         "policy_bundle": policy_bundle,
     }
-    supported_kwargs: dict[str, object] = {
-        name: value for name, value in optional_kwargs.items() if name in params or accepts_kwargs
-    }
-    if accepts_kwargs:
-        return kwargs_execute_effect(
-            effect,
-            config,
-            workspace_scope,
-            **supported_kwargs,
-        )
+    supported = all_opts if accepts_kwargs else {k: v for k, v in all_opts.items() if k in params}
+    return cast("_ExecuteEffectKwargsFn", fn)(effect, config, workspace_scope, **supported)
 
-    has_display = "display" in params
-    has_display_context = "display_context" in params
-    has_verbosity = "verbosity" in params
-    has_state = "state" in params
-    has_policy_bundle = "policy_bundle" in params
 
-    if has_display and has_display_context and has_verbosity and has_state and has_policy_bundle:
-        return kwargs_execute_effect(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            display_context=display_context,
-            verbosity=verbosity,
-            state=state,
-            policy_bundle=policy_bundle,
-        )
-    if has_display and has_display_context and has_verbosity and has_state:
-        return kwargs_execute_effect(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            display_context=display_context,
-            verbosity=verbosity,
-            state=state,
-        )
-    if has_display and has_verbosity and has_state and has_policy_bundle:
-        return _execute_effect(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            verbosity=verbosity,
-            state=state,
-            policy_bundle=policy_bundle,
-        )
-    if has_display and has_display_context and has_verbosity:
-        return kwargs_execute_effect(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            display_context=display_context,
-            verbosity=verbosity,
-        )
-    if has_display and has_verbosity and has_state:
-        return _execute_effect(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            verbosity=verbosity,
-            state=state,
-        )
-    if has_display and has_display_context:
-        return kwargs_execute_effect(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            display_context=display_context,
-        )
-    if has_display and has_verbosity:
-        return _execute_effect(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            verbosity=verbosity,
-        )
-    if has_display:
-        return _execute_effect(effect, config, workspace_scope, display=display)
-    return _execute_effect(effect, config, workspace_scope)
+def execute_effect_with_optional_display(
+    effect: Effect,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    *,
+    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    display_context: DisplayContext | None = None,
+    verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
+    policy_bundle: PolicyBundle | None = None,
+) -> Event:
+    """Execute an effect and return the resulting event, optionally routing output to a display."""
+    return _execute_effect_with_optional_display(
+        effect,
+        config,
+        workspace_scope,
+        display=display,
+        display_context=display_context,
+        verbosity=verbosity,
+        state=state,
+        policy_bundle=policy_bundle,
+    )
 
 
 def _invoke_execute_effect_with_optional_display(
@@ -796,13 +460,13 @@ def _invoke_execute_effect_with_optional_display(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     *,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    display: ParallelDisplay | LegacyConsoleDisplay | None,
     display_context: DisplayContext | None = None,
     verbosity: Verbosity,
     state: PipelineState,
     policy_bundle: PolicyBundle,
 ) -> Event:
-    return _execute_effect_with_optional_display(
+    return execute_effect_with_optional_display(
         effect,
         config,
         workspace_scope,
@@ -834,16 +498,10 @@ def _reset_phase_chain_for_recovery(
     state: PipelineState,
     target_phase: str,
 ) -> PipelineState:
-    """Reset the target phase chain when re-entering after the terminal failure route.
-
-    Recovery from the failure route should restart the configured agent chain from its
-    first agent. Without this reset, a recovered phase can resume on the last
-    exhausted fallback agent and skip earlier agents on subsequent cycles.
-    """
+    """Reset the target phase chain when re-entering after the terminal failure route."""
     chain = state.chain_for_phase(target_phase)
     if chain is None:
         return state
-
     return state.with_phase_chain(
         target_phase,
         AgentChainState(agents=chain.agents, current_index=0, retries=0),
@@ -859,8 +517,6 @@ def _reduce_runtime_recovery(
     exc: BaseException | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     if recovery is not None:
-        # Pass the raw exception so the classifier sees the exception type, not just a
-        # string reason. This preserves AgentInvocationError → AGENT classification.
         raw_failure: BaseException | str = exc if exc is not None else reason
         new_state, effects, _ = recovery.handle(
             state,
@@ -935,13 +591,25 @@ def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -
         logger.warning("Interrupt controller raised during KeyboardInterrupt")
 
 
+def _apply_session_capture(state: PipelineState) -> PipelineState:
+    captured_session_id = _pop_last_captured_session_id()
+    if captured_session_id:
+        return state.copy_with(
+            last_agent_session_id=captured_session_id,
+            session_preserve_retry_pending=False,
+        )
+    if state.session_preserve_retry_pending is True:
+        return state.copy_with(session_preserve_retry_pending=False)
+    return state
+
+
 def _run_pipeline_step(
     *,
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
-    display: ParallelDisplay | _LegacyConsoleDisplay,
+    display: ParallelDisplay | LegacyConsoleDisplay,
     display_context: DisplayContext,
     verbosity: Verbosity,
     registry: _RegistryLike,
@@ -950,8 +618,8 @@ def _run_pipeline_step(
     _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState | int:
     try:
-        effect = _call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
-        inline_result = _handle_inline_effect(
+        effect = call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
+        inline_result = handle_inline_effect(
             effect=effect,
             state=state,
             pipeline_policy=policy_bundle.pipeline,
@@ -973,7 +641,7 @@ def _run_pipeline_step(
                 workspace_scope=workspace_scope,
                 pipeline_subscriber=pipeline_subscriber,
                 config=config,
-                _monitor_stop_cb=_monitor_stop_cb,
+                monitor_stop_cb=_monitor_stop_cb,
             )
 
         with process_phase_scope(state.phase):
@@ -981,14 +649,15 @@ def _run_pipeline_step(
                 workspace_scope.root,
                 allowed_roots=workspace_scope.allowed_roots,
             )
-            _materialize_agent_prompt_if_needed(
-                effect,
-                state,
-                workspace,
-                policy_bundle,
-                registry,
+            _mat_fn = (
+                materialize_prompt_for_phase
+                if materialize_prompt_for_phase is not _original_materialize_prompt_for_phase
+                else None
             )
-            event = _invoke_execute_effect_with_optional_display(
+            _materialize_agent_prompt_if_needed(
+                effect, state, workspace, policy_bundle, registry, materialize_fn=_mat_fn
+            )
+            event = invoke_execute_effect_with_optional_display(
                 effect,
                 config,
                 workspace_scope,
@@ -999,17 +668,15 @@ def _run_pipeline_step(
                 policy_bundle=policy_bundle,
             )
             if isinstance(effect, InvokeAgentEffect):
-                captured_session_id = _pop_last_captured_session_id()
-                if captured_session_id:
-                    state = state.copy_with(
-                        last_agent_session_id=captured_session_id,
-                        session_preserve_retry_pending=False,
-                    )
-                elif state.session_preserve_retry_pending is True:
-                    state = state.copy_with(session_preserve_retry_pending=False)
+                state = _apply_session_capture(state)
             if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
                 if recovery_controller is not None:
                     recovery_controller.reset_backoff(effect.phase, effect.agent_name)
+                _hp_fn = (
+                    handle_phase
+                    if handle_phase is not _original_handle_phase
+                    else None
+                )
                 event = _phase_event_after_agent_run(
                     effect=effect,
                     config=config,
@@ -1020,6 +687,7 @@ def _run_pipeline_step(
                     display_context=display_context,
                     verbosity=verbosity,
                     state=state,
+                    handle_phase_fn=_hp_fn,
                 )
 
         _commit_phase_def = policy_bundle.pipeline.phases.get(state.phase)
@@ -1036,7 +704,7 @@ def _run_pipeline_step(
             policy_bundle.pipeline,
             recovery=recovery_controller,
         )
-        skipped_phases = _record_phase_transition_metadata(
+        skipped_phases = record_phase_transition_metadata(
             display,
             state,
             event,
@@ -1044,7 +712,7 @@ def _run_pipeline_step(
             policy_bundle.pipeline,
         )
         for skipped_phase in skipped_phases:
-            _clear_phase_materialization_outputs(workspace, skipped_phase)
+            clear_phase_materialization_outputs(workspace, skipped_phase)
         _notify_pipeline_subscriber(pipeline_subscriber, next_state)
         _save_checkpoint_or_log(
             next_state,
@@ -1070,8 +738,8 @@ def _run_pipeline_step(
         )
         for _eff in _recv_effects:
             if isinstance(_eff, ExitFailureEffect):
-                _emit_display_line(
-                    display, None, _status_text("Recovery exhausted", _eff.reason, "red")
+                emit_display_line(
+                    display, None, status_text("Recovery exhausted", _eff.reason, "red")
                 )
                 return 1
         _notify_pipeline_subscriber(pipeline_subscriber, recovered_state)
@@ -1080,573 +748,6 @@ def _run_pipeline_step(
             message="Checkpoint save failed while recording recovery in phase={phase}: {err}",
         )
         return recovered_state
-
-
-def _find_commit_counter_from_phase(
-    phase_name: str,
-    policy: PipelinePolicy,
-) -> str | None:
-    """Trace on_success transitions from phase_name to the nearest commit phase.
-
-    Returns the increments_counter name from that commit phase, or None if not found.
-    Used to derive policy-declared counter names for display without hardcoding.
-    """
-    visited: set[str] = set()
-    current: str | None = phase_name
-    while current and current not in visited:
-        visited.add(current)
-        phase_def = policy.phases.get(current)
-        if phase_def is None:
-            break
-        if phase_def.role == "commit" and phase_def.commit_policy is not None:
-            counter = phase_def.commit_policy.increments_counter
-            return counter if counter and counter != "none" else None
-        current = phase_def.transitions.on_success if phase_def.transitions else None
-    return None
-
-
-def _resolve_analysis_cap(
-    iteration_field: str,
-    state: PipelineState,
-    pipeline_policy: PipelinePolicy,
-) -> int:
-    """Resolve the analysis loop iteration cap from canonical progress state."""
-    return progress.resolve_analysis_cap(
-        state,
-        iteration_field,
-        pipeline_policy,
-    )
-
-
-def _build_phase_entry_model_from_state(
-    phase: str,
-    state: PipelineState,
-    pipeline_policy: PipelinePolicy,
-    *,
-    agent_name: str | None = None,
-) -> PhaseEntryModel:
-    """Build the canonical phase-entry model from pipeline state.
-
-    This is the runner-level source of truth for the phase lifecycle fields that
-    must stay aligned across phase-start banners, phase-close banners, and
-    artifact handoff recaps.
-    """
-    phase_role: str | None = None
-    inner_analysis: int | None = None
-    inner_analysis_cap: int | None = None
-    phase_def = pipeline_policy.phases.get(phase)
-    if phase_def is not None:
-        phase_role = phase_def.role
-        if phase_def.loop_policy is not None:
-            field = phase_def.loop_policy.iteration_state_field
-            inner_analysis = state.get_loop_iteration(field) + 1
-            inner_analysis_cap = _resolve_analysis_cap(field, state, pipeline_policy)
-
-    outer_iteration: int | None = None
-    outer_dev_cap: int | None = None
-    counter = _find_commit_counter_from_phase(phase, pipeline_policy)
-    if counter is not None:
-        outer_iteration = state.get_outer_progress(counter)
-        outer_dev_cap = state.get_budget_cap(counter)
-
-    current_dev_cycle = outer_iteration + 1 if outer_iteration is not None else None
-    return PhaseEntryModel(
-        phase_name=phase,
-        phase_role=phase_role,
-        agent_name=agent_name,
-        outer_dev_iteration=current_dev_cycle,
-        outer_dev_cap=outer_dev_cap,
-        inner_analysis=inner_analysis,
-        inner_analysis_cap=inner_analysis_cap,
-    )
-
-
-def _show_phase_start_with_context(
-    phase: str,
-    agent_name: str,
-    display_context: DisplayContext,
-    state: PipelineState,
-    *,
-    pipeline_policy: PipelinePolicy,
-) -> None:
-    """Display the canonical model-based phase-start banner for the live runner."""
-    entry = _build_phase_entry_model_from_state(
-        phase,
-        state,
-        pipeline_policy,
-        agent_name=agent_name,
-    )
-    show_phase_start_from_entry(
-        entry, display_context=display_context, pipeline_policy=pipeline_policy
-    )
-
-
-@dataclass(frozen=True)
-class _PhaseChangeRenderData:
-    """Canonical display payload for a single phase change.
-
-    A phase change in the live runner has three coordinated surfaces:
-    the plain-log recap, the rich close banner for the phase being left,
-    and the dedicated transition banner that explains the handoff.
-    Keeping them in one payload makes it much harder for one surface to
-    drift out of sync or silently disappear during refactors.
-    """
-
-    previous_phase: str
-    current_phase: str
-    exit_model: PhaseExitModel
-    transition_context: dict[str, object] | None
-
-
-@dataclass(frozen=True)
-class _PendingPhaseTransitionMetadata:
-    previous_phase: str
-    current_phase: str
-    transition_context: dict[str, object] | None = None
-    routing_note: str | None = None
-    skipped_phases: tuple[str, ...] = ()
-
-
-_PENDING_PHASE_TRANSITION_METADATA_ATTR = "_pending_phase_transition_metadata"
-
-
-def _analysis_phase_label(phase: str) -> str:
-    return phase.replace("_", " ").title()
-
-
-def _humanize_analysis_decision(decision: str) -> str:
-    return decision.replace("_", " ")
-
-
-def _bypass_info_message(phase: str) -> str:
-    return f"{_analysis_phase_label(phase)} cap reached, skipping"
-
-
-def _bypass_transition_context(
-    bypass: ExhaustedAnalysisBypassResult,
-) -> dict[str, object] | None:
-    if not bypass.skipped:
-        return None
-    return {_analysis_phase_label(skip.phase): "cap reached, skipping" for skip in bypass.skipped}
-
-
-def _store_pending_phase_transition_metadata(
-    display: ParallelDisplay | _LegacyConsoleDisplay | None,
-    metadata: _PendingPhaseTransitionMetadata | None,
-) -> None:
-    if display is None:
-        return
-    if metadata is None:
-        with suppress(Exception):
-            delattr(display, _PENDING_PHASE_TRANSITION_METADATA_ATTR)
-        return
-    with suppress(Exception):
-        setattr(display, _PENDING_PHASE_TRANSITION_METADATA_ATTR, metadata)
-
-
-def _consume_pending_phase_transition_metadata(
-    display: ParallelDisplay | _LegacyConsoleDisplay,
-    previous_phase: str,
-    current_phase: str,
-) -> _PendingPhaseTransitionMetadata | None:
-    metadata = cast(
-        "_PendingPhaseTransitionMetadata | None",
-        getattr(display, _PENDING_PHASE_TRANSITION_METADATA_ATTR, None),
-    )
-    if metadata is None:
-        return None
-    with suppress(Exception):
-        delattr(display, _PENDING_PHASE_TRANSITION_METADATA_ATTR)
-    if metadata.previous_phase != previous_phase or metadata.current_phase != current_phase:
-        return None
-    return metadata
-
-
-def _analysis_decision_transition_context(
-    event: AnalysisDecisionEvent,
-    next_state: PipelineState,
-    pipeline_policy: PipelinePolicy,
-) -> dict[str, object] | None:
-    context: dict[str, object] = {"decision": _humanize_analysis_decision(event.decision)}
-    phase_def = pipeline_policy.phases.get(event.phase)
-    if phase_def is not None and phase_def.loop_policy is not None:
-        route = phase_def.decisions.get(event.decision)
-        if route is not None and not route.reset_loop:
-            iteration_field = phase_def.loop_policy.iteration_state_field
-            analysis_cur = next_state.get_loop_iteration(iteration_field)
-            max_iter = _resolve_analysis_cap(iteration_field, next_state, pipeline_policy)
-            if progress.is_final_analysis_iteration(analysis_cur, max_iter):
-                context["analysis_status"] = "final, skipping next"
-    return context or None
-
-
-def _bypass_resolution_for_transition(
-    state: PipelineState,
-    event: Event,
-    next_state: PipelineState,
-    pipeline_policy: PipelinePolicy,
-) -> ExhaustedAnalysisBypassResult | None:
-    phase_def = pipeline_policy.phases.get(state.phase)
-    if phase_def is None:
-        return None
-
-    candidate_phase: str | None = None
-    if event == PipelineEvent.PHASE_ADVANCE and phase_def.role == "analysis":
-        candidate_phase = state.phase
-    elif event in (
-        PipelineEvent.AGENT_SUCCESS,
-        PipelineEvent.ANALYSIS_SUCCESS,
-        PipelineEvent.COMMIT_SUCCESS,
-        PipelineEvent.COMMIT_SKIPPED,
-        PipelineEvent.FIX_SUCCESS,
-        PipelineEvent.REVIEW_CLEAN,
-    ):
-        with suppress(ValueError):
-            candidate_phase = resolve_next_phase(state.phase, "success", pipeline_policy)
-    if candidate_phase is None:
-        return None
-
-    with suppress(TypeError, AttributeError):
-        bypass = resolve_exhausted_analysis_bypass(state, candidate_phase, pipeline_policy)
-        if not bypass.skipped or next_state.phase != bypass.target_phase:
-            return None
-        return bypass
-    return None
-
-
-def _record_phase_transition_metadata(
-    display: ParallelDisplay | _LegacyConsoleDisplay | None,
-    state: PipelineState,
-    event: Event,
-    next_state: PipelineState,
-    pipeline_policy: PipelinePolicy,
-) -> tuple[str, ...]:
-    if isinstance(event, AnalysisDecisionEvent):
-        metadata = _PendingPhaseTransitionMetadata(
-            previous_phase=state.phase,
-            current_phase=next_state.phase,
-            transition_context=_analysis_decision_transition_context(
-                event,
-                next_state,
-                pipeline_policy,
-            ),
-        )
-        _store_pending_phase_transition_metadata(display, metadata)
-        return ()
-
-    bypass = _bypass_resolution_for_transition(state, event, next_state, pipeline_policy)
-    if bypass is None:
-        _store_pending_phase_transition_metadata(display, None)
-        return ()
-
-    skipped_phases = tuple(skip.phase for skip in bypass.skipped)
-    metadata = _PendingPhaseTransitionMetadata(
-        previous_phase=state.phase,
-        current_phase=next_state.phase,
-        transition_context=_bypass_transition_context(bypass),
-        routing_note="; ".join(_bypass_info_message(skip.phase) for skip in bypass.skipped),
-        skipped_phases=skipped_phases,
-    )
-    _store_pending_phase_transition_metadata(display, metadata)
-    return skipped_phases
-
-
-def _phase_transition_context(
-    previous_phase: str,
-    current_phase: str,
-    state: PipelineState,
-    pipeline_policy: PipelinePolicy,
-    metadata: _PendingPhaseTransitionMetadata | None = None,
-) -> dict[str, object] | None:
-    """Return routing context for the rich phase-transition banner."""
-    if metadata is not None:
-        return metadata.transition_context
-
-    previous_phase_def = pipeline_policy.phases.get(previous_phase)
-    if previous_phase_def is None or previous_phase_def.role != "analysis":
-        return None
-
-    loop_policy = previous_phase_def.loop_policy
-    if loop_policy is None:
-        return None
-
-    iteration_field = loop_policy.iteration_state_field
-    analysis_cur = state.get_loop_iteration(iteration_field)
-    max_iter = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
-    if progress.is_final_analysis_iteration(analysis_cur, max_iter):
-        return {"analysis_status": "final, skipping next"}
-    return None
-
-
-def _skipped_exhausted_analysis_info(
-    previous_phase: str,
-    current_phase: str,
-    state: PipelineState,
-    pipeline_policy: PipelinePolicy,
-) -> tuple[str, str] | None:
-    """Return compatibility skip info for direct display helpers.
-
-    This fallback only covers transitions that bypass an analysis phase after a
-    prior phase succeeds directly into another non-analysis phase. Live runner
-    paths record explicit metadata during step execution.
-    """
-    previous_phase_def = pipeline_policy.phases.get(previous_phase)
-    if previous_phase_def is None:
-        return None
-
-    candidate_phase = previous_phase_def.transitions.on_success
-    if not candidate_phase:
-        return None
-
-    bypass = resolve_exhausted_analysis_bypass(state, candidate_phase, pipeline_policy)
-    if not bypass.skipped or bypass.target_phase != current_phase:
-        return None
-
-    skipped_phase = bypass.skipped[0].phase
-    return (skipped_phase, _bypass_info_message(skipped_phase))
-
-
-def _build_phase_change_render_data(
-    display: ParallelDisplay | _LegacyConsoleDisplay,
-    previous_phase: str,
-    state: PipelineState,
-    *,
-    pipeline_policy: PipelinePolicy,
-) -> _PhaseChangeRenderData:
-    """Build the canonical render payload for a phase change."""
-    elapsed = (
-        0.0 if isinstance(display, _LegacyConsoleDisplay) else display.last_phase_elapsed_seconds
-    )
-    waiting_status_line = (
-        None
-        if isinstance(display, _LegacyConsoleDisplay)
-        else display.subscriber.waiting_status_line
-    )
-    content_blocks = 0
-    thinking_blocks = 0
-    tool_calls = 0
-    errors = 0
-    if not isinstance(display, _LegacyConsoleDisplay):
-        phase_counters = cast(
-            "_PhaseCountersProtocol | None", getattr(display, "last_phase_counters", None)
-        )
-        if phase_counters is not None:
-            content_blocks = phase_counters.content_blocks
-            thinking_blocks = phase_counters.thinking_blocks
-            tool_calls = phase_counters.tool_calls
-            errors = phase_counters.errors
-    artifact_outcome = ""
-    if not isinstance(display, _LegacyConsoleDisplay):
-        raw_outcome = cast("str | None", getattr(display, "last_phase_artifact_outcome", None))
-        artifact_outcome = raw_outcome if raw_outcome else ""
-    entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
-    prev_phase_def = pipeline_policy.phases.get(previous_phase)
-    prev_phase_role: str | None = prev_phase_def.role if prev_phase_def is not None else None
-    pending_metadata = _consume_pending_phase_transition_metadata(
-        display,
-        previous_phase,
-        state.phase,
-    )
-    skipped_info = None
-    if pending_metadata is None:
-        skipped_info = _skipped_exhausted_analysis_info(
-            previous_phase,
-            state.phase,
-            state,
-            pipeline_policy,
-        )
-    routing_note: str | None = (
-        pending_metadata.routing_note
-        if pending_metadata is not None
-        else (skipped_info[1] if skipped_info is not None else None)
-    )
-    exit_model = PhaseExitModel.from_entry_model(
-        entry,
-        ExitContext(
-            elapsed_seconds=elapsed,
-            exit_trigger="produced" if artifact_outcome else "completed",
-            content_blocks=content_blocks,
-            thinking_blocks=thinking_blocks,
-            tool_calls=tool_calls,
-            errors=errors,
-            artifact_outcome=artifact_outcome,
-            review_issues_found=(
-                progress.review_issues_found(state, pipeline_policy)
-                if prev_phase_role == "review"
-                else None
-            ),
-            routing_note=routing_note,
-            waiting_status_line=waiting_status_line,
-            last_failure_category=state.last_failure_category,
-        ),
-    )
-    return _PhaseChangeRenderData(
-        previous_phase=previous_phase,
-        current_phase=state.phase,
-        exit_model=exit_model,
-        transition_context=_phase_transition_context(
-            previous_phase,
-            state.phase,
-            state,
-            pipeline_policy,
-            pending_metadata,
-        ),
-    )
-
-
-def _clear_phase_materialization_outputs(workspace: FsWorkspace, phase: str) -> None:
-    """Remove stale prompt-materialization outputs for a phase when it is skipped."""
-    for path in (prompt_dump_path(phase), multimodal_sidecar_path(phase)):
-        with suppress(Exception):
-            workspace.remove(path)
-
-
-def _emit_phase_change_surfaces(
-    display: ParallelDisplay | _LegacyConsoleDisplay,
-    render_data: _PhaseChangeRenderData,
-    *,
-    display_context: DisplayContext,
-    pipeline_policy: PipelinePolicy,
-) -> None:
-    """Emit every display surface that defines a live phase change."""
-    phase_close_already_emitted: bool = (
-        display.phase_close_emitted
-        if not isinstance(display, _LegacyConsoleDisplay)
-        and hasattr(display, "phase_close_emitted")
-        else False
-    )
-    if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
-        with suppress(Exception):
-            cast("ParallelDisplay", display).emit_phase_close_from_exit(render_data.exit_model)
-    with suppress(Exception):
-        show_phase_close_banner(
-            render_data.exit_model,
-            display_context=display_context,
-            pipeline_policy=pipeline_policy,
-        )
-    with suppress(Exception):
-        show_phase_transition(
-            render_data.previous_phase,
-            render_data.current_phase,
-            context=render_data.transition_context,
-            display_context=display_context,
-            pipeline_policy=pipeline_policy,
-        )
-
-
-def _emit_phase_transition_if_changed(
-    display: ParallelDisplay | _LegacyConsoleDisplay,
-    previous_phase: str,
-    state: PipelineState,
-    *,
-    verbosity: Verbosity,
-    pipeline_policy: PipelinePolicy,
-) -> str:
-    """Emit the canonical close+transition display when the phase changes.
-
-    Returns the new previous_phase value (always state.phase). Quiet mode
-    is a no-op except for state tracking.
-    """
-    if state.phase == previous_phase:
-        return previous_phase
-    if _verbosity_rank(verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]:
-        return state.phase
-
-    ctx = _get_display_context(display)
-
-    try:
-        render_data = _build_phase_change_render_data(
-            display,
-            previous_phase,
-            state,
-            pipeline_policy=pipeline_policy,
-        )
-        _emit_phase_change_surfaces(
-            display,
-            render_data,
-            display_context=ctx,
-            pipeline_policy=pipeline_policy,
-        )
-    except Exception:  # pragma: no cover - defensive
-        logger.debug("phase change emission failed", exc_info=True)
-
-    return state.phase
-
-
-def _emit_final_summary(
-    state: PipelineState,
-    workspace_root: Path,
-    *,
-    subscriber: PipelineSubscriber | None = None,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
-    display_context: DisplayContext,
-) -> None:
-    """Emit an end-of-run completion summary panel.
-
-    Called unconditionally after the pipeline loop exits (including via
-    exception) so the user sees a final summary of what Ralph did, what
-    was decided, and whether verification passed.
-
-    When a ``subscriber`` is supplied, the snapshot is built from its
-    accumulated state (decision log, analysis, plan) so the panel mirrors
-    what the live display showed during the run.
-
-    When ``display`` is supplied, its console is used to ensure consistent
-    theming rather than creating a new unthemed console.
-    """
-    try:
-        cs_mod = _load_completion_summary_module()
-        parallel_display_cls = _parallel_display_cls()
-        snapshot_from_state = _snapshot_from_state_func()
-
-        dropped_count = 0
-        snapshot: PipelineSnapshot | None = None
-        if subscriber is not None:
-            try:
-                dropped_count = subscriber.dropped_count
-                snapshot = subscriber.build_snapshot(state)
-            except Exception:
-                logger.debug(
-                    "subscriber.build_snapshot failed; falling back to raw snapshot",
-                    exc_info=True,
-                )
-        if snapshot is None:
-            snapshot = snapshot_from_state(state)
-        pipeline_policy = subscriber.pipeline_policy if subscriber is not None else None
-        ctx = _get_display_context(display, display_context)
-        if isinstance(display, parallel_display_cls):
-            pr = display._plain_renderer
-            content_block_count: int = pr.content_blocks_count
-            thinking_block_count: int = pr.thinking_blocks_count
-            tool_call_count: int = pr.tool_calls_count
-            error_count: int = pr.errors_count
-            elapsed_seconds: float | None = pr.run_elapsed_seconds
-        else:
-            content_block_count = 0
-            thinking_block_count = 0
-            tool_call_count = 0
-            error_count = 0
-            elapsed_seconds = None
-        cs_opts = cs_mod.CompletionSummaryOptions(
-            workspace_root=workspace_root,
-            dropped_count=dropped_count,
-            include_context_sections=not (
-                isinstance(display, _LegacyConsoleDisplay) or state.interrupted_by_user
-            ),
-            content_block_count=content_block_count,
-            thinking_block_count=thinking_block_count,
-            tool_call_count=tool_call_count,
-            error_count=error_count,
-            elapsed_seconds=elapsed_seconds,
-            pipeline_policy=pipeline_policy,
-        )
-        cs_mod.emit_completion_summary(
-            snapshot,
-            display_context=ctx,
-            options=cs_opts,
-        )
-    except Exception:
-        logger.debug("Failed to emit completion summary", exc_info=True)
 
 
 def _load_policy_bundle_for_run(
@@ -1675,836 +776,6 @@ def _load_policy_bundle_for_run(
     return load_policy_for_workspace_scope(workspace_scope, config=config)
 
 
-def run(
-    config: UnifiedConfig,
-    initial_state: PipelineState | None = None,
-    display: ParallelDisplay | None = None,
-    pipeline_subscriber: _PipelineSubscriber | None = None,
-    *,
-    dashboard_subscriber: _PipelineSubscriber | None = None,
-    verbosity: Verbosity | None = None,
-    connectivity_monitor: _ConnectivityMonitorLike | None = None,
-    display_context: DisplayContext | None = None,
-    counter_overrides: dict[str, int] | None = None,
-    _recovery_sleep: Callable[[float], None] | None = None,
-) -> int:
-    """Execute the pipeline event loop.
-
-    Args:
-        config: Unified configuration for the pipeline.
-        initial_state: Optional initial state (for resume from checkpoint).
-        display: Optional pre-built display. When omitted, a ParallelDisplay
-            is constructed by default unless ``verbosity`` is QUIET.
-        pipeline_subscriber: Optional subscriber that will receive notify(state)
-            calls after each reduce. When a ParallelDisplay is constructed by
-            this function, its built-in subscriber is wired in automatically.
-        verbosity: Optional explicit verbosity. Defaults to the configured
-            value in ``config.general.verbosity`` (mapped from int rank).
-
-    Returns:
-        Exit code (0 for success, non-zero for failure).
-    """
-    workspace_scope = resolve_workspace_scope()
-    _write_start_commit_if_absent(workspace_scope.root)
-    if _validate_custom_mcp_servers(workspace_scope.root) != 0:
-        return 1
-    policy_bundle = _load_policy_bundle_for_run(workspace_scope, config)
-    register_role_handlers(policy_bundle.pipeline)
-    registry = AgentRegistry.from_config(config)
-    state = initial_state or _create_initial_state(
-        config,
-        agents_policy=policy_bundle.agents,
-        pipeline_policy=policy_bundle.pipeline,
-        counter_overrides=counter_overrides,
-    )
-
-    effective_verbosity = _normalize_verbosity(
-        verbosity if verbosity is not None else config.general.verbosity
-    )
-    is_quiet = _verbosity_rank(effective_verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]
-
-    _sleep = _recovery_sleep or time.sleep
-    _cycle_cap: int = 200
-    _raw_cycle_cap: object = getattr(state, "recovery_cycle_cap", 200)
-    if isinstance(_raw_cycle_cap, int) and _raw_cycle_cap >= 1:
-        _cycle_cap = _raw_cycle_cap
-    _monitor_stop: Callable[[], None] | None = None
-    if connectivity_monitor is None:
-        _real_monitor = ConnectivityMonitor()
-        connectivity_monitor = _real_monitor
-        _mon_loop = asyncio.new_event_loop()
-        _mon_thread_started = threading.Event()
-
-        def _run_mon_thread() -> None:
-            asyncio.set_event_loop(_mon_loop)
-            _mon_loop.run_until_complete(_real_monitor.start())
-            _mon_thread_started.set()
-            _mon_loop.run_forever()
-            _mon_loop.close()
-
-        _mon_thread = threading.Thread(
-            target=_run_mon_thread, daemon=True, name="connectivity-probe"
-        )
-        _mon_thread.start()
-
-        def _stop_mon() -> None:
-            future = asyncio.run_coroutine_threadsafe(_real_monitor.stop(), _mon_loop)
-            with suppress(Exception):
-                future.result(timeout=2.0)
-            _mon_loop.call_soon_threadsafe(_mon_loop.stop)
-            _mon_thread.join(timeout=3.0)
-
-        _monitor_stop = _stop_mon
-    _controller = _RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=_cycle_cap,
-            policy_bundle=policy_bundle,
-            budget_registry=_seed_budget_registry(policy_bundle),
-        )
-    )
-
-    def _log_recovery_event(evt: object) -> None:
-        if isinstance(evt, _FailureEvent):
-            # Get remaining budget for this phase/agent from the controller snapshot
-            remaining: int | None = None
-            if evt.agent:
-                snap = _controller.snapshot()
-                budgets = snap.get("budgets")
-                if isinstance(budgets, dict):
-                    key = f"{evt.phase}:{evt.agent}"
-                    budget_info = budgets.get(key)
-                    if isinstance(budget_info, dict):
-                        remaining = budget_info.get("remaining")
-            logger.bind(recovery=True).info(
-                "FAILURE phase={} agent={} category={} counted={}"
-                " chain_cap={} cycle={} delay_ms={} remaining={}",
-                evt.phase,
-                evt.agent,
-                evt.category,
-                evt.counted_against_budget,
-                evt.chain_capacity_remaining,
-                evt.recovery_cycle,
-                evt.retry_delay_ms,
-                remaining,
-            )
-        elif isinstance(evt, _FalloverEvent):
-            logger.bind(recovery=True).info(
-                "FALLOVER phase={} from={} to={} reason={}",
-                evt.phase,
-                evt.from_agent,
-                evt.to_agent,
-                evt.reason,
-            )
-
-    _unsubscribe_bus = _controller.event_bus.subscribe(_log_recovery_event)
-
-    logger.info(
-        "Starting pipeline: phase={}, budget_caps={}",
-        state.phase,
-        state.budget_caps,
-    )
-
-    if pipeline_subscriber is None:
-        pipeline_subscriber = dashboard_subscriber
-
-    if display is not None:
-        display_context = display._ctx
-    elif display_context is None:
-        display_context = make_display_context()
-
-    if display is not None:
-        active_display: ParallelDisplay | _LegacyConsoleDisplay = display
-    elif is_quiet:
-        active_display = _LegacyConsoleDisplay(display_context)
-    else:
-        active_display = _build_default_display(
-            workspace_scope.root, display_context, policy_bundle
-        )
-
-    # Install cross-platform width refresher (SIGWINCH on POSIX, poll thread on Windows).
-    # The refresher reads the current console width and recomputes mode/limits.
-    def _display_stop() -> None:
-        pass
-
-    if isinstance(active_display, _LegacyConsoleDisplay) or hasattr(active_display, "_ctx"):
-        ctx_holder = [active_display._ctx]
-        _display_stop = install_width_refresher(
-            ctx_holder,
-            on_refresh=lambda ctx: _sync_live_display_context(active_display, ctx),
-        )
-
-    effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
-    if effective_pipeline_subscriber is None and hasattr(active_display, "subscriber"):
-        effective_pipeline_subscriber = cast(
-            "_PipelineSubscriber | None",
-            getattr(active_display, "subscriber", None),
-        )
-
-    exit_code = 0
-    _prev_phase = state.phase
-    try:
-        with active_display:
-            if not is_quiet and hasattr(active_display, "emit_run_start"):
-                with suppress(Exception):
-                    _prompt_path_raw: object = getattr(
-                        effective_pipeline_subscriber, "_prompt_path", None
-                    )
-                    _prompt_path: str | None = cast("str | None", _prompt_path_raw)
-                    _dev_para = next(
-                        (
-                            p.parallelization
-                            for p in policy_bundle.pipeline.phases.values()
-                            if p.parallelization is not None
-                        ),
-                        None,
-                    )
-                    _parallel_max_workers: int | None = (
-                        _dev_para.max_parallel_workers if _dev_para is not None else None
-                    )
-                    _plan_present = (
-                        workspace_scope.root / ".agent" / "artifacts" / "plan.json"
-                    ).exists()
-                    _dev_agent_raw: object = getattr(config, "developer_agent", None)
-                    _dev_model_raw: object = getattr(config, "developer_model", None)
-                    _orientation = RunStartOrientation(
-                        prompt_path=_prompt_path,
-                        developer_agent=cast("str | None", _dev_agent_raw),
-                        developer_model=cast("str | None", _dev_model_raw),
-                        developer_iters=config.general.developer_iters,
-                        parallel_max_workers=_parallel_max_workers,
-                        plan_present=_plan_present,
-                        verbosity=str(effective_verbosity.value)
-                        if hasattr(effective_verbosity, "value")
-                        else str(effective_verbosity),
-                        workspace_root=str(workspace_scope.root),
-                    )
-                    cast("ParallelDisplay", active_display).emit_run_start(_orientation)
-            if hasattr(active_display, "begin_phase"):
-                with suppress(Exception):
-                    cast("_PhaseAwareDisplay", active_display).begin_phase(state.phase)
-            _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
-            try:
-                while state.phase != policy_bundle.pipeline.terminal_phase:
-                    if connectivity_monitor is not None:
-                        state = _apply_connectivity_check(state, connectivity_monitor)
-                    step_result = _run_pipeline_step(
-                        state=state,
-                        policy_bundle=policy_bundle,
-                        workspace_scope=workspace_scope,
-                        config=config,
-                        display=active_display,
-                        display_context=display_context,
-                        verbosity=effective_verbosity,
-                        registry=registry,
-                        pipeline_subscriber=effective_pipeline_subscriber,
-                        recovery_controller=_controller,
-                        _monitor_stop_cb=_monitor_stop,
-                    )
-                    if isinstance(step_result, int):
-                        return step_result
-                    state = step_result
-                    delay_ms = state.last_retry_delay_ms
-                    if isinstance(delay_ms, int) and delay_ms > 0:
-                        state = state.copy_with(last_retry_delay_ms=0)
-                        _sleep(delay_ms / 1000.0)
-                    _prev_phase = _emit_phase_transition_if_changed(
-                        active_display,
-                        _prev_phase,
-                        state,
-                        verbosity=effective_verbosity,
-                        pipeline_policy=policy_bundle.pipeline,
-                    )
-                    if hasattr(active_display, "begin_phase"):
-                        with suppress(Exception):
-                            cast("_PhaseAwareDisplay", active_display).begin_phase(state.phase)
-
-            except KeyboardInterrupt:
-                logger.warning("Interrupted by user; shutting down tracked processes.")
-                _emit_display_line(
-                    active_display,
-                    None,
-                    _status_text(
-                        "Interrupted",
-                        "Stopping gracefully. Press Ctrl+C again to force kill child processes.",
-                        "yellow",
-                    ),
-                )
-                _handle_keyboard_interrupt(_monitor_stop)
-                _monitor_stop = None
-                interrupted_state = state.copy_with(interrupted_by_user=True)
-                _save_checkpoint_or_log(
-                    interrupted_state,
-                    message=(
-                        "Checkpoint save failed while handling interrupt in phase={phase}: {err}"
-                    ),
-                )
-                return 130
-
-            if state.phase == policy_bundle.pipeline.terminal_phase:
-                active_display.emit("run", "[green]Pipeline completed successfully.[/green]")
-                exit_code = 0
-            else:
-                _emit_display_line(
-                    active_display,
-                    None,
-                    _status_text("Pipeline failed", state.last_error or "Unknown error", "red"),
-                )
-                exit_code = 1
-            if not is_quiet and hasattr(active_display, "emit_run_end"):
-                with suppress(Exception):
-                    total_agent_calls = cast("int", getattr(state.metrics, "total_agent_calls", 0))
-                    _exit_trigger = "completed" if exit_code == 0 else "failed"
-                    _outer_dev = next(
-                        (
-                            state.get_outer_progress(bp_name)
-                            for bp_name, bp_cfg in policy_bundle.pipeline.budget_counters.items()
-                            if bp_cfg.tracks_budget and state.get_outer_progress(bp_name) > 0
-                        ),
-                        None,
-                    )
-                    cast("_RunEndDisplay", active_display).emit_run_end(
-                        phase=state.phase,
-                        total_agent_calls=total_agent_calls,
-                        pr_url=state.pr_url,
-                        exit_trigger=_exit_trigger,
-                        outer_dev_iteration=_outer_dev,
-                    )
-    finally:
-        with suppress(Exception):
-            _unsubscribe_bus()
-        with suppress(Exception):
-            _display_stop()
-        if _monitor_stop is not None:
-            with suppress(Exception):
-                _monitor_stop()
-        _emit_final_summary(
-            state,
-            workspace_scope.root,
-            subscriber=cast("PipelineSubscriber | None", effective_pipeline_subscriber),
-            display=active_display,
-            display_context=display_context,
-        )
-        with suppress(Exception):
-            clear_cycle_baseline(workspace_scope.root)
-    return exit_code
-
-
-def _apply_connectivity_check(
-    state: PipelineState, monitor: _ConnectivityMonitorLike
-) -> PipelineState:
-    """Block synchronously if offline; return updated state when online.
-
-    Uses a threading.Event driven by monitor.add_listener() so this works in the
-    synchronous runner without an event loop; compatible with FakeConnectivityMonitor
-    (tests) and ConnectivityMonitor (production, started externally).
-
-    Records last_connectivity_state='offline' before blocking so checkpoints written
-    during an interrupt while paused accurately reflect the offline condition.
-    """
-    if monitor.current_state != ConnectivityState.OFFLINE:
-        return state
-
-    logger.bind(recovery=True).warning(
-        "Pipeline paused: network offline, waiting for connectivity to restore..."
-    )
-    # Record offline before blocking so any checkpoint saved during the wait reflects reality.
-    offline_state = state.copy_with(last_connectivity_state=str(ConnectivityState.OFFLINE))
-    wake = threading.Event()
-
-    def _on_transition(evt: object) -> None:
-        if isinstance(evt, ConnectivityEvent) and evt.state == ConnectivityState.ONLINE:
-            wake.set()
-
-    unsub = monitor.add_listener(_on_transition)
-    try:
-        # Capture state AFTER listener registration to handle the race where
-        # state changed to ONLINE between the top-of-function check and now.
-        # Mypy flags this as unreachable because it sees current_state as
-        # invariant, but in FakeConnectivityMonitor (test) another thread can
-        # call go_online() between checks. This is a genuine race guard.
-        _was_online_at_registration = monitor.current_state != ConnectivityState.OFFLINE
-        if _was_online_at_registration:
-            wake.set()
-        else:
-            wake.wait()
-    finally:
-        unsub()
-
-    logger.bind(recovery=True).info("Connectivity restored, resuming pipeline")
-    return offline_state.copy_with(last_connectivity_state=str(ConnectivityState.ONLINE))
-
-
-def _fan_out_display_and_subscriber(
-    display: ParallelDisplay | _LegacyConsoleDisplay | _ConsoleLikeDisplay,
-    pipeline_subscriber: _PipelineSubscriber | None,
-    dashboard_subscriber: _PipelineSubscriber | None,
-) -> tuple[ParallelDisplay, _PipelineSubscriber | None]:
-    parallel_display_cls = _parallel_display_cls()
-
-    if isinstance(display, parallel_display_cls):
-        parallel_display = display
-    elif isinstance(display, _LegacyConsoleDisplay):
-        parallel_display = parallel_display_cls(display._ctx)
-    else:
-        parallel_display = parallel_display_cls(make_display_context(console=display.console))
-    effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
-    if effective_pipeline_subscriber is None and hasattr(parallel_display, "subscriber"):
-        effective_pipeline_subscriber = cast(
-            "_PipelineSubscriber | None",
-            getattr(parallel_display, "subscriber", None),
-        )
-    return parallel_display, effective_pipeline_subscriber
-
-
-def _build_session_mcp_plan_for_phase(
-    effect: FanOutEffect,
-    policy_bundle: PolicyBundle,
-    workspace_scope: WorkspaceScope,
-    config: UnifiedConfig | None,
-) -> tuple[SessionMcpPlan, str]:
-    """Build session MCP plan for fan-out workers matching the serial execution contract.
-
-    Uses the exact same call signature as the serial path to ensure workers
-    inherit the same drain, capabilities, model identity, and capability profile
-    as the parent phase's serial AgentSession.
-
-    Returns:
-        A tuple of (SessionMcpPlan, normalized_drain). The normalized_drain is
-        the drain string used to build the plan, matching the serial path's
-        "effect.drain or effect.phase" pattern.
-    """
-    phase_def = policy_bundle.pipeline.phases.get(effect.phase)
-
-    # Resolve drain: use effect.drain if available (InvokeAgentEffect),
-    # else fall back to phase_def.drain (for proper phase mapping),
-    # else effect.phase, with "development" as final fallback for FanOutEffect
-    # where phase="" by default.
-    _effect_drain = cast("str | None", getattr(effect, "drain", None))
-    drain: str = (
-        cast("str", _effect_drain)
-        or (phase_def.drain if phase_def and hasattr(phase_def, "drain") else None)
-        or effect.phase
-        or "development"
-    )
-
-    # Resolve agent name for the phase to get transport/model_flag.
-    # Use the same lookup pattern as the serial path.
-    agent_name: str | None = None
-    if phase_def is not None:
-        config_agents = _config_agents_for_phase(
-            config,
-            phase=effect.phase,
-            policy_drain=drain,
-        )
-        if config_agents:
-            agent_name = config_agents[0]
-        else:
-            drain_binding = policy_bundle.agents.agent_drains.get(drain)
-            if drain_binding is not None:
-                chain_config = policy_bundle.agents.agent_chains.get(drain_binding.chain)
-                if chain_config is not None and chain_config.agents:
-                    agent_name = chain_config.agents[0]
-
-    # Get agent_config using the same pattern as serial path (no defensive try/except).
-    agent_config = None
-    if isinstance(agent_name, str) and agent_name and config is not None:
-        registry = AgentRegistry.from_config(config)
-        agent_config = registry.get(agent_name)
-
-    _transport_raw = cast("object", getattr(agent_config, "transport", None))
-    transport = cast("AgentTransport | None", _transport_raw) if agent_config is not None else None
-    _model_flag_raw = cast("object", getattr(agent_config, "model_flag", None))
-    model_flag = cast("str | None", _model_flag_raw) if agent_config is not None else None
-
-    # Use the same effective_agents_policy resolution as serial path.
-    effective_agents_policy = (
-        policy_bundle.agents
-        if policy_bundle is not None
-        else load_agents_policy_for_workspace_scope(workspace_scope, config=config)
-    )
-
-    # Try to build the session MCP plan. If agents_policy has invalid drain_class
-    # (e.g., MagicMock in test harnesses), fall back to loading from workspace.
-    try:
-        return build_session_mcp_plan(
-            transport=transport,
-            drain=drain,
-            workspace_path=workspace_scope.root,
-            agents_policy=effective_agents_policy,
-            model_opts=SessionModelOpts(model_flag=model_flag),
-        ), drain
-    except PolicyValidationError:
-        # Fall back to loading agents policy from workspace scope when the
-        # provided policy_bundle has invalid drain_class values (e.g., test harnesses).
-        fallback_agents_policy = load_agents_policy_for_workspace_scope(
-            workspace_scope, config=config
-        )
-        return build_session_mcp_plan(
-            transport=transport,
-            drain=drain,
-            workspace_path=workspace_scope.root,
-            agents_policy=fallback_agents_policy,
-            model_opts=SessionModelOpts(model_flag=model_flag),
-        ), drain
-
-
-def _fan_out_worker_context(
-    *,
-    workspace_scope: WorkspaceScope,
-    repo_root: Path,
-    bridge: SignalBridge,
-    session_drain: str,
-    session_mcp_plan: SessionMcpPlan,
-) -> tuple[AgentExecutor, parallel_coordinator._WorkerContext]:
-    executor = cast(
-        "AgentExecutor",
-        SubprocessAgentExecutor(_parallel_worker_command(), signal_bridge=bridge),
-    )
-    workspace = FsWorkspace(
-        workspace_scope.root,
-        allowed_roots=workspace_scope.allowed_roots,
-    )
-    worker_namespace_root = repo_root / ".agent" / "workers"
-    worker_namespace_root.mkdir(parents=True, exist_ok=True)
-    return executor, coordinator._WorkerContext(
-        log=coordinator._WorkerLog(
-            log_dir=workspace_scope.root / ".agent" / "logs",
-            run_id=str(uuid.uuid4()),
-        ),
-        same_workspace=SameWorkspaceContext(
-            repo_root=repo_root,
-            mcp_factory=DynamicBindingMcpServerFactory(workspace=workspace),
-            executor_command=_parallel_worker_command(),
-            signal_bridge=bridge,
-            worker_namespace_root=worker_namespace_root,
-            session_drain=session_drain,
-            session_capabilities=session_mcp_plan.capabilities,
-            session_model_identity=session_mcp_plan.model_identity,
-            session_capability_profile=session_mcp_plan.capability_profile,
-        ),
-    )
-
-
-def _resume_fan_out_state(
-    state: PipelineState,
-    effect: FanOutEffect,
-    pipeline_policy: PipelinePolicy,
-    pipeline_subscriber: _PipelineSubscriber | None,
-) -> tuple[PipelineState, tuple[WorkUnit, ...]]:
-    resumed_state, _ = reducer_reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
-    _notify_pipeline_subscriber(pipeline_subscriber, resumed_state)
-    completed_ids = {
-        uid
-        for uid, ws in resumed_state.worker_states.items()
-        if ws.status == WorkerStatus.SUCCEEDED
-    }
-    resume_units = tuple(u for u in effect.work_units if u.unit_id not in completed_ids)
-    return resumed_state, resume_units
-
-
-def _write_parallel_development_summary(
-    workspace_scope: WorkspaceScope,
-    effect: FanOutEffect,
-    state: PipelineState,
-    *,
-    verify_ran: bool,
-    verify_passed: bool | None,
-    verify_exit_code: int | None,
-) -> None:
-    """Write .agent/artifacts/parallel_development_summary.json after fan-out completes.
-
-    The summary records per-worker status, artifact counts, and verification results.
-    It is the authoritative handoff for the analysis phase when fan-out was used.
-    Worker success is based on per-worker artifact evidence, never repo-wide git state.
-    """
-    workers: list[dict[str, object]] = []
-    for unit in effect.work_units:
-        uid = unit.unit_id
-        ws = state.worker_states.get(uid)
-        artifact_dir = workspace_scope.root / ".agent" / "workers" / uid / "artifacts"
-        artifact_count = len(list_artifacts(artifact_dir)) if artifact_dir.exists() else 0
-
-        if ws is None:
-            status = "failed"
-            final_message = "Worker state not recorded"
-        elif ws.status == WorkerStatus.SUCCEEDED:
-            status = "succeeded"
-            final_message = None
-        elif ws.status == WorkerStatus.CANCELLED:
-            status = "cancelled"
-            final_message = ws.error_message
-        elif ws.status == WorkerStatus.FAILED:
-            err = ws.error_message or ""
-            status = "blocked" if err.startswith("Blocked by") else "failed"
-            final_message = ws.error_message
-        else:
-            status = "failed"
-            final_message = ws.error_message
-
-        workers.append(
-            {
-                "unit_id": uid,
-                "status": status,
-                "artifact_count": artifact_count,
-                "final_message": final_message,
-            }
-        )
-
-    any_failed = any(w["status"] in ("failed", "cancelled", "blocked") for w in workers)
-    all_succeeded = not any_failed and len(workers) > 0
-
-    if verify_ran and not verify_passed:
-        workers.append(
-            {
-                "unit_id": "__verify__",
-                "status": "failed",
-                "artifact_count": 0,
-                "final_message": "workspace verification failed",
-            }
-        )
-        any_failed = True
-        all_succeeded = False
-
-    summary: dict[str, object] = {
-        "workers": workers,
-        "any_failed": any_failed,
-        "all_succeeded": all_succeeded,
-        "verification": {
-            "ran": verify_ran,
-            "passed": verify_passed,
-            "exit_code": verify_exit_code,
-        },
-    }
-
-    agent_artifacts = workspace_scope.root / ".agent" / "artifacts"
-    summary_path = agent_artifacts / "parallel_development_summary.json"
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    logger.debug(
-        "Wrote parallel_development_summary.json: any_failed={f} all_succeeded={s}",
-        f=any_failed,
-        s=all_succeeded,
-    )
-
-    sync_markdown_handoff(workspace_scope.root, "parallel_development_summary", summary)
-
-
-async def _run_post_fanout_verification(workspace_scope: WorkspaceScope) -> str | None:
-    """Run workspace-wide verification exactly once after all workers complete.
-
-    This helper runs on the runner thread (serialized) after coordinator.run_fan_out
-    returns. It is called only when all workers succeeded. Never spawns parallel
-    verifications. NOT related to git worktree isolation.
-
-    Returns:
-        None on success, or an error description string on failure.
-    """
-    logger.debug("Running post-fanout workspace-wide verification (serialized)")
-    verify_result = await run_process_async(
-        "make",
-        ["-C", str(workspace_scope.root / "ralph-workflow"), "verify"],
-    )
-    if verify_result.returncode != 0:
-        return (
-            f"Post-fanout workspace verification failed "
-            f"(exit {verify_result.returncode}): "
-            f"{verify_result.stderr.strip() or verify_result.stdout.strip()}"
-        )
-    return None
-
-
-async def _run_fan_out_async(
-    *,
-    effect: FanOutEffect,
-    state: PipelineState,
-    display: ParallelDisplay,
-    policy_bundle: PolicyBundle,
-    workspace_scope: WorkspaceScope,
-    repo_root: Path,
-    pipeline_subscriber: _PipelineSubscriber | None,
-    config: UnifiedConfig | None = None,
-    _monitor_stop_cb: Callable[[], None] | None = None,
-) -> PipelineState:
-    current = state
-    try:
-        loop = asyncio.get_running_loop()
-        bridge = SignalBridge()
-        if _monitor_stop_cb is not None:
-            bridge._connectivity_stop = _monitor_stop_cb
-        root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
-        assert root_task is not None
-        install_signal_handlers(loop, root_task, bridge)
-
-        # Pre-flight: validate plan is safe for same-workspace execution.
-        try:
-            validate_for_same_workspace(WorkUnitsPlan(work_units=list(effect.work_units)))
-        except WorkUnitsValidationError as exc:
-            failure_reason = f"Parallel plan rejected (same-workspace safety check failed): {exc}"
-            logger.error(failure_reason)
-            recovered, _ = _reduce_runtime_recovery(
-                current,
-                policy_bundle.pipeline,
-                reason=failure_reason,
-            )
-            _notify_pipeline_subscriber(pipeline_subscriber, recovered)
-            _save_checkpoint_or_log(
-                recovered,
-                message="Checkpoint save failed after plan rejection in phase={phase}: {err}",
-            )
-            return recovered
-
-        # Build the session MCP plan from the parent phase's agent config so that
-        # same-workspace workers inherit the same multimodal contract as serial execution.
-        # Use the normalized drain from the plan (not phase_def.drain directly) to ensure
-        # session_drain matches the drain used for capability resolution.
-        session_mcp_plan, session_drain = _build_session_mcp_plan_for_phase(
-            effect=effect,
-            policy_bundle=policy_bundle,
-            workspace_scope=workspace_scope,
-            config=config,
-        )
-        executor, worker_ctx = _fan_out_worker_context(
-            workspace_scope=workspace_scope,
-            repo_root=repo_root,
-            bridge=bridge,
-            session_drain=session_drain,
-            session_mcp_plan=session_mcp_plan,
-        )
-        current, resume_units = _resume_fan_out_state(
-            state,
-            effect,
-            policy_bundle.pipeline,
-            pipeline_subscriber,
-        )
-        if not resume_units:
-            return current
-
-        fan_out_events = await coordinator.run_fan_out(
-            effect=FanOutEffect(
-                work_units=resume_units,
-                max_workers=effect.max_workers,
-                phase=effect.phase,
-            ),
-            executor=executor,
-            display=display,
-            ctx=worker_ctx,
-        )
-        for ev in fan_out_events:
-            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-            _notify_pipeline_subscriber(pipeline_subscriber, current)
-        _save_checkpoint_or_log(
-            current,
-            message="Checkpoint save failed after fan-out in phase={phase}: {err}",
-        )
-
-        any_worker_failed = any(isinstance(ev, WorkerFailedEvent) for ev in fan_out_events)
-        verify_ran = False
-        verify_passed: bool | None = None
-        verify_exit_code: int | None = None
-        if effect.run_post_fanout_verification and not any_worker_failed:
-            verify_ran = True
-            verify_error = await _run_post_fanout_verification(workspace_scope)
-            if verify_error is not None:
-                logger.error(verify_error)
-                verify_passed = False
-                verify_exit_code = 1
-                verify_ev = PostFanoutVerificationEvent(
-                    success=False, exit_code=verify_exit_code, error=verify_error
-                )
-            else:
-                verify_passed = True
-                verify_exit_code = 0
-                verify_ev = PostFanoutVerificationEvent(success=True, exit_code=0)
-            current, _ = reducer_reduce(current, verify_ev, policy_bundle.pipeline)
-            _notify_pipeline_subscriber(pipeline_subscriber, current)
-            _save_checkpoint_or_log(
-                current,
-                message=("Checkpoint save failed after verification in phase={phase}: {err}"),
-            )
-            if not verify_passed:
-                _write_parallel_development_summary(
-                    workspace_scope,
-                    effect,
-                    current,
-                    verify_ran=verify_ran,
-                    verify_passed=verify_passed,
-                    verify_exit_code=verify_exit_code,
-                )
-                return current
-        elif effect.run_post_fanout_verification and any_worker_failed:
-            logger.debug(
-                "Post-fanout verification skipped: one or more workers failed in this wave"
-            )
-
-        _write_parallel_development_summary(
-            workspace_scope,
-            effect,
-            current,
-            verify_ran=verify_ran,
-            verify_passed=verify_passed,
-            verify_exit_code=verify_exit_code,
-        )
-        return current
-    except KeyboardInterrupt:
-        raise
-    except BaseException as exc:
-        logger.exception(
-            "Fan-out execution crashed in phase={phase}: {err}",
-            phase=current.phase,
-            err=exc,
-        )
-        recovered, _ = _reduce_runtime_recovery(
-            current,
-            policy_bundle.pipeline,
-            reason=f"Fan-out execution crashed: {type(exc).__name__}: {exc}",
-        )
-        _notify_pipeline_subscriber(pipeline_subscriber, recovered)
-        _save_checkpoint_or_log(
-            recovered,
-            message=(
-                "Checkpoint save failed while recording fan-out recovery in phase={phase}: {err}"
-            ),
-        )
-        return recovered
-
-
-def _execute_fan_out_sync(
-    *,
-    effect: FanOutEffect,
-    state: PipelineState,
-    display: ParallelDisplay | _LegacyConsoleDisplay,
-    policy_bundle: PolicyBundle,
-    workspace_scope: WorkspaceScope,
-    pipeline_subscriber: _PipelineSubscriber | None = None,
-    dashboard_subscriber: _PipelineSubscriber | None = None,
-    config: UnifiedConfig | None = None,
-    _monitor_stop_cb: Callable[[], None] | None = None,
-) -> PipelineState:
-    """Execute fan-out development synchronously by wrapping asyncio.run()."""
-    parallel_display, effective_pipeline_subscriber = _fan_out_display_and_subscriber(
-        display,
-        pipeline_subscriber,
-        dashboard_subscriber,
-    )
-    return asyncio.run(
-        _run_fan_out_async(
-            effect=effect,
-            state=state,
-            display=parallel_display,
-            policy_bundle=policy_bundle,
-            workspace_scope=workspace_scope,
-            repo_root=workspace_scope.root,
-            pipeline_subscriber=effective_pipeline_subscriber,
-            config=config,
-            _monitor_stop_cb=_monitor_stop_cb,
-        )
-    )
-
-
-def _parallel_worker_command() -> tuple[str, ...]:
-    return (sys.executable, "-m", "ralph")
-
-
 def _handle_inline_effect(
     *,
     effect: Effect,
@@ -2513,22 +784,22 @@ def _handle_inline_effect(
     artifacts_policy: ArtifactsPolicy,
     workspace_scope: WorkspaceScope,
     agents_policy: AgentsPolicy | None = None,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState | int | None:
-    effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
+    effective_subscriber = dashboard_subscriber or pipeline_subscriber
 
     if isinstance(effect, SaveCheckpointEffect):
         ckpt.save(state)
         new_state, _ = reducer_reduce(state, PipelineEvent.CHECKPOINT_SAVED, pipeline_policy)
-        _notify_pipeline_subscriber(effective_pipeline_subscriber, new_state)
+        _notify_pipeline_subscriber(effective_subscriber, new_state)
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
         if not effect.skip_materialization:
             try:
-                _materialize_prepared_prompt(
+                materialize_prepared_prompt(
                     effect,
                     pipeline_policy,
                     artifacts_policy,
@@ -2552,7 +823,7 @@ def _handle_inline_effect(
                     recovery_epoch=current_epoch + 1,
                 )
                 ckpt.save(recovered_state)
-                _notify_pipeline_subscriber(effective_pipeline_subscriber, recovered_state)
+                _notify_pipeline_subscriber(effective_subscriber, recovered_state)
                 return recovered_state
         prepared_state = state
         if state.phase == pipeline_policy.recovery.failed_route:
@@ -2562,24 +833,24 @@ def _handle_inline_effect(
                 prepared_state = prepared_state.copy_with(commit=CommitState())
             if target_phase_def is not None and target_phase_def.role == "execution":
                 clear_cycle_baseline(workspace_scope.root)
-                _write_start_commit_if_absent(workspace_scope.root)
+                write_start_commit_if_absent(workspace_scope.root)
         updated_state = prepared_state.copy_with(
             phase=effect.phase,
             current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
         )
         ckpt.save(updated_state)
-        _notify_pipeline_subscriber(effective_pipeline_subscriber, updated_state)
+        _notify_pipeline_subscriber(effective_subscriber, updated_state)
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
-        _emit_display_line(display, None, "[green]Pipeline completed successfully.[/green]")
+        emit_display_line(display, None, "[green]Pipeline completed successfully.[/green]")
         return 0
 
     if isinstance(effect, ExitFailureEffect):
-        _emit_display_line(
+        emit_display_line(
             display,
             None,
-            _status_text("Recovery triggered", effect.reason, "yellow"),
+            status_text("Recovery triggered", effect.reason, "yellow"),
         )
         current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
         recovered_state = state.copy_with(
@@ -2589,222 +860,10 @@ def _handle_inline_effect(
             recovery_epoch=current_epoch + 1,
         )
         ckpt.save(recovered_state)
-        _notify_pipeline_subscriber(effective_pipeline_subscriber, recovered_state)
+        _notify_pipeline_subscriber(effective_subscriber, recovered_state)
         return recovered_state
 
     return None
-
-
-def _materialize_prepared_prompt(
-    effect: PreparePromptEffect,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy,
-    workspace_scope: WorkspaceScope,
-    agents_policy: AgentsPolicy | None = None,
-    state: PipelineState | None = None,
-    env: Mapping[str, str] | None = None,
-) -> None:
-
-    env_map = os.environ if env is None else env
-    workspace = FsWorkspace(
-        workspace_scope.root,
-        allowed_roots=workspace_scope.allowed_roots,
-    )
-    worker_ns_str = env_map.get(WORKER_NAMESPACE_ENV)
-    worker_namespace = Path(worker_ns_str) if worker_ns_str else None
-    media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
-    materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase=effect.phase,
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        session_caps=SessionCapabilities.defaults_for_drain(
-            _prompt_session_drain_for_phase(
-                effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase,
-                agents_policy=agents_policy,
-            )
-        ),
-        workspace_root=workspace_scope.root,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=artifacts_policy,
-        worker_namespace=worker_namespace,
-        previous_phase=effect.previous_phase,
-        resume_existing_phase=(
-            not _prompt_changed_since_last_materialization(workspace_scope.root)
-            and _should_resume_existing_planning_phase_name(
-                phase=effect.phase,
-                drain=effect.drain,
-                state=state,
-                pipeline_policy=pipeline_policy,
-                artifacts_policy=artifacts_policy,
-            )
-        ),
-        multimodal_entries=media_entries,
-    ),
-    )
-
-
-def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
-    prompt_path = workspace_root / "PROMPT.md"
-    current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
-    if not prompt_path.exists() or not current_prompt_path.exists():
-        return False
-    try:
-        return prompt_path.read_text(encoding="utf-8") != current_prompt_path.read_text(
-            encoding="utf-8"
-        )
-    except OSError:
-        return False
-
-
-def _should_resume_existing_planning_phase_name(
-    *,
-    phase: str,
-    drain: str | None,
-    state: PipelineState | None,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy,
-) -> bool:
-    if state is None or state.phase != phase:
-        return False
-    if state.previous_phase is not None or state.checkpoint_saved_count <= 0:
-        return False
-    effective_drain = drain or resolve_phase_drain(phase, pipeline_policy) or phase
-    required_artifact = resolve_phase_required_artifact(
-        pipeline_policy,
-        artifacts_policy,
-        phase=phase,
-        drain=effective_drain,
-    )
-    return bool(required_artifact is not None and required_artifact.artifact_type == "plan")
-
-
-def _should_resume_existing_planning_phase(
-    *,
-    effect: InvokeAgentEffect,
-    state: PipelineState,
-    policy_bundle: PolicyBundle,
-) -> bool:
-    return _should_resume_existing_planning_phase_name(
-        phase=effect.phase,
-        drain=effect.drain,
-        state=state,
-        pipeline_policy=policy_bundle.pipeline,
-        artifacts_policy=policy_bundle.artifacts,
-    )
-
-
-def _materialize_agent_prompt_if_needed(
-    effect: Effect,
-    state: PipelineState,
-    workspace: FsWorkspace,
-    policy_bundle: PolicyBundle,
-    registry: _RegistryLike,
-) -> None:
-    if not isinstance(effect, InvokeAgentEffect):
-        return
-
-    agent = registry.get(effect.agent_name)
-    tool_name_prefix = ""
-    if agent is not None:
-        tool_name_prefix = tool_name_prefix_for_transport(agent.transport)
-
-    media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
-    materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase=effect.phase,
-        workspace=workspace,
-        pipeline_policy=policy_bundle.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(
-            _prompt_session_drain_for_phase(
-                effect.drain
-                or resolve_phase_drain(effect.phase, policy_bundle.pipeline)
-                or effect.phase,
-                agents_policy=policy_bundle.agents,
-            ),
-            tool_name_prefix=tool_name_prefix,
-        ),
-        workspace_root=workspace.root,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy_bundle.artifacts,
-        previous_phase=state.previous_phase,
-        resume_existing_phase=(
-            not _prompt_changed_since_last_materialization(workspace.root)
-            and _should_resume_existing_planning_phase(
-                effect=effect,
-                state=state,
-                policy_bundle=policy_bundle,
-            )
-        ),
-        multimodal_entries=media_entries,
-    ),
-    )
-
-
-def _initial_phase_chains(
-    config: UnifiedConfig,
-    *,
-    agents_policy: AgentsPolicy | None,
-    pipeline_policy: PipelinePolicy | None,
-) -> dict[str, AgentChainState]:
-    if pipeline_policy is None:
-        return {}
-    return {
-        phase_name: AgentChainState(
-            agents=_agents_for_phase(
-                config,
-                phase_name,
-                agents_policy=agents_policy,
-                pipeline_policy=pipeline_policy,
-            )
-        )
-        for phase_name in pipeline_policy.phases
-    }
-
-
-def _create_initial_state(
-    config: UnifiedConfig,
-    *,
-    agents_policy: AgentsPolicy | None = None,
-    pipeline_policy: PipelinePolicy,
-    counter_overrides: dict[str, int] | None = None,
-) -> PipelineState:
-    """Create initial pipeline state from configuration.
-
-    Args:
-        config: Unified configuration.
-        pipeline_policy: Pipeline policy (required for entry_phase resolution).
-
-    Returns:
-        Initial PipelineState.
-    """
-    entry_phase = pipeline_policy.entry_phase
-    phase_chains = _initial_phase_chains(
-        config,
-        agents_policy=agents_policy,
-        pipeline_policy=pipeline_policy,
-    )
-
-    caps: dict[str, int] = {
-        name: cfg.default_max for name, cfg in pipeline_policy.budget_counters.items()
-    }
-    if "iteration" in caps:
-        caps["iteration"] = config.general.developer_iters
-    if counter_overrides:
-        caps.update(counter_overrides)
-
-    return PipelineState(
-        phase=entry_phase,
-        budget_caps=caps,
-        phase_chains=phase_chains,
-        rebase=RebaseState(),
-        commit=CommitState(),
-        policy_entry_phase=entry_phase,
-        current_drain=resolve_phase_drain(entry_phase, pipeline_policy),
-        loop_caps={name: cfg.default_max for name, cfg in pipeline_policy.loop_counters.items()},
-    )
 
 
 def _call_determine_effect_from_policy(
@@ -2813,10 +872,10 @@ def _call_determine_effect_from_policy(
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
 ) -> Effect:
-    determine_effect = _determine_effect_from_policy
-    params = signature(determine_effect).parameters
+    fn = determine_effect_from_policy
+    params = signature(fn).parameters
     if "config" in params:
-        return determine_effect(state, policy_bundle, workspace_scope, config=config)
+        return fn(state, policy_bundle, workspace_scope, config=config)
 
     positional = [
         param
@@ -2827,799 +886,11 @@ def _call_determine_effect_from_policy(
         any(param.kind == param.VAR_POSITIONAL for param in params.values())
         or len(positional) >= _LEGACY_EXECUTE_EFFECT_ARITY
     ):
-        return determine_effect(state, policy_bundle, workspace_scope)
-    return determine_effect(state, policy_bundle)
+        return fn(state, policy_bundle, workspace_scope)
+    return fn(state, policy_bundle)
 
 
-def _recovery_prepare_effect(
-    state: PipelineState, pipeline_policy: PipelinePolicy
-) -> PreparePromptEffect:
-    previous_phase = state.previous_phase if isinstance(state.previous_phase, str) else None
-    failed_route = pipeline_policy.recovery.failed_route
-    policy_entry_phase = (
-        state.policy_entry_phase
-        if isinstance(state.policy_entry_phase, str)
-        else pipeline_policy.entry_phase
-    )
-    target_phase = previous_phase or policy_entry_phase
-    if target_phase == failed_route:
-        target_phase = policy_entry_phase
-    drain = state.current_drain if isinstance(state.current_drain, str) else None
-    return PreparePromptEffect(
-        phase=target_phase,
-        drain=drain,
-        previous_phase=previous_phase,
-    )
-
-
-def _terminal_phase_effect(state: PipelineState, pipeline_policy: PipelinePolicy) -> Effect | None:
-    if state.phase == pipeline_policy.terminal_phase:
-        return ExitSuccessEffect()
-    if state.phase == pipeline_policy.recovery.failed_route:
-        return _recovery_prepare_effect(state, pipeline_policy)
-    return None
-
-
-def _current_analysis_phase_advance_effect(
-    state: PipelineState,
-    phase_def: PhaseDefinition,
-    pipeline_policy: PipelinePolicy,
-) -> ExhaustedAnalysisPhaseAdvanceEffect | None:
-    """Return a phase-advance effect when the current analysis phase is exhausted.
-
-    The runner deliberately reuses the shared handoff helper instead of
-    re-implementing budget math locally so current-phase bypass behavior stays
-    aligned with reducer-owned phase advancement.
-    """
-    if phase_def.role != "analysis":
-        return None
-    bypass = resolve_exhausted_analysis_bypass(state, state.phase, pipeline_policy)
-    if not bypass.skipped:
-        return None
-    return ExhaustedAnalysisPhaseAdvanceEffect(phase=state.phase)
-
-
-def _determine_effect_from_policy(
-    state: PipelineState,
-    policy_bundle: PolicyBundle,
-    workspace_scope: WorkspaceScope | None = None,
-    *,
-    config: UnifiedConfig | None = None,
-) -> Effect:
-    terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
-    if terminal is not None:
-        return terminal
-
-    phase_def = policy_bundle.pipeline.phases.get(state.phase)
-    if phase_def is None:
-        return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
-
-    exhausted_analysis_effect = _current_analysis_phase_advance_effect(
-        state,
-        phase_def,
-        policy_bundle.pipeline,
-    )
-    if exhausted_analysis_effect is not None:
-        return exhausted_analysis_effect
-
-    if phase_def.skip_invocation is True:
-        on_success = phase_def.transitions.on_success
-        if on_success == policy_bundle.pipeline.terminal_phase:
-            return ExitSuccessEffect()
-        return PreparePromptEffect(
-            phase=on_success,
-            previous_phase=state.phase,
-            skip_materialization=True,
-        )
-
-    if phase_def.role == "commit":
-        scope = workspace_scope or resolve_workspace_scope()
-        return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
-
-    if len(state.work_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
-        phase_para = phase_def.parallelization
-        if phase_para is None:
-            return ExitFailureEffect(
-                reason=(
-                    f"Phase {state.phase!r} does not declare parallelization but the plan "
-                    f"declares {len(state.work_units)} work_units; either declare "
-                    f"[phases.{state.phase}.parallelization] or remove the work_units from the plan"
-                )
-            )
-        try:
-            validate_for_same_workspace(WorkUnitsPlan(work_units=list(state.work_units)))
-        except WorkUnitsValidationError as exc:
-            offending = (
-                ", ".join(u.unit_id for u in state.work_units if not u.allowed_directories)
-                or "(see details)"
-            )
-            return ExitFailureEffect(
-                reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"
-            )
-        return FanOutEffect(
-            work_units=state.work_units,
-            max_workers=phase_para.max_parallel_workers,
-            run_post_fanout_verification=phase_para.post_fanout_verification,
-            phase=str(state.phase),
-        )
-
-    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
-    if agent_name is None:
-        return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
-
-    return InvokeAgentEffect(
-        agent_name=agent_name,
-        phase=state.phase,
-        prompt_file=prompt_file_for_phase(state.phase),
-        drain=phase_def.drain,
-    )
-
-
-def _commit_phase_effect(
-    state: PipelineState,
-    policy_bundle: PolicyBundle,
-    phase_def: PhaseDefinition,
-    workspace_scope: WorkspaceScope,
-    *,
-    config: UnifiedConfig | None = None,
-) -> Effect:
-    if state.commit.agent_invoked:
-        return _commit_effect(workspace_scope.root)
-    # Early skip: if the worktree is clean before the agent is invoked, skip the
-    # commit phase entirely — no prompt materialization, no agent invocation.
-    if _should_early_skip_commit(workspace_scope.root):
-        _cleanup_commit_message_artifacts(workspace_scope.root)
-        return EarlySkipCommitEffect()
-    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
-    if agent_name is None:
-        return ExitFailureEffect(reason=f"No agent configured for commit phase '{state.phase}'")
-    return InvokeAgentEffect(
-        agent_name=agent_name,
-        phase=state.phase,
-        prompt_file=prompt_file_for_phase(state.phase),
-        drain=phase_def.drain,
-    )
-
-
-def _agents_for_phase(
-    config: UnifiedConfig,
-    phase: str,
-    *,
-    agents_policy: AgentsPolicy | None = None,
-    pipeline_policy: PipelinePolicy | None = None,
-) -> list[str]:
-    policy_drain: str | None = None
-    if pipeline_policy is not None:
-        phase_def = pipeline_policy.phases.get(phase)
-        if phase_def is not None:
-            policy_drain = phase_def.drain
-
-    config_agents = _config_agents_for_phase(config, phase=phase, policy_drain=policy_drain)
-    if config_agents:
-        return config_agents
-
-    if agents_policy is None or pipeline_policy is None:
-        return []
-
-    phase_def = pipeline_policy.phases.get(phase)
-    if phase_def is None:
-        return []
-
-    drain_binding = agents_policy.agent_drains.get(phase_def.drain)
-    if drain_binding is None:
-        return []
-
-    chain_config = agents_policy.agent_chains.get(drain_binding.chain)
-    if chain_config is None:
-        return []
-
-    return list(chain_config.agents)
-
-
-def _config_drain_candidates(*, phase: str, policy_drain: str | None) -> tuple[str, ...]:
-    deduped: list[str] = []
-    for candidate in (policy_drain, phase):
-        if candidate and candidate not in deduped:
-            deduped.append(candidate)
-    return tuple(deduped)
-
-
-def _config_agents_for_phase(
-    config: UnifiedConfig | None,
-    *,
-    phase: str,
-    policy_drain: str | None,
-) -> list[str]:
-    if config is None:
-        return []
-
-    for drain_name in _config_drain_candidates(phase=phase, policy_drain=policy_drain):
-        drain_cfg = config.agent_drains.get(drain_name)
-        if drain_cfg is not None:
-            chain_cfg = config.agent_chains.get(drain_cfg.chain)
-            if chain_cfg is not None:
-                return list(chain_cfg.agents)
-        direct_chain_cfg = config.agent_chains.get(drain_name)
-        if direct_chain_cfg is not None:
-            return list(direct_chain_cfg.agents)
-    return []
-
-
-def _agent_name_for_phase_from_policy(
-    state: PipelineState,
-    policy_bundle: PolicyBundle,
-    *,
-    config: UnifiedConfig | None = None,
-) -> str | None:
-    current_agent = state.current_agent()
-    if current_agent is not None:
-        return current_agent
-
-    phase_def = policy_bundle.pipeline.phases.get(state.phase)
-    if phase_def is None:
-        return None
-
-    config_agents = _config_agents_for_phase(
-        config,
-        phase=state.phase,
-        policy_drain=phase_def.drain,
-    )
-    if config_agents:
-        return config_agents[0]
-
-    drain_binding = policy_bundle.agents.agent_drains.get(phase_def.drain)
-    if drain_binding is None:
-        return None
-
-    chain_config = policy_bundle.agents.agent_chains.get(drain_binding.chain)
-    if chain_config is None or not chain_config.agents:
-        return None
-
-    return chain_config.agents[0]
-
-
-def _phase_event_after_agent_run(
-    *,
-    effect: InvokeAgentEffect,
-    config: UnifiedConfig,
-    policy_bundle: PolicyBundle,
-    workspace: FsWorkspace,
-    workspace_scope: WorkspaceScope | None = None,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
-    display_context: DisplayContext | None = None,
-    verbosity: Verbosity = Verbosity.VERBOSE,
-    state: PipelineState | None = None,
-) -> Event:
-    ctx = PhaseContext.model_construct(
-        workspace=workspace,
-        registry=AgentRegistry.from_config(config),
-        chain_manager=ChainManager(policy_bundle.agents),
-        pipeline_policy=policy_bundle.pipeline,
-        agents_policy=policy_bundle.agents,
-        artifacts_policy=policy_bundle.artifacts,
-        config=config,
-        console=_display_console(display, display_context),
-    )
-    try:
-        events = handle_phase(effect, ctx)
-    except KeyboardInterrupt:
-        raise
-    except BaseException as exc:
-        logger.exception(
-            "Phase handler crashed in phase={phase}: {err}",
-            phase=effect.phase,
-            err=exc,
-        )
-        events = [
-            PhaseFailureEvent(
-                phase=effect.phase,
-                reason=f"Phase handler crashed: {type(exc).__name__}: {exc}",
-                recoverable=True,
-            )
-        ]
-    event: Event = events[0] if events else PipelineEvent.AGENT_SUCCESS
-
-    with suppress(Exception):
-        _render_phase_artifact_handoff(
-            effect.phase,
-            event,
-            Path(workspace.absolute_path(".")),
-            display,
-            display_context=display_context,
-            verbosity=verbosity,
-            drain=effect.drain,
-            policy_bundle=policy_bundle,
-            state=state,
-        )
-
-    if (
-        display is not None
-        and workspace_scope is not None
-        and event in (PipelineEvent.ANALYSIS_SUCCESS, PipelineEvent.ANALYSIS_LOOPBACK)
-        and hasattr(display, "emit_analysis_result")
-    ):
-        try:
-            drain = effect.drain or effect.phase
-            read_latest_analysis_decision = _read_latest_analysis_decision_func()
-            summary = read_latest_analysis_decision(workspace_scope.root, drain)
-            if summary is not None:
-                decision = summary.decision
-                reason = summary.reason
-                cast("ParallelDisplay", display).emit_analysis_result(
-                    phase=effect.phase,
-                    decision=decision,
-                    reason=reason,
-                )
-        except Exception:
-            logger.debug("Failed to emit analysis result", exc_info=True)
-
-    return event
-
-
-def _render_phase_artifact_handoff(
-    phase: str,
-    event: Event,
-    workspace_root: Path,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None,
-    *,
-    display_context: DisplayContext | None = None,
-    verbosity: Verbosity = Verbosity.VERBOSE,
-    drain: str | None = None,
-    policy_bundle: PolicyBundle | None = None,
-    state: PipelineState | None = None,
-) -> None:
-    ctx = _get_display_context(display, display_context)
-    effective_drain = drain or phase
-    required_artifact = (
-        resolve_phase_required_artifact(
-            policy_bundle.pipeline,
-            policy_bundle.artifacts,
-            phase=phase,
-            drain=effective_drain,
-        )
-        if policy_bundle is not None
-        else None
-    )
-
-    if required_artifact is None:
-        if event != PipelineEvent.AGENT_SUCCESS:
-            return
-        if policy_bundle is not None:
-            phase_def = policy_bundle.pipeline.phases.get(phase)
-            role = phase_def.role if phase_def is not None else None
-            if role == "analysis":
-                render_analysis_decision(workspace_root, effective_drain, ctx)
-            else:
-                logger.debug(
-                    "policy: no renderer for phase '{}' (role={});"
-                    " skipping artifact handoff render",
-                    phase,
-                    role,
-                )
-        return
-
-    artifact_type = required_artifact.artifact_type
-    if artifact_type.endswith("_analysis_decision"):
-        render_analysis_decision(workspace_root, effective_drain, ctx)
-        return
-
-    if event == PipelineEvent.AGENT_SUCCESS:
-        _render_success_artifact(
-            artifact_type,
-            workspace_root,
-            ctx,
-            display,
-            verbosity,
-            required_artifact,
-        )
-
-
-def _render_success_artifact(
-    artifact_type: str,
-    workspace_root: Path,
-    display_context: DisplayContext,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None,
-    verbosity: Verbosity,
-    ra: RequiredArtifact,
-) -> None:
-    def _emit_close(produced: str) -> None:
-        if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
-            with suppress(Exception):
-                cast("ParallelDisplay", display).record_artifact_outcome(produced)
-
-    if artifact_type == "plan":
-        render_plan_artifact(workspace_root, display_context)
-        with suppress(Exception):
-            read_plan_artifact = _read_plan_artifact_func()
-            plan = read_plan_artifact(workspace_root)
-            produced = (
-                f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
-                if plan is not None
-                else "(no plan artifact on disk)"
-            )
-            _emit_close(produced)
-        return
-
-    if artifact_type == "development_result":
-        render_development_artifact(workspace_root, display_context)
-        produced = (
-            "result produced" if (workspace_root / ra.json_path).exists() else "no result artifact"
-        )
-        _emit_close(produced)
-        return
-
-    if artifact_type == "issues":
-        render_review_artifact(workspace_root, display_context)
-        with suppress(Exception):
-            issue_count = 0
-            issues_path = workspace_root / ra.json_path
-            if issues_path.exists():
-                try:
-                    issues_text = issues_path.read_text(encoding="utf-8")
-                    issues_data = cast("object", json.loads(issues_text))
-                    content_obj = (
-                        cast("dict[str, object]", issues_data).get("content")
-                        if isinstance(issues_data, dict)
-                        else issues_data
-                    )
-                    issues_list = (
-                        cast("dict[str, object]", content_obj).get("issues")
-                        if isinstance(content_obj, dict)
-                        else content_obj
-                    )
-                    if isinstance(issues_list, list):
-                        issue_count = len(issues_list)
-                except Exception:
-                    pass
-            _emit_close(f"{issue_count} issue(s)")
-        return
-
-    if artifact_type == "fix_result":
-        render_fix_artifact(workspace_root, display_context)
-        _emit_close("applied")
-
-
-def _commit_effect(workspace_root: Path) -> CommitEffect:
-    return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
-
-
-def _execute_effect(
-    effect: Effect,
-    config: UnifiedConfig,
-    workspace_scope: WorkspaceScope,
-    *,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
-    verbosity: Verbosity = Verbosity.VERBOSE,
-    state: PipelineState | None = None,
-    policy_bundle: PolicyBundle | None = None,
-) -> PipelineEvent:
-    """Execute an effect and return the resulting event.
-
-    Args:
-        effect: Effect to execute.
-        config: Unified configuration.
-
-    Returns:
-        Event resulting from effect execution.
-    """
-    deps = _AgentExecutionDeps(
-        invoke_agent=invoke_agent,
-        agent_invocation_error=AgentInvocationError,
-        agent_registry=AgentRegistry,
-    )
-
-    if isinstance(effect, InvokeAgentEffect):
-        return _execute_agent_effect(
-            effect,
-            config,
-            deps,
-            workspace_scope,
-            display=display,
-            verbosity=verbosity,
-            state=state,
-            policy_bundle=policy_bundle,
-        )
-    if isinstance(effect, CommitEffect):
-        return _execute_commit_effect(
-            effect,
-            create_commit,
-            stage_all,
-            workspace_scope.root,
-            display,
-            verbosity=verbosity,
-            phase_name=state.phase if state is not None else "commit",
-            state=state,
-            pipeline_policy=policy_bundle.pipeline if policy_bundle is not None else None,
-        )
-    if isinstance(effect, EarlySkipCommitEffect):
-        logger.info("Skipping commit early: worktree is clean")
-        _cleanup_commit_message_artifacts(workspace_scope.root)
-        return PipelineEvent.COMMIT_SKIPPED
-    if isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect):
-        if state is None or policy_bundle is None:
-            logger.warning(
-                "Skipping exhausted analysis phase '{}' without routing context",
-                effect.phase,
-            )
-            return PipelineEvent.PHASE_ADVANCE
-        bypass = resolve_exhausted_analysis_bypass(state, effect.phase, policy_bundle.pipeline)
-        logger.info(
-            "Skipping exhausted analysis phase '{}' and reducing PHASE_ADVANCE to '{}'",
-            effect.phase,
-            bypass.target_phase,
-        )
-        return PipelineEvent.PHASE_ADVANCE
-    if isinstance(effect, SaveCheckpointEffect):
-        return PipelineEvent.CHECKPOINT_SAVED
-
-    logger.warning("Unknown effect type: {}", type(effect))
-    return PipelineEvent.AGENT_FAILURE
-
-
-def _dispatch_waiting_event(
-    event: object,
-    *,
-    subscriber: PipelineSubscriber | None,
-    unit_id: str,
-    agent_name: str,
-) -> None:
-    """Dispatch a WaitingStatusEvent to the subscriber.
-
-    Exposed as a free function so tests can exercise it without a full pipeline.
-    """
-    if subscriber is not None:
-        try:
-            subscriber.record_waiting_status(event, unit_id=unit_id, agent_name=agent_name)
-        except Exception:
-            logger.debug("_dispatch_waiting_event.record_waiting_status failed", exc_info=True)
-
-
-def _execute_agent_effect(
-    effect: InvokeAgentEffect,
-    config: UnifiedConfig,
-    deps: _AgentExecutionDeps,
-    workspace_scope: WorkspaceScope,
-    *,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
-    display_context: DisplayContext | None = None,
-    verbosity: Verbosity = Verbosity.VERBOSE,
-    state: PipelineState | None = None,
-    policy_bundle: PolicyBundle | None = None,
-) -> PipelineEvent:
-    resolved_display_context = _get_display_context(display, display_context)
-    _emit_display_line(
-        display,
-        None,
-        _status_text("Invoking agent", effect.agent_name, "cyan"),
-        resolved_display_context,
-    )
-    registry = deps.agent_registry.from_config(config)
-    agent_config = registry.get(effect.agent_name)
-    if agent_config is None:
-        logger.error("Agent not found: {}", effect.agent_name)
-        return PipelineEvent.AGENT_FAILURE
-
-    effective_agents_policy = (
-        policy_bundle.agents
-        if policy_bundle is not None
-        else load_agents_policy_for_workspace_scope(workspace_scope, config=config)
-    )
-
-    if state is not None and policy_bundle is not None:
-        _show_phase_start_with_context(
-            effect.phase,
-            effect.agent_name,
-            resolved_display_context,
-            state,
-            pipeline_policy=policy_bundle.pipeline,
-        )
-
-    _display_subscriber = _subscriber_for_display(display)
-
-    def _waiting_listener(event: object) -> None:
-        _dispatch_waiting_event(
-            event,
-            subscriber=_display_subscriber,
-            unit_id=effect.agent_name,
-            agent_name=effect.agent_name,
-        )
-
-    attempt_prompt_file = effect.prompt_file
-    resume_session_id: str | None = (
-        state.last_agent_session_id
-        if (
-            state is not None
-            and state.session_preserve_retry_pending
-            and state.last_agent_session_id
-        )
-        else None
-    )
-    max_recovery_attempts = _same_agent_recovery_attempts(config)
-
-    bridge = None
-    try:
-        system_prompt_file = materialize_system_prompt(
-            workspace_root=workspace_scope.root,
-            name=str(effect.phase),
-        )
-        session_mcp_plan = build_session_mcp_plan(
-            transport=agent_config.transport,
-            drain=effect.drain or effect.phase,
-            workspace_path=workspace_scope.root,
-            agents_policy=effective_agents_policy,
-            model_opts=SessionModelOpts(model_flag=agent_config.model_flag),
-        )
-        session = AgentSession(
-            session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
-            run_id=str(uuid.uuid4()),
-            drain=effect.drain or effect.phase,
-            capabilities=set(session_mcp_plan.capabilities),
-            model_identity=session_mcp_plan.model_identity,
-            stored_capability_profile=session_mcp_plan.capability_profile,
-        )
-        workspace = FsWorkspace(
-            workspace_scope.root,
-            allowed_roots=workspace_scope.allowed_roots,
-        )
-        _clear_phase_output_artifacts(
-            workspace,
-            effect.phase,
-            drain=effect.drain,
-            policy_bundle=policy_bundle,
-        )
-        bridge = start_mcp_server(
-            session,
-            workspace,
-            extras=McpServerExtras(
-                phase=effect.phase,
-                extra_env=session_mcp_plan.server_env,
-            ),
-        )
-
-        for attempt_index in range(max_recovery_attempts + 1):
-            raw_output: deque[str] = deque(maxlen=_AGENT_RAW_OUTPUT_TAIL_LINES)
-            rendered_output: deque[str] = deque(maxlen=_AGENT_RENDERED_OUTPUT_TAIL_LINES)
-            extracted_session_id: str | None = None
-
-            def _capture_session_id(session_id: str) -> None:
-                nonlocal extracted_session_id
-                extracted_session_id = session_id
-
-            try:
-                check_mcp_bridge_health(bridge)
-                if (
-                    isinstance(bridge, RestartAwareMcpBridge)
-                    and bridge.restart_count > 0
-                    and _display_subscriber is not None
-                ):
-                    _display_subscriber.record_mcp_restart(bridge.restart_count)
-
-                def _permission_prompt_listener(message: str) -> None:
-                    if _display_subscriber is None:
-                        return
-                    prefix = "Ralph auto-answered permission prompt: "
-                    summary = message.removeprefix(prefix)
-                    prompt_summary, _, selected_option = summary.partition(" → ")
-                    _display_subscriber.record_permission_prompt_action(
-                        agent_name=effect.agent_name,
-                        prompt_summary=prompt_summary or "permission prompt",
-                        selected_option=selected_option or "confirm",
-                    )
-
-                options = build_invoke_options_from_config(
-                    config.general,
-                    InvokeRuntimeOptions(
-                        verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
-                        show_progress=False,
-                        workspace_path=workspace_scope.root,
-                        extra_env={
-                            MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
-                            MCP_RUN_ID_ENV: session.run_id,
-                            AGENT_LABEL_SCOPE_ENV: session.run_id,
-                        },
-                        session_id=resume_session_id,
-                        system_prompt_file=system_prompt_file,
-                        waiting_listener=_waiting_listener,
-                        permission_prompt_listener=_permission_prompt_listener,
-                        required_artifact=(
-                            resolve_phase_required_artifact(
-                                policy_bundle.pipeline,
-                                policy_bundle.artifacts,
-                                phase=effect.phase,
-                                drain=effect.drain or effect.phase,
-                            )
-                            if policy_bundle is not None
-                            else None
-                        ),
-                    ),
-                )
-                _on_mcp_restart = (
-                    _display_subscriber.record_mcp_restart
-                    if _display_subscriber is not None
-                    else None
-                )
-                with McpSupervisor(
-                    bridge,
-                    check_interval=heartbeat_policy_from_env().interval,
-                    on_restart=_on_mcp_restart,
-                ):
-                    output_lines = deps.invoke_agent(
-                        agent_config, attempt_prompt_file, options=options
-                    )
-                    if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
-                        _stream_parsed_agent_activity(
-                            output_lines,
-                            str(agent_config.json_parser),
-                            effect.agent_name,
-                            display,
-                            transport=agent_config.transport,
-                            display_context=resolved_display_context,
-                            raw_output_sink=raw_output,
-                            rendered_output_sink=rendered_output,
-                            session_id_sink=_capture_session_id,
-                        )
-                    else:
-                        for line in output_lines:
-                            text_line = str(line)
-                            raw_output.append(text_line)
-                            session_id = extract_session_id((text_line,))
-                            if session_id is not None:
-                                extracted_session_id = session_id
-                _set_last_captured_session_id(
-                    extracted_session_id or extract_session_id(tuple(raw_output))
-                )
-                return PipelineEvent.AGENT_SUCCESS
-            except McpServerError as exc:
-                logger.error(
-                    "MCP server failed permanently after {} restart(s): {}",
-                    exc.restart_count,
-                    exc,
-                )
-                return PipelineEvent.AGENT_FAILURE
-            except deps.agent_invocation_error as exc:
-                recovery_plan = _build_agent_recovery_plan(
-                    exc=exc,
-                    attempt_index=attempt_index,
-                    max_recovery_attempts=max_recovery_attempts,
-                    effect=effect,
-                    workspace_root=workspace_scope.root,
-                    raw_output=list(raw_output),
-                    rendered_output=list(rendered_output),
-                    extracted_session_id=(
-                        extracted_session_id or extract_session_id(tuple(raw_output))
-                    ),
-                    inactivity_error_type=AgentInactivityTimeoutError,
-                )
-                if recovery_plan is None:
-                    logger.error("Agent invocation failed: {}", exc)
-                    return PipelineEvent.AGENT_FAILURE
-                logger.warning(
-                    "Retrying agent '{}' after {} ({}/{})",
-                    effect.agent_name,
-                    recovery_plan.reason,
-                    attempt_index + 1,
-                    max_recovery_attempts,
-                )
-                attempt_prompt_file = recovery_plan.prompt_file
-                resume_session_id = recovery_plan.session_id
-            except Exception:
-                logger.exception("Unexpected error during agent invocation: {}")
-                return PipelineEvent.AGENT_FAILURE
-    except Exception:
-        logger.exception("Unexpected error during agent invocation: {}")
-        return PipelineEvent.AGENT_FAILURE
-    finally:
-        if bridge is not None:
-            shutdown_mcp_server(bridge)
-    return PipelineEvent.AGENT_FAILURE
-
-
-def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
-    raw = cast("object", getattr(config.general, "max_same_agent_retries", 1))
-    return raw if isinstance(raw, int) and raw >= 0 else 1
-
-
-def _build_agent_recovery_plan(
+def build_agent_recovery_plan(
     *,
     exc: Exception,
     attempt_index: int,
@@ -3630,658 +901,214 @@ def _build_agent_recovery_plan(
     rendered_output: list[str],
     extracted_session_id: str | None,
     inactivity_error_type: type[Exception],
-) -> _AgentRecoveryPlan | None:
+) -> AgentRecoveryPlan | None:
+    """Determine whether and how to retry a failed agent invocation."""
     if attempt_index >= max_recovery_attempts:
         return None
-
-    reason = _retryable_agent_failure_reason(exc, inactivity_error_type)
+    reason = retryable_agent_failure_reason(exc, inactivity_error_type)
     if reason is None:
         return None
-
-    context_lines = _recovery_context_lines(exc, raw_output, rendered_output)
-
-    if _failure_requires_fresh_session(exc, inactivity_error_type):
-        return _AgentRecoveryPlan(
-            prompt_file=_retry_prompt_file_for_context(
-                workspace_root=workspace_root,
-                prompt_file=effect.prompt_file,
-                reason=reason,
-                context_lines=context_lines,
-            ),
-            session_id=None,
-            reason=reason,
-        )
-
-    resumable_session_id = cast("object", getattr(exc, "resumable_session_id", None))
-    if isinstance(resumable_session_id, str) and resumable_session_id:
-        return _AgentRecoveryPlan(
-            prompt_file=_retry_prompt_file_for_context(
-                workspace_root=workspace_root,
-                prompt_file=effect.prompt_file,
-                reason=reason,
-                context_lines=context_lines,
-            ),
-            session_id=resumable_session_id,
-            reason=reason,
-        )
-
-    if extracted_session_id:
-        return _AgentRecoveryPlan(
-            prompt_file=_retry_prompt_file_for_context(
-                workspace_root=workspace_root,
-                prompt_file=effect.prompt_file,
-                reason=reason,
-                context_lines=context_lines,
-            ),
-            session_id=extracted_session_id,
-            reason=reason,
-        )
-
-    return _AgentRecoveryPlan(
-        prompt_file=_retry_prompt_file_for_context(
-            workspace_root=workspace_root,
-            prompt_file=effect.prompt_file,
-            reason=reason,
-            context_lines=context_lines,
-        ),
-        session_id=None,
-        reason=reason,
+    context_lines = recovery_context_lines(
+        exc, raw_output, rendered_output, _fn=recovery_error_parts
     )
-
-
-def _failure_requires_fresh_session(
-    exc: Exception,
-    inactivity_error_type: type[Exception],
-) -> bool:
-    if isinstance(exc, inactivity_error_type):
-        session_resume_safe = cast("object", getattr(exc, "session_resume_safe", False))
-        return session_resume_safe is not True
-
-    raw_details = "\n".join(_recovery_error_parts(exc))
-    return any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS)
-
-
-def _retryable_agent_failure_reason(
-    exc: Exception,
-    inactivity_error_type: type[Exception],
-) -> str | None:
-    if isinstance(exc, inactivity_error_type):
-        return "an inactivity timeout"
-
-    if type(exc).__name__ == "OpenCodeResumableExitError":
-        return "agent session exited without required completion evidence"
-
-    raw_details = "\n".join(_recovery_error_parts(exc))
-    if any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS):
-        return "a stale session ID (fresh session required)"
-
-    details = raw_details.lower()
-    for marker in _TRANSIENT_CONNECTIVITY_MARKERS:
-        if marker in details:
-            return "a transient connectivity failure"
-    return None
-
-
-def _recovery_error_parts(exc: Exception) -> list[str]:
-    parts: list[str] = [str(exc)]
-    stderr = cast("object", getattr(exc, "stderr", None))
-    if isinstance(stderr, str) and stderr.strip():
-        parts.append(stderr.strip())
-    parsed_output = cast("object", getattr(exc, "parsed_output", None))
-    if isinstance(parsed_output, list):
-        parts.extend(str(item).strip() for item in parsed_output if str(item).strip())
-    return parts
-
-
-def _recovery_context_lines(
-    exc: Exception,
-    raw_output: list[str],
-    rendered_output: list[str],
-) -> list[str]:
-    if rendered_output:
-        return rendered_output[-_RECOVERY_CONTEXT_LINES:]
-
-    parsed_output = cast("object", getattr(exc, "parsed_output", None))
-    if isinstance(parsed_output, list) and parsed_output:
-        return [str(item) for item in parsed_output[-_RECOVERY_CONTEXT_LINES:]]
-
-    stripped_raw = [line.strip() for line in raw_output if line.strip()]
-    if stripped_raw:
-        return stripped_raw[-_RECOVERY_CONTEXT_LINES:]
-
-    error_parts = [part.strip() for part in _recovery_error_parts(exc) if part.strip()]
-    return error_parts[-_RECOVERY_CONTEXT_LINES:]
-
-
-def _retry_prompt_file_for_context(
-    *,
-    workspace_root: Path,
-    prompt_file: str,
-    reason: str,
-    context_lines: list[str],
-) -> str:
-    if not context_lines:
-        return prompt_file
-    return _write_agent_retry_prompt(
+    prompt_file = retry_prompt_file_for_context(
         workspace_root=workspace_root,
-        prompt_file=prompt_file,
+        prompt_file=effect.prompt_file,
         reason=reason,
         context_lines=context_lines,
     )
+    session_id = resolve_recovery_session_id(exc, extracted_session_id, inactivity_error_type)
+    return AgentRecoveryPlan(prompt_file=prompt_file, session_id=session_id, reason=reason)
 
 
-def _write_agent_retry_prompt(
-    *,
-    workspace_root: Path,
-    prompt_file: str,
-    reason: str,
-    context_lines: list[str],
-) -> str:
-    prompt_path = Path(prompt_file)
-    base_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
-    prompt_dir = workspace_root / ".agent" / "tmp"
-    prompt_dir.mkdir(parents=True, exist_ok=True)
-    retry_prompt_path = prompt_dir / f"agent_retry_{uuid.uuid4().hex}.md"
-    summary = "\n".join(context_lines) if context_lines else "(no output captured)"
-    retry_prompt_path.write_text(
-        (
-            f"{base_prompt}\n\n"
-            "RETRY CONTEXT:\n"
-            f"The previous attempt ended because of {reason}.\n"
-            "Treat this as an infrastructure interruption, not a new user request.\n"
-            "Resume from the current workspace state instead of starting over.\n"
-            "Review the latest files and prior output summary before continuing.\n"
-            "Previous output summary:\n"
-            f"{summary}\n"
-        ),
-        encoding="utf-8",
-    )
-    return str(retry_prompt_path)
-
-
-def _clear_phase_output_artifacts(
+_original_start_mcp_server = start_mcp_server
+_original_shutdown_mcp_server = shutdown_mcp_server
+_original_check_mcp_bridge_health = check_mcp_bridge_health
+_original_materialize_system_prompt = materialize_system_prompt
+_original_mcp_supervisor = McpSupervisor
+_original_heartbeat_policy_from_env = heartbeat_policy_from_env
+_original_materialize_prompt_for_phase = materialize_prompt_for_phase
+_original_handle_phase = handle_phase
+_original_render_commit_message = render_commit_message
+_original_show_phase_close_banner = show_phase_close_banner
+_original_show_phase_transition = show_phase_transition
+_cleanup_commit_message_artifacts = cleanup_commit_message_artifacts
+def _materialize_agent_prompt_if_needed(
+    effect: Effect,
+    state: PipelineState,
     workspace: FsWorkspace,
-    phase: str,
-    *,
-    drain: str | None = None,
-    policy_bundle: PolicyBundle | None = None,
+    policy_bundle: PolicyBundle,
+    registry: _RegistryLike,
+    **kwargs: object,
 ) -> None:
-    """Remove stale per-phase artifacts before invoking an agent.
-
-    Planning artifacts are an exception: fresh-vs-preserve invalidation is
-    owned by prompt materialization, which has the semantic context to
-    distinguish fresh planning from loopback, retry, and resume. Clearing plan
-    outputs again here reintroduces a second, less-informed authority and can
-    delete the live plan handoff on non-fresh planning entries.
-    """
-    effective_drain = drain or phase
-    required_artifact = (
-        resolve_phase_required_artifact(
-            policy_bundle.pipeline,
-            policy_bundle.artifacts,
-            phase=phase,
-            drain=effective_drain,
-        )
-        if policy_bundle is not None
-        else None
-    )
-    if required_artifact is not None and required_artifact.artifact_type == "plan":
-        return
-    for path in _phase_output_artifact_paths(phase, drain=drain, policy_bundle=policy_bundle):
-        workspace.remove(path)
+    materialize_agent_prompt_if_needed(effect, state, workspace, policy_bundle, registry, **kwargs)
 
 
-def _phase_output_artifact_paths(
-    phase: str, *, drain: str | None = None, policy_bundle: PolicyBundle | None = None
-) -> tuple[str, ...]:
-    paths: list[str] = []
-    effective_drain = drain or phase
-    ra = (
-        build_required_artifacts(policy_bundle.artifacts).get(effective_drain)
-        if policy_bundle is not None
-        else None
-    )
-    if ra is not None:
-        paths.append(ra.json_path)
-        if ra.markdown_path is not None:
-            paths.append(ra.markdown_path)
-    if policy_bundle is not None:
-        phase_def = policy_bundle.pipeline.phases.get(phase)
-        if phase_def is not None:
-            if phase_def.parallelization is not None:
-                paths.append(".agent/artifacts/parallel_development_summary.json")
-            if phase_def.role == "commit" and ra is None:
-                paths.append(COMMIT_MESSAGE_ARTIFACT)
-    return tuple(paths)
+def _phase_event_after_agent_run(**kwargs: object) -> Event:
+    return phase_event_after_agent_run(**kwargs)
 
 
-def _default_mcp_capabilities_for_phase(
-    phase: str,
+def _execute_fan_out_sync(
     *,
+    effect: FanOutEffect,
+    state: PipelineState,
+    display: ParallelDisplay | LegacyConsoleDisplay,
+    **opts: object,
+) -> PipelineState:
+    return execute_fan_out_sync(effect=effect, state=state, display=display, **opts)
+
+
+def materialize_prepared_prompt(
+    effect: PreparePromptEffect,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy,
+    workspace_scope: WorkspaceScope,
     agents_policy: AgentsPolicy | None = None,
-) -> set[str]:
-    return set(
-        build_session_mcp_plan(
-            transport=None,
-            drain=phase,
-            workspace_path=None,
-            agents_policy=agents_policy,
-        ).capabilities
-    )
-
-
-def _execute_commit_effect(
-    effect: CommitEffect,
-    create_commit: Callable[[str, str], str],
-    stage_all: Callable[[str], None],
-    repo_root: Path,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
-    *,
-    verbosity: Verbosity = Verbosity.VERBOSE,
-    phase_name: str = "commit",
     state: PipelineState | None = None,
-    pipeline_policy: PipelinePolicy | None = None,
+    **kwargs: object,
+) -> None:
+    """Wrap _materialize_prepared_prompt, injecting runner's patchable materialize_prompt_for_phase."""
+    _mat_fn = (
+        materialize_prompt_for_phase
+        if materialize_prompt_for_phase is not _original_materialize_prompt_for_phase
+        else None
+    )
+    _materialize_prepared_prompt_impl(
+        effect,
+        pipeline_policy,
+        artifacts_policy,
+        workspace_scope,
+        agents_policy=agents_policy,
+        state=state,
+        materialize_fn=_mat_fn,
+        **kwargs,
+    )
+
+
+def available_width(prefix_len: int) -> int:
+    """Return usable terminal width minus prefix and padding."""
+    return max(40, terminal_width() - prefix_len - 2)
+
+
+def execute_agent_effect(
+    effect: InvokeAgentEffect,
+    config: UnifiedConfig,
+    deps: AgentExecutionDeps,
+    workspace_scope: WorkspaceScope,
+    **opts: object,
 ) -> PipelineEvent:
-    try:
-        payload = _read_commit_effect_payload(effect)
-        message = _read_commit_effect_message(effect)
-        if payload is None or not message:
-            logger.error("Commit message file is empty: {}", effect.message_file)
-            return PipelineEvent.COMMIT_FAILURE
-        # Late guard: commit agent may have submitted a skip artifact when it
-        # saw no pending diff.  Detect it here so we never create a git commit
-        # whose subject is literally "SKIP: ...".
-        if payload.get("type") == "skip" or message.strip().lower().startswith("skip:"):
-            logger.info("Commit agent requested skip — skipping commit execution")
-            _cleanup_commit_message_artifacts(repo_root)
-            return PipelineEvent.COMMIT_SKIPPED
-        if not _repo_has_commit_work(repo_root):
-            logger.info("Skipping commit because the worktree is empty")
-            _cleanup_commit_message_artifacts(repo_root)
-            return PipelineEvent.COMMIT_SKIPPED
-        _stage_commit_scope(repo_root, payload, stage_all)
-        sha = create_commit(str(repo_root), message)
-        logger.info("Created commit: {}", sha[:8])
-        with suppress(Exception):
-            render_commit_message(repo_root, _get_display_context(display))
-        if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
-            with suppress(Exception):
-                cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")
-        _cleanup_commit_message_artifacts(repo_root)
-    except Exception as exc:
-        logger.error("Commit failed: {}", exc)
-        return PipelineEvent.COMMIT_FAILURE
-
-    return PipelineEvent.COMMIT_SUCCESS
-
-
-def _read_commit_effect_payload(effect: CommitEffect) -> dict[str, object] | None:
-    return read_commit_message_payload_from_path(Path(effect.message_file))
-
-
-
-def _read_commit_effect_message(effect: CommitEffect) -> str:
-    return read_commit_message_from_path(Path(effect.message_file)) or ""
-
-
-
-def _stage_commit_scope(
-    repo_root: Path,
-    payload: dict[str, object],
-    stage_all_fn: Callable[[str], None],
-) -> None:
-    include_paths = _commit_include_paths(repo_root, payload)
-    if include_paths is None:
-        stage_all_fn(str(repo_root))
-        return
-    stage_files(str(repo_root), include_paths)
-
-
-
-def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[str] | None:
-    raw_files = payload.get("files")
-    if isinstance(raw_files, list):
-        return [path for path in raw_files if isinstance(path, str)]
-
-    raw_excluded = payload.get("excluded_files")
-    if not isinstance(raw_excluded, list):
-        return None
-
-    excluded = {
-        path.strip()
-        for item in raw_excluded
-        if isinstance(item, dict)
-        and isinstance((path := item.get("path")), str)
-        and path.strip()
-    }
-    changed = _changed_commit_paths(repo_root)
-    return [path for path in changed if path not in excluded]
-
-
-
-_PORCELAIN_STATUS_PREFIX_LEN = 3
-
-
-
-def _changed_commit_paths(repo_root: Path) -> list[str]:
-    status_output = cast("str", Repo(repo_root).git.status("--porcelain"))
-    status_lines = status_output.splitlines()
-    changed: list[str] = []
-    for line in status_lines:
-        if len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
-            continue
-        path_part = line[_PORCELAIN_STATUS_PREFIX_LEN:]
-        if " -> " in path_part:
-            _, _, path_part = path_part.partition(" -> ")
-        path = path_part.strip()
-        if path and path not in changed:
-            changed.append(path)
-    return changed
-
-
-def _repo_has_commit_work(repo_root: Path) -> bool:
-    return Repo(repo_root).is_dirty(untracked_files=True)
-
-
-def _cleanup_commit_message_artifacts(repo_root: Path) -> None:
-    delete_commit_message_artifacts(repo_root)
-
-
-def _should_early_skip_commit(workspace_root: Path) -> bool:
-    """Return True iff the worktree is clean and the commit phase should be skipped early.
-
-    Fails open (returns False) when git state cannot be inspected so the pipeline
-    falls back to the late-skip guard in _execute_commit_effect().
-    """
-    try:
-        return not _repo_has_commit_work(workspace_root)
-    except Exception:
-        return False
-
-
-def _subscriber_for_display(
-    display: ParallelDisplay | _LegacyConsoleDisplay | None,
-) -> PipelineSubscriber | None:
-    """Extract the pipeline subscriber from a display, when one is exposed."""
-    if display is None or isinstance(display, _LegacyConsoleDisplay):
-        return None
-    if not hasattr(display, "subscriber"):
-        return None
-    return cast("PipelineSubscriber | None", display.subscriber)
-
-
-def _record_activity_on_subscriber(
-    subscriber: PipelineSubscriber,
-    parsed_line: AgentOutputLine,
-    rendered: Text | None,
-    agent_name: str,
-) -> None:
-    try:
-        if parsed_line.type == "thinking" and parsed_line.content.strip():
-            line_text = parsed_line.content.strip()
-        else:
-            line_text = "" if rendered is None else rendered.plain
-        metadata = parsed_line.metadata
-        tool_name: str | None = None
-        metadata_tool = metadata.get("tool")
-        if isinstance(metadata_tool, str) and metadata_tool.strip():
-            tool_name = metadata_tool.strip()
-        elif parsed_line.type == "tool_use":
-            stripped = parsed_line.content.strip()
-            if stripped:
-                tool_name = stripped
-        path = _format_metadata_value(metadata.get("path")) or None
-        workdir = _format_metadata_value(metadata.get("workdir")) or None
-        command = _format_metadata_value(metadata.get("command")) or None
-        subscriber.record_activity(
-            unit_id=agent_name,
-            line=line_text,
-            details=ActivityDetails(
-                agent_name=agent_name,
-                tool_name=tool_name,
-                path=path,
-                workdir=workdir,
-                command=command,
-            ),
-        )
-    except Exception:  # pragma: no cover - defensive
-        logger.debug("subscriber.record_activity failed", exc_info=True)
-
-
-def _stream_parsed_agent_activity(
-    lines: Iterable[object],
-    parser_type: str,
-    agent_name: str,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
-    *,
-    transport: AgentTransport | None = None,
-    display_context: DisplayContext | None = None,
-    raw_output_sink: deque[str] | list[str] | None = None,
-    rendered_output_sink: deque[str] | list[str] | None = None,
-    session_id_sink: Callable[[str], None] | None = None,
-) -> None:
-    parser_key = (
-        "claude_interactive" if transport == AgentTransport.CLAUDE_INTERACTIVE else parser_type
+    """Execute an agent-invocation effect, injecting any patched MCP lifecycle hooks."""
+    effective_start_fn = (
+        start_mcp_server if start_mcp_server is not _original_start_mcp_server else None
     )
-    parser = _resolve_parser(parser_key)
-
-    def _iter_lines() -> Iterator[str]:
-        for line in lines:
-            text = str(line)
-            if raw_output_sink is not None:
-                raw_output_sink.append(text)
-            session_id = extract_session_id((text,))
-            if session_id is not None and session_id_sink is not None:
-                session_id_sink(session_id)
-            yield text
-
-    parallel_display_cls = _parallel_display_cls()
-    subscriber = _subscriber_for_display(display)
-    for parsed_line in parser.parse(_iter_lines()):
-        rendered = _render_agent_activity_line(parsed_line, agent_name)
-        if rendered is not None and rendered_output_sink is not None:
-            rendered_output_sink.append(rendered.plain)
-        if isinstance(display, parallel_display_cls):
-            kind = map_parser_type_to_kind(parsed_line.type)
-            display.emit_parsed_event(
-                agent_name, kind, parsed_line.content, parsed_line.metadata or {}
-            )
-        elif rendered is not None:
-            _emit_display_line(display, None, rendered, display_context)
-        if subscriber is not None:
-            _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
-
-
-def _resolve_parser(parser_type: str) -> AgentParser:
-    try:
-        return get_parser(parser_type)
-    except ValueError:
-        logger.warning("Unknown parser '{}'; falling back to generic", parser_type)
-        return get_parser("generic")
-
-
-def _truncate(text: str, max_length: int) -> str:
-    """Truncate text to max_length, appending ellipsis if truncated."""
-    if max_length <= 1 or len(text) <= max_length:
-        return text
-    return text[:max_length] + "…"
-
-
-def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
-    content_renderers: dict[str, Callable[[], Text | None]] = {
-        "text": lambda: _render_text_line(agent_name, output.content, "white"),
-        "thinking": lambda: _render_text_line(agent_name, output.content, "dim"),
-        "assistant": lambda: _render_text_line(agent_name, output.content, "dim"),
-        "result": lambda: _render_text_line(agent_name, output.content, "dim"),
-        "tool_use": lambda: _render_tool_use_line(agent_name, output),
-        "tool_result": lambda: _render_tool_result_line(agent_name, output.content),
-        "error": lambda: _render_error_line(agent_name, output.content),
-    }
-    renderer = content_renderers.get(output.type)
-    if renderer is not None:
-        return renderer()
-    return _render_metadata_event_line(agent_name, output)
-
-
-def _render_text_line(agent_name: str, content: str, style: str) -> Text | None:
-    stripped = content.strip()
-    if not stripped:
-        return None
-    rendered = _styled_prefix(agent_name, style)
-    text_width = min(_MAX_TEXT_LENGTH, _available_width(len(agent_name) + 2))
-    rendered.append(_truncate(stripped, text_width))
-    return rendered
-
-
-def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
-    tool_name = output.content.strip() or "unknown-tool"
-    prefix_label = f"{agent_name} tool"
-    rendered = _styled_prefix(prefix_label, "magenta")
-    rendered.append(tool_name, style="bold magenta")
-    input_summary = _tool_input_summary(output.metadata)
-    if input_summary:
-        prefix_total = len(prefix_label) + len(tool_name) + 4
-        tool_input_width = min(_MAX_TOOL_INPUT_LENGTH, _available_width(prefix_total))
-        truncated = _truncate(input_summary, tool_input_width)
-        rendered.append(f" ({truncated})", style="dim")
-    return rendered
-
-
-def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
-    result = content.strip()
-    if not result:
-        return None
-    result_label = f"{agent_name} result"
-    rendered = _styled_prefix(result_label, "dim")
-    result_prefix_len = len(result_label) + 2
-    max_length = (
-        _MAX_TOOL_RESULT_BRIEF
-        if len(result) > _TOOL_RESULT_BRIEF_THRESHOLD
-        else _MAX_TOOL_RESULT_LENGTH
+    effective_shutdown_fn = (
+        shutdown_mcp_server if shutdown_mcp_server is not _original_shutdown_mcp_server else None
     )
-    result_width = min(max_length, _available_width(result_prefix_len))
-    rendered.append(_truncate(result, result_width), style="dim")
-    return rendered
-
-
-def _render_error_line(agent_name: str, content: str) -> Text:
-    error = content.strip() or "unknown error"
-    rendered = _styled_prefix(f"{agent_name} ✗", "red")
-    rendered.append(error, style="bold red")
-    return rendered
-
-
-def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Text:
-    summary = _metadata_summary(output.metadata)
-    rendered = _styled_prefix(agent_name, "dim")
-    rendered.append(output.type, style="dim")
-    if summary:
-        rendered.append(f" ({summary})", style="dim")
-    return rendered
-
-
-def _tool_input_summary(metadata: dict[str, object]) -> str:
-    if not metadata:
-        return ""
-    input_data = metadata.get("input")
-    if not isinstance(input_data, dict):
-        return ""
-    args = input_data.get("args")
-    if isinstance(args, str) and args:
-        return args
-    return _kv_summary(
-        input_data,
-        preferred_keys=("command", "workdir", "path", "file_path", "pattern", "name"),
-        max_parts=_MAX_METADATA_PARTS,
-        max_length=_MAX_TOOL_INPUT_LENGTH,
+    effective_health_fn = (
+        check_mcp_bridge_health
+        if check_mcp_bridge_health is not _original_check_mcp_bridge_health
+        else None
     )
-
-
-def _metadata_summary(metadata: dict[str, object]) -> str:
-    if not metadata:
-        return ""
-    return _kv_summary(
-        metadata,
-        preferred_keys=(
-            "status",
-            "summary",
-            "phase",
-            "decision",
-            "message",
-            "event",
-            "tool",
-            "path",
-            "workdir",
-            "command",
+    effective_materialize_fn = (
+        materialize_system_prompt
+        if materialize_system_prompt is not _original_materialize_system_prompt
+        else None
+    )
+    effective_supervisor = McpSupervisor if McpSupervisor is not _original_mcp_supervisor else None
+    effective_heartbeat_fn = (
+        heartbeat_policy_from_env
+        if heartbeat_policy_from_env is not _original_heartbeat_policy_from_env
+        else None
+    )
+    effective_deps = AgentExecutionDeps(
+        invoke_agent=deps.invoke_agent,
+        agent_invocation_error=deps.agent_invocation_error,
+        agent_registry=deps.agent_registry,
+        show_phase_start_cb=deps.show_phase_start_cb or show_phase_start_with_context,
+        set_session_id_cb=deps.set_session_id_cb,
+        start_mcp_server_fn=cast(
+            "_StartMcpServerFn | None", deps.start_mcp_server_fn or effective_start_fn
         ),
-        max_parts=_MAX_METADATA_PARTS,
-        max_length=_MAX_METADATA_SUMMARY_LENGTH,
+        shutdown_mcp_server_fn=cast(
+            "_ShutdownMcpServerFn | None",
+            deps.shutdown_mcp_server_fn or effective_shutdown_fn,
+        ),
+        check_mcp_bridge_health_fn=cast(
+            "_CheckMcpBridgeHealthFn | None",
+            deps.check_mcp_bridge_health_fn or effective_health_fn,
+        ),
+        materialize_system_prompt_fn=deps.materialize_system_prompt_fn or effective_materialize_fn,
+        mcp_supervisor_factory=cast(
+            "_McpSupervisorFactory | None", deps.mcp_supervisor_factory or effective_supervisor
+        ),
+        heartbeat_policy_from_env_fn=deps.heartbeat_policy_from_env_fn or effective_heartbeat_fn,
+    )
+    return _ee_execute_agent_effect(effect, config, effective_deps, workspace_scope, **opts)
+
+
+def execute_commit_effect(
+    effect: CommitEffect,
+    create_commit_fn: Callable[[Path | str, str], str],
+    stage_all_fn: Callable[[Path | str], None],
+    repo_root: Path,
+    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
+    **opts: object,
+) -> PipelineEvent:
+    """Execute a commit effect, injecting any patched render_commit_message hook."""
+    effective_render_fn = (
+        render_commit_message
+        if render_commit_message is not _original_render_commit_message
+        else None
+    )
+    return _ee_execute_commit_effect(
+        effect,
+        repo_root,
+        display,
+        create_commit_fn=create_commit_fn,
+        stage_all_fn=stage_all_fn,
+        has_commit_work_fn=repo_has_commit_work,
+        render_commit_message_fn=opts.pop("render_commit_message_fn", None) or effective_render_fn,
+        **opts,
     )
 
 
-def _kv_summary(
-    values: dict[str, object],
+def emit_phase_transition_if_changed(
+    display: ParallelDisplay | LegacyConsoleDisplay,
+    previous_phase: str,
+    state: PipelineState,
     *,
-    preferred_keys: tuple[str, ...],
-    max_parts: int,
-    max_length: int,
+    verbosity: Verbosity,
+    pipeline_policy: PipelinePolicy,
 ) -> str:
-    parts: list[str] = []
-    for key in preferred_keys:
-        value = _format_metadata_value(values.get(key))
-        if value is None:
-            continue
-        parts.append(f"{key}={value}")
-        if len(parts) >= max_parts:
-            break
-    return _truncate(", ".join(parts), max_length) if parts else ""
+    """Emit phase-transition banners if the active phase changed, injecting patched banner hooks."""
+    _close_fn = (
+        show_phase_close_banner
+        if show_phase_close_banner is not _original_show_phase_close_banner
+        else None
+    )
+    _trans_fn = (
+        show_phase_transition
+        if show_phase_transition is not _original_show_phase_transition
+        else None
+    )
+    return _pt_emit_phase_transition_if_changed(
+        display,
+        previous_phase,
+        state,
+        verbosity=verbosity,
+        pipeline_policy=pipeline_policy,
+        show_close_banner_fn=_close_fn,
+        show_transition_fn=_trans_fn,
+    )
 
 
-def _format_metadata_value(value: object) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str) and value:
-        return value
-    return None
-
-
-def _styled_prefix(label: str, style: str) -> Text:
-    """Create a styled prefix for activity lines."""
-    text = Text()
-    text.append(f"{label}: ", style=f"bold {style}")
-    return text
-
-
-def _status_text(label: str, value: str, style: str) -> Text:
-    """Create a styled status text."""
-    text = Text()
-    text.append(f"{label}: ", style=f"bold {style}")
-    text.append(value, style=style)
-    return text
-
-
-def _prompt_session_drain_for_phase(
-    drain: str | None,
-    *,
-    agents_policy: AgentsPolicy | None = None,
-) -> SessionDrain:
-    """Return the prompt capability profile for a policy drain."""
-    if drain is not None:
-        try:
-            return SessionDrain(drain)
-        except ValueError:
-            if agents_policy is not None:
-                drain_cfg = agents_policy.agent_drains.get(drain)
-                if drain_cfg is not None:
-                    drain_class = drain_cfg.capability_class or drain_cfg.drain_class
-                    if drain_class is not None:
-                        return {
-                            DrainClass.PLANNING: SessionDrain.PLANNING,
-                            DrainClass.DEVELOPMENT: SessionDrain.DEVELOPMENT,
-                            DrainClass.ANALYSIS: SessionDrain.ANALYSIS,
-                            DrainClass.REVIEW: SessionDrain.REVIEW,
-                            DrainClass.FIX: SessionDrain.FIX,
-                            DrainClass.COMMIT: SessionDrain.COMMIT,
-                        }[DrainClass(drain_class)]
-            raise
-    return SessionDrain("cli")
+write_start_commit_if_absent = _write_start_commit_if_absent
+call_determine_effect_from_policy = _call_determine_effect_from_policy
+invoke_execute_effect_with_optional_display = _invoke_execute_effect_with_optional_display
+handle_inline_effect = _handle_inline_effect
+run_pipeline_step = _run_pipeline_step
+execute_effect = _execute_effect
+notify_pipeline_subscriber = _notify_pipeline_subscriber
+handle_keyboard_interrupt = _handle_keyboard_interrupt
+save_checkpoint_or_log = _save_checkpoint_or_log
+load_policy_bundle_for_run = _load_policy_bundle_for_run

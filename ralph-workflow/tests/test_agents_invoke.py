@@ -4,17 +4,13 @@ from __future__ import annotations
 
 import io
 import json
+import json as _json
 import threading
+import time as _time
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Literal, cast
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-
-import json as _json
-import time as _time
 
 import pytest
 from loguru import logger
@@ -33,14 +29,14 @@ from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy, WatchdogFire
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
+    BuildCommandOptions,
     InvokeOptions,
     UnsupportedMcpTransportError,
-    _build_command,
-    _BuildCommandOptions,
-    _command_for_log,
-    _provider_allowed_mcp_tool_names,
+    build_command,
     check_agent_available,
+    command_for_log,
     invoke_agent,
+    provider_allowed_mcp_tool_names,
 )
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.timeout_clock import Clock, FakeClock
@@ -98,28 +94,14 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     prompt_file.write_text("hello", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    def fake_run_subprocess_and_read_lines(
-        cmd: list[str],
-        cfg: AgentConfig,
-        show_progress: bool,
-        extra_env: dict[str, str] | None,
-        workspace_path: Path | None,
-        *,
-        policy: object = None,
-        **_extra_kwargs: object,
-    ) -> list[str]:
+    def fake_run_subprocess_and_read_lines(cmd: list[str], ctx: object) -> list[str]:
         captured["cmd"] = cmd
-        captured["config"] = cfg
-        captured["show_progress"] = show_progress
-        captured["extra_env"] = extra_env
-        captured["workspace_path"] = workspace_path
-        captured["policy"] = policy
+        captured["policy"] = getattr(ctx, "policy", None)
         return []
 
     _expected_idle_timeout = 300.0
     monkeypatch.setattr(
-        "ralph.agents.invoke._run_subprocess_and_read_lines",
-        fake_run_subprocess_and_read_lines,
+        invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
 
     list(
@@ -150,24 +132,13 @@ def test_invoke_agent_probe_and_strategy_share_same_registry(
     prompt_file.write_text("hello", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    def fake_run_subprocess_and_read_lines(
-        cmd: list[str],
-        cfg: object,
-        show_progress: bool,
-        extra_env: object,
-        workspace_path: object,
-        *,
-        execution_strategy: object = None,
-        liveness_probe: object = None,
-        **_extra_kwargs: object,
-    ) -> list[str]:
-        captured["execution_strategy"] = execution_strategy
-        captured["liveness_probe"] = liveness_probe
+    def fake_run_subprocess_and_read_lines(cmd: list[str], ctx: object) -> list[str]:
+        captured["execution_strategy"] = getattr(ctx, "execution_strategy", None)
+        captured["liveness_probe"] = getattr(ctx, "liveness_probe", None)
         return []
 
     monkeypatch.setattr(
-        "ralph.agents.invoke._run_subprocess_and_read_lines",
-        fake_run_subprocess_and_read_lines,
+        invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
 
     list(
@@ -212,22 +183,12 @@ def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     prompt_file.write_text("hello", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    def fake_run_subprocess_and_read_lines(
-        cmd: list[str],
-        cfg: AgentConfig,
-        show_progress: bool,
-        extra_env: dict[str, str] | None,
-        workspace_path: Path | None,
-        *,
-        execution_strategy: object = None,
-        **_extra_kwargs: object,
-    ) -> list[str]:
-        captured["execution_strategy"] = execution_strategy
+    def fake_run_subprocess_and_read_lines(cmd: list[str], ctx: object) -> list[str]:
+        captured["execution_strategy"] = getattr(ctx, "execution_strategy", None)
         return []
 
     monkeypatch.setattr(
-        "ralph.agents.invoke._run_subprocess_and_read_lines",
-        fake_run_subprocess_and_read_lines,
+        invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
 
     list(
@@ -267,22 +228,12 @@ def test_invoke_agent_without_session_scope_ignores_unrelated_agent_labels(
     prompt_file.write_text("hello", encoding="utf-8")
     captured: dict[str, object] = {}
 
-    def fake_run_subprocess_and_read_lines(
-        cmd: list[str],
-        cfg: AgentConfig,
-        show_progress: bool,
-        extra_env: dict[str, str] | None,
-        workspace_path: Path | None,
-        *,
-        execution_strategy: object = None,
-        **_extra_kwargs: object,
-    ) -> list[str]:
-        captured["execution_strategy"] = execution_strategy
+    def fake_run_subprocess_and_read_lines(cmd: list[str], ctx: object) -> list[str]:
+        captured["execution_strategy"] = getattr(ctx, "execution_strategy", None)
         return []
 
     monkeypatch.setattr(
-        "ralph.agents.invoke._run_subprocess_and_read_lines",
-        fake_run_subprocess_and_read_lines,
+        invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
 
     list(
@@ -312,6 +263,8 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
 
     class FakeProcess:
         pid: int = 12345
@@ -349,26 +302,17 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
         lambda *args, **kwargs: FakeProcess(),
     )
 
-    def fake_read_lines_from_process(*args: object, **kwargs: object) -> Iterator[str]:
-        del args, kwargs
-        yield "idle line\n"
-
-        raise invoke_module._IdleStreamTimeoutError(0.05, WatchdogFireReason.NO_OUTPUT_DEADLINE)
-
-    monkeypatch.setattr(
-        "ralph.agents.invoke._read_lines_from_process",
-        fake_read_lines_from_process,
-    )
-
     with pytest.raises(AgentInactivityTimeoutError, match="no output for 0s"):
         list(
-            invoke_module._run_subprocess_and_read_lines(
-                ["opencode", "run"],
+            invoke_agent(
                 config,
-                False,
-                None,
-                tmp_path,
-                policy=invoke_module.TimeoutPolicy(idle_timeout_seconds=0.05),
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    workspace_path=tmp_path,
+                    idle_timeout_seconds=0.05,
+                ),
+                _clock=FakeClock(),
             )
         )
 
@@ -385,10 +329,10 @@ def test_build_command_includes_print_streaming_and_session_flags() -> None:
         json_parser=JsonParserType.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         "PROMPT.md",
-        options=_BuildCommandOptions(
+        options=BuildCommandOptions(
             model_flag="--model claude-sonnet-4",
             session_id="abc123",
             verbose=True,
@@ -423,10 +367,10 @@ def test_build_command_splits_multi_part_claude_permission_mode_flag() -> None:
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         "PROMPT.md",
-        options=_BuildCommandOptions(verbose=False),
+        options=BuildCommandOptions(verbose=False),
     )
 
     assert cmd == [
@@ -452,10 +396,10 @@ def test_claude_interactive_build_command_excludes_output_flag() -> None:
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         "PROMPT.md",
-        options=_BuildCommandOptions(
+        options=BuildCommandOptions(
             model_flag="--model claude-sonnet-4",
             session_id="abc123",
             verbose=True,
@@ -519,10 +463,10 @@ def test_build_command_injects_claude_append_system_prompt_file() -> None:
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         "PROMPT.md",
-        options=_BuildCommandOptions(system_prompt_file="SYSTEM_PROMPT.md"),
+        options=BuildCommandOptions(system_prompt_file="SYSTEM_PROMPT.md"),
     )
 
     assert cmd == [
@@ -549,10 +493,10 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         "PROMPT.md",
-        options=_BuildCommandOptions(
+        options=BuildCommandOptions(
             initial_session_id="fresh-session-1",
             settings_json='{"hooks":{}}',
         ),
@@ -579,10 +523,10 @@ def test_build_command_injects_claude_interactive_append_system_prompt_file() ->
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         "PROMPT.md",
-        options=_BuildCommandOptions(system_prompt_file="SYSTEM_PROMPT.md"),
+        options=BuildCommandOptions(system_prompt_file="SYSTEM_PROMPT.md"),
     )
 
     assert cmd == [
@@ -599,7 +543,7 @@ def test_builtin_claude_command_defaults_to_skip_permissions() -> None:
     config = registry.get("claude")
 
     assert config is not None
-    cmd = _build_command(config, "PROMPT.md")
+    cmd = build_command(config, "PROMPT.md")
 
     assert cmd[:2] == ["claude", "--dangerously-skip-permissions"]
     assert cmd[-1] == "PROMPT.md"
@@ -610,10 +554,10 @@ def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) 
     prompt_file.write_text("plain prompt", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(session_id="abc123", verbose=False),
+        options=BuildCommandOptions(session_id="abc123", verbose=False),
     )
 
     assert cmd == ["opencode", "run", "--format", "json", "plain prompt"]
@@ -635,10 +579,10 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint(
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(
+        options=BuildCommandOptions(
             mcp_endpoint="http://127.0.0.1:9999/mcp",
             allowed_mcp_tool_names=(
                 claude_tool_name("read_file"),
@@ -681,10 +625,10 @@ def test_build_command_resolves_relative_claude_prompt_from_workspace_path(tmp_p
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         ".agent/tmp/PROMPT.md",
-        options=_BuildCommandOptions(
+        options=BuildCommandOptions(
             mcp_endpoint="http://127.0.0.1:9999/mcp",
             allowed_mcp_tool_names=(claude_tool_name("read_file"),),
             workspace_path=tmp_path,
@@ -710,10 +654,10 @@ def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp(
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(
+        options=BuildCommandOptions(
             mcp_endpoint="http://127.0.0.1:9999/mcp",
             allowed_mcp_tool_names=(claude_tool_name("read_file"),),
         ),
@@ -735,10 +679,10 @@ def test_build_command_uses_opencode_run_json_with_prompt_contents(tmp_path: Pat
         model_flag="-m minimax/MiniMax-M2.7-highspeed",
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(session_id="abc123", verbose=False),
+        options=BuildCommandOptions(session_id="abc123", verbose=False),
     )
 
     assert cmd == [
@@ -757,10 +701,10 @@ def test_build_command_uses_opencode_pure_mode_when_requested(tmp_path: Path) ->
     prompt_file.write_text("say hello", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(verbose=False, pure=True),
+        options=BuildCommandOptions(verbose=False, pure=True),
     )
 
     assert cmd == [
@@ -784,10 +728,10 @@ def test_build_command_uses_codex_exec_json_with_prompt_contents(tmp_path: Path)
         transport=AgentTransport.CODEX,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(verbose=False),
+        options=BuildCommandOptions(verbose=False),
     )
 
     assert cmd == [
@@ -807,12 +751,12 @@ def test_command_for_log_redacts_opencode_inline_prompt_and_shows_prompt_file(
     prompt_file.write_text("super secret prompt body", encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(session_id="abc123", verbose=False),
+        options=BuildCommandOptions(session_id="abc123", verbose=False),
     )
-    logged = _command_for_log(config, cmd, str(prompt_file))
+    logged = command_for_log(config, cmd, str(prompt_file))
 
     assert "super secret prompt body" not in logged
     assert str(prompt_file) in logged
@@ -824,12 +768,12 @@ def test_command_for_log_redacts_codex_inline_prompt_and_shows_prompt_file(tmp_p
     prompt_file.write_text("top secret planning prompt", encoding="utf-8")
     config = AgentConfig(cmd="codex exec", output_flag="--json", transport=AgentTransport.CODEX)
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(verbose=False),
+        options=BuildCommandOptions(verbose=False),
     )
-    logged = _command_for_log(config, cmd, str(prompt_file))
+    logged = command_for_log(config, cmd, str(prompt_file))
 
     assert "top secret planning prompt" not in logged
     assert str(prompt_file) in logged
@@ -950,7 +894,7 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
     monkeypatch.setattr(
-        "ralph.agents.invoke._provider_allowed_mcp_tool_names",
+        "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
             claude_tool_name("read_file"),
             claude_tool_name("ralph_submit_artifact"),
@@ -1172,7 +1116,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
     monkeypatch.setattr(
-        "ralph.agents.invoke._provider_allowed_mcp_tool_names",
+        "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
             claude_tool_name("read_file"),
             claude_tool_name("ralph_submit_artifact"),
@@ -1249,7 +1193,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
     monkeypatch.setattr(
-        "ralph.agents.invoke._provider_allowed_mcp_tool_names",
+        "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
             claude_tool_name("read_file"),
             claude_tool_name("ralph_submit_artifact"),
@@ -1320,11 +1264,11 @@ def test_provider_allowed_mcp_tool_names_maps_live_ralph_endpoint_to_claude_alia
         transport=AgentTransport.CLAUDE,
     )
     monkeypatch.setattr(
-        "ralph.agents.invoke._discover_http_mcp_tool_names",
+        "ralph.agents.invoke.discover_http_mcp_tool_names",
         lambda endpoint: ["read_file", "ralph_submit_artifact"],
     )
 
-    allowed = _provider_allowed_mcp_tool_names(config, "http://127.0.0.1:9999/mcp")
+    allowed = provider_allowed_mcp_tool_names(config, "http://127.0.0.1:9999/mcp")
 
     assert allowed == (
         claude_tool_name("read_file"),
@@ -1346,10 +1290,10 @@ def test_claude_builtin_command_preserves_login_capable_mode(tmp_path: Path) -> 
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(
+        options=BuildCommandOptions(
             mcp_endpoint="http://127.0.0.1:9999/mcp",
             allowed_mcp_tool_names=(
                 claude_tool_name("read_file"),
@@ -1380,10 +1324,10 @@ def test_build_command_claude_injects_empty_tools_when_mcp_endpoint_wired(
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE,
     )
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(
+        options=BuildCommandOptions(
             mcp_endpoint="http://127.0.0.1:9999/mcp",
             allowed_mcp_tool_names=(claude_tool_name("read_file"),),
         ),
@@ -1408,10 +1352,10 @@ def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE,
     )
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
+        options=BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
     )
     assert "--mcp-config" in cmd
 
@@ -1430,10 +1374,10 @@ def test_build_command_claude_omits_tool_flags_when_allowlist_is_empty(
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE,
     )
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(
+        options=BuildCommandOptions(
             mcp_endpoint="http://127.0.0.1:9999/mcp",
             allowed_mcp_tool_names=(),
         ),
@@ -1815,10 +1759,10 @@ def test_build_command_claude_omits_tools_flag_when_no_mcp_endpoint() -> None:
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE,
     )
-    cmd = _build_command(
+    cmd = build_command(
         config,
         "PROMPT.md",
-        options=_BuildCommandOptions(),
+        options=BuildCommandOptions(),
     )
     assert "--tools" not in cmd
     assert "--strict-mcp-config" not in cmd
@@ -3293,10 +3237,10 @@ def test_claude_strict_mode_inlines_prompt_content_not_file_path(tmp_path: Path)
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+        options=BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
     )
 
     assert cmd[-1] == prompt_text, (
@@ -3320,12 +3264,12 @@ def test_claude_strict_mode_command_for_log_shows_path_not_content(tmp_path: Pat
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+        options=BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
     )
-    log_line = _command_for_log(config, cmd, str(prompt_file))
+    log_line = command_for_log(config, cmd, str(prompt_file))
 
     assert str(prompt_file) in log_line
     assert prompt_text.strip() not in log_line
@@ -4341,10 +4285,10 @@ def test_claude_mcp_prompt_includes_multimodal_appendix_when_sidecar_present(
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+        options=BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
     )
 
     full_prompt = cmd[-1]
@@ -4367,10 +4311,10 @@ def test_claude_mcp_prompt_text_only_when_no_sidecar(tmp_path: Path) -> None:
         transport=AgentTransport.CLAUDE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+        options=BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
     )
 
     full_prompt = cmd[-1]
@@ -4393,10 +4337,10 @@ def test_claude_interactive_mcp_prompt_includes_multimodal_appendix_when_sidecar
         transport=AgentTransport.CLAUDE_INTERACTIVE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+        options=BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
     )
 
     assert cmd[-2] == "--"
@@ -4421,10 +4365,10 @@ def test_opencode_prompt_includes_multimodal_appendix_when_sidecar_present(
         transport=AgentTransport.OPENCODE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(),
+        options=BuildCommandOptions(),
     )
 
     full_prompt = cmd[-1]
@@ -4446,10 +4390,10 @@ def test_opencode_prompt_text_only_when_no_sidecar(tmp_path: Path) -> None:
         transport=AgentTransport.OPENCODE,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(),
+        options=BuildCommandOptions(),
     )
 
     assert cmd[-1] == prompt_text
@@ -4471,10 +4415,10 @@ def test_codex_prompt_includes_multimodal_appendix_when_sidecar_present(
         transport=AgentTransport.CODEX,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(),
+        options=BuildCommandOptions(),
     )
 
     full_prompt = cmd[-1]
@@ -4497,10 +4441,10 @@ def test_codex_prompt_text_only_when_no_sidecar(tmp_path: Path) -> None:
         transport=AgentTransport.CODEX,
     )
 
-    cmd = _build_command(
+    cmd = build_command(
         config,
         str(prompt_file),
-        options=_BuildCommandOptions(),
+        options=BuildCommandOptions(),
     )
 
     assert cmd[-1] == prompt_text
@@ -4521,7 +4465,7 @@ def test_multimodal_appendix_includes_all_artifacts_for_mixed_modality(
         transport=AgentTransport.OPENCODE,
     )
 
-    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
     full_prompt = cmd[-1]
 
     assert "[image] screenshot.png" in full_prompt
@@ -4542,7 +4486,7 @@ def test_multimodal_appendix_uses_path_equals_replay_handle_wording(tmp_path: Pa
         json_parser=JsonParserType.OPENCODE,
         transport=AgentTransport.OPENCODE,
     )
-    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
     full_prompt = cmd[-1]
 
     # New wording: path= not "URI:"
@@ -4573,7 +4517,7 @@ def test_sidecar_with_non_standard_prompt_name_is_ignored(tmp_path: Path) -> Non
         transport=AgentTransport.OPENCODE,
     )
 
-    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
 
     assert cmd[-1] == prompt_text
     assert "Multimodal Artifacts" not in cmd[-1]
@@ -4610,7 +4554,7 @@ def test_multimodal_appendix_includes_replay_guidance_for_non_image_media(
         transport=AgentTransport.OPENCODE,
     )
 
-    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
     full_prompt = cmd[-1]
 
     # Appendix must include the audio artifact with replay handle wording
@@ -4668,7 +4612,7 @@ def test_multimodal_appendix_includes_block_type_when_set(tmp_path: Path) -> Non
         json_parser=JsonParserType.OPENCODE,
         transport=AgentTransport.OPENCODE,
     )
-    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
     full_prompt = cmd[-1]
 
     assert "Block-type: pdf" in full_prompt, (
@@ -4697,7 +4641,7 @@ def test_multimodal_appendix_includes_explicit_reason_for_unsupported_modality(
         json_parser=JsonParserType.OPENCODE,
         transport=AgentTransport.OPENCODE,
     )
-    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
     full_prompt = cmd[-1]
 
     assert "Delivery: unsupported" in full_prompt, (
@@ -4744,7 +4688,7 @@ def test_multimodal_appendix_surfaces_unsupported_runtime_seam_without_replay_gu
         transport=AgentTransport.OPENCODE,
     )
 
-    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
     full_prompt = cmd[-1]
 
     # The appendix must mention the video artifact

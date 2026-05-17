@@ -32,7 +32,7 @@ def test_working_tree_diff_strips_lone_surrogates(
 
     monkeypatch.setattr(commit_module, "Repo", _FakeRepo)
 
-    diff = commit_module._working_tree_diff(tmp_path)
+    diff = commit_module.working_tree_diff(tmp_path)
 
     assert "\udca4" not in diff
     diff.encode("utf-8")  # must not raise
@@ -58,7 +58,7 @@ def test_working_tree_diff_strips_surrogates_when_head_invalid(
 
     monkeypatch.setattr(commit_module, "Repo", _FakeRepo)
 
-    diff = commit_module._working_tree_diff(tmp_path)
+    diff = commit_module.working_tree_diff(tmp_path)
 
     assert "\udca4" not in diff
     diff.encode("utf-8")  # must not raise

@@ -8,9 +8,9 @@ from rich.console import Console
 
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
-    _MAJOR_ROLE_PAIRS,
-    _phase_label,
-    _phase_style,
+    MAJOR_ROLE_PAIRS,
+    phase_label,
+    phase_style,
     show_phase_close_banner,
     show_phase_start,
     show_phase_start_from_entry,
@@ -49,23 +49,23 @@ def test_show_phase_transition_minor_renders_rule() -> None:
 
 
 def test_phase_label_converts_underscore_names() -> None:
-    assert _phase_label("development_analysis") == "Development Analysis"
-    assert _phase_label("review_commit") == "Review Commit"
-    assert _phase_label("planning") == "Planning"
+    assert phase_label("development_analysis") == "Development Analysis"
+    assert phase_label("review_commit") == "Review Commit"
+    assert phase_label("planning") == "Planning"
 
 
 def test_phase_style_canonical_names_without_policy_return_muted() -> None:
-    assert _phase_style("planning") == "theme.text.muted"
-    assert _phase_style("development") == "theme.text.muted"
-    assert _phase_style("complete") == "theme.text.muted"
-    assert _phase_style("failed") == "theme.text.muted"
+    assert phase_style("planning") == "theme.text.muted"
+    assert phase_style("development") == "theme.text.muted"
+    assert phase_style("complete") == "theme.text.muted"
+    assert phase_style("failed") == "theme.text.muted"
 
 
 def test_phase_style_role_names_without_policy_return_correct_styles() -> None:
-    assert _phase_style("review") == "theme.phase.review"
-    assert _phase_style("fix") == "theme.phase.fix"
-    assert _phase_style("execution") == "theme.phase.development"
-    assert _phase_style("terminal") == "theme.phase.complete"
+    assert phase_style("review") == "theme.phase.review"
+    assert phase_style("fix") == "theme.phase.fix"
+    assert phase_style("execution") == "theme.phase.development"
+    assert phase_style("terminal") == "theme.phase.complete"
 
 
 def test_show_phase_start_without_counters() -> None:
@@ -191,7 +191,7 @@ def test_major_role_pairs_transition_shows_no_duplicated_description() -> None:
     The phase-close banner already communicates exit context via exit_trigger;
     the transition banner should not repeat status prose.
     """
-    for from_role, to_role in _MAJOR_ROLE_PAIRS:
+    for from_role, to_role in MAJOR_ROLE_PAIRS:
         policy = _make_two_phase_policy(from_role, to_role, "phase_a", "phase_b")
         console = Console(record=True, width=120)
         show_phase_transition(
@@ -398,13 +398,13 @@ class TestPolicyDrivenPhaseBanner:
     def test_phase_style_uses_role_over_name(self) -> None:
         """A renamed execution phase gets the execution style, not muted fallback."""
         policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
-        style = _phase_style("my_work", pipeline_policy=policy)
+        style = phase_style("my_work", pipeline_policy=policy)
         assert style == "theme.phase.development"
 
     def test_phase_style_analysis_role(self) -> None:
         """A phase with analysis role resolves to development_analysis theme."""
         policy = _make_two_phase_policy("execution", "analysis", "work", "inspect")
-        style = _phase_style("inspect", pipeline_policy=policy)
+        style = phase_style("inspect", pipeline_policy=policy)
         assert style == "theme.phase.development_analysis"
 
     def test_phase_style_terminal_failure_role(self) -> None:
@@ -428,7 +428,7 @@ class TestPolicyDrivenPhaseBanner:
             terminal_phase=terminal_name,
             recovery=RecoveryPolicy(failed_route=terminal_name),
         )
-        style = _phase_style(terminal_name, pipeline_policy=policy)
+        style = phase_style(terminal_name, pipeline_policy=policy)
         assert style == "theme.phase.failed"
 
     def test_transition_uses_role_pair_for_major_detection(self) -> None:

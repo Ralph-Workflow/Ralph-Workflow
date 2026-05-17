@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from queue import Full, Queue
 from typing import TYPE_CHECKING
@@ -28,18 +27,6 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PipelinePolicy
-
-
-@dataclass(frozen=True)
-class ActivityDetails:
-    """Optional details for PipelineSubscriber.record_activity."""
-
-    agent_name: str = ""
-    tool_name: str | None = None
-    path: str | None = None
-    workdir: str | None = None
-    command: str | None = None
-    pattern: str | None = None
 
 
 _DECISION_LOG_MAX = 16
@@ -225,25 +212,29 @@ class PipelineSubscriber:
 
     def record_activity(
         self,
+        *,
         unit_id: str,
         line: str,
-        details: ActivityDetails | None = None,
+        agent_name: str = "",
+        tool_name: str | None = None,
+        path: str | None = None,
+        workdir: str | None = None,
+        command: str | None = None,
+        pattern: str | None = None,
     ) -> None:
-        """Record a lightweight agent-activity event and push a fresh snapshot."""
-        d = details or ActivityDetails()
         with self._lock:
             self._active_unit_id = unit_id
-            self._active_agent = d.agent_name or self._active_agent
-            if d.tool_name is not None:
-                self._active_tool = d.tool_name
-            if d.path:
-                self._active_path = d.path
-            if d.workdir:
-                self._active_workdir = d.workdir
-            if d.command:
-                self._active_command = d.command
-            if d.pattern:
-                self._active_pattern = d.pattern
+            self._active_agent = agent_name or self._active_agent
+            if tool_name is not None:
+                self._active_tool = tool_name
+            if path:
+                self._active_path = path
+            if workdir:
+                self._active_workdir = workdir
+            if command:
+                self._active_command = command
+            if pattern:
+                self._active_pattern = pattern
             # Never store bare lifecycle markers as the last activity line —
             # they carry no user payload and would overwrite a richer previous value.
             if line and not is_bare_lifecycle(line):
@@ -486,4 +477,4 @@ class PipelineSubscriber:
             self._dropped_count += 1
 
 
-__all__ = ["ActivityDetails", "PipelineSubscriber"]
+__all__ = ["PipelineSubscriber"]

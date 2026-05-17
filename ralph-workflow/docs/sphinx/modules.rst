@@ -747,6 +747,90 @@ ralph.pipeline.runner
    :members:
    :show-inheritance:
 
+ralph.pipeline.activity_stream
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.activity_stream
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effect_executor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effect_executor
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.effect_router
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.effect_router
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.fan_out
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.fan_out
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.legacy_console_display
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.legacy_console_display
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.phase_agent_handler
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.phase_agent_handler
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.phase_rendering
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.phase_rendering
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.phase_transition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.phase_transition
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.prompt_prep
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.prompt_prep
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.run_loop
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.run_loop
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.state_init
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.state_init
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.waiting_dispatch
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.waiting_dispatch
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.state
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -1428,6 +1512,13 @@ ralph.mcp.server.runtime
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.server.runtime
+   :members:
+   :show-inheritance:
+
+ralph.mcp.server.runtime_session
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.server.runtime_session
    :members:
    :show-inheritance:
 
@@ -2711,6 +2802,13 @@ ralph.prompts.types
    :members:
    :show-inheritance:
    :exclude-members: CapabilitySet,PolicyFlag,PolicyFlagSet
+
+ralph.prompts.plan_format
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.prompts.plan_format
+   :members:
+   :show-inheritance:
 
 ----
 

@@ -98,13 +98,13 @@ def test_config_idle_timeout_flows_to_invoke_options(
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
@@ -189,12 +189,12 @@ def _run_with_config(
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=_capture_options_factory(captured),
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
@@ -427,13 +427,13 @@ def test_mcp_server_error_causes_agent_failure(
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
     monkeypatch.setattr(runner_module, "check_mcp_bridge_health", fake_check_mcp_bridge_health)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
     assert result == PipelineEvent.AGENT_FAILURE
@@ -482,13 +482,13 @@ def test_bridge_shared_across_retry_attempts(
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
@@ -540,13 +540,13 @@ def test_check_mcp_bridge_health_called_per_retry_attempt(
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
     monkeypatch.setattr(runner_module, "check_mcp_bridge_health", fake_check_mcp_bridge_health)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
@@ -627,13 +627,13 @@ def test_record_mcp_restart_forwarded_to_subscriber(
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect,
         config,
         deps,
@@ -690,12 +690,12 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
         lambda *, workspace_root, name: str(tmp_path / "SYSTEM_PROMPT.md"),
     )
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 

@@ -138,7 +138,7 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
     ) -> object:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(runner_module, "_determine_effect_from_policy", raise_keyboard_interrupt)
+    monkeypatch.setattr(runner_module, "determine_effect_from_policy", raise_keyboard_interrupt)
     monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     monkeypatch.setattr(
@@ -178,7 +178,7 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
     ) -> int:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(run_command_module._state, "run_func", raise_keyboard_interrupt)
+    monkeypatch.setattr(run_command_module.state, "run_func", raise_keyboard_interrupt)
 
     exit_code = run_command_module.run_pipeline(resume=True)
 

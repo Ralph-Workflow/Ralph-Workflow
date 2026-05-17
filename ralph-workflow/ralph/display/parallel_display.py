@@ -22,7 +22,7 @@ from ralph.display.plain_renderer import (
     _PhaseCounters,
 )
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
-from ralph.display.subscriber import ActivityDetails, PipelineSubscriber
+from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
 if TYPE_CHECKING:
@@ -43,7 +43,8 @@ _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
 
 
-def _strip_markup(line: str) -> str:
+def strip_markup(line: str) -> str:
+    """Strip Rich markup tags from a line, returning plain text."""
     return PlainLogRenderer.strip_markup(line)
 
 
@@ -186,13 +187,11 @@ class ParallelDisplay:
                 self._subscriber.record_activity(
                     unit_id=unit_id,
                     line=text,
-                    details=ActivityDetails(
-                        tool_name=original_name,
-                        path=tool_path or None,
-                        workdir=tool_workdir or None,
-                        command=tool_command or None,
-                        pattern=tool_pattern or None,
-                    ),
+                    tool_name=original_name,
+                    path=tool_path or None,
+                    workdir=tool_workdir or None,
+                    command=tool_command or None,
+                    pattern=tool_pattern or None,
                 )
 
         overflow = self._get_overflow_log(unit_id)
@@ -399,4 +398,4 @@ class ParallelDisplay:
         self.stop()
 
 
-__all__ = ["ParallelDisplay", "_strip_markup"]
+__all__ = ["ParallelDisplay", "strip_markup"]

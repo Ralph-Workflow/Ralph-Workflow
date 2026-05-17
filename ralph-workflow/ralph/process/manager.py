@@ -144,7 +144,13 @@ if TYPE_CHECKING:
         async def __call__(
             self,
             command: Sequence[str],
-            opts: SpawnOptions,
+            *,
+            cwd: str | None,
+            env: dict[str, str] | None,
+            stdin: int | None,
+            stdout: int | None,
+            stderr: int | None,
+            start_new_session: bool,
         ) -> _AsyncProcessLike: ...
 
     class _PtyProcessLike(Protocol):
@@ -167,7 +173,11 @@ if TYPE_CHECKING:
         def __call__(
             self,
             command: Sequence[str],
-            opts: PtySpawnOptions,
+            *,
+            cwd: str | None,
+            env: dict[str, str] | None,
+            cols: int,
+            rows: int,
         ) -> _PtyProcessLike: ...
 
 
@@ -201,24 +211,34 @@ def _default_sync_process_factory(
 
 async def _default_async_process_factory(
     command: Sequence[str],
-    opts: SpawnOptions,
+    *,
+    cwd: str | None,
+    env: dict[str, str] | None,
+    stdin: int | None,
+    stdout: int | None,
+    stderr: int | None,
+    start_new_session: bool,
 ) -> asyncio.subprocess.Process:
     return await asyncio.create_subprocess_exec(
         *command,
-        cwd=opts.cwd,
-        env=opts.env,
-        stdin=opts.stdin,
-        stdout=opts.stdout,
-        stderr=opts.stderr,
-        start_new_session=opts.start_new_session,
+        cwd=cwd,
+        env=env,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=start_new_session,
     )
 
 
 def _default_pty_process_factory(
     command: Sequence[str],
-    opts: PtySpawnOptions,
+    *,
+    cwd: str | None,
+    env: dict[str, str] | None,
+    cols: int,
+    rows: int,
 ) -> PtyProcess:
-    return spawn_pty_process(command, cwd=opts.cwd, env=opts.env, cols=opts.cols, rows=opts.rows)
+    return spawn_pty_process(command, cwd=cwd, env=env, cols=cols, rows=rows)
 
 
 class ProcessStatus(Enum):
@@ -715,13 +735,25 @@ class ProcessManager:
         self,
         command: Sequence[str],
         opts: PtySpawnOptions | None = None,
+        *,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        cols: int = 80,
+        rows: int = 24,
+        label: str | None = None,
     ) -> ManagedPtyProcess:
         """Spawn a PTY-backed child process and begin tracking it."""
-        effective = opts or PtySpawnOptions()
+        effective = opts or PtySpawnOptions(cwd=cwd, env=env, cols=cols, rows=rows, label=label)
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            proc = self._pty_process_factory(cmd, effective)
+            proc = self._pty_process_factory(
+                cmd,
+                cwd=effective.cwd,
+                env=effective.env,
+                cols=effective.cols,
+                rows=effective.rows,
+            )
         except OSError as exc:
             record = ProcessRecord(
                 pid=-1,
@@ -769,7 +801,15 @@ class ProcessManager:
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            proc = await self._async_process_factory(cmd, effective)
+            proc = await self._async_process_factory(
+                cmd,
+                cwd=effective.cwd,
+                env=effective.env,
+                stdin=effective.stdin,
+                stdout=effective.stdout,
+                stderr=effective.stderr,
+                start_new_session=effective.start_new_session,
+            )
         except OSError as exc:
             record = ProcessRecord(
                 pid=-1,

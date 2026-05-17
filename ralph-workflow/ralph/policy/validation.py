@@ -697,7 +697,7 @@ def _validate_tracked_counters_have_positive_max(
             )
 
 
-def _validate_cli_counter_overrides(
+def validate_cli_counter_overrides(
     policy: PipelinePolicy,
     cli_counter_overrides: dict[str, int],
     errors: list[str],
@@ -802,7 +802,7 @@ def validate_policy_completeness(
 
     # Validate CLI counter overrides reference declared budget counters
     if cli_counter_overrides:
-        _validate_cli_counter_overrides(policy, cli_counter_overrides, errors)
+        validate_cli_counter_overrides(policy, cli_counter_overrides, errors)
 
     if errors:
         raise PolicyValidationError(

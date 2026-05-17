@@ -53,6 +53,7 @@ def display_console(
     display: ParallelDisplay | LegacyConsoleDisplay | None,
     display_context: DisplayContext | None = None,
 ) -> Console:
+    """Return the underlying Rich Console for a display object."""
     if display is None:
         if display_context is None:
             raise TypeError("display_context is required when display is None")
@@ -80,6 +81,7 @@ def emit_display_line(
     line: Text | str,
     display_context: DisplayContext | None = None,
 ) -> None:
+    """Emit a line to the display, routing through the appropriate display type."""
     if display is None:
         if display_context is None:
             raise TypeError("display_context is required when display is None")
@@ -100,6 +102,7 @@ def resolve_display(
     display: ParallelDisplay | None,
     display_context: DisplayContext | None = None,
 ) -> ParallelDisplay | LegacyConsoleDisplay:
+    """Return the given display or construct a LegacyConsoleDisplay from display_context."""
     if display is not None:
         return display
     if display_context is None:

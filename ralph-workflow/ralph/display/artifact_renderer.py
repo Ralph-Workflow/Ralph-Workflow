@@ -18,7 +18,7 @@ from ralph.display.artifact_reader import (
     read_latest_analysis_decision,
     read_plan_artifact,
 )
-from ralph.display.phase_banner import _phase_style
+from ralph.display.phase_banner import phase_style
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 from ralph.mcp.artifacts.handoffs import (
     ensure_markdown_handoff_from_artifact,
@@ -97,10 +97,10 @@ def _render_titled_lines(
     console: Console,
 ) -> None:
     console.print()
-    console.print(Rule(title, style=_phase_style(style_phase)), markup=False, highlight=False)
+    console.print(Rule(title, style=phase_style(style_phase)), markup=False, highlight=False)
     for line in lines:
         console.print(line, markup=False, highlight=False)
-    console.print(Rule(style=_phase_style(style_phase)), markup=False, highlight=False)
+    console.print(Rule(style=phase_style(style_phase)), markup=False, highlight=False)
 
 
 def _render_text_block(

@@ -7,10 +7,10 @@ import pytest
 from ralph.agents.execution_state import ClaudeInteractiveExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
+    CompletionCheckOptions,
     OpenCodeResumableExitError,
-    _bounded_output_lines,
-    _check_process_result,
-    _CompletionCheckOptions,
+    bounded_output_lines,
+    check_process_result,
     extract_session_id,
 )
 
@@ -35,7 +35,7 @@ def test_extract_session_id_from_interactive_transcript_marker() -> None:
 
 
 def test_bounded_output_does_not_treat_stop_hook_turn_boundary_as_explicit_completion() -> None:
-    output = _bounded_output_lines(["turn boundary seen"], explicit_completion_seen=False)
+    output = bounded_output_lines(["turn boundary seen"], explicit_completion_seen=False)
 
     assert output == ["turn boundary seen"]
 
@@ -48,11 +48,11 @@ def test_claude_interactive_resumable_exit_keeps_transcript_session_id(
     output = ["Resume this session with --resume pty-session-99\n"]
 
     with pytest.raises(OpenCodeResumableExitError) as excinfo:
-        _check_process_result(
+        check_process_result(
             cast("ManagedPtyProcess", handle),
             "claude",
             output,
-            _CompletionCheckOptions(
+            CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 policy=TimeoutPolicy(

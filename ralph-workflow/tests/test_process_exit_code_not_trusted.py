@@ -104,7 +104,7 @@ class _RecordingMcpFactory:
 
 
 def _make_ctx(module: object, same_workspace: object) -> object:
-    ctx_type = module._WorkerContext
+    ctx_type = module.WorkerContext
     return ctx_type(log=None, same_workspace=same_workspace)
 
 

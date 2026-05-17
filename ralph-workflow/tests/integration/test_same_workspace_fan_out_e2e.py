@@ -156,7 +156,7 @@ class TestSameWorkspaceFanOutE2E:
         state = PipelineState(phase="development", work_units=(unit_a, unit_b))
         policy_bundle = _make_policy_bundle(max_workers=2)
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, policy_bundle, config=UnifiedConfig()
         )
 
@@ -170,7 +170,7 @@ class TestSameWorkspaceFanOutE2E:
         state = PipelineState(phase="development", work_units=(_make_work_unit("unit-a"),))
         policy_bundle = _make_policy_bundle(max_workers=4)
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, policy_bundle, config=UnifiedConfig()
         )
 
@@ -292,8 +292,8 @@ class TestSameWorkspaceFanOutE2E:
         _seed_artifact(tmp_path, "unit-b")
 
         mcp_factory = _RecordingMcpFactory()
-        ctx_module = __import__("ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"])
-        ctx = ctx_module._WorkerContext(
+        ctx_module = __import__("ralph.pipeline.parallel.coordinator", fromlist=["WorkerContext"])
+        ctx = ctx_module.WorkerContext(
             same_workspace=SameWorkspaceContext(
                 repo_root=tmp_path,
                 mcp_factory=mcp_factory,
@@ -366,8 +366,8 @@ class TestSameWorkspaceFanOutE2E:
         units = (unit_a,)
 
         mcp_factory = _RecordingMcpFactory()
-        ctx_module = __import__("ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"])
-        ctx = ctx_module._WorkerContext(
+        ctx_module = __import__("ralph.pipeline.parallel.coordinator", fromlist=["WorkerContext"])
+        ctx = ctx_module.WorkerContext(
             same_workspace=SameWorkspaceContext(
                 repo_root=tmp_path,
                 mcp_factory=mcp_factory,
@@ -451,8 +451,8 @@ class TestSameWorkspaceFanOutE2E:
         dirty_file.write_text("# simulated edit by worker-b\n")
 
         mcp_factory = _RecordingMcpFactory()
-        ctx_module = __import__("ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"])
-        ctx = ctx_module._WorkerContext(
+        ctx_module = __import__("ralph.pipeline.parallel.coordinator", fromlist=["WorkerContext"])
+        ctx = ctx_module.WorkerContext(
             same_workspace=SameWorkspaceContext(
                 repo_root=tmp_path,
                 mcp_factory=mcp_factory,
@@ -541,7 +541,7 @@ class TestRunnerAnalysisHandoffIntegration:
             run_post_fanout_verification=False,
         )
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
             display=cast("ParallelDisplay", _FakeDisplay()),
@@ -596,7 +596,7 @@ class TestRunnerAnalysisHandoffIntegration:
             run_post_fanout_verification=False,
         )
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
             display=cast("ParallelDisplay", _FakeDisplay()),

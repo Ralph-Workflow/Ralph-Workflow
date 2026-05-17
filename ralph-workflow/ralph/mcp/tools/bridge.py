@@ -338,7 +338,8 @@ _SUBMIT_ARTIFACT_DESCRIPTION = (
 )
 
 
-def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
+def tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
+    """Build the full ordered list of tool specifications for the MCP bridge."""
     _specs: list[ToolSpec] = [
         ToolSpec(
             metadata=_metadata(
@@ -1564,7 +1565,7 @@ def build_ralph_tool_registry(
     mcp_config_cls = cast("type[McpConfig]", import_module("ralph.config.mcp_models").McpConfig)
     mcp_cfg = mcp_config or mcp_config_cls()
     bridge = ToolBridge(session=session)
-    for spec in _tool_specs(mcp_cfg):
+    for spec in tool_specs(mcp_cfg):
         is_websearch = (
             spec.module_name == "ralph.mcp.tools.websearch"
             and spec.handler_name == "handle_web_search"
@@ -1634,4 +1635,5 @@ __all__ = [
     "ToolSpec",
     "UpstreamProxyHandler",
     "build_ralph_tool_registry",
+    "tool_specs",
 ]

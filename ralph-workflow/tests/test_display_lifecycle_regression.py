@@ -14,7 +14,7 @@ from ralph.display.activity_model import ActivityProvider
 from ralph.display.context import make_display_context
 from ralph.display.lifecycle_filter import is_bare_lifecycle
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.display.subscriber import ActivityDetails, PipelineSubscriber
+from ralph.display.subscriber import PipelineSubscriber
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -122,10 +122,8 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
     subscriber.record_activity(
         unit_id="main",
         line="claude/sonnet tool: mcp__ralph__read_file (path=x.py)",
-        details=ActivityDetails(
-            agent_name="claude/sonnet",
-            tool_name="mcp__ralph__read_file",
-        ),
+        agent_name="claude/sonnet",
+        tool_name="mcp__ralph__read_file",
     )
     snapshot = subscriber.build_snapshot(state)
     assert snapshot is not None
@@ -144,7 +142,7 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
         subscriber.record_activity(
             unit_id="main",
             line=lifecycle_line,
-            details=ActivityDetails(agent_name="claude/sonnet"),
+            agent_name="claude/sonnet",
         )
         snapshot = subscriber.build_snapshot(state)
         assert snapshot is not None

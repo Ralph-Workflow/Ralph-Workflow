@@ -294,7 +294,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
             entries = collect_media_entries_for_phase(fs_ws, str(phase))
             captured_entries.extend(entries)
 
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", _spy_materialize)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", _spy_materialize)
 
     initial_state = PipelineState(
         phase="planning",
@@ -432,7 +432,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
             entries = collect_media_entries_for_phase(fs_ws, str(phase))
             captured_entries.extend(entries)
 
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", _spy_materialize)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", _spy_materialize)
 
     initial_state = PipelineState(
         phase="planning",

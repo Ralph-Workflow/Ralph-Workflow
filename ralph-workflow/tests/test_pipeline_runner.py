@@ -34,6 +34,9 @@ from ralph.mcp.tools.names import claude_tool_name_prefix
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.validation import UpstreamValidationError
 from ralph.phases import HANDLERS, PhaseContext, handle_phase
+from ralph.pipeline import effect_executor as effect_executor_module
+from ralph.pipeline import phase_agent_handler as phase_agent_handler_module
+from ralph.pipeline import prompt_prep as prompt_prep_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.cycle_baseline import (
     write_cycle_baseline,
@@ -84,9 +87,9 @@ DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2
 INTERRUPT_EXIT_CODE = 130
-_TRUNCATED_TEXT_MAX = runner_module._MAX_TEXT_LENGTH + 1  # content + ellipsis
-_TRUNCATED_RESULT_BRIEF_MAX = runner_module._MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
-_TRUNCATED_METADATA_MAX = runner_module._MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
+_TRUNCATED_TEXT_MAX = runner_module.MAX_TEXT_LENGTH + 1  # content + ellipsis
+_TRUNCATED_RESULT_BRIEF_MAX = runner_module.MAX_TOOL_RESULT_BRIEF + 1  # content + ellipsis
+_TRUNCATED_METADATA_MAX = runner_module.MAX_METADATA_SUMMARY_LENGTH + 1  # content + ellipsis
 _AVAILABLE_WIDTH_FLOOR = 40
 _TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
 
@@ -202,9 +205,9 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
 
 
 def test_resolve_display_defaults_to_legacy_console_display() -> None:
-    display = runner_module._resolve_display(None, make_display_context())
+    display = runner_module.resolve_display(None, make_display_context())
 
-    assert isinstance(display, runner_module._LegacyConsoleDisplay)
+    assert isinstance(display, runner_module.LegacyConsoleDisplay)
 
 
 def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_planning_entry(
@@ -228,7 +231,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_pl
     registry = MagicMock()
     registry.get.return_value = None
 
-    runner_module._materialize_agent_prompt_if_needed(
+    runner_module.materialize_agent_prompt_if_needed(
         effect,
         state,
         workspace,
@@ -302,7 +305,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_an
     registry = MagicMock()
     registry.get.return_value = None
 
-    runner_module._materialize_agent_prompt_if_needed(
+    runner_module.materialize_agent_prompt_if_needed(
         effect,
         state,
         workspace,
@@ -350,7 +353,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
     registry = MagicMock()
     registry.get.return_value = None
 
-    runner_module._materialize_agent_prompt_if_needed(
+    runner_module.materialize_agent_prompt_if_needed(
         effect,
         state,
         workspace,
@@ -407,7 +410,7 @@ class TestCreateInitialState:
             },
         )
 
-        state = runner_module._create_initial_state(
+        state = runner_module.create_initial_state(
             config,
             agents_policy=agents_policy,
             pipeline_policy=pipeline_policy,
@@ -423,7 +426,7 @@ class TestCreateInitialState:
         config = MagicMock()
         config.agent_chains = {}
 
-        state = runner_module._create_initial_state(
+        state = runner_module.create_initial_state(
             config, pipeline_policy=_load_default_policy_bundle().pipeline
         )
         dev_chain = state.chain_for_phase("development")
@@ -454,7 +457,7 @@ class TestCreateInitialState:
             terminal_phase="complete",
         )
 
-        state = runner_module._create_initial_state(
+        state = runner_module.create_initial_state(
             config,
             agents_policy=agents_policy,
             pipeline_policy=pipeline_policy,
@@ -487,7 +490,7 @@ class TestCreateInitialState:
             terminal_phase="complete",
         )
 
-        state = runner_module._create_initial_state(
+        state = runner_module.create_initial_state(
             config,
             agents_policy=agents_policy,
             pipeline_policy=pipeline_policy,
@@ -525,7 +528,7 @@ class TestCreateInitialState:
             terminal_phase="complete",
         )
 
-        state = runner_module._create_initial_state(
+        state = runner_module.create_initial_state(
             config,
             agents_policy=agents_policy,
             pipeline_policy=pipeline_policy,
@@ -536,7 +539,7 @@ class TestCreateInitialState:
     def test_creates_state_with_correct_development_budget(self) -> None:
         config = MagicMock()
         config.agent_chains = {"development": ["claude"], "review": ["claude"]}
-        state = runner_module._create_initial_state(
+        state = runner_module.create_initial_state(
             config,
             pipeline_policy=_load_default_policy_bundle().pipeline,
             counter_overrides={"iteration": DEVELOPER_ITERATIONS},
@@ -546,7 +549,7 @@ class TestCreateInitialState:
     def test_creates_state_with_correct_review_budget(self) -> None:
         config = MagicMock()
         config.agent_chains = {"development": ["claude"], "review": ["claude"]}
-        state = runner_module._create_initial_state(
+        state = runner_module.create_initial_state(
             config,
             pipeline_policy=_load_default_policy_bundle().pipeline,
             counter_overrides={"reviewer_pass": REVIEWER_PASSES},
@@ -556,7 +559,7 @@ class TestCreateInitialState:
     def test_creates_state_with_zero_review_budget_when_r_zero(self) -> None:
         config = MagicMock()
         config.agent_chains = {"development": ["claude"], "review": ["claude"]}
-        state = runner_module._create_initial_state(
+        state = runner_module.create_initial_state(
             config,
             pipeline_policy=_load_default_policy_bundle().pipeline,
             counter_overrides={"reviewer_pass": 0},
@@ -581,7 +584,7 @@ class TestDetermineEffect:
         bundle = _load_default_policy_bundle()
         state = self._make_state(phase="complete")
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
         assert isinstance(effect, ExitSuccessEffect)
@@ -595,7 +598,7 @@ class TestDetermineEffect:
             current_drain="development",
         )
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
         assert isinstance(effect, PreparePromptEffect)
@@ -605,7 +608,7 @@ class TestDetermineEffect:
         bundle = _load_default_policy_bundle()
         state = self._make_state(phase="unknown_phase")
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
         assert isinstance(effect, ExitFailureEffect)
@@ -619,7 +622,7 @@ class TestDetermineEffect:
             agent_drains={"planning": "plan_chain"},
         )
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, bundle, WorkspaceScope("/tmp/worktree"), config=config
         )
 
@@ -644,7 +647,7 @@ class TestDetermineEffect:
         registry = MagicMock()
         registry.get.return_value = None
 
-        runner_module._materialize_agent_prompt_if_needed(
+        runner_module.materialize_agent_prompt_if_needed(
             InvokeAgentEffect(
                 agent_name="planner",
                 phase="planning",
@@ -677,7 +680,7 @@ class TestDetermineEffect:
             agent_drains={"development": "developer"},
         )
 
-        effect = runner_module._determine_effect_from_policy(state, bundle, config=config)
+        effect = runner_module.determine_effect_from_policy(state, bundle, config=config)
 
         assert isinstance(effect, FanOutEffect)
         assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
@@ -694,7 +697,7 @@ class TestDetermineEffect:
             agent_drains={"development": "developer"},
         )
 
-        effect = runner_module._determine_effect_from_policy(state, bundle, config=config)
+        effect = runner_module.determine_effect_from_policy(state, bundle, config=config)
 
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.phase == "development"
@@ -732,7 +735,7 @@ class TestDetermineEffect:
             artifacts=ArtifactsPolicy(artifacts={}),
         )
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
 
@@ -743,7 +746,7 @@ class TestDetermineEffect:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, bundle, WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
         )
         assert isinstance(effect, CommitEffect)
@@ -788,7 +791,7 @@ class TestDetermineEffect:
             artifacts=ArtifactsPolicy(artifacts={}),
         )
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
 
@@ -812,7 +815,7 @@ class TestDetermineEffect:
         )
         state = PipelineState(phase="development")
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, broken_bundle, WorkspaceScope("/tmp/worktree")
         )
         assert isinstance(effect, ExitFailureEffect)
@@ -847,7 +850,7 @@ class TestDetermineEffect:
         config.agent_chains = {"dev_chain": ["codex"]}
         config.agent_drains = {"development": "dev_chain"}
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state, bundle, WorkspaceScope("/tmp/worktree"), config=config
         )
 
@@ -883,7 +886,7 @@ class TestDetermineEffect:
         config.agent_chains = {"commit_chain": ["ccs/mm"]}
         config.agent_drains = {"development_commit": "commit_chain"}
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state,
             bundle,
             WorkspaceScope("/tmp/worktree"),
@@ -903,11 +906,11 @@ class TestDetermineEffect:
 
         monkeypatch.setattr(
             runner_module,
-            "_materialize_prepared_prompt",
+            "materialize_prepared_prompt",
             lambda *_args, **_kwargs: None,
         )
 
-        updated = runner_module._handle_inline_effect(
+        updated = runner_module.handle_inline_effect(
             effect=PreparePromptEffect(phase="development", iteration=0, drain="development"),
             state=state,
             pipeline_policy=bundle.pipeline,
@@ -923,7 +926,7 @@ class TestDetermineEffect:
 
 def test_phase_output_artifact_paths_use_policy_drains_for_custom_phases() -> None:
     policy_bundle = _load_default_policy_bundle()
-    assert runner_module._phase_output_artifact_paths(
+    assert runner_module.phase_output_artifact_paths(
         "feature_analysis",
         drain="development_analysis",
         policy_bundle=policy_bundle,
@@ -931,7 +934,7 @@ def test_phase_output_artifact_paths_use_policy_drains_for_custom_phases() -> No
         ".agent/artifacts/development_analysis_decision.json",
         ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
     )
-    assert runner_module._phase_output_artifact_paths(
+    assert runner_module.phase_output_artifact_paths(
         "feature_commit",
         drain="development_commit",
         policy_bundle=policy_bundle,
@@ -940,7 +943,7 @@ def test_phase_output_artifact_paths_use_policy_drains_for_custom_phases() -> No
 
 class TestCommitEffect:
     def test_returns_commit_effect(self, tmp_path: Path) -> None:
-        effect = runner_module._commit_effect(tmp_path)
+        effect = runner_module.commit_effect(tmp_path)
         assert isinstance(effect, CommitEffect)
         assert ".agent/tmp/commit_message.json" in effect.message_file
 
@@ -962,7 +965,7 @@ def test_build_agent_recovery_plan_uses_retry_prompt_when_same_session_has_conte
         InactivityTimeoutOpts(session_resume_safe=True),
     )
 
-    plan = runner_module._build_agent_recovery_plan(
+    plan = runner_module.build_agent_recovery_plan(
         exc=exc,
         attempt_index=0,
         max_recovery_attempts=1,
@@ -1000,9 +1003,9 @@ def test_build_agent_recovery_plan_falls_back_to_original_prompt_when_context_mi
         None,
         InactivityTimeoutOpts(session_resume_safe=True),
     )
-    monkeypatch.setattr(runner_module, "_recovery_error_parts", lambda _exc: [])
+    monkeypatch.setattr(runner_module, "recovery_error_parts", lambda _exc: [])
 
-    plan = runner_module._build_agent_recovery_plan(
+    plan = runner_module.build_agent_recovery_plan(
         exc=exc,
         attempt_index=0,
         max_recovery_attempts=1,
@@ -1027,7 +1030,7 @@ def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: M
         return "PROMPT.md"
 
     monkeypatch.setattr(
-        runner_module, "materialize_prompt_for_phase", fake_materialize_prompt_for_phase
+        prompt_prep_module, "materialize_prompt_for_phase", fake_materialize_prompt_for_phase
     )
 
     class Registry:
@@ -1040,7 +1043,7 @@ def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: M
             )
 
     bundle = _load_default_policy_bundle()
-    runner_module._materialize_agent_prompt_if_needed(
+    runner_module.materialize_agent_prompt_if_needed(
         InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt"),
         PipelineState(phase="planning", previous_phase="planning_analysis"),
         MagicMock(spec=["root"]),
@@ -1102,20 +1105,22 @@ def test_execute_agent_effect_uses_single_workspace_root(
         seen["workspace_path"] = options.workspace_path if options is not None else None
         return iter(())
 
-    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
-    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
+    monkeypatch.setattr(effect_executor_module, "start_mcp_server", fake_start_mcp_server)
+    monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
+    monkeypatch.setattr(
+        effect_executor_module, "materialize_system_prompt", fake_materialize_system_prompt
+    )
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: runner_module.WorkspaceScope(tmp_path)
     )
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
         agent_registry=Registry,
     )
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
@@ -1192,7 +1197,7 @@ class TestPipelineRunnerLoop:
 
         monkeypatch.setattr(
             runner_module,
-            "_call_determine_effect_from_policy",
+            "call_determine_effect_from_policy",
             lambda *_args, **_kwargs: effect,
         )
 
@@ -1202,12 +1207,12 @@ class TestPipelineRunnerLoop:
 
         monkeypatch.setattr(
             runner_module,
-            "_invoke_execute_effect_with_optional_display",
+            "invoke_execute_effect_with_optional_display",
             fake_invoke,
         )
         monkeypatch.setattr(
             runner_module,
-            "_phase_event_after_agent_run",
+            "phase_event_after_agent_run",
             lambda **_kwargs: PipelineEvent.AGENT_SUCCESS,
         )
         monkeypatch.setattr(
@@ -1217,11 +1222,11 @@ class TestPipelineRunnerLoop:
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
         display_context = make_display_context()
-        display = runner_module._LegacyConsoleDisplay(display_context)
+        display = runner_module.LegacyConsoleDisplay(display_context)
         registry = MagicMock()
         registry.get.return_value = None
 
-        result = runner_module._run_pipeline_step(
+        result = runner_module.run_pipeline_step(
             state=state,
             policy_bundle=bundle,
             workspace_scope=workspace_scope,
@@ -1263,7 +1268,7 @@ class TestPipelineRunnerLoop:
         captured_console = _install_runner_display_context(monkeypatch)
         monkeypatch.setattr(
             runner_module,
-            "_call_determine_effect_from_policy",
+            "call_determine_effect_from_policy",
             stub_determine_effect,
         )
         monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer_with_policy)
@@ -1285,7 +1290,7 @@ class TestPipelineRunnerLoop:
 
         monkeypatch.setattr(
             runner_module,
-            "_call_determine_effect_from_policy",
+            "call_determine_effect_from_policy",
             lambda *_args, **_kwargs: next(effects),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
@@ -1308,7 +1313,7 @@ class TestPipelineRunnerLoop:
             raise KeyboardInterrupt
 
         ckpt_save = MagicMock()
-        monkeypatch.setattr(runner_module, "_determine_effect_from_policy", raise_interrupt)
+        monkeypatch.setattr(runner_module, "determine_effect_from_policy", raise_interrupt)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
@@ -1338,22 +1343,22 @@ class TestPipelineRunnerLoop:
 
         monkeypatch.setattr(
             runner_module,
-            "_call_determine_effect_from_policy",
+            "call_determine_effect_from_policy",
             lambda *_args, **_kwargs: next(effects),
         )
         monkeypatch.setattr(
             runner_module,
-            "_materialize_agent_prompt_if_needed",
+            "materialize_agent_prompt_if_needed",
             lambda *_args, **_kwargs: None,
         )
         monkeypatch.setattr(
             runner_module,
-            "_invoke_execute_effect_with_optional_display",
+            "invoke_execute_effect_with_optional_display",
             lambda *_args, **_kwargs: (_ for _ in ()).throw(SystemExit("boom")),
         )
         monkeypatch.setattr(
             runner_module,
-            "_emit_phase_transition_if_changed",
+            "emit_phase_transition_if_changed",
             lambda *args, **kwargs: args[1],
         )
 
@@ -1393,10 +1398,10 @@ class TestPipelineRunnerLoop:
         def record_saved_state(saved_state: PipelineState) -> None:
             saved_states.append(saved_state)
 
-        monkeypatch.setattr(runner_module, "_call_determine_effect_from_policy", determine_effect)
+        monkeypatch.setattr(runner_module, "call_determine_effect_from_policy", determine_effect)
         monkeypatch.setattr(
             runner_module,
-            "_emit_phase_transition_if_changed",
+            "emit_phase_transition_if_changed",
             lambda *args, **kwargs: args[1],
         )
         monkeypatch.setattr(runner_module.ckpt, "save", record_saved_state)
@@ -1427,17 +1432,17 @@ class TestPipelineRunnerLoop:
 
         monkeypatch.setattr(
             runner_module,
-            "_call_determine_effect_from_policy",
+            "call_determine_effect_from_policy",
             lambda *_args, **_kwargs: next(effects),
         )
         monkeypatch.setattr(
             runner_module,
-            "_materialize_prepared_prompt",
+            "materialize_prepared_prompt",
             lambda *_args, **_kwargs: (_ for _ in ()).throw(SystemExit("prompt blew up")),
         )
         monkeypatch.setattr(
             runner_module,
-            "_emit_phase_transition_if_changed",
+            "emit_phase_transition_if_changed",
             lambda *args, **kwargs: args[1],
         )
         monkeypatch.setattr(runner_module.ckpt, "save", record_saved_state)
@@ -1477,17 +1482,17 @@ class TestPipelineRunnerLoop:
 
         monkeypatch.setattr(
             runner_module,
-            "_call_determine_effect_from_policy",
+            "call_determine_effect_from_policy",
             lambda *_args, **_kwargs: next(effects),
         )
         monkeypatch.setattr(
             runner_module,
-            "_execute_fan_out_sync",
+            "execute_fan_out_sync",
             lambda **_kwargs: (_ for _ in ()).throw(SystemExit("fanout blew up")),
         )
         monkeypatch.setattr(
             runner_module,
-            "_emit_phase_transition_if_changed",
+            "emit_phase_transition_if_changed",
             lambda *args, **kwargs: args[1],
         )
         monkeypatch.setattr(runner_module.ckpt, "save", record_saved_state)
@@ -1519,17 +1524,17 @@ class TestPipelineRunnerLoop:
 
         monkeypatch.setattr(
             runner_module,
-            "_call_determine_effect_from_policy",
+            "call_determine_effect_from_policy",
             lambda *_args, **_kwargs: next(effects),
         )
         monkeypatch.setattr(
             runner_module,
-            "_materialize_prepared_prompt",
+            "materialize_prepared_prompt",
             lambda *_args, **_kwargs: None,
         )
         monkeypatch.setattr(
             runner_module,
-            "_emit_phase_transition_if_changed",
+            "emit_phase_transition_if_changed",
             lambda *args, **kwargs: args[1],
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
@@ -1563,12 +1568,12 @@ class TestPipelineRunnerLoop:
         ckpt_save = MagicMock()
         _install_runner_display_context(monkeypatch)
 
-        monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
-        monkeypatch.setattr(runner_module, "_execute_effect", execute_effect)
+        monkeypatch.setattr(runner_module, "determine_effect_from_policy", stub_determine_effect)
+        monkeypatch.setattr(runner_module, "execute_effect", execute_effect)
         monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
         monkeypatch.setattr(
             runner_module,
-            "_materialize_prepared_prompt",
+            "materialize_prepared_prompt",
             lambda *_args, **_kwargs: None,
         )
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
@@ -1610,10 +1615,10 @@ class TestPipelineRunnerLoop:
         materialize = MagicMock(return_value=".agent/tmp/planning_prompt.md")
         handle_phase = MagicMock(return_value=[PipelineEvent.AGENT_SUCCESS])
 
-        monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
-        monkeypatch.setattr(runner_module, "_execute_effect", execute_effect)
-        monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", materialize)
-        monkeypatch.setattr(runner_module, "handle_phase", handle_phase)
+        monkeypatch.setattr(runner_module, "determine_effect_from_policy", stub_determine_effect)
+        monkeypatch.setattr(runner_module, "execute_effect", execute_effect)
+        monkeypatch.setattr(prompt_prep_module, "materialize_prompt_for_phase", materialize)
+        monkeypatch.setattr(phase_agent_handler_module, "handle_phase", handle_phase)
         monkeypatch.setattr(runner_module, "reducer_reduce", MagicMock(return_value=(state, None)))
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
@@ -1653,10 +1658,10 @@ class TestPipelineRunnerLoop:
         _install_runner_display_context(monkeypatch)
         policy_bundle = load_policy(tmp_path / ".agent")
 
-        monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
-        monkeypatch.setattr(runner_module, "_execute_effect", execute_effect)
-        monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", materialize)
-        monkeypatch.setattr(runner_module, "handle_phase", handle_phase)
+        monkeypatch.setattr(runner_module, "determine_effect_from_policy", stub_determine_effect)
+        monkeypatch.setattr(runner_module, "execute_effect", execute_effect)
+        monkeypatch.setattr(prompt_prep_module, "materialize_prompt_for_phase", materialize)
+        monkeypatch.setattr(phase_agent_handler_module, "handle_phase", handle_phase)
         monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
         monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
@@ -1709,10 +1714,10 @@ class TestPipelineRunnerLoop:
         _install_runner_display_context(monkeypatch)
         policy_bundle = load_policy(tmp_path / ".agent")
 
-        monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
-        monkeypatch.setattr(runner_module, "_execute_effect", execute_effect)
-        monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", materialize)
-        monkeypatch.setattr(runner_module, "handle_phase", handle_phase)
+        monkeypatch.setattr(runner_module, "determine_effect_from_policy", stub_determine_effect)
+        monkeypatch.setattr(runner_module, "execute_effect", execute_effect)
+        monkeypatch.setattr(prompt_prep_module, "materialize_prompt_for_phase", materialize)
+        monkeypatch.setattr(phase_agent_handler_module, "handle_phase", handle_phase)
         monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
         monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
@@ -1756,17 +1761,17 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
         monkeypatch.setattr(
             runner_module,
-            "_call_determine_effect_from_policy",
+            "call_determine_effect_from_policy",
             lambda *_args, **_kwargs: next(effects),
         )
         monkeypatch.setattr(
             runner_module,
-            "_materialize_prepared_prompt",
+            "materialize_prepared_prompt",
             lambda *_args, **_kwargs: None,
         )
         monkeypatch.setattr(
             runner_module,
-            "_emit_phase_transition_if_changed",
+            "emit_phase_transition_if_changed",
             lambda *args, **kwargs: args[1],
         )
 
@@ -1815,13 +1820,13 @@ class TestExecuteAgentEffect:
                 return "http://127.0.0.1:12345/mcp"
 
         monkeypatch.setattr(
-            runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+            effect_executor_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
         )
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
@@ -1850,12 +1855,12 @@ class TestExecuteAgentEffect:
             captured["capabilities"] = session.capabilities
             return FakeBridge()
 
-        monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+        monkeypatch.setattr(effect_executor_module, "start_mcp_server", fake_start_mcp_server)
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
@@ -1907,12 +1912,12 @@ class TestExecuteAgentEffect:
             captured["capabilities"] = session.capabilities
             return FakeBridge()
 
-        monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+        monkeypatch.setattr(effect_executor_module, "start_mcp_server", fake_start_mcp_server)
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
@@ -1945,10 +1950,10 @@ class TestExecuteAgentEffect:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(None)
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
@@ -1998,19 +2003,19 @@ class TestExecuteAgentEffect:
             stale_artifact.write_text('{"type":"stale"}', encoding="utf-8")
 
         monkeypatch.setattr(
-            runner_module,
+            effect_executor_module,
             "start_mcp_server",
             lambda *_args, **_kwargs: self._FakeBridge(),
         )
-        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
-            runner_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
+            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
         )
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=self.AgentError,
                 agent_registry=runner_module.AgentRegistry,
@@ -2055,19 +2060,19 @@ class TestExecuteAgentEffect:
         prompt_file.write_text("Revise the plan", encoding="utf-8")
 
         monkeypatch.setattr(
-            runner_module,
+            effect_executor_module,
             "start_mcp_server",
             lambda *_args, **_kwargs: self._FakeBridge(),
         )
-        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
-            runner_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
+            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
         )
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=self.AgentError,
                 agent_registry=_registry_factory(MagicMock()),
@@ -2105,19 +2110,19 @@ class TestExecuteAgentEffect:
         )
 
         monkeypatch.setattr(
-            runner_module,
+            effect_executor_module,
             "start_mcp_server",
             lambda *_args, **_kwargs: self._FakeBridge(),
         )
-        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
-            runner_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
+            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
         )
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=self.AgentError,
                 agent_registry=_registry_factory(MagicMock()),
@@ -2155,7 +2160,7 @@ class TestExecuteAgentEffect:
             checkpoint_saved_count=1,
         )
 
-        runner_module._materialize_prepared_prompt(
+        runner_module.materialize_prepared_prompt(
             effect,
             bundle.pipeline,
             bundle.artifacts,
@@ -2196,7 +2201,7 @@ class TestExecuteAgentEffect:
         registry = MagicMock()
         registry.get.return_value = None
 
-        runner_module._materialize_agent_prompt_if_needed(
+        runner_module.materialize_agent_prompt_if_needed(
             effect,
             state,
             workspace,
@@ -2241,7 +2246,7 @@ class TestExecuteAgentEffect:
         registry = MagicMock()
         registry.get.return_value = None
 
-        runner_module._materialize_agent_prompt_if_needed(
+        runner_module.materialize_agent_prompt_if_needed(
             effect,
             state,
             workspace,
@@ -2268,13 +2273,13 @@ class TestExecuteAgentEffect:
         invoked: dict[str, object] = {}
 
         monkeypatch.setattr(
-            runner_module,
+            effect_executor_module,
             "start_mcp_server",
             lambda *_args, **_kwargs: self._FakeBridge(),
         )
-        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
-            runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
         def record_invoke(config: AgentConfig, *_args: object, **_kwargs: object) -> object:
@@ -2282,10 +2287,10 @@ class TestExecuteAgentEffect:
             invoked["transport"] = config.transport
             return iter(["line"])
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=record_invoke,
                 agent_invocation_error=self.AgentError,
                 agent_registry=runner_module.AgentRegistry,
@@ -2302,22 +2307,22 @@ class TestExecuteAgentEffect:
         registry = _registry_factory(MagicMock())
 
         monkeypatch.setattr(
-            runner_module,
+            effect_executor_module,
             "start_mcp_server",
             lambda *_args, **_kwargs: self._FakeBridge(),
         )
-        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
-            runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
         def raising_invoke(*_args: object, **_kwargs: object) -> None:
             raise self.AgentError("boom")
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=raising_invoke,
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
@@ -2333,22 +2338,22 @@ class TestExecuteAgentEffect:
         registry = _registry_factory(MagicMock())
 
         monkeypatch.setattr(
-            runner_module,
+            effect_executor_module,
             "start_mcp_server",
             lambda *_args, **_kwargs: self._FakeBridge(),
         )
-        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
-            runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
         def raising_value_error(*_args: object, **_kwargs: object) -> None:
             raise ValueError("boom")
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=raising_value_error,
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
@@ -2398,10 +2403,10 @@ class TestExecuteAgentEffect:
             seen_options.append(kwargs.get("options"))
             return iter(["line"])
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=record_invoke,
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
@@ -2438,12 +2443,12 @@ class TestExecuteAgentEffect:
             created.append(marker)
             return FakeBridge(marker)
 
-        monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+        monkeypatch.setattr(effect_executor_module, "start_mcp_server", fake_start_mcp_server)
 
-        first = runner_module._execute_agent_effect(
+        first = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
@@ -2451,10 +2456,10 @@ class TestExecuteAgentEffect:
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
         )
-        second = runner_module._execute_agent_effect(
+        second = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
                 agent_invocation_error=self.AgentError,
                 agent_registry=registry,
@@ -2499,10 +2504,10 @@ class TestExecuteAgentEffect:
 
         captured_console = _install_runner_display_context(monkeypatch)
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(
                     [
                         '{"type":"text_delta","delta":"thinking"}',
@@ -2551,10 +2556,10 @@ class TestExecuteAgentEffect:
 
         captured_console = _install_runner_display_context(monkeypatch)
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(
                     [
                         '{"type":"thread.started"}',
@@ -2608,7 +2613,7 @@ class TestExecuteAgentEffect:
         def fake_start_mcp_server(*_args: object, **_kwargs: object) -> object:
             return FakeBridge()
 
-        monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+        monkeypatch.setattr(effect_executor_module, "start_mcp_server", fake_start_mcp_server)
 
         seen_session_ids: list[str | None] = []
 
@@ -2628,10 +2633,10 @@ class TestExecuteAgentEffect:
                 ['{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}']
             )
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=fake_invoke_agent,
                 agent_invocation_error=AgentInvocationError,
                 agent_registry=registry,
@@ -2691,10 +2696,10 @@ class TestExecuteAgentEffect:
                 return _first_attempt()
             return iter(['{"type":"result","result":"finished"}'])
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=fake_invoke_agent,
                 agent_invocation_error=AgentInvocationError,
                 agent_registry=registry,
@@ -2727,7 +2732,7 @@ def test_determine_effect_invokes_commit_agent_when_agent_not_yet_invoked(
         agent_drains={"development_commit": "commit_chain"},
     )
 
-    effect = runner_module._determine_effect_from_policy(
+    effect = runner_module.determine_effect_from_policy(
         state,
         policy_bundle,
         workspace_scope,
@@ -2750,7 +2755,7 @@ def test_determine_effect_commits_after_agent_invoked(
     state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
     workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
 
-    effect = runner_module._determine_effect_from_policy(state, policy_bundle, workspace_scope)
+    effect = runner_module.determine_effect_from_policy(state, policy_bundle, workspace_scope)
 
     assert isinstance(effect, CommitEffect)
     assert str(tmp_path) in effect.message_file
@@ -2773,7 +2778,7 @@ def test_determine_effect_early_skips_commit_when_worktree_is_clean(
         agent_drains={"development_commit": "commit_chain"},
     )
 
-    effect = runner_module._determine_effect_from_policy(
+    effect = runner_module.determine_effect_from_policy(
         state,
         policy_bundle,
         workspace_scope,
@@ -2800,7 +2805,7 @@ def test_determine_effect_does_not_early_skip_commit_when_worktree_is_dirty(
         agent_drains={"development_commit": "commit_chain"},
     )
 
-    effect = runner_module._determine_effect_from_policy(
+    effect = runner_module.determine_effect_from_policy(
         state,
         policy_bundle,
         workspace_scope,
@@ -2822,7 +2827,7 @@ def test_determine_effect_does_not_early_skip_after_agent_already_invoked(
     state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
     workspace_scope = WorkspaceScope(root=tmp_git_repo, allowed_roots=[tmp_git_repo])
 
-    effect = runner_module._determine_effect_from_policy(state, policy_bundle, workspace_scope)
+    effect = runner_module.determine_effect_from_policy(state, policy_bundle, workspace_scope)
 
     assert isinstance(effect, CommitEffect)
 
@@ -2837,7 +2842,7 @@ def test_determine_effect_auto_skips_exhausted_planning_analysis_without_invokin
         loop_caps={"planning_analysis_iteration": 5},
     )
 
-    effect = runner_module._determine_effect_from_policy(state, policy_bundle)
+    effect = runner_module.determine_effect_from_policy(state, policy_bundle)
 
     assert isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect)
     assert effect.phase == "planning_analysis"
@@ -2856,7 +2861,7 @@ def test_determine_effect_auto_skips_exhausted_development_analysis_without_invo
         budget_caps={"iteration": 5},
     )
 
-    effect = runner_module._determine_effect_from_policy(state, policy_bundle)
+    effect = runner_module.determine_effect_from_policy(state, policy_bundle)
 
     assert isinstance(effect, ExhaustedAnalysisPhaseAdvanceEffect)
     assert effect.phase == "development_analysis"
@@ -2867,7 +2872,7 @@ class TestExhaustedAnalysisPhaseAdvanceEffectExecution:
         config = MagicMock()
         workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
 
-        result = runner_module._execute_effect(
+        result = runner_module.execute_effect(
             ExhaustedAnalysisPhaseAdvanceEffect(phase="planning_analysis"),
             config,
             workspace_scope,
@@ -2880,11 +2885,11 @@ class TestEarlySkipCommitEffectExecution:
     def test_execute_returns_commit_skipped(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(runner_module, "_cleanup_commit_message_artifacts", lambda _root: None)
+        monkeypatch.setattr(runner_module, "cleanup_commit_message_artifacts", lambda _root: None)
         config = MagicMock()
         workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
 
-        result = runner_module._execute_effect(
+        result = runner_module.execute_effect(
             EarlySkipCommitEffect(),
             config,
             workspace_scope,
@@ -2904,7 +2909,7 @@ class TestEarlySkipCommitEffectExecution:
         config = MagicMock()
         workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
 
-        runner_module._execute_effect(
+        runner_module.execute_effect(
             EarlySkipCommitEffect(),
             config,
             workspace_scope,
@@ -3007,9 +3012,13 @@ class TestPhaseEventAfterAgentRun:
     ) -> None:
         registry = MagicMock()
         registry.from_config.return_value = MagicMock()
-        monkeypatch.setattr(runner_module, "AgentRegistry", registry)
-        monkeypatch.setattr(runner_module, "ChainManager", MagicMock(return_value=MagicMock()))
-        monkeypatch.setattr(runner_module, "handle_phase", lambda _effect, _ctx: [event])
+        monkeypatch.setattr(phase_agent_handler_module, "AgentRegistry", registry)
+        monkeypatch.setattr(
+            phase_agent_handler_module, "ChainManager", MagicMock(return_value=MagicMock())
+        )
+        monkeypatch.setattr(
+            phase_agent_handler_module, "handle_phase", lambda _effect, _ctx: [event]
+        )
 
         artifact_file = tmp_path / artifact_path
         artifact_file.parent.mkdir(parents=True, exist_ok=True)
@@ -3022,7 +3031,7 @@ class TestPhaseEventAfterAgentRun:
         workspace = MagicMock()
         workspace.absolute_path.side_effect = lambda path: str(tmp_path / path)
 
-        returned_event = runner_module._phase_event_after_agent_run(
+        returned_event = runner_module.phase_event_after_agent_run(
             effect=InvokeAgentEffect(agent_name="claude", phase=phase, prompt_file=f"{phase}.md"),
             config=MagicMock(),
             policy_bundle=policy_bundle,
@@ -3047,7 +3056,7 @@ class TestExecuteCommitEffect:
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
-        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         message_file.write_text(
             json.dumps(
                 {
@@ -3062,7 +3071,7 @@ class TestExecuteCommitEffect:
             encoding="utf-8",
         )
 
-        result = runner_module._execute_commit_effect(
+        result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
             create_commit,
             stage_all,
@@ -3085,8 +3094,8 @@ class TestExecuteCommitEffect:
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
-        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
-        monkeypatch.setattr(runner_module, "stage_files", stage_files)
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(effect_executor_module, "stage_files", stage_files)
         message_file.write_text(
             json.dumps(
                 {
@@ -3105,7 +3114,7 @@ class TestExecuteCommitEffect:
             encoding="utf-8",
         )
 
-        result = runner_module._execute_commit_effect(
+        result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
             create_commit,
             stage_all,
@@ -3129,7 +3138,7 @@ class TestExecuteCommitEffect:
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
-        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         message_file.write_text(
             json.dumps(
                 {
@@ -3151,7 +3160,7 @@ class TestExecuteCommitEffect:
             )
         )
 
-        result = runner_module._execute_commit_effect(
+        result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
             create_commit,
             stage_all,
@@ -3173,7 +3182,7 @@ class TestExecuteCommitEffect:
         text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
-        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         message_file.write_text(
             json.dumps(
                 {
@@ -3191,7 +3200,7 @@ class TestExecuteCommitEffect:
         def fail_create(*_: object) -> None:
             raise RuntimeError("boom")
 
-        result = runner_module._execute_commit_effect(
+        result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
             fail_create,
             stage_all,
@@ -3206,7 +3215,7 @@ class TestExecuteCommitEffect:
         stage_all = MagicMock()
         create_commit = MagicMock()
 
-        result = runner_module._execute_commit_effect(
+        result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(tmp_path / "missing.txt")),
             create_commit,
             stage_all,
@@ -3225,9 +3234,9 @@ class TestExecuteCommitEffect:
         message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
         message_file.parent.mkdir(parents=True, exist_ok=True)
         message_file.write_text("{not json", encoding="utf-8")
-        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
 
-        result = runner_module._execute_commit_effect(
+        result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
             create_commit,
             stage_all,
@@ -3260,9 +3269,9 @@ class TestExecuteCommitEffect:
             ),
             encoding="utf-8",
         )
-        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: False)
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: False)
 
-        result = runner_module._execute_commit_effect(
+        result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
             create_commit,
             stage_all,
@@ -3305,9 +3314,9 @@ class TestExecuteCommitEffect:
             ),
             encoding="utf-8",
         )
-        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
 
-        result = runner_module._execute_commit_effect(
+        result = runner_module.execute_commit_effect(
             CommitEffect(message_file=str(message_file)),
             create_commit,
             stage_all,
@@ -3323,7 +3332,7 @@ class TestExecuteCommitEffect:
 
 class TestExecuteEffect:
     def test_save_checkpoint_returns_checkpoint_event(self) -> None:
-        result = runner_module._execute_effect(
+        result = runner_module.execute_effect(
             SaveCheckpointEffect(), MagicMock(), WorkspaceScope("/tmp/worktree")
         )
 
@@ -3343,14 +3352,14 @@ class TestExecuteEffect:
             captured["display"] = display
             return PipelineEvent.AGENT_SUCCESS
 
-        monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+        monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
         effect = InvokeAgentEffect(agent_name="planning", phase="planning", prompt_file="plan.md")
         config = MagicMock()
         workspace_scope = WorkspaceScope("/tmp/worktree")
         display = MagicMock()
         state = PipelineState(phase="planning")
 
-        result = runner_module._execute_effect_with_optional_display(
+        result = runner_module.execute_effect_with_optional_display(
             effect,
             config,
             workspace_scope,
@@ -3380,14 +3389,14 @@ class TestExecuteEffect:
             captured.update(kwargs)
             return PipelineEvent.AGENT_SUCCESS
 
-        monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+        monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
         effect = InvokeAgentEffect(agent_name="planning", phase="planning", prompt_file="plan.md")
         config = MagicMock()
         workspace_scope = WorkspaceScope("/tmp/worktree")
         display_context = make_display_context()
         state = PipelineState(phase="planning")
 
-        result = runner_module._execute_effect_with_optional_display(
+        result = runner_module.execute_effect_with_optional_display(
             effect,
             config,
             workspace_scope,
@@ -3431,8 +3440,8 @@ class TestExecuteEffect:
             captured["message_file"] = effect.message_file
             return PipelineEvent.COMMIT_SUCCESS
 
-        monkeypatch.setattr(runner_module, "_execute_commit_effect", stub_commit)
-        result = runner_module._execute_effect(
+        monkeypatch.setattr(runner_module, "execute_commit_effect", stub_commit)
+        result = runner_module.execute_effect(
             CommitEffect(message_file="foo"), MagicMock(), WorkspaceScope("/tmp/worktree")
         )
 
@@ -3441,7 +3450,7 @@ class TestExecuteEffect:
         assert captured.get("message_file") == "foo"
 
     def test_unknown_effect_returns_failure(self) -> None:
-        result = runner_module._execute_effect(
+        result = runner_module.execute_effect(
             PreparePromptEffect(phase="planning", iteration=0),
             MagicMock(),
             WorkspaceScope("/tmp/worktree"),
@@ -3464,7 +3473,7 @@ class TestRenderAgentActivityLine:
             },
         )
 
-        rendered = runner_module._render_agent_activity_line(output, "dev")
+        rendered = runner_module.render_agent_activity_line(output, "dev")
 
         assert rendered is not None
         assert isinstance(rendered, Text)
@@ -3483,7 +3492,7 @@ class TestRenderAgentActivityLine:
             },
         )
 
-        rendered = runner_module._render_agent_activity_line(output, "dev")
+        rendered = runner_module.render_agent_activity_line(output, "dev")
 
         assert rendered is not None
         assert isinstance(rendered, Text)
@@ -3502,7 +3511,7 @@ class TestRenderAgentActivityLine:
             },
         )
 
-        rendered = runner_module._render_agent_activity_line(output, "dev")
+        rendered = runner_module.render_agent_activity_line(output, "dev")
 
         assert rendered is not None
         assert isinstance(rendered, Text)
@@ -3526,7 +3535,7 @@ class TestRenderAgentActivityLine:
 
         rendered = []
         for output in parsed:
-            rendered_line = runner_module._render_agent_activity_line(output, "dev")
+            rendered_line = runner_module.render_agent_activity_line(output, "dev")
             if rendered_line is not None:
                 rendered.append(rendered_line)
 
@@ -3544,7 +3553,7 @@ class TestRenderAgentActivityLine:
             },
         )
 
-        rendered = runner_module._render_agent_activity_line(output, "claude")
+        rendered = runner_module.render_agent_activity_line(output, "claude")
 
         assert rendered is not None
 
@@ -3553,11 +3562,11 @@ class TestRenderAgentActivityLine:
 
     def test_analysis_prompt_session_drain_preserves_analysis_identity(self) -> None:
         assert (
-            runner_module._prompt_session_drain_for_phase("development_analysis")
+            runner_module.prompt_session_drain_for_phase("development_analysis")
             is SessionDrain.DEVELOPMENT_ANALYSIS
         )
         assert (
-            runner_module._prompt_session_drain_for_phase("review_analysis")
+            runner_module.prompt_session_drain_for_phase("review_analysis")
             is SessionDrain.REVIEW_ANALYSIS
         )
 
@@ -3575,7 +3584,7 @@ class TestRenderAgentActivityLine:
         )
 
         assert (
-            runner_module._prompt_session_drain_for_phase(
+            runner_module.prompt_session_drain_for_phase(
                 "planning_analysis", agents_policy=agents_policy
             )
             is SessionDrain.ANALYSIS
@@ -3585,7 +3594,7 @@ class TestRenderAgentActivityLine:
         long_content = "a" * 300
         output = AgentOutputLine(type="text", content=long_content)
 
-        rendered = runner_module._render_agent_activity_line(output, "dev")
+        rendered = runner_module.render_agent_activity_line(output, "dev")
 
         assert rendered is not None
         assert "…" in rendered.plain
@@ -3600,7 +3609,7 @@ class TestRenderAgentActivityLine:
             metadata={"input": {"path": long_value}},
         )
 
-        rendered = runner_module._render_agent_activity_line(output, "dev")
+        rendered = runner_module.render_agent_activity_line(output, "dev")
 
         assert rendered is not None
         assert "…" in rendered.plain
@@ -3608,7 +3617,7 @@ class TestRenderAgentActivityLine:
     def test_error_format_with_symbol(self) -> None:
         output = AgentOutputLine(type="error", content="something broke")
 
-        rendered = runner_module._render_agent_activity_line(output, "dev")
+        rendered = runner_module.render_agent_activity_line(output, "dev")
 
         assert rendered is not None
         assert "✗" in rendered.plain
@@ -3623,7 +3632,7 @@ class TestRenderAgentActivityLine:
         )
         rendered = Text("opencode tool error: git_diff denied")
 
-        runner_module._record_activity_on_subscriber(subscriber, parsed_line, rendered, "opencode")
+        runner_module.record_activity_on_subscriber(subscriber, parsed_line, rendered, "opencode")
 
         subscriber.record_activity.assert_called_once_with(
             unit_id="opencode",
@@ -3639,7 +3648,7 @@ class TestRenderAgentActivityLine:
         long_result = "z" * 600
         output = AgentOutputLine(type="tool_result", content=long_result)
 
-        rendered = runner_module._render_agent_activity_line(output, "dev")
+        rendered = runner_module.render_agent_activity_line(output, "dev")
 
         assert rendered is not None
         assert "…" in rendered.plain
@@ -3652,7 +3661,7 @@ class TestRenderAgentActivityLine:
             "summary": "b" * 50,
             "phase": "c" * 50,
         }
-        result = runner_module._metadata_summary(metadata)
+        result = runner_module.metadata_summary(metadata)
         assert len(result) <= _TRUNCATED_METADATA_MAX
 
 
@@ -3660,43 +3669,43 @@ class TestTruncateEdgeCases:
     """Tests for _truncate edge cases."""
 
     def test_truncate_shorter_than_max_unchanged(self) -> None:
-        assert runner_module._truncate("hello", 10) == "hello"
+        assert runner_module.truncate("hello", 10) == "hello"
 
     def test_truncate_exactly_at_max_unchanged(self) -> None:
-        assert runner_module._truncate("hello", 5) == "hello"
+        assert runner_module.truncate("hello", 5) == "hello"
 
     def test_truncate_longer_than_max_adds_ellipsis(self) -> None:
-        result = runner_module._truncate("hello world", 5)
+        result = runner_module.truncate("hello world", 5)
         assert result == "hello…"
         assert len(result) == _TRUNCATE_RESULT_LEN
 
     def test_truncate_max_length_zero_returns_unchanged(self) -> None:
-        assert runner_module._truncate("hello", 0) == "hello"
+        assert runner_module.truncate("hello", 0) == "hello"
 
     def test_truncate_max_length_one_returns_unchanged(self) -> None:
-        assert runner_module._truncate("hello", 1) == "hello"
+        assert runner_module.truncate("hello", 1) == "hello"
 
     def test_truncate_empty_string(self) -> None:
-        assert runner_module._truncate("", 10) == ""
+        assert runner_module.truncate("", 10) == ""
 
 
 class TestAvailableWidth:
     """Tests for _available_width helper."""
 
     def test_available_width_minimum_floor(self, monkeypatch: MonkeyPatch) -> None:
-        monkeypatch.setattr(runner_module, "_terminal_width", lambda: 20)
+        monkeypatch.setattr(runner_module, "terminal_width", lambda: 20)
         # With prefix_len=20, width would be 20-20-2 = -2, should floor to 40
-        assert runner_module._available_width(20) == _AVAILABLE_WIDTH_FLOOR
+        assert runner_module.available_width(20) == _AVAILABLE_WIDTH_FLOOR
 
     def test_available_width_normal_terminal(self, monkeypatch: MonkeyPatch) -> None:
-        monkeypatch.setattr(runner_module, "_terminal_width", lambda: 120)
-        result = runner_module._available_width(10)
+        monkeypatch.setattr(runner_module, "terminal_width", lambda: 120)
+        result = runner_module.available_width(10)
         expected = 120 - 10 - 2
         assert result == expected
 
     def test_available_width_narrow_terminal(self, monkeypatch: MonkeyPatch) -> None:
-        monkeypatch.setattr(runner_module, "_terminal_width", lambda: 50)
-        result = runner_module._available_width(5)
+        monkeypatch.setattr(runner_module, "terminal_width", lambda: 50)
+        result = runner_module.available_width(5)
         expected = 50 - 5 - 2
         assert result == expected
 
@@ -3720,7 +3729,7 @@ class TestStartCommitCapture:
         )
         monkeypatch.setattr(
             runner_module,
-            "_determine_effect_from_policy",
+            "determine_effect_from_policy",
             lambda _state, _bundle, _scope: ExitSuccessEffect(),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
@@ -3771,7 +3780,7 @@ class TestStartCommitCapture:
         )
         monkeypatch.setattr(
             runner_module,
-            "_determine_effect_from_policy",
+            "determine_effect_from_policy",
             lambda _state, _bundle, _scope: ExitSuccessEffect(),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
@@ -3802,7 +3811,7 @@ def test_run_returns_1_when_mcp_validation_fails_in_strict_mode(
         del strict
         raise UpstreamValidationError("upstream MCP server 'broken' is unreachable")
 
-    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", fake_validator)
+    monkeypatch.setattr(runner_module, "VALIDATE_MCP", fake_validator)
 
     rc = runner_module.run(MagicMock(), initial_state=None)
     assert rc == 1
@@ -3820,10 +3829,10 @@ def test_run_continues_when_mcp_toml_has_no_servers(
     def fail_validator(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("validator should not run when no upstreams configured")
 
-    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", fail_validator)
+    monkeypatch.setattr(runner_module, "VALIDATE_MCP", fail_validator)
     monkeypatch.setattr(
         runner_module,
-        "_determine_effect_from_policy",
+        "determine_effect_from_policy",
         lambda _state, _bundle, _scope: ExitSuccessEffect(),
     )
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
@@ -3898,7 +3907,7 @@ class TestPhaseHandlerExceptionGuard:
                 prompt_file="development.txt",
             )
             policy_bundle = MagicMock()
-            event = runner_module._phase_event_after_agent_run(
+            event = runner_module.phase_event_after_agent_run(
                 effect=effect,
                 config=UnifiedConfig(),
                 policy_bundle=policy_bundle,
@@ -3977,10 +3986,12 @@ def test_phase_start_banner_emitted_to_parallel_display_console(
         def agent_endpoint_uri(self) -> str:
             return "http://127.0.0.1:12345/mcp"
 
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
     monkeypatch.setattr(
-        runner_module,
+        effect_executor_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+    )
+    monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
+    monkeypatch.setattr(
+        effect_executor_module,
         "materialize_system_prompt",
         lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
     )
@@ -4000,10 +4011,10 @@ def test_phase_start_banner_emitted_to_parallel_display_console(
         budget_caps={"iteration": 3, "reviewer_pass": 1},
     )
 
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect,
         config,
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=lambda *_args, **_kwargs: iter([]),
             agent_invocation_error=RuntimeError,
             agent_registry=registry,
@@ -4037,7 +4048,7 @@ class TestCycleBaselineLifecycle:
         )
         monkeypatch.setattr(
             runner_module,
-            "_determine_effect_from_policy",
+            "determine_effect_from_policy",
             lambda _state, _bundle, _scope: ExitSuccessEffect(),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
@@ -4075,7 +4086,7 @@ class TestCycleBaselineLifecycle:
         )
         monkeypatch.setattr(
             runner_module,
-            "_determine_effect_from_policy",
+            "determine_effect_from_policy",
             lambda _state, _bundle, _scope: ExitSuccessEffect(),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
@@ -4119,7 +4130,7 @@ class TestCycleBaselineLifecycle:
         state.copy_with = MagicMock(return_value=state)
         state.session_preserve_retry_pending = False
 
-        monkeypatch.setattr(runner_module, "_determine_effect_from_policy", _fake_determine_effect)
+        monkeypatch.setattr(runner_module, "determine_effect_from_policy", _fake_determine_effect)
         monkeypatch.setattr(
             runner_module,
             "resolve_workspace_scope",
@@ -4129,12 +4140,12 @@ class TestCycleBaselineLifecycle:
         _install_runner_display_context(monkeypatch)
         monkeypatch.setattr(
             runner_module,
-            "_execute_commit_effect",
+            "execute_commit_effect",
             lambda *_args, **_kwargs: PipelineEvent.COMMIT_SUCCESS,
         )
         monkeypatch.setattr(
             runner_module,
-            "_materialize_agent_prompt_if_needed",
+            "materialize_agent_prompt_if_needed",
             lambda *_args, **_kwargs: None,
         )
         monkeypatch.setattr(runner_module, "clear_cycle_baseline", _spy_clear)
@@ -4172,7 +4183,7 @@ def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(
     analysis_cap = 3
     planning_analysis_calls = 0
     analysis_prompt_snapshot: tuple[int, str] | None = None
-    original_determine = runner_module._call_determine_effect_from_policy
+    original_determine = runner_module.call_determine_effect_from_policy
 
     def stop_after_development_prompt(
         state: object, bundle: object, workspace_scope: object, config: object
@@ -4275,10 +4286,10 @@ def test_runner_skips_planning_analysis_prompt_after_planning_success_at_cap(
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner_module,
-        "_call_determine_effect_from_policy",
+        "call_determine_effect_from_policy",
         stop_after_development_prompt,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", capture_saved_state)
@@ -4334,7 +4345,7 @@ def test_runner_resumed_planning_success_skips_planning_analysis_after_cap(
 
     planning_analysis_calls = 0
     planning_prompt_snapshot: str | None = None
-    original_determine = runner_module._call_determine_effect_from_policy
+    original_determine = runner_module.call_determine_effect_from_policy
 
     def stop_after_development_prompt(
         state: object, bundle: object, workspace_scope: object, config: object
@@ -4430,10 +4441,10 @@ def test_runner_resumed_planning_success_skips_planning_analysis_after_cap(
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner_module,
-        "_call_determine_effect_from_policy",
+        "call_determine_effect_from_policy",
         stop_after_development_prompt,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", capture_saved_state)
@@ -4504,7 +4515,7 @@ class TestSkippedExhaustedAnalysisInfo:
             loop_caps={"planning_analysis_iteration": 3},
         )
 
-        skipped = runner_module._skipped_exhausted_analysis_info(
+        skipped = runner_module.skipped_exhausted_analysis_info(
             "planning", "development", state, policy
         )
 
@@ -4556,7 +4567,7 @@ class TestSkippedExhaustedAnalysisInfo:
             loop_caps={"development_analysis_iteration": 3},
         )
 
-        skipped = runner_module._skipped_exhausted_analysis_info(
+        skipped = runner_module.skipped_exhausted_analysis_info(
             "development", "development_commit", state, policy
         )
 
@@ -4604,7 +4615,7 @@ class TestSkippedExhaustedAnalysisInfo:
             loop_caps={"review_analysis_iteration": 2},
         )
 
-        skipped = runner_module._skipped_exhausted_analysis_info(
+        skipped = runner_module.skipped_exhausted_analysis_info(
             "fix", "review_commit", state, policy
         )
 
@@ -4625,10 +4636,10 @@ def test_handle_inline_effect_resets_commit_state_when_recovering_into_commit_ph
         current_drain="development_commit",
         commit=CommitState(message_prepared=True, diff_prepared=True, agent_invoked=True),
     )
-    monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", MagicMock())
+    monkeypatch.setattr(runner_module, "materialize_prepared_prompt", MagicMock())
     monkeypatch.setattr(runner_module, "ckpt", MagicMock())
 
-    result = runner_module._handle_inline_effect(
+    result = runner_module.handle_inline_effect(
         effect=PreparePromptEffect(
             phase="development_commit",
             previous_phase="development_commit",
@@ -4668,7 +4679,7 @@ def test_handle_inline_effect_routes_to_planning_when_plan_handoff_absent(
 
     monkeypatch.setattr(
         runner_module,
-        "_materialize_prepared_prompt",
+        "materialize_prepared_prompt",
         MagicMock(
             side_effect=MissingPlanHandoffError(
                 "Template 'developer_iteration.jinja' requires an existing plan handoff"
@@ -4678,7 +4689,7 @@ def test_handle_inline_effect_routes_to_planning_when_plan_handoff_absent(
     )
     monkeypatch.setattr(runner_module, "ckpt", MagicMock())
 
-    result = runner_module._handle_inline_effect(
+    result = runner_module.handle_inline_effect(
         effect=PreparePromptEffect(
             phase="development",
             previous_phase="development",
@@ -4716,7 +4727,7 @@ def test_handle_inline_effect_propagates_plan_handoff_error_outside_recovery(
 
     monkeypatch.setattr(
         runner_module,
-        "_materialize_prepared_prompt",
+        "materialize_prepared_prompt",
         MagicMock(
             side_effect=MissingPlanHandoffError(
                 "Template 'developer_iteration.jinja' requires an existing plan handoff"
@@ -4727,7 +4738,7 @@ def test_handle_inline_effect_propagates_plan_handoff_error_outside_recovery(
     monkeypatch.setattr(runner_module, "ckpt", MagicMock())
 
     with pytest.raises(MissingPlanHandoffError):
-        runner_module._handle_inline_effect(
+        runner_module.handle_inline_effect(
             effect=PreparePromptEffect(
                 phase="development",
                 previous_phase="planning",
@@ -4806,7 +4817,7 @@ def test_materialize_agent_prompt_creates_sidecar_from_session_index(
     registry = MagicMock()
     registry.get.return_value = None
 
-    runner_module._materialize_agent_prompt_if_needed(
+    runner_module.materialize_agent_prompt_if_needed(
         effect,
         state,
         workspace,
@@ -4856,7 +4867,7 @@ def test_materialize_agent_prompt_clears_sidecar_when_no_session_index(
     registry = MagicMock()
     registry.get.return_value = None
 
-    runner_module._materialize_agent_prompt_if_needed(
+    runner_module.materialize_agent_prompt_if_needed(
         effect,
         state,
         workspace,
@@ -4888,7 +4899,7 @@ def test_materialize_agent_prompt_carries_multiple_media_entries(
     registry = MagicMock()
     registry.get.return_value = None
 
-    runner_module._materialize_agent_prompt_if_needed(
+    runner_module.materialize_agent_prompt_if_needed(
         effect,
         state,
         workspace,
@@ -4943,7 +4954,7 @@ def test_materialize_agent_prompt_preserves_multimodal_metadata_across_preparati
     registry = MagicMock()
     registry.get.return_value = None
 
-    runner_module._materialize_agent_prompt_if_needed(
+    runner_module.materialize_agent_prompt_if_needed(
         effect,
         state,
         workspace,

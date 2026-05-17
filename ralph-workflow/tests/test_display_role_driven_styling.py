@@ -17,7 +17,7 @@ from ralph.display.completion_summary import (
     render_completion_summary_group,
 )
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import _phase_style
+from ralph.display.phase_banner import phase_style
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 from ralph.policy.models import (
@@ -107,32 +107,32 @@ class TestPhaseStyleIsRoleDriven:
 
     def test_custom_execution_phase_gets_execution_style(self) -> None:
         policy = _make_custom_pipeline_policy()
-        style = _phase_style("design", policy)
+        style = phase_style("design", policy)
         # execution role maps to "theme.phase.development"
         assert style == "theme.phase.development"
 
     def test_custom_commit_phase_gets_commit_style(self) -> None:
         policy = _make_custom_pipeline_policy()
-        style = _phase_style("sign_off", policy)
+        style = phase_style("sign_off", policy)
         assert style == "theme.phase.commit"
 
     def test_custom_terminal_failure_phase_gets_failed_style(self) -> None:
         policy = _make_custom_pipeline_policy()
-        style = _phase_style("failed_terminal", policy)
+        style = phase_style("failed_terminal", policy)
         assert style == "theme.phase.failed"
 
     def test_custom_terminal_success_phase_gets_complete_style(self) -> None:
         policy = _make_custom_pipeline_policy()
-        style = _phase_style("done", policy)
+        style = phase_style("done", policy)
         assert style == "theme.phase.complete"
 
     def test_without_policy_canonical_name_returns_muted(self) -> None:
         # Without policy, canonical phase names are not recognized (only roles are)
-        style = _phase_style("planning")
+        style = phase_style("planning")
         assert style == "theme.text.muted"
 
     def test_unknown_phase_without_policy_returns_muted(self) -> None:
-        style = _phase_style("some_custom_phase")
+        style = phase_style("some_custom_phase")
         assert style == "theme.text.muted"
 
 

@@ -11,17 +11,15 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+import ralph.pipeline.runner as _runner_module
 from ralph.agents.registry import AgentRegistry
-from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.display.context import make_display_context
-from ralph.executor.process import run_process_async
-from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
+from ralph.interrupt.asyncio_bridge import SignalBridge
 from ralph.mcp.artifacts.handoffs import sync_markdown_handoff
 from ralph.mcp.artifacts.store import list_artifacts
-from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
-from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts, build_session_mcp_plan
+from ralph.mcp.session_plan import SessionMcpPlan, SessionModelOpts
 from ralph.pipeline import checkpoint as ckpt
-from ralph.pipeline.effect_router import _config_agents_for_phase
+from ralph.pipeline.effect_router import config_agents_for_phase as _config_agents_for_phase
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
     PhaseFailureEvent,
@@ -35,7 +33,6 @@ from ralph.pipeline.legacy_console_display import (
 )
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.mode import SameWorkspaceContext
-from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.work_units import (
     WorkUnitsPlan,
     WorkUnitsValidationError,
@@ -67,6 +64,8 @@ class _PipelineSubscriberLike(Protocol):
 
 @dataclass(frozen=True)
 class VerificationResult:
+    """Outcome of the post-fan-out serialized verification run."""
+
     ran: bool
     passed: bool | None
     exit_code: int | None
@@ -251,7 +250,7 @@ def _build_session_mcp_plan_for_phase(
     )
 
     try:
-        return build_session_mcp_plan(
+        return _runner_module.build_session_mcp_plan(
             transport=transport,
             drain=drain,
             workspace_path=workspace_scope.root,
@@ -262,7 +261,7 @@ def _build_session_mcp_plan_for_phase(
         fallback_agents_policy = load_agents_policy_for_workspace_scope(
             workspace_scope, config=config
         )
-        return build_session_mcp_plan(
+        return _runner_module.build_session_mcp_plan(
             transport=transport,
             drain=drain,
             workspace_path=workspace_scope.root,
@@ -278,10 +277,10 @@ def _fan_out_worker_context(
     bridge: SignalBridge,
     session_drain: str,
     session_mcp_plan: SessionMcpPlan,
-) -> tuple[AgentExecutor, parallel_coordinator._WorkerContext]:
+) -> tuple[AgentExecutor, parallel_coordinator.WorkerContext]:
     executor = cast(
         "AgentExecutor",
-        SubprocessAgentExecutor(_parallel_worker_command(), signal_bridge=bridge),
+        _runner_module.SubprocessAgentExecutor(_parallel_worker_command(), signal_bridge=bridge),
     )
     workspace = FsWorkspace(
         workspace_scope.root,
@@ -289,14 +288,14 @@ def _fan_out_worker_context(
     )
     worker_namespace_root = repo_root / ".agent" / "workers"
     worker_namespace_root.mkdir(parents=True, exist_ok=True)
-    return executor, coordinator._WorkerContext(
-        log=coordinator._WorkerLog(
+    return executor, coordinator.WorkerContext(
+        log=coordinator.WorkerLog(
             log_dir=workspace_scope.root / ".agent" / "logs",
             run_id=str(uuid.uuid4()),
         ),
         same_workspace=SameWorkspaceContext(
             repo_root=repo_root,
-            mcp_factory=DynamicBindingMcpServerFactory(workspace=workspace),
+            mcp_factory=_runner_module.DynamicBindingMcpServerFactory(workspace=workspace),
             executor_command=_parallel_worker_command(),
             signal_bridge=bridge,
             worker_namespace_root=worker_namespace_root,
@@ -314,7 +313,7 @@ def _resume_fan_out_state(
     pipeline_policy: PipelinePolicy,
     subscriber: _PipelineSubscriberLike | None,
 ) -> tuple[PipelineState, tuple[WorkUnit, ...]]:
-    resumed_state, _ = reducer_reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
+    resumed_state, _ = _runner_module.reducer_reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
     _notify_subscriber(subscriber, resumed_state)
     completed_ids = {
         uid
@@ -328,7 +327,7 @@ def _resume_fan_out_state(
 async def _run_post_fanout_verification(workspace_scope: WorkspaceScope) -> str | None:
     """Run workspace-wide verification exactly once after all workers complete."""
     logger.debug("Running post-fanout workspace-wide verification (serialized)")
-    verify_result = await run_process_async(
+    verify_result = await _runner_module.run_process_async(
         "make",
         ["-C", str(workspace_scope.root / "ralph-workflow"), "verify"],
     )
@@ -359,7 +358,7 @@ async def _run_verify_phase(
     else:
         v = VerificationResult(ran=True, passed=True, exit_code=0)
         verify_ev = PostFanoutVerificationEvent(success=True, exit_code=0)
-    current, _ = reducer_reduce(current, verify_ev, ctx.policy_bundle.pipeline)
+    current, _ = _runner_module.reducer_reduce(current, verify_ev, ctx.policy_bundle.pipeline)
     _notify_subscriber(ctx.pipeline_subscriber, current)
     _save_checkpoint_or_log(
         current,
@@ -377,7 +376,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             bridge._connectivity_stop = ctx.monitor_stop_cb
         root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
         assert root_task is not None
-        install_signal_handlers(loop, root_task, bridge)
+        _runner_module.install_signal_handlers(loop, root_task, bridge)
 
         try:
             validate_for_same_workspace(WorkUnitsPlan(work_units=list(ctx.effect.work_units)))
@@ -387,7 +386,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             failure_event = PhaseFailureEvent(
                 phase=current.phase, reason=failure_reason, recoverable=True
             )
-            recovered, _ = reducer_reduce(
+            recovered, _ = _runner_module.reducer_reduce(
                 current, failure_event, ctx.policy_bundle.pipeline, recovery=None
             )
             _notify_subscriber(ctx.pipeline_subscriber, recovered)
@@ -427,7 +426,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             ctx=worker_ctx,
         )
         for ev in fan_out_events:
-            current, _ = reducer_reduce(current, ev, ctx.policy_bundle.pipeline)
+            current, _ = _runner_module.reducer_reduce(current, ev, ctx.policy_bundle.pipeline)
             _notify_subscriber(ctx.pipeline_subscriber, current)
         _save_checkpoint_or_log(
             current,
@@ -453,7 +452,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             reason=f"Fan-out execution crashed: {type(exc).__name__}: {exc}",
             recoverable=True,
         )
-        recovered, _ = reducer_reduce(
+        recovered, _ = _runner_module.reducer_reduce(
             current, failure_event, ctx.policy_bundle.pipeline, recovery=None
         )
         _notify_subscriber(ctx.pipeline_subscriber, recovered)

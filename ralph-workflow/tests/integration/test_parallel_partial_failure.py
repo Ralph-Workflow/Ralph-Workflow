@@ -351,7 +351,7 @@ class TestPartialFailureHandoffContent:
             run_post_fanout_verification=False,
         )
 
-        final_state = runner_module._execute_fan_out_sync(
+        final_state = runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
             display=cast("ParallelDisplay", _FakeDisplay()),
@@ -424,7 +424,7 @@ class TestPartialFailureHandoffContent:
             run_post_fanout_verification=False,
         )
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=initial_state,
             display=cast("ParallelDisplay", _FakeDisplay()),

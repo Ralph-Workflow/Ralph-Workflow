@@ -106,8 +106,8 @@ def _has_index_conflicts(repo: Repo) -> bool:
 
 def rebase_in_progress_at(repo_root: Path | str) -> bool:
     """Return True if a git rebase is currently in progress at ``repo_root``."""
-    repo = _open_repo(repo_root)
-    return _rebase_in_progress_impl(repo)
+    repo = open_repo(repo_root)
+    return rebase_in_progress_impl(repo)
 
 
 def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
@@ -118,13 +118,13 @@ def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
 
 def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> bool:
     """Return True if the rebase is complete and HEAD is a descendant of ``upstream_branch``."""
-    repo = _open_repo(repo_root)
+    repo = open_repo(repo_root)
 
-    if _rebase_in_progress_impl(repo):
+    if rebase_in_progress_impl(repo):
         return False
 
     try:
-        if _has_index_conflicts(repo):
+        if has_index_conflicts(repo):
             return False
     except RebaseContinuationError as exc:
         raise RebaseVerificationError("Unable to inspect index for conflicts") from exc
@@ -137,7 +137,7 @@ def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> b
     except (GitCommandError, ValueError) as exc:
         raise RebaseVerificationError("Upstream branch is invalid") from exc
 
-    return _head_is_descendant(repo_root, upstream_branch)
+    return head_is_descendant(repo_root, upstream_branch)
 
 
 def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None = None) -> bool:
@@ -148,12 +148,12 @@ def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None =
 
 def continue_rebase_at(repo_root: Path | str) -> None:
     """Resume a paused rebase at ``repo_root``, raising if conflicts remain."""
-    repo = _open_repo(repo_root)
+    repo = open_repo(repo_root)
 
-    if not _rebase_in_progress_impl(repo):
+    if not rebase_in_progress_impl(repo):
         raise NoRebaseInProgressError("No rebase in progress")
 
-    if _has_index_conflicts(repo):
+    if has_index_conflicts(repo):
         raise ConflictRemainingError("Conflicts still exist in the index")
 
     try:
@@ -193,3 +193,9 @@ def _head_is_descendant(repo_root: Path | str, upstream_branch: str) -> bool:
     raise RebaseVerificationError(
         f"git merge-base failed: {result.stderr.strip() or result.stdout.strip()}"
     )
+
+
+open_repo = _open_repo
+rebase_in_progress_impl = _rebase_in_progress_impl
+has_index_conflicts = _has_index_conflicts
+head_is_descendant = _head_is_descendant

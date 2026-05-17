@@ -35,7 +35,7 @@ from rich.cells import cell_len
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-_SUMMARY_THRESHOLD = 4000
+SUMMARY_THRESHOLD = 4000
 _DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 _ENABLED_VALUES: frozenset[str] = frozenset({"1", "true", "yes"})
 
@@ -73,7 +73,7 @@ def should_summarize(text: str, env: Mapping[str, str]) -> bool:
     if flag in _DISABLED_VALUES:
         return False
     try:
-        return cell_len(text) > _SUMMARY_THRESHOLD
+        return cell_len(text) > SUMMARY_THRESHOLD
     except Exception:
         return False
 
@@ -137,8 +137,8 @@ def build_ai_summary(text: str, env: Mapping[str, str]) -> str | None:
 
 
 __all__ = [
+    "SUMMARY_THRESHOLD",
     "_PLACEHOLDER_HEADLINE",
-    "_SUMMARY_THRESHOLD",
     "AiSummaryHook",
     "build_ai_summary",
     "build_content_summary",

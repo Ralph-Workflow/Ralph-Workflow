@@ -74,7 +74,7 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
 
 
 def test_submit_artifact_tool_name_claude_interactive() -> None:
-    assert commit_module._submit_artifact_tool_name_for_transport(
+    assert commit_module.submit_artifact_tool_name_for_transport(
         AgentTransport.CLAUDE_INTERACTIVE
     ) == claude_tool_name(SUBMIT_ARTIFACT_TOOL)
 
@@ -91,7 +91,7 @@ def test_commit_tool_render_escapes_markup_like_input_before_console_render() ->
         },
     )
 
-    rendered = commit_module._render_commit_agent_activity_line(output, "claude")
+    rendered = commit_module.render_commit_agent_activity_line(output, "claude")
 
     assert rendered is not None
     assert isinstance(rendered, Text)

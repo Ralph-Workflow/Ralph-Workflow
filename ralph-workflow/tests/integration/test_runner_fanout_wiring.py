@@ -25,8 +25,8 @@ if TYPE_CHECKING:
     import pytest
 
 
-def _legacy_display() -> runner_module._LegacyConsoleDisplay:
-    return runner_module._LegacyConsoleDisplay(make_display_context())
+def _legacy_display() -> runner_module.LegacyConsoleDisplay:
+    return runner_module.LegacyConsoleDisplay(make_display_context())
 
 
 def _make_work_unit(unit_id: str) -> WorkUnit:
@@ -69,7 +69,7 @@ class TestFanOutRouting:
         state = PipelineState(phase="development", work_units=())
         policy_bundle = _make_policy_bundle()
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state,
             policy_bundle,
             config=UnifiedConfig(),
@@ -88,7 +88,7 @@ class TestFanOutRouting:
         state = PipelineState(phase="development", work_units=units)
         policy_bundle = _make_policy_bundle(max_workers=max_workers)
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state,
             policy_bundle,
             config=UnifiedConfig(),
@@ -103,7 +103,7 @@ class TestFanOutRouting:
         state = PipelineState(phase="development", work_units=(_make_work_unit("unit-a"),))
         policy_bundle = _make_policy_bundle()
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state,
             policy_bundle,
             config=UnifiedConfig(),
@@ -118,7 +118,7 @@ class TestFanOutRouting:
         state = PipelineState(phase="planning", work_units=units)
         policy_bundle = _make_policy_bundle()
 
-        effect = runner_module._determine_effect_from_policy(
+        effect = runner_module.determine_effect_from_policy(
             state,
             policy_bundle,
             config=UnifiedConfig(),
@@ -167,7 +167,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-    runner_module._execute_fan_out_sync(
+    runner_module.execute_fan_out_sync(
         effect=effect,
         state=state,
         display=_legacy_display(),
@@ -225,7 +225,7 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _boom)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-    recovered = runner_module._execute_fan_out_sync(
+    recovered = runner_module.execute_fan_out_sync(
         effect=effect,
         state=state,
         display=_legacy_display(),
@@ -291,7 +291,7 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
     monkeypatch.setattr(runner_module, "reducer_reduce", _recording_reduce)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-    result = runner_module._execute_fan_out_sync(
+    result = runner_module.execute_fan_out_sync(
         effect=effect,
         state=state,
         display=_legacy_display(),
@@ -350,7 +350,7 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
     )
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-    runner_module._execute_fan_out_sync(
+    runner_module.execute_fan_out_sync(
         effect=effect,
         state=state,
         display=_legacy_display(),
@@ -412,7 +412,7 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
     monkeypatch.setattr(runner_module, "reducer_reduce", _recording_reduce)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-    runner_module._execute_fan_out_sync(
+    runner_module.execute_fan_out_sync(
         effect=effect,
         state=state,
         display=_legacy_display(),
@@ -453,7 +453,7 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     workspace_scope = WorkspaceScope(tmp_path)
     effect = PreparePromptEffect(phase="development", iteration=1)
 
-    runner_module._materialize_prepared_prompt(
+    runner_module.materialize_prepared_prompt(
         effect, policy.pipeline, policy.artifacts, workspace_scope,
         env={str(WORKER_NAMESPACE_ENV): str(worker_ns)}
     )
@@ -488,7 +488,7 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
     workspace_scope = WorkspaceScope(tmp_path)
     effect = PreparePromptEffect(phase="development", iteration=1)
 
-    runner_module._materialize_prepared_prompt(
+    runner_module.materialize_prepared_prompt(
         effect, policy.pipeline, policy.artifacts, workspace_scope
     )
 

@@ -158,10 +158,10 @@ def test_runner_stale_session_internal_retry_succeeds(
     config = _make_config()
     state = _make_state(last_session_id=stale_session_id, session_preserve=True)
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         effect,
         config,
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -237,14 +237,14 @@ def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
             )
         return []
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -305,14 +305,14 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
             )
         return []
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -369,14 +369,14 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
 
     config = _make_config()
     state = _make_state(last_session_id=stale_session_id, session_preserve=True)
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         config,
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -454,10 +454,10 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
     config = _make_config()
     state = _make_state(last_session_id=opencode_stale_session_id, session_preserve=True)
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         effect,
         config,
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -522,14 +522,14 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
             raise AgentInvocationError("opencode", 1, "Unknown session: deadbeef")
         return []
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="opencode",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(

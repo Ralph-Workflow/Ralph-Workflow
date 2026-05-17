@@ -11,7 +11,7 @@ import pytest
 
 from ralph.executor import ProcessExecutionError, ProcessResult, run_process, run_process_async
 from ralph.executor.process import ProcessRunOptions
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, SpawnOptions
 from ralph.testing.fake_process import FakeControllableAsyncProcess, FakeTimeoutPopen
 
 if TYPE_CHECKING:
@@ -33,17 +33,7 @@ def _make_timeout_pm(partial_stdout: bytes = b"") -> ProcessManager:
     """Build a PM whose sync factory returns a FakeTimeoutPopen."""
     pid_iter = itertools.count(1)
 
-    def factory(
-        command: str,
- *,
-        cwd: str | None,
-        env: dict[str, str] | None,
-        stdin: int | None,
-        stdout: int | None,
-        stderr: int | None,
-        start_new_session: bool,
-        text: bool,
-    ) -> object:
+    def factory(command: object, opts: SpawnOptions) -> object:
         return FakeTimeoutPopen(next(pid_iter), partial_stdout=partial_stdout)
 
     return ProcessManager(policy=_FAST_POLICY, sync_process_factory=factory)
@@ -121,15 +111,16 @@ async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> Non
     )
 
     async def factory(
-        command: str,
- *,
-        cwd: str | None,
-        env: dict[str, str] | None,
-        stdin: int | None,
-        stdout: int | None,
-        stderr: int | None,
-        start_new_session: bool,
+        command: object,
+        *,
+        cwd: object,
+        env: object,
+        stdin: object,
+        stdout: object,
+        stderr: object,
+        start_new_session: object,
     ) -> object:
+        del command, cwd, env, stdin, stdout, stderr, start_new_session
         return proc
 
     # kill_followup_timeout_s > 0 so _terminate_root_only_async can finish

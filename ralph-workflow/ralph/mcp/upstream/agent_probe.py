@@ -172,7 +172,7 @@ def _probe_claude(
         raise AgentTransportProbeError(
             f"Claude MCP config Ralph url='{entry.get('url')!r}' does not match server.url"
         )
-    _http_handshake(server.url)
+    http_handshake(server.url)
     return AgentProbeReport(transport=transport, server_name=server.name, ok=True)
 
 
@@ -206,7 +206,7 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         raise AgentTransportProbeError(
             f"Codex config.toml mcp_servers.{server.name}.command mismatch"
         )
-    _server_handshake(server)
+    server_handshake(server)
     return AgentProbeReport(transport=AgentTransport.CODEX, server_name=server.name, ok=True)
 
 
@@ -256,7 +256,7 @@ def _probe_opencode(server: UpstreamMcpServer, workspace_path: Path | None) -> A
     ralph_entry = cast("dict[str, object]", raw_ralph_entry)
     if ralph_entry.get("type") != "remote" or ralph_entry.get("url") != server.url:
         raise AgentTransportProbeError("OpenCode Ralph mcp entry shape mismatch (type/url)")
-    _http_handshake(server.url)
+    http_handshake(server.url)
     return AgentProbeReport(transport=AgentTransport.OPENCODE, server_name=server.name, ok=True)
 
 
@@ -303,7 +303,7 @@ def _server_handshake(server: UpstreamMcpServer) -> None:
             raise AgentTransportProbeError(
                 f"server '{server.name}' is missing url for http handshake"
             )
-        _http_handshake(server.url)
+        http_handshake(server.url)
         return
     client = make_upstream_client(server)
     client.list_tools()
@@ -343,8 +343,18 @@ def _log_probe_report(report: AgentProbeReport) -> None:
         )
 
 
+# Public aliases — test-accessible names and monkeypatch interception points.
+http_handshake = _http_handshake
+server_handshake = _server_handshake
+DEFAULT_TRANSPORTS = _DEFAULT_TRANSPORTS
+augment_codex_config_with_server = _augment_codex_config_with_server
+
 __all__ = [
+    "DEFAULT_TRANSPORTS",
     "AgentProbeReport",
     "AgentTransportProbeError",
+    "augment_codex_config_with_server",
+    "http_handshake",
     "probe_agent_transports",
+    "server_handshake",
 ]

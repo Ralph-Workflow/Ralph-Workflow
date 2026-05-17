@@ -6,7 +6,7 @@ import pytest
 
 from ralph.agents import invoke as invoke_module
 from ralph.agents.invoke import InvokeOptions
-from ralph.agents.registry import _builtin_agents
+from ralph.agents.registry import builtin_agents
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -51,26 +51,26 @@ class _FakePtyManager:
 
 def test_pending_vt_snapshot_line_surfaces_semantic_activity_without_newline() -> None:
     assert (
-        invoke_module._pending_vt_snapshot_line("\x1b[2K\rclaude tool: write_file")
+        invoke_module.pending_vt_snapshot_line("\x1b[2K\rclaude tool: write_file")
         == "claude tool: write_file\n"
     )
 
 
 def test_permission_prompt_line_is_detected() -> None:
     assert (
-        invoke_module._is_permission_prompt_line(
+        invoke_module.is_permission_prompt_line(
             "Claude requested permissions to read from /tmp/prompt.md"
         )
         is True
     )
-    assert invoke_module._is_permission_prompt_line("Enable auto mode?") is True
+    assert invoke_module.is_permission_prompt_line("Enable auto mode?") is True
     assert (
-        invoke_module._is_permission_prompt_line(
+        invoke_module.is_permission_prompt_line(
             "\u276f 1. Yes, and make it my default mode\n2. Yes, enable auto mode\nEnter to confirm"
         )
         is True
     )
-    assert invoke_module._is_permission_prompt_line("claude tool: write_file") is False
+    assert invoke_module.is_permission_prompt_line("claude tool: write_file") is False
 
 
 def test_auto_response_for_interactive_prompt_handles_auto_mode_gate() -> None:
@@ -83,20 +83,20 @@ def test_auto_response_for_interactive_prompt_handles_auto_mode_gate() -> None:
     Enter to confirm · Esc to cancel
     """
     assert (
-        invoke_module._interactive_auto_response_for_prompt(
+        invoke_module.interactive_auto_response_for_prompt(
             menu,
             auto_mode_prompt_seen=True,
         )
         == "\x1b[B\r"
     )
     assert (
-        invoke_module._interactive_auto_response_for_prompt(
+        invoke_module.interactive_auto_response_for_prompt(
             "Enable auto mode?", auto_mode_prompt_seen=False
         )
         is None
     )
     assert (
-        invoke_module._interactive_auto_response_for_prompt(
+        invoke_module.interactive_auto_response_for_prompt(
             "claude tool: write_file", auto_mode_prompt_seen=False
         )
         is None
@@ -109,7 +109,7 @@ def test_invoke_agent_routes_claude_interactive_through_pty_runtime(
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("Implement the task.", encoding="utf-8")
-    config = _builtin_agents()["claude"]
+    config = builtin_agents()["claude"]
     manager = _FakePtyManager()
 
     def fake_run_pty_and_read_lines(*args: object, **kwargs: object) -> Iterator[str]:
@@ -120,9 +120,8 @@ def test_invoke_agent_routes_claude_interactive_through_pty_runtime(
     monkeypatch.setattr(invoke_module, "get_process_manager", lambda: manager)
     monkeypatch.setattr(
         invoke_module,
-        "_run_pty_and_read_lines",
+        "run_pty_and_read_lines",
         fake_run_pty_and_read_lines,
-        raising=False,
     )
 
     lines = list(

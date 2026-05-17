@@ -104,8 +104,8 @@ async def _run_with_cancel(
             effect=effect,
             executor=executor,
             display=cast("ParallelDisplay", _FakeDisplay()),
-            ctx=coordinator._WorkerContext(
-                log=coordinator._WorkerLog(
+            ctx=coordinator.WorkerContext(
+                log=coordinator.WorkerLog(
                     log_dir=checkpoint_path.parent / "logs",
                     run_id="hard-kill-test",
                 ),

@@ -70,11 +70,15 @@ class _FakePtyFactory:
     def __call__(
         self,
         command: Sequence[str],
-        opts: PtySpawnOptions,
+        *,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        cols: int,
+        rows: int,
     ) -> _FakePtyProcess:
-        assert opts.cols == _PTY_COLUMNS
-        assert opts.rows == _PTY_ROWS
-        self.calls.append((tuple(command), opts.cwd, opts.env))
+        assert cols == _PTY_COLUMNS
+        assert rows == _PTY_ROWS
+        self.calls.append((tuple(command), cwd, env))
         pid = next(self._pids)
         return _FakePtyProcess(pid=pid, master_fd=pid + 10, slave_fd=pid + 11)
 

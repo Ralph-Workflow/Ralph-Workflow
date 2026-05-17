@@ -32,7 +32,7 @@ from ralph.policy.models import (
     PostCommitRoute,
     PostCommitRouteWhen,
 )
-from ralph.policy.render import _render_explanation_sentences, render_explanation_text
+from ralph.policy.render import render_explanation_sentences, render_explanation_text
 
 _DEFAULT_POLICY_DIR = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
 
@@ -407,7 +407,7 @@ class TestVerificationExplainRendering:
         bundle = self._bundle_with_verification(on_failure_route="crashed")
         result = explain_policy(bundle)
         verify = next(p for p in result.phases if p.name == "verify")
-        sentences = _render_explanation_sentences(verify)
+        sentences = render_explanation_sentences(verify)
         combined = " ".join(sentences)
         assert "crashed" in combined
 
@@ -502,7 +502,7 @@ class TestExplanationSentencesProductOutcomeD:
         bundle = self._bundle_with_verification_and_commit()
         result = explain_policy(bundle)
         verify = next(p for p in result.phases if p.name == "verify")
-        sentences = _render_explanation_sentences(verify)
+        sentences = render_explanation_sentences(verify)
         combined = " ".join(sentences)
         assert "fails verification" in combined
         assert "crashed" in combined
@@ -513,7 +513,7 @@ class TestExplanationSentencesProductOutcomeD:
         result = explain_policy(bundle)
         entry = next(p for p in result.phases if p.name == "entry")
         assert not entry.has_parallelization
-        sentences = _render_explanation_sentences(entry)
+        sentences = render_explanation_sentences(entry)
         combined = " ".join(sentences)
         assert "parallel execution is rejected" in combined
 
@@ -523,7 +523,7 @@ class TestExplanationSentencesProductOutcomeD:
         result = explain_policy(bundle)
         development = next(p for p in result.phases if p.name == "development")
         assert development.has_parallelization
-        sentences = _render_explanation_sentences(development)
+        sentences = render_explanation_sentences(development)
         combined = " ".join(sentences)
         assert "parallel execution is rejected" not in combined
 
@@ -533,7 +533,7 @@ class TestExplanationSentencesProductOutcomeD:
         result = explain_policy(bundle)
         commit = next(p for p in result.phases if p.name == "commit_phase")
         assert commit.post_commit_routes_info
-        sentences = _render_explanation_sentences(commit)
+        sentences = render_explanation_sentences(commit)
         combined = " ".join(sentences)
         assert "after commit phase" in combined
         assert "budget_state" in combined

@@ -26,18 +26,18 @@ from ralph.agents.execution_state import (
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
     AgentInvocationError,
+    BuildCommandOptions,
+    CompletionCheckOptions,
+    IdleStreamTimeoutError,
     InvokeOptions,
     OpenCodeResumableExitError,
-    _build_opencode_command,
-    _BuildCommandOptions,
-    _check_process_result,
-    _CompletionCheckOptions,
-    _IdleStreamTimeoutError,
-    _ProcessReaderCtx,
-    _read_lines_from_process,
-    _wait_for_descendants_then_recheck,
+    ProcessReaderCtx,
+    build_opencode_command,
+    check_process_result,
+    read_lines_from_process,
+    wait_for_descendants_then_recheck,
 )
-from ralph.agents.registry import _builtin_agents
+from ralph.agents.registry import builtin_agents
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -64,6 +64,11 @@ if TYPE_CHECKING:
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
+
+# Local aliases: tests call the same public functions but under the private-looking names
+# that were used when this module was monolithic (pre-package split).
+_check_process_result = check_process_result
+_CompletionCheckOptions = CompletionCheckOptions
 
 
 class _FakeHandle:
@@ -107,7 +112,7 @@ class TestQuietParentWithLiveChild:
 class TestOpenCodeSessionReuse:
     def test_opencode_run_with_session_id_reuses_session(self, tmp_path: Path) -> None:
         """_build_opencode_command includes the session flag when session_id is provided."""
-        config = _builtin_agents()["opencode"]
+        config = builtin_agents()["opencode"]
 
         assert config.session_flag is not None, (
             "opencode builtin config must carry session_flag for session continuation"
@@ -116,8 +121,8 @@ class TestOpenCodeSessionReuse:
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("implement the task", encoding="utf-8")
 
-        options = _BuildCommandOptions(session_id="sess-x", workspace_path=tmp_path)
-        cmd = _build_opencode_command(config, "PROMPT.md", options=options)
+        options = BuildCommandOptions(session_id="sess-x", workspace_path=tmp_path)
+        cmd = build_opencode_command(config, "PROMPT.md", options=options)
 
         assert "--session" in cmd or "-s" in cmd, f"Session flag must appear in command: {cmd}"
         assert "sess-x" in cmd, f"Session ID must appear in command: {cmd}"
@@ -386,10 +391,10 @@ class TestRunnerSessionContinuation:
                 return _first()
             return iter(['{"type":"result"}'])
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             _runner_config(max_retries=1),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=fake_invoke_agent,
                 agent_invocation_error=AgentInvocationError,
                 agent_registry=registry,
@@ -433,10 +438,10 @@ class TestRunnerSessionContinuation:
 
             return _first()
 
-        result = runner_module._execute_agent_effect(
+        result = runner_module.execute_agent_effect(
             effect,
             _runner_config(max_retries=0),
-            runner_module._AgentExecutionDeps(
+            runner_module.AgentExecutionDeps(
                 invoke_agent=fake_invoke_agent,
                 agent_invocation_error=AgentInvocationError,
                 agent_registry=registry,
@@ -965,11 +970,11 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
         # drain_window=0.0 fires immediately on ACTIVE (no re-consultation loop).
         fake_clock = FakeClock(start=0.0)
 
-        with pytest.raises(_IdleStreamTimeoutError):
+        with pytest.raises(IdleStreamTimeoutError):
             list(
-                _read_lines_from_process(
+                read_lines_from_process(
                     cast("ManagedProcess", handle),
-                    ctx=_ProcessReaderCtx(
+                    ctx=ProcessReaderCtx(
                         policy=TimeoutPolicy(
                             idle_timeout_seconds=1.0,
                             drain_window_seconds=0.0,
@@ -1066,9 +1071,9 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
             patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
         ):
             collected = list(
-                _read_lines_from_process(
+                read_lines_from_process(
                     cast("ManagedProcess", handle),
-                    ctx=_ProcessReaderCtx(
+                    ctx=ProcessReaderCtx(
                         policy=TimeoutPolicy(idle_timeout_seconds=1.0),
                         execution_strategy=strategy,
                         liveness_probe=probe,
@@ -1262,7 +1267,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
     """_check_process_result waits for child agents before raising OpenCodeResumableExitError."""
 
     def test_raises_resumable_exit_when_wait_times_out_without_artifact(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Probe stays active throughout wait; deadline expires → OpenCodeResumableExitError.
 
@@ -1276,8 +1281,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
             workspace: object, raw_output: object, *, required_artifact: object = None
         ) -> object:
             return CompletionSignals(False, False, ())
-
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=True)
@@ -1319,11 +1322,12 @@ class TestCheckProcessResultWaitsForLiveChildren:
                         idle_timeout_seconds=None,
                         descendant_wait_timeout_seconds=0.1,
                     ),
+                    evaluate_completion_fn=_fake_evaluate_completion,
                 ),
             )
 
     def test_grace_window_runs_even_when_no_children_at_exit_time(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Grace window always runs for OpenCode rc=0 exits without completion signals."""
         probe = FakeLivenessProbe(active=False)
@@ -1335,8 +1339,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
         ) -> object:
             evaluate_calls[0] += 1
             return CompletionSignals(False, False, ())
-
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)
@@ -1373,6 +1375,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                         parent_exit_grace_seconds=1.0,
                         descendant_wait_timeout_seconds=30.0,
                     ),
+                    evaluate_completion_fn=_fake_evaluate_completion,
                 ),
             )
 
@@ -1382,7 +1385,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         assert poll_count[0] >= 1, "Grace window must sleep at least once before expiring"
 
     def test_wait_helper_returns_resumable_continue_on_timeout_with_children_alive(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Direct test: _wait_for_descendants_then_recheck returns RESUMABLE_CONTINUE on timeout.
 
@@ -1395,8 +1398,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
             workspace: object, raw_output: object, *, required_artifact: object = None
         ) -> object:
             return CompletionSignals(False, False, ())
-
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=True)
@@ -1417,9 +1418,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
             patch.object(threading.Event, "wait", _fake_event_wait),
         ):
-            result = _wait_for_descendants_then_recheck(
+            result = wait_for_descendants_then_recheck(
                 cast("ManagedProcess", handle),
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     liveness_probe=probe,
@@ -1427,6 +1428,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                         idle_timeout_seconds=None,
                         descendant_wait_timeout_seconds=0.1,
                     ),
+                    evaluate_completion_fn=_fake_evaluate_completion,
                 ),
                 [],
             )
@@ -1437,7 +1439,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         )
 
     def test_artifact_appears_during_wait_produces_terminal_complete(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Artifact appears during wait; no error raised (TERMINAL_COMPLETE).
 
@@ -1470,8 +1472,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 return CompletionSignals(False, True, ("development_result",))
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
-
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
         _check_process_result(
             cast("ManagedProcess", handle),
@@ -1485,13 +1485,14 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     idle_timeout_seconds=None,
                     descendant_wait_timeout_seconds=0.6,
                 ),
+                evaluate_completion_fn=_fake_evaluate_completion,
             ),
             _clock=FakeClock(0.0),
         )
         # No exception raised because artifact appeared during wait → TERMINAL_COMPLETE
 
     def test_explicit_complete_appears_during_wait_produces_terminal_complete(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Explicit completion marker appears during wait; no error raised (TERMINAL_COMPLETE).
 
@@ -1513,8 +1514,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 return CompletionSignals(True, False, ())
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
-
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → explicit_complete (call 3) → TERMINAL_COMPLETE
         _check_process_result(
             cast("ManagedProcess", handle),
@@ -1528,13 +1527,14 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     idle_timeout_seconds=None,
                     descendant_wait_timeout_seconds=0.6,
                 ),
+                evaluate_completion_fn=_fake_evaluate_completion,
             ),
             _clock=FakeClock(0.0),
         )
         # No exception raised because explicit_complete appeared during wait
 
     def test_descendants_finish_during_wait_produces_terminal_complete(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """OS-level descendants finish during wait; no error raised (TERMINAL_COMPLETE).
 
@@ -1568,10 +1568,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 return CompletionSignals(False, True, ("development_result",))
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion_with_artifact
-        )
-
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
         _check_process_result(
             cast("ManagedProcess", handle),
@@ -1585,13 +1581,14 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     idle_timeout_seconds=None,
                     descendant_wait_timeout_seconds=0.6,
                 ),
+                evaluate_completion_fn=_fake_evaluate_completion_with_artifact,
             ),
             _clock=FakeClock(0.0),
         )
         # No exception raised because descendants finished and artifact appeared during wait
 
     def test_wait_helper_timeout_then_final_recheck_finds_completion(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Deadline expires but completion appears exactly at deadline; final recheck catches it.
 
@@ -1615,8 +1612,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 return CompletionSignals(False, True, ("development_result",))
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
-
         # t[0]=0.0: deadline = 0.5; t[1]=0.0: loop check True -> poll (call 1, no signals);
         # t[2]=0.5: loop check False -> final recheck (call 2) -> artifact -> TERMINAL_COMPLETE
         monotonic_vals = iter([0.0, 0.0, 0.5])
@@ -1628,9 +1623,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
             patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
             patch.object(threading.Event, "wait", _fake_event_wait),
         ):
-            result = _wait_for_descendants_then_recheck(
+            result = wait_for_descendants_then_recheck(
                 cast("ManagedProcess", handle),
-                _CompletionCheckOptions(
+                CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     liveness_probe=probe,
@@ -1638,6 +1633,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                         idle_timeout_seconds=None,
                         descendant_wait_timeout_seconds=0.5,
                     ),
+                    evaluate_completion_fn=_fake_evaluate_completion,
                 ),
                 [],
             )
@@ -1648,7 +1644,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         )
 
     def test_grace_window_catches_artifact_appearing_after_exit_with_no_children(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Artifact appears during grace window; no OpenCodeResumableExitError raised.
 
@@ -1668,8 +1664,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
             if call_count[0] == 1:
                 return CompletionSignals(False, False, ())
             return CompletionSignals(False, True, ("development_result",))
-
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         monotonic_vals = iter([0.0, 0.5, 1.0])
 
@@ -1693,12 +1687,13 @@ class TestCheckProcessResultWaitsForLiveChildren:
                         parent_exit_grace_seconds=1.0,
                         descendant_wait_timeout_seconds=30.0,
                     ),
+                    evaluate_completion_fn=_fake_evaluate_completion,
                 ),
             )
         # No exception raised means artifact found during grace -> TERMINAL_COMPLETE
 
     def test_grace_window_raises_resumable_when_no_signal_and_no_children(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """No signals and no children throughout grace -> OpenCodeResumableExitError raised."""
         probe = FakeLivenessProbe(active=False)
@@ -1709,8 +1704,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
             workspace: object, raw_output: object, *, required_artifact: object = None
         ) -> object:
             return CompletionSignals(False, False, ())
-
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         monotonic_vals = iter([0.0, 0.5, 1.0])
 
@@ -1742,11 +1735,12 @@ class TestCheckProcessResultWaitsForLiveChildren:
                         parent_exit_grace_seconds=1.0,
                         descendant_wait_timeout_seconds=30.0,
                     ),
+                    evaluate_completion_fn=_fake_evaluate_completion,
                 ),
             )
 
     def test_grace_window_escalates_to_descendant_wait_when_children_appear(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Child appears during grace; escalates to descendant wait; raises after timeout.
 
@@ -1785,8 +1779,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
         ) -> object:
             return CompletionSignals(False, False, ())
 
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
-
         # [0] grace deadline calc; [1] grace loop check -> probe call 2 -> WAITING_ON_CHILD
         # [2] descendant deadline calc; [3] descendant loop check -> WAITING_ON_CHILD -> sleep
         # [4] descendant loop exit -> final recheck -> RESUMABLE_CONTINUE
@@ -1820,6 +1812,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                         parent_exit_grace_seconds=1.0,
                         descendant_wait_timeout_seconds=2.0,
                     ),
+                    evaluate_completion_fn=_fake_evaluate_completion,
                 ),
             )
 
@@ -2287,7 +2280,7 @@ class TestOptionalArtifactCompletion:
         )
 
     def test_required_artifact_absent_still_raises_resumable(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path
     ) -> None:
         """Required artifact absent without evidence still raises OpenCodeResumableExitError."""
         ra = RequiredArtifact(
@@ -2303,8 +2296,6 @@ class TestOptionalArtifactCompletion:
             workspace: object, raw_output: object, *, required_artifact: object = None
         ) -> object:
             return CompletionSignals(False, False, ())
-
-        monkeypatch.setattr("ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion)
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)
@@ -2334,5 +2325,6 @@ class TestOptionalArtifactCompletion:
                         parent_exit_grace_seconds=1.0,
                         descendant_wait_timeout_seconds=30.0,
                     ),
+                    evaluate_completion_fn=_fake_evaluate_completion,
                 ),
             )

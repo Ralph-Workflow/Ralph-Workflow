@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.executor import AgentExecutor, WorkerResult
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.parallel.coordinator import _WorkerContext
+    from ralph.pipeline.parallel.coordinator import WorkerContext
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -240,7 +240,7 @@ def _run_fan_out_sync(
     )
 
     async def _fake_run_fan_out(**kwargs: object) -> list[Event]:
-        ctx = cast("_WorkerContext | None", kwargs.get("ctx"))
+        ctx = cast("WorkerContext | None", kwargs.get("ctx"))
         if ctx is not None and ctx.same_workspace is not None:
             captured.session_drain = ctx.same_workspace.session_drain
             captured.session_capabilities = ctx.same_workspace.session_capabilities
@@ -279,7 +279,7 @@ def _run_fan_out_sync(
         _fake_run_fan_out,
     )
 
-    final_state = runner_module._execute_fan_out_sync(
+    final_state = runner_module.execute_fan_out_sync(
         effect=effect,
         state=state,
         display=cast("ParallelDisplay", _FakeDisplay()),

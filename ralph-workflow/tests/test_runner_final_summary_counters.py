@@ -67,7 +67,7 @@ def test_final_summary_passes_plain_renderer_counters_to_emit(tmp_path: Path) ->
         "ralph.display.completion_summary.emit_completion_summary",
         side_effect=_capture,
     ):
-        runner_module._emit_final_summary(
+        runner_module.emit_final_summary(
             state,
             tmp_path,
             display=display,
@@ -97,7 +97,7 @@ def test_final_summary_defaults_counters_to_zero_when_no_display(tmp_path: Path)
         "ralph.display.completion_summary.emit_completion_summary",
         side_effect=_capture,
     ):
-        runner_module._emit_final_summary(
+        runner_module.emit_final_summary(
             state,
             tmp_path,
             display=None,

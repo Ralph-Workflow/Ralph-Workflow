@@ -149,19 +149,19 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
         state: PipelineState | None = None,
     ) -> PipelineEvent:
         assert isinstance(effect, InvokeAgentEffect)
-        deps = runner_module._AgentExecutionDeps(
+        deps = runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=RuntimeError,
             agent_registry=_registry_factory(AgentConfig(cmd="fake-agent")),
         )
-        return runner_module._execute_agent_effect(
+        return runner_module.execute_agent_effect(
             effect, config, deps, workspace_scope, display=display, state=state
         )
 
     _patch_common_runner_dependencies(monkeypatch)
-    monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
+    monkeypatch.setattr(runner_module, "determine_effect_from_policy", stub_determine_effect)
     monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
-    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
 
     result = runner_module.run(_config(), initial_state=state, display=display)
 
@@ -223,19 +223,19 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
         state: PipelineState | None = None,
     ) -> PipelineEvent:
         assert isinstance(effect, InvokeAgentEffect)
-        deps = runner_module._AgentExecutionDeps(
+        deps = runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=RuntimeError,
             agent_registry=_registry_factory(AgentConfig(cmd="fake-agent")),
         )
-        return runner_module._execute_agent_effect(
+        return runner_module.execute_agent_effect(
             effect, config, deps, workspace_scope, display=display, state=state
         )
 
     _patch_common_runner_dependencies(monkeypatch)
-    monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
+    monkeypatch.setattr(runner_module, "determine_effect_from_policy", stub_determine_effect)
     monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
-    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
 
     result = runner_module.run(_config(), initial_state=state, display=display)
 
@@ -287,12 +287,12 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
         return PipelineEvent.AGENT_SUCCESS
 
     _patch_common_runner_dependencies(monkeypatch)
-    monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
+    monkeypatch.setattr(runner_module, "determine_effect_from_policy", stub_determine_effect)
     monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
-    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **_kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
@@ -326,7 +326,7 @@ def test_handle_inline_effect_notifies_dashboard_subscriber_after_checkpoint_red
         def notify(self, state: PipelineState) -> None:
             notified_phases.append(state.phase)
 
-    new_state = runner_module._handle_inline_effect(
+    new_state = runner_module.handle_inline_effect(
         effect=runner_module.SaveCheckpointEffect(),
         state=state,
         pipeline_policy=MagicMock(),
@@ -356,11 +356,11 @@ def test_handle_inline_effect_notifies_dashboard_subscriber_after_prepare_prompt
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(
             runner_module,
-            "_materialize_prepared_prompt",
+            "materialize_prepared_prompt",
             lambda *_args, **_kwargs: None,
         )
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
-        new_state = runner_module._handle_inline_effect(
+        new_state = runner_module.handle_inline_effect(
             effect=effect,
             state=state,
             pipeline_policy=MagicMock(),

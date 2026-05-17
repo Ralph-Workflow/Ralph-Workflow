@@ -151,7 +151,7 @@ def test_load_rich_components_returns_factories(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(progress, "import_module", fake_import)
 
-    result = progress._load_rich_components()
+    result = progress.load_rich_components()
     assert result is not None
     console_factory, progress_factory, columns = result
     assert console_factory(stderr=True) == "console"
@@ -161,7 +161,7 @@ def test_load_rich_components_returns_factories(monkeypatch: pytest.MonkeyPatch)
 
 def test_load_rich_components_returns_none_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(progress, "import_module", lambda *_: (_ for _ in ()).throw(ImportError()))
-    assert progress._load_rich_components() is None
+    assert progress.load_rich_components() is None
 
 
 def test_load_tqdm_factory_returns_factory(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -171,20 +171,20 @@ def test_load_tqdm_factory_returns_factory(monkeypatch: pytest.MonkeyPatch) -> N
         "import_module",
         lambda name: tqdm_module if name == "tqdm" else SimpleNamespace(),
     )
-    factory = progress._load_tqdm_factory()
+    factory = progress.load_tqdm_factory()
     assert factory is not None
     assert factory(file=sys.stderr) == "bar"
 
 
 def test_load_tqdm_factory_returns_none_on_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(progress, "import_module", lambda *_: (_ for _ in ()).throw(ImportError()))
-    assert progress._load_tqdm_factory() is None
+    assert progress.load_tqdm_factory() is None
 
 
 def test_load_get_ipython_various_behaviors(monkeypatch: pytest.MonkeyPatch) -> object:
     # Missing module
     monkeypatch.setattr(progress, "import_module", lambda *_: (_ for _ in ()).throw(ImportError()))
-    assert progress._load_get_ipython() is None
+    assert progress.load_get_ipython() is None
 
     # Module exists but attribute missing
     def import_with_missing(name: str) -> object:
@@ -192,7 +192,7 @@ def test_load_get_ipython_various_behaviors(monkeypatch: pytest.MonkeyPatch) -> 
         return module
 
     monkeypatch.setattr(progress, "import_module", import_with_missing)
-    assert progress._load_get_ipython() is None
+    assert progress.load_get_ipython() is None
 
     # Module provides non-callable
     def import_with_value(name: str) -> object:
@@ -200,7 +200,7 @@ def test_load_get_ipython_various_behaviors(monkeypatch: pytest.MonkeyPatch) -> 
         return module
 
     monkeypatch.setattr(progress, "import_module", import_with_value)
-    assert progress._load_get_ipython() is None
+    assert progress.load_get_ipython() is None
 
     # Module returns callable that yields object
     def fake_get_ipython() -> object:
@@ -211,18 +211,18 @@ def test_load_get_ipython_various_behaviors(monkeypatch: pytest.MonkeyPatch) -> 
         return module
 
     monkeypatch.setattr(progress, "import_module", import_with_callable)
-    assert progress._load_get_ipython() is not None
+    assert progress.load_get_ipython() is not None
 
 
 def test_ralph_progress_check_jupyter(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(progress, "_IPYTHON_AVAILABLE", True)
-    monkeypatch.setattr(progress, "_GET_IPYTHON", _ipython_object)
+    monkeypatch.setattr(progress, "IPYTHON_AVAILABLE", True)
+    monkeypatch.setattr(progress, "GET_IPYTHON", _ipython_object)
     ctx = make_display_context()
     rp = progress.RalphProgress(ctx)
     assert rp._check_jupyter()
 
     # When IPython returns None
-    monkeypatch.setattr(progress, "_GET_IPYTHON", lambda: None)
+    monkeypatch.setattr(progress, "GET_IPYTHON", lambda: None)
     ctx = make_display_context()
     rp = progress.RalphProgress(ctx)
     assert not rp._check_jupyter()
@@ -231,19 +231,19 @@ def test_ralph_progress_check_jupyter(monkeypatch: pytest.MonkeyPatch) -> None:
     def raising() -> None:
         raise RuntimeError
 
-    monkeypatch.setattr(progress, "_GET_IPYTHON", raising)
+    monkeypatch.setattr(progress, "GET_IPYTHON", raising)
     ctx = make_display_context()
     rp = progress.RalphProgress(ctx)
     assert not rp._check_jupyter()
 
 
 def test_ralph_progress_is_tty_considers_rich_and_stderr(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(progress, "_RICH_AVAILABLE", True)
+    monkeypatch.setattr(progress, "RICH_AVAILABLE", True)
     monkeypatch.setattr(sys, "stderr", _DummyTTY())
     ctx = make_display_context()
     assert progress.RalphProgress(ctx)._is_tty()
 
-    monkeypatch.setattr(progress, "_RICH_AVAILABLE", False)
+    monkeypatch.setattr(progress, "RICH_AVAILABLE", False)
     assert not progress.RalphProgress(ctx)._is_tty()
 
 
@@ -267,7 +267,7 @@ def test_rich_progress_context_manager_sets_state(monkeypatch: pytest.MonkeyPatc
     columns = tuple(make_column(i) for i in range(7))
     monkeypatch.setattr(
         progress,
-        "_load_rich_components",
+        "load_rich_components",
         lambda: (None, progress_factory, columns),
     )
 
@@ -311,7 +311,7 @@ def test_rich_progress_uses_injected_console_when_context_supplied(
     columns = tuple(make_column(i) for i in range(7))
     monkeypatch.setattr(
         progress,
-        "_load_rich_components",
+        "load_rich_components",
         lambda: (None, progress_factory, columns),
     )
 
@@ -324,7 +324,7 @@ def test_rich_progress_uses_injected_console_when_context_supplied(
 
 
 def test_rich_progress_context_manager_raises_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(progress, "_load_rich_components", lambda: None)
+    monkeypatch.setattr(progress, "load_rich_components", lambda: None)
     ctx = make_display_context()
     rp = progress.RalphProgress(ctx)
     with pytest.raises(RuntimeError, match="rich is unavailable"), rp._rich_progress():
@@ -333,7 +333,7 @@ def test_rich_progress_context_manager_raises_when_missing(monkeypatch: pytest.M
 
 def test_tqdm_progress_context_manager_sets_and_clears(monkeypatch: pytest.MonkeyPatch) -> None:
     bar = _DummyTqdmBar()
-    monkeypatch.setattr(progress, "_load_tqdm_factory", lambda: lambda **kwargs: bar)
+    monkeypatch.setattr(progress, "load_tqdm_factory", lambda: lambda **kwargs: bar)
 
     ctx = make_display_context()
     rp = progress.RalphProgress(ctx)
@@ -347,7 +347,7 @@ def test_tqdm_progress_context_manager_sets_and_clears(monkeypatch: pytest.Monke
 
 
 def test_tqdm_progress_context_manager_raises_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(progress, "_load_tqdm_factory", lambda: None)
+    monkeypatch.setattr(progress, "load_tqdm_factory", lambda: None)
     ctx = make_display_context()
     rp = progress.RalphProgress(ctx)
     with pytest.raises(RuntimeError, match="tqdm is unavailable"), rp._tqdm_progress():
@@ -414,7 +414,7 @@ def test_update_uses_tqdm_fallback() -> None:
 
 
 def test_get_progress_singleton(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(progress._ProgressSingleton, "_instances", {})
+    monkeypatch.setattr(progress.ProgressSingleton, "instances", {})
     ctx = make_display_context()
     first = progress.get_progress(ctx)
     second = progress.get_progress(ctx)
@@ -425,7 +425,7 @@ def test_get_progress_different_context_yields_different_instance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Different contexts (by console identity) produce separate instances."""
-    monkeypatch.setattr(progress._ProgressSingleton, "_instances", {})
+    monkeypatch.setattr(progress.ProgressSingleton, "instances", {})
     buf1 = StringIO()
     buf2 = StringIO()
     console1 = Console(file=buf1, force_terminal=False, width=120, theme=RALPH_THEME)

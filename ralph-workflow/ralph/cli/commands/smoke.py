@@ -38,7 +38,7 @@ from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSe
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
-from ralph.pipeline import runner as runner_module
+from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
@@ -251,7 +251,7 @@ def _execute_smoke_turns(
                 str(params.prompt_file),
                 options=_with_session_id(params.options, current_session_id),
             )
-            runner_module._stream_parsed_agent_activity(
+            stream_parsed_agent_activity(
                 line_iter,
                 parser_type=str(params.config.json_parser),
                 agent_name=params.agent_name,
@@ -260,7 +260,7 @@ def _execute_smoke_turns(
                 display_context=params.display_context,
                 raw_output_sink=raw_lines,
                 rendered_output_sink=rendered_lines,
-                session_id_sink=lambda sid: None,
+                session_id_sink=None,
             )
             all_lines.extend(raw_lines)
             live_output_lines.extend(rendered_lines)
@@ -533,10 +533,13 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
     return 0 if all(not result.errors for result in results) else 1
 
 
+build_smoke_prompt = _build_smoke_prompt
+render_smoke_report = _render_smoke_report
+
 __all__ = [
     "SmokeRunParams",
     "SmokeRunResult",
-    "_build_smoke_prompt",
-    "_render_smoke_report",
+    "build_smoke_prompt",
+    "render_smoke_report",
     "smoke_interactive_claude_command",
 ]

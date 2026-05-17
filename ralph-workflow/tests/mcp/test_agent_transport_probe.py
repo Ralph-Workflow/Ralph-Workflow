@@ -15,9 +15,9 @@ from ralph.mcp.transport.opencode import (
     build_opencode_provider_config as real_opencode,
 )
 from ralph.mcp.upstream.agent_probe import (
-    _DEFAULT_TRANSPORTS,
+    DEFAULT_TRANSPORTS,
     AgentProbeReport,
-    _augment_codex_config_with_server,
+    augment_codex_config_with_server,
     probe_agent_transports,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer
@@ -48,7 +48,7 @@ def _stub_http_handshake_pass(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         captured.append(endpoint)
 
     monkeypatch.setattr(
-        "ralph.mcp.upstream.agent_probe._http_handshake",
+        "ralph.mcp.upstream.agent_probe.http_handshake",
         fake,
     )
     return captured
@@ -61,7 +61,7 @@ def _stub_server_handshake_pass(monkeypatch: pytest.MonkeyPatch) -> list[Upstrea
         captured.append(server)
 
     monkeypatch.setattr(
-        "ralph.mcp.upstream.agent_probe._server_handshake",
+        "ralph.mcp.upstream.agent_probe.server_handshake",
         fake,
     )
     return captured
@@ -115,7 +115,7 @@ def test_probe_emits_codex_config_toml_with_mcp_servers_table(
     # The probe augments the TOML in-memory; verify _prepare_codex_home produced
     # baseline output, and that the augmented copy parses with the server entry.
     # Re-augment from the probe internals to assert that table shape.
-    augmented = _augment_codex_config_with_server(candidates[0].read_text(encoding="utf-8"), server)
+    augmented = augment_codex_config_with_server(candidates[0].read_text(encoding="utf-8"), server)
     parsed_augmented = tomllib.loads(augmented)
     assert "docs" in parsed_augmented["mcp_servers"]
     assert parsed_augmented["mcp_servers"]["docs"]["url"] == server.url
@@ -152,7 +152,7 @@ def test_probe_emits_opencode_config_with_remote_mcp_entry(
 
 
 def test_claude_interactive_in_default_probe_transports() -> None:
-    assert AgentTransport.CLAUDE_INTERACTIVE in _DEFAULT_TRANSPORTS
+    assert AgentTransport.CLAUDE_INTERACTIVE in DEFAULT_TRANSPORTS
 
 
 def test_probe_reports_failure_when_server_unreachable(
@@ -166,8 +166,8 @@ def test_probe_reports_failure_when_server_unreachable(
     def boom_server(_server: UpstreamMcpServer) -> None:
         raise RetryablePreflightError("connection refused")
 
-    monkeypatch.setattr("ralph.mcp.upstream.agent_probe._http_handshake", boom_http)
-    monkeypatch.setattr("ralph.mcp.upstream.agent_probe._server_handshake", boom_server)
+    monkeypatch.setattr("ralph.mcp.upstream.agent_probe.http_handshake", boom_http)
+    monkeypatch.setattr("ralph.mcp.upstream.agent_probe.server_handshake", boom_server)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
 
     reports = probe_agent_transports(
@@ -184,7 +184,7 @@ def test_probe_reports_failure_when_server_unreachable(
 def test_probe_skips_stdio_for_claude(monkeypatch: pytest.MonkeyPatch) -> None:
     server = _stdio_server(name="cli")
     monkeypatch.setattr(
-        "ralph.mcp.upstream.agent_probe._http_handshake",
+        "ralph.mcp.upstream.agent_probe.http_handshake",
         lambda endpoint: pytest.fail("stdio claude probe should not call http handshake"),
     )
 

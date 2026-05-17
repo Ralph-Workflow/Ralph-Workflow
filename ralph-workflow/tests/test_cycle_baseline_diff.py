@@ -81,7 +81,7 @@ class TestCycleBaselineDiff:
         _make_commit(repo, root, "change2.txt", "second change", "second mid-cycle commit")
 
 
-        real_diff = materialize_module._git_diff(root)
+        real_diff = materialize_module.git_diff(root)
         assert "change1" in real_diff or "change2" in real_diff
 
     def test_baseline_survives_mid_cycle_call(self, git_repo: tuple[Path, Repo]) -> None:
@@ -104,7 +104,7 @@ class TestCycleBaselineDiff:
         repo.index.add(["uncommitted.txt"])
 
 
-        real_diff = materialize_module._git_diff(root)
+        real_diff = materialize_module.git_diff(root)
         assert "uncommitted" in real_diff
 
 
@@ -125,7 +125,7 @@ class TestRunnerCycleStartUsesForceTrue:
 
 
         with patch.object(runner_module, "write_cycle_baseline", recording_write):
-            runner_module._write_start_commit_if_absent(root)
+            runner_module.write_start_commit_if_absent(root)
 
         assert captured_calls, "write_cycle_baseline must be called during cycle initialization"
         assert all(c["force"] is True for c in captured_calls), (
@@ -138,7 +138,7 @@ class TestRunnerCycleStartUsesForceTrue:
         write_cycle_baseline(root, existing_sha, force=True)
 
 
-        runner_module._write_start_commit_if_absent(root)
+        runner_module.write_start_commit_if_absent(root)
 
         assert read_cycle_baseline(root) == existing_sha, (
             "_write_start_commit_if_absent must not overwrite an already-set baseline"

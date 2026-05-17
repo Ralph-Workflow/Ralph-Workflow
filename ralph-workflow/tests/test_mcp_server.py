@@ -25,8 +25,8 @@ from ralph.mcp.protocol.capability_mapping import McpCapability
 from ralph.mcp.protocol.env import MCP_SESSION_ENV, WORKER_ARTIFACT_DIR_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
-from ralph.mcp.server.lifecycle import _session_payload_json
-from ralph.mcp.server.runtime import FileBackedSession, _load_runtime_upstream_servers
+from ralph.mcp.server.lifecycle import session_payload_json
+from ralph.mcp.server.runtime import FileBackedSession, load_runtime_upstream_servers
 from ralph.mcp.tools.coordination import ImageContent, ToolContent, ToolResult
 from ralph.mcp.tools.names import upstream_proxy_tool_name
 from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient, make_upstream_client
@@ -243,11 +243,13 @@ def test_build_fastmcp_server_falls_back_without_mcp_dependency(
 ) -> None:
     session = _session(capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress"})
 
-    monkeypatch.setattr(server_runtime, "_FastMCP", None)
-    monkeypatch.setattr(server_runtime, "_Tool", None)
-    server = server_runtime.build_fastmcp_server(tmp_path, session=session)
+    monkeypatch.setattr(server_runtime, "FastMCP", None)
+    monkeypatch.setattr(server_runtime, "Tool", None)
+    server = server_runtime.build_fastmcp_server(
+        tmp_path, extras=server_runtime.McpServerExtras(session=session)
+    )
 
-    assert isinstance(server, server_runtime._FallbackStandaloneServer)
+    assert isinstance(server, server_runtime.FallbackStandaloneServer)
 
     mcp_server = server._mcp_server
     state = server_runtime.ServerState.UNINITIALIZED
@@ -494,7 +496,7 @@ def test_default_planning_capabilities_do_not_warn_when_policy_is_available(
     warnings: list[str] = []
     sink_id = logger.add(lambda message: warnings.append(str(message)), level="WARNING")
     try:
-        observed = runner_module._default_mcp_capabilities_for_phase(
+        observed = runner_module.default_mcp_capabilities_for_phase(
             "planning",
             agents_policy=policy_bundle.agents,
         )
@@ -524,7 +526,7 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
         session_id="planning-session",
         run_id="planning-run",
         drain="planning",
-        capabilities=runner_module._default_mcp_capabilities_for_phase(
+        capabilities=runner_module.default_mcp_capabilities_for_phase(
             "planning",
             agents_policy=policy_bundle.agents,
         ),
@@ -1335,7 +1337,7 @@ class TestFileBackedSessionModelIdentity:
                 provider="anthropic", model_id="claude-opus-4-7", transport="api"
             ),
         )
-        payload_str = _session_payload_json(agent_session)
+        payload_str = session_payload_json(agent_session)
         session_file = tmp_path / "session-rt.json"
         session_file.write_text(payload_str, encoding="utf-8")
 
@@ -1373,7 +1375,7 @@ class TestFileBackedSessionCapabilityProfile:
                 provider="claude", model_id="claude-opus-4-7", transport="claude"
             ),
         )
-        payload_str = _session_payload_json(agent_session)
+        payload_str = session_payload_json(agent_session)
         session_file = tmp_path / "session-cap.json"
         session_file.write_text(payload_str, encoding="utf-8")
 
@@ -1428,7 +1430,7 @@ class TestFileBackedSessionCapabilityProfile:
                 provider="claude", model_id="claude-opus-4-7", transport="claude"
             ),
         )
-        payload_str = _session_payload_json(agent_session)
+        payload_str = session_payload_json(agent_session)
         session_file = tmp_path / "session-rt-cp.json"
         session_file.write_text(payload_str, encoding="utf-8")
 
@@ -1467,14 +1469,14 @@ class TestFileBackedSessionWorkerArtifactDir:
 class TestLoadRuntimeUpstreamServers:
     def test_returns_empty_when_env_not_set(self) -> None:
 
-        result = _load_runtime_upstream_servers(McpConfig(), env={})
+        result = load_runtime_upstream_servers(McpConfig(), env={})
         assert result == ()
 
     def test_env_servers_present_when_env_set(self) -> None:
 
         srv = UpstreamMcpServer(name="env-srv", transport="http", url="http://localhost:9")
         serialized = serialize_upstream_mcp_servers([srv])
-        result = _load_runtime_upstream_servers(
+        result = load_runtime_upstream_servers(
             McpConfig(), env={UPSTREAM_MCP_CONFIG_ENV: serialized}
         )
         assert any(s.name == "env-srv" for s in result)
@@ -1485,7 +1487,7 @@ class TestLoadRuntimeUpstreamServers:
         serialized = serialize_upstream_mcp_servers([env_srv])
         toml_spec = McpServerSpec(name="toml-srv", transport="http", url="http://toml:9")
         config = McpConfig(mcp_servers={"toml-srv": toml_spec})
-        result = _load_runtime_upstream_servers(config, env={UPSTREAM_MCP_CONFIG_ENV: serialized})
+        result = load_runtime_upstream_servers(config, env={UPSTREAM_MCP_CONFIG_ENV: serialized})
         assert {s.name for s in result} == {"env-srv", "toml-srv"}
 
     def test_toml_server_overwrites_env_server_on_name_collision(self) -> None:
@@ -1495,6 +1497,6 @@ class TestLoadRuntimeUpstreamServers:
         serialized = serialize_upstream_mcp_servers([env_srv])
         toml_spec = McpServerSpec(name=shared, transport="http", url="http://toml:9")
         config = McpConfig(mcp_servers={shared: toml_spec})
-        result = _load_runtime_upstream_servers(config, env={UPSTREAM_MCP_CONFIG_ENV: serialized})
+        result = load_runtime_upstream_servers(config, env={UPSTREAM_MCP_CONFIG_ENV: serialized})
         assert len(result) == 1
         assert result[0].url == "http://toml:9"

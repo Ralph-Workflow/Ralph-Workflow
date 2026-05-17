@@ -37,7 +37,7 @@ _PHASE_STYLES: dict[str, str] = {
 }
 
 # Role-pair based major transitions (used when pipeline_policy is available)
-_MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
+MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
     {
         ("execution", "analysis"),
         ("analysis", "commit"),
@@ -52,7 +52,7 @@ _MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
 )
 
 
-def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> str:
+def phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> str:
     """Return the rich style string for a phase name or role.
 
     When pipeline_policy is provided, the style is derived from the phase's
@@ -73,7 +73,7 @@ def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> s
     return _PHASE_STYLES.get(phase, "theme.text.muted")
 
 
-def _phase_label(phase: str) -> str:
+def phase_label(phase: str) -> str:
     """Return a human-readable label for a phase name.
 
     Examples:
@@ -104,7 +104,7 @@ def _resolve_transition_meta(
         return False
     from_role = from_def.role or ""
     to_role = to_def.role or ""
-    return (from_role, to_role) in _MAJOR_ROLE_PAIRS
+    return (from_role, to_role) in MAJOR_ROLE_PAIRS
 
 
 def _render_major_transition(
@@ -158,9 +158,9 @@ def show_phase_transition(
     c = display_context.console
     ctx = display_context
 
-    style = _phase_style(to_phase, pipeline_policy)
-    from_label = _phase_label(from_phase)
-    to_label = _phase_label(to_phase)
+    style = phase_style(to_phase, pipeline_policy)
+    from_label = phase_label(from_phase)
+    to_label = phase_label(to_phase)
     is_major = _resolve_transition_meta(from_phase, to_phase, pipeline_policy)
 
     if is_major:
@@ -226,8 +226,8 @@ def show_phase_start(
     effective_ctx = (
         display_context if display_context is not None else make_display_context(console=c)
     )
-    style = _phase_style(phase, pipeline_policy)
-    label = _phase_label(phase)
+    style = phase_style(phase, pipeline_policy)
+    label = phase_label(phase)
 
     line = Text()
     start_glyph = effective_ctx.glyph_for("start")
@@ -308,7 +308,7 @@ def show_phase_start_from_entry(
     Compact mode: terse banner line, no qualifiers, no Rule.
     """
     c = display_context.console
-    style = _phase_style(entry.phase_name, pipeline_policy)
+    style = phase_style(entry.phase_name, pipeline_policy)
     label = entry.human_label()
     mode = display_context.mode
     start_glyph = display_context.glyph_for("start")
@@ -490,8 +490,8 @@ def show_phase_close_banner(
     phase-level performance report.
     """
     c = display_context.console
-    style = _phase_style(exit_model.phase_name, pipeline_policy)
-    label = _phase_label(exit_model.phase_name)
+    style = phase_style(exit_model.phase_name, pipeline_policy)
+    label = phase_label(exit_model.phase_name)
 
     line = Text()
     success_glyph = display_context.glyph_for("success")

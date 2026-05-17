@@ -117,6 +117,7 @@ def build_session_mcp_plan(
     workspace_path: Path | None,
     agents_policy: AgentsPolicy | None = None,
     model_opts: SessionModelOpts | None = None,
+    model_flag: str | None = None,
 ) -> SessionMcpPlan:
     """Build the runtime MCP plan for a new agent session.
 
@@ -159,7 +160,7 @@ def build_session_mcp_plan(
     if upstreams and not is_commit:
         capabilities.add("upstream.tool_use")
 
-    _model_opts = model_opts or SessionModelOpts()
+    _model_opts = model_opts or SessionModelOpts(model_flag=model_flag)
     if _model_opts.model_identity is not None:
         resolved_identity = _model_opts.model_identity
     elif _model_opts.model_flag is not None:

@@ -161,32 +161,32 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
     monkeypatch.setattr(runner_module, "FsWorkspace", MagicMock())
     monkeypatch.setattr(
         runner_module,
-        "_materialize_agent_prompt_if_needed",
+        "materialize_agent_prompt_if_needed",
         lambda *a, **kw: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_materialize_prepared_prompt",
+        "materialize_prepared_prompt",
         lambda *a, **kw: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_emit_phase_transition_if_changed",
+        "emit_phase_transition_if_changed",
         lambda *args, **kwargs: args[1],
     )
     monkeypatch.setattr(
         runner_module,
-        "_call_determine_effect_from_policy",
+        "call_determine_effect_from_policy",
         stub_determine_effect,
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_FAILURE,
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_effect",
+        "execute_effect",
         lambda _effect, _config, _workspace_scope: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())

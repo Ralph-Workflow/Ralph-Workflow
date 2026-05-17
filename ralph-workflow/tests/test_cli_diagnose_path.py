@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
-from ralph.cli.commands.diagnose import _build_next_steps, _check_agents
+from ralph.cli.commands.diagnose import build_next_steps, check_agents
 from ralph.cli.main import app
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -136,7 +136,7 @@ def test_diagnose_alias_path_status_rendered_in_cli(
             return_value=base_registry,
         ),
     ):
-        _check_agents(None, display_context=ctx)
+        check_agents(None, display_context=ctx)
 
     output = buf.getvalue()
     lines = output.splitlines()
@@ -159,7 +159,7 @@ def test_diagnose_alias_path_status_rendered_in_cli(
 
 def test_build_next_steps_no_prompt_recommends_init() -> None:
     """_build_next_steps must recommend ralph --init when PROMPT.md is absent."""
-    steps = _build_next_steps(
+    steps = build_next_steps(
         validation_ok=True,
         agent_missing=False,
         prompt_exists=False,
@@ -173,7 +173,7 @@ def test_build_next_steps_no_prompt_recommends_init() -> None:
 
 def test_build_next_steps_sentinel_recommends_edit() -> None:
     """_build_next_steps must recommend editing PROMPT.md when sentinel is present."""
-    steps = _build_next_steps(
+    steps = build_next_steps(
         validation_ok=True,
         agent_missing=False,
         prompt_exists=True,
@@ -196,7 +196,7 @@ def test_build_next_steps_sentinel_recommends_edit() -> None:
 
 def test_build_next_steps_agent_missing_recommends_install() -> None:
     """_build_next_steps must recommend agent installation when an agent is missing."""
-    steps = _build_next_steps(
+    steps = build_next_steps(
         validation_ok=True,
         agent_missing=True,
         prompt_exists=True,
@@ -213,7 +213,7 @@ def test_build_next_steps_agent_missing_recommends_install() -> None:
 
 def test_build_next_steps_validation_failed_recommends_regenerate() -> None:
     """_build_next_steps must mention regenerate-config when validation failed."""
-    steps = _build_next_steps(
+    steps = build_next_steps(
         validation_ok=False,
         agent_missing=False,
         prompt_exists=True,
@@ -227,7 +227,7 @@ def test_build_next_steps_validation_failed_recommends_regenerate() -> None:
 
 def test_build_next_steps_all_ok_recommends_run() -> None:
     """_build_next_steps must recommend running ralph when everything is ready."""
-    steps = _build_next_steps(
+    steps = build_next_steps(
         validation_ok=True,
         agent_missing=False,
         prompt_exists=True,

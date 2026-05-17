@@ -10,12 +10,12 @@ from rich.console import Console
 
 from ralph.display.completion_summary import (
     CompletionSummaryOptions,
-    _style_for_role,
-    _style_for_terminal_failure,
     render_completion_summary_group,
+    style_for_role,
+    style_for_terminal_failure,
 )
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import _phase_style
+from ralph.display.phase_banner import phase_style
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 from ralph.policy.models import (
@@ -100,45 +100,45 @@ def _console() -> Console:
 
 class TestStyleForRole:
     def test_no_policy_returns_muted_for_role_resolution(self) -> None:
-        assert _style_for_role("execution", None) == "theme.text.muted"
+        assert style_for_role("execution", None) == "theme.text.muted"
 
     def test_no_policy_returns_muted_for_commit_role(self) -> None:
-        assert _style_for_role("commit", None) == "theme.text.muted"
+        assert style_for_role("commit", None) == "theme.text.muted"
 
     def test_no_policy_returns_muted_for_fix_role(self) -> None:
-        assert _style_for_role("fix", None) == "theme.text.muted"
+        assert style_for_role("fix", None) == "theme.text.muted"
 
     def test_with_policy_execution_role_returns_development_style(self) -> None:
         policy = _make_custom_policy()
-        style = _style_for_role("execution", policy)
+        style = style_for_role("execution", policy)
         assert style == "theme.phase.development"
 
     def test_with_policy_commit_role_returns_commit_style(self) -> None:
         policy = _make_custom_policy()
-        style = _style_for_role("commit", policy)
+        style = style_for_role("commit", policy)
         assert style == "theme.phase.commit"
 
     def test_unmatched_role_without_policy_returns_muted(self) -> None:
-        assert _style_for_role("unknown_role", None) == "theme.text.muted"
+        assert style_for_role("unknown_role", None) == "theme.text.muted"
 
     def test_unmatched_role_with_policy_returns_muted(self) -> None:
         policy = _make_custom_policy()
-        assert _style_for_role("review", policy) == "theme.text.muted"
+        assert style_for_role("review", policy) == "theme.text.muted"
 
 
 class TestStyleForTerminalFailure:
     def test_terminal_failure_style_uses_policy_phase_when_present(self) -> None:
         """Non-canonical failure terminal routes via role+terminal_outcome to failed style."""
         policy = _make_custom_policy()
-        style = _style_for_terminal_failure(policy)
+        style = style_for_terminal_failure(policy)
         # 'halt' has role='terminal' and terminal_outcome='failure'
-        # so _phase_style("halt", policy) → "theme.phase.failed"
-        expected = _phase_style("halt", policy)
+        # so phase_style("halt", policy) → "theme.phase.failed"
+        expected = phase_style("halt", policy)
         assert style == expected
         assert style == "theme.phase.failed"
 
     def test_no_policy_returns_failed_theme_default(self) -> None:
-        style = _style_for_terminal_failure(None)
+        style = style_for_terminal_failure(None)
         assert style == "theme.phase.failed"
 
 

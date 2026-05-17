@@ -225,7 +225,7 @@ def test_run_pipeline_returns_2_on_unknown_agent_in_chain(
         mp.setattr(run_module, "resolve_workspace_scope", lambda: scope)
         mp.setattr(run_module, "load_config", lambda *args, **kwargs: config)
         mp.setattr(run_module, "load_policy", lambda *args, **kwargs: bundle)
-        mp.setattr(run_module._state, "run_func", _fail_if_runner_reached)
+        mp.setattr(run_module.state, "run_func", _fail_if_runner_reached)
         assert run_module.run_pipeline() == _EXIT_PREFLIGHT
 
 
@@ -316,5 +316,5 @@ def test_run_pipeline_returns_2_on_negative_max_retries(
                 PolicyValidationError("max_retries must be >= 0")
             ),
         )
-        mp.setattr(run_module._state, "run_func", _fail_if_runner_reached)
+        mp.setattr(run_module.state, "run_func", _fail_if_runner_reached)
         assert run_module.run_pipeline() == _EXIT_PREFLIGHT

@@ -41,41 +41,15 @@ from threading import Event
 from time import sleep
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
-if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
-
-try:
-    _fastmcp_module = import_module("mcp.server.fastmcp")
-    _tool_module = import_module("mcp.server.fastmcp.tools.base")
-    _FastMCP = cast("object", _fastmcp_module.FastMCP)
-    _Tool = cast("object", _tool_module.Tool)
-except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback tests
-    _FastMCP = cast("object | None", None)
-    _Tool = cast("object | None", None)
-
 from loguru import logger
 
 from ralph import __version__
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
-from ralph.mcp.multimodal.capabilities import (
-    UNKNOWN_IDENTITY,
-    MultimodalModelIdentity,
-    profile_from_payload,
-    resolve_capability_profile,
-)
-from ralph.mcp.multimodal.resources import MediaManifest, parse_media_uri
+from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
-from ralph.mcp.protocol.env import (
-    MCP_SESSION_ENV as SESSION_ENV,
-)
-from ralph.mcp.protocol.env import (
-    MCP_SESSION_FILE_ENV as SESSION_FILE_ENV,
-)
-from ralph.mcp.protocol.env import (
-    WORKER_ARTIFACT_DIR_ENV as WORKER_ARTIFACT_DIR,
-)
-from ralph.mcp.protocol.session import AgentSession, session_has_capability
+from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.server.runtime_session import FileBackedSession, session_from_env
 from ralph.mcp.tools.bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
@@ -86,11 +60,23 @@ from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine, Sequence
+    from collections.abc import Coroutine, Mapping, Sequence
 
     from mcp.server.fastmcp.tools.base import Tool as ToolClass
 
     from ralph.config.mcp_models import McpConfig
+
+try:
+    _fastmcp_module = import_module("mcp.server.fastmcp")
+    _tool_module = import_module("mcp.server.fastmcp.tools.base")
+    _FastMCP = cast("object", _fastmcp_module.FastMCP)
+    _Tool = cast("object", _tool_module.Tool)
+except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback tests
+    _FastMCP = cast("object | None", None)
+    _Tool = cast("object | None", None)
+
+FastMCP = _FastMCP
+Tool = _Tool
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -646,6 +632,9 @@ class _StandaloneHttpServer(_FallbackStandaloneServer):
     pass
 
 
+FallbackStandaloneServer = _FallbackStandaloneServer
+
+
 @dataclass(frozen=True)
 class McpServerExtras:
     """Optional DI parameters for building standalone MCP servers."""
@@ -676,7 +665,7 @@ def build_standalone_http_server(
         if _extras.mcp_config is not None
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
-    upstream_servers = _load_runtime_upstream_servers(mcp_cfg)
+    upstream_servers = load_runtime_upstream_servers(mcp_cfg)
     upstream_reg = _extras.upstream_registry or (
         UpstreamRegistry.build(upstream_servers, on_unreachable="warn_and_skip")
         if upstream_servers
@@ -702,179 +691,6 @@ def build_standalone_http_server(
     else:
         logger.info("MCP server started with {n} built-in tools", n=n_builtin)
     return _StandaloneHttpServer(host, port, McpServer(effective_session, workspace, registry))
-
-
-class FileBackedSession:
-    """Session view backed by a JSON file updated by the parent Ralph process."""
-
-    def __init__(
-        self,
-        path: Path,
-        *,
-        loader: Callable[[Path], dict[str, object]] | None = None,
-        session_id_factory: Callable[[], str] | None = None,
-        run_id_factory: Callable[[], str] | None = None,
-        env_getter: Callable[[str], str | None] | None = None,
-    ) -> None:
-        self._path = path
-        self._loader = loader or _load_session_payload
-        self._session_id_factory = session_id_factory or (
-            lambda: f"standalone-{uuid.uuid4().hex[:8]}"
-        )
-        self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
-        self._env_getter = env_getter if env_getter is not None else os.environ.get
-        self._media_manifest = MediaManifest()
-
-    def _load(self) -> dict[str, object]:
-        return self._loader(self._path)
-
-    @property
-    def session_id(self) -> str:
-        return cast("str", self._load().get("session_id", self._session_id_factory()))
-
-    @property
-    def run_id(self) -> str:
-        return cast("str", self._load().get("run_id", self._run_id_factory()))
-
-    @property
-    def drain(self) -> str:
-        return cast("str", self._load().get("drain", "standalone"))
-
-    @property
-    def capabilities(self) -> set[str]:
-        capabilities_value: object = self._load().get("capabilities", [])
-        if not isinstance(capabilities_value, list):
-            return set()
-        return set(cast("list[str]", capabilities_value))
-
-    @property
-    def worker_artifact_dir(self) -> Path | None:
-        """Return worker artifact dir from environment variable.
-
-        For parallel workers, the parent process sets WORKER_ARTIFACT_DIR
-        in the subprocess environment. This property reads that value so that
-        artifact submission can route to the correct per-worker namespace.
-        """
-        raw = self._env_getter(WORKER_ARTIFACT_DIR)
-        if raw is None:
-            return None
-        return Path(raw)
-
-    @property
-    def model_identity(self) -> object:
-        raw = self._load().get("model_identity")
-        if not isinstance(raw, dict):
-            return UNKNOWN_IDENTITY
-        provider = str(raw.get("provider", "unknown"))
-        model_id = raw.get("model_id")
-        transport = raw.get("transport")
-        return MultimodalModelIdentity(
-            provider=provider,
-            model_id=str(model_id) if model_id is not None else None,
-            transport=str(transport) if transport is not None else None,
-        )
-
-    @property
-    def capability_profile(self) -> object:
-        raw = self._load().get("capability_profile")
-        if isinstance(raw, dict):
-            return profile_from_payload(raw)
-        identity = self.model_identity
-        if not isinstance(identity, MultimodalModelIdentity):
-            return resolve_capability_profile(UNKNOWN_IDENTITY)
-        return resolve_capability_profile(identity)
-
-    @property
-    def media_manifest(self) -> object:
-        return self._media_manifest
-
-    def check_capability(self, capability: str) -> object:
-        return "approved" if session_has_capability(self.capabilities, capability) else "denied"
-
-    def is_parallel_worker(self) -> bool:
-        return False
-
-    def check_edit_area(self, _: str) -> object:
-        return "approved"
-
-
-def _load_session_payload(path: Path) -> dict[str, object]:
-    payload = cast("object", json.loads(path.read_text(encoding="utf-8")))
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} must encode an object")
-    return cast("dict[str, object]", payload)
-
-
-def session_from_env(
-    env: Mapping[str, str] | None = None,
-    *,
-    session_id_factory: Callable[[], str] | None = None,
-    run_id_factory: Callable[[], str] | None = None,
-) -> AgentSession | None:
-    """Load optional session metadata from the environment."""
-    env_map = os.environ if env is None else env
-    session_file = env_map.get(SESSION_FILE_ENV)
-    if session_file:
-        return cast(
-            "AgentSession",
-            FileBackedSession(
-                Path(session_file),
-                session_id_factory=session_id_factory,
-                run_id_factory=run_id_factory,
-            ),
-        )
-
-    raw = env_map.get(SESSION_ENV)
-    if not raw:
-        return None
-    payload = cast("object", json.loads(raw))
-    if not isinstance(payload, dict):
-        raise ValueError(f"{SESSION_ENV} must encode an object")
-
-    capabilities_value: object = payload.get("capabilities", [])
-    capabilities = (
-        set(cast("list[str]", capabilities_value))
-        if isinstance(capabilities_value, list)
-        else set()
-    )
-    raw_identity = payload.get("model_identity")
-    if isinstance(raw_identity, dict):
-        provider = str(raw_identity.get("provider", "unknown"))
-        model_id_raw = raw_identity.get("model_id")
-        transport_raw = raw_identity.get("transport")
-        model_identity = MultimodalModelIdentity(
-            provider=provider,
-            model_id=str(model_id_raw) if model_id_raw is not None else None,
-            transport=str(transport_raw) if transport_raw is not None else None,
-        )
-    else:
-        model_identity = UNKNOWN_IDENTITY
-    raw_profile = payload.get("capability_profile")
-    stored_profile = profile_from_payload(raw_profile) if isinstance(raw_profile, dict) else None
-    if stored_profile is None and model_identity.is_known():
-        stored_profile = resolve_capability_profile(model_identity)
-    return AgentSession(
-        session_id=cast(
-            "str",
-            payload.get(
-                "session_id",
-                session_id_factory()
-                if session_id_factory is not None
-                else f"standalone-{uuid.uuid4().hex[:8]}",
-            ),
-        ),
-        run_id=cast(
-            "str",
-            payload.get(
-                "run_id",
-                run_id_factory() if run_id_factory is not None else str(uuid.uuid4()),
-            ),
-        ),
-        drain=cast("str", payload.get("drain", "standalone")),
-        capabilities=capabilities,
-        model_identity=model_identity,
-        stored_capability_profile=stored_profile,
-    )
 
 
 def _all_capability_values() -> set[str]:
@@ -935,7 +751,7 @@ def _build_tool_handler(registry: ToolBridge, definition: ToolDefinition) -> Too
 
 
 def _create_tool(registry: ToolBridge, definition: ToolDefinition) -> ToolBuilderLike:
-    tool_factory = cast("ToolFactoryLike", _Tool)
+    tool_factory = cast("ToolFactoryLike", Tool)
     tool = tool_factory.from_function(
         _build_tool_handler(registry, definition),
         name=definition.name,
@@ -952,10 +768,11 @@ def build_fastmcp_server(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     extras: McpServerExtras | None = None,
+    session: AgentSession | None = None,
 ) -> FastMcpServerLike:
     """Build a standalone FastMCP server exposing Ralph tools over HTTP."""
     _extras = extras or McpServerExtras()
-    effective_session = _extras.session or AgentSession(
+    effective_session = session or _extras.session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
         drain="standalone",
@@ -967,7 +784,7 @@ def build_fastmcp_server(
         if _extras.mcp_config is not None
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
-    upstream_servers = _load_runtime_upstream_servers(mcp_cfg)
+    upstream_servers = load_runtime_upstream_servers(mcp_cfg)
     upstream_reg = _extras.upstream_registry or (
         UpstreamRegistry.build(upstream_servers, on_unreachable="warn_and_skip")
         if upstream_servers
@@ -979,10 +796,10 @@ def build_fastmcp_server(
         upstream_registry=upstream_reg,
         mcp_config=mcp_cfg,
     )
-    if _FastMCP is None or _Tool is None:
+    if FastMCP is None or Tool is None:
         return cast(
             "FastMcpServerLike",
-            _FallbackStandaloneServer(
+            FallbackStandaloneServer(
                 host, port, McpServer(effective_session, workspace, registry)
             ),
         )
@@ -990,7 +807,7 @@ def build_fastmcp_server(
         "list[ToolClass]",
         [_create_tool(registry, definition) for definition in registry.list_definitions()],
     )
-    fastmcp_constructor = cast("FastMcpConstructorLike", _FastMCP)
+    fastmcp_constructor = cast("FastMcpConstructorLike", FastMCP)
     return fastmcp_constructor(
         "ralph-mcp",
         host=host,
@@ -1018,10 +835,11 @@ def _mcp_toml_upstream_servers(mcp_config: McpConfig) -> tuple[UpstreamMcpServer
     )
 
 
-def _load_runtime_upstream_servers(
+def load_runtime_upstream_servers(
     mcp_config: McpConfig,
     env: Mapping[str, str] | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
+    """Merge upstream MCP servers from the environment variable and mcp.toml."""
     env_map = os.environ if env is None else env
     raw_upstream = env_map.get(UPSTREAM_MCP_CONFIG_ENV)
     env_servers = load_upstream_mcp_servers(raw_upstream)
@@ -1082,12 +900,11 @@ __all__ = [
     "DEFAULT_MOUNT_PATH",
     "DEFAULT_PORT",
     "DEFAULT_TRANSPORT",
-    "SESSION_ENV",
-    "SESSION_FILE_ENV",
     "FileBackedSession",
     "McpServerExtras",
     "build_fastmcp_server",
     "build_standalone_http_server",
+    "load_runtime_upstream_servers",
     "main",
     "parse_args",
     "run_standalone_server",

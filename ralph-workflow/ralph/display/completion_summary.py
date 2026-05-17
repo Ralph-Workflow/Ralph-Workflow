@@ -11,7 +11,7 @@ from rich.console import Group
 from rich.rule import Rule
 from rich.text import Text
 
-from ralph.display.phase_banner import _phase_style
+from ralph.display.phase_banner import phase_style
 from ralph.display.phase_status import (
     format_dev_cycle,
     format_elapsed_seconds,
@@ -245,7 +245,7 @@ def _iteration_context_lines(snapshot: PipelineSnapshot) -> list[str]:
     return []
 
 
-def _style_for_role(
+def style_for_role(
     role: str,
     pipeline_policy: PipelinePolicy | None,
 ) -> str:
@@ -253,22 +253,22 @@ def _style_for_role(
     if pipeline_policy is not None:
         for phase_name, phase_def in pipeline_policy.phases.items():
             if phase_def.role == role:
-                return _phase_style(phase_name, pipeline_policy)
+                return phase_style(phase_name, pipeline_policy)
     return "theme.text.muted"
 
 
-def _style_for_terminal_failure(
+def style_for_terminal_failure(
     pipeline_policy: PipelinePolicy | None,
 ) -> str:
     """Return the style for the terminal failure phase, or the failed theme default."""
     if pipeline_policy is not None:
         for phase_name, phase_def in pipeline_policy.phases.items():
             if phase_def.role == "terminal" and phase_def.terminal_outcome == "failure":
-                return _phase_style(phase_name, pipeline_policy)
+                return phase_style(phase_name, pipeline_policy)
     return "theme.phase.failed"
 
 
-def _make_badge_text(badge: str, rest: str) -> Text:
+def make_badge_text(badge: str, rest: str) -> Text:
     """Build a Text object with a themed badge label followed by muted rest text."""
     theme_key = _BADGE_THEME_KEYS.get(badge, "theme.level.info")
     t = Text("  ")
@@ -392,7 +392,7 @@ def _compact_decisions_items(snapshot: PipelineSnapshot) -> list[Text]:
         badge = _DECISION_LABELS.get(decision.lower(), "INFO")
         reason_part = f": {decision}" + (f" — {reason}" if reason else "")
         phase_title = phase.replace("_", " ").title()
-        items.append(_make_badge_text(badge, f" DECISIONS: {phase_title}{reason_part}"))
+        items.append(make_badge_text(badge, f" DECISIONS: {phase_title}{reason_part}"))
     return items
 
 
@@ -444,7 +444,7 @@ def _wide_plan_section(
         return []
     if not (snapshot.plan_summary or snapshot.plan_scope_items):
         return []
-    plan_style = _style_for_role("execution", pipeline_policy)
+    plan_style = style_for_role("execution", pipeline_policy)
     items: list[Rule | Text] = [Rule("Plan", style=plan_style)]
     if snapshot.plan_summary:
         items.append(Text(f"  {snapshot.plan_summary}"))
@@ -463,7 +463,7 @@ def _wide_decisions_section(
             badge = _DECISION_LABELS.get(decision.lower(), "INFO")
             reason_part = f": {decision}" + (f" — {reason}" if reason else "")
             items.append(
-                _make_badge_text(badge, f" {phase.replace('_', ' ').title()}{reason_part}")
+                make_badge_text(badge, f" {phase.replace('_', ' ').title()}{reason_part}")
             )
     else:
         items.append(Text("  (none recorded)"))
@@ -478,9 +478,9 @@ def _wide_review_section(
     if review_info is None:
         return []
     badge, issue_count = review_info
-    review_style = _style_for_role("review", pipeline_policy)
+    review_style = style_for_role("review", pipeline_policy)
     count_suffix = f" ({issue_count} issue(s))" if issue_count > 0 else " (clean)"
-    return [Rule("Review", style=review_style), _make_badge_text(badge, f"{count_suffix}")]
+    return [Rule("Review", style=review_style), make_badge_text(badge, f"{count_suffix}")]
 
 
 def _wide_analysis_section(
@@ -491,7 +491,7 @@ def _wide_analysis_section(
     analysis_decisions = _analysis_decision_summary(snapshot)
     if not analysis_decisions:
         return []
-    analysis_style = _style_for_role("analysis", pipeline_policy) if pipeline_policy else style
+    analysis_style = style_for_role("analysis", pipeline_policy) if pipeline_policy else style
     items: list[Rule | Text] = [Rule("Analysis Decisions", style=analysis_style)]
     for phase, decision, reason in analysis_decisions:
         reason_part = f": {decision}" + (f" — {reason}" if reason else "")
@@ -502,7 +502,7 @@ def _wide_analysis_section(
             decision_badge = "WARN"
         else:
             decision_badge = "INFO"
-        items.append(_make_badge_text(decision_badge, f" {phase_title}{reason_part}"))
+        items.append(make_badge_text(decision_badge, f" {phase_title}{reason_part}"))
     return items
 
 
@@ -532,7 +532,7 @@ def _wide_commit_section(
     commit_lines = _commit_message_lines(workspace_root)
     if not commit_lines and not pr_url:
         return []
-    commit_style = _style_for_role("commit", pipeline_policy)
+    commit_style = style_for_role("commit", pipeline_policy)
     items: list[Rule | Text] = [Rule("Commit", style=commit_style)]
     items.extend(Text(f"  {ln}") for ln in commit_lines)
     if pr_url:
@@ -548,10 +548,10 @@ def _wide_tail_section(
 ) -> list[Rule | Text]:
     items: list[Rule | Text] = []
     if opts.include_context_sections and snapshot.plan_risks:
-        items.append(Rule("Open Risks", style=_style_for_role("fix", pipeline_policy)))
+        items.append(Rule("Open Risks", style=style_for_role("fix", pipeline_policy)))
         items.extend(Text(f"  - {risk}") for risk in snapshot.plan_risks)
     if snapshot.last_error:
-        items.append(Rule("Error", style=_style_for_terminal_failure(pipeline_policy)))
+        items.append(Rule("Error", style=style_for_terminal_failure(pipeline_policy)))
         items.append(Text(f"  {snapshot.last_error}"))
         diag = _children_persist_diagnostic_line(snapshot.last_error)
         if diag:
@@ -575,8 +575,8 @@ def _render_compact_group(
     """Compact single-column layout: section tags replace Rule headers."""
     failed = snapshot.is_terminal_failure
     style = (
-        _style_for_terminal_failure(opts.pipeline_policy) if failed
-        else _style_for_role("terminal", opts.pipeline_policy)
+        style_for_terminal_failure(opts.pipeline_policy) if failed
+        else style_for_role("terminal", opts.pipeline_policy)
     )
     title = "Pipeline Failed" if failed else "Pipeline Complete"
     title_with_elapsed = (
@@ -660,8 +660,8 @@ def render_completion_summary_group(
 
     failed = snapshot.is_terminal_failure
     style = (
-        _style_for_terminal_failure(opts.pipeline_policy) if failed
-        else _style_for_role("terminal", opts.pipeline_policy)
+        style_for_terminal_failure(opts.pipeline_policy) if failed
+        else style_for_role("terminal", opts.pipeline_policy)
     )
     title = "Pipeline Failed" if failed else "Pipeline Complete"
 
@@ -727,6 +727,9 @@ def emit_completion_summary(
 __all__ = [
     "CompletionSummaryOptions",
     "emit_completion_summary",
+    "make_badge_text",
     "render_completion_summary",
     "render_completion_summary_group",
+    "style_for_role",
+    "style_for_terminal_failure",
 ]

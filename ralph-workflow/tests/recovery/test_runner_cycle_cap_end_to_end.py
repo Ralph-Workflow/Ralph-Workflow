@@ -77,18 +77,18 @@ def _common_monkeypatches(
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
-    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
-    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: bundle)
     monkeypatch.setattr(
         runner_module,
         "AgentRegistry",
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", save_fn if save_fn is not None else MagicMock())
-    monkeypatch.setattr(runner_module, "_execute_effect_with_optional_display", fake_execute)
+    monkeypatch.setattr(runner_module, "execute_effect_with_optional_display", fake_execute)
 
 
 def test_runner_exits_via_cycle_cap_not_premature_termination(

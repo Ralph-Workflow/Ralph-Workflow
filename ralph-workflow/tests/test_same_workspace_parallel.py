@@ -24,9 +24,9 @@ from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.coordinator import (
-    _prepare_executor,
-    _WorkerContext,
-    _WorkerFailureError,
+    WorkerContext,
+    WorkerFailureError,
+    prepare_executor,
 )
 from ralph.pipeline.parallel.mode import ParallelExecutionMode, SameWorkspaceContext
 from ralph.pipeline.work_units import (
@@ -190,7 +190,7 @@ class TestPrepareExecutorSameWorkspace:
         mock_executor = MagicMock()
         ctx = _make_same_workspace_context(tmp_path, executor_command=None)
 
-        _executor, bundle, worker_namespace = _prepare_executor(unit, mock_executor, ctx)
+        _executor, bundle, worker_namespace = prepare_executor(unit, mock_executor, ctx)
 
         # injected factory must be used, not a new one
         assert ctx.mcp_factory.build.called
@@ -202,7 +202,7 @@ class TestPrepareExecutorSameWorkspace:
         mock_executor = MagicMock()
         ctx = _make_same_workspace_context(tmp_path, executor_command=None)
 
-        _prepare_executor(unit, mock_executor, ctx)
+        prepare_executor(unit, mock_executor, ctx)
 
         namespace = ctx.worker_namespace_root / "unit-a"
         for subdir in ("artifacts", "tmp", "logs", "handoffs"):
@@ -213,7 +213,7 @@ class TestPrepareExecutorSameWorkspace:
         mock_executor = MagicMock()
         ctx = _make_same_workspace_context(tmp_path, executor_command=None)
 
-        _executor, bundle, worker_namespace = _prepare_executor(unit, mock_executor, ctx)
+        _executor, bundle, worker_namespace = prepare_executor(unit, mock_executor, ctx)
 
         assert bundle is not None
         assert bundle.session.worker_artifact_dir == worker_namespace / "artifacts"
@@ -222,7 +222,7 @@ class TestPrepareExecutorSameWorkspace:
         unit = _make_unit("unit-a")
         mock_executor = MagicMock()
 
-        returned_executor, bundle, worker_namespace = _prepare_executor(unit, mock_executor, None)
+        returned_executor, bundle, worker_namespace = prepare_executor(unit, mock_executor, None)
 
         assert returned_executor is mock_executor
         assert bundle is None
@@ -247,7 +247,7 @@ class TestPrepareExecutorSameWorkspace:
             session_contract=contract,
         )
 
-        _executor, bundle, _worker_namespace = _prepare_executor(unit, mock_executor, ctx)
+        _executor, bundle, _worker_namespace = prepare_executor(unit, mock_executor, ctx)
 
         assert bundle is not None
         assert bundle.session.drain == "development"
@@ -263,7 +263,7 @@ class TestPrepareExecutorSameWorkspace:
         mock_executor = MagicMock()
         ctx = _make_same_workspace_context(tmp_path, executor_command=None)
 
-        _executor, bundle, _worker_namespace = _prepare_executor(unit, mock_executor, ctx)
+        _executor, bundle, _worker_namespace = prepare_executor(unit, mock_executor, ctx)
 
         assert bundle is not None
         assert bundle.session.model_identity.provider == "unknown"
@@ -276,8 +276,8 @@ class TestWorkerArtifactIsolation:
         mock_executor = MagicMock()
         ctx_a = _make_same_workspace_context(tmp_path, executor_command=None)
 
-        _prepare_executor(unit_a, mock_executor, ctx_a)
-        _prepare_executor(unit_b, mock_executor, ctx_a)
+        prepare_executor(unit_a, mock_executor, ctx_a)
+        prepare_executor(unit_b, mock_executor, ctx_a)
 
         ns_root = ctx_a.worker_namespace_root
         assert (ns_root / "unit-a" / "artifacts").is_dir()
@@ -301,9 +301,9 @@ class TestNoGitStatusFallback:
         mock_result.exit_code = 0
         mock_result.unit_id = "unit-a"
 
-        with pytest.raises(_WorkerFailureError, match="no worker-local artifact evidence"):
+        with pytest.raises(WorkerFailureError, match="no worker-local artifact evidence"):
             if not list_artifacts(artifact_dir):
-                raise _WorkerFailureError(
+                raise WorkerFailureError(
                     unit_id=unit.unit_id,
                     exit_code=mock_result.exit_code,
                     error=(
@@ -320,7 +320,7 @@ class TestNoGitStatusFallback:
 
         unit = _make_unit("unit-a", ["src/a"])
         ctx = _make_same_workspace_context(tmp_path, executor_command=None)
-        worker_ctx = _WorkerContext(same_workspace=ctx)
+        worker_ctx = WorkerContext(same_workspace=ctx)
 
         class _SilentDisplay(ParallelDisplay):
             def __init__(self) -> None:
@@ -563,8 +563,8 @@ class TestConcurrentWorkerArtifactIsolation:
         mock_executor = MagicMock()
         ctx = _make_same_workspace_context(tmp_path, executor_command=None)
 
-        _, _, ns_a = _prepare_executor(unit_a, mock_executor, ctx)
-        _, _, ns_b = _prepare_executor(unit_b, mock_executor, ctx)
+        _, _, ns_a = prepare_executor(unit_a, mock_executor, ctx)
+        _, _, ns_b = prepare_executor(unit_b, mock_executor, ctx)
 
         assert ns_a is not None
         assert ns_b is not None

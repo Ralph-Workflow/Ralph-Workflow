@@ -8,7 +8,7 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.phase_banner import (
-    _phase_style,
+    phase_style,
     show_phase_transition,
 )
 from ralph.display.theme import RALPH_THEME
@@ -106,28 +106,28 @@ def _console() -> Console:
 class TestPhaseStyleRoleOnly:
     def test_renamed_execution_phase_gets_execution_style(self) -> None:
         policy = _make_execution_to_analysis_policy()
-        style = _phase_style("design", policy)
+        style = phase_style("design", policy)
         assert style == "theme.phase.development"
 
     def test_renamed_commit_phase_gets_commit_style(self) -> None:
         policy = _make_commit_policy()
-        style = _phase_style("sign_off", policy)
+        style = phase_style("sign_off", policy)
         assert style == "theme.phase.commit"
 
     def test_no_policy_no_canonical_name_lookup(self) -> None:
         # Without policy, canonical phase names are NOT recognized — only role strings are.
         # 'planning' is not a role, so it returns the muted default.
-        style = _phase_style("planning")
+        style = phase_style("planning")
         assert style == "theme.text.muted"
 
     def test_renamed_terminal_failure_gets_failed_style(self) -> None:
         policy = _make_execution_to_analysis_policy()
-        style = _phase_style("failed_terminal", policy)
+        style = phase_style("failed_terminal", policy)
         assert style == "theme.phase.failed"
 
     def test_renamed_terminal_success_gets_complete_style(self) -> None:
         policy = _make_execution_to_analysis_policy()
-        style = _phase_style("done", policy)
+        style = phase_style("done", policy)
         assert style == "theme.phase.complete"
 
 

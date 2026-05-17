@@ -336,7 +336,7 @@ _DEFAULT_AGENTS_POLICY_CACHE: list[AgentsPolicy] = []
 def _cached_default_agents_policy() -> AgentsPolicy:
     if not _DEFAULT_AGENTS_POLICY_CACHE:
         _DEFAULT_AGENTS_POLICY_CACHE.append(
-            _validate_agents(_load_toml(_default_dir() / "agents.toml"))
+            _validate_agents(_load_toml(default_dir() / "agents.toml"))
         )
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
 
@@ -394,8 +394,8 @@ def _load_policy_from_paths(
     global_pipeline_path, global_artifacts_path = (
         global_policy_paths if global_policy_paths is not None else (None, None)
     )
-    default_dir = _default_dir()
-    default_pipeline_data = _load_toml(default_dir / "pipeline.toml")
+    default_policy_dir = default_dir()
+    default_pipeline_data = _load_toml(default_policy_dir / "pipeline.toml")
     local_pipeline_data = _load_toml(pipeline_path)
     if global_pipeline_path is None:
         pipeline_data = local_pipeline_data or default_pipeline_data
@@ -405,7 +405,7 @@ def _load_policy_from_paths(
         if local_pipeline_data:
             pipeline_data = _merge_mapping_defaults(pipeline_data, local_pipeline_data)
 
-    default_artifacts_data = _load_toml(default_dir / "artifacts.toml")
+    default_artifacts_data = _load_toml(default_policy_dir / "artifacts.toml")
     local_artifacts_data = _load_toml(artifacts_path)
     if global_artifacts_path is None:
         if local_artifacts_data:
@@ -487,7 +487,7 @@ def load_policy_for_workspace_scope(
     )
 
 
-def _default_dir() -> Path:
+def default_dir() -> Path:
     """Return the path to the bundled default policy files."""
     return Path(ralph.policy.__file__).parent / "defaults"
 

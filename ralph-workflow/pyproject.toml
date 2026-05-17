@@ -134,11 +134,18 @@ select = [
   "PGH",
 ]
 
+[tool.ruff.lint.pylint]
+# CLI entry-point functions (e.g., typer commands) necessarily have one parameter per flag.
+# The ruff default of 5 is too low for production CLI functions.
+max-args = 10
+
 [tool.ruff.lint.per-file-ignores]
 
 # Test magic-value comparisons are explicit and clear in assertion context.
 # Test helper functions legitimately need many parameters for fixture composition.
 "tests/**" = ["PLR2004", "PLR0913", "PLR0912", "PLR0915", "PLR0911"]
+# CLI entry-point functions must expose one parameter per flag; this is inherent to typer's API.
+"ralph/cli/main.py" = ["PLR0913"]
 
 [tool.ruff.format]
 quote-style = "double"

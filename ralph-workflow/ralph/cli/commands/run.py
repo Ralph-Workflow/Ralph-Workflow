@@ -378,7 +378,7 @@ def _run_preflight_checks(
     if request.policy_bundle is not None:
         loaded_policy_bundle = cast("PolicyBundle", request.policy_bundle)
         try:
-            _validate_loaded_policy_bundle(loaded_policy_bundle)
+            validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:
             console.print(_preflight_error_text(e.message), soft_wrap=True)
             return _EXIT_PREFLIGHT
@@ -395,7 +395,7 @@ def _run_preflight_checks(
     return _EXIT_SUCCESS
 
 
-def _print_dry_run(
+def print_dry_run(
     initial_state: PipelineState | None,
     config: UnifiedConfig,
     policy_bundle: PolicyBundle | None,
@@ -566,12 +566,13 @@ def run_pipeline(
         ),
         display_context=ctx,
     )
+
     if preflight_result != _EXIT_SUCCESS:
         return preflight_result
 
     # Phase 3: Handle dry-run
     if effective_request.dry_run:
-        _print_dry_run(
+        print_dry_run(
             load_result.initial_state,
             load_result.config,
             load_result.policy_bundle,
@@ -590,3 +591,8 @@ def run_pipeline(
         ),
         display_context=ctx,
     )
+
+
+validate_loaded_policy_bundle = _validate_loaded_policy_bundle
+state = _state
+invalidate_pipeline_state_if_prompt_changed = _invalidate_pipeline_state_if_prompt_changed

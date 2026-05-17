@@ -97,16 +97,16 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
             )
 
         runner_module.resolve_workspace_scope = lambda: WorkspaceScope(workspace)
-        runner_module._write_start_commit_if_absent = lambda _: None
-        runner_module._validate_custom_mcp_servers = lambda _: 0
+        runner_module.write_start_commit_if_absent = lambda _: None
+        runner_module.validate_custom_mcp_servers = lambda _: 0
         mock_bundle = MagicMock()
         mock_bundle.pipeline.terminal_phase = "complete"
         runner_module.load_policy_or_die = lambda *args, **kwargs: mock_bundle
         runner_module.AgentRegistry = MagicMock()
-        runner_module._call_determine_effect_from_policy = stub_determine
-        runner_module._execute_agent_effect = fake_execute_agent_effect
-        runner_module._materialize_agent_prompt_if_needed = lambda *args, **kwargs: None
-        runner_module._phase_event_after_agent_run = lambda **kwargs: 0
+        runner_module.call_determine_effect_from_policy = stub_determine
+        runner_module.execute_agent_effect = fake_execute_agent_effect
+        runner_module.materialize_agent_prompt_if_needed = lambda *args, **kwargs: None
+        runner_module.phase_event_after_agent_run = lambda **kwargs: 0
         runner_module.ckpt.save = lambda state: None
 
         initial_state = MagicMock()

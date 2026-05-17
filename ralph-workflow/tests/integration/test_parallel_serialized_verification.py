@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 _MAX_AGENT_RETRIES = 3
 
 
-def _legacy_display() -> runner_module._LegacyConsoleDisplay:
-    return runner_module._LegacyConsoleDisplay(make_display_context())
+def _legacy_display() -> runner_module.LegacyConsoleDisplay:
+    return runner_module.LegacyConsoleDisplay(make_display_context())
 
 
 def _make_work_unit(unit_id: str) -> WorkUnit:
@@ -117,7 +117,7 @@ class TestSerializedPostFanoutVerification:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
@@ -183,7 +183,7 @@ class TestSerializedPostFanoutVerification:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
@@ -247,7 +247,7 @@ class TestSerializedPostFanoutVerification:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
@@ -269,7 +269,7 @@ class TestSerializedPostFanoutVerification:
         state = PipelineState(phase="development", work_units=(unit_a, unit_b))
         policy_bundle = _make_policy_bundle(max_workers=2)
 
-        effect = runner_module._determine_effect_from_policy(state, policy_bundle)
+        effect = runner_module.determine_effect_from_policy(state, policy_bundle)
 
         assert isinstance(effect, FanOutEffect)
         assert effect.run_post_fanout_verification is True, (
@@ -332,7 +332,7 @@ class TestSerializedPostFanoutVerification:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
@@ -409,7 +409,7 @@ class TestSerializedPostFanoutVerification:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        final_state = runner_module._execute_fan_out_sync(
+        final_state = runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
@@ -495,7 +495,7 @@ class TestSerializedPostFanoutVerification:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),

@@ -389,8 +389,17 @@ def make_async_process_factory(
 ) -> _AsyncFactoryCallable:
     """Create an async process factory that generates FakeAsyncProcess with sequential PIDs."""
 
-    async def factory(command: Sequence[str], opts: SpawnOptions) -> FakeAsyncProcess:
-        del command, opts
+    async def factory(
+        command: Sequence[str],
+        *,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        stdin: int | None,
+        stdout: int | None,
+        stderr: int | None,
+        start_new_session: bool,
+    ) -> FakeAsyncProcess:
+        del command, cwd, env, stdin, stdout, stderr, start_new_session
         return FakeAsyncProcess(
             pid=next(pids),
             state=ProcessState(returncode=returncode),

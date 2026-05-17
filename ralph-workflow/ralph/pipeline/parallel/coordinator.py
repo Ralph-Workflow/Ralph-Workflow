@@ -51,14 +51,18 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class _WorkerLog:
+class WorkerLog:
+    """Paths and identifiers for per-worker log files."""
+
     log_dir: Path
     run_id: str
 
 
 @dataclass(frozen=True)
-class _WorkerContext:
-    log: _WorkerLog | None = None
+class WorkerContext:
+    """Optional runtime context injected into each parallel worker."""
+
+    log: WorkerLog | None = None
     same_workspace: SameWorkspaceContext | None = None
     activity_router: ActivityRouter | None = None
 
@@ -74,7 +78,7 @@ class ParallelCoordinator:
         effect: FanOutEffect,
         executor: AgentExecutor,
         display: ParallelDisplay,
-        ctx: _WorkerContext | None = None,
+        ctx: WorkerContext | None = None,
     ) -> list[Event]:
         """Execute parallel work units while respecting DAG dependencies and worker caps."""
         # Prefer the display's activity_router when the coordinator has none.
@@ -83,7 +87,7 @@ class ParallelCoordinator:
             effective_router = display.activity_router
 
         worker_ctx = (
-            _WorkerContext(activity_router=effective_router)
+            WorkerContext(activity_router=effective_router)
             if ctx is None
             else replace(ctx, activity_router=effective_router)
         )
@@ -190,6 +194,9 @@ class _WorkerFailureError(Exception):
         self.error = error
 
 
+WorkerFailureError = _WorkerFailureError
+
+
 def _flatten_worker_failures(
     exceptions: tuple[BaseException, ...],
 ) -> tuple[list[_WorkerFailureError], list[Exception]]:
@@ -286,6 +293,9 @@ def _prepare_executor(
     )
 
 
+prepare_executor = _prepare_executor
+
+
 def _blocked_dependency_error(unit: WorkUnit, failed_unit_ids: set[str]) -> str | None:
     blocked_by = sorted(dep for dep in unit.dependencies if dep in failed_unit_ids)
     if not blocked_by:
@@ -371,7 +381,7 @@ async def _run_worker(
     executor: AgentExecutor,
     display: ParallelDisplay,
     completion_queue: asyncio.Queue[WorkerResult],
-    ctx: _WorkerContext | None = None,
+    ctx: WorkerContext | None = None,
 ) -> None:
     log = ctx.log if ctx is not None else None
     same_workspace = ctx.same_workspace if ctx is not None else None
@@ -462,7 +472,7 @@ async def run_fan_out(
     effect: FanOutEffect,
     executor: AgentExecutor,
     display: ParallelDisplay,
-    ctx: _WorkerContext | None = None,
+    ctx: WorkerContext | None = None,
     activity_router: ActivityRouter | None = None,
 ) -> list[Event]:
     """Execute a fan-out effect using a fresh ParallelCoordinator instance."""
@@ -470,4 +480,11 @@ async def run_fan_out(
     return await coordinator.run_fan_out(effect, executor, display, ctx)
 
 
-__all__ = ["ParallelCoordinator", "run_fan_out"]
+__all__ = [
+    "ParallelCoordinator",
+    "WorkerContext",
+    "WorkerFailureError",
+    "WorkerLog",
+    "prepare_executor",
+    "run_fan_out",
+]

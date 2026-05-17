@@ -3,33 +3,33 @@
 from __future__ import annotations
 
 from ralph.cli import options as options_module
-from ralph.cli.main import _resolve_effective_verbosity
+from ralph.cli.main import resolve_effective_verbosity
 from ralph.config.enums import Verbosity
 from ralph.pipeline.phase_rendering import normalize_verbosity, verbosity_rank
 
 
 def test_quiet_flag_forces_quiet_regardless_of_verbosity() -> None:
     assert (
-        _resolve_effective_verbosity(Verbosity.VERBOSE, quiet=True, debug=False) == Verbosity.QUIET
+        resolve_effective_verbosity(Verbosity.VERBOSE, quiet=True, debug=False) == Verbosity.QUIET
     )
 
 
 def test_debug_flag_forces_debug_regardless_of_verbosity() -> None:
     assert (
-        _resolve_effective_verbosity(Verbosity.VERBOSE, quiet=False, debug=True) == Verbosity.DEBUG
+        resolve_effective_verbosity(Verbosity.VERBOSE, quiet=False, debug=True) == Verbosity.DEBUG
     )
 
 
 def test_default_verbosity_is_verbose() -> None:
     assert (
-        _resolve_effective_verbosity(Verbosity.VERBOSE, quiet=False, debug=False)
+        resolve_effective_verbosity(Verbosity.VERBOSE, quiet=False, debug=False)
         == Verbosity.VERBOSE
     )
 
 
 def test_legacy_normal_is_mapped_to_verbose() -> None:
     assert (
-        _resolve_effective_verbosity(Verbosity.NORMAL, quiet=False, debug=False)
+        resolve_effective_verbosity(Verbosity.NORMAL, quiet=False, debug=False)
         == Verbosity.VERBOSE
     )
 
@@ -38,12 +38,12 @@ def test_quiet_wins_over_debug() -> None:
     # --quiet takes precedence over --debug so silent wrapper scripts
     # remain silent when both are passed.
     assert (
-        _resolve_effective_verbosity(Verbosity.VERBOSE, quiet=True, debug=True) == Verbosity.QUIET
+        resolve_effective_verbosity(Verbosity.VERBOSE, quiet=True, debug=True) == Verbosity.QUIET
     )
 
 
 def test_explicit_full_is_preserved() -> None:
-    assert _resolve_effective_verbosity(Verbosity.FULL, quiet=False, debug=False) == Verbosity.FULL
+    assert resolve_effective_verbosity(Verbosity.FULL, quiet=False, debug=False) == Verbosity.FULL
 
 
 def test_dead_verbosity_option_class_is_not_part_of_cli_surface() -> None:

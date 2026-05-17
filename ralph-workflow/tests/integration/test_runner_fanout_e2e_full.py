@@ -33,8 +33,8 @@ if TYPE_CHECKING:
     import pytest
 
 
-def _legacy_display() -> runner_module._LegacyConsoleDisplay:
-    return runner_module._LegacyConsoleDisplay(make_display_context())
+def _legacy_display() -> runner_module.LegacyConsoleDisplay:
+    return runner_module.LegacyConsoleDisplay(make_display_context())
 
 
 def _make_work_unit(uid: str) -> WorkUnit:
@@ -138,7 +138,7 @@ class TestFanoutVerificationAndHandoff:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
@@ -197,7 +197,7 @@ class TestFanoutVerificationAndHandoff:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
@@ -247,7 +247,7 @@ class TestFanoutVerificationAndHandoff:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
