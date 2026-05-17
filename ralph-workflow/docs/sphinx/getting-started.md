@@ -4,9 +4,40 @@ New to Ralph Workflow? This page takes you from install to your first unattended
 
 ## What Ralph Workflow does
 
-Ralph Workflow is a repo-native orchestration CLI for bigger AI coding tasks. You describe the task in `PROMPT.md`, Ralph Workflow runs planning, coding, and agent review, and you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
+Ralph Workflow is a **free and open-source** repo-native orchestration CLI for bigger AI coding tasks. You describe the task in `PROMPT.md`, Ralph Workflow runs planning, coding, and agent review, and you come back to completed work, logs, and artifacts you can inspect in your normal git workflow.
+
+It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
+
+What makes it different from a normal AI coding chat is the handoff: Ralph Workflow is built to leave you with a **reviewable result** in your repo instead of a long transcript and a claim that the task is done.
+
+Why use it now? Because you can try it with the agents you already trust on your own machine, on one real backlog task, and decide tomorrow whether the result is something you would actually merge.
 
 It works well for substantial work in **existing repositories** as well as new ones: feature work, refactors, test expansion, documentation passes, and similar multi-file tasks.
+
+## Choose the right first task
+
+Do not start with a vague demo.
+
+Start with one real backlog task that is:
+
+- small enough to judge in one sitting
+- clear enough that success is easy to define
+- cheap to roll back if the run misses
+- real enough that you already want it done
+
+Good first tasks:
+
+- a bounded feature slice
+- a narrow refactor with tests
+- a cleanup task with obvious verification
+- repetitive implementation work where `done` is easy to judge
+
+Bad first tasks:
+
+- vague product exploration
+- risky production surgery
+- broad multi-part work with no clear stopping point
+- anything where nobody agrees what success looks like
 
 ## Before you start
 
@@ -79,6 +110,13 @@ Add a /health endpoint that returns HTTP 200 with {"status": "ok"}.
 - A new test covers the endpoint
 ```
 
+A strong first spec says:
+
+- what should change
+- what should stay untouched
+- what `done` looks like
+- what checks prove it worked
+
 **Important:** remove the `<!-- ralph:starter-prompt ... -->` comment at the top. Ralph Workflow refuses to run while that sentinel is still present so you do not accidentally launch the placeholder task.
 
 ### 4. Verify the environment
@@ -99,6 +137,19 @@ ralph
 ```
 
 Ralph Workflow shows progress inline while it runs. When it finishes, you come back to completed work, logs, and artifacts you can inspect before deciding what to do next.
+
+## How to judge the result honestly
+
+Do not ask whether the agent looked smart.
+
+Ask:
+
+- does the diff match the task?
+- are the changes small enough to review?
+- did the checks really run?
+- **would I merge this?**
+
+That is the real product test.
 
 ## What happens during a run
 
@@ -144,3 +195,5 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 - [CLI Reference](cli.md) — commands and flags
 - [Configuration](configuration.md) — config files and precedence
 - [Troubleshooting](troubleshooting.md) — common first-run problems
+
+If your first run gives you a clean diff, real checks, and a result you would merge, hand Ralph Workflow a bigger task the next night.
