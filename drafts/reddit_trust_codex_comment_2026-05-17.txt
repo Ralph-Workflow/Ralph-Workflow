@@ -1,0 +1,5 @@
+Honestly I don’t trust Codex as a verdict machine. I trust it as an implementation engine when the task is narrow enough that a human can still judge the result quickly.
+
+The part that makes it safe isn’t the model, it’s the handoff. If the run ends with a readable diff, real checks attached, and one short note saying what changed and what still needs judgment, I’m comfortable using it aggressively. Ralph Workflow exists mostly because I wanted that exact morning-after handoff instead of a confident transcript saying “done.”
+
+If the output is big enough that I have to reconstruct the whole session to understand it, I don’t consider that trust. That’s just postponed risk.

@@ -1,22 +1,23 @@
 {
-  "generated_at": "2026-05-17T11:35:06.621719",
-  "count": 6,
+  "generated_at": "2026-05-17T12:35:07.944515",
+  "count": 8,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 3
+    "Informal-Salt827": 5
   },
   "by_community": {
     "r/AI_Agents": 1,
-    "r/ClaudeCode": 4,
+    "r/ClaudeCode": 6,
     "r/codex": 1
   },
   "top_title_words": [
+    "code",
+    "claude",
     "agent",
     "workflow",
     "multiple",
-    "claude",
-    "code",
     "agents",
+    "codex",
     "most",
     "useful",
     "daily",
@@ -24,43 +25,42 @@
     "sessions",
     "manually",
     "going",
-    "rails",
-    "overnight"
+    "rails"
   ],
   "top_body_tokens": [
     "agent",
-    "before",
-    "pattern",
-    "done",
     "diff",
+    "before",
     "small",
-    "criteria",
-    "task",
     "pass",
-    "stop",
-    "branch",
-    "ralphworkflow",
-    "workflow",
+    "done",
+    "task",
+    "criteria",
+    "pattern",
+    "tool",
+    "receipt",
     "work",
     "explicit",
+    "after",
     "each",
-    "wrapped",
+    "changed",
+    "needs",
     "part",
-    "structure",
-    "tool"
+    "handoff",
+    "stop"
   ],
   "phrase_hits": {
     "worktree": 4,
-    "diff": 6,
+    "diff": 8,
     "verify": 1,
-    "handoff": 4,
+    "handoff": 5,
     "reviewable": 4,
-    "done criteria": 4,
-    "scope": 4,
+    "done criteria": 5,
+    "scope": 5,
     "final check": 1,
     "overnight": 1,
     "review bundle": 1,
-    "trust": 1,
+    "trust": 3,
     "small scoped": 1
   },
   "repeated_openings": [
@@ -121,6 +121,22 @@
       "title": "How are you handling merge safety when running multiple coding agents on the same repo?",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t9prcp/how_are_you_handling_merge_safety_when_running/om9n4uw/",
       "opening_line": "That exact signature-drift case is why I stopped calling a branch “safe” just because its own CI is green."
+    },
+    {
+      "timestamp": "2026-05-17T12:22:24.898560",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Run both Claude code and codex",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t70rwk/run_both_claude_code_and_codex/oma6hnn/",
+      "opening_line": "The simplest version that actually holds up: one tool implements, the other reviews/challenges, and you judge the result on the diff + checks rather than either agent's self-report."
+    },
+    {
+      "timestamp": "2026-05-17T12:22:38.664612",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Do you actually read and review the code",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t7fi55/do_you_actually_read_and_review_the_code/oma6in3/",
+      "opening_line": "Most of the time the real answer is: review the diff, not the agent."
     }
   ],
   "recommendations": [

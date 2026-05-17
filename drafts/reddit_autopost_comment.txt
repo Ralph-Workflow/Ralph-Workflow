@@ -1,7 +1,8 @@
-What helped me more than extra agent cleverness was tightening the merge path.
+If you're mixing Claude Code and Codex, I'd give them different jobs instead of two overlapping implementation passes.
 
-I try to make every task end with explicit acceptance criteria, one isolated worktree or branch, and one final review bundle with the diff, checks run, and anything still uncertain. That catches a lot of the "clean merge, wrong result" problem.
+A good default is:
+- one tool implements the scoped task
+- the other reviews the result against acceptance criteria
+- you only call it done when the diff is quick to read and the checks are attached
 
-Worktrees prevent collisions, but the trust layer comes from the final handoff being small enough to review quickly.
-
-That's the pattern we've leaned into with RalphWorkflow, but the main value is the review path, not the label.
+The handoff discipline matters more than which one you picked to go first.
