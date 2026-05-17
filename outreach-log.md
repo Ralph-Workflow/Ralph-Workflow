@@ -592,3 +592,23 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Reddit autopost cadence + GitHub CTA guardrail**: Upgraded `agents/marketing/reddit_autopost.py` so high-fit `r/ClaudeCode` workflow threads now keep the GitHub mirror CTA while the generator also rejects semantically repetitive concept cadences across the last logged Reddit bodies (not just repeated wording/openers).
   - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`; functional generation check against `seo-reports/reddit_monitor_2026-05-17_2115.md` now yields non-repetitive bodies with `LINK: True` and `REGEN: False` for the top live `r/ClaudeCode` / `Claude -> Codex -> Claude` opportunities
   - Why: the current bottleneck is distribution-to-adoption, and the repeat risk had moved from phrase reuse to whole body cadence. This keeps future Reddit replies fresher while preserving the inspect/star/watch path on the highest-fit workflow threads instead of dropping the GitHub CTA during regeneration.
+
+### RalphWorkflow Conversion / Owned-content Distribution
+- **Surfaced strongest write.as essays on primary conversion paths**: Added and pushed a new "deeper workflow argument" section to the public README, `START_HERE.md`, and hosted docs homepage source so existing high-intent visitors can discover the three strongest owned essays (`How to Tell if an AI Coding Task Is Actually Done`, `Claude Code + Codex Workflow: Plan, Build, Review`, `When Unattended AI Coding Actually Works`) instead of leaving those assets undistributed.
+  - Commit: `a44db799` — `Surface owned essays on conversion paths`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- README.md START_HERE.md ralph-workflow/docs/sphinx/index.rst`; `grep -nE "How to Tell if an AI Coding Task Is Actually Done|Claude Code \+ Codex Workflow: Plan, Build, Review|When Unattended AI Coding Actually Works" README.md START_HERE.md ralph-workflow/docs/sphinx/index.rst`; local build/test unverified in this environment due to missing `sphinx`
+  - Why: the fresh Reddit distribution path was inside the active global cooldown window (`global_cooldown_active:43m_since_last_post`), while the audit still showed published write.as assets sitting with almost no discovery. Surfacing those essays on the repo/docs entry points was the highest-leverage move available immediately because it reuses existing proof/distribution assets, answers the four marketing questions in deeper form, and gives current visitors a stronger trust path without writing more generic content.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeAI/comments/1t9tolw/running_two_claude_code_agents_on_the_same_repo/
+- **Comment URL:** https://old.reddit.com/r/ClaudeAI/comments/1t9tolw/running_two_claude_code_agents_on_the_same_repo/omddojv/
+- **Status:** ✅ Published
+- **Notes:** Manual post on worktrees thread: semantic invalidation + shared-boundary owner angle with GitHub link.
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution
+- **Reddit comment**: Posted on `r/ClaudeAI` thread "Running two Claude Code agents on the same repo simultaneously. Git worktrees make it work."
+  - URL: https://old.reddit.com/r/ClaudeAI/comments/1t9tolw/running_two_claude_code_agents_on_the_same_repo/omddojv/
+  - Status: ✅ Published
+  - Why: the highest-leverage live move available tonight was still distribution, and `r/ClaudeCode` was inside the recent-community cooldown window. This `r/ClaudeAI` thread let RalphWorkflow answer an active worktree pain from a fresher angle — semantic invalidation, shared-boundary ownership, merged-state checks, and a clean GitHub inspection path — without repeating the same ClaudeCode body cadence.
