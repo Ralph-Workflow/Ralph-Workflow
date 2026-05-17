@@ -471,6 +471,18 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Repeated pains worth tracking:** review/reconstruction overhead, shared-boundary drift, finish receipts, merged-state confidence, and clean morning-after re-entry.
 - **Risk note:** prior post risk is now about repeated *concept cadence* as well as wording; even fresh phrasing can feel canned if it replays the same diff/checks/receipt structure.
 - **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-17_1815.md`
+- **Scan summary:** 30 candidate Reddit threads/posts scanned, 7 shortlisted, 23 rejected.
+- **Current verdict:** ✅ 7 credible opportunities found; only the top 3-4 look like strong live-outreach targets right now.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Using Claude with Codex, anyone else?"
+  - `r/ClaudeCode` — "People running 2–5 coding agents: what actually breaks first for you?"
+  - `r/ClaudeCode` — "Claude -> Codex -> Claude"
+- **Repeated pains worth tracking:** review/reconstruction overhead, shared-boundary drift, finish receipts, manual Claude/Codex glue, and weak stop conditions on overnight runs.
+- **Risk note:** repeat-pattern risk is now the full **small scope -> checks -> diff -> receipt -> human decides** cadence, not just reused phrases.
+- **Posting note:** No posting attempted from this monitor pass.
 - **Public repo/docs workflow-fit improvement**: Added and pushed a new public `Claude Code + Codex workflow` guide across the repo docs and hosted Sphinx docs, then surfaced it from the main README, `START_HERE.md`, docs map, docs homepage, getting-started path, and quickstart.
   - Commit: `430a3c14` — `Add Claude Code + Codex workflow trust path`
   - Status: ✅ Pushed to Codeberg and GitHub mirror
@@ -486,3 +498,15 @@ _Last updated: 2026-05-11 06:29 UTC_
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- README.md START_HERE.md docs/README.md docs/review-ai-coding-output-before-merge.md ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/getting-started.md ralph-workflow/docs/sphinx/quickstart.md ralph-workflow/docs/sphinx/review-ai-coding-output-before-merge.md`; link-presence check for `review-ai-coding-output-before-merge` across all surfaced entry points; local build/test unverified in this environment due to missing `sphinx`
   - Why: the latest Reddit/market pain is shifting from "can I run more agents?" toward "how do I know the morning-after result is actually safe to merge?" With Reddit pacing still active, the highest-leverage move was a durable public trust asset that gives high-intent evaluators a concrete five-minute merge check: diff, finish receipt, real checks, shared-boundary review, then the merge question.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1tf720n/using_claude_with_codex_anyone_else/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1tf720n/using_claude_with_codex_anyone_else/ombxdri/
+- **Status:** ✅ Published
+- **Notes:** Manual post after autopost parser fix: Using Claude with Codex, anyone else? (r/ClaudeCode).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+- **Public repo/docs Claude Code trust-path improvement**: Added and pushed a new public `Ralph Workflow vs Claude Code` comparison page across the repo docs and hosted Sphinx docs, then surfaced it from the main README, `START_HERE.md`, docs map, package README, hosted docs homepage, getting-started path, and quickstart.
+  - Commit: `55ecf57a` — `Add Claude Code comparison trust path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- README.md START_HERE.md docs/README.md docs/ralph-workflow-vs-claude-code.md ralph-workflow/README.md ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/getting-started.md ralph-workflow/docs/sphinx/quickstart.md ralph-workflow/docs/sphinx/ralph-workflow-vs-claude-code.md`; link-presence check for `ralph-workflow-vs-claude-code` across all surfaced entry points; local build/test unverified in this environment due to missing `sphinx`
+  - Why: live demand is heavily Claude Code-shaped, and high-intent evaluators still need a crisp answer to the question "why add Ralph instead of just staying in Claude Code?" A direct comparison asset is a stronger conversion move than another generic article because it answers the fit, differentiation, and why-now questions exactly where current workflow interest already exists.

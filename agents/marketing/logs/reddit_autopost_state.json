@@ -1,6 +1,9 @@
 {
-  "last_attempt_at": "2026-05-17T16:26:18.589799",
-  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-17_1534.md",
-  "last_attempt_status": "cooldown_skip",
-  "last_detail": "volume_guard_active:4_posts_in_6h"
+  "last_attempt_at": "2026-05-17T18:36:00",
+  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-17_1815.md",
+  "last_thread_url": "https://www.reddit.com/r/ClaudeCode/comments/1tf720n/using_claude_with_codex_anyone_else/",
+  "last_comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tf720n/using_claude_with_codex_anyone_else/ombxdri/",
+  "last_attempt_status": "posted",
+  "last_poster_status": "posted",
+  "last_detail": "Manual post after autopost parser fix; latest report now parses correctly and posted top fresh opportunity."
 }
