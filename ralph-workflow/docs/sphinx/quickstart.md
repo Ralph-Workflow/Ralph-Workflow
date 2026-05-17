@@ -2,7 +2,27 @@
 
 > **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) if you want the same flow with more explanation.
 
-Get Ralph Workflow running in a repo in a few minutes.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
+
+It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
+
+What makes it different is the handoff: Ralph Workflow is built to leave you with a **reviewable result** in your repo instead of just a transcript and a claim that the task is done.
+
+Why use it now? Because you can run one real backlog task tonight, come back to a diff, checks, and artifacts tomorrow, and ask one honest question: **would I merge this?**
+
+Important first-run expectation: Ralph Workflow does **not** replace the coding agent itself. Before you install, have at least one supported agent CLI already installed and already authenticated on your own machine.
+
+## The fastest honest first run
+
+Use this flow in a real repo you already care about:
+
+Checklist before you start:
+
+- Python 3.12+
+- a git repo you can safely test in
+- at least one supported agent CLI already working on your machine
+
+If you are unsure which agent to start with, use the one already installed and read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 
 ## Install
 
@@ -36,17 +56,22 @@ That command creates `.agent/ralph-workflow.toml` as the project-local main-conf
 
 ## Edit `PROMPT.md`
 
-Open `PROMPT.md` and replace the example with your real task. If you are unsure what a good first task looks like, read [Choose Your First Ralph Workflow Task](first-task-guide.md) first. If you want copy-paste prompt shapes instead of starting from a blank page, read [First-Task Prompt Templates](first-task-prompt-templates.md). The starter template has two required sections:
+Open `PROMPT.md` and replace the example with one **real, bounded backlog task**. If you are unsure what a good first task looks like, read [Choose Your First Ralph Workflow Task](first-task-guide.md) first. If you want copy-paste prompt shapes instead of starting from a blank page, read [First-Task Prompt Templates](first-task-prompt-templates.md).
+
+A strong first prompt looks like this:
 
 ```markdown
 # Goal
 
-<one paragraph describing what should be built or fixed>
+Add validation so the CLI rejects empty project names before creating files.
+Keep the rest of the flow unchanged.
 
 ## Acceptance criteria
 
-- <measurable outcome 1>
-- <measurable outcome 2>
+- Empty or whitespace-only project names fail with a clear error
+- No project files are created for invalid names
+- Existing valid-name behavior stays unchanged
+- Tests cover the new validation
 ```
 
 **Important:** remove the `<!-- ralph:starter-prompt ... -->` comment at the top after replacing the example content. Ralph Workflow refuses to run while that sentinel is still present.
@@ -73,9 +98,23 @@ If interrupted, Ralph Workflow saves a checkpoint automatically. Continue from t
 ralph --resume
 ```
 
+## How to judge the result honestly
+
+Do not ask whether the agent sounded convincing.
+
+Ask:
+
+- does the diff match the task?
+- did the checks really run?
+- are the changes reviewable in one sitting?
+- **would I merge this?**
+
+That is the real first-run test.
+
 ## Where to go next
 
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean pass/fail evaluation
+- [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — pick the first agent path with the least setup friction
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste starter specs for common good-fit tasks
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see the shorter proof overview and the merge test
 - [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
