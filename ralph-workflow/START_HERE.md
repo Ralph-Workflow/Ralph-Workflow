@@ -35,6 +35,11 @@ Because it is free and open source, works with the agents you already trust, and
 
 That is a better evaluation than reading more marketing copy.
 
+If you want to inspect the project where you already follow open-source work, Ralph Workflow is published on Codeberg and mirrored on GitHub:
+
+- Primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- GitHub mirror: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 ## Pick the right first task
 
 Good first tasks are:
@@ -106,3 +111,4 @@ If no, you learned something useful without a subscription or a risky migration.
 - [Quickstart](docs/sphinx/quickstart.md)
 - [Docs site](https://ralphworkflow.com/docs)
 - [Source on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
+- [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow)

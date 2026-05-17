@@ -33,6 +33,10 @@ context you can inspect in your normal engineering process.
 Why try it now? Because you can use the agents you already trust on your own machine, run one real
 backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
+If you prefer to inspect or follow open-source projects on GitHub, Ralph Workflow also has a synced
+public mirror there. The primary repo lives on Codeberg, but you can review, star, or watch Ralph
+Workflow from either place.
+
 Important first-run expectation: Ralph Workflow is free and open source, but it does not replace
 the coding agents you already use. Before you start, have at least one supported agent CLI already
 installed and already authenticated on your own machine.
@@ -233,6 +237,7 @@ Related Links
 
 - `Ralph Workflow website <https://ralphworkflow.com>`_
 - `Source code on Codeberg <https://codeberg.org/RalphWorkflow/Ralph-Workflow.git>`_
+- `GitHub mirror <https://github.com/Ralph-Workflow/Ralph-Workflow>`_
 - `Issue tracker <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>`_
 - `License (AGPL-3.0) <https://www.gnu.org/licenses/agpl-3.0.html>`_
 

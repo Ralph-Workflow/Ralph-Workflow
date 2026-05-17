@@ -45,6 +45,7 @@ If you want a sharper pass/fail filter before you install, read [Choose Your Fir
 If you are unsure whether to start with Claude Code, Codex, or OpenCode, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [First-Task Prompt Templates](first-task-prompt-templates.md).
 If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fix artifacts before you run Ralph yourself, read [Example Review Bundle](example-review-bundle.md).
+If you prefer to inspect or follow the project on GitHub, the public mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow> (primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>).
 
 ## Before you start
 
@@ -213,5 +214,6 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 - [CLI Reference](cli.md) — commands and flags
 - [Configuration](configuration.md) — config files and precedence
 - [Troubleshooting](troubleshooting.md) — common first-run problems
+- [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — inspect, star, or watch Ralph Workflow where you already follow projects
 
 If your first run gives you a clean diff, real checks, and a result you would merge, hand Ralph Workflow a bigger task the next night.

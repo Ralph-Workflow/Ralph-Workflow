@@ -16,6 +16,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 - [Inspect a public example review bundle first](docs/sphinx/example-review-bundle.md)
 - [Docs: Getting Started](docs/sphinx/getting-started.md)
 - [Docs site](https://ralphworkflow.com/docs)
+- Prefer GitHub? The public mirror stays in sync here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Ralph Workflow supports mixed-agent runs across planning, analysis, development, review, and commit phases. You might plan with Claude, route analysis through an OpenCode-backed GPT model, hand development to Codex or another OpenCode provider, and keep review on a different agent chain — all inside the same repo-native workflow.
 
@@ -37,6 +38,8 @@ If no, tighten the spec, checks, or task choice and run again.
 
 If you want the fastest trust check before a first run, open the public [Example Review Bundle](docs/sphinx/example-review-bundle.md).
 It shows the exact kind of morning-after handoff Ralph Workflow is trying to produce: a real `PROMPT.md`, result notes, review feedback, fix notes, and artifact files you can inspect before deciding whether to try Ralph on your own backlog.
+
+If you prefer to inspect, star, or watch open-source projects on GitHub, the synced mirror lives at <https://github.com/Ralph-Workflow/Ralph-Workflow>. The primary source of truth remains Codeberg, but you can follow Ralph Workflow from either place.
 
 ## What you get
 
@@ -169,7 +172,8 @@ Use the website and docs for the deeper material this README intentionally leave
 - **Quickstart:** [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md)
 - **Developer reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md)
 - **Python API reference:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst)
-- **Source repository:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Source repository (primary):** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 - **Issue tracker:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 
 ## License
