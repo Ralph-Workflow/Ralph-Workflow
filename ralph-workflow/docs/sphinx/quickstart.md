@@ -77,7 +77,8 @@ ralph --resume
 
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean pass/fail evaluation
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste starter specs for common good-fit tasks
-- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see the review bundle you should expect from a trustworthy run
+- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see the shorter proof overview and the merge test
+- [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
 - [Getting Started](getting-started.md) — fuller first-run walkthrough
 - [Concepts](concepts.md) — terminology and mental model
 - [CLI Reference](cli.md) — all flags and sub-commands

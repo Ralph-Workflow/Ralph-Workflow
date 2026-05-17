@@ -112,6 +112,8 @@ Add empty-project-name validation to the CLI create flow.
 If that path feels fast and honest, Ralph Workflow did its job.
 If it feels murky, the handoff is still too weak.
 
+If you want to inspect a public sample bundle instead of only reading the summary on this page, open [Example Review Bundle](example-review-bundle.md).
+
 ## The merge test
 
 The real handoff question is still simple:

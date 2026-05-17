@@ -43,6 +43,7 @@ Bad first tasks:
 
 If you want a sharper pass/fail filter before you install, read [Choose Your First Ralph Workflow Task](first-task-guide.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [First-Task Prompt Templates](first-task-prompt-templates.md).
+If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fix artifacts before you run Ralph yourself, read [Example Review Bundle](example-review-bundle.md).
 
 ## Before you start
 
@@ -201,7 +202,8 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean merge/no-merge evaluation
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste `PROMPT.md` shapes for strong first runs
-- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — example review bundle and the merge test
+- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — shorter proof overview and the merge test
+- [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts
 - [Quickstart](quickstart.md) — shorter repeat-use reference
 - [Concepts](concepts.md) — the terms you will see most often
 - [CLI Reference](cli.md) — commands and flags

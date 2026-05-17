@@ -101,6 +101,7 @@ If no, you learned something useful without a subscription or a risky migration.
 
 ## Next links
 
+- [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts before your own first run
 - [Getting Started](docs/sphinx/getting-started.md)
 - [Quickstart](docs/sphinx/quickstart.md)
 - [Docs site](https://ralphworkflow.com/docs)

@@ -1,0 +1,10 @@
+{
+  "goal": "Reject empty or whitespace-only project names before file creation.",
+  "acceptance_criteria": [
+    "Empty or whitespace-only names fail with a clear error",
+    "No project files are created for invalid names",
+    "Existing valid-name behavior stays unchanged",
+    "Tests cover the new validation"
+  ],
+  "review_question": "Would I merge this?"
+}

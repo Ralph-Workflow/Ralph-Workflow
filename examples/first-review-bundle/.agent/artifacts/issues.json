@@ -1,0 +1,9 @@
+{
+  "issues": [
+    {
+      "title": "Whitespace-only names not rejected in first pass",
+      "severity": "medium",
+      "fix_request": "Normalize input before validation and re-run focused tests"
+    }
+  ]
+}

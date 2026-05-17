@@ -13,6 +13,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 **Start here:**
 
 - [Start Here: try Ralph Workflow on one real backlog task](START_HERE.md)
+- [Inspect a public example review bundle first](docs/sphinx/example-review-bundle.md)
 - [Docs: Getting Started](docs/sphinx/getting-started.md)
 - [Docs site](https://ralphworkflow.com/docs)
 
@@ -31,6 +32,11 @@ This package is a good fit when you want more than a demo. Ralph Workflow is des
 
 If yes, give it a harder task next.
 If no, tighten the spec, checks, or task choice and run again.
+
+## Proof before you install
+
+If you want the fastest trust check before a first run, open the public [Example Review Bundle](docs/sphinx/example-review-bundle.md).
+It shows the exact kind of morning-after handoff Ralph Workflow is trying to produce: a real `PROMPT.md`, result notes, review feedback, fix notes, and artifact files you can inspect before deciding whether to try Ralph on your own backlog.
 
 ## What you get
 

@@ -14,6 +14,7 @@ Important expectation for evaluators: Ralph Workflow is free and open source, bu
 ## Best first docs for evaluators
 
 - `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
+- `example-review-bundle.md` — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
 - `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
 - `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
@@ -78,6 +79,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `quick-reference.md` — command quick reference
 - `template-guide.md` — template usage
 - `git-workflow.md` — Git workflow with Ralph
+- `example-review-bundle.md` — public sample of a morning-after handoff: prompt, development result, review/fix notes, and machine-readable artifacts
 - `first-task-prompt-templates.md` — copy-paste starter prompt shapes for feature work, validation, refactors, tests, and docs
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
 - `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task

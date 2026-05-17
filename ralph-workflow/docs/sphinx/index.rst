@@ -52,6 +52,9 @@ The evaluation question is simple:
 If yes, Ralph Workflow earned a bigger task. If not, tighten the spec, checks, or task choice and
 run again.
 
+If you want proof before your own first run, inspect the public :doc:`example-review-bundle` and
+judge whether that handoff looks like something you would actually trust yourself to review.
+
 Your fastest honest first run
 =============================
 
@@ -120,6 +123,12 @@ Then come back and ask one question:
 
       See the kind of diff, checks, notes, and merge decision a trustworthy unattended run should hand back.
 
+   .. grid-item-card:: Inspect a real review bundle
+      :link: example-review-bundle
+      :link-type: doc
+
+      Open a public sample prompt, result notes, review feedback, and artifact files before your own first run.
+
    .. grid-item-card:: Learn the concepts
       :link: concepts
       :link-type: doc
@@ -146,6 +155,7 @@ Then come back and ask one question:
    first-task-guide
    first-task-prompt-templates
    reviewable-output
+   example-review-bundle
    quickstart
    concepts
 
