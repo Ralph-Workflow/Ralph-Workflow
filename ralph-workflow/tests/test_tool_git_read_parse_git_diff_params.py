@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from ralph.mcp.tools.git_read import (
     parse_git_diff_params,
 )
@@ -16,22 +14,6 @@ CUSTOM_LOG_COUNT = 20
 
 
 class TestParseGitDiffParams:
-
-    class MockSession:
-        """Mock session for capability checks."""
-
-        def __init__(self, capabilities: set[str]) -> None:
-            self.session_id = "test-session"
-            self._capabilities = capabilities
-
-        def check_capability(self, capability: str) -> object:
-            return capability in self._capabilities
-
-    class MockWorkspaceRoot:
-        """Mock workspace with root property."""
-
-        def __init__(self, root: Path | str) -> None:
-            self.root = Path(root) if isinstance(root, str) else root
 
     def test_parses_string_args(self) -> None:
         params = {"args": ["--staged", "--name-only"]}
@@ -54,5 +36,3 @@ class TestParseGitDiffParams:
         assert result.args == []
 
 
-MockSession = TestParseGitDiffParams.MockSession
-MockWorkspaceRoot = TestParseGitDiffParams.MockWorkspaceRoot

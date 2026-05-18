@@ -12,7 +12,9 @@ These tests verify that:
 from __future__ import annotations
 
 import inspect
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, cast
+
+from tests.unit.display.di_result import DIResult
 
 import pytest
 from rich.console import Console
@@ -42,11 +44,6 @@ if TYPE_CHECKING:
 
 class TestRenderersRequireDisplayContext:
     """Test that all public renderers require an explicit DisplayContext."""
-
-    class DIResult(NamedTuple):
-        passed: bool
-        error: str | None
-
 
     @pytest.mark.parametrize(
         "renderer_module,renderer_name",
@@ -130,9 +127,6 @@ class TestRenderersRequireDisplayContext:
         """render_fix_artifact() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
             cast("Callable[..., object]", render_fix_artifact)(tmp_path)
-
-
-DIResult = TestRenderersRequireDisplayContext.DIResult
 
 
 def _check_renderer_signature(module: object, name: object) -> DIResult:

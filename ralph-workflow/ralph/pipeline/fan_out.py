@@ -36,6 +36,7 @@ from ralph.pipeline.legacy_console_display import (
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.mode import SameWorkspaceContext
 from ralph.pipeline.reducer import reduce as reducer_reduce
+from ralph.pipeline.verification_result import VerificationResult
 from ralph.pipeline.work_units import (
     WorkUnitsPlan,
     WorkUnitsValidationError,
@@ -87,15 +88,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class _FanOutCtx:
-
-    @dataclass(frozen=True)
-    class VerificationResult:
-        """Outcome of the post-fan-out serialized verification run."""
-
-        ran: bool
-        passed: bool | None
-        exit_code: int | None
-
     effect: FanOutEffect
     state: PipelineState
     display: ParallelDisplay
@@ -111,8 +103,6 @@ class _FanOutCtx:
     run_process_async_fn: _RunProcessAsyncFn | None = None
     reducer_reduce_fn: _ReducerReduceFn | None = None
 
-
-VerificationResult = _FanOutCtx.VerificationResult
 
 
 def _notify_subscriber(

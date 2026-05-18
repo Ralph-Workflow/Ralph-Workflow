@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ralph.testing._fake_psutil_process import FakePsutilProcess
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from ralph.process.manager._process_manager import _PsutilProcessLike
+
+
+class FakePsutil:
+    """Fake psutil module for testing without real process operations."""
+
+    NoSuchProcess = Exception
+    AccessDenied = Exception
+
+    def __init__(self) -> None:
+        self._processes: dict[int, FakePsutilProcess] = {}
+
+    def process_from_pid(self, pid: int) -> FakePsutilProcess:
+        if pid not in self._processes:
+            self._processes[pid] = FakePsutilProcess(pid=pid)
+        return self._processes[pid]
+
+    def wait_procs(
+        self,
+        procs: Sequence[_PsutilProcessLike],
+        timeout: float | None = None,
+    ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]:
+        dead: list[_PsutilProcessLike] = []
+        alive: list[_PsutilProcessLike] = []
+        for p in procs:
+            if not p.is_running() or p.status() == "zombie":
+                dead.append(p)
+            else:
+                alive.append(p)
+        return dead, alive

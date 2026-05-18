@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import base64
 import tempfile
-from dataclasses import dataclass, field
 from pathlib import Path
+
+from tests.mock_session import MockSession
+from tests.mock_session_with_manifest import MockSessionWithManifest
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -14,8 +16,7 @@ import pytest
 from ralph.mcp.multimodal.artifacts import (
     ResourceReferenceContent,
 )
-from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
-from ralph.mcp.multimodal.resources import MediaManifest
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     ImageContent,
@@ -154,34 +155,3 @@ class TestHandleReadImage:
         assert hasattr(result.content[0], "text")
         assert cast("ToolContent", result.content[0]).text == "hello world"
         assert not isinstance(result.content[0], ImageContent)
-
-    class MockSession:
-        session_id = "test-session"
-
-        def __init__(self, *args: object) -> None:
-            if not args:
-                self._caps: set[str] = set()
-            elif len(args) == 1 and isinstance(args[0], set):
-                self._caps = {s for s in args[0] if isinstance(s, str)}
-            else:
-                self._caps = {s for s in args if isinstance(s, str)}
-
-        def check_capability(self, capability: str) -> object:
-            return capability in self._caps
-
-    @dataclass
-    class MockSessionWithManifest:
-        allowed_capability: str | None = None
-        session_id: str = "test-session"
-        media_manifest: MediaManifest = field(default_factory=MediaManifest)
-        model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
-
-        def check_capability(self, capability: str) -> object:
-            return capability == self.allowed_capability
-
-        def check_edit_area(self, path: str) -> object:
-            return True
-
-
-MockSession = TestHandleReadImage.MockSession
-MockSessionWithManifest = TestHandleReadImage.MockSessionWithManifest

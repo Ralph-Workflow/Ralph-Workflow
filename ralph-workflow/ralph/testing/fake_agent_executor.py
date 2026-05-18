@@ -9,11 +9,11 @@ spawning any subprocess or real agent process.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ralph.agents.executor import ExecutorError, WorkerResult
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.testing.fake_run import FakeRun
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -23,17 +23,6 @@ if TYPE_CHECKING:
 
 class FakeAgentExecutor:
     """In-process agent executor that replays seeded FakeRun scripts without subprocesses."""
-
-    @dataclass
-    class FakeRun:
-        """Seeded replay script for a single parallel work unit."""
-
-        outputs: list[str]
-        exit_code: int
-        duration_ms: int
-        raise_on_start: Exception | None = None
-        side_effect: Callable[[], None] | None = field(default=None)
-
 
     def __init__(self, runs: dict[str, FakeRun]) -> None:
         self._runs = runs
@@ -86,7 +75,6 @@ class FakeAgentExecutor:
         )
 
 
-FakeRun = FakeAgentExecutor.FakeRun
 
 
 __all__ = ["FakeAgentExecutor", "FakeRun"]

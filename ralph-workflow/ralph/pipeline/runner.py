@@ -72,25 +72,23 @@ from ralph.pipeline.cycle_baseline import (
     read_cycle_baseline,
     write_cycle_baseline,
 )
-from ralph.pipeline.effect_executor import (
-    AgentExecutionDeps,
-    AgentRecoveryPlan,
+from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
+from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
+from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
     commit_effect,
     default_mcp_capabilities_for_phase,
+    execute_commit_effect as _ee_execute_commit_effect,
     phase_output_artifact_paths,
-    recovery_context_lines,
-    recovery_error_parts,
     repo_has_commit_work,
-    resolve_recovery_session_id,
-    retry_prompt_file_for_context,
-    retryable_agent_failure_reason,
 )
 from ralph.pipeline.effect_executor import (
     execute_agent_effect as _ee_execute_agent_effect,
-)
-from ralph.pipeline.effect_executor import (
-    execute_commit_effect as _ee_execute_commit_effect,
+    recovery_context_lines,
+    recovery_error_parts,
+    resolve_recovery_session_id,
+    retry_prompt_file_for_context,
+    retryable_agent_failure_reason,
 )
 from ralph.pipeline.effect_router import (
     determine_effect_from_policy,
@@ -164,7 +162,7 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.effect_executor import (
+    from ralph.pipeline.agent_execution_deps import (
         _CheckMcpBridgeHealthFn,
         _McpSupervisorFactory,
         _ShutdownMcpServerFn,

@@ -5,6 +5,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
+from tests.fake_handle import _FakeHandle
 
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
@@ -29,23 +30,7 @@ _CompletionCheckOptions = CompletionCheckOptions
 class TestClassifyExitDefersWhenChildrenAlive:
     """classify_exit must return WAITING_ON_CHILD when children are alive."""
 
-    class _FakeHandle:
-        returncode: int = 0
-        stdout = None
-        stderr = None
 
-        def __init__(self, *, returncode: int = 0, has_descendants: bool = False) -> None:
-            self.returncode = returncode
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
-
-        def descendant_snapshot(self) -> tuple[int, float | None]:
-            return (1 if self._has_descendants else 0, 5.0 if self._has_descendants else None)
-
-        def poll(self) -> int | None:
-            return self.returncode
 
     def test_classify_exit_returns_waiting_when_liveness_probe_active(self) -> None:
         """Liveness probe reporting active agents → WAITING_ON_CHILD."""
@@ -93,4 +78,3 @@ class TestClassifyExitDefersWhenChildrenAlive:
         assert state == AgentExecutionState.WAITING_ON_CHILD
 
 
-_FakeHandle = TestClassifyExitDefersWhenChildrenAlive._FakeHandle

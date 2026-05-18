@@ -42,31 +42,34 @@ _check_process_result = check_process_result
 _CompletionCheckOptions = CompletionCheckOptions
 
 
+class _FakeMcpBridge:
+    def agent_endpoint_uri(self) -> str:
+        return "http://127.0.0.1:12345/mcp"
+
+    def shutdown(self) -> None:
+        pass
+
+
+class _RegistryInstance:
+    def __init__(self, agent_config: AgentConfig) -> None:
+        self._agent_config = agent_config
+
+    def get(self, name: str) -> AgentConfig | None:
+        del name
+        return self._agent_config
+
+
+class _RegistryFactory:
+    _agent_config: AgentConfig
+
+    @classmethod
+    def from_config(cls, config: UnifiedConfig) -> _RegistryInstance:
+        del config
+        return _RegistryInstance(cls._agent_config)
+
+
 class TestRunnerSessionContinuation:
     """Runner correctly threads OpenCodeResumableExitError.session_id into the retry attempt."""
-
-    class _FakeMcpBridge:
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:12345/mcp"
-
-        def shutdown(self) -> None:
-            pass
-
-    class _RegistryInstance:
-        def __init__(self, agent_config: AgentConfig) -> None:
-            self._agent_config = agent_config
-
-        def get(self, name: str) -> AgentConfig | None:
-            del name
-            return self._agent_config
-
-    class _RegistryFactory:
-        _agent_config: AgentConfig
-
-        @classmethod
-        def from_config(cls, config: UnifiedConfig) -> _RegistryInstance:
-            del config
-            return _RegistryInstance(cls._agent_config)
 
 
     def test_opencode_resumable_exit_retries_with_same_session_id(
@@ -165,10 +168,6 @@ class TestRunnerSessionContinuation:
 
         assert result == PipelineEvent.AGENT_FAILURE
 
-
-_FakeMcpBridge = TestRunnerSessionContinuation._FakeMcpBridge
-_RegistryInstance = TestRunnerSessionContinuation._RegistryInstance
-_RegistryFactory = TestRunnerSessionContinuation._RegistryFactory
 
 
 def _opencode_agent_config() -> AgentConfig:

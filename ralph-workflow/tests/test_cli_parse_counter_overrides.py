@@ -32,41 +32,42 @@ def _make_display_context_for_console(console: Console) -> DisplayContext:
     return make_display_context(console=console, env={})
 
 
+class CliResult:
+    def __init__(self, exit_code: int, stdout: str, stderr: str) -> None:
+        self.exit_code = exit_code
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+class CliRunner:
+    def __init__(self) -> None:
+        self._cwd = PROJECT_ROOT
+        self._runner = TyperCliRunner()
+
+    def invoke(self, _app: object, args: list[str]) -> CliResult:
+        with self._pushd(self._cwd):
+            result = self._runner.invoke(app, args, catch_exceptions=False)
+        stderr = getattr(result, "stderr", "")
+        return CliResult(result.exit_code, result.stdout, stderr)
+
+    @contextmanager
+    def _pushd(self, path: Path) -> object:
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(path)
+            yield
+        finally:
+            os.chdir(original_cwd)
+
+    @contextmanager
+    def isolated_filesystem(self, temp_dir: Path) -> object:
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        with self._runner.isolated_filesystem(temp_dir):
+            yield temp_dir
+
+
 class TestParseCounterOverrides:
     """Tests for _parse_counter_overrides helper."""
-
-    class CliResult:
-        def __init__(self, exit_code: int, stdout: str, stderr: str) -> None:
-            self.exit_code = exit_code
-            self.stdout = stdout
-            self.stderr = stderr
-
-    class CliRunner:
-        def __init__(self) -> None:
-            self._cwd = PROJECT_ROOT
-            self._runner = TyperCliRunner()
-
-        def invoke(self, _app: object, args: list[str]) -> CliResult:
-            with self._pushd(self._cwd):
-                result = self._runner.invoke(app, args, catch_exceptions=False)
-            stderr = getattr(result, "stderr", "")
-            return CliResult(result.exit_code, result.stdout, stderr)
-
-        @contextmanager
-        def _pushd(self, path: Path) -> object:
-            original_cwd = Path.cwd()
-            try:
-                os.chdir(path)
-                yield
-            finally:
-                os.chdir(original_cwd)
-
-        @contextmanager
-        def isolated_filesystem(self, temp_dir: Path) -> object:
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            with self._runner.isolated_filesystem(temp_dir):
-                yield temp_dir
-
 
     def test_parses_single_valid_entry(self) -> None:
         result = parse_counter_overrides(["iteration=3"])
@@ -95,6 +96,3 @@ class TestParseCounterOverrides:
         result = parse_counter_overrides(["reviewer_pass=0"])
         assert result == {"reviewer_pass": 0}
 
-
-CliResult = TestParseCounterOverrides.CliResult
-CliRunner = TestParseCounterOverrides.CliRunner

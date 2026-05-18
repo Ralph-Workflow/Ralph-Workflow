@@ -27,6 +27,7 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.parsers import get_parser
 from ralph.agents.registry import AgentRegistry
+from ralph.cli.commands.smoke_run_params import SmokeRunParams
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
@@ -79,19 +80,6 @@ _CRASH_MARKERS = (
 class SmokeRunResult:
     """Observed results from the interactive Claude smoke run."""
 
-    @dataclass(frozen=True)
-    class SmokeRunParams:
-        """Grouped parameters for a smoke run."""
-
-        agent_name: str
-        config: AgentConfig
-        workspace_root: Path
-        prompt_file: Path
-        output_file: Path
-        options: InvokeOptions
-        display_context: DisplayContext
-
-
     agent_name: str
     transport: str
     output_file: Path
@@ -105,8 +93,6 @@ class SmokeRunResult:
     meaningful_output_lines: list[str]
     errors: list[str]
 
-
-SmokeRunParams = SmokeRunResult.SmokeRunParams
 
 
 def _submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:

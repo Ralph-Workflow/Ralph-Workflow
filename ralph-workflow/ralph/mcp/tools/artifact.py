@@ -64,6 +64,7 @@ from ralph.mcp.artifacts.typed_artifacts import (
     normalize_fix_result_content,
     normalize_issues_content,
 )
+from ralph.mcp.tools._submit_op import SubmitOp
 from ralph.mcp.tools.coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
     CoordinationSessionLike,
@@ -121,14 +122,6 @@ def _noop_now_iso() -> str:
 class ArtifactHandlerDeps:
     """Injectable dependencies for artifact handler operations."""
 
-    @dataclass(frozen=True)
-    class SubmitOp:
-        """An ordered submit step paired with its rollback action."""
-
-        run: Callable[[], object]
-        undo: Callable[[], None]
-
-
     backend: FileBackend = DEFAULT_FILE_BACKEND
     now_iso: Callable[[], str] = _noop_now_iso
     history_enabled: bool = False
@@ -136,9 +129,6 @@ class ArtifactHandlerDeps:
     @property
     def artifact_persistence(self) -> ArtifactPersistence:
         return ArtifactPersistence(backend=self.backend, now_iso=self.now_iso)
-
-
-SubmitOp = ArtifactHandlerDeps.SubmitOp
 
 
 DEFAULT_ARTIFACT_HANDLER_DEPS = ArtifactHandlerDeps()

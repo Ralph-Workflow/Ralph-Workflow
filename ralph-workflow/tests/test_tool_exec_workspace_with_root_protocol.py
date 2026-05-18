@@ -1,6 +1,7 @@
 """Tests for ralph/mcp/tool_exec.py — MCP exec tool handler."""
 
 from __future__ import annotations
+from tests.mock_workspace_root import MockWorkspaceRoot
 
 from pathlib import Path
 
@@ -24,9 +25,3 @@ class TestWorkspaceWithRootProtocol:
         result = run_command("echo", ["test"], str(tmp_path), 5000)
         assert result.returncode == 0
 
-    class MockWorkspaceRoot:
-        def __init__(self, root: object) -> None:
-            self.root = root
-
-
-MockWorkspaceRoot = TestWorkspaceWithRootProtocol.MockWorkspaceRoot

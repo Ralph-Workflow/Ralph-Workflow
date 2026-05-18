@@ -38,6 +38,7 @@ from ralph.mcp.protocol.startup import (
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream.client import make_upstream_client
 from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream._agent_transport_probe_error import AgentTransportProbeError
 from ralph.mcp.upstream.models import UpstreamCallError
 
 if TYPE_CHECKING:
@@ -55,18 +56,11 @@ _DEFAULT_TRANSPORTS: tuple[AgentTransport, ...] = (
 class AgentProbeReport:
     """Result of probing one (transport, upstream server) combination."""
 
-    class AgentTransportProbeError(RuntimeError):
-        """Raised when the synthesized agent config payload is malformed."""
-
-
     transport: AgentTransport
     server_name: str
     ok: bool
     error: str | None = None
     note: str | None = None
-
-
-AgentTransportProbeError = AgentProbeReport.AgentTransportProbeError
 
 
 _ClaudeMcpConfigFn = Callable[[str], str]

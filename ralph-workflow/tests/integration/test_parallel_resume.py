@@ -86,20 +86,21 @@ def _make_mock_policy_bundle() -> MagicMock:
     return bundle
 
 
+class _FakeDisplay:
+    def emit(self, unit_id: str | None, line: str) -> None:
+        pass
+
+    def set_status(self, unit_id: str, status: object) -> None:
+        pass
+
+    def __enter__(self) -> _FakeDisplay:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        pass
+
+
 class TestParallelResume:
-
-    class _FakeDisplay:
-        def emit(self, unit_id: str | None, line: str) -> None:
-            pass
-
-        def set_status(self, unit_id: str, status: object) -> None:
-            pass
-
-        def __enter__(self) -> _FakeDisplay:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            pass
 
     def test_resume_skips_succeeded_workers(
         self,
@@ -238,4 +239,4 @@ class TestParallelResume:
             assert ws.status == WorkerStatus.SUCCEEDED, f"{uid} expected SUCCEEDED, got {ws.status}"
 
 
-_FakeDisplay = TestParallelResume._FakeDisplay
+

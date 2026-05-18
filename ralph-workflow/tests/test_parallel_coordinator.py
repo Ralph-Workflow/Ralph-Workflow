@@ -83,82 +83,86 @@ def _seed_artifact(repo_root: Path, unit_id: str) -> None:
     )
 
 
+class RecordingDisplay:
+    def __init__(self) -> None:
+        self.outputs: dict[str, list[str]] = defaultdict(list)
+        self.statuses: dict[str, list[WorkerStatus]] = defaultdict(list)
+        self._running_units: set[str] = set()
+        self.peak_running = 0
+
+    def emit(self, unit_id: str | None, line: str) -> None:
+        if unit_id is None:
+            return
+        self.outputs[unit_id].append(line)
+
+    def set_status(self, unit_id: str, status: WorkerStatus) -> None:
+        self.statuses[unit_id].append(status)
+        if status is WorkerStatus.RUNNING:
+            self._running_units.add(unit_id)
+        elif status in {
+            WorkerStatus.SUCCEEDED,
+            WorkerStatus.FAILED,
+            WorkerStatus.CANCELLED,
+        }:
+            self._running_units.discard(unit_id)
+        self.peak_running = max(self.peak_running, len(self._running_units))
+
+
+@dataclass
+class _RecordedHandle:
+    handle: McpServerHandle
+    shutdown_calls: int = 0
+
+
+class _RecordingMcpFactory:
+    def __init__(self) -> None:
+        self.sessions: list[object] = []
+        self.handles: list[_RecordedHandle] = []
+
+    def build(self, session: object) -> McpServerHandle:
+        self.sessions.append(session)
+        recorded = _RecordedHandle(
+            handle=McpServerHandle(
+                endpoint=f"http://127.0.0.1:{10_000 + len(self.handles)}/mcp",
+                pid=1000 + len(self.handles),
+                shutdown=lambda: None,
+            )
+        )
+
+        def _shutdown(record: _RecordedHandle = recorded) -> None:
+            record.shutdown_calls += 1
+
+        recorded.handle = McpServerHandle(
+            endpoint=recorded.handle.endpoint,
+            pid=recorded.handle.pid,
+            shutdown=_shutdown,
+        )
+        self.handles.append(recorded)
+        return recorded.handle
+
+
+class _LoggingExecutor:
+    async def run(
+        self,
+        unit: WorkUnit,
+        *,
+        on_output: Callable[[str], None],
+        on_status: Callable[[WorkerStatus], None],
+    ) -> WorkerResult:
+        on_status(WorkerStatus.RUNNING)
+        logger.info("worker-log-message")
+        on_output("done")
+        on_status(WorkerStatus.SUCCEEDED)
+        return WorkerResult(
+            unit_id=unit.unit_id,
+            exit_code=0,
+            final_message="done",
+            duration_ms=1,
+        )
+
+
 class TestPreflightRejection:
     """Coordinator-level preflight rejects unsafe plans before any worker launches."""
-
-    class RecordingDisplay:
-        def __init__(self) -> None:
-            self.outputs: dict[str, list[str]] = defaultdict(list)
-            self.statuses: dict[str, list[WorkerStatus]] = defaultdict(list)
-            self._running_units: set[str] = set()
-            self.peak_running = 0
-
-        def emit(self, unit_id: str | None, line: str) -> None:
-            if unit_id is None:
-                return
-            self.outputs[unit_id].append(line)
-
-        def set_status(self, unit_id: str, status: WorkerStatus) -> None:
-            self.statuses[unit_id].append(status)
-            if status is WorkerStatus.RUNNING:
-                self._running_units.add(unit_id)
-            elif status in {
-                WorkerStatus.SUCCEEDED,
-                WorkerStatus.FAILED,
-                WorkerStatus.CANCELLED,
-            }:
-                self._running_units.discard(unit_id)
-            self.peak_running = max(self.peak_running, len(self._running_units))
-
-    @dataclass
-    class _RecordedHandle:
-        handle: McpServerHandle
-        shutdown_calls: int = 0
-
-    class _RecordingMcpFactory:
-        def __init__(self) -> None:
-            self.sessions: list[object] = []
-            self.handles: list[_RecordedHandle] = []
-
-        def build(self, session: object) -> McpServerHandle:
-            self.sessions.append(session)
-            recorded = _RecordedHandle(
-                handle=McpServerHandle(
-                    endpoint=f"http://127.0.0.1:{10_000 + len(self.handles)}/mcp",
-                    pid=1000 + len(self.handles),
-                    shutdown=lambda: None,
-                )
-            )
-
-            def _shutdown(record: _RecordedHandle = recorded) -> None:
-                record.shutdown_calls += 1
-
-            recorded.handle = McpServerHandle(
-                endpoint=recorded.handle.endpoint,
-                pid=recorded.handle.pid,
-                shutdown=_shutdown,
-            )
-            self.handles.append(recorded)
-            return recorded.handle
-
-    class _LoggingExecutor:
-        async def run(
-            self,
-            unit: WorkUnit,
-            *,
-            on_output: Callable[[str], None],
-            on_status: Callable[[WorkerStatus], None],
-        ) -> WorkerResult:
-            on_status(WorkerStatus.RUNNING)
-            logger.info("worker-log-message")
-            on_output("done")
-            on_status(WorkerStatus.SUCCEEDED)
-            return WorkerResult(
-                unit_id=unit.unit_id,
-                exit_code=0,
-                final_message="done",
-                duration_ms=1,
-            )
 
 
     async def test_overlapping_edit_areas_rejected(self, tmp_path: Path) -> None:
@@ -257,7 +261,3 @@ class TestPreflightRejection:
         assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"
 
 
-RecordingDisplay = TestPreflightRejection.RecordingDisplay
-_RecordedHandle = TestPreflightRejection._RecordedHandle
-_RecordingMcpFactory = TestPreflightRejection._RecordingMcpFactory
-_LoggingExecutor = TestPreflightRejection._LoggingExecutor

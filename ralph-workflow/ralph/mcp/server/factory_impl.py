@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from threading import Lock
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
+from ralph.mcp.server._bridge_with_process import _BridgeWithProcess
+from ralph.mcp.server._process_with_pid import _ProcessWithPid
 from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
 
 if TYPE_CHECKING:
@@ -37,15 +39,6 @@ if TYPE_CHECKING:
 
 class DynamicBindingMcpServerFactory(McpServerFactory):
     """Build MCP server handles with dynamically allocated localhost endpoints."""
-
-    @runtime_checkable
-    class _ProcessWithPid(Protocol):
-        pid: int
-
-    @runtime_checkable
-    class _BridgeWithProcess(SessionBridgeLike, Protocol):
-        process: _ProcessWithPid
-
 
     def __init__(
         self,
@@ -99,10 +92,6 @@ class DynamicBindingMcpServerFactory(McpServerFactory):
             return session
         msg = "DynamicBindingMcpServerFactory.build requires an AgentSession"
         raise TypeError(msg)
-
-
-_ProcessWithPid = DynamicBindingMcpServerFactory._ProcessWithPid
-_BridgeWithProcess = DynamicBindingMcpServerFactory._BridgeWithProcess
 
 
 __all__ = ["DynamicBindingMcpServerFactory"]

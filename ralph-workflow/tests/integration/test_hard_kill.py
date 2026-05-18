@@ -29,14 +29,15 @@ pytestmark = pytest.mark.subprocess_e2e
 _NUM_WORKERS = 3
 
 
+class _FakeDisplay:
+    def emit(self, unit_id: str | None, line: str) -> None:
+        del unit_id, line
+
+    def set_status(self, unit_id: str, status: object) -> None:
+        del unit_id, status
+
+
 class SleeperExecutor:
-
-    class _FakeDisplay:
-        def emit(self, unit_id: str | None, line: str) -> None:
-            del unit_id, line
-
-        def set_status(self, unit_id: str, status: object) -> None:
-            del unit_id, status
 
     def __init__(self) -> None:
         self.pids: list[int] = []
@@ -71,8 +72,6 @@ class SleeperExecutor:
             duration_ms=int((time.monotonic() - start_time) * 1000),
         )
 
-
-_FakeDisplay = SleeperExecutor._FakeDisplay
 
 
 def _make_work_unit(unit_id: str) -> WorkUnit:

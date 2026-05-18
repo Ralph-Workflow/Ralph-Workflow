@@ -7,22 +7,11 @@ reachability check fails).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from ralph.mcp.upstream.upstream_tool import UpstreamTool
 
 
 class UpstreamCallError(Exception):
     """Raised when a remote tool call or upstream server reachability check fails."""
-
-    @dataclass(frozen=True)
-    class UpstreamTool:
-        """A tool advertised by an upstream MCP server."""
-
-        name: str
-        description: str
-        input_schema: dict[str, object] = field(default_factory=dict)
-
-
-UpstreamTool = UpstreamCallError.UpstreamTool
 
 
 __all__ = [

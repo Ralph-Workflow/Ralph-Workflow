@@ -15,6 +15,12 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from ralph.mcp.protocol._heartbeat_policy import HeartbeatPolicy
+from ralph.mcp.protocol._permanent_preflight_error import PermanentPreflightError
+from ralph.mcp.protocol._preflight_error import PreflightError
+from ralph.mcp.protocol._preflight_tcp_deps import PreflightTcpDeps
+from ralph.mcp.protocol._retryable_preflight_error import RetryablePreflightError
+from ralph.mcp.protocol._session_bridge_error import SessionBridgeError
 from ralph.mcp.protocol.capability_mapping import AccessMode, drain_to_access_mode
 from ralph.mcp.protocol.env import (
     MCP_PREFLIGHT_TIMEOUT_MS_ENV,
@@ -144,45 +150,9 @@ WorkspaceLike = Workspace
 class HttpEndpointTarget:
     """Parsed metadata for an HTTP MCP endpoint."""
 
-    @dataclass(frozen=True)
-    class PreflightTcpDeps:
-        """Injectable dependencies for TCP MCP server preflight probes."""
-
-        connect_to_endpoint_fn: Callable[
-            [str, tuple[str, int], timedelta], socket.socket
-        ] | None = None
-        list_tools_fn: Callable[[socket.socket, timedelta], list[str]] | None = None
-
-    class SessionBridgeError(Exception):
-        """Raised when the session bridge fails to start or preflight fails."""
-
-    @dataclass(frozen=True)
-    class HeartbeatPolicy:
-        """Supervision interval configuration for active MCP health monitoring."""
-
-        interval: timedelta
-
-    class PreflightError(Exception):
-        """Base class for MCP preflight failures."""
-
-    class RetryablePreflightError(PreflightError):
-        """Transient preflight errors that may succeed if retried."""
-
-    class PermanentPreflightError(PreflightError):
-        """Preflight errors that must abort the connection attempt."""
-
-
     address: tuple[str, int]
     host_header: str
     path: str
-
-
-PreflightTcpDeps = HttpEndpointTarget.PreflightTcpDeps
-SessionBridgeError = HttpEndpointTarget.SessionBridgeError
-HeartbeatPolicy = HttpEndpointTarget.HeartbeatPolicy
-PreflightError = HttpEndpointTarget.PreflightError
-RetryablePreflightError = HttpEndpointTarget.RetryablePreflightError
-PermanentPreflightError = HttpEndpointTarget.PermanentPreflightError
 
 
 def _visible_mcp_tool_names_owned(

@@ -74,22 +74,24 @@ _INVALID_CONTENT: dict[str, str] = {
 _ALL_ARTIFACT_TYPES = list(_VALID_CONTENT.keys())
 
 
+class _Session:
+    session_id = "sess-1"
+
+    def check_capability(self, cap: str) -> object:
+        assert cap == "artifact.submit"
+        return "approved"
+
+
+class _Workspace:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def absolute_path(self, path: str) -> str:
+        return str((self._root / path).resolve())
+
+
 class TestRollbackSymmetry:
     """Integration tests: on exception after JSON submit, markdown is also rolled back."""
-
-    class _Session:
-        session_id = "sess-1"
-
-        def check_capability(self, cap: str) -> object:
-            assert cap == "artifact.submit"
-            return "approved"
-
-    class _Workspace:
-        def __init__(self, root: Path) -> None:
-            self._root = root
-
-        def absolute_path(self, path: str) -> str:
-            return str((self._root / path).resolve())
 
     def test_rollback_removes_json_artifact_and_markdown_on_post_submit_failure(
         self, tmp_path: Path
@@ -166,5 +168,3 @@ class TestRollbackSymmetry:
         assert not artifact_file.exists()
 
 
-_Session = TestRollbackSymmetry._Session
-_Workspace = TestRollbackSymmetry._Workspace

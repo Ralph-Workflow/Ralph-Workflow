@@ -16,6 +16,8 @@ from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.mcp.protocol._mcp_message import MCPMessage
+from ralph.mcp.protocol._transport_error import TransportError
 from ralph.process.manager import (
     ManagedProcess,
     ProcessTerminationError,
@@ -54,22 +56,6 @@ class StdioTransport:
     Communicates with an MCP server process via stdin/stdout.
     Each line is a JSON-RPC message.
     """
-
-    class TransportError(Exception):
-        """Raised when transport operations fail."""
-
-        pass
-
-    @dataclass
-    class MCPMessage:
-        """Represents an MCP message."""
-
-        method: str
-        params: dict[str, object] | None = None
-        msg_id: str | int | None = None
-        error: dict[str, object] | None = None
-
-
 
     def __init__(
         self,
@@ -203,8 +189,6 @@ class StdioTransport:
         logger.info("Closed stdio transport")
 
 
-TransportError = StdioTransport.TransportError
-MCPMessage = StdioTransport.MCPMessage
 MCPTransport = StdioTransport
 
 

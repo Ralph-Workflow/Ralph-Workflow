@@ -13,11 +13,12 @@ if TYPE_CHECKING:
     from ralph.mcp.server import lifecycle
 
 
-class FakeBridge:
+class FakeProcess:
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
 
-    class FakeProcess:
-        def __init__(self, pid: int) -> None:
-            self.pid = pid
+
+class FakeBridge:
 
     def __init__(self, endpoint: str, pid: int) -> None:
         self._endpoint = endpoint
@@ -37,7 +38,6 @@ class FakeBridge:
         self.shutdown_calls += 1
 
 
-FakeProcess = FakeBridge.FakeProcess
 
 
 def test_factory_is_runtime_checkable_protocol(tmp_path: Path) -> None:

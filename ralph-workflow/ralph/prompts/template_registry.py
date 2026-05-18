@@ -5,20 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.prompts.template_not_found_error import TemplateNotFoundError
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
 class TemplateRegistry:
     """Registry that holds prompt templates by name."""
-
-    class TemplateNotFoundError(Exception):
-        """Raised when a requested template is missing."""
-
-        def __init__(self, template_name: str) -> None:
-            super().__init__(f"template '{template_name}' not found")
-            self.template_name = template_name
-
 
     def __init__(self, *, template_dirs: tuple[Path, ...] = ()) -> None:
         self._templates: dict[str, str] = {}
@@ -50,7 +44,6 @@ class TemplateRegistry:
         return None
 
 
-TemplateNotFoundError = TemplateRegistry.TemplateNotFoundError
 
 
 def load_partial_templates(template_dirs: Iterable[Path]) -> dict[str, str]:

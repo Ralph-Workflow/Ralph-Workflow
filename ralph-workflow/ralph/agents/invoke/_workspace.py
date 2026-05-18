@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
+
+from ralph.agents.invoke._has_src_path import _HasSrcPath
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -57,13 +59,6 @@ class WorkspaceMonitor:
     This allows the pipeline to detect when an agent has completed significant
     work by watching for file modifications in the workspace.
     """
-
-    @runtime_checkable
-    class _HasSrcPath(Protocol):
-        """Protocol for watchdog events that expose a source path."""
-
-        src_path: str
-
 
     def __init__(self, workspace_path: Path) -> None:
         """Initialize workspace monitor.
@@ -135,4 +130,3 @@ class WorkspaceMonitor:
         return set(self._seen_files)
 
 
-_HasSrcPath = WorkspaceMonitor._HasSrcPath

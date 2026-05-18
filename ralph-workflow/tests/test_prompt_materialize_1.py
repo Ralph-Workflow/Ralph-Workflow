@@ -30,23 +30,20 @@ from ralph.workspace.memory import MemoryWorkspace
 _TextContent = ToolContent
 
 
+class _ArtifactSubmitSession:
+    session_id = "test-session"
+    drain = "planning_analysis"
+
+    def check_capability(self, capability: str) -> object:
+        return capability == "artifact.submit"
+
+
 class _ArtifactWorkspace:
-
-    class _ArtifactSubmitSession:
-        session_id = "test-session"
-        drain = "planning_analysis"
-
-        def check_capability(self, capability: str) -> object:
-            return capability == "artifact.submit"
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
     def absolute_path(self, path: str) -> str:
         return str(self.root / path)
-
-
-_ArtifactSubmitSession = _ArtifactWorkspace._ArtifactSubmitSession
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (

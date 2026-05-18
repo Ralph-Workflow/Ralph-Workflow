@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import StrEnum
+
+from ralph.recovery.connectivity_event import ConnectivityEvent
+from ralph.recovery.connectivity_state import ConnectivityState
+
+__all__ = ["ConnectivityEvent", "ConnectivityMonitor", "ConnectivityState"]
 
 # Default probe targets: DNS resolvers over TCP
 _DEFAULT_PROBE_TARGETS: list[tuple[str, int]] = [
@@ -35,6 +38,7 @@ async def _default_probe(host: str, port: int, timeout_s: float) -> bool:
 
 
 ProbeCallable = Callable[[str, int, float], Awaitable[bool]]
+ListenerCallable = Callable[[ConnectivityEvent], None]
 
 
 class ConnectivityMonitor:
@@ -44,21 +48,8 @@ class ConnectivityMonitor:
     without real sockets.
     """
 
-    class ConnectivityState(StrEnum):
-        """Enumeration of observed network connectivity states."""
-
-        ONLINE = "online"
-        OFFLINE = "offline"
-        UNKNOWN = "unknown"
-
-    @dataclass
-    class ConnectivityEvent:
-        """A snapshot of a connectivity state transition."""
-
-        state: ConnectivityState
-        since: datetime
-        reason: str
-
+    ConnectivityState = ConnectivityState
+    ConnectivityEvent = ConnectivityEvent
 
     def __init__(
         self,
@@ -137,9 +128,3 @@ class ConnectivityMonitor:
                     with contextlib.suppress(Exception):
                         listener(evt)
             await asyncio.sleep(self._interval)
-
-
-ConnectivityState = ConnectivityMonitor.ConnectivityState
-ConnectivityEvent = ConnectivityMonitor.ConnectivityEvent
-
-ListenerCallable = Callable[[ConnectivityEvent], None]

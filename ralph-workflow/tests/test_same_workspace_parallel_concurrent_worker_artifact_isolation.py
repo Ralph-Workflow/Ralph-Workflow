@@ -28,14 +28,16 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
+class _FakeMcpServerFactory:
+    def build(self, session: object) -> McpServerHandle:
+        return McpServerHandle(
+            endpoint="http://127.0.0.1:9999/mcp",
+            pid=99999,
+            shutdown=lambda: None,
+        )
+
+
 class TestConcurrentWorkerArtifactIsolation:
-    class _FakeMcpServerFactory:
-        def build(self, session: object) -> McpServerHandle:
-            return McpServerHandle(
-                endpoint="http://127.0.0.1:9999/mcp",
-                pid=99999,
-                shutdown=lambda: None,
-            )
 
     def test_concurrent_workers_write_to_separate_artifact_dirs(self, tmp_path: Path) -> None:
         """Each worker gets its own artifact directory;
@@ -69,8 +71,6 @@ class TestConcurrentWorkerArtifactIsolation:
             not (ns_b / "artifacts" / "result.json").read_text().startswith('{"unit_id": "unit-A"}')
         )
 
-
-_FakeMcpServerFactory = TestConcurrentWorkerArtifactIsolation._FakeMcpServerFactory
 
 
 def _make_same_workspace_context(

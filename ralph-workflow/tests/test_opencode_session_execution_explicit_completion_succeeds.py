@@ -5,6 +5,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
+from tests.fake_handle import _FakeHandle
 
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
@@ -26,23 +27,7 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestExplicitCompletionSucceeds:
-    class _FakeHandle:
-        returncode: int = 0
-        stdout = None
-        stderr = None
 
-        def __init__(self, *, returncode: int = 0, has_descendants: bool = False) -> None:
-            self.returncode = returncode
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
-
-        def descendant_snapshot(self) -> tuple[int, float | None]:
-            return (1 if self._has_descendants else 0, 5.0 if self._has_descendants else None)
-
-        def poll(self) -> int | None:
-            return self.returncode
 
     def test_explicit_completion_signal_succeeds(self) -> None:
         """OpenCodeExecutionStrategy: exit 0 with completion signals is TERMINAL_COMPLETE."""
@@ -59,4 +44,3 @@ class TestExplicitCompletionSucceeds:
         assert state == AgentExecutionState.TERMINAL_COMPLETE
 
 
-_FakeHandle = TestExplicitCompletionSucceeds._FakeHandle

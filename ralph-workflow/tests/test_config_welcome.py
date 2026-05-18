@@ -38,20 +38,20 @@ _RAW_MARKUP_TOKENS = (
 )
 
 
+class _FakeAgent:
+    """Fake agent config for registry testing."""
+
+    def __init__(self, cmd: str, display_name: str | None = None) -> None:
+        self.cmd = cmd
+        self.display_name = display_name
+
+
 class _FakeRegistry:
     """Fake agent registry for testing availability checks.
 
     Implements list_agents() -> list[str] and get(name) -> _FakeAgent | None
     to match the _HasListAgents protocol used by emit_first_run_welcome.
     """
-
-    class _FakeAgent:
-        """Fake agent config for registry testing."""
-
-        def __init__(self, cmd: str, display_name: str | None = None) -> None:
-            self.cmd = cmd
-            self.display_name = display_name
-
 
     def __init__(self, agents: dict[str, _FakeAgent]) -> None:
         self._agents = agents
@@ -63,7 +63,6 @@ class _FakeRegistry:
         return self._agents.get(name)
 
 
-_FakeAgent = _FakeRegistry._FakeAgent
 
 
 def _make_console() -> tuple[StringIO, Console]:

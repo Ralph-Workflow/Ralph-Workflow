@@ -8,6 +8,9 @@ import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from tests.mock_session import MockSession
+from tests.mock_session_with_manifest import MockSessionWithManifest
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -38,33 +41,6 @@ DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 class TestHandleReadMedia:
-
-    class MockSession:
-        session_id = "test-session"
-
-        def __init__(self, *args: object) -> None:
-            if not args:
-                self._caps: set[str] = set()
-            elif len(args) == 1 and isinstance(args[0], set):
-                self._caps = {s for s in args[0] if isinstance(s, str)}
-            else:
-                self._caps = {s for s in args if isinstance(s, str)}
-
-        def check_capability(self, capability: str) -> object:
-            return capability in self._caps
-
-    @dataclass
-    class MockSessionWithManifest:
-        allowed_capability: str | None = None
-        session_id: str = "test-session"
-        media_manifest: MediaManifest = field(default_factory=MediaManifest)
-        model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
-
-        def check_capability(self, capability: str) -> object:
-            return capability == self.allowed_capability
-
-        def check_edit_area(self, path: str) -> object:
-            return True
 
     def test_no_manifest_returns_explicit_error(self) -> None:
         """When no session manifest is available, resource-reference delivery returns an error."""
@@ -680,5 +656,3 @@ class TestHandleReadMedia:
         assert video.to_dict()["type"] == "video"
 
 
-MockSession = TestHandleReadMedia.MockSession
-MockSessionWithManifest = TestHandleReadMedia.MockSessionWithManifest

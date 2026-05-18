@@ -18,6 +18,7 @@ from ralph.mcp.multimodal.capabilities import (
     ResolvedCapabilityProfile,
 )
 from ralph.mcp.protocol.session import AgentSession
+from ralph.pipeline.parallel.worker_session_bundle import WorkerSessionBundle
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,15 +32,6 @@ if TYPE_CHECKING:
 class WorkerSessionConfig:
     """Optional session contract parameters for a parallel worker session."""
 
-    @dataclass(frozen=True)
-    class WorkerSessionBundle:
-        """Assembled session, MCP server handle, and workspace scope for a parallel worker."""
-
-        session: AgentSession
-        mcp_handle: McpServerHandle
-        workspace_scope: WorkspaceScope
-
-
     worker_artifact_dir: Path | None = None
     worker_namespace: Path | None = None
     session_drain: str = ""
@@ -47,8 +39,6 @@ class WorkerSessionConfig:
     session_model_identity: MultimodalModelIdentity | None = None
     session_capability_profile: ResolvedCapabilityProfile | None = None
 
-
-WorkerSessionBundle = WorkerSessionConfig.WorkerSessionBundle
 
 
 def build_worker_session(

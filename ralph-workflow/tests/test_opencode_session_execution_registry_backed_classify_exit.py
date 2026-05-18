@@ -5,6 +5,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
+from tests.fake_handle import _FakeHandle
 
 import json
 
@@ -34,23 +35,7 @@ _CompletionCheckOptions = CompletionCheckOptions
 class TestRegistryBackedClassifyExit:
     """classify_exit uses registry terminal_count to confirm all children exited."""
 
-    class _FakeHandle:
-        returncode: int = 0
-        stdout = None
-        stderr = None
 
-        def __init__(self, *, returncode: int = 0, has_descendants: bool = False) -> None:
-            self.returncode = returncode
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
-
-        def descendant_snapshot(self) -> tuple[int, float | None]:
-            return (1 if self._has_descendants else 0, 5.0 if self._has_descendants else None)
-
-        def poll(self) -> int | None:
-            return self.returncode
 
     def test_observe_line_routes_progress_event_to_registry(self) -> None:
         """A child_progress JSON line routed via observe_line updates registry progress."""
@@ -155,4 +140,3 @@ class TestRegistryBackedClassifyExit:
         )
 
 
-_FakeHandle = TestRegistryBackedClassifyExit._FakeHandle

@@ -12,6 +12,7 @@ PostExitWatchdog with FakeClock to validate the planned end-to-end behaviors.
 """
 
 from __future__ import annotations
+from tests.integration.fake_handle import _FakeHandle
 
 import json
 
@@ -24,14 +25,7 @@ from ralph.process.liveness import FakeLivenessProbe
 class TestChildStillWorking:
     """Fresh progress renewal keeps parent in WAITING_ON_CHILD."""
 
-    class _FakeHandle:
-        returncode = 0
 
-        def __init__(self, *, has_descendants: bool = False) -> None:
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
 
     def test_fresh_progress_holds_waiting(self) -> None:
         """Each progress event within progress_ttl maintains WAITING_ON_CHILD."""
@@ -99,7 +93,6 @@ class TestChildStillWorking:
         )
 
 
-_FakeHandle = TestChildStillWorking._FakeHandle
 
 
 def _make_registry(*, t: list[float]) -> ChildLivenessRegistry:

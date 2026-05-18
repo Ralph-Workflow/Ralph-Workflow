@@ -27,14 +27,16 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
+class _FakeMcpServerFactory:
+    def build(self, session: object) -> McpServerHandle:
+        return McpServerHandle(
+            endpoint="http://127.0.0.1:9999/mcp",
+            pid=99999,
+            shutdown=lambda: None,
+        )
+
+
 class TestWorkerArtifactIsolation:
-    class _FakeMcpServerFactory:
-        def build(self, session: object) -> McpServerHandle:
-            return McpServerHandle(
-                endpoint="http://127.0.0.1:9999/mcp",
-                pid=99999,
-                shutdown=lambda: None,
-            )
 
     def test_per_worker_artifact_dirs_are_separate(self, tmp_path: Path) -> None:
         unit_a = _make_unit("unit-a")
@@ -51,8 +53,6 @@ class TestWorkerArtifactIsolation:
         # Namespaces are separate
         assert ns_root / "unit-a" != ns_root / "unit-b"
 
-
-_FakeMcpServerFactory = TestWorkerArtifactIsolation._FakeMcpServerFactory
 
 
 def _make_same_workspace_context(

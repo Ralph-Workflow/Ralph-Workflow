@@ -37,32 +37,29 @@ _FAST_POLICY = ProcessManagerPolicy(
 )
 
 
+class _FakeProcess:
+    def __init__(self) -> None:
+        self.stdin: IO[bytes] | None = BytesIO()
+        self.stdout: IO[bytes] | None = BytesIO()
+        self.stderr: IO[bytes] | None = BytesIO()
+
+    def terminate(self) -> None:
+        pass
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        return 0
+
+    def kill(self) -> None:
+        pass
+
+
 class _FakeThread:
-
-    class _FakeProcess:
-        def __init__(self) -> None:
-            self.stdin: IO[bytes] | None = BytesIO()
-            self.stdout: IO[bytes] | None = BytesIO()
-            self.stderr: IO[bytes] | None = BytesIO()
-
-        def terminate(self) -> None:
-            pass
-
-        def wait(self, timeout: float | None = None) -> int | None:
-            return 0
-
-        def kill(self) -> None:
-            pass
-
     def __init__(self, label: str, on_start: Callable[[], None]) -> None:
         self._label = label
         self._on_start = on_start
 
     def start(self) -> None:
         self._on_start()
-
-
-_FakeProcess = _FakeThread._FakeProcess
 
 
 def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:

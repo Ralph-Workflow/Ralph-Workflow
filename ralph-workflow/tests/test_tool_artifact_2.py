@@ -25,84 +25,81 @@ def _memory_handler_deps(backend: MemoryBackend) -> ArtifactHandlerDeps:
     return ArtifactHandlerDeps(backend=backend, now_iso=lambda: "2026-04-15T12:00:00+00:00")
 
 
+class MemoryBackend(FileBackend):
+    def __init__(self) -> None:
+        self._files: dict[Path, str] = {}
+        self._directories: set[Path] = set()
+
+    def exists(self, path: Path) -> bool:
+        return path in self._files or path in self._directories
+
+    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+        del exist_ok
+        self._directories.add(path)
+        if parents:
+            self._directories.update(path.parents)
+
+    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
+        del encoding
+        return self._files[path]
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        del encoding
+        self._directories.add(path.parent)
+        self._directories.update(path.parent.parents)
+        self._files[path] = content
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self._directories.add(destination.parent)
+        self._directories.update(destination.parent.parents)
+        self._files[destination] = self._files.pop(source)
+
+    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
+        if missing_ok:
+            self._files.pop(path, None)
+            return
+        del self._files[path]
+
+    def glob(self, path: Path, pattern: str) -> list[Path]:
+        if pattern != "*.json":
+            return []
+        prefix = f"{path}/"
+        return [
+            candidate
+            for candidate in self._files
+            if str(candidate).startswith(prefix) and candidate.suffix == ".json"
+        ]
+
+
+class FailingArtifactBackend(MemoryBackend):
+    def __init__(
+        self, failing_path: Path, *, message: str = "artifact store unavailable"
+    ) -> None:
+        super().__init__()
+        self._failing_path = failing_path
+        self._message = message
+
+    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+        if path == self._failing_path:
+            raise OSError(self._message)
+        super().write_text(path, content, encoding=encoding)
+
+
+@dataclass
+class MockSession:
+    session_id: str = "test-session"
+    drain: str = "development"
+
+    def check_capability(self, capability: str) -> object:
+        return capability == "artifact.submit"
+
+
 class MockWorkspace:
-
-    class MemoryBackend(FileBackend):
-        def __init__(self) -> None:
-            self._files: dict[Path, str] = {}
-            self._directories: set[Path] = set()
-
-        def exists(self, path: Path) -> bool:
-            return path in self._files or path in self._directories
-
-        def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
-            del exist_ok
-            self._directories.add(path)
-            if parents:
-                self._directories.update(path.parents)
-
-        def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
-            del encoding
-            return self._files[path]
-
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            del encoding
-            self._directories.add(path.parent)
-            self._directories.update(path.parent.parents)
-            self._files[path] = content
-
-        def replace(self, source: Path, destination: Path) -> None:
-            self._directories.add(destination.parent)
-            self._directories.update(destination.parent.parents)
-            self._files[destination] = self._files.pop(source)
-
-        def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
-            if missing_ok:
-                self._files.pop(path, None)
-                return
-            del self._files[path]
-
-        def glob(self, path: Path, pattern: str) -> list[Path]:
-            if pattern != "*.json":
-                return []
-            prefix = f"{path}/"
-            return [
-                candidate
-                for candidate in self._files
-                if str(candidate).startswith(prefix) and candidate.suffix == ".json"
-            ]
-
-    class FailingArtifactBackend(MemoryBackend):
-        def __init__(
-            self, failing_path: Path, *, message: str = "artifact store unavailable"
-        ) -> None:
-            super().__init__()
-            self._failing_path = failing_path
-            self._message = message
-
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            if path == self._failing_path:
-                raise OSError(self._message)
-            super().write_text(path, content, encoding=encoding)
-
-    @dataclass
-    class MockSession:
-        session_id: str = "test-session"
-        drain: str = "development"
-
-        def check_capability(self, capability: str) -> object:
-            return capability == "artifact.submit"
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
     def absolute_path(self, path: str) -> str:
         return str(self.root / path)
-
-
-MemoryBackend = MockWorkspace.MemoryBackend
-FailingArtifactBackend = MockWorkspace.FailingArtifactBackend
-MockSession = MockWorkspace.MockSession
 
 
 def _content(value: dict[str, object]) -> str:

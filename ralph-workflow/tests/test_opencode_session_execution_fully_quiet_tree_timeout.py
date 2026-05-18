@@ -5,6 +5,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
+from tests.fake_handle import _FakeHandle
 
 from ralph.agents.execution_state import (
     AgentExecutionState,
@@ -26,23 +27,7 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestFullyQuietTreeTimeout:
-    class _FakeHandle:
-        returncode: int = 0
-        stdout = None
-        stderr = None
 
-        def __init__(self, *, returncode: int = 0, has_descendants: bool = False) -> None:
-            self.returncode = returncode
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
-
-        def descendant_snapshot(self) -> tuple[int, float | None]:
-            return (1 if self._has_descendants else 0, 5.0 if self._has_descendants else None)
-
-        def poll(self) -> int | None:
-            return self.returncode
 
     def test_multi_agent_tree_fully_quiet_triggers_timeout(self) -> None:
         """When all agents are inactive, classify_quiet must NOT return WAITING_ON_CHILD."""
@@ -58,4 +43,3 @@ class TestFullyQuietTreeTimeout:
         )
 
 
-_FakeHandle = TestFullyQuietTreeTimeout._FakeHandle

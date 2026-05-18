@@ -11,6 +11,7 @@ from loguru import logger
 from pydantic import ConfigDict, Field, ValidationError
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifactValidationError
 from ralph.pydantic_compat import RalphBaseModel
 
 from .plan_schema import (
@@ -44,10 +45,6 @@ SectionMode = Literal["replace", "append"]
 class PlanArtifact(RalphBaseModel):
     """Top-level validated schema for a plan artifact."""
 
-    class PlanArtifactValidationError(ValueError):
-        """Raised when a planning artifact does not match the formal schema."""
-
-
     model_config = ConfigDict(extra="forbid")
 
     summary: Summary
@@ -59,8 +56,6 @@ class PlanArtifact(RalphBaseModel):
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
     work_units: list[dict[str, object]] = Field(default_factory=list)
 
-
-PlanArtifactValidationError = PlanArtifact.PlanArtifactValidationError
 
 
 PLAN_SECTION_OBJECT_MODELS: dict[str, type[RalphBaseModel]] = {

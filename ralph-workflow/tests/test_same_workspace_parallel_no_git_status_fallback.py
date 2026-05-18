@@ -38,12 +38,14 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
+class _FakeMcpServerFactory:
+    def build(self, session: object) -> McpServerHandle:
+        return McpServerHandle(
+            endpoint="http://127.0.0.1:9999/mcp", pid=99999, shutdown=lambda: None
+        )
+
+
 class TestNoGitStatusFallback:
-    class _FakeMcpServerFactory:
-        def build(self, session: object) -> McpServerHandle:
-            return McpServerHandle(
-                endpoint="http://127.0.0.1:9999/mcp", pid=99999, shutdown=lambda: None
-            )
 
     def test_worker_success_requires_worker_local_artifact(self, tmp_path: Path) -> None:
         """Worker success is determined by artifacts, never by git status."""
@@ -108,8 +110,6 @@ class TestNoGitStatusFallback:
         assert len(failed) == 1
         assert failed[0].unit_id == "unit-a"
 
-
-_FakeMcpServerFactory = TestNoGitStatusFallback._FakeMcpServerFactory
 
 
 def _make_same_workspace_context(

@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from datetime import timedelta
 from time import monotonic
 
+from ralph.phases.phase_timing_record import PhaseTimingRecord
+
 
 def capture_time() -> float:
     """Return a monotonic timestamp suitable for elapsed-time calculations."""
@@ -37,17 +39,6 @@ def elapsed_seconds(start: float) -> int:
 @dataclass(frozen=True)
 class PhaseTimer:
     """Simple helper for measuring phase execution durations."""
-
-    @dataclass(frozen=True)
-    class PhaseTimingRecord:
-        """Structured timing result for a completed phase execution."""
-
-        phase: str
-        iteration: int
-        started_at: float
-        elapsed: timedelta
-        elapsed_seconds: int
-
 
     phase: str
     iteration: int
@@ -70,7 +61,6 @@ class PhaseTimer:
         )
 
 
-PhaseTimingRecord = PhaseTimer.PhaseTimingRecord
 
 
 __all__ = [

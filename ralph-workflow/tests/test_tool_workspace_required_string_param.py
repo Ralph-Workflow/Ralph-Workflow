@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import pytest
 
 from ralph.mcp.tools.coordination import (
@@ -18,18 +16,6 @@ DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 class TestRequiredStringParam:
-
-    @dataclass
-    class MockSession:
-        allowed_capability: str | None = None
-        is_parallel_worker: bool = False
-        session_id: str = "test-session"
-
-        def check_capability(self, capability: str) -> object:
-            return capability == self.allowed_capability
-
-        def check_edit_area(self, path: str) -> object:
-            return True
 
     def test_returns_string_value(self) -> None:
         params: dict[str, object] = {"path": "/some/path"}
@@ -47,4 +33,3 @@ class TestRequiredStringParam:
             required_string_param(params, "path")
 
 
-MockSession = TestRequiredStringParam.MockSession

@@ -27,29 +27,29 @@ The server is launched by ``ralph.process.manager`` via the
 from __future__ import annotations
 
 import argparse
-import asyncio
-import base64 as _base64
-import json
 import os
 import uuid
 from dataclasses import dataclass
-from enum import StrEnum
-from http.server import BaseHTTPRequestHandler
 from importlib import import_module
 from pathlib import Path
-from threading import Event
-from time import sleep
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loguru import logger
 
-from ralph import __version__
 from ralph.config.mcp_loader import load_mcp_config
-from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
-from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.session import AgentSession
-from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
+from ralph.mcp.server._fallback_standalone_server import _FallbackStandaloneServer
+from ralph.mcp.server._json_rpc_request import JsonRpcRequest
+from ralph.mcp.server._mcp_server import McpServer
+from ralph.mcp.server._runtime_constants import (
+    DEFAULT_HOST,
+    DEFAULT_MOUNT_PATH,
+    DEFAULT_PORT,
+    DEFAULT_TRANSPORT,
+)
+from ralph.mcp.server._server_state import ServerState
+from ralph.mcp.server._standalone_http_server import _StandaloneHttpServer
 from ralph.mcp.server.runtime_session import FileBackedSession, session_from_env
 from ralph.mcp.tools.bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
 from ralph.mcp.upstream.config import (
@@ -117,11 +117,6 @@ if TYPE_CHECKING:
             """Serialize result to a dictionary."""
             ...
 
-    class _ModelDump(Protocol):
-        def __call__(self, **kwargs: bool) -> dict[str, object]:
-            """Serialize a content block model into a dictionary."""
-            ...
-
     class FastMcpServerLike(Protocol):
         """Minimal standalone FastMCP server surface used by Ralph."""
 
@@ -150,11 +145,6 @@ except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback
 FastMCP = _FastMCP
 Tool = _Tool
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8000
-DEFAULT_TRANSPORT: Literal["streamable-http"] = "streamable-http"
-DEFAULT_MOUNT_PATH = "/mcp"
-SERVER_POLL_INTERVAL_SECONDS = 0.01
 _SCHEMA_ANNOTATIONS: dict[str, object] = {
     "string": str,
     "boolean": bool,
@@ -165,503 +155,14 @@ _SCHEMA_ANNOTATIONS: dict[str, object] = {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def _run_async(awaitable: Coroutine[object, object, object]) -> object:
-    return asyncio.run(awaitable)
-
-
-def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]:
-    if not isinstance(content_blocks, list | tuple):
-        raise TypeError(
-            f"content_blocks must be a list or tuple, got {type(content_blocks).__name__}. "
-            "Use ToolContent.text_content() or ImageContent() to wrap content."
-        )
-
-    serialized: list[dict[str, object]] = []
-    blocks = cast("list[object]", content_blocks)
-    for idx, block in enumerate(blocks):
-        if isinstance(block, dict):
-            serialized.append(cast("dict[str, object]", block))
-            continue
-
-        # Check for to_dict() first (ToolContent, ImageContent dataclasses)
-        to_dict = cast("_ToDict | None", getattr(block, "to_dict", None))
-        if callable(to_dict):
-            serialized.append(to_dict())
-            continue
-
-        # Check for model_dump() (Pydantic models)
-        model_dump = cast("_ModelDump | None", getattr(block, "model_dump", None))
-        if callable(model_dump):
-            serialized.append(model_dump(exclude_none=True, by_alias=True))
-            continue
-
-        raise TypeError(
-            f"Unsupported content block type at index {idx}: "
-            f"{type(block).__name__}. "
-            "Content blocks must be dict, ToolContent, ImageContent, or a Pydantic model "
-            "with to_dict() or model_dump() methods."
-        )
-
-    return serialized
-
-
-def _decode_json_payload_from_content(content_blocks: object) -> dict[str, object] | None:
-    serialized = _serialize_content_blocks(content_blocks)
-    if not serialized:
-        return None
-    first = serialized[0]
-    text = first.get("text")
-    if not isinstance(text, str):
-        return None
-    try:
-        decoded = cast("object", json.loads(text))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(decoded, dict):
-        return None
-    if "content" not in decoded:
-        return None
-    return cast("dict[str, object]", decoded)
-
-
-def _extract_client_capabilities(params: dict[str, object] | None) -> set[str]:
-    """Extract client capabilities from MCP initialize params.
-
-    The client capabilities can come in various shapes:
-    - {"capabilities": {"image": {}, "media": {}}}
-    - {"capabilities": {"image": True}}
-    - {"clientInfo": {...}}
-    """
-    if not params:
-        return set()
-
-    capabilities: object = params.get("capabilities", {})
-    if not isinstance(capabilities, dict):
-        return set()
-
-    result: set[str] = set()
-
-    for key in capabilities:
-        if key in ("image", "media", "multimodal"):
-            result.add(key)
-
-    return result
-
-
-
-
-
-
-
-
 @dataclass(frozen=True)
 class McpServerExtras:
     """Optional DI parameters for building standalone MCP servers."""
-
-    class ServerState(StrEnum):
-        """Lifecycle state of a running MCP server instance."""
-
-        UNINITIALIZED = "uninitialized"
-        RUNNING = "running"
-        SHUTDOWN = "shutdown"
-
-    @dataclass
-    class JsonRpcRequest:
-        """Parsed representation of an incoming JSON-RPC request."""
-
-        jsonrpc: str
-        method: str
-        params: dict[str, object] | None = None
-        msg_id: object = None
-
-    @dataclass
-    class JsonRpcResponse:
-        """Outgoing JSON-RPC response built by McpServer request handlers."""
-
-        jsonrpc: str
-        result: object = None
-        error: dict[str, object] | None = None
-        msg_id: object = None
-
-    class McpServer:
-        """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools."""
-
-        def __init__(
-            self, session: AgentSession, workspace: FsWorkspace, registry: ToolBridge
-        ) -> None:
-            self._session = session
-            self._workspace = workspace
-            self._registry = registry
-            self._client_capabilities: set[str] | None = None
-
-        def handle_request(
-            self, request: JsonRpcRequest, state: ServerState
-        ) -> tuple[JsonRpcResponse | None, ServerState]:
-            if request.method == "notifications/initialized":
-                return (None, ServerState.RUNNING)
-            if request.method == "tools/call":
-                return self._handle_tools_call(request, state)
-
-            handlers = {
-                "initialize": self._handle_initialize,
-                "prompts/list": self._handle_prompts_list,
-                "resources/list": self._handle_resources_list,
-                "resources/templates/list": self._handle_resource_templates_list,
-                "resources/read": self._handle_resources_read,
-                "tools/list": self._handle_tools_list,
-            }
-            handler = handlers.get(request.method)
-            if handler is not None:
-                return handler(request)
-
-            error = {"code": -32601, "message": f"Method not found: {request.method}"}
-            return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
-
-        def _handle_initialize(
-            self, request: JsonRpcRequest
-        ) -> tuple[JsonRpcResponse, ServerState]:
-            self._client_capabilities = _extract_client_capabilities(request.params)
-            self._registry.set_client_capabilities(self._client_capabilities)
-
-            result = {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {
-                    "tools": {"listChanged": False},
-                    "prompts": {"listChanged": False},
-                    "resources": {"subscribe": False, "listChanged": False},
-                },
-                "serverInfo": {"name": "ralph-mcp", "version": __version__},
-            }
-            return (
-                JsonRpcResponse(jsonrpc="2.0", result=result, msg_id=request.msg_id),
-                ServerState.RUNNING,
-            )
-
-        def _handle_tools_list(
-            self, request: JsonRpcRequest
-        ) -> tuple[JsonRpcResponse, ServerState]:
-            tools = [
-                {
-                    "name": definition.name,
-                    "description": definition.description,
-                    "inputSchema": definition.input_schema,
-                }
-                for definition in self._registry.list_definitions()
-            ]
-            return (
-                JsonRpcResponse(jsonrpc="2.0", result={"tools": tools}, msg_id=request.msg_id),
-                ServerState.RUNNING,
-            )
-
-        def _handle_prompts_list(
-            self, request: JsonRpcRequest
-        ) -> tuple[JsonRpcResponse, ServerState]:
-            return (
-                JsonRpcResponse(jsonrpc="2.0", result={"prompts": []}, msg_id=request.msg_id),
-                ServerState.RUNNING,
-            )
-
-        def _handle_resources_list(
-            self, request: JsonRpcRequest
-        ) -> tuple[JsonRpcResponse, ServerState]:
-            resources: list[dict[str, object]] = []
-            resources.extend(
-                entry.resource_list_entry() for entry in self._session.media_manifest.list_entries()
-            )
-            return (
-                JsonRpcResponse(
-                    jsonrpc="2.0", result={"resources": resources}, msg_id=request.msg_id
-                ),
-                ServerState.RUNNING,
-            )
-
-        def _handle_resource_templates_list(
-            self, request: JsonRpcRequest
-        ) -> tuple[JsonRpcResponse, ServerState]:
-            templates: list[dict[str, object]] = []
-            if is_policy_approved(self._session.check_capability("media.read")):
-                templates.append(
-                    {
-                        "uriTemplate": "ralph://media/{artifact_id}",
-                        "name": "Ralph media artifact",
-                        "description": (
-                            "Binary media artifact stored by read_media. "
-                            "Retrieve via resources/read with the full URI."
-                        ),
-                    }
-                )
-            return (
-                JsonRpcResponse(
-                    jsonrpc="2.0",
-                    result={"resourceTemplates": templates},
-                    msg_id=request.msg_id,
-                ),
-                ServerState.RUNNING,
-            )
-
-        def _handle_resources_read(
-            self, request: JsonRpcRequest
-        ) -> tuple[JsonRpcResponse, ServerState]:
-            params = request.params or {}
-            uri = params.get("uri")
-            if not isinstance(uri, str) or not uri:
-                error = {"code": -32602, "message": "resources/read requires a 'uri' parameter"}
-                return (
-                    JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
-                    ServerState.RUNNING,
-                )
-
-            artifact_id = parse_media_uri(uri)
-            if artifact_id is None:
-                error = {
-                    "code": -32602,
-                    "message": (
-                        f"Unsupported resource URI: '{uri}'. Expected ralph://media/<artifact_id>"
-                    ),
-                }
-                return (
-                    JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
-                    ServerState.RUNNING,
-                )
-
-            entry = self._session.media_manifest.get(artifact_id)
-            if entry is None:
-                error = {"code": -32602, "message": f"Resource not found: '{uri}'"}
-                return (
-                    JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
-                    ServerState.RUNNING,
-                )
-
-            raw_bytes = entry.load_bytes()
-            if raw_bytes is None:
-                error = {"code": -32602, "message": f"Resource bytes no longer available: '{uri}'"}
-                return (
-                    JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
-                    ServerState.RUNNING,
-                )
-
-            blob = _base64.b64encode(raw_bytes).decode("ascii")
-            contents: list[dict[str, object]] = [
-                {"uri": entry.uri, "mimeType": entry.mime_type, "blob": blob},
-            ]
-            return (
-                JsonRpcResponse(
-                    jsonrpc="2.0",
-                    result={"contents": contents},
-                    msg_id=request.msg_id,
-                ),
-                ServerState.RUNNING,
-            )
-
-        def _handle_tools_call(
-            self, request: JsonRpcRequest, state: ServerState
-        ) -> tuple[JsonRpcResponse, ServerState]:
-            params = request.params or {}
-            tool_name = params.get("name")
-            if not isinstance(tool_name, str) or not tool_name:
-                error = {"code": -32602, "message": "tools/call requires a tool name"}
-                return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
-
-            arguments_value = params.get("arguments", {})
-            if not isinstance(arguments_value, dict):
-                error = {"code": -32602, "message": "tools/call arguments must be an object"}
-                return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
-
-            try:
-                raw_result = self._registry.dispatch(
-                    tool_name, dict(arguments_value), host_session=self._session
-                )
-            except Exception as exc:
-                error = {"code": -32603, "message": str(exc)}
-                return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
-
-            to_dict = cast("_ToDict | None", getattr(raw_result, "to_dict", None))
-            payload_source = to_dict() if callable(to_dict) else raw_result
-            payload = self._build_tools_call_payload(payload_source)
-            return (
-                JsonRpcResponse(jsonrpc="2.0", result=payload, msg_id=request.msg_id),
-                ServerState.RUNNING,
-            )
-
-        def _build_tools_call_payload(self, payload_source: object) -> dict[str, object]:
-            if isinstance(payload_source, dict):
-                payload = cast("dict[str, object]", dict(payload_source))
-                result_obj = payload.get("result")
-                if isinstance(result_obj, dict):
-                    payload = cast("dict[str, object]", dict(result_obj))
-                if "content" not in payload:
-                    payload["content"] = _serialize_content_blocks(payload_source)
-                return payload
-
-            decoded_payload = _decode_json_payload_from_content(payload_source)
-            if decoded_payload is not None:
-                return decoded_payload
-            return {"content": _serialize_content_blocks(payload_source)}
-
-    class _FallbackHttpHandler(BaseHTTPRequestHandler):
-        protocol_version = "HTTP/1.1"
-
-        def do_GET(self) -> None:
-            if self.path != DEFAULT_MOUNT_PATH:
-                self.send_error(404)
-                return
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache, no-transform")
-            self.send_header("Connection", "keep-alive")
-            self.end_headers()
-            self.wfile.write(b"event: open\r\ndata: {}\r\n\r\n")
-            self.wfile.flush()
-            server = cast("_FallbackHttpServer", self.server)
-            while not server.shutdown_event.is_set():
-                try:
-                    self.wfile.write(b": keepalive\r\n\r\n")
-                    self.wfile.flush()
-                except BrokenPipeError:
-                    break
-                sleep(0.25)
-
-        def do_POST(self) -> None:
-            if self.path != DEFAULT_MOUNT_PATH:
-                self.send_error(404)
-                return
-            length = int(self.headers.get("Content-Length", "0"))
-            payload = self.rfile.read(length)
-            try:
-                data = cast("dict[str, object]", json.loads(payload or b"{}"))
-            except json.JSONDecodeError:
-                self._write_json(
-                    {
-                        "jsonrpc": "2.0",
-                        "error": {"code": -32700, "message": "Parse error"},
-                        "id": None,
-                    },
-                    400,
-                )
-                return
-            params_value = data.get("params")
-            request = JsonRpcRequest(
-                jsonrpc=cast("str", data.get("jsonrpc", "2.0")),
-                method=cast("str", data.get("method", "")),
-                params=cast("dict[str, object] | None", params_value)
-                if isinstance(params_value, dict)
-                else None,
-                msg_id=data.get("id"),
-            )
-            server = cast("_FallbackHttpServer", self.server)
-            response, next_state = server.mcp_server.handle_request(request, server.state)
-            server.state = next_state
-            if response is None:
-                self.send_response(202)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            body = {"jsonrpc": response.jsonrpc, "id": response.msg_id}
-            if response.result is not None:
-                body["result"] = response.result
-            if response.error is not None:
-                body["error"] = response.error
-            encoded = f"event: message\r\ndata: {json.dumps(body)}\r\n\r\n".encode()
-            session_id = None
-            if request.method == "initialize":
-                session_id = cast("_FallbackHttpServer", self.server).mcp_server._session.session_id
-            self._write_sse(encoded, 200, session_id=session_id)
-
-        def log_message(self, format: str, *args: object) -> None:
-            del format, args
-
-        def _write_json(self, payload: dict[str, object], status: int) -> None:
-            encoded = json.dumps(payload).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(encoded)))
-            self.end_headers()
-            self.wfile.write(encoded)
-
-        def _write_sse(self, payload: bytes, status: int, *, session_id: str | None = None) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache, no-transform")
-            self.send_header("Connection", "keep-alive")
-            if session_id:
-                self.send_header("mcp-session-id", session_id)
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
-
-    class _FallbackStandaloneServer:
-        def __init__(self, host: str, port: int, mcp_server: McpServer) -> None:
-            self._host = host
-            self._port = port
-            self._mcp_server = mcp_server
-            self._httpd: _FallbackHttpServer | None = None
-
-        @property
-        def bound_address(self) -> tuple[str, int]:
-            """Return the (host, port) the server is bound to after run() is called."""
-            if self._httpd is None:
-                raise RuntimeError("Server has not been started yet")
-            return cast("tuple[str, int]", self._httpd.server_address)
-
-        def run(
-            self,
-            transport: Literal["streamable-http"] = DEFAULT_TRANSPORT,
-            *,
-            ready_event: Event | None = None,
-        ) -> None:
-            if transport != DEFAULT_TRANSPORT:
-                raise ValueError(f"Unsupported transport: {transport}")
-            httpd = _FallbackHttpServer((self._host, self._port), _FallbackHttpHandler)
-            httpd.mcp_server = self._mcp_server
-            httpd.state = ServerState.UNINITIALIZED
-            httpd.shutdown_event = Event()
-            self._httpd = httpd
-            if ready_event is not None:
-                ready_event.set()
-            httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
-
-    class _StandaloneHttpServer(_FallbackStandaloneServer):
-        pass
-
 
     session: AgentSession | None = None
     upstream_registry: UpstreamRegistry | None = None
     mcp_config: McpConfig | None = None
 
-
-ServerState = McpServerExtras.ServerState
-JsonRpcRequest = McpServerExtras.JsonRpcRequest
-JsonRpcResponse = McpServerExtras.JsonRpcResponse
-McpServer = McpServerExtras.McpServer
-_FallbackHttpHandler = McpServerExtras._FallbackHttpHandler
-
-
-_FallbackStandaloneServer = McpServerExtras._FallbackStandaloneServer
-_StandaloneHttpServer = McpServerExtras._StandaloneHttpServer
 
 FallbackStandaloneServer = _FallbackStandaloneServer
 
@@ -923,7 +424,10 @@ __all__ = [
     "DEFAULT_PORT",
     "DEFAULT_TRANSPORT",
     "FileBackedSession",
+    "JsonRpcRequest",
+    "McpServer",
     "McpServerExtras",
+    "ServerState",
     "build_fastmcp_server",
     "build_standalone_http_server",
     "load_runtime_upstream_servers",

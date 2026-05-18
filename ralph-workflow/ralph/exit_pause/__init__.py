@@ -8,10 +8,12 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 import psutil
+
+from ralph.exit_pause.exit_outcome import ExitOutcome
+from ralph.exit_pause.pause_on_exit_mode import PauseOnExitMode
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -27,28 +29,9 @@ class LaunchContext:
         parent_process_name: Name of the parent process if detectable.
     """
 
-    class ExitOutcome(StrEnum):
-        """Possible outcomes that affect pause behavior."""
-
-        SUCCESS = "success"
-        FAILURE = "failure"
-        INTERRUPTED = "interrupted"
-
-    class PauseOnExitMode(StrEnum):
-        """When to pause before exiting."""
-
-        NEVER = "never"
-        ALWAYS = "always"
-        AUTO = "auto"
-
-
     is_windows: bool
     has_terminal_session_marker: bool
     parent_process_name: str | None
-
-
-ExitOutcome = LaunchContext.ExitOutcome
-PauseOnExitMode = LaunchContext.PauseOnExitMode
 
 
 TERMINAL_MARKERS: list[str] = [

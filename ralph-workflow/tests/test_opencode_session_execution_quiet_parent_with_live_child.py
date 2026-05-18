@@ -5,6 +5,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
+from tests.fake_handle import _FakeHandle
 
 from ralph.agents.execution_state import (
     AgentExecutionState,
@@ -27,20 +28,7 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 class TestQuietParentWithLiveChild:
 
-    class _FakeHandle:
-        """Minimal fake ManagedProcess for strategy tests."""
 
-        def __init__(
-            self,
-            *,
-            returncode: int = 0,
-            has_descendants: bool = False,
-        ) -> None:
-            self.returncode = returncode
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
 
     def test_quiet_parent_with_live_child_is_not_idle(self) -> None:
         """OpenCodeExecutionStrategy classifies quiet parent with live child as WAITING_ON_CHILD."""
@@ -53,4 +41,3 @@ class TestQuietParentWithLiveChild:
         assert state == AgentExecutionState.WAITING_ON_CHILD
 
 
-_FakeHandle = TestQuietParentWithLiveChild._FakeHandle

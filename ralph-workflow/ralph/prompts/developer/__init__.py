@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
+from ralph.prompts.developer.developer_prompt_inputs import DeveloperPromptInputs
 from ralph.prompts import template_engine
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
@@ -23,21 +24,6 @@ if TYPE_CHECKING:
 class PlanningPromptInputs:
     """Inputs for rendering a planning-phase prompt."""
 
-    @dataclass(frozen=True)
-    class DeveloperPromptInputs:
-        """Inputs for rendering a developer-iteration prompt."""
-
-        prompt_content: str | None
-        plan_content: str | None
-        analysis_feedback_content: str | None = None
-        plan_path: str = ""
-        analysis_feedback_path: str = ""
-        artifact_history_path: str = ""
-        artifact_history_dir: str = ""
-        prompt_name_prefix: str = "development"
-        last_retry_error: str = ""
-
-
     prompt_content: str | None
     plan_content: str | None = None
     analysis_feedback_content: str | None = None
@@ -47,8 +33,6 @@ class PlanningPromptInputs:
     artifact_history_dir: str = ""
     last_retry_error: str = ""
 
-
-DeveloperPromptInputs = PlanningPromptInputs.DeveloperPromptInputs
 
 
 def prompt_developer_iteration_xml_with_context(

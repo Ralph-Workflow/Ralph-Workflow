@@ -9,6 +9,9 @@ from ralph.mcp.tools.coordination import (
     handle_read_env,
     handle_report_progress,
 )
+from tests.coordination_mock_capable_session import MockCapableSession
+from tests.coordination_mock_session import MockSession
+from tests.coordination_mock_workspace import MockWorkspace
 
 
 def test_report_progress_accepts_injected_timestamp() -> None:
@@ -45,32 +48,10 @@ def test_coordinate_accepts_injected_timestamp() -> None:
 
 
 class MockDeniedSession:
-
-    class MockSession:
-        session_id = "session-1"
-
-        def check_capability(self, capability: str) -> object:
-            return True
-
-    class MockWorkspace:
-        def absolute_path(self, path: str) -> str:
-            return path
-
-    class MockCapableSession:
-        session_id = "session-env"
-
-        def check_capability(self, cap: object) -> object:
-            return "approved"
-
     session_id = "denied"
 
     def check_capability(self, cap: object) -> object:
         return "denied"
-
-
-MockSession = MockDeniedSession.MockSession
-MockWorkspace = MockDeniedSession.MockWorkspace
-MockCapableSession = MockDeniedSession.MockCapableSession
 
 
 def test_read_env_returns_variable_value() -> None:
@@ -88,7 +69,6 @@ def test_read_env_returns_not_found_when_missing() -> None:
 
 
 def test_read_env_requires_capability() -> None:
-
 
     with pytest.raises(CapabilityDeniedError):
         handle_read_env(MockDeniedSession(), MockWorkspace(), {"name": "X"}, env={})

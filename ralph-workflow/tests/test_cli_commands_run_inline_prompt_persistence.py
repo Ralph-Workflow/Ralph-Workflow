@@ -81,46 +81,45 @@ def _policy_bundle_for_testing() -> PolicyBundle:
     )
 
 
+class _CaptureConsole(Console):
+    """A Rich Console that also captures output in .lines."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            file=StringIO(),
+            color_system=None,
+            force_terminal=False,
+            theme=RALPH_THEME,
+        )
+        self._string_io = self.file
+        self.lines: list[str] = []
+
+    def print(self, *args: object, **kwargs: object) -> None:
+        for arg in args:
+            if isinstance(arg, Text):
+                self.lines.append(arg.plain)
+            else:
+                self.lines.append(str(arg))
+        super().print(*args, **kwargs)
+
+    def getvalue(self) -> str:
+        return self._string_io.getvalue()
+
+
+class _RegistryWithFromConfigOnly:
+    called_with: object | None = None
+
+    @classmethod
+    def from_config(cls, config: object) -> _RegistryWithFromConfigOnly:
+        cls.called_with = config
+        return cls()
+
+    def get(self, _name: str) -> object:
+        return object()
+
+
 class TestInlinePromptPersistence:
     """Tests for inline prompt persistence and quick-mode preflight bypass."""
-
-    class _CaptureConsole(Console):
-        """A Rich Console that also captures output in .lines."""
-
-        def __init__(self) -> None:
-            super().__init__(
-                file=StringIO(),
-                color_system=None,
-                force_terminal=False,
-                theme=RALPH_THEME,
-            )
-            self._string_io = self.file
-            self.lines: list[str] = []
-
-        def print(self, *args: object, **kwargs: object) -> None:
-            # Capture in lines for backward compatibility with existing tests
-            for arg in args:
-                if isinstance(arg, Text):
-                    self.lines.append(arg.plain)
-                else:
-                    self.lines.append(str(arg))
-            # Also print to parent (writes to StringIO)
-            super().print(*args, **kwargs)
-
-        def getvalue(self) -> str:
-            return self._string_io.getvalue()
-
-    class _RegistryWithFromConfigOnly:
-        called_with: object | None = None
-
-        @classmethod
-        def from_config(cls, config: object) -> _RegistryWithFromConfigOnly:
-            cls.called_with = config
-            return cls()
-
-        def get(self, _name: str) -> object:
-            return object()
-
 
     def test_inline_prompt_is_written_to_current_prompt_md(
         self,
@@ -156,6 +155,3 @@ class TestInlinePromptPersistence:
         result = run_module.run_pipeline(dry_run=True, inline_prompt="quick task")
         assert result == 0
 
-
-_CaptureConsole = TestInlinePromptPersistence._CaptureConsole
-_RegistryWithFromConfigOnly = TestInlinePromptPersistence._RegistryWithFromConfigOnly

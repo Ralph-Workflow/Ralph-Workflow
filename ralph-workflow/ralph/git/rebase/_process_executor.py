@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
-    from ralph.git.rebase.rebase import ProcessResult
+    from ralph.git.rebase.process_result import ProcessResult
 
 
 class ProcessExecutor(Protocol):

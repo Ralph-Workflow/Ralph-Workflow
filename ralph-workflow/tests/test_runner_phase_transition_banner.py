@@ -37,22 +37,23 @@ _STUB_TOOL_CALLS = 7
 _STUB_ERRORS = 1
 
 
+@dataclass
+class _StubPhaseCounters:
+    content_blocks: int = 0
+    thinking_blocks: int = 0
+    tool_calls: int = 0
+    errors: int = 0
+
+
+class _StubSubscriber:
+    """Minimal subscriber stub — only waiting_status_line is needed."""
+
+    @property
+    def waiting_status_line(self) -> str | None:
+        return None
+
+
 class _StubDisplay:
-
-    @dataclass
-    class _StubPhaseCounters:
-        content_blocks: int = 0
-        thinking_blocks: int = 0
-        tool_calls: int = 0
-        errors: int = 0
-
-    class _StubSubscriber:
-        """Minimal subscriber stub — only waiting_status_line is needed."""
-
-        @property
-        def waiting_status_line(self) -> str | None:
-            return None
-
     def __init__(self) -> None:
         console = Console(record=True, force_terminal=False, width=120, color_system=None)
         self._ctx = make_display_context(console=console, env={})
@@ -77,13 +78,8 @@ class _StubDisplay:
         return self._last_phase_artifact_outcome
 
     def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
-        # Record that close was emitted (for phase_close_emitted flag)
         self._phase_close_emitted = True
         self._last_exit_model = exit_model
-
-
-_StubPhaseCounters = _StubDisplay._StubPhaseCounters
-_StubSubscriber = _StubDisplay._StubSubscriber
 
 
 def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:

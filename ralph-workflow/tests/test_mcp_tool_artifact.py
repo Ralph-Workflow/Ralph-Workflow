@@ -21,14 +21,15 @@ REVIEW_FRESH_SUBMIT_EXAMPLE = (
 )
 
 
+class _ApprovedSession:
+    session_id = "session-1"
+
+    def check_capability(self, capability: str) -> object:
+        assert capability == "artifact.submit"
+        return "approved"
+
+
 class _Workspace:
-
-    class _ApprovedSession:
-        session_id = "session-1"
-
-        def check_capability(self, capability: str) -> object:
-            assert capability == "artifact.submit"
-            return "approved"
 
     def __init__(self, root: Path) -> None:
         self._root = root
@@ -37,7 +38,6 @@ class _Workspace:
         return str((self._root / path).resolve())
 
 
-_ApprovedSession = _Workspace._ApprovedSession
 
 
 def test_submit_artifact_rejects_missing_content_source_with_actionable_guidance(

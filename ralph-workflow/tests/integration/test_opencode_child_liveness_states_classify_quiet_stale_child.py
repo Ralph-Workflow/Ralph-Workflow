@@ -12,6 +12,7 @@ PostExitWatchdog with FakeClock to validate the planned end-to-end behaviors.
 """
 
 from __future__ import annotations
+from tests.integration.fake_handle import _FakeHandle
 
 import json
 
@@ -38,14 +39,7 @@ class TestClassifyQuietStaleChild:
     corroboration logic.
     """
 
-    class _FakeHandle:
-        returncode = 0
 
-        def __init__(self, *, has_descendants: bool = False) -> None:
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
 
     def test_stale_probe_snapshot_without_fresh_evidence_is_not_waiting(self) -> None:
         """Stale child_snapshot (has_process but not has_fresh_label)
@@ -171,7 +165,6 @@ class TestClassifyQuietStaleChild:
         )
 
 
-_FakeHandle = TestClassifyQuietStaleChild._FakeHandle
 
 
 def _make_registry(*, t: list[float]) -> ChildLivenessRegistry:

@@ -9,6 +9,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ralph.mcp.multimodal._audio_content import AudioContent
+from ralph.mcp.multimodal._document_content import DocumentContent
+from ralph.mcp.multimodal._image_content import ImageContent
+from ralph.mcp.multimodal._pdf_content import PdfContent
+from ralph.mcp.multimodal._video_content import VideoContent
+
 MODALITY_IMAGE = "image"
 MODALITY_PDF = "pdf"
 MODALITY_DOCUMENT = "document"
@@ -96,100 +102,6 @@ class ResourceReferenceContent:
       Used when an upstream MCP tool returns a URI-backed media block.
     """
 
-    @dataclass(frozen=True)
-    class ImageContent:
-        """Inline image content block delivered as base64-encoded bytes."""
-
-        data: str
-        mime_type: str
-        type: str = "image"
-        delivery: str = "inline_image"
-
-        def to_dict(self) -> dict[str, object]:
-            """Serialize to MCP-compatible content block dictionary."""
-            return {"type": self.type, "data": self.data, "mimeType": self.mime_type}
-
-    @dataclass(frozen=True)
-    class PdfContent:
-        """Typed PDF content block referencing a manifest artifact."""
-
-        uri: str
-        mime_type: str
-        title: str
-        type: str = "pdf"
-        delivery: str = "typed_block"
-
-        def to_dict(self) -> dict[str, object]:
-            """Serialize to MCP-compatible content block dictionary."""
-            return {
-                "type": self.type,
-                "uri": self.uri,
-                "mimeType": self.mime_type,
-                "title": self.title,
-                "delivery": self.delivery,
-            }
-
-    @dataclass(frozen=True)
-    class DocumentContent:
-        """Typed document content block referencing a manifest artifact."""
-
-        uri: str
-        mime_type: str
-        title: str
-        type: str = "document"
-        delivery: str = "typed_block"
-
-        def to_dict(self) -> dict[str, object]:
-            """Serialize to MCP-compatible content block dictionary."""
-            return {
-                "type": self.type,
-                "uri": self.uri,
-                "mimeType": self.mime_type,
-                "title": self.title,
-                "delivery": self.delivery,
-            }
-
-    @dataclass(frozen=True)
-    class AudioContent:
-        """Typed audio content block referencing a manifest artifact."""
-
-        uri: str
-        mime_type: str
-        title: str
-        type: str = "audio"
-        delivery: str = "typed_block"
-
-        def to_dict(self) -> dict[str, object]:
-            """Serialize to MCP-compatible content block dictionary."""
-            return {
-                "type": self.type,
-                "uri": self.uri,
-                "mimeType": self.mime_type,
-                "title": self.title,
-                "delivery": self.delivery,
-            }
-
-    @dataclass(frozen=True)
-    class VideoContent:
-        """Typed video content block referencing a manifest artifact."""
-
-        uri: str
-        mime_type: str
-        title: str
-        type: str = "video"
-        delivery: str = "typed_block"
-
-        def to_dict(self) -> dict[str, object]:
-            """Serialize to MCP-compatible content block dictionary."""
-            return {
-                "type": self.type,
-                "uri": self.uri,
-                "mimeType": self.mime_type,
-                "title": self.title,
-                "delivery": self.delivery,
-            }
-
-
     uri: str
     mime_type: str
     title: str
@@ -207,13 +119,6 @@ class ResourceReferenceContent:
             "modality": self.modality,
             "delivery": self.delivery,
         }
-
-
-ImageContent = ResourceReferenceContent.ImageContent
-PdfContent = ResourceReferenceContent.PdfContent
-DocumentContent = ResourceReferenceContent.DocumentContent
-AudioContent = ResourceReferenceContent.AudioContent
-VideoContent = ResourceReferenceContent.VideoContent
 
 
 __all__ = [

@@ -85,60 +85,63 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     return bundle
 
 
+class _FakeDisplay:
+    def __init__(self) -> None:
+        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
+
+    def emit(self, unit_id: str | None, line: str) -> None:
+        del unit_id, line
+
+    def set_status(self, unit_id: str, status: object) -> None:
+        del unit_id, status
+
+
+@dataclass
+class _RecordedHandle:
+    handle: McpServerHandle
+    shutdown_calls: int = 0
+
+
+class _RecordingMcpFactory:
+    def __init__(self) -> None:
+        self.sessions: list[object] = []
+        self.handles: list[_RecordedHandle] = []
+
+    def build(self, session: object) -> McpServerHandle:
+        self.sessions.append(session)
+        recorded = _RecordedHandle(
+            handle=McpServerHandle(
+                endpoint=f"http://127.0.0.1:{10_000 + len(self.handles)}/mcp",
+                pid=1000 + len(self.handles),
+                shutdown=lambda: None,
+            )
+        )
+
+        def _shutdown(record: _RecordedHandle = recorded) -> None:
+            record.shutdown_calls += 1
+
+        recorded.handle = McpServerHandle(
+            endpoint=recorded.handle.endpoint,
+            pid=recorded.handle.pid,
+            shutdown=_shutdown,
+        )
+        self.handles.append(recorded)
+        return recorded.handle
+
+
+class RecordingDisplay:
+    def __init__(self) -> None:
+        self.statuses: dict[str, list[WorkerStatus]] = defaultdict(list)
+
+    def emit(self, unit_id: str | None, line: str) -> None:
+        del unit_id, line
+
+    def set_status(self, unit_id: str, status: WorkerStatus) -> None:
+        self.statuses[unit_id].append(status)
+
+
 class TestSameWorkspaceFanOutE2E:
     """End-to-end test of the same-workspace parallel fan-out path."""
-
-    class _FakeDisplay:
-        def __init__(self) -> None:
-            self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
-
-        def emit(self, unit_id: str | None, line: str) -> None:
-            del unit_id, line
-
-        def set_status(self, unit_id: str, status: object) -> None:
-            del unit_id, status
-
-    @dataclass
-    class _RecordedHandle:
-        handle: McpServerHandle
-        shutdown_calls: int = 0
-
-    class _RecordingMcpFactory:
-        def __init__(self) -> None:
-            self.sessions: list[object] = []
-            self.handles: list[_RecordedHandle] = []
-
-        def build(self, session: object) -> McpServerHandle:
-            self.sessions.append(session)
-            recorded = _RecordedHandle(
-                handle=McpServerHandle(
-                    endpoint=f"http://127.0.0.1:{10_000 + len(self.handles)}/mcp",
-                    pid=1000 + len(self.handles),
-                    shutdown=lambda: None,
-                )
-            )
-
-            def _shutdown(record: _RecordedHandle = recorded) -> None:
-                record.shutdown_calls += 1
-
-            recorded.handle = McpServerHandle(
-                endpoint=recorded.handle.endpoint,
-                pid=recorded.handle.pid,
-                shutdown=_shutdown,
-            )
-            self.handles.append(recorded)
-            return recorded.handle
-
-    class RecordingDisplay:
-        def __init__(self) -> None:
-            self.statuses: dict[str, list[WorkerStatus]] = defaultdict(list)
-
-        def emit(self, unit_id: str | None, line: str) -> None:
-            del unit_id, line
-
-        def set_status(self, unit_id: str, status: WorkerStatus) -> None:
-            self.statuses[unit_id].append(status)
-
 
     def test_two_disjoint_units_emit_fan_out_effect(self) -> None:
         """_determine_effect_from_policy emits FanOutEffect for >=2 work units."""
@@ -487,7 +490,3 @@ class TestSameWorkspaceFanOutE2E:
         )
 
 
-_FakeDisplay = TestSameWorkspaceFanOutE2E._FakeDisplay
-_RecordedHandle = TestSameWorkspaceFanOutE2E._RecordedHandle
-_RecordingMcpFactory = TestSameWorkspaceFanOutE2E._RecordingMcpFactory
-RecordingDisplay = TestSameWorkspaceFanOutE2E.RecordingDisplay

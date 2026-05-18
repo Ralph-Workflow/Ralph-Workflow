@@ -160,17 +160,19 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
 
 
 
+class AgentError(Exception):
+    pass
+
+
+class _FakeBridge:
+    def shutdown(self) -> None:
+        return
+
+    def agent_endpoint_uri(self) -> str:
+        return "http://127.0.0.1:12345/mcp"
+
+
 class TestExecuteAgentEffectB:
-    class AgentError(Exception):
-        pass
-
-    class _FakeBridge:
-        def shutdown(self) -> None:
-            return
-
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:12345/mcp"
-
     @staticmethod
     def _config(verbosity: int = 2) -> MagicMock:
         config = MagicMock()
@@ -222,7 +224,7 @@ class TestExecuteAgentEffectB:
                         '{"type":"tool_use","name":"bash","input":{"command":"ls"}}',
                     ]
                 ),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -275,7 +277,7 @@ class TestExecuteAgentEffectB:
                         '{"type":"turn.completed"}',
                     ]
                 ),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),

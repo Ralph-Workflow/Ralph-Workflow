@@ -9,8 +9,10 @@ from this module rather than re-declaring provider knowledge elsewhere.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 
+from ralph.mcp.multimodal._capability_verdict import CapabilityVerdict
+from ralph.mcp.multimodal._delivery_mode import DeliveryMode
+from ralph.mcp.multimodal._multimodal_model_identity import MultimodalModelIdentity
 from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
 
 # ---------------------------------------------------------------------------
@@ -186,54 +188,6 @@ class ResolvedCapabilityProfile:
     re-calling get_delivery_mode() at each use site.
     """
 
-    class DeliveryMode(StrEnum):
-        """How a multimodal artifact will be delivered to the model."""
-
-        INLINE_IMAGE = "inline_image"
-        TYPED_BLOCK = "typed_block"
-        RESOURCE_REFERENCE_REPLAY = "resource_reference_replay"
-        UNSUPPORTED = "unsupported"
-
-    @dataclass(frozen=True)
-    class MultimodalModelIdentity:
-        """Identifies the provider and model for capability detection."""
-
-        provider: str
-        model_id: str | None = None
-        transport: str | None = None
-
-        def is_known(self) -> bool:
-            """Return True if the provider identity is resolved (not 'unknown')."""
-            return self.provider != "unknown"
-
-    @dataclass(frozen=True)
-    class CapabilityVerdict:
-        """Result of checking whether a modality/delivery mode is supported."""
-
-        modality: str
-        delivery: DeliveryMode
-        provider: str
-        model_id: str | None = None
-        reason: str = ""
-        block_type: str | None = None
-
-        def is_inline(self) -> bool:
-            """Return True if inline image delivery is used."""
-            return self.delivery == DeliveryMode.INLINE_IMAGE
-
-        def is_resource_reference(self) -> bool:
-            """Return True if resource-reference replay delivery will be used."""
-            return self.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
-
-        def is_typed_block(self) -> bool:
-            """Return True if typed block delivery will be used."""
-            return self.delivery == DeliveryMode.TYPED_BLOCK
-
-        def is_supported(self) -> bool:
-            """Return True if the modality has any supported delivery mode."""
-            return self.delivery not in {DeliveryMode.UNSUPPORTED}
-
-
     identity: MultimodalModelIdentity
     verdicts: dict[str, CapabilityVerdict]
 
@@ -259,10 +213,6 @@ class ResolvedCapabilityProfile:
             },
         }
 
-
-DeliveryMode = ResolvedCapabilityProfile.DeliveryMode
-MultimodalModelIdentity = ResolvedCapabilityProfile.MultimodalModelIdentity
-CapabilityVerdict = ResolvedCapabilityProfile.CapabilityVerdict
 
 UNKNOWN_IDENTITY = MultimodalModelIdentity(provider="unknown")
 

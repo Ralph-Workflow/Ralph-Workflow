@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Literal, cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
+from ralph.mcp.upstream.upstream_config_error import UpstreamConfigError
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,6 @@ UPSTREAM_MCP_CONFIG_ENV = "RALPH_UPSTREAM_MCP_CONFIG"
 class UpstreamMcpServer:
     """Normalized upstream MCP server definition for Ralph runtime use."""
 
-    class UpstreamConfigError(ValueError):
-        """Raised when upstream MCP config violates Ralph's strict-mode contract."""
-
-
     name: str
     transport: Literal["http", "stdio"]
     url: str | None = None
@@ -30,8 +27,6 @@ class UpstreamMcpServer:
     args: tuple[str, ...] = ()
     env: dict[str, str] = field(default_factory=dict)
 
-
-UpstreamConfigError = UpstreamMcpServer.UpstreamConfigError
 
 
 def normalize_upstream_mcp_servers(

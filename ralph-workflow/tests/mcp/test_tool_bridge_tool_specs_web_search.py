@@ -21,38 +21,40 @@ if TYPE_CHECKING:
     )
 
 
+class _FakeUpstreamClientFactory:
+    _tools: list[UpstreamTool]
+
+    def __init__(self, tools: list[dict[str, object]]) -> None:
+        result: list[UpstreamTool] = []
+        for t in tools:
+            name = cast("str", t["name"])
+            desc_raw = t.get("description", "")
+            desc = str(desc_raw) if desc_raw else ""
+            input_schema_raw = t.get("inputSchema", {})
+            input_schema = cast("dict[str, object]", input_schema_raw)
+            result.append(UpstreamTool(name=name, description=desc, input_schema=input_schema))
+        self._tools = result
+
+    def __call__(self, server: UpstreamMcpServer) -> MagicMock:
+        mock = MagicMock()
+        object.__setattr__(mock.list_tools, "return_value", self._tools)
+        return mock
+
+
+class _AllowedSession:
+    session_id = "test-session"
+
+    def check_capability(self, capability: str) -> object:
+        return "approved"
+
+
+class _FakeWorkspace:
+    def absolute_path(self, path: str) -> str:
+        return path
+
+
 class TestToolSpecsWebSearch:
     """T12.1-T12.4: web_search tool in tool_specs()."""
-
-    class _FakeUpstreamClientFactory:
-        _tools: list[UpstreamTool]
-
-        def __init__(self, tools: list[dict[str, object]]) -> None:
-            result: list[UpstreamTool] = []
-            for t in tools:
-                name = cast("str", t["name"])
-                desc_raw = t.get("description", "")
-                desc = str(desc_raw) if desc_raw else ""
-                input_schema_raw = t.get("inputSchema", {})
-                input_schema = cast("dict[str, object]", input_schema_raw)
-                result.append(UpstreamTool(name=name, description=desc, input_schema=input_schema))
-            self._tools = result
-
-        def __call__(self, server: UpstreamMcpServer) -> MagicMock:
-            mock = MagicMock()
-            object.__setattr__(mock.list_tools, "return_value", self._tools)
-            return mock
-
-    class _AllowedSession:
-        session_id = "test-session"
-
-        def check_capability(self, capability: str) -> object:
-            return "approved"
-
-    class _FakeWorkspace:
-        def absolute_path(self, path: str) -> str:
-            return path
-
 
     def test_web_search_in_tool_specs_when_enabled(self) -> None:
         """When McpConfig has web_search.enabled=True, web_search tool appears in specs."""
@@ -103,6 +105,3 @@ class TestToolSpecsWebSearch:
             )
 
 
-_FakeUpstreamClientFactory = TestToolSpecsWebSearch._FakeUpstreamClientFactory
-_AllowedSession = TestToolSpecsWebSearch._AllowedSession
-_FakeWorkspace = TestToolSpecsWebSearch._FakeWorkspace

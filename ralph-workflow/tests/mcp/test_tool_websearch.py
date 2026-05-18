@@ -15,26 +15,23 @@ if TYPE_CHECKING:
     import pytest
 
 
+class _AllowedSession:
+    session_id = "test-session"
+
+    def check_capability(self, capability: str) -> object:
+        return "approved"
+
+
+class _DeniedSession:
+    session_id = "denied-session"
+
+    def check_capability(self, capability: str) -> object:
+        return "denied"
+
+
 class _StubWorkspace:
-
-    class _AllowedSession:
-        session_id = "test-session"
-
-        def check_capability(self, capability: str) -> object:
-            return "approved"
-
-    class _DeniedSession:
-        session_id = "denied-session"
-
-        def check_capability(self, capability: str) -> object:
-            return "denied"
-
     def absolute_path(self, path: str) -> str:
         return path
-
-
-_AllowedSession = _StubWorkspace._AllowedSession
-_DeniedSession = _StubWorkspace._DeniedSession
 
 
 _GOOD_RESULTS = [

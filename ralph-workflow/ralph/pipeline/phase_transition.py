@@ -24,6 +24,7 @@ from ralph.pipeline.handoffs import (
     resolve_next_phase,
 )
 from ralph.pipeline.legacy_console_display import LegacyConsoleDisplay, get_display_context
+from ralph.pipeline._phase_change_render_data import _PhaseChangeRenderData
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
 from ralph.prompts.debug_dump import multimodal_sidecar_path, prompt_dump_path
 
@@ -214,24 +215,12 @@ def _show_phase_start_with_context(
 
 @dataclass(frozen=True)
 class _PendingPhaseTransitionMetadata:
-
-    @dataclass(frozen=True)
-    class _PhaseChangeRenderData:
-        """Canonical display payload for a single phase change."""
-
-        previous_phase: str
-        current_phase: str
-        exit_model: PhaseExitModel
-        transition_context: dict[str, object] | None
-
     previous_phase: str
     current_phase: str
     transition_context: dict[str, object] | None = None
     routing_note: str | None = None
     skipped_phases: tuple[str, ...] = ()
 
-
-_PhaseChangeRenderData = _PendingPhaseTransitionMetadata._PhaseChangeRenderData
 
 
 _PENDING_PHASE_TRANSITION_METADATA_ATTR = "_pending_phase_transition_metadata"

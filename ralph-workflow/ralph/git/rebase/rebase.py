@@ -10,7 +10,12 @@ from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
 from ralph.git.rebase._process_executor import ProcessExecutor
-from ralph.git.subprocess_runner import GitRunOptions, run_git
+from ralph.git.rebase.process_result import ProcessResult
+from ralph.git.rebase.rebase_conflicts import RebaseConflicts
+from ralph.git.rebase.rebase_no_op import RebaseNoOp
+from ralph.git.rebase.rebase_operation_error import RebaseOperationError
+from ralph.git.rebase.rebase_success import RebaseSuccess
+from ralph.git.rebase.subprocess_executor import SubprocessExecutor
 
 from .rebase_kinds import RebaseErrorKind, RebaseKind, classify_rebase_error
 
@@ -29,71 +34,7 @@ _STATUS_PREFIX_LEN = 3
 class RebaseFailed:
     """Rebase failed with a specific error kind."""
 
-    @dataclass(frozen=True)
-    class ProcessResult:
-        """Represents the result of running a git subprocess."""
-
-        returncode: int
-        stdout: str
-        stderr: str
-
-        @property
-        def succeeded(self) -> bool:
-            return self.returncode == 0
-
-    @dataclass(frozen=True)
-    class SubprocessExecutor:
-        """Default executor powered by ProcessManager."""
-
-        def execute(
-            self,
-            command: str,
-            args: Sequence[str],
-            env: Mapping[str, str] | None = None,
-            cwd: Path | None = None,
-        ) -> ProcessResult:
-            subcommand = args[0] if args else "unknown"
-            result = run_git(
-                args,
-                cwd=cwd,
-                label=f"git-rebase:{subcommand}",
-                options=GitRunOptions(env=env),
-            )
-            return ProcessResult(
-                returncode=result.returncode,
-                stdout=result.stdout.strip(),
-                stderr=result.stderr.strip(),
-            )
-
-    class RebaseOperationError(Exception):
-        """Raised when a rebase operation fails."""
-
-    @dataclass(frozen=True)
-    class RebaseSuccess:
-        """Rebase completed successfully."""
-
-    @dataclass(frozen=True)
-    class RebaseConflicts:
-        """Rebase stopped because conflicts remain."""
-
-        files: list[str]
-
-    @dataclass(frozen=True)
-    class RebaseNoOp:
-        """Rebase was not applicable (already up-to-date or invalid state)."""
-
-        reason: str
-
-
     kind: RebaseErrorKind
-
-
-ProcessResult = RebaseFailed.ProcessResult
-SubprocessExecutor = RebaseFailed.SubprocessExecutor
-RebaseOperationError = RebaseFailed.RebaseOperationError
-RebaseSuccess = RebaseFailed.RebaseSuccess
-RebaseConflicts = RebaseFailed.RebaseConflicts
-RebaseNoOp = RebaseFailed.RebaseNoOp
 
 
 RebaseResult = RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed

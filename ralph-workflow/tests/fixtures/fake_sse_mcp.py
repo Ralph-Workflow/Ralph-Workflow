@@ -24,27 +24,29 @@ if TYPE_CHECKING:
 _PROTOCOL_VERSION = "2024-11-05"
 
 
+@dataclass
+class _SessionState:
+    events: queue.Queue[bytes]
+
+
+class _SessionRegistry:
+    def __init__(self) -> None:
+        self._sessions: dict[str, _SessionState] = {}
+        self._lock = Lock()
+
+    def create(self) -> tuple[str, _SessionState]:
+        session_id = uuid.uuid4().hex
+        state = _SessionState(events=queue.Queue())
+        with self._lock:
+            self._sessions[session_id] = state
+        return session_id, state
+
+    def get(self, session_id: str) -> _SessionState | None:
+        with self._lock:
+            return self._sessions.get(session_id)
+
+
 class _McpHandler(BaseHTTPRequestHandler):
-
-    @dataclass
-    class _SessionState:
-        events: queue.Queue[bytes]
-
-    class _SessionRegistry:
-        def __init__(self) -> None:
-            self._sessions: dict[str, _SessionState] = {}
-            self._lock = Lock()
-
-        def create(self) -> tuple[str, _SessionState]:
-            session_id = uuid.uuid4().hex
-            state = _SessionState(events=queue.Queue())
-            with self._lock:
-                self._sessions[session_id] = state
-            return session_id, state
-
-        def get(self, session_id: str) -> _SessionState | None:
-            with self._lock:
-                return self._sessions.get(session_id)
 
     protocol_version = "HTTP/1.1"
 
@@ -164,9 +166,7 @@ class _McpHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
-_SessionState = _McpHandler._SessionState
-_SessionRegistry = _McpHandler._SessionRegistry
-_SESSIONS = _McpHandler._SessionRegistry()
+_SESSIONS = _SessionRegistry()
 
 
 def _message_event(payload: Mapping[str, object]) -> bytes:

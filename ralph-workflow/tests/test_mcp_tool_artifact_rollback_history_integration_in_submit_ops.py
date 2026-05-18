@@ -76,32 +76,35 @@ _INVALID_CONTENT: dict[str, str] = {
 _ALL_ARTIFACT_TYPES = list(_VALID_CONTENT.keys())
 
 
+class _Session:
+    session_id = "sess-1"
+
+    def check_capability(self, cap: str) -> object:
+        assert cap == "artifact.submit"
+        return "approved"
+
+
+class _DrainSession:
+    session_id = "sess-1"
+
+    def __init__(self, drain: str) -> None:
+        self.drain = drain
+
+    def check_capability(self, cap: str) -> object:
+        assert cap == "artifact.submit"
+        return "approved"
+
+
+class _Workspace:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def absolute_path(self, path: str) -> str:
+        return str((self._root / path).resolve())
+
+
 class TestHistoryIntegrationInSubmitOps:
     """Tests for artifact history archival integrated into submit_ops_for_artifact."""
-
-    class _Session:
-        session_id = "sess-1"
-
-        def check_capability(self, cap: str) -> object:
-            assert cap == "artifact.submit"
-            return "approved"
-
-    class _DrainSession:
-        session_id = "sess-1"
-
-        def __init__(self, drain: str) -> None:
-            self.drain = drain
-
-        def check_capability(self, cap: str) -> object:
-            assert cap == "artifact.submit"
-            return "approved"
-
-    class _Workspace:
-        def __init__(self, root: Path) -> None:
-            self._root = root
-
-        def absolute_path(self, path: str) -> str:
-            return str((self._root / path).resolve())
 
     def _now_iso(self) -> str:
         return "2026-05-06T12:00:00+00:00"
@@ -294,6 +297,3 @@ class TestHistoryIntegrationInSubmitOps:
         assert json_archives == [], "history snapshot files must be removed after undo"
 
 
-_Session = TestHistoryIntegrationInSubmitOps._Session
-_DrainSession = TestHistoryIntegrationInSubmitOps._DrainSession
-_Workspace = TestHistoryIntegrationInSubmitOps._Workspace

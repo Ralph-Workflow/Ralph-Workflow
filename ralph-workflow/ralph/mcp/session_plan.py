@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ralph.api.opencode import get_model_by_id
+from ralph.mcp._session_model_opts import SessionModelOpts
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.multimodal.capabilities import (
@@ -48,21 +49,10 @@ if TYPE_CHECKING:
 class SessionMcpPlan:
     """Resolved MCP plan capturing capability grants and server environment for a session."""
 
-    @dataclass(frozen=True)
-    class SessionModelOpts:
-        """Optional model resolution parameters for build_session_mcp_plan."""
-
-        model_identity: MultimodalModelIdentity | None = None
-        model_flag: str | None = None
-
-
     capabilities: frozenset[str]
     server_env: dict[str, str] | None = None
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
     capability_profile: ResolvedCapabilityProfile | None = None
-
-
-SessionModelOpts = SessionMcpPlan.SessionModelOpts
 
 
 def resolve_model_identity(

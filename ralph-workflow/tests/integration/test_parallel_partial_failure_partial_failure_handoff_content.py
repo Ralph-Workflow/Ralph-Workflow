@@ -67,6 +67,17 @@ def _make_work_unit(uid: str, deps: list[str] | None = None) -> WorkUnit:
     )
 
 
+class _FakeDisplay:
+    def __init__(self) -> None:
+        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
+
+    def emit(self, unit_id: str | None, line: str) -> None:
+        del unit_id, line
+
+    def set_status(self, unit_id: str, status: object) -> None:
+        del unit_id, status
+
+
 class TestPartialFailureHandoffContent:
     """Runner-level tests: DEVELOPMENT_RESULT.md handoff content on partial failure.
 
@@ -74,16 +85,6 @@ class TestPartialFailureHandoffContent:
     artifact contains both unit_ids, marks the right worker as failed, and
     reports phase state as "failed" (not "development_analysis").
     """
-
-    class _FakeDisplay:
-        def __init__(self) -> None:
-            self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
-
-        def emit(self, unit_id: str | None, line: str) -> None:
-            del unit_id, line
-
-        def set_status(self, unit_id: str, status: object) -> None:
-            del unit_id, status
 
     def test_partial_failure_development_result_md_contains_both_unit_ids(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -234,4 +235,4 @@ class TestPartialFailureHandoffContent:
         )
 
 
-_FakeDisplay = TestPartialFailureHandoffContent._FakeDisplay
+

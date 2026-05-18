@@ -158,17 +158,19 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
 
 
 
+class AgentError(Exception):
+    pass
+
+
+class _FakeBridge:
+    def shutdown(self) -> None:
+        return
+
+    def agent_endpoint_uri(self) -> str:
+        return "http://127.0.0.1:12345/mcp"
+
+
 class TestExecuteAgentEffectA:
-    class AgentError(Exception):
-        pass
-
-    class _FakeBridge:
-        def shutdown(self) -> None:
-            return
-
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:12345/mcp"
-
     @staticmethod
     def _config(verbosity: int = 2) -> MagicMock:
         config = MagicMock()
@@ -200,7 +202,7 @@ class TestExecuteAgentEffectA:
             self._config(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -234,7 +236,7 @@ class TestExecuteAgentEffectA:
             self._config(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -291,7 +293,7 @@ class TestExecuteAgentEffectA:
             self._config(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -327,7 +329,7 @@ class TestExecuteAgentEffectA:
             self._config(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -377,7 +379,7 @@ class TestExecuteAgentEffectA:
         monkeypatch.setattr(
             effect_executor_module,
             "start_mcp_server",
-            lambda *_args, **_kwargs: self._FakeBridge(),
+            lambda *_args, **_kwargs: _FakeBridge(),
         )
         monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
@@ -389,7 +391,7 @@ class TestExecuteAgentEffectA:
             UnifiedConfig(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=runner_module.AgentRegistry,
             ),
             WorkspaceScope(tmp_path),
@@ -434,7 +436,7 @@ class TestExecuteAgentEffectA:
         monkeypatch.setattr(
             effect_executor_module,
             "start_mcp_server",
-            lambda *_args, **_kwargs: self._FakeBridge(),
+            lambda *_args, **_kwargs: _FakeBridge(),
         )
         monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
@@ -446,7 +448,7 @@ class TestExecuteAgentEffectA:
             UnifiedConfig(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=_registry_factory(MagicMock()),
             ),
             WorkspaceScope(tmp_path),
@@ -484,7 +486,7 @@ class TestExecuteAgentEffectA:
         monkeypatch.setattr(
             effect_executor_module,
             "start_mcp_server",
-            lambda *_args, **_kwargs: self._FakeBridge(),
+            lambda *_args, **_kwargs: _FakeBridge(),
         )
         monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
@@ -496,7 +498,7 @@ class TestExecuteAgentEffectA:
             UnifiedConfig(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=_registry_factory(MagicMock()),
             ),
             WorkspaceScope(tmp_path),
@@ -647,7 +649,7 @@ class TestExecuteAgentEffectA:
         monkeypatch.setattr(
             effect_executor_module,
             "start_mcp_server",
-            lambda *_args, **_kwargs: self._FakeBridge(),
+            lambda *_args, **_kwargs: _FakeBridge(),
         )
         monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
@@ -664,7 +666,7 @@ class TestExecuteAgentEffectA:
             UnifiedConfig(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=record_invoke,
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=runner_module.AgentRegistry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -681,7 +683,7 @@ class TestExecuteAgentEffectA:
         monkeypatch.setattr(
             effect_executor_module,
             "start_mcp_server",
-            lambda *_args, **_kwargs: self._FakeBridge(),
+            lambda *_args, **_kwargs: _FakeBridge(),
         )
         monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
@@ -689,14 +691,14 @@ class TestExecuteAgentEffectA:
         )
 
         def raising_invoke(*_args: object, **_kwargs: object) -> None:
-            raise self.AgentError("boom")
+            raise AgentError("boom")
 
         result = runner_module.execute_agent_effect(
             effect,
             self._config(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=raising_invoke,
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -712,7 +714,7 @@ class TestExecuteAgentEffectA:
         monkeypatch.setattr(
             effect_executor_module,
             "start_mcp_server",
-            lambda *_args, **_kwargs: self._FakeBridge(),
+            lambda *_args, **_kwargs: _FakeBridge(),
         )
         monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
         monkeypatch.setattr(
@@ -727,7 +729,7 @@ class TestExecuteAgentEffectA:
             self._config(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=raising_value_error,
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -780,7 +782,7 @@ class TestExecuteAgentEffectA:
             self._config(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=record_invoke,
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -822,7 +824,7 @@ class TestExecuteAgentEffectA:
             self._config(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
@@ -833,7 +835,7 @@ class TestExecuteAgentEffectA:
             self._config(),
             runner_module.AgentExecutionDeps(
                 invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=self.AgentError,
+                agent_invocation_error=AgentError,
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),

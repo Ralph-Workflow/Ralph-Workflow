@@ -158,3 +158,47 @@ def test_no_type_ignore_or_noqa_in_maintained_source() -> None:
         f"Bypass comments found ({len(violations)} violations):\n"
         + "\n".join(sorted(violations))
     )
+
+
+def _nested_classes_in_class_body(path: Path) -> list[tuple[int, str, str]]:
+    src = path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return []
+    results = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for child in node.body:
+                if isinstance(child, ast.ClassDef):
+                    results.append((child.lineno, node.name, child.name))
+    return results
+
+
+def test_no_nested_classes_in_class_body() -> None:
+    """No class definitions nested inside another class body in ralph/ or tests/."""
+    violations = []
+    for base in (RALPH_DIR, TESTS_DIR):
+        for path in _all_py_files(base):
+            rel = str(path.relative_to(REPO_ROOT))
+            for lineno, outer, inner in _nested_classes_in_class_body(path):
+                violations.append(f"{rel}:{lineno}: {outer}.{inner}")
+    assert not violations, (
+        f"Nested class definitions found ({len(violations)} violations):\n"
+        + "\n".join(sorted(violations))
+    )
+
+
+def test_no_file_over_600_lines() -> None:
+    """No .py file in ralph/ or tests/ may exceed 600 lines."""
+    violations = []
+    for base in (RALPH_DIR, TESTS_DIR):
+        for path in _all_py_files(base):
+            n = _count_lines(path)
+            if n > 600:
+                rel = str(path.relative_to(REPO_ROOT))
+                violations.append(f"{n} lines: {rel}")
+    assert not violations, (
+        f"Files exceeding 600 lines ({len(violations)} violations):\n"
+        + "\n".join(sorted(violations))
+    )

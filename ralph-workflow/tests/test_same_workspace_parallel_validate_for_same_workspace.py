@@ -30,16 +30,17 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
+@dataclass
+class _SessionContract:
+    """Bundled session contract parameters to reduce argument count."""
+
+    drain: str = ""
+    capabilities: frozenset[str] = frozenset()
+    model_identity: MultimodalModelIdentity | None = None
+    capability_profile: ResolvedCapabilityProfile | None = None
+
+
 class TestValidateForSameWorkspace:
-
-    @dataclass
-    class _SessionContract:
-        """Bundled session contract parameters to reduce argument count."""
-
-        drain: str = ""
-        capabilities: frozenset[str] = frozenset()
-        model_identity: MultimodalModelIdentity | None = None
-        capability_profile: ResolvedCapabilityProfile | None = None
 
     def test_two_safe_disjoint_workers_passes(self) -> None:
         plan = WorkUnitsPlan(
@@ -109,4 +110,3 @@ class TestValidateForSameWorkspace:
             validate_for_same_workspace(plan)
 
 
-_SessionContract = TestValidateForSameWorkspace._SessionContract

@@ -12,21 +12,22 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
+class _FakeResponse:
+    def __init__(self, payload: object, *, status_error: Exception | None = None) -> None:
+        self._payload = payload
+        self._status_error = status_error
+
+    def raise_for_status(self) -> None:
+        if self._status_error is not None:
+            raise self._status_error
+
+    def json(self) -> object:
+        if isinstance(self._payload, Exception):
+            raise self._payload
+        return self._payload
+
+
 class _FakeClient:
-
-    class _FakeResponse:
-        def __init__(self, payload: object, *, status_error: Exception | None = None) -> None:
-            self._payload = payload
-            self._status_error = status_error
-
-        def raise_for_status(self) -> None:
-            if self._status_error is not None:
-                raise self._status_error
-
-        def json(self) -> object:
-            if isinstance(self._payload, Exception):
-                raise self._payload
-            return self._payload
 
     def __init__(self, response_factory: Callable[[], _FakeResponse]) -> None:
         self._response_factory = response_factory
@@ -42,7 +43,6 @@ class _FakeClient:
         return self._response_factory()
 
 
-_FakeResponse = _FakeClient._FakeResponse
 
 
 @pytest.fixture(autouse=True)

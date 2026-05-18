@@ -31,30 +31,33 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
-class TestPrepareExecutorSameWorkspace:
-    class _FakeMcpServerFactory:
-        def __init__(self) -> None:
-            self.build = MagicMock(
-                side_effect=lambda session: McpServerHandle(
-                    endpoint="http://127.0.0.1:9999/mcp",
-                    pid=99999,
-                    shutdown=lambda: None,
-                )
+class _FakeMcpServerFactory:
+    def __init__(self) -> None:
+        self.build = MagicMock(
+            side_effect=lambda session: McpServerHandle(
+                endpoint="http://127.0.0.1:9999/mcp",
+                pid=99999,
+                shutdown=lambda: None,
             )
+        )
 
-    class _SessionContract:
-        def __init__(
-            self,
-            *,
-            drain: str,
-            capabilities: frozenset[str],
-            model_identity: object,
-            capability_profile: object,
-        ) -> None:
-            self.drain = drain
-            self.capabilities = capabilities
-            self.model_identity = model_identity
-            self.capability_profile = capability_profile
+
+class _SessionContract:
+    def __init__(
+        self,
+        *,
+        drain: str,
+        capabilities: frozenset[str],
+        model_identity: object,
+        capability_profile: object,
+    ) -> None:
+        self.drain = drain
+        self.capabilities = capabilities
+        self.model_identity = model_identity
+        self.capability_profile = capability_profile
+
+
+class TestPrepareExecutorSameWorkspace:
 
     def test_inprocess_uses_injected_mcp_factory(self, tmp_path: Path) -> None:
         unit = _make_unit("unit-a")
@@ -140,8 +143,6 @@ class TestPrepareExecutorSameWorkspace:
         assert bundle.session.model_identity.provider == "unknown"
 
 
-_FakeMcpServerFactory = TestPrepareExecutorSameWorkspace._FakeMcpServerFactory
-_SessionContract = TestPrepareExecutorSameWorkspace._SessionContract
 
 
 def _make_same_workspace_context(

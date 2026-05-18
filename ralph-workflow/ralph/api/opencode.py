@@ -6,55 +6,17 @@ discovering available models and providers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import httpx
 from loguru import logger
+
+from ralph.api.model_entry import ModelEntry
 
 CATALOG_URL = "https://models.dev/api.json"
 TIMEOUT_SECS = 10
 
 
-
-
-def _optional_str(value: object | None) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    raise ValueError("Model entry string fields must be strings")
-
-
 class _CatalogFetcher:
     """Callable cache around the OpenCode catalog."""
-
-    @dataclass(frozen=True)
-    class ModelEntry:
-        """Single model entry from the catalog.
-
-        Attributes:
-            id: Unique model identifier.
-            name: Human-readable model name.
-            provider: Model provider name.
-        """
-
-        id: str
-        name: str | None = None
-        provider: str | None = None
-
-        @classmethod
-        def model_validate(cls, raw: dict[str, object]) -> ModelEntry:
-            """Validate and normalize a raw catalog entry."""
-
-            raw_id = raw.get("id")
-            if not isinstance(raw_id, str):
-                raise ValueError("Model entry missing required 'id' field")
-
-            name = _optional_str(raw.get("name"))
-            provider = _optional_str(raw.get("provider"))
-
-            return cls(id=raw_id, name=name, provider=provider)
-
 
     def __init__(self) -> None:
         self._cache: list[ModelEntry] | None = None
@@ -86,8 +48,6 @@ class _CatalogFetcher:
 
         self._cache = None
 
-
-ModelEntry = _CatalogFetcher.ModelEntry
 
 
 def _parse_catalog_payload(payload: object) -> list[dict[str, object]]:

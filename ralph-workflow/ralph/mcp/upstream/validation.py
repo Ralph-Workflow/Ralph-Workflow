@@ -9,8 +9,8 @@ behaviour for CI smoke runs.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Protocol
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol
 
 from loguru import logger
 
@@ -19,6 +19,8 @@ from ralph.mcp.protocol.startup import (
     mcp_preflight_timeout_from_env,
     preflight_http_mcp_server_tools,
 )
+from ralph.mcp.upstream._upstream_server_report import UpstreamServerReport
+from ralph.mcp.upstream._upstream_validation_error import UpstreamValidationError
 from ralph.mcp.upstream.client import make_upstream_client
 from ralph.mcp.upstream.models import UpstreamCallError
 
@@ -44,21 +46,6 @@ _STRICT_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 class UpstreamValidationReport:
     """Aggregated validation results for all configured upstream MCP servers."""
 
-    class UpstreamValidationError(RuntimeError):
-        """Raised in strict mode when one or more upstream MCP servers fail validation."""
-
-    @dataclass(frozen=True)
-    class UpstreamServerReport:
-        """Validation result for a single upstream MCP server."""
-
-        name: str
-        transport: Literal["http", "stdio"]
-        ok: bool
-        tool_count: int = 0
-        error: str | None = None
-        secret_keys: tuple[str, ...] = field(default_factory=tuple)
-
-
     servers: tuple[UpstreamServerReport, ...]
 
     @property
@@ -68,10 +55,6 @@ class UpstreamValidationReport:
     @property
     def failures(self) -> tuple[UpstreamServerReport, ...]:
         return tuple(s for s in self.servers if not s.ok)
-
-
-UpstreamValidationError = UpstreamValidationReport.UpstreamValidationError
-UpstreamServerReport = UpstreamValidationReport.UpstreamServerReport
 
 
 def strict_mode_from_env(env: Mapping[str, str] | None = None) -> bool:

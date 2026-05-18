@@ -5,6 +5,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
+from tests.fake_handle import _FakeHandle
 
 import threading
 import time as _time_module
@@ -44,23 +45,7 @@ _CompletionCheckOptions = CompletionCheckOptions
 class TestOptionalArtifactCompletion:
     """Optional-artifact phases terminal on clean exit; required phases enforce presence."""
 
-    class _FakeHandle:
-        returncode: int = 0
-        stdout = None
-        stderr = None
 
-        def __init__(self, *, returncode: int = 0, has_descendants: bool = False) -> None:
-            self.returncode = returncode
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
-
-        def descendant_snapshot(self) -> tuple[int, float | None]:
-            return (1 if self._has_descendants else 0, 5.0 if self._has_descendants else None)
-
-        def poll(self) -> int | None:
-            return self.returncode
 
     def test_optional_artifact_absent_with_declare_complete_does_not_raise(
         self, tmp_path: Path
@@ -225,4 +210,3 @@ class TestOptionalArtifactCompletion:
             )
 
 
-_FakeHandle = TestOptionalArtifactCompletion._FakeHandle

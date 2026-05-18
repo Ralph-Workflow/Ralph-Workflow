@@ -56,6 +56,10 @@ from ralph.prompts.commit import (
 from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
+from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
+from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
+from ralph.cli.commands._commit_chain_config import CommitChainConfig
+from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -81,71 +85,9 @@ _MAX_COMMIT_RAW_OUTPUT_LINES = 256
 class CommitAgentResult:
     """Aggregated result returned after all commit-message agent attempts complete."""
 
-    @dataclass(frozen=True)
-    class CommitAgentAttempt:
-        """Result of a single commit-message agent invocation attempt."""
-
-        message: str = ""
-        skipped: bool = False
-        failure_detail: str = ""
-        parsed_output: list[str] = field(default_factory=list)
-        raw_output: list[str] = field(default_factory=list)
-        resume_session_id: str | None = None
-
-    @dataclass(frozen=True)
-    class CommitAttemptContext:
-        """Runtime context threaded into each commit agent invocation attempt.
-
-        Attributes:
-            repo_root: Repository root path.
-            verbose: Whether verbose output is enabled.
-            extra_env: Extra environment variables for the agent subprocess.
-            general_config: Full general config supplying all timeout fields.
-        """
-
-        repo_root: Path
-        verbose: bool
-        extra_env: dict[str, str]
-        general_config: GeneralConfig | None = None
-
-    @dataclass(frozen=True)
-    class CommitChainConfig:
-        """Configuration bundle for the commit message chain invocation."""
-
-        registry: AgentRegistry
-        agents: list[str]
-        verbose: bool
-        agents_policy: AgentsPolicy
-        general_config: GeneralConfig | None = None
-
-    @dataclass(frozen=True)
-    class CommitPlumbingOptions:
-        """Options for commit plumbing operations.
-
-        Attributes:
-            generate_commit_msg: Generate commit message without applying.
-            generate_commit: Generate and apply commit.
-            show_commit_msg: Show current commit message.
-            config_path: Path to configuration file.
-            cli_overrides: CLI flag overrides.
-        """
-
-        generate_commit_msg: bool = False
-        generate_commit: bool = False
-        show_commit_msg: bool = False
-        config_path: Path | None = None
-        cli_overrides: dict[str, object] | None = None
-
-
     message: str = ""
     skipped: bool = False
     failure_details: list[str] = field(default_factory=list)
-
-
-CommitAgentAttempt = CommitAgentResult.CommitAgentAttempt
-CommitAttemptContext = CommitAgentResult.CommitAttemptContext
-CommitChainConfig = CommitAgentResult.CommitChainConfig
-CommitPlumbingOptions = CommitAgentResult.CommitPlumbingOptions
 
 
 def commit_plumbing(

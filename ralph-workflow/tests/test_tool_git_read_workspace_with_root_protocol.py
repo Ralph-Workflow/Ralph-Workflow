@@ -1,6 +1,7 @@
 """Tests for ralph/mcp/tools/git_read.py — MCP git read tool handlers."""
 
 from __future__ import annotations
+from tests.mock_workspace_root import MockWorkspaceRoot
 
 from pathlib import Path
 
@@ -26,9 +27,3 @@ class TestWorkspaceWithRootProtocol:
         result = run_git_command("/tmp", ["--version"])
         assert "git version" in result
 
-    class MockWorkspaceRoot:
-        def __init__(self, root: object) -> None:
-            self.root = root
-
-
-MockWorkspaceRoot = TestWorkspaceWithRootProtocol.MockWorkspaceRoot

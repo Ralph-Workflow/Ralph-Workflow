@@ -77,6 +77,17 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     return bundle
 
 
+class _FakeDisplay:
+    def __init__(self) -> None:
+        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
+
+    def emit(self, unit_id: str | None, line: str) -> None:
+        del unit_id, line
+
+    def set_status(self, unit_id: str, status: object) -> None:
+        del unit_id, status
+
+
 class TestRunnerAnalysisHandoffIntegration:
     """Runner-level integration: _execute_fan_out_sync wires the analysis handoff.
 
@@ -84,16 +95,6 @@ class TestRunnerAnalysisHandoffIntegration:
     that after parallel fan-out the runner writes .agent/DEVELOPMENT_RESULT.md so the
     analysis phase can pick it up through the normal handoff path.
     """
-
-    class _FakeDisplay:
-        def __init__(self) -> None:
-            self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
-
-        def emit(self, unit_id: str | None, line: str) -> None:
-            del unit_id, line
-
-        def set_status(self, unit_id: str, status: object) -> None:
-            del unit_id, status
 
     def test_runner_writes_development_result_md_after_all_succeed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -205,4 +206,3 @@ class TestRunnerAnalysisHandoffIntegration:
         assert "all_succeeded: false" in content
 
 
-_FakeDisplay = TestRunnerAnalysisHandoffIntegration._FakeDisplay

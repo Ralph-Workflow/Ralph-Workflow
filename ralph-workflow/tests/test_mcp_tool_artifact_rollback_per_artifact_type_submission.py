@@ -75,26 +75,28 @@ _INVALID_CONTENT: dict[str, str] = {
 _ALL_ARTIFACT_TYPES = list(_VALID_CONTENT.keys())
 
 
+class _Session:
+    session_id = "sess-1"
+
+    def check_capability(self, cap: str) -> object:
+        assert cap == "artifact.submit"
+        return "approved"
+
+
+class _Workspace:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def absolute_path(self, path: str) -> str:
+        return str((self._root / path).resolve())
+
+
 class TestPerArtifactTypeSubmission:
     """Parametrized per-artifact-type end-to-end submission tests.
 
     Covers: plan, development_result, issues, fix_result, commit_message,
     development_analysis_decision, review_analysis_decision.
     """
-
-    class _Session:
-        session_id = "sess-1"
-
-        def check_capability(self, cap: str) -> object:
-            assert cap == "artifact.submit"
-            return "approved"
-
-    class _Workspace:
-        def __init__(self, root: Path) -> None:
-            self._root = root
-
-        def absolute_path(self, path: str) -> str:
-            return str((self._root / path).resolve())
 
     @pytest.mark.parametrize("artifact_type", _ALL_ARTIFACT_TYPES)
     def test_valid_submit_produces_json_artifact(self, artifact_type: str, tmp_path: Path) -> None:
@@ -222,5 +224,3 @@ class TestPerArtifactTypeSubmission:
         )
 
 
-_Session = TestPerArtifactTypeSubmission._Session
-_Workspace = TestPerArtifactTypeSubmission._Workspace

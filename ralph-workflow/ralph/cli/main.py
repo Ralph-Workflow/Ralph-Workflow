@@ -36,6 +36,9 @@ from ralph.config.bootstrap import (
     ensure_local_configs,
     regenerate_all,
 )
+from ralph.cli._cli_override_input import CLIOverrideInput
+from ralph.cli._cli_overrides import CLIOverrides
+from ralph.cli._general_overrides import GeneralOverrides
 from ralph.config.enums import Verbosity
 from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
@@ -809,32 +812,6 @@ def _handle_commit_plumbing(
 
 @dataclass(frozen=True)
 class _RunPipelineOpts:
-
-    @dataclass(frozen=True)
-    class CLIOverrideInput:
-        """Input for building CLI overrides."""
-
-        developer_agent: str | None = None
-        developer_model: str | None = None
-        git_user_name: str | None = None
-        git_user_email: str | None = None
-        developer_iters: int | None = None
-
-    class GeneralOverrides(TypedDict, total=False):
-        """Partial general-config overrides accepted by the CLI run command."""
-
-        git_user_name: str | None
-        git_user_email: str | None
-        execution: dict[str, bool]
-        developer_iters: int
-
-    class CLIOverrides(TypedDict):
-        """CLI configuration overrides."""
-
-        general: GeneralOverrides
-        developer_agent: str | None
-        developer_model: str | None
-
     cli_overrides: dict[str, object]
     dry_run: bool
     resume: bool
@@ -842,11 +819,6 @@ class _RunPipelineOpts:
     verbosity: Verbosity = Verbosity.VERBOSE
     counter_overrides: dict[str, int] | None = None
     inline_prompt: str | None = None
-
-
-CLIOverrideInput = _RunPipelineOpts.CLIOverrideInput
-GeneralOverrides = _RunPipelineOpts.GeneralOverrides
-CLIOverrides = _RunPipelineOpts.CLIOverrides
 
 
 def _run_pipeline(

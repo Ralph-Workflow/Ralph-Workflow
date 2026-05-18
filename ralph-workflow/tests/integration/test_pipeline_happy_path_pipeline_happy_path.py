@@ -24,63 +24,63 @@ CALL_HISTORY_ENTRY_COUNT = 2
 # ---------------------------------------------------------------------------
 
 
-class TestPipelineHappyPath:
-    """Tests for the complete pipeline happy path."""
+class MockAgentInvoker:
+    """Mock that returns predefined success responses for agent invocations.
 
-    class MockAgentInvoker:
-        """Mock that returns predefined success responses for agent invocations.
+    This mock simulates:
+    - AGENT_SUCCESS for planning and development phases
+    - ANALYSIS_SUCCESS for analysis phases
+    - COMMIT_SUCCESS for commit phases
+    """
 
-        This mock simulates:
-        - AGENT_SUCCESS for planning and development phases
-        - ANALYSIS_SUCCESS for analysis phases
-        - COMMIT_SUCCESS for commit phases
+    AGENT_SUCCESS = PipelineEvent.AGENT_SUCCESS
+    ANALYSIS_SUCCESS = PipelineEvent.ANALYSIS_SUCCESS
+    COMMIT_SUCCESS = PipelineEvent.COMMIT_SUCCESS
+
+    def __init__(self, workspace: MemoryWorkspace) -> None:
+        """Initialize mock invoker.
+
+        Args:
+            workspace: In-memory workspace for the pipeline.
         """
+        self.workspace = workspace
+        self.call_history: list[dict[str, Any]] = []
+        self.call_counts: dict[str, int] = {}
 
-        AGENT_SUCCESS = PipelineEvent.AGENT_SUCCESS
-        ANALYSIS_SUCCESS = PipelineEvent.ANALYSIS_SUCCESS
-        COMMIT_SUCCESS = PipelineEvent.COMMIT_SUCCESS
+    def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
+        """Simulate agent invocation and return success event.
 
-        def __init__(self, workspace: MemoryWorkspace) -> None:
-            """Initialize mock invoker.
+        Args:
+            agent_name: Name of the agent being invoked.
+            phase: Current pipeline phase.
 
-            Args:
-                workspace: In-memory workspace for the pipeline.
-            """
-            self.workspace = workspace
-            self.call_history: list[dict[str, Any]] = []
-            self.call_counts: dict[str, int] = {}
+        Returns:
+            PipelineEvent indicating success.
+        """
+        self.call_counts[phase] = self.call_counts.get(phase, 0) + 1
+        self.call_history.append({"agent": agent_name, "phase": phase})
 
-        def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
-            """Simulate agent invocation and return success event.
-
-            Args:
-                agent_name: Name of the agent being invoked.
-                phase: Current pipeline phase.
-
-            Returns:
-                PipelineEvent indicating success.
-            """
-            self.call_counts[phase] = self.call_counts.get(phase, 0) + 1
-            self.call_history.append({"agent": agent_name, "phase": phase})
-
-            # For execution/review phases: return AGENT_SUCCESS
-            if phase in ("planning", "development", "review"):
-                return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
-
-            # For analysis phases: return ANALYSIS_SUCCESS
-            if "analysis" in phase:
-                return cast("PipelineEvent", PipelineEvent.ANALYSIS_SUCCESS)
-
-            # For commit phases: return COMMIT_SUCCESS
-            if "commit" in phase:
-                return cast("PipelineEvent", PipelineEvent.COMMIT_SUCCESS)
-
+        # For execution/review phases: return AGENT_SUCCESS
+        if phase in ("planning", "development", "review"):
             return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
 
-        def count_for(self, phase: str) -> int:
-            """Return the number of calls recorded for a phase."""
-            return self.call_counts.get(phase, 0)
+        # For analysis phases: return ANALYSIS_SUCCESS
+        if "analysis" in phase:
+            return cast("PipelineEvent", PipelineEvent.ANALYSIS_SUCCESS)
 
+        # For commit phases: return COMMIT_SUCCESS
+        if "commit" in phase:
+            return cast("PipelineEvent", PipelineEvent.COMMIT_SUCCESS)
+
+        return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
+
+    def count_for(self, phase: str) -> int:
+        """Return the number of calls recorded for a phase."""
+        return self.call_counts.get(phase, 0)
+
+
+class TestPipelineHappyPath:
+    """Tests for the complete pipeline happy path."""
 
     def test_planning_phase_routing(
         self,
@@ -163,4 +163,3 @@ class TestPipelineHappyPath:
             assert phase_def.drain in agents_policy.agent_drains
 
 
-MockAgentInvoker = TestPipelineHappyPath.MockAgentInvoker

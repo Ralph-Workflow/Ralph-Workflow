@@ -37,28 +37,28 @@ if TYPE_CHECKING:
     from ralph.process.manager import ManagedProcess
 
 
+class _FakeHandlePostExit:
+    """ManagedProcess-compatible test double with injectable descendant state."""
+
+    returncode = 0
+    stdout = None
+    stderr = None
+
+    def __init__(self, *, has_descendants: bool = False) -> None:
+        self._has_descendants = has_descendants
+
+    def has_live_descendants(self) -> bool:
+        return self._has_descendants
+
+    def descendant_snapshot(self) -> tuple[int, float | None]:
+        return (1 if self._has_descendants else 0, 5.0 if self._has_descendants else None)
+
+    def poll(self) -> int | None:
+        return 0
+
+
 class TestPostExitViaCheckProcessResult:
     """Integration tests exercising check_process_result + PostExitWatchdog with FakeClock."""
-
-    class _FakeHandlePostExit:
-        """ManagedProcess-compatible test double with injectable descendant state."""
-
-        returncode = 0
-        stdout = None
-        stderr = None
-
-        def __init__(self, *, has_descendants: bool = False) -> None:
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
-
-        def descendant_snapshot(self) -> tuple[int, float | None]:
-            return (1 if self._has_descendants else 0, 5.0 if self._has_descendants else None)
-
-        def poll(self) -> int | None:
-            return 0
-
 
     def test_terminal_ack_produces_clean_exit_viacheck_process_result(
         self, tmp_path: pytest.FixtureRequest
@@ -190,9 +190,6 @@ class TestPostExitViaCheckProcessResult:
         assert result == AgentExecutionState.RESUMABLE_CONTINUE, (
             f"Stale progress (60s > ttl=45s) should yield RESUMABLE_CONTINUE; got {result!r}"
         )
-
-
-_FakeHandlePostExit = TestPostExitViaCheckProcessResult._FakeHandlePostExit
 
 
 def _no_signals() -> CompletionSignals:

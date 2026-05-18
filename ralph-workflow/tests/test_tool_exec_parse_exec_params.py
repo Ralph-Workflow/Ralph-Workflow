@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from ralph.mcp.tools.coordination import (
@@ -19,22 +17,6 @@ EXPECTED_TIMEOUT_SECONDS = 2.5
 
 
 class TestParseExecParams:
-
-    class MockSession:
-        """Mock session for capability checks."""
-
-        def __init__(self, capabilities: set[str]) -> None:
-            self.session_id = "test-session"
-            self._capabilities = capabilities
-
-        def check_capability(self, capability: str) -> object:
-            return capability in self._capabilities
-
-    class MockWorkspaceRoot:
-        """Mock workspace with root property."""
-
-        def __init__(self, root: Path | str) -> None:
-            self.root = Path(root) if isinstance(root, str) else root
 
     def test_parses_valid_params(self) -> None:
         params = {"command": "ls", "args": ["-la"], "timeout_ms": CUSTOM_TIMEOUT_MS}
@@ -129,5 +111,3 @@ class TestParseExecParams:
             parse_exec_params(params)
 
 
-MockSession = TestParseExecParams.MockSession
-MockWorkspaceRoot = TestParseExecParams.MockWorkspaceRoot

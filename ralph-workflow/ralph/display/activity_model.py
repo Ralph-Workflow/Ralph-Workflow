@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from rich.cells import cell_len
@@ -12,33 +11,13 @@ from rich.markup import escape
 from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_visibility_hint import ActivityVisibilityHint
+from ralph.display.agent_activity_event import AgentActivityEvent
+from ralph.display.event_options import EventOptions
 
 _module_sequence_lock = threading.Lock()
 
 
 class _ModuleSequence:
-
-    @dataclass(frozen=True, slots=True)
-    class EventOptions:
-        """Options for constructing an AgentActivityEvent."""
-
-        content: str | None = None
-        metadata: dict[str, object] | None = None
-        visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE
-        source: str = ""
-
-    @dataclass(frozen=True, slots=True)
-    class AgentActivityEvent:
-        """Typed canonical activity event for future parser normalization work."""
-
-        provider: ActivityProvider
-        kind: ActivityEventKind
-        content: str | None = None
-        metadata: dict[str, object] = field(default_factory=dict)
-        visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE
-        source: str = ""
-        sequence: int | None = None
-        timestamp: str | None = None
 
     __slots__ = ("_counter",)
 
@@ -51,10 +30,6 @@ class _ModuleSequence:
             return self._counter
 
 
-EventOptions = _ModuleSequence.EventOptions
-AgentActivityEvent = _ModuleSequence.AgentActivityEvent
-
-
 module_sequence = _ModuleSequence()
 
 
@@ -64,7 +39,7 @@ def make_event(
     kind: ActivityEventKind,
     options: EventOptions | None = None,
 ) -> AgentActivityEvent:
-    """Construct an ``AgentActivityEvent`` with an auto-incremented sequence and UTC timestamp."""
+    """Construct an AgentActivityEvent with an auto-incremented sequence and UTC timestamp."""
     opts = options or EventOptions()
     return AgentActivityEvent(
         provider=provider,
@@ -131,5 +106,4 @@ __all__ = [
     "render_event_line",
 ]
 
-# Backward compatibility alias
 SequenceCounter = _ModuleSequence

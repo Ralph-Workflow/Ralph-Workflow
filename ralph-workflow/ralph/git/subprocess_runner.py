@@ -6,6 +6,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.git.git_run_result import GitRunResult
 from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
@@ -17,16 +18,6 @@ if TYPE_CHECKING:
 class GitRunOptions:
     """Options for run_git beyond the required args, cwd, and label."""
 
-    @dataclass(frozen=True)
-    class GitRunResult:
-        """Result of a git subprocess invocation."""
-
-        args: tuple[str, ...]
-        returncode: int
-        stdout: str
-        stderr: str
-
-
     phase: str | None = None
     timeout: float | None = None
     env: Mapping[str, str] | None = None
@@ -35,7 +26,6 @@ class GitRunOptions:
     text: bool = True
 
 
-GitRunResult = GitRunOptions.GitRunResult
 
 
 def run_git(

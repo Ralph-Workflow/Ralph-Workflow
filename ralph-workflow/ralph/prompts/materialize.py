@@ -53,6 +53,9 @@ from ralph.prompts.payload_refs import (
 from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
+from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
+from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
+from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 if TYPE_CHECKING:
@@ -68,65 +71,11 @@ if TYPE_CHECKING:
 class PromptPhaseOptions:
     """Optional inputs for prompt materialization with sensible defaults."""
 
-    class MissingPlanHandoffError(ValueError):
-        """Raised when a template requires an existing plan handoff that is absent."""
-
-    @dataclass(frozen=True)
-    class MultimodalSidecarEntry:
-        """A single multimodal artifact entry in the prompt-to-invoke handoff sidecar."""
-
-        artifact_id: str
-        uri: str
-        mime_type: str
-        title: str
-        modality: str
-        delivery: str
-        reason: str = ""
-        source_path: str = ""
-        cache_path: str = ""
-        source_uri: str = ""
-        block_type: str = ""
-        failure_kind: str = ""
-        identity_key: str = ""
-
-        def to_dict(self) -> dict[str, object]:
-            return {
-                "artifact_id": self.artifact_id,
-                "uri": self.uri,
-                "mime_type": self.mime_type,
-                "title": self.title,
-                "modality": self.modality,
-                "delivery": self.delivery,
-                "reason": self.reason,
-                "source_path": self.source_path,
-                "cache_path": self.cache_path,
-                "source_uri": self.source_uri,
-                "block_type": self.block_type,
-                "failure_kind": self.failure_kind,
-                "identity_key": self.identity_key,
-            }
-
-    @dataclass(frozen=True)
-    class PromptPhaseContext:
-        """Required inputs for prompt materialization: the phase, workspace, and policy bindings."""
-
-        phase: str
-        workspace: Workspace
-        pipeline_policy: PipelinePolicy
-        session_caps: SessionCapabilities
-        workspace_root: Path
-
-
     artifacts_policy: ArtifactsPolicy | None = None
     worker_namespace: Path | None = None
     previous_phase: str | None = None
     resume_existing_phase: bool = False
     multimodal_entries: list[MultimodalSidecarEntry] | None = None
-
-
-MissingPlanHandoffError = PromptPhaseOptions.MissingPlanHandoffError
-MultimodalSidecarEntry = PromptPhaseOptions.MultimodalSidecarEntry
-PromptPhaseContext = PromptPhaseOptions.PromptPhaseContext
 
 
 def _sidecar_entry_identity(entry: MultimodalSidecarEntry) -> str:

@@ -41,68 +41,69 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.process.liveness import FakeLivenessProbe
 
 
+class _FakeManagedHandle:
+    """Minimal test double for ManagedProcess used by read_lines_from_process."""
+
+    def __init__(
+        self,
+        stdout_lines: object,
+        *,
+        descendant_count: int = 0,
+        descendant_oldest_seconds: float = 0.0,
+    ) -> None:
+        self._stdout = stdout_lines
+        self._stderr = None
+        self._returncode: int | None = 0
+        self._terminated = False
+        self._descendant_count = descendant_count
+        self._descendant_oldest_seconds = descendant_oldest_seconds
+
+    @property
+    def stdout(self) -> object | None:
+        return self._stdout
+
+    @property
+    def stderr(self) -> object | None:
+        return self._stderr
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
+
+    def poll(self) -> int | None:
+        return self._returncode
+
+    def terminate(self, grace_period_s: float | None = None) -> None:
+        del grace_period_s
+        self._terminated = True
+
+    def has_live_descendants(self) -> bool:
+        return self._descendant_count > 0
+
+    def descendant_snapshot(self) -> tuple[int, float]:
+        """Return (count, oldest_seconds) for corroborator to determine alive_by."""
+        return (self._descendant_count, self._descendant_oldest_seconds)
+
+    def __enter__(self) -> _FakeManagedHandle:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        pass
+
+
+class _RaisingStrategy(GenericExecutionStrategy):
+    """Strategy whose classify_quiet always raises to simulate a transient probe failure."""
+
+    def classify_quiet(
+        self,
+        handle: object,
+        liveness_probe: object,
+    ) -> AgentExecutionState:
+        raise RuntimeError("boom")
+
+
 class _WaitingStrategy(GenericExecutionStrategy):
     """Strategy whose classify_quiet always returns WAITING_ON_CHILD."""
-
-    class _FakeManagedHandle:
-        """Minimal test double for ManagedProcess used by read_lines_from_process."""
-
-        def __init__(
-            self,
-            stdout_lines: object,
-            *,
-            descendant_count: int = 0,
-            descendant_oldest_seconds: float = 0.0,
-        ) -> None:
-            self._stdout = stdout_lines
-            self._stderr = None
-            self._returncode: int | None = 0
-            self._terminated = False
-            self._descendant_count = descendant_count
-            self._descendant_oldest_seconds = descendant_oldest_seconds
-
-        @property
-        def stdout(self) -> object | None:
-            return self._stdout
-
-        @property
-        def stderr(self) -> object | None:
-            return self._stderr
-
-        @property
-        def returncode(self) -> int | None:
-            return self._returncode
-
-        def poll(self) -> int | None:
-            return self._returncode
-
-        def terminate(self, grace_period_s: float | None = None) -> None:
-            del grace_period_s
-            self._terminated = True
-
-        def has_live_descendants(self) -> bool:
-            return self._descendant_count > 0
-
-        def descendant_snapshot(self) -> tuple[int, float]:
-            """Return (count, oldest_seconds) for corroborator to determine alive_by."""
-            return (self._descendant_count, self._descendant_oldest_seconds)
-
-        def __enter__(self) -> _FakeManagedHandle:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            pass
-
-    class _RaisingStrategy(GenericExecutionStrategy):
-        """Strategy whose classify_quiet always raises to simulate a transient probe failure."""
-
-        def classify_quiet(
-            self,
-            handle: object,
-            liveness_probe: object,
-        ) -> AgentExecutionState:
-            raise RuntimeError("boom")
-
 
     def classify_quiet(
         self,
@@ -110,10 +111,6 @@ class _WaitingStrategy(GenericExecutionStrategy):
         liveness_probe: object,
     ) -> AgentExecutionState:
         return AgentExecutionState.WAITING_ON_CHILD
-
-
-_FakeManagedHandle = _WaitingStrategy._FakeManagedHandle
-_RaisingStrategy = _WaitingStrategy._RaisingStrategy
 
 
 _MAX_SESSION_SECONDS = 5.0

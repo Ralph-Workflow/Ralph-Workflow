@@ -25,6 +25,7 @@ from ralph.display.artifact_renderer import (
 )
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.artifact_handoff_context import ArtifactHandoffContext
 from ralph.pipeline.legacy_console_display import (
     LegacyConsoleDisplay,
     emit_display_line,
@@ -86,25 +87,12 @@ def _available_width(prefix_len: int) -> int:
 
 @dataclass(frozen=True)
 class _ArtifactRenderCtx:
-
-    @dataclass(frozen=True)
-    class ArtifactHandoffContext:
-        """Optional context for render_phase_artifact_handoff."""
-
-        display_context: DisplayContext | None = None
-        verbosity: Verbosity = Verbosity.VERBOSE
-        drain: str | None = None
-        policy_bundle: PolicyBundle | None = None
-        state: PipelineState | None = None
-
     workspace_root: Path
     display_context: DisplayContext
     display: ParallelDisplay | LegacyConsoleDisplay | None
     verbosity: Verbosity
     ra: RequiredArtifact
 
-
-ArtifactHandoffContext = _ArtifactRenderCtx.ArtifactHandoffContext
 
 
 def render_phase_artifact_handoff(

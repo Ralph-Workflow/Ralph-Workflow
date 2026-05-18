@@ -11,12 +11,11 @@ import errno
 import fcntl
 import os
 import select
-import signal
 import struct
 import termios
-import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from ralph.process._pty_process import PtyProcess
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -25,94 +24,6 @@ _DEFAULT_COLUMNS = 80
 _DEFAULT_ROWS = 24
 _READ_CHUNK_SIZE = 4096
 _STDERR_FD = 2
-
-
-class _SuppressCloseError:
-
-    @dataclass
-    class PtyProcess:
-        """Tracked PTY child process owned by the parent master file descriptor."""
-
-        pid: int
-        master_fd: int
-        slave_fd: int
-        _returncode: int | None = None
-        _closed: bool = False
-
-        @property
-        def returncode(self) -> int | None:
-            self.poll()
-            return self._returncode
-
-        def poll(self) -> int | None:
-            if self._returncode is not None:
-                return self._returncode
-            pid, status = os.waitpid(self.pid, os.WNOHANG)
-            if pid == 0:
-                return None
-            self._returncode = _status_to_returncode(status)
-            return self._returncode
-
-        def wait(self, timeout: float | None = None) -> int:
-            if self._returncode is not None:
-                return self._returncode
-            if timeout is None:
-                _pid, status = os.waitpid(self.pid, 0)
-                self._returncode = _status_to_returncode(status)
-                return self._returncode
-
-            deadline = time.monotonic() + timeout
-            while True:
-                rc = self.poll()
-                if rc is not None:
-                    return rc
-                if time.monotonic() >= deadline:
-                    raise TimeoutError from None
-                time.sleep(0.01)
-
-        def terminate(self) -> None:
-            with _SuppressMissingProcess():
-                os.kill(self.pid, signal.SIGTERM)
-
-        def kill(self) -> None:
-            with _SuppressMissingProcess():
-                os.kill(self.pid, signal.SIGKILL)
-
-        def read(self, max_bytes: int = _READ_CHUNK_SIZE) -> bytes:
-            return os.read(self.master_fd, max_bytes)
-
-        def fileno(self) -> int:
-            return self.master_fd
-
-        def isatty(self) -> bool:
-            return os.isatty(self.master_fd)
-
-        def close(self) -> None:
-            if self._closed:
-                return
-            self._closed = True
-            for fd in (self.master_fd, self.slave_fd):
-                with _SuppressCloseError():
-                    os.close(fd)
-
-    class _SuppressMissingProcess:
-        def __enter__(self) -> None:
-            return None
-
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
-            del exc, tb
-            return exc_type in (ProcessLookupError, PermissionError)
-
-    def __enter__(self) -> None:
-        return None
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
-        del exc, tb
-        return exc_type is OSError
-
-
-PtyProcess = _SuppressCloseError.PtyProcess
-_SuppressMissingProcess = _SuppressCloseError._SuppressMissingProcess
 
 
 def spawn_pty_process(
@@ -181,14 +92,6 @@ def _set_nonblocking(fd: int) -> None:
 def _set_winsize(fd: int, *, rows: int, cols: int) -> None:
     packed = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, packed)
-
-
-def _status_to_returncode(status: int) -> int:
-    if os.WIFEXITED(status):
-        return os.WEXITSTATUS(status)
-    if os.WIFSIGNALED(status):
-        return -os.WTERMSIG(status)
-    return status
 
 
 __all__ = [

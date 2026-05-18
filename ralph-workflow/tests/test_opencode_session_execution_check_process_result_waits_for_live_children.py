@@ -5,6 +5,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
+from tests.fake_handle import _FakeHandle
 
 import threading
 import time as _time_module
@@ -50,23 +51,7 @@ _CompletionCheckOptions = CompletionCheckOptions
 class TestCheckProcessResultWaitsForLiveChildren:
     """_check_process_result waits for child agents before raising OpenCodeResumableExitError."""
 
-    class _FakeHandle:
-        returncode: int = 0
-        stdout = None
-        stderr = None
 
-        def __init__(self, *, returncode: int = 0, has_descendants: bool = False) -> None:
-            self.returncode = returncode
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
-
-        def descendant_snapshot(self) -> tuple[int, float | None]:
-            return (1 if self._has_descendants else 0, 5.0 if self._has_descendants else None)
-
-        def poll(self) -> int | None:
-            return self.returncode
 
     def test_raises_resumable_exit_when_wait_times_out_without_artifact(
         self, tmp_path: Path
@@ -665,4 +650,3 @@ class TestCheckProcessResultWaitsForLiveChildren:
         )
 
 
-_FakeHandle = TestCheckProcessResultWaitsForLiveChildren._FakeHandle

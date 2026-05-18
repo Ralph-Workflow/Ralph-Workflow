@@ -61,18 +61,18 @@ def _make_config(agent_idle_timeout_seconds: float = 300.0) -> UnifiedConfig:
     )
 
 
+class FakeBridge:
+    """Minimal MCP bridge stub for runner tests."""
+
+    def shutdown(self) -> None:
+        return
+
+    def agent_endpoint_uri(self) -> str:
+        return "http://127.0.0.1:19999/mcp"
+
+
 class _FakeRegistryInstance:
     """Minimal AgentRegistry instance stub that always returns a fixed config."""
-
-    class FakeBridge:
-        """Minimal MCP bridge stub for runner tests."""
-
-        def shutdown(self) -> None:
-            return
-
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:19999/mcp"
-
 
     def __init__(self, agent_config: AgentConfig) -> None:
         self._agent_config = agent_config
@@ -80,9 +80,6 @@ class _FakeRegistryInstance:
     def get(self, name: str) -> AgentConfig | None:
         del name
         return self._agent_config
-
-
-FakeBridge = _FakeRegistryInstance.FakeBridge
 
 
 def _registry_factory(agent_config: AgentConfig) -> type:

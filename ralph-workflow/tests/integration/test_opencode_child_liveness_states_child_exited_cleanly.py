@@ -12,6 +12,7 @@ PostExitWatchdog with FakeClock to validate the planned end-to-end behaviors.
 """
 
 from __future__ import annotations
+from tests.integration.fake_handle import _FakeHandle
 
 import json
 
@@ -24,14 +25,7 @@ from ralph.process.liveness import FakeLivenessProbe
 class TestChildExitedCleanly:
     """Terminal ack causes TERMINAL_COMPLETE; no indefinite waiting."""
 
-    class _FakeHandle:
-        returncode = 0
 
-        def __init__(self, *, has_descendants: bool = False) -> None:
-            self._has_descendants = has_descendants
-
-        def has_live_descendants(self) -> bool:
-            return self._has_descendants
 
 
     def test_terminal_ack_produces_terminal_complete(self) -> None:
@@ -71,7 +65,6 @@ class TestChildExitedCleanly:
         )
 
 
-_FakeHandle = TestChildExitedCleanly._FakeHandle
 
 
 def _make_registry(*, t: list[float]) -> ChildLivenessRegistry:

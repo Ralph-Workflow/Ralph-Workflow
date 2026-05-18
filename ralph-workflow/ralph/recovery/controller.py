@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
@@ -21,6 +20,7 @@ from ralph.recovery.classifier import (
 )
 from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
+from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -83,17 +83,7 @@ class RecoveryController:
     Delegates nothing to the reducer's internal retry counter when active.
     """
 
-    @dataclass(frozen=True)
-    class RecoveryControllerOptions:
-        """Options for constructing a RecoveryController."""
-
-        cycle_cap: int = 200
-        classifier: FailureClassifier | None = None
-        event_bus: FailureEventBus | None = None
-        budget_registry: AgentBudgetRegistry | None = None
-        policy_bundle: PolicyBundle | None = None
-        backoff_attempts: dict[str, int] | None = None
-
+    RecoveryControllerOptions = RecoveryControllerOptions
 
     def __init__(
         self,
@@ -454,4 +444,3 @@ class RecoveryController:
         )
 
 
-RecoveryControllerOptions = RecoveryController.RecoveryControllerOptions

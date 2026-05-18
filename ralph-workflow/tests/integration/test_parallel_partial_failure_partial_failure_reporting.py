@@ -57,17 +57,18 @@ def _make_policy_bundle() -> MagicMock:
     return bundle
 
 
+class _FakeDisplay:
+    def __init__(self) -> None:
+        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
+
+    def emit(self, unit_id: str | None, line: str) -> None:
+        del unit_id, line
+
+    def set_status(self, unit_id: str, status: object) -> None:
+        del unit_id, status
+
+
 class TestPartialFailureReporting:
-
-    class _FakeDisplay:
-        def __init__(self) -> None:
-            self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
-
-        def emit(self, unit_id: str | None, line: str) -> None:
-            del unit_id, line
-
-        def set_status(self, unit_id: str, status: object) -> None:
-            del unit_id, status
 
     def test_successful_units_report_complete_before_dependent_fails(self) -> None:
         """Units B and C complete successfully before A (which depends on them) fails.
@@ -260,4 +261,4 @@ class TestPartialFailureReporting:
         )
 
 
-_FakeDisplay = TestPartialFailureReporting._FakeDisplay
+

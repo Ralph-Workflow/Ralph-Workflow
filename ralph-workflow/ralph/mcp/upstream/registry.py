@@ -23,8 +23,10 @@ from ralph.mcp.upstream.client import (
     make_upstream_client,
     normalize_upstream_content_blocks,
 )
+from ralph.mcp.upstream._proxied_tool import ProxiedTool
+from ralph.mcp.upstream._registry_collision_error import RegistryCollisionError
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
+from ralph.mcp.upstream.models import UpstreamCallError
 from ralph.mcp.upstream.validation import UpstreamValidationError
 
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
@@ -33,18 +35,6 @@ UpstreamClientFactory = Callable[[UpstreamMcpServer], _AnyUpstreamClient]
 
 class UpstreamRegistry:
     """Aggregates tools from multiple upstream MCP servers under stable proxy aliases."""
-
-    class RegistryCollisionError(ValueError):
-        """Raised when two upstream servers produce the same proxy alias for a tool."""
-
-    @dataclass(frozen=True)
-    class ProxiedTool:
-        """A single upstream tool mapped to a stable proxy alias."""
-
-        alias: str
-        server_name: str
-        tool: UpstreamTool
-
 
     def __init__(
         self,
@@ -117,10 +107,6 @@ class UpstreamRegistry:
             )
             return result
         return raw_result
-
-
-RegistryCollisionError = UpstreamRegistry.RegistryCollisionError
-ProxiedTool = UpstreamRegistry.ProxiedTool
 
 
 __all__ = [
