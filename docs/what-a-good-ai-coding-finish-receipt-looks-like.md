@@ -93,4 +93,5 @@ If you still need to reconstruct the whole night, tighten the scope or the revie
 - [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) — five-minute merge check for the morning-after handoff
 - [what-breaks-first-with-multiple-coding-agents.md](./what-breaks-first-with-multiple-coding-agents.md) — why review/reconstruction pain usually breaks trust before Git does
 - [example-review-bundle.md](./example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts
-- [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — inspect, star, or watch Ralph Workflow where you already follow open-source tools
+- [Primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — inspect, star, or watch Ralph Workflow on the main repo
+- [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — follow the mirror if GitHub is where you already track projects

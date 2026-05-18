@@ -56,10 +56,10 @@ If you want the fuller artifact shape before you install, inspect the public [ex
 - **I want a concrete merge-review path for AI output.** Read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
 - **I want to know what a strong morning-after handoff should actually contain.** Read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
 - **I already use Aider. Why would I use Ralph instead?** Read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
-- **I want to inspect the project where I already follow open-source tools.** Review the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) or the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
+- **I want to inspect the project where I already follow open-source tools.** Start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow), or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
 - **I want to see what a good result looks like before I try it.** Read [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete morning-after review path.
 
-If you already judge open-source tools on GitHub, open the mirror first. If Ralph looks like a fit for your workflow, **star or watch it there before your first run** so you can track updates while you test it on a real backlog task.
+Codeberg is the primary repo and the main adoption surface. If Ralph looks like a fit for your workflow, **star or watch it on Codeberg before your first run**. If you mainly follow projects on GitHub, the mirror is there too.
 
 ## Independent places to inspect Ralph Workflow
 
@@ -83,7 +83,7 @@ A strong first run should feel concrete, not magical:
 5. **Artifacts stay in the repo** so you can open the notes, logs, and result files without reconstructing the night from terminal scrollback.
 6. **You review one clean diff and ask:** *would I merge this?*
 
-If that is the kind of finish line you want, start with [START_HERE.md](./START_HERE.md), inspect the public [example review bundle](./docs/example-review-bundle.md), or open the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) first.
+If that is the kind of finish line you want, start with [START_HERE.md](./START_HERE.md), inspect the public [example review bundle](./docs/example-review-bundle.md), or open the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first.
 
 ## Want the longer argument before you install?
 
@@ -306,7 +306,8 @@ Keep this README for onboarding. Use these when you want the full reference:
 - **Docs:** <https://ralphworkflow.com/docs>
 - **Issues:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Repository:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow> — inspect, star, or watch Ralph Workflow where you already follow open-source tools
+- **Primary Codeberg repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow> — inspect, star, or watch Ralph Workflow on the main repo
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow> — follow the mirror if GitHub is where you already track open-source tools
 - **PyPI package:** <https://pypi.org/project/ralph-workflow/>
 
 ## License

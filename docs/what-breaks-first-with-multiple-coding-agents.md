@@ -91,4 +91,5 @@ If not, tighten the scope or acceptance criteria and run again.
 - [why-worktrees-are-not-enough.md](./why-worktrees-are-not-enough.md) — why isolation alone does not create a trustworthy finish
 - [example-review-bundle.md](./example-review-bundle.md) — inspect a public morning-after handoff before your own run
 - [free-open-source-proof.md](./free-open-source-proof.md) — see the proof path and merge test
-- [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — inspect, star, or watch Ralph Workflow where you already follow projects
+- [Primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — inspect, star, or watch Ralph Workflow on the main repo
+- [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — follow the mirror if GitHub is where you already track projects

@@ -16,9 +16,9 @@ Start with **one real backlog task** you already care about.
 
 If the only thing you are stuck on right now is agent choice, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md) and pick the agent that is already working on your machine.
 
-If you want to inspect the project before you install anything, open the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) or the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first.
+If you want to inspect the project before you install anything, open the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first, or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
 
-If GitHub is where you already evaluate open-source tools, use the mirror as your inspection path and **star or watch it there** if Ralph looks worth trying on your next overnight backlog task.
+Codeberg is the primary repo and the main adoption surface. If Ralph looks worth trying on your next overnight backlog task, **star or watch it on Codeberg**. If you mainly evaluate projects on GitHub, the mirror is available there too.
 
 If you want a little more outside proof before you install, you can also inspect Ralph Workflow on [GitDB](https://gitdb.net/Ralph-Workflow/Ralph-Workflow), [SaaSHub](https://www.saashub.com/ralph-workflow), or [TechTools Launchpad](https://techtools.cz/tools/launchpad/?tool=71). Those are not substitutes for your own judgment, but they do give you independent discovery/comparison surfaces before your first run.
 

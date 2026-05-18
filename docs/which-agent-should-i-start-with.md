@@ -100,7 +100,7 @@ If you want the shortest honest path after that, continue with:
 - [first-task-prompt-templates.md](./first-task-prompt-templates.md)
 - [when-unattended-coding-fits.md](./when-unattended-coding-fits.md)
 
-If you prefer to evaluate open-source tools on GitHub before you install them, inspect Ralph Workflow on the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) and **star or watch it there** if it matches the kind of overnight handoff you want.
+If you want to inspect the project before you install it, start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) and **star or watch it there** if it matches the kind of overnight handoff you want. If GitHub is where you already track projects, the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) is there too.
 
 ## Recommended first-run sequence
 
