@@ -237,6 +237,60 @@ class RedditAutopostTests(unittest.TestCase):
         self.assertIn("free/open-source", mixed_team_body)
 
 
+    def test_choose_opportunity_prefers_medium_plus_fit_over_low_fit_same_day_thread(self):
+        medium = reddit_autopost.Opportunity(
+            rank=1,
+            title="Autonomous Claude Code runs in the new reality.",
+            url="https://www.reddit.com/r/ClaudeCode/comments/medium/",
+            community="`r/ClaudeCode`",
+            angle="bounded autonomy should end in a reviewable handoff",
+            freshness="today",
+            mention_fit="**medium**",
+        )
+        low = reddit_autopost.Opportunity(
+            rank=5,
+            title="Is multi-agent supervision becoming the real job?",
+            url="https://www.reddit.com/r/AI_Agents/comments/low/",
+            community="`r/AI_Agents`",
+            angle="less supervision drag without blind trust",
+            freshness="today",
+            mention_fit="**low**",
+        )
+        original_load_recent = reddit_autopost.load_recent_post_records
+        original_already_used = reddit_autopost.already_used
+        try:
+            reddit_autopost.load_recent_post_records = lambda hours=24: []
+            reddit_autopost.already_used = lambda url: False
+            chosen, state = reddit_autopost.choose_opportunity([low, medium])
+        finally:
+            reddit_autopost.load_recent_post_records = original_load_recent
+            reddit_autopost.already_used = original_already_used
+        self.assertEqual(state, "fresh")
+        self.assertIsNotNone(chosen)
+        self.assertEqual(chosen.title, medium.title)
+
+    def test_choose_opportunity_skips_when_only_weak_fit_threads_remain(self):
+        low = reddit_autopost.Opportunity(
+            rank=5,
+            title="Is multi-agent supervision becoming the real job?",
+            url="https://www.reddit.com/r/AI_Agents/comments/low/",
+            community="`r/AI_Agents`",
+            angle="less supervision drag without blind trust",
+            freshness="today",
+            mention_fit="**low**",
+        )
+        original_load_recent = reddit_autopost.load_recent_post_records
+        original_already_used = reddit_autopost.already_used
+        try:
+            reddit_autopost.load_recent_post_records = lambda hours=24: []
+            reddit_autopost.already_used = lambda url: False
+            chosen, state = reddit_autopost.choose_opportunity([low])
+        finally:
+            reddit_autopost.load_recent_post_records = original_load_recent
+            reddit_autopost.already_used = original_already_used
+        self.assertIsNone(chosen)
+        self.assertEqual(state, "weak_fit_only")
+
     def test_parse_current_report_shape_finds_live_opportunities(self):
         report = """### 1) Claude Code Agent Teams W/ Gemini and Codex
 - URL: https://www.reddit.com/r/ClaudeCode/comments/1tep6dl/claude_code_agent_teams_w_gemini_and_codex/

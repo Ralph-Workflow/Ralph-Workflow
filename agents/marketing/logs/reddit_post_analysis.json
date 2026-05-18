@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-05-18T17:35:06.392556",
-  "count": 18,
+  "generated_at": "2026-05-18T18:47:06.730706",
+  "count": 19,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 15
+    "Informal-Salt827": 16
   },
   "by_community": {
     "r/AI_Agents": 1,
     "r/ClaudeCode": 11,
     "r/codex": 5,
-    "r/ClaudeAI": 1
+    "r/ClaudeAI": 2
   },
   "top_title_words": [
     "claude",
@@ -21,45 +21,45 @@
     "workflow",
     "multiple",
     "overnight",
+    "handling",
     "coding",
     "same",
     "repo",
     "both",
-    "actually",
-    "after"
+    "actually"
   ],
   "top_body_tokens": [
-    "agent",
     "workflow",
+    "agent",
     "ralph",
     "diff",
+    "before",
     "instead",
     "done",
-    "before",
-    "trust",
     "agents",
+    "trust",
+    "checks",
     "work",
     "tool",
-    "checks",
-    "task",
     "reviewable",
+    "task",
+    "needs",
+    "handoff",
     "ralphworkflow",
-    "receipt",
-    "small",
-    "after",
-    "pass",
-    "needs"
+    "review",
+    "open",
+    "receipt"
   ],
   "phrase_hits": {
     "worktree": 7,
-    "diff": 16,
+    "diff": 17,
     "verify": 1,
-    "handoff": 10,
-    "reviewable": 11,
+    "handoff": 11,
+    "reviewable": 12,
     "done criteria": 6,
     "scope": 8,
     "final check": 1,
-    "overnight": 5,
+    "overnight": 6,
     "review bundle": 1,
     "trust": 10,
     "small scoped": 1
@@ -75,14 +75,6 @@
     }
   ],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-17T12:56:35.022150",
-      "account": "Informal-Salt827",
-      "community": "r/codex",
-      "title": "How many of you \"Trust\" Codex?",
-      "comment_url": "https://old.reddit.com/r/codex/comments/1t5uwtc/how_many_of_you_trust_codex/omaao0k/",
-      "opening_line": "Honestly I don’t trust Codex as a verdict machine. I trust it as an implementation engine when the task is narrow enough that a human can still judge the result quickly."
-    },
     {
       "timestamp": "2026-05-17T14:27:15.942846",
       "account": "Informal-Salt827",
@@ -154,6 +146,14 @@
       "title": "Claude Code Agent Teams W/ Gemini and Codex",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tep6dl/claude_code_agent_teams_w_gemini_and_codex/omhhcbh/",
       "opening_line": "If you're running Claude Code with Gemini or Codex, I'd design for stable handoffs before I optimized for more throughput."
+    },
+    {
+      "timestamp": "2026-05-18T17:59:49.433267",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeAI",
+      "title": "Claude Code’s checkpoint commits are polluting my git history. How are you handling this?",
+      "comment_url": "https://old.reddit.com/r/ClaudeAI/comments/1taz6hd/claude_codes_checkpoint_commits_are_polluting_my/omi77jq/",
+      "opening_line": "My rule is that checkpoint commits are for recovery, not for the human review surface."
     }
   ],
   "recommendations": [

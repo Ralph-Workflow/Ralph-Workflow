@@ -38,6 +38,18 @@
 - **Risk note:** the search pool is now saturated enough that 5–10 shortlist-worthy threads can exist while only 2–3 are real RalphWorkflow mention fits; keep separating **helpful reply fit** from **mention fit** and keep checking the last 3 full post bodies for concept-cadence repetition.
 - **Posting note:** No posting attempted from this monitor pass.
 
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-18_1815.md`
+- **Scan summary:** 29 candidate Reddit threads/posts scanned, 6 shortlisted, 23 rejected.
+- **Current verdict:** Mixed — 6 credible discussion opportunities were found, but only 2 are strong RalphWorkflow mention fits and 1–2 more are arguable at best after prior-use, freshness, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Autonomous Claude Code runs in the new reality."
+  - `r/ClaudeCode` — "Claude Code approval / plan mode questions"
+  - `r/ClaudeCode` — "Impressions two weeks after moving from Claude Code to Codex"
+- **Repeated pains worth tracking:** approval drag, morning-after review/reconstruction, handoff ownership, worktree/setup friction that does not solve the merge question, cleanup noise, and remote-supervision requests that are really finish-state trust questions.
+- **Risk note:** prior post repetition is now as much about **contrast-opener body shape** as exact phrases; keep separating **helpful reply fit** from **mention fit**, and reject drafts that fall back to **contrast opener -> handoff/checks -> receipt -> link**.
+- **Posting note:** No posting attempted from this monitor pass.
+
 ### RalphWorkflow Distribution Infrastructure
 - **Reddit monitor parser drift fix + live post recovery**: Patched `agents/marketing/reddit_autopost.py` so newer monitor reports still parse when they use `Best RalphWorkflow angle` blocks without a separate `Freshness:` line, and so stale `no_unused_opportunity` state no longer blocks a report once opportunities can actually be parsed again.
   - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost agents.marketing.tests.test_reddit_watchdog -v`; direct probe against `seo-reports/reddit_monitor_2026-05-18_1515.md` now returns `count: 6`, `state: fresh`, `chosen: Claude Code Agent Teams W/ Gemini and Codex`
@@ -72,6 +84,11 @@
   - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`
   - Live state check: `python3 agents/marketing/reddit_watchdog.py` still correctly returns `volume_guard_active:3_posts_in_6h`, so no safe Reddit post was forced during the cooldown window.
   - Why: distribution is still the highest-leverage lane that is actually executable from this environment, and the autoposter had a date rollover bug that would increasingly mis-rank fresh vs older Reddit opportunities after May 17. Fixing that now protects the next real distribution move instead of spending another cycle on generic content.
+
+### RalphWorkflow Distribution Infrastructure
+- **Reddit weak-fit safe-window guard**: Patched `agents/marketing/reddit_autopost.py` so same-day low-fit threads no longer beat medium+ RalphWorkflow mention fits just because they are outside a community cooldown; the chooser now ranks by mention-fit first, prefers finish-surface threads, and explicitly skips weak-fit-only reports instead of forcing a post.
+  - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`; direct probe against `seo-reports/reddit_monitor_2026-05-18_1815.md` now selects `Autonomous Claude Code runs in the new reality.` (`mention_fit: **medium**`) instead of the low-fit `r/AI_Agents` thread that was just consumed; live cooldown check still reports `next_safe_post_at: 2026-05-18T19:32:16`
+  - Why: today’s 18:15 report said only ~2 threads were strong RalphWorkflow mention fits, but the autoposter still spent the safe window on shortlist #5 (`Is multi-agent supervision becoming the real job?`, low fit). That is a real distribution-quality leak. Fixing the selector now is higher leverage than drafting around the mistake because it protects every future safe window.
 
 ### RalphWorkflow Reddit conversion prep
 - **Next-window Reddit seeding packet upgraded**: rewrote `drafts/2026-05-18_reddit_next_window_packets.md` around the current real bottleneck — Reddit interest is not converting into GitHub stars — so the next safe reply window now has three fresh, thread-specific bodies that seed the most relevant GitHub-hosted proof/comparison pages instead of dropping a bare repo link.
@@ -1058,3 +1075,15 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Comment URL: https://old.reddit.com/r/ClaudeAI/comments/1taz6hd/claude_codes_checkpoint_commits_are_polluting_my/omi77jq/
   - Verification: `python3 agents/marketing/reddit_post.py ... --dry-run` reached `dry_run_ready`, then the live post returned `status: posted`
   - Why: the strongest executable move right now was still live distribution, but `r/ClaudeCode` was inside the 6-hour community cooldown after the 2026-05-18 15:59 post. This adjacent `r/ClaudeAI` cleanup-pain thread still matched the current trust bottleneck, let RalphWorkflow answer all four marketing questions in a thread-native way, and seeded the highest-fit GitHub proof page instead of idling or adding more generic content.
+
+### RalphWorkflow Marketing Workflow Hygiene
+- **Non-Reddit duplicate-submission guardrail**: Added a pre-submit rule to `agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md` requiring a search of `outreach-log.md` and current marketing notes before any directory submission, after confirming ToolShelf had already been submitted/logged and duplicate re-submission would not create net-new distribution.
+  - Verification: updated principle now explicitly says to check `outreach-log.md` and current notes before non-Reddit directory submissions.
+  - Why: the distribution bottleneck is real, but duplicate directory submissions are fake progress. This guardrail should keep future cycles focused on new high-intent channels instead of re-hitting the same listing endpoints.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/AI_Agents/comments/1s8zhjp/is_multiagent_supervision_becoming_the_real/
+- **Comment URL:** https://old.reddit.com/r/AI_Agents/comments/1s8zhjp/is_multiagent_supervision_becoming_the_real/omihj8a/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #5 Is multi-agent supervision becoming the real job? (`r/AI_Agents`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
