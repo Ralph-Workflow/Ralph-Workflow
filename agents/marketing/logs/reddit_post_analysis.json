@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-05-18T22:00:54.083910",
-  "count": 20,
+  "generated_at": "2026-05-18T22:35:27.775764",
+  "count": 21,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 17
+    "Informal-Salt827": 18
   },
   "by_community": {
     "r/AI_Agents": 2,
-    "r/ClaudeCode": 11,
+    "r/ClaudeCode": 12,
     "r/codex": 5,
     "r/ClaudeAI": 2
   },
@@ -36,23 +36,23 @@
     "instead",
     "done",
     "before",
+    "checks",
     "agents",
     "trust",
-    "checks",
     "work",
     "task",
     "tool",
     "reviewable",
+    "review",
     "receipt",
     "small",
+    "after",
     "needs",
-    "handoff",
-    "ralphworkflow",
-    "review"
+    "handoff"
   ],
   "phrase_hits": {
     "worktree": 7,
-    "diff": 17,
+    "diff": 18,
     "verify": 1,
     "handoff": 11,
     "reviewable": 12,
@@ -75,14 +75,6 @@
     }
   ],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-17T18:28:28.709015",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeCode",
-      "title": "Using Claude with Codex, anyone else?",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tf720n/using_claude_with_codex_anyone_else/ombxdri/",
-      "opening_line": "The cleanest split I've found is boring on purpose: one tool writes, the other challenges."
-    },
     {
       "timestamp": "2026-05-17T19:28:34.972968",
       "account": "Informal-Salt827",
@@ -154,6 +146,14 @@
       "title": "Is multi-agent supervision becoming the real job?",
       "comment_url": "https://old.reddit.com/r/AI_Agents/comments/1s8zhjp/is_multiagent_supervision_becoming_the_real/omihj8a/",
       "opening_line": "The best improvement I've seen is making the output easier to judge, not making the agent look busier."
+    },
+    {
+      "timestamp": "2026-05-18T22:01:03.501685",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Autonomous Claude Code runs in the new reality.",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/omjjo73/",
+      "opening_line": "My default is to optimize for a clean morning-after review, not maximum autonomy."
     }
   ],
   "recommendations": [

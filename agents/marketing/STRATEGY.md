@@ -20,9 +20,10 @@ This strategy file remains the long-term record, but the current system should f
 ## Product
 - **Name:** Ralph Workflow
 - **URL:** https://ralphworkflow.com
-- **Tagline:** "Preconfigured AI engineering workflow with planning and development phases, nested analysis feedback loops, and a fresh plan on every pass."
-- **Target:** Engineering teams and solo developers who want AI agents to work unattended
-- **Core differentiator:** Not a prompt tool — a workflow system that runs AI agents as unattended engineering pipelines
+- **Tagline:** "Composable loop framework for AI engineering work on your own machine."
+- **Target:** Engineering teams and solo developers who want AI agents to work unattended on ambitious, well-specified projects
+- **Core differentiator:** Not a prompt tool — a composable loop framework and workflow system that runs AI agents as unattended engineering pipelines
+- **Positioning reference:** `RALPH_WORKFLOW_POSITIONING.md`
 
 ## Traffic Channels
 
