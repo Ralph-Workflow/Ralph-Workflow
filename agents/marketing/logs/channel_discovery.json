@@ -24,7 +24,9 @@
     "dmoz",
     "dirwell",
     "smashingmagazine",
-    "css-tricks"
+    "css-tricks",
+    "toolhunter",
+    "devpages"
   ],
   "results": [
     {
@@ -196,7 +198,7 @@
       "url": "https://saashub.com",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-18T13:01:14.683665",
+      "timestamp": "2026-05-18T13:34:06.596585",
       "http_code": "200",
       "final_url": "https://www.saashub.com/",
       "status": "accessible"
@@ -236,7 +238,7 @@
       "url": "https://blogsearch.google.com",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-18T13:01:15.974991",
+      "timestamp": "2026-05-18T13:34:08.053904",
       "http_code": "200",
       "final_url": "https://www.google.com/",
       "status": "accessible"
@@ -279,6 +281,43 @@
       "http_code": "200",
       "final_url": "https://css-tricks.com",
       "status": "accessible"
+    },
+    {
+      "name": "toolhunter",
+      "url": "https://www.toolhunter.cc/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-18T13:34:08.634478",
+      "http_code": "200",
+      "final_url": "https://www.toolhunter.cc/submit",
+      "status": "broken_submit_surface",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 0,
+        "input_count": 0,
+        "textarea_count": 0,
+        "select_count": 0,
+        "body_excerpt": "TOOLHUNTER\nBrowse\nTrending\nCategories\nBookmarks\nSubmit\nSubmit a Tool\n\nKnow a developer tool that should be featured? Fill out the form below and we'll review it within 48 hours.\n\nWe review every submission manually. Tools must be relevant to developers.\n\nTOOLHUNTER\n\nCurated directory of the best AI tools for developers, open-source CLI utilities, and AI coding assistants.\n\nNAVIGATION\n\nBrowse All Tools\nAll Categories\nTrending\nChangelog\nSubmit a Tool\nBookmarks\n\nLEGAL\n\nTerms of Use\nPrivacy Policy\n\nCATEGORIES\n\n3D Biology UI\n3D Reconstruction Models\n3D SVG Editors\nAI 3D Generation Tools\nAI API Gateways\nAI API Guides\nAI API Proxies\nAI Account Automation\n+752 more categories \u2192\n\u00a9 2026 ToolHunter. All rights reserved.\nTerms of Use\nPrivacy Policy\nMade with \u2764\ufe0f by ToolHunter\nDiscover more\nProgramming\n"
+      },
+      "note": "submission page loads marketing copy but no usable form controls"
+    },
+    {
+      "name": "devpages",
+      "url": "https://devpages.io/submit-a-tool",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-18T13:34:14.094801",
+      "http_code": "200",
+      "final_url": "https://devpages.io/submit-a-tool",
+      "status": "accessible",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 2,
+        "input_count": 285,
+        "textarea_count": 1,
+        "select_count": 2,
+        "body_excerpt": "D\nDevPagesbeta\nHome\nCategories\nTop 20\nBlog\nSubmit Tool\nCommunity\nLight mode\nSearch\nSign In\nBack to Home\nSubmit a Tool\n\nKnow a great developer tool that should be in our directory? Submit it below and help fellow developers discover it.\n\nTool Name *\nWebsite URL *\nDescription *\nCategory *\nSelect a category\nGenerative AI\nAI/ML Tools\nDevOps\nCloud Infrastructure\nObservability\nAPIs\nFrameworks\nDatabases\nSecurity\nFinance Tools\nLearning Platforms\nPricing Model\nFree\nFreemium\nPaid\nOpen Source\nGitHub URL (optional)\nYour Email *\n\nWe'll notify you when your submission is reviewed.\n\nSubmit Tool\nD\nDevPages.io\n\nDev Pages - The Developer Tools Directory. Discover, Compare & Master Software Development Tools. Your ultimate hub for builders.\n\nNavigation\nHome\nCategories\nTop 20\nSubmit Tool\nCommunity\nResources\nA"
+      }
     }
   ],
   "working": [
@@ -293,6 +332,12 @@
       "url": "https://blogsearch.google.com",
       "method": "submit",
       "difficulty": "medium"
+    },
+    {
+      "name": "devpages",
+      "url": "https://devpages.io/submit-a-tool",
+      "method": "submit",
+      "difficulty": "easy"
     }
   ]
 }

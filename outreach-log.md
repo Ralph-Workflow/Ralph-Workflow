@@ -463,14 +463,25 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Notes:** Fresh body — no thesis opener, no soft last-paragraph Ralph mention. Review-first angle targeting skeptical audience.
 - **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
 
-## 2026-05-17 (Sunday) — Evening Audit — 21:20 UTC
-- **Bottleneck verdict:** distribution-to-free-use conversion, not surface quality. GitHub stars: 0. Codeberg stars: 9.
-- **What's working:** Reddit distribution with fresh bodies, pacing guards, varied shapes. Conversion surfaces genuinely strong.
-- **What's broken:** 6 write.as articles (May 11-16) have zero distribution — never submitted to HN, Lobsters, or any real-reach platform. Dead weight.
-- **Repetition risk:** repeated opening line still alive in autoposter; body-template fix needs end-to-end verification, not just compile check.
-- **What to stop:** adding conversion assets. Diminishing returns. Surfaces are strong enough.
-- **Next highest-leverage move:** (1) Submit strongest write.as articles to HN and Lobsters with GitHub mirror links. (2) Verify autoposter auto-injects GitHub CTA in every high-fit Reddit body end-to-end.
-- **Rules triggered:** four marketing questions still answered in all assets. Free OSS framing preserved. Bottleneck shift confirmed.
+## 2026-05-18 (Monday) — Midday Audit — 11:20 UTC
+- **Bottleneck verdict:** unchanged — `conversion_to_free_use`. GitHub stars: 0. Codeberg stars: 9.
+- **What's working:**
+  - Reddit distribution with genuinely fresh, varied bodies — Informal-Salt827 posts show real workflow advice, no formulaic product pushes
+  - DevTool Center and MadeWithStack submissions shipped today (directory distribution is a real step toward high-intent discovery)
+  - GitHub mirror CTA fix (wrong org slug corrected across all comparison pages and scripts)
+  - Reddit watchdog retry fix, freshness rollover fix, pacing-window hygiene — infrastructure is tighter
+  - Repeated opening line confirmed gone from autoposter (fix landed)
+- **What did not work:**
+  - write.as articles from May 11–16 still have zero external distribution — zero HN/Lobsters submissions, zero Medium/DEV seeding
+  - GitHub adoption signals flat despite Reddit distribution and directory submissions
+  - Reddit search pool is genuinely saturating with already-used/setup-only threads; monitor keeps finding 2–3 decent fits per pass but the signal-to-noise ratio is dropping
+- **What is repetitive / low leverage:**
+  - More conversion assets would be noise at this point — START_HERE, first-task templates, proof bundle, Aider comparison, task-fit guide, reviewable-output page, unattended-coding-agent page, multi-agent trust-break guide — all are live and surfaced
+  - Reddit monitoring cadence is fine but the autoposter's cooldown means only 2–3 genuine posting windows per day; continuing to scan that actively creates more analysis than distribution
+- **Current bottleneck:** trust-to-free-use conversion. People arrive (Reddit mentions, directory listings) but don't star/watch on GitHub. The conversion surfaces are ready; the distribution-to-adoption handoff is the gap.
+- **What to stop:** adding more conversion assets. Adding more Reddit monitoring reports. More write.as articles without a distribution plan.
+- **What to start:** Get existing owned content in front of a larger audience. The strongest move right now is submitting the best write.as article(s) to HN or Lobsters — they have real viral reach and an audience that matches "free, open-source, runs your own agents, overnight project work."
+- **Rules triggered:** four marketing questions still answered in all assets. Free OSS framing preserved. Messaging still aligned to: free and open source, existing agents on your own machine, overnight unattended work, wake up to reviewable output.
 
 ---
 
@@ -898,3 +909,10 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- ralph-workflow/docs/sphinx/index.rst`; scripted check confirmed combined title length `55` and no remaining `genindex` / `modindex` / `search` refs in the homepage source; local build/test unverified in this environment due to missing `sphinx`
   - Why: the latest live SEO report still showed an overlong homepage title plus low-intent docs utility pages lingering in the crawl surface. Since the current bottleneck is conversion/adoption quality rather than more generic awareness, cleaning the primary public docs entry point was the highest-leverage move that was actually executable right now.
+
+### RalphWorkflow Conversion
+- **Compressed proof-of-handoff path on top public entry points**: added a short morning-after proof strip to the public README, `START_HERE.md`, and hosted docs homepage source so high-intent visitors see the exact evaluation path faster: bounded brief → unattended run on your own machine → checks ran → fixes attempted → repo-local artifacts → one merge question.
+  - Commit: `2af1c46a` — `Tighten proof-of-handoff entry points`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `grep -n "What the morning-after handoff should look like\|What a good first handoff looks like\|One merge question" README.md START_HERE.md ralph-workflow/docs/sphinx/index.rst`; local build/test unverified in this environment due to missing `sphinx`
+  - Why: the current bottleneck is still trust-to-free-use conversion, and the latest site review said the message was strongest when it stayed plain and proof-led. This tightens the first-screen answer to all four marketing questions without adding another generic asset: what Ralph is, who it is for, why it is different, and why to try it now are all anchored to a concrete morning-after handoff the visitor can judge.

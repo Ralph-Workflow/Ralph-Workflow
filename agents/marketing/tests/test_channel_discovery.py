@@ -34,6 +34,30 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "accessible")
         self.assertIsNone(note)
 
+    def test_classifies_broken_submit_surface_when_copy_loads_without_controls(self):
+        status, note = channel_discovery.classify_submission_surface_probe({
+            "probe_status": "ok",
+            "form_count": 0,
+            "input_count": 0,
+            "textarea_count": 0,
+            "select_count": 0,
+            "body_excerpt": "Submit a Tool\nFill out the form below and we'll review it within 48 hours.",
+        })
+        self.assertEqual(status, "broken_submit_surface")
+        self.assertIn("no usable form controls", note)
+
+    def test_submission_probe_gate_only_triggers_for_real_submit_pages(self):
+        self.assertTrue(channel_discovery.submission_surface_needs_form_probe(
+            "https://www.toolhunter.cc/submit",
+            "submit",
+            "Submit a Tool. Fill out the form below.",
+        ))
+        self.assertFalse(channel_discovery.submission_surface_needs_form_probe(
+            "https://example.com/blog/post",
+            "article",
+            "Submit your article idea.",
+        ))
+
     def test_build_working_channels_uses_latest_accessible_results_only(self):
         working = channel_discovery.build_working_channels([
             {"name": "slashdot", "status": "login_required", "difficulty": "medium", "url": "u", "method": "submit"},
