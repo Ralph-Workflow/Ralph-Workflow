@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-05-18T04:35:06.880018+02:00",
+  "generated_at": "2026-05-18T05:35:06.073685+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-17_2115.md",
-  "report_age_hours": 7.27,
-  "latest_post_age_hours": 1.12,
+  "report_age_hours": 8.27,
+  "latest_post_age_hours": 2.12,
   "actions": [
     "reddit_monitor_stale"
   ],

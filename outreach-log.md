@@ -765,3 +765,23 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
 ### Marketing momentum watchdog
 - **When:** 2026-05-18 04:35:06
 - **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 05:05:07
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### RalphWorkflow Distribution
+- **SaaSHub product submission**: Submitted Ralph Workflow to SaaSHub through the live `Submit a Product` flow, using the current free/open-source own-machine positioning and explicitly classifying it under `AI Developer Tools`, `AI Workflows`, and `Workflow Automation`, with `Claude Code`, `Codex by OpenAI`, and `aider` set as competitors.
+  - Live pages: `https://www.saashub.com/ralph-workflow` and `https://www.saashub.com/ralph-workflow-alternatives`
+  - Verification: the public SaaSHub product page and alternatives page are live now and show Ralph Workflow as `Pending approval...`; the alternatives page already lists the intended top competitors and the submitted tagline.
+  - Why: the current bottleneck is still distribution beyond Reddit into higher-intent software/tool discovery surfaces. SaaSHub was an untried, actually executable channel from this machine, and it creates both a directory listing and competitor-comparison discovery path without spending another cycle on saturated conversion-surface work.
+
+### RalphWorkflow Distribution
+- **GitDB open-source discovery submission**: Submitted the GitHub mirror `Ralph-Workflow/Ralph-Workflow` to GitDB's public project-ingestion endpoint so Ralph Workflow now has a live discovery/analytics page aimed at developers actively browsing GitHub projects rather than generic AI-tool directories.
+  - Live page: `https://gitdb.net/Ralph-Workflow/Ralph-Workflow`
+  - Verification: direct POST to `https://p.gitdb.net/api/v1/submit` returned `{"status":"submitted","full_name":"Ralph-Workflow/Ralph-Workflow"...}` and the public project page now resolves with title `Ralph Workflow - GitDB`.
+  - Why: the current bottleneck is GitHub-native adoption and public proof, not more top-of-funnel copy. GitDB is a better-fit discovery surface than another generic AI directory because it puts Ralph Workflow in front of developers explicitly looking for open-source repos to inspect, compare, and contribute to.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 05:35:06
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
