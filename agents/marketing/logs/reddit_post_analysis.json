@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-05-18T18:47:06.730706",
-  "count": 19,
+  "generated_at": "2026-05-18T19:35:06.778627",
+  "count": 20,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 16
+    "Informal-Salt827": 17
   },
   "by_community": {
-    "r/AI_Agents": 1,
+    "r/AI_Agents": 2,
     "r/ClaudeCode": 11,
     "r/codex": 5,
     "r/ClaudeAI": 2
@@ -33,22 +33,22 @@
     "agent",
     "ralph",
     "diff",
-    "before",
     "instead",
     "done",
+    "before",
     "agents",
     "trust",
     "checks",
     "work",
+    "task",
     "tool",
     "reviewable",
-    "task",
+    "receipt",
+    "small",
     "needs",
     "handoff",
     "ralphworkflow",
-    "review",
-    "open",
-    "receipt"
+    "review"
   ],
   "phrase_hits": {
     "worktree": 7,
@@ -56,13 +56,13 @@
     "verify": 1,
     "handoff": 11,
     "reviewable": 12,
-    "done criteria": 6,
-    "scope": 8,
+    "done criteria": 7,
+    "scope": 9,
     "final check": 1,
     "overnight": 6,
     "review bundle": 1,
-    "trust": 10,
-    "small scoped": 1
+    "trust": 11,
+    "small scoped": 2
   },
   "repeated_openings": [
     "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
@@ -75,14 +75,6 @@
     }
   ],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-17T14:27:15.942846",
-      "account": "Informal-Salt827",
-      "community": "r/codex",
-      "title": "Codex Feels Like a Vibe Coder’s Dream After Months of Fighting Claude",
-      "comment_url": "https://old.reddit.com/r/codex/comments/1tf4l2i/codex_feels_like_a_vibe_coders_dream_after_months/omanifm/",
-      "opening_line": "That line about building an entire workflow around babysitting the model is the real tell."
-    },
     {
       "timestamp": "2026-05-17T18:28:28.709015",
       "account": "Informal-Salt827",
@@ -154,6 +146,14 @@
       "title": "Claude Code’s checkpoint commits are polluting my git history. How are you handling this?",
       "comment_url": "https://old.reddit.com/r/ClaudeAI/comments/1taz6hd/claude_codes_checkpoint_commits_are_polluting_my/omi77jq/",
       "opening_line": "My rule is that checkpoint commits are for recovery, not for the human review surface."
+    },
+    {
+      "timestamp": "2026-05-18T18:47:16.160831",
+      "account": "Informal-Salt827",
+      "community": "r/AI_Agents",
+      "title": "Is multi-agent supervision becoming the real job?",
+      "comment_url": "https://old.reddit.com/r/AI_Agents/comments/1s8zhjp/is_multiagent_supervision_becoming_the_real/omihj8a/",
+      "opening_line": "The best improvement I've seen is making the output easier to judge, not making the agent look busier."
     }
   ],
   "recommendations": [

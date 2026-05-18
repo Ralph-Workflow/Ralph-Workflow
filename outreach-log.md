@@ -79,6 +79,11 @@
   - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost agents.marketing.tests.test_reddit_watchdog -v`; live checks: `python3 agents/marketing/reddit_autopost.py` and `python3 agents/marketing/reddit_watchdog.py` now report `volume_guard_active:3_posts_in_6h`, `retry_after_minutes: 28`, `next_safe_post_at: 2026-05-18T02:58:01`
   - Why: the current bottleneck is still distribution, but the account is inside the Reddit burst guard. The highest-leverage move available right now was tightening the distribution loop so protective pacing skips are actionable instead of error-shaped, which gives the next cron pass an exact safe posting window instead of another ambiguous retry.
 
+### RalphWorkflow GitHub conversion surface
+- **Foregrounded concrete review-proof on the GitHub mirror**: Added a compact “what you should get back tomorrow morning” handoff example near the top of `README.md` and `START_HERE.md`, then pushed commit `52145b10` to both Codeberg and GitHub.
+  - Verification: local `git diff` review; local markdown link check returned `LINK_CHECK OK`; public raw GitHub fetch confirmed both new sections are live on `main`.
+  - Why: Reddit was under a live burst cooldown until `2026-05-18T22:00:46`, so the highest-leverage action available right now was strengthening the first screen GitHub-native evaluators see. Showing the exact morning-after artifact shape converts trust better than another abstract promise because it answers the four questions in one glance: what Ralph is, who it is for, why it is different, and why to try it tonight.
+
 ### RalphWorkflow Distribution Infrastructure
 - **Reddit freshness-scoring rollover fix**: Patched `agents/marketing/reddit_autopost.py` so absolute-date freshness scoring now uses the actual current date instead of the hardcoded May 17, 2026 reference; added a regression test to lock the May 18+ behavior before the next posting window opens.
   - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`
@@ -1087,3 +1092,9 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
 - **Status:** ✅ Published
 - **Notes:** Autoposted from reddit-monitor shortlist: #5 Is multi-agent supervision becoming the real job? (`r/AI_Agents`).
 - **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution
+- **AIXList submission**: Submitted Ralph Workflow to AIXList through its live `/api/submit` flow, positioning it as a free and open-source tool for developers who want to orchestrate existing coding agents on their own machine for overnight unattended work and reviewable output.
+  - Submission path: `https://aixlist.com/submit` → backend `https://aixlist.com/api/submit`
+  - Verification: `POST /api/tools/generate-detail-preview` returned `200`; live `POST /api/submit` returned `200` with `{"success":true}`; follow-up duplicate check via `POST /api/autofill` for `https://ralphworkflow.com` now returns `409` with `duplicate: true` and `existingName: "Ralph Workflow"`
+  - Why: today’s bottleneck is still distribution-to-adoption, not more conversion copy. AIXList was a genuinely executable, high-fit AI/developer discovery surface that could be shipped immediately from this environment, so it was higher leverage than writing another generic asset.
