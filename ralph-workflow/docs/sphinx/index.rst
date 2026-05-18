@@ -88,6 +88,22 @@ Important first-run expectation: Ralph Workflow is free and open source, but it 
 the coding agents you already use. Before you start, have at least one supported agent CLI already
 installed and already authenticated on your own machine.
 
+Third-party places to inspect Ralph Workflow
+===========================================
+
+If you want outside discovery or comparison surfaces before you install, Ralph Workflow is also
+showing up on a few developer-facing directories now:
+
+- `GitDB project page <https://gitdb.net/Ralph-Workflow/Ralph-Workflow>`_ — inspect the GitHub mirror from a GitHub-native discovery surface.
+- `SaaSHub product page <https://www.saashub.com/ralph-workflow>`_ — review the product card with the current positioning.
+- `SaaSHub alternatives <https://www.saashub.com/ralph-workflow-alternatives>`_ — compare Ralph Workflow against adjacent tools in the same browse flow.
+- `TechTools Launchpad listing <https://techtools.cz/tools/launchpad/?tool=71>`_ — a live developer-tools directory entry.
+
+Those pages still drive back to the same four practical questions: Ralph Workflow is a free and
+open-source tool, built for developers with work too big to babysit and too risky to trust
+blindly, different because it aims to hand back reviewable output instead of a transcript, and
+worth trying now because you can run one real backlog task tonight on your own machine.
+
 Your best first test
 ====================
 
@@ -330,4 +346,3 @@ Related Links
 - `GitHub mirror <https://github.com/Ralph-Workflow/Ralph-Workflow>`_
 - `Issue tracker <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>`_
 - `License (AGPL-3.0) <https://www.gnu.org/licenses/agpl-3.0.html>`_
-

@@ -20,6 +20,8 @@ If you want to inspect the project before you install anything, open the [GitHub
 
 If GitHub is where you already evaluate open-source tools, use the mirror as your inspection path and **star or watch it there** if Ralph looks worth trying on your next overnight backlog task.
 
+If you want a little more outside proof before you install, you can also inspect Ralph Workflow on [GitDB](https://gitdb.net/Ralph-Workflow/Ralph-Workflow), [SaaSHub](https://www.saashub.com/ralph-workflow), or [TechTools Launchpad](https://techtools.cz/tools/launchpad/?tool=71). Those are not substitutes for your own judgment, but they do give you independent discovery/comparison surfaces before your first run.
+
 ## What a good first handoff looks like
 
 A good first run should be easy to judge in five minutes the next morning:

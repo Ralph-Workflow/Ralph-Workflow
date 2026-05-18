@@ -37,6 +37,17 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 
 If you already judge open-source tools on GitHub, open the mirror first. If Ralph looks like a fit for your workflow, **star or watch it there before your first run** so you can track updates while you test it on a real backlog task.
 
+## Independent places to inspect Ralph Workflow
+
+If you want third-party surfaces before you decide whether to try it, Ralph Workflow is now live or pending on a few developer-facing discovery pages:
+
+- [GitDB project page](https://gitdb.net/Ralph-Workflow/Ralph-Workflow) — inspect the GitHub mirror from a GitHub-native discovery surface.
+- [SaaSHub product page](https://www.saashub.com/ralph-workflow) — review the product card and alternatives context.
+- [SaaSHub alternatives](https://www.saashub.com/ralph-workflow-alternatives) — compare Ralph Workflow against adjacent tools in the same evaluation flow.
+- [TechTools Launchpad listing](https://techtools.cz/tools/launchpad/?tool=71) — a live developer-tools directory entry.
+
+Those pages all point back to the same honest evaluation path: Ralph Workflow is a free and open-source way to orchestrate the coding agents you already use on your own machine for overnight work you can review in the morning.
+
 ## What the morning-after handoff should look like
 
 A strong first run should feel concrete, not magical:
