@@ -2,6 +2,12 @@
 
 ## 2026-05-18 (Monday)
 
+### RalphWorkflow Distribution
+- **DevTool Center submission**: Submitted Ralph Workflow to DevTool Center as a free `AI Helpers` developer tool, using a four-question description that keeps the core promise intact: free and open source, orchestrates Claude Code/Codex/other coding agents on your own machine, built for repo-native work too big to babysit and too risky to trust blindly, and meant to produce overnight reviewable output.
+  - Submission path: `https://www.devtool.center/submit` → backend `https://devshelf-backend.onrender.com/api/v1/submissions`
+  - Verification: duplicate check returned `{"exists":false,"count":0}` before submit; live POST returned `201` with pending submission id `6a0a95a93680f218e1983165` and status `pending`
+  - Why: the current bottleneck is still distribution into developer-native discovery surfaces beyond Reddit, and HN/Lobsters remain account-gated from this environment. DevTool Center was a genuinely executable targeted channel right now, so shipping a live submission there was higher leverage than adding another conversion asset.
+
 ### RalphWorkflow GitHub conversion hygiene
 - **Broken GitHub mirror CTA fix across comparison assets**: corrected the GitHub mirror org slug from `RalphWorkflow/Ralph-Workflow` to `Ralph-Workflow/Ralph-Workflow` in the public comparison pages, their mirror copies, and the supporting marketing scripts (`competitor_analysis.py`, `weekly_review.py`, `channel_discovery.py`).
   - Verification: `python3 -m py_compile agents/marketing/competitor_analysis.py agents/marketing/weekly_review.py agents/marketing/channel_discovery.py`; spot-checked `seo-reports/comparisons/claude-code.md` plus the updated repo/URL references in the scripts.
@@ -785,3 +791,18 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
 ### Marketing momentum watchdog
 - **When:** 2026-05-18 05:35:06
 - **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 06:05:06
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 06:35:05
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### RalphWorkflow Distribution
+- **TechTools Launchpad submission**: Submitted Ralph Workflow to TechTools Launchpad, a bot-friendly developer/AI tools directory with instant approval, using a four-question listing that points GitHub-native evaluators at the GitHub mirror while keeping the site as the maker URL.
+  - Live API record: `https://techtools.cz/launchpad-api/tools/71`
+  - Share URL: `https://techtools.cz/tools/launchpad/?tool=71`
+  - Verification: direct `POST https://techtools.cz/launchpad-api/tools` returned `201` with live tool id `71`; follow-up `GET /tools/71` returned the stored listing; the submitted GitHub mirror URL resolves successfully.
+  - Why: the bottleneck is still GitHub-native adoption beyond Reddit, and this was the strongest actually executable distribution move available right now: a developer-facing directory with no login, no CAPTCHA, auto-approval, and a direct path to inspect/star the free open-source repo.
