@@ -2,6 +2,11 @@
 
 ## 2026-05-18 (Monday)
 
+### RalphWorkflow GitHub conversion hygiene
+- **Broken GitHub mirror CTA fix across comparison assets**: corrected the GitHub mirror org slug from `RalphWorkflow/Ralph-Workflow` to `Ralph-Workflow/Ralph-Workflow` in the public comparison pages, their mirror copies, and the supporting marketing scripts (`competitor_analysis.py`, `weekly_review.py`, `channel_discovery.py`).
+  - Verification: `python3 -m py_compile agents/marketing/competitor_analysis.py agents/marketing/weekly_review.py agents/marketing/channel_discovery.py`; spot-checked `seo-reports/comparisons/claude-code.md` plus the updated repo/URL references in the scripts.
+  - Why: the current bottleneck is adoption/trust conversion, and these pages are explicitly aimed at GitHub-native evaluators. Sending that traffic to the wrong mirror slug quietly burns trust and suppresses stars/watchers right at the inspection step, so fixing the path was higher leverage than creating another generic asset.
+
 ### RalphWorkflow Distribution Infrastructure
 - **Reddit pacing-window visibility fix**: Patched `agents/marketing/reddit_autopost.py` so safe skip states now return structured pacing data instead of looking like hard failures: `cooldown_skip` / no-op states exit cleanly, include `retry_after_minutes`, and expose the exact `next_safe_post_at` time for the next live Reddit move.
   - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost agents.marketing.tests.test_reddit_watchdog -v`; live checks: `python3 agents/marketing/reddit_autopost.py` and `python3 agents/marketing/reddit_watchdog.py` now report `volume_guard_active:3_posts_in_6h`, `retry_after_minutes: 28`, `next_safe_post_at: 2026-05-18T02:58:01`
@@ -714,3 +719,49 @@ Bottleneck remains distribution-to-adoption conversion. Conversion surfaces are 
   - Verification: `python3 -m unittest agents.marketing.tests.test_channel_discovery agents.marketing.tests.test_reddit_watchdog -v`; `python3 agents/marketing/channel_discovery.py`
   - Live result: Slashdot now resolves to `login_required` on the submission page, Toolhunt is correctly identified as a parked domain, and the old false-positive "actionable channels" set was narrowed to the genuinely still-open candidates the loop can evaluate next.
   - Why: distribution is the bottleneck, and the non-Reddit discovery loop was wasting effort by presenting dead-end channels as immediately usable just when Reddit was stale. Tightening that classifier improves the next real distribution decision more than adding another generic asset.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 04:05:07
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+## 2026-05-18 (Monday) — Marketing Workflow Audit — 04:20 UTC
+
+### Bottleneck verdict
+**Conversion to free use / GitHub adoption.** GitHub: 0 stars / 0 forks. Codeberg: 9 stars / 2 forks.
+
+### What worked
+- Reddit distribution healthy: 16 logged posts, varied body shapes, pacing guards, no bans
+- All conversion surfaces done and surfacing correctly: proof bundle, first-task templates, START_HERE, quickstart, task-fit, Aider/Claude Code comparisons, finish-receipt guide, multi-agent trust-break guide, hosted docs homepage
+- Repeated opening line fixed and confirmed gone from `reddit_autopost.py`
+- Four marketing questions answered everywhere; free OSS framing intact
+- Channel discovery fix (Slashdot login-gated, parked domains) shipped correctly
+
+### What did not work
+- GitHub adoption: 0 stars after 16 Reddit posts with GitHub mirror CTAs — Reddit→GitHub pipeline not converting at measurable volume
+- write.as articles (6 published May 11–16): zero external distribution, never submitted to HN or Lobsters
+- HN/Lobsters submission packets drafted and ready in `drafts/2026-05-18_hackernews_post.txt` / `drafts/2026-05-18_lobsters_post.txt` but never fired
+
+### Repetitive / low-leverage signals
+- Adding more conversion assets: diminishing returns confirmed; stop
+- More Reddit volume without a GitHub star feedback loop: Reddit is awareness, not adoption conversion, at current scale
+- Channel discovery false positives resolved; no further work needed there
+
+### Next highest-leverage move (in priority order)
+1. **HN + Lobsters submission** — packets are ready, asset is strongest owned trust piece, HN reaches GitHub-native evaluators who star things; if HN is rate-limited from this host, find an alternative submission path or Lobsters-only
+2. **If both blocked:** find GitHub-native distribution — newsletter mention, tool aggregation site (FreeStuff, SaaS Hunter), or relevant wiki/page inclusion
+3. **Keep Reddit pressure** on genuine same-day thread fits only; no more than 2–3 posts per window
+4. **Watch GitHub stars after next ~10 posts** — if still zero, Reddit link-in-comment strategy needs replacement with something that reaches developers who already star open-source tools
+
+### Decision: no material workflow direction change
+Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surfaces done. Stop adding proof assets. Shift all effort to untried distribution channels. Four marketing questions intact. Free OSS framing preserved.
+
+
+### RalphWorkflow Distribution
+- **Project Free To Use submission**: Submitted Ralph Workflow to ProjectFreeToUse as an `Open Source Software` listing, pointing the directory at `https://ralphworkflow.com` so evaluators land on the strongest free/open-source, own-machine, overnight-reviewable positioning instead of another generic tool card.
+  - Submission path: `https://projectfreetouse.com/submit` → Google Form backend `1FAIpQLSc5nUZN-s_RPs6M1CLlyJpuUbmA7lC3QXlHauWo2uw0W6-M_Q`
+  - Verification: direct POST to the live form returned the Google Forms confirmation message `Ihre Antwort wurde gesendet.`
+  - Why: the current bottleneck is no longer surface quality; it is getting RalphWorkflow in front of GitHub-native / free-tool-seeking evaluators through channels beyond Reddit. This was the highest-leverage untried distribution move that was actually executable from this machine right now.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 04:35:06
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.

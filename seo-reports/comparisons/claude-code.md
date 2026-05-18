@@ -1,6 +1,6 @@
 # Ralph Workflow vs Claude Code
 
-**Last updated:** May 17, 2026 · [Edit this comparison](https://codeberg.org/RalphWorkflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
+**Last updated:** May 17, 2026 · [Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
 
 ## At a Glance
 
@@ -66,4 +66,4 @@ $EDITOR PROMPT.md  # write your task
 ralph  # walk away
 ```
 
-[Install guide →](https://ralphworkflow.com/docs) · [Quick start →](https://ralphworkflow.com/docs#quick-start) · [GitHub →](https://github.com/RalphWorkflow/Ralph-Workflow)
+[Install guide →](https://ralphworkflow.com/docs) · [Quick start →](https://ralphworkflow.com/docs#quick-start) · [GitHub →](https://github.com/Ralph-Workflow/Ralph-Workflow)
