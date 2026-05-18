@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-18T09:20:07.141592
+- Generated: 2026-05-18T10:20:07.844791
 - Current bottleneck: **conversion_to_free_use**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **10**

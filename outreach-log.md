@@ -865,3 +865,10 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Submission path: `POST https://toolshelf.dev/api/submit`
   - Verification: live API returned `200` with `{"success":true,"message":"Tool submitted successfully! We'll review it soon."}`
   - Why: the current bottleneck is still distribution into developer-native, GitHub-adjacent discovery surfaces beyond Reddit. ToolShelf is a stronger-fit channel than another generic asset because it is explicitly built for developer tools, highlights maintenance/quality signals, and gives Ralph Workflow a path into the same search/browse flow developers use to compare AI coding tools.
+
+### RalphWorkflow Conversion
+- **Hosted docs SEO/indexing cleanup**: tightened the public docs/homepage trust surface by adding an explicit homepage browser title + meta description that answer the four core marketing questions more cleanly for search/social previews, and added `noindex,nofollow` on generated Sphinx utility pages (`/docs/_modules/*`, `genindex`, `py-modindex`, `search`) so low-intent reference chrome stops competing with real conversion pages.
+  - Commit: `66517b7c` — `Tighten docs homepage SEO signals`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/_themes/ralph-docs/page.html`; `grep -n "title::\|description:\|noindex, nofollow" ...`; local build/test unverified in this environment due to missing `sphinx`
+  - Why: current conversion surfaces are already strong, but the latest SEO audit still showed a too-long homepage title plus search pollution from generated docs utility pages. Cleaning those signals is higher leverage than another generic asset because it sharpens what evaluators and search engines see first without changing the core free/open-source overnight-reviewable message.

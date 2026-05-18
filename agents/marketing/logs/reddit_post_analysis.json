@@ -1,32 +1,32 @@
 {
-  "generated_at": "2026-05-18T09:47:06.885592",
-  "count": 16,
+  "generated_at": "2026-05-18T10:35:28.744002",
+  "count": 17,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 13
+    "Informal-Salt827": 14
   },
   "by_community": {
     "r/AI_Agents": 1,
-    "r/ClaudeCode": 9,
+    "r/ClaudeCode": 10,
     "r/codex": 5,
     "r/ClaudeAI": 1
   },
   "top_title_words": [
     "claude",
-    "codex",
     "code",
+    "codex",
     "agents",
     "running",
     "agent",
     "workflow",
     "multiple",
+    "overnight",
     "coding",
     "same",
     "repo",
     "both",
     "actually",
-    "after",
-    "anyone"
+    "after"
   ],
   "top_body_tokens": [
     "agent",
@@ -47,19 +47,19 @@
     "after",
     "pass",
     "needs",
-    "ralphworkflow",
-    "receipt"
+    "part",
+    "handoff"
   ],
   "phrase_hits": {
     "worktree": 7,
-    "diff": 15,
+    "diff": 16,
     "verify": 1,
-    "handoff": 8,
+    "handoff": 9,
     "reviewable": 11,
     "done criteria": 6,
-    "scope": 7,
+    "scope": 8,
     "final check": 1,
-    "overnight": 3,
+    "overnight": 4,
     "review bundle": 1,
     "trust": 9,
     "small scoped": 1
@@ -75,14 +75,6 @@
     }
   ],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-17T12:22:24.898560",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeCode",
-      "title": "Run both Claude code and codex",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t70rwk/run_both_claude_code_and_codex/oma6hnn/",
-      "opening_line": "The simplest version that actually holds up: one tool implements, the other reviews/challenges, and you judge the result on the diff + checks rather than either agent's self-report."
-    },
     {
       "timestamp": "2026-05-17T12:22:38.664612",
       "account": "Informal-Salt827",
@@ -154,6 +146,14 @@
       "title": "Claude utilizing other agents?",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tg50xl/claude_utilizing_other_agents/omemy51/",
       "opening_line": "That can work well, but I’ve had the best results when each extra agent owns a different phase instead of all of them touching the same task at once."
+    },
+    {
+      "timestamp": "2026-05-18T09:47:16.212568",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Pattern I'm using to keep Claude Code productive on overnight unattended runs",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1svxcb7/pattern_im_using_to_keep_claude_code_productive/omg10z9/",
+      "opening_line": "The part that bites me overnight is rarely raw code quality first. It's scope creep, weak stop conditions, and no clean re-entry point in the morning."
     }
   ],
   "recommendations": [
