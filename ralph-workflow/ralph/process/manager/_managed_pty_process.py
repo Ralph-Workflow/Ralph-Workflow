@@ -9,24 +9,11 @@ from typing import TYPE_CHECKING
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
-    from ralph.process.manager._process_manager import ProcessManager
+    from ralph.process.manager._process_manager import (
+        ProcessManager,
+        _PtyProcessLike,
+    )
     from ralph.process.manager._process_record import ProcessRecord
-
-    class _PtyProcessLike:
-        pid: int
-        master_fd: int
-        slave_fd: int
-
-        @property
-        def returncode(self) -> int | None: ...
-
-        def poll(self) -> int | None: ...
-        def wait(self, timeout: float | None = None) -> int: ...
-        def terminate(self) -> None: ...
-        def kill(self) -> None: ...
-        def close(self) -> None: ...
-        def fileno(self) -> int: ...
-        def isatty(self) -> bool: ...
 
 
 class ManagedPtyProcess:

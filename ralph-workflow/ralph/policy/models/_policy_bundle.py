@@ -1,17 +1,13 @@
 """PolicyBundle Pydantic model."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
+from typing import Self
 
 from pydantic import Field, model_validator
 
+from ralph.policy.models._agents_policy import AgentsPolicy
+from ralph.policy.models._artifacts_policy import ArtifactsPolicy
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
-
-if TYPE_CHECKING:
-    from ralph.policy.models._agents_policy import AgentsPolicy
-    from ralph.policy.models._artifacts_policy import ArtifactsPolicy
-    from ralph.policy.models._pipeline_policy import PipelinePolicy
+from ralph.policy.models._pipeline_policy import PipelinePolicy
 
 
 class PolicyBundle(_FrozenPolicyModel):
@@ -22,7 +18,7 @@ class PolicyBundle(_FrozenPolicyModel):
     artifacts: ArtifactsPolicy = Field(..., description="Artifact contracts per drain")
 
     @model_validator(mode="after")
-    def all_pipeline_drains_are_bound(self) -> PolicyBundle:
+    def all_pipeline_drains_are_bound(self) -> Self:
         unbound: list[str] = []
         for phase_name, phase_def in self.pipeline.phases.items():
             if phase_def.role == "terminal":
@@ -39,7 +35,7 @@ class PolicyBundle(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def analysis_decision_vocabulary_present(self) -> PolicyBundle:
+    def analysis_decision_vocabulary_present(self) -> Self:
         analysis_phases = {
             name: defn for name, defn in self.pipeline.phases.items() if defn.role == "analysis"
         }

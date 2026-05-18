@@ -1,25 +1,21 @@
 """PhaseDefinition Pydantic model."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal, cast
 
 from pydantic import Field, model_validator
 
+from ralph.policy.models._artifact_history_policy import ArtifactHistoryPolicy
+from ralph.policy.models._artifact_proof_policy import ArtifactProofPolicy
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
-
-if TYPE_CHECKING:
-    from ralph.policy.models._artifact_history_policy import ArtifactHistoryPolicy
-    from ralph.policy.models._artifact_proof_policy import ArtifactProofPolicy
-    from ralph.policy.models._phase_commit_policy import PhaseCommitPolicy
-    from ralph.policy.models._phase_decision_route import PhaseDecisionRoute
-    from ralph.policy.models._phase_loop_policy import PhaseLoopPolicy
-    from ralph.policy.models._phase_parallelization import PhaseParallelization
-    from ralph.policy.models._phase_retry_policy import PhaseRetryPolicy
-    from ralph.policy.models._phase_transition import PhaseTransition
-    from ralph.policy.models._phase_verification_policy import PhaseVerificationPolicy
-    from ralph.policy.models._phase_workflow_fallback import PhaseWorkflowFallback
-    from ralph.policy.models._types import PhaseRole
+from ralph.policy.models._phase_commit_policy import PhaseCommitPolicy
+from ralph.policy.models._phase_decision_route import PhaseDecisionRoute
+from ralph.policy.models._phase_loop_policy import PhaseLoopPolicy
+from ralph.policy.models._phase_parallelization import PhaseParallelization
+from ralph.policy.models._phase_retry_policy import PhaseRetryPolicy
+from ralph.policy.models._phase_transition import PhaseTransition
+from ralph.policy.models._phase_verification_policy import PhaseVerificationPolicy
+from ralph.policy.models._phase_workflow_fallback import PhaseWorkflowFallback
+from ralph.policy.models._types import PhaseRole
 
 
 class PhaseDefinition(_FrozenPolicyModel):

@@ -72,6 +72,12 @@ class TestDisplayLayerHasNoCanonicalPhaseNames:
 
     @pytest.fixture(scope="class")
     def plain_renderer_source(self) -> str:
+        plain_renderer = RALPH_ROOT / "display" / "plain_renderer"
+        if plain_renderer.is_dir():
+            return "\n".join(
+                p.read_text(encoding="utf-8")
+                for p in sorted(plain_renderer.rglob("*.py"))
+            )
         return (RALPH_ROOT / "display" / "plain_renderer.py").read_text(encoding="utf-8")
 
     def test_plain_renderer_levels_dict_has_no_canonical_phase_keys(

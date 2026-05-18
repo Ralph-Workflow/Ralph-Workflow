@@ -15,12 +15,14 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
 from ralph.mcp.protocol.session import AgentSession
-from ralph.mcp.protocol.startup import SessionBridgeLike, WorkspaceLike
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
 
 if TYPE_CHECKING:
+    from ralph.mcp.protocol.startup import WorkspaceLike
+
     class StartServer(Protocol):
         """Callable signature for the MCP server start function."""
 

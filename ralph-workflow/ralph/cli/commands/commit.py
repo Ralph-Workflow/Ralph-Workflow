@@ -550,6 +550,7 @@ def invoke_commit_agent_attempt(
     session_id: str | None = None,
     display_context: DisplayContext,
 ) -> CommitAgentAttempt:
+    """Run one commit-agent invocation attempt and return its result."""
     delete_commit_message_artifacts(attempt_context.repo_root)
     system_prompt = materialize_system_prompt(
         workspace_root=attempt_context.repo_root,
@@ -779,6 +780,7 @@ def collect_commit_agent_output(
     verbose: bool,
     display_context: DisplayContext,
 ) -> tuple[list[str], list[str], str | None]:
+    """Consume agent output lines, returning (parsed_lines, raw_lines, resume_session_id)."""
     ctx = display_context
     console = ctx.console
     parser = _resolve_commit_parser(parser_type)

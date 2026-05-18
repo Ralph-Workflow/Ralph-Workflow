@@ -10,6 +10,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NoReturn, cast
 
+from ralph.mcp.artifacts._artifact_persistence import (
+    DEFAULT_ARTIFACT_PERSISTENCE,
+    ArtifactPersistence,
+)
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_TYPE,
     delete_commit_message_artifacts,
@@ -50,8 +54,6 @@ from ralph.mcp.artifacts.smoke_test_result import (
     normalize_smoke_test_result_content,
 )
 from ralph.mcp.artifacts.store import (
-    DEFAULT_ARTIFACT_PERSISTENCE,
-    ArtifactPersistence,
     ArtifactSubmitOptions,
     delete_artifact,
     submit_artifact,
@@ -506,6 +508,7 @@ def prepare_artifact_submission(
     base_path: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[str, dict[str, object]]:
+    """Validate and canonicalize artifact submission params, returning (artifact_type, params)."""
     # Handle missing artifact_type
     try:
         raw_artifact_type = _required_string(params, "artifact_type")

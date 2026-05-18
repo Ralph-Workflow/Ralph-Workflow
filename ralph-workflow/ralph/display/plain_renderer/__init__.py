@@ -9,10 +9,10 @@ from ralph.display.plain_renderer._plain_mode_adapter import PlainModeAdapter
 from ralph.display.plain_renderer._run_start_orientation import RunStartOrientation
 
 __all__ = [
-    "ActivityLineOptions",
     "LEVELS",
     "TAGS",
     "TAG_CATEGORY",
+    "ActivityLineOptions",
     "PhaseCloseOptions",
     "PhaseCounters",
     "PlainLogRenderer",

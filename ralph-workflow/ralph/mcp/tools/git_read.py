@@ -8,18 +8,20 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+from ralph.mcp.tools._git_diff_params import GitDiffParams
+from ralph.mcp.tools._git_execution_error import ExecutionError
+from ralph.mcp.tools._git_log_params import GitLogParams
+from ralph.mcp.tools._git_show_params import GitShowParams
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
-    ToolError,
     ToolResult,
     require_capability,
 )
@@ -36,38 +38,10 @@ type CwdProvider = Callable[[], Path]
 class WorkspaceWithRoot(Protocol):
     """Workspace surface required for git command execution."""
 
-    class ExecutionError(ToolError):
-        """Raised when a git subprocess cannot be started or fails."""
-
-    @dataclass(frozen=True)
-    class GitDiffParams:
-        """Parsed parameters for the git diff tool."""
-
-        args: list[str]
-
-    @dataclass(frozen=True)
-    class GitLogParams:
-        """Parsed parameters for the git log tool."""
-
-        count: int
-
-    @dataclass(frozen=True)
-    class GitShowParams:
-        """Parsed parameters for the git show tool."""
-
-        git_ref: str
-
-
     @property
     def root(self) -> Path:
         """Return the absolute workspace root path."""
         ...
-
-
-ExecutionError = WorkspaceWithRoot.ExecutionError
-GitDiffParams = WorkspaceWithRoot.GitDiffParams
-GitLogParams = WorkspaceWithRoot.GitLogParams
-GitShowParams = WorkspaceWithRoot.GitShowParams
 
 
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:

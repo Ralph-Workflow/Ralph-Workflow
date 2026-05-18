@@ -33,11 +33,13 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
 
 class TestPrepareExecutorSameWorkspace:
     class _FakeMcpServerFactory:
-        def build(self, session: object) -> McpServerHandle:
-            return McpServerHandle(
-                endpoint="http://127.0.0.1:9999/mcp",
-                pid=99999,
-                shutdown=lambda: None,
+        def __init__(self) -> None:
+            self.build = MagicMock(
+                side_effect=lambda session: McpServerHandle(
+                    endpoint="http://127.0.0.1:9999/mcp",
+                    pid=99999,
+                    shutdown=lambda: None,
+                )
             )
 
     class _SessionContract:

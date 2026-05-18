@@ -147,6 +147,9 @@ max-args = 10
 # CLI entry-point functions must expose one parameter per flag; this is inherent to typer's API.
 "ralph/cli/main.py" = ["PLR0913"]
 
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "ralph.pydantic_compat.RalphBaseModel"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

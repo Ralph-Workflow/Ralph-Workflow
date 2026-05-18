@@ -32,10 +32,12 @@ _TOML_DECODE_ERROR = cast("type[ValueError]", tomllib.TOMLDecodeError)
 
 
 def bundled_default_mcp_config_path() -> Path:
+    """Return the path to the bundled default MCP configuration file."""
     return Path(__file__).parent.parent / "policy" / "defaults" / _LOCAL_MCP_FILENAME
 
 
 def global_mcp_config_path() -> Path:
+    """Return the user-level global MCP config path, respecting XDG_CONFIG_HOME."""
     xdg = getenv("XDG_CONFIG_HOME")
     if xdg:
         return Path(xdg) / _GLOBAL_MCP_FILENAME
@@ -43,6 +45,7 @@ def global_mcp_config_path() -> Path:
 
 
 def local_mcp_config_path(workspace_scope: WorkspaceScope) -> Path:
+    """Return the workspace-local MCP config path for the given workspace scope."""
     if hasattr(workspace_scope, "resolve_agent_file"):
         return workspace_scope.resolve_agent_file(_LOCAL_MCP_FILENAME)
     return workspace_scope.local_config_path.parent / _LOCAL_MCP_FILENAME

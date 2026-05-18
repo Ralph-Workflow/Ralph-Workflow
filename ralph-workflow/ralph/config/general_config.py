@@ -1,12 +1,11 @@
 """General Ralph configuration model definitions."""
 
-from __future__ import annotations
-
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Self
 
 from pydantic import ConfigDict, Field, model_validator
 
+from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 from ralph.pydantic_compat import RalphBaseModel
 from ralph.timeout_defaults import (
     CHILD_EXIT_RECONCILE_SECONDS,
@@ -26,24 +25,9 @@ from ralph.timeout_defaults import (
     WAITING_STATUS_INTERVAL_SECONDS,
 )
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 class GeneralConfig(RalphBaseModel):
     """[general] section of ralph-workflow.toml."""
-
-    class GeneralWorkflowFlags(RalphBaseModel):
-        """General configuration workflow automation flags.
-
-        Attributes:
-            checkpoint_enabled: Enable checkpoint/resume functionality.
-        """
-
-        model_config = ConfigDict(frozen=True)
-
-        checkpoint_enabled: bool = True
-
 
     model_config = ConfigDict(frozen=True)
 
@@ -195,7 +179,7 @@ class GeneralConfig(RalphBaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_session_ceiling(self) -> GeneralConfig:
+    def _validate_session_ceiling(self) -> Self:
         if (
             self.agent_max_session_seconds is not None
             and self.agent_max_session_seconds < self.agent_idle_timeout_seconds
@@ -244,9 +228,6 @@ class GeneralConfig(RalphBaseModel):
             )
             raise ValueError(msg)
         return self
-
-
-GeneralWorkflowFlags = GeneralConfig.GeneralWorkflowFlags
 
 
 __all__ = ["GeneralConfig", "GeneralWorkflowFlags"]

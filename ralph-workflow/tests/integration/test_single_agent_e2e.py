@@ -94,12 +94,12 @@ def test_run_completes_in_serial_mode_without_fan_out(
     )
     monkeypatch.setattr(
         runner_module,
-        "_materialize_agent_prompt_if_needed",
+        "materialize_agent_prompt_if_needed",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
@@ -125,7 +125,7 @@ def test_run_completes_in_serial_mode_without_fan_out(
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_fan_out_sync",
+        "execute_fan_out_sync",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("fan-out should not run")),
     )
 
@@ -178,12 +178,12 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
     )
     monkeypatch.setattr(
         runner_module,
-        "_materialize_agent_prompt_if_needed",
+        "materialize_agent_prompt_if_needed",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
@@ -211,7 +211,7 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_fan_out_sync",
+        "execute_fan_out_sync",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("fan-out must not run")),
     )
 
@@ -280,7 +280,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(index_payload), encoding="utf-8")
 
-    # Spy on _materialize_agent_prompt_if_needed to capture what collect_media_entries_for_phase
+    # Spy on materialize_agent_prompt_if_needed to capture what collect_media_entries_for_phase
     # returns for the development phase — without actually rendering templates.
 
     captured_entries: list[object] = []
@@ -319,7 +319,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
@@ -330,7 +330,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_fan_out_sync",
+        "execute_fan_out_sync",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("fan-out must not run")),
     )
 
@@ -457,7 +457,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
@@ -468,7 +468,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_fan_out_sync",
+        "execute_fan_out_sync",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("fan-out must not run")),
     )
 

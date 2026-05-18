@@ -8,7 +8,7 @@ import os
 import subprocess
 from collections import OrderedDict
 from datetime import UTC, datetime
-from typing import IO, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -22,12 +22,29 @@ from ralph.process.manager._process_status import _TERMINAL_STATUSES, ProcessSta
 from ralph.process.manager._process_termination_error import ProcessTerminationError
 from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 from ralph.process.manager._spawn_options import SpawnOptions
-from ralph.process.pty import PtyProcess, spawn_pty_process
+
+# Injected by ralph.process.manager on first import.
+# Lists are used as mutable cells to avoid PLW0603 (global statement).
+_sync_cell: list[_SyncProcessFactory] = []
+_async_cell: list[_AsyncProcessFactory] = []
+_pty_cell: list[_PtyProcessFactory] = []
+
+
+def _set_defaults(
+    sync: _SyncProcessFactory,
+    async_: _AsyncProcessFactory,
+    pty: _PtyProcessFactory,
+) -> None:
+    _sync_cell[:] = [sync]
+    _async_cell[:] = [async_]
+    _pty_cell[:] = [pty]
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from typing import IO, Protocol
 
-    class _PsutilProcessLike:
+    class _PsutilProcessLike(Protocol):
         def children(self, recursive: bool = False) -> Sequence[_PsutilProcessLike]: ...
         def terminate(self) -> None: ...
         def kill(self) -> None: ...
@@ -35,7 +52,7 @@ if TYPE_CHECKING:
         def status(self) -> str: ...
         def create_time(self) -> float: ...
 
-    class _PsutilModuleLike:
+    class _PsutilModuleLike(Protocol):
         NoSuchProcess: type[BaseException]
         AccessDenied: type[BaseException]
 
@@ -47,7 +64,7 @@ if TYPE_CHECKING:
             timeout: float | None = None,
         ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]: ...
 
-    class _SyncProcessLike:
+    class _SyncProcessLike(Protocol):
         pid: int
 
         @property
@@ -72,7 +89,7 @@ if TYPE_CHECKING:
         def terminate(self) -> None: ...
         def kill(self) -> None: ...
 
-    class _AsyncProcessLike:
+    class _AsyncProcessLike(Protocol):
         pid: int
 
         @property
@@ -94,14 +111,14 @@ if TYPE_CHECKING:
         def terminate(self) -> None: ...
         def kill(self) -> None: ...
 
-    class _SyncProcessFactory:
+    class _SyncProcessFactory(Protocol):
         def __call__(
             self,
             command: Sequence[str],
             opts: SpawnOptions,
         ) -> _SyncProcessLike: ...
 
-    class _AsyncProcessFactory:
+    class _AsyncProcessFactory(Protocol):
         async def __call__(
             self,
             command: Sequence[str],
@@ -114,7 +131,7 @@ if TYPE_CHECKING:
             start_new_session: bool,
         ) -> _AsyncProcessLike: ...
 
-    class _PtyProcessLike:
+    class _PtyProcessLike(Protocol):
         pid: int
         master_fd: int
         slave_fd: int
@@ -130,7 +147,7 @@ if TYPE_CHECKING:
         def fileno(self) -> int: ...
         def isatty(self) -> bool: ...
 
-    class _PtyProcessFactory:
+    class _PtyProcessFactory(Protocol):
         def __call__(
             self,
             command: Sequence[str],
@@ -149,57 +166,6 @@ except ModuleNotFoundError:
     _psutil_module = None
 else:
     _psutil_module = cast("_PsutilModuleLike", _psutil_import)
-
-
-def _default_sync_process_factory(
-    command: Sequence[str],
-    opts: SpawnOptions,
-) -> subprocess.Popen[bytes]:
-    return cast(
-        "subprocess.Popen[bytes]",
-        subprocess.Popen(
-            command,
-            cwd=opts.cwd,
-            env=opts.env,
-            stdin=opts.stdin,
-            stdout=opts.stdout,
-            stderr=opts.stderr,
-            start_new_session=opts.start_new_session,
-            text=opts.text,
-        ),
-    )
-
-
-async def _default_async_process_factory(
-    command: Sequence[str],
-    *,
-    cwd: str | None,
-    env: dict[str, str] | None,
-    stdin: int | None,
-    stdout: int | None,
-    stderr: int | None,
-    start_new_session: bool,
-) -> asyncio.subprocess.Process:
-    return await asyncio.create_subprocess_exec(
-        *command,
-        cwd=cwd,
-        env=env,
-        stdin=stdin,
-        stdout=stdout,
-        stderr=stderr,
-        start_new_session=start_new_session,
-    )
-
-
-def _default_pty_process_factory(
-    command: Sequence[str],
-    *,
-    cwd: str | None,
-    env: dict[str, str] | None,
-    cols: int,
-    rows: int,
-) -> PtyProcess:
-    return spawn_pty_process(command, cwd=cwd, env=env, cols=cols, rows=rows)
 
 
 def _loguru_event_listener(event: ProcessEvent) -> None:
@@ -260,9 +226,27 @@ class ProcessManager:
         self._pty_procs: dict[int, _PtyProcessLike] = {}
         self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
-        self._sync_process_factory = sync_process_factory or _default_sync_process_factory
-        self._async_process_factory = async_process_factory or _default_async_process_factory
-        self._pty_process_factory = pty_process_factory or _default_pty_process_factory
+        sf = (
+            sync_process_factory
+            if sync_process_factory is not None
+            else next(iter(_sync_cell), None)
+        )
+        af = (
+            async_process_factory
+            if async_process_factory is not None
+            else next(iter(_async_cell), None)
+        )
+        pf = (
+            pty_process_factory
+            if pty_process_factory is not None
+            else next(iter(_pty_cell), None)
+        )
+        assert sf is not None and af is not None and pf is not None, (
+            "No process factories set; import ralph.process.manager before creating ProcessManager"
+        )
+        self._sync_process_factory: _SyncProcessFactory = sf
+        self._async_process_factory: _AsyncProcessFactory = af
+        self._pty_process_factory: _PtyProcessFactory = pf
         self._psutil = psutil
         if self.policy.log_events:
             self.register_listener(_loguru_event_listener)

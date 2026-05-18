@@ -11,10 +11,12 @@ import pytest
 from git import Repo
 from typer.testing import CliRunner
 
+from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
     AgentsPolicy,
+    ArtifactsPolicy,
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
@@ -288,6 +290,86 @@ def _isolate_global_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     config_dir = tmp_path / "xdg-config"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
+
+
+@pytest.fixture
+def temp_workspace(tmp_path: Path) -> Path:
+    """Provide a temporary workspace directory for integration tests."""
+    return tmp_path
+
+
+@pytest.fixture
+def initial_state() -> PipelineState:
+    """Create a default initial pipeline state for integration tests."""
+    return PipelineState(
+        phase="planning",
+        policy_entry_phase="planning",
+        budget_caps={"iteration": 5},
+    )
+
+
+@pytest.fixture
+def default_policy() -> tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy]:
+    """Create a default policy tuple for integration tests."""
+    agents_policy = AgentsPolicy(
+        agent_chains={
+            "planning": AgentChainConfig(agents=["claude"], max_retries=2),
+            "development": AgentChainConfig(agents=["claude"], max_retries=3),
+            "development_analysis": AgentChainConfig(agents=["claude"], max_retries=2),
+            "development_commit": AgentChainConfig(agents=["claude"], max_retries=2),
+            "planning_analysis": AgentChainConfig(agents=["claude"], max_retries=2),
+        },
+        agent_drains={
+            "planning": AgentDrainConfig(chain="planning"),
+            "development": AgentDrainConfig(chain="development"),
+            "development_analysis": AgentDrainConfig(chain="development_analysis"),
+            "development_commit": AgentDrainConfig(chain="development_commit"),
+            "planning_analysis": AgentDrainConfig(chain="planning_analysis"),
+        },
+    )
+    pipeline_policy = PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                transitions=PhaseTransition(on_success="development"),
+            ),
+            "planning_analysis": PhaseDefinition(
+                drain="planning_analysis",
+                role="analysis",
+                transitions=PhaseTransition(on_success="development", on_loopback="planning"),
+            ),
+            "development": PhaseDefinition(
+                drain="development",
+                role="analysis",
+                transitions=PhaseTransition(
+                    on_success="development_commit",
+                    on_loopback="development",
+                ),
+            ),
+            "development_commit": PhaseDefinition(
+                drain="development_commit",
+                role="commit",
+                transitions=PhaseTransition(
+                    on_success="complete",
+                    on_failure="failed_terminal",
+                ),
+            ),
+            "complete": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+            "failed_terminal": PhaseDefinition(
+                drain="development",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="failed_terminal"),
+            ),
+        },
+        entry_phase="planning",
+        terminal_phase="complete",
+        recovery=RecoveryPolicy(failed_route="failed_terminal"),
+    )
+    return (agents_policy, pipeline_policy, ArtifactsPolicy())
 
 
 @pytest.fixture

@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.executor._process_error_details import ProcessErrorDetails
+from ralph.executor._process_result import ProcessResult
+from ralph.executor._process_run_options import ProcessRunOptions
 from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
@@ -17,39 +19,6 @@ if TYPE_CHECKING:
 
 class ProcessExecutionError(RuntimeError):
     """Raised when a process cannot be started or exceeds its timeout."""
-
-    @dataclass(frozen=True)
-    class ProcessResult:
-        """Captured result from a completed process."""
-
-        command: tuple[str, ...]
-        returncode: int
-        stdout: str
-        stderr: str
-
-        @property
-        def succeeded(self) -> bool:
-            """Return ``True`` when the process exited successfully."""
-            return self.returncode == 0
-
-    @dataclass(frozen=True)
-    class ProcessRunOptions:
-        """Execution options for run_process and run_process_async."""
-
-        cwd: str | Path | None = None
-        env: Mapping[str, str] | None = None
-        timeout: float | None = None
-        capture_output: bool = True
-
-    @dataclass(frozen=True)
-    class ProcessErrorDetails:
-        """Structured error details captured from a failed process launch."""
-
-        timed_out: bool = False
-        timeout: float | None = None
-        stdout: str = ""
-        stderr: str = ""
-
 
     def __init__(
         self,
@@ -98,11 +67,6 @@ class ProcessExecutionError(RuntimeError):
     ) -> ProcessExecutionError:
         """Build an execution error from an OS-level failure."""
         return cls(command, f"Failed to execute '{command[0]}': {error}")
-
-
-ProcessResult = ProcessExecutionError.ProcessResult
-ProcessRunOptions = ProcessExecutionError.ProcessRunOptions
-ProcessErrorDetails = ProcessExecutionError.ProcessErrorDetails
 
 
 async def run_process_async(

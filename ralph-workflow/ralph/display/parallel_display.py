@@ -17,9 +17,13 @@ from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecyc
 from ralph.display.long_content_summary import build_headline_or_placeholder
 from ralph.display.plain_renderer import (
     ActivityLineOptions as _ActivityLineOptions,
+)
+from ralph.display.plain_renderer import (
     PhaseCloseOptions,
-    PhaseCounters as _PhaseCounters,
     PlainLogRenderer,
+)
+from ralph.display.plain_renderer import (
+    PhaseCounters as _PhaseCounters,
 )
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber

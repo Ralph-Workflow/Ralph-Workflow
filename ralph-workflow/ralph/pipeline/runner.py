@@ -10,6 +10,7 @@ from __future__ import annotations
 from inspect import signature
 from typing import TYPE_CHECKING, cast
 
+from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 
 from ralph.agents.invoke import AgentInvocationError, invoke_agent
@@ -32,9 +33,6 @@ from ralph.mcp.server.lifecycle import (
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.phases import handle_phase, register_role_handlers
 from ralph.pipeline import checkpoint as ckpt
-from ralph.pipeline._runner_cycle_setup import (
-    write_start_commit_if_absent as _write_start_commit_if_absent,
-)
 from ralph.pipeline._runner_interrupt import (
     handle_keyboard_interrupt as _handle_keyboard_interrupt,
 )
@@ -69,7 +67,11 @@ from ralph.pipeline.activity_stream import (
     terminal_width,
     truncate,
 )
-from ralph.pipeline.cycle_baseline import clear_cycle_baseline
+from ralph.pipeline.cycle_baseline import (
+    clear_cycle_baseline,
+    read_cycle_baseline,
+    write_cycle_baseline,
+)
 from ralph.pipeline.effect_executor import (
     AgentExecutionDeps,
     AgentRecoveryPlan,
@@ -106,7 +108,7 @@ from ralph.pipeline.effects import (
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
-from ralph.pipeline.fan_out import execute_fan_out_sync
+from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
 from ralph.pipeline.legacy_console_display import (
     LegacyConsoleDisplay,
@@ -168,8 +170,6 @@ if TYPE_CHECKING:
         _ShutdownMcpServerFn,
         _StartMcpServerFn,
     )
-    from ralph.pipeline.phase_agent_handler import _HandlePhaseFn
-    from ralph.pipeline.prompt_prep import _MaterializePromptFn
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
@@ -184,7 +184,6 @@ __all__ = [
     "MAX_TEXT_LENGTH",
     "MAX_TOOL_RESULT_BRIEF",
     "PENDING_PHASE_TRANSITION_METADATA_ATTR",
-    "AgentExecutionDeps",
     "AgentRegistry",
     "DynamicBindingMcpServerFactory",
     "McpSupervisor",
@@ -263,7 +262,6 @@ _LEGACY_EXECUTE_EFFECT_ARITY = 3
 _POLICY_LOADER_CONFIG_ARITY = 2
 
 load_policy_or_die = _dir_load_policy_or_die
-
 
 VALIDATE_MCP = _default_validate_mcp
 PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
@@ -482,7 +480,7 @@ def _run_pipeline_step(
             return inline_result
 
         if isinstance(effect, FanOutEffect):
-            return _execute_fan_out_sync(
+            return execute_fan_out_sync(
                 effect=effect,
                 state=state,
                 display=display,
@@ -503,7 +501,7 @@ def _run_pipeline_step(
                 if materialize_prompt_for_phase is not _original_materialize_prompt_for_phase
                 else None
             )
-            _materialize_agent_prompt_if_needed(
+            materialize_agent_prompt_if_needed(
                 effect, state, workspace, policy_bundle, registry, materialize_fn=_mat_fn
             )
             event = invoke_execute_effect_with_optional_display(
@@ -526,7 +524,7 @@ def _run_pipeline_step(
                     if handle_phase is not _original_handle_phase
                     else None
                 )
-                event = _phase_event_after_agent_run(
+                event = phase_event_after_agent_run(
                     effect=effect,
                     config=config,
                     policy_bundle=policy_bundle,
@@ -782,56 +780,28 @@ _original_render_commit_message = render_commit_message
 _original_show_phase_close_banner = show_phase_close_banner
 _original_show_phase_transition = show_phase_transition
 _cleanup_commit_message_artifacts = cleanup_commit_message_artifacts
-def _materialize_agent_prompt_if_needed(
-    effect: Effect,
-    state: PipelineState,
-    workspace: FsWorkspace,
-    policy_bundle: PolicyBundle,
-    registry: _RegistryLike,
-    *,
-    materialize_fn: _MaterializePromptFn | None = None,
-) -> None:
-    materialize_agent_prompt_if_needed(
-        effect, state, workspace, policy_bundle, registry,
-        materialize_fn=materialize_fn,
-    )
 
 
-def _phase_event_after_agent_run(
-    *,
-    effect: InvokeAgentEffect,
-    config: UnifiedConfig,
-    policy_bundle: PolicyBundle,
-    workspace: FsWorkspace,
-    workspace_scope: WorkspaceScope | None = None,
-    display: ParallelDisplay | LegacyConsoleDisplay | None = None,
-    display_context: DisplayContext | None = None,
-    verbosity: Verbosity = Verbosity.VERBOSE,
-    state: PipelineState | None = None,
-    handle_phase_fn: _HandlePhaseFn | None = None,
-) -> Event:
-    return phase_event_after_agent_run(
-        effect=effect,
-        config=config,
-        policy_bundle=policy_bundle,
-        workspace=workspace,
-        workspace_scope=workspace_scope,
-        display=display,
-        display_context=display_context,
-        verbosity=verbosity,
-        state=state,
-        handle_phase_fn=handle_phase_fn,
-    )
-
-
-def _execute_fan_out_sync(
+def execute_fan_out_sync(
     *,
     effect: FanOutEffect,
     state: PipelineState,
     display: ParallelDisplay | LegacyConsoleDisplay,
     **opts: object,
 ) -> PipelineState:
-    return execute_fan_out_sync(effect=effect, state=state, display=display, **opts)
+    """Execute fan-out synchronously, forwarding current module globals as injectable overrides."""
+    return _fan_out_execute_fan_out_sync(
+        effect=effect,
+        state=state,
+        display=display,
+        _install_signal_handlers=install_signal_handlers,
+        _executor_cls=SubprocessAgentExecutor,
+        _mcp_factory_cls=DynamicBindingMcpServerFactory,
+        _run_process_async=run_process_async,
+        _reducer_reduce=reducer_reduce,
+        **opts,
+    )
+
 
 
 def materialize_prepared_prompt(
@@ -978,7 +948,17 @@ def emit_phase_transition_if_changed(
     )
 
 
-write_start_commit_if_absent = _write_start_commit_if_absent
+def write_start_commit_if_absent(workspace_root: Path) -> None:
+    """Record the current HEAD as the cycle baseline if no baseline exists yet."""
+    if read_cycle_baseline(workspace_root) is not None:
+        return
+    try:
+        repo = Repo(workspace_root)
+    except InvalidGitRepositoryError:
+        return
+    if not repo.head.is_valid():
+        return
+    write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
 call_determine_effect_from_policy = _call_determine_effect_from_policy
 invoke_execute_effect_with_optional_display = _invoke_execute_effect_with_optional_display
 handle_inline_effect = _handle_inline_effect

@@ -6,177 +6,46 @@ policy outcomes into MCP access-control decisions.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import Enum, StrEnum
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
+
+from ralph.mcp.protocol._access_decision import AccessDecision
+from ralph.mcp.protocol._access_denied_code import AccessDeniedCode
+from ralph.mcp.protocol._access_mode import AccessMode
+from ralph.mcp.protocol._drain_class import DrainClass
+from ralph.mcp.protocol._mcp_capability import McpCapability
+from ralph.mcp.protocol._policy_mode import PolicyMode
+from ralph.mcp.protocol._policy_outcome import PolicyOutcome
+from ralph.mcp.protocol._policy_outcome_status import PolicyOutcomeStatus
+from ralph.mcp.protocol._session_drain import SessionDrain
 
 if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy
 
 
-@dataclass(frozen=True)
-class PolicyOutcome:
-    """Normalized policy outcome payload."""
+class Capability(StrEnum):
+    """Internal Ralph capability vocabulary."""
 
-    class SessionDrain(StrEnum):
-        """Pipeline drain identity for a Ralph session."""
-
-        PLANNING = "planning"
-        DEVELOPMENT = "development"
-        DEVELOPMENT_ANALYSIS = "development_analysis"
-        DEVELOPMENT_COMMIT = "development_commit"
-        ANALYSIS = "analysis"
-        REVIEW = "review"
-        REVIEW_ANALYSIS = "review_analysis"
-        REVIEW_COMMIT = "review_commit"
-        FIX = "fix"
-        COMMIT = "commit"
-
-    class DrainClass(StrEnum):
-        """Drain class used for capability defaults."""
-
-        PLANNING = "planning"
-        DEVELOPMENT = "development"
-        ANALYSIS = "analysis"
-        REVIEW = "review"
-        FIX = "fix"
-        COMMIT = "commit"
-
-        def allows_write(self) -> bool:
-            """Return whether this drain class allows write operations."""
-            return self in {DrainClass.DEVELOPMENT, DrainClass.FIX}
-
-    class AccessMode(StrEnum):
-        """Server access mode for MCP tool dispatch."""
-
-        READ_ONLY = "ReadOnly"
-        READ_WRITE = "ReadWrite"
-
-        def allows_write(self) -> bool:
-            """Return whether this access mode allows write operations."""
-            return self is AccessMode.READ_WRITE
-
-    class PolicyMode(StrEnum):
-        """Runtime policy mode enforced by the MCP server."""
-
-        PLANNING = "planning"
-        DEVELOPMENT = "development"
-        ANALYSIS = "analysis"
-        REVIEW = "review"
-        FIX = "fix"
-        COMMIT = "commit"
-
-        def access_mode(self) -> AccessMode:
-            """Return the matching access mode."""
-            if self in {PolicyMode.DEVELOPMENT, PolicyMode.FIX}:
-                return AccessMode.READ_WRITE
-            return AccessMode.READ_ONLY
-
-    class AccessDeniedCode(StrEnum):
-        """Categorical access-denial codes."""
-
-        NOT_INITIALIZED = "NotInitialized"
-        CAPABILITY_DENIED = "CapabilityDenied"
-        READ_ONLY_MODE = "ReadOnlyMode"
-        OUTSIDE_ROOT_DIR = "OutsideRootDir"
-        TOOL_NOT_ALLOWED = "ToolNotAllowed"
-
-    @dataclass(frozen=True)
-    class AccessDecision:
-        """Result of an MCP access decision."""
-
-        allowed: bool
-        reason: str | None = None
-        code: AccessDeniedCode | None = None
-
-        @classmethod
-        def allow(cls) -> AccessDecision:
-            """Build an allow decision."""
-            return cls(allowed=True)
-
-        @classmethod
-        def deny(cls, reason: str, code: AccessDeniedCode) -> AccessDecision:
-            """Build a deny decision."""
-            return cls(allowed=False, reason=reason, code=code)
-
-        def is_allowed(self) -> bool:
-            """Return whether access is allowed."""
-            return self.allowed
-
-    class Capability(StrEnum):
-        """Internal Ralph capability vocabulary."""
-
-        WORKSPACE_READ = "workspace.read"
-        WORKSPACE_WRITE_EPHEMERAL = "workspace.write_ephemeral"
-        WORKSPACE_WRITE_TRACKED = "workspace.write_tracked"
-        WORKSPACE_METADATA_READ = "workspace.metadata_read"
-        WORKSPACE_EDIT = "workspace.edit"
-        WORKSPACE_DELETE = "workspace.delete"
-        PROCESS_EXEC_BOUNDED = "process.exec_bounded"
-        PROCESS_EXEC_UNBOUNDED = "process.exec_unbounded"
-        ARTIFACT_SUBMIT = "artifact.submit"
-        RUN_REPORT_PROGRESS = "run.report_progress"
-        GIT_STATUS_READ = "git.status_read"
-        GIT_DIFF_READ = "git.diff_read"
-        GIT_WRITE = "git.write"
-        ENV_READ = "env.read"
-        ENV_WRITE = "env.write"
-        UPSTREAM_TOOL_USE = "upstream.tool_use"
-        WEB_SEARCH = "web.search"
-        WEB_VISIT = "web.visit"
-        MEDIA_READ = "media.read"
-
-    class McpCapability(StrEnum):
-        """Typed MCP capability vocabulary."""
-
-        FILE_READ = "FileRead"
-        FILE_WRITE = "FileWrite"
-        GIT_READ = "GitRead"
-        PROCESS_EXEC = "ProcessExec"
-        ARTIFACT_SUBMIT = "ArtifactSubmit"
-        WORKSPACE_COORDINATION = "WorkspaceCoordination"
-        WORKSPACE_READ = "WorkspaceRead"
-        WORKSPACE_WRITE_EPHEMERAL = "WorkspaceWriteEphemeral"
-        WORKSPACE_WRITE_TRACKED = "WorkspaceWriteTracked"
-        WORKSPACE_WRITE_ANY = "WorkspaceWriteAny"
-        WORKSPACE_METADATA_READ = "WorkspaceMetadataRead"
-        WORKSPACE_EDIT = "WorkspaceEdit"
-        WORKSPACE_DELETE = "WorkspaceDelete"
-        GIT_STATUS_READ = "GitStatusRead"
-        GIT_WRITE = "GitWrite"
-        ENV_READ = "EnvRead"
-        ENV_WRITE = "EnvWrite"
-        PROCESS_EXEC_BOUNDED = "ProcessExecBounded"
-        PROCESS_EXEC_UNBOUNDED = "ProcessExecUnbounded"
-        RUN_REPORT_PROGRESS = "RunReportProgress"
-        UPSTREAM_TOOL_USE = "UpstreamToolUse"
-        WEB_SEARCH = "WebSearch"
-        WEB_VISIT = "WebVisit"
-        MEDIA_READ = "MediaRead"
-
-    class PolicyOutcomeStatus(StrEnum):
-        """Normalized policy outcome status."""
-
-        APPROVED = "approved"
-        DENIED = "denied"
-        APPROVED_WITH_RESTRICTION = "approved_with_restriction"
-
-
-    status: PolicyOutcomeStatus
-    reason: str | None = None
-    restriction: str | None = None
-
-
-SessionDrain = PolicyOutcome.SessionDrain
-DrainClass = PolicyOutcome.DrainClass
-AccessMode = PolicyOutcome.AccessMode
-PolicyMode = PolicyOutcome.PolicyMode
-AccessDeniedCode = PolicyOutcome.AccessDeniedCode
-AccessDecision = PolicyOutcome.AccessDecision
-Capability = PolicyOutcome.Capability
-McpCapability = PolicyOutcome.McpCapability
-PolicyOutcomeStatus = PolicyOutcome.PolicyOutcomeStatus
+    WORKSPACE_READ = "workspace.read"
+    WORKSPACE_WRITE_EPHEMERAL = "workspace.write_ephemeral"
+    WORKSPACE_WRITE_TRACKED = "workspace.write_tracked"
+    WORKSPACE_METADATA_READ = "workspace.metadata_read"
+    WORKSPACE_EDIT = "workspace.edit"
+    WORKSPACE_DELETE = "workspace.delete"
+    PROCESS_EXEC_BOUNDED = "process.exec_bounded"
+    PROCESS_EXEC_UNBOUNDED = "process.exec_unbounded"
+    ARTIFACT_SUBMIT = "artifact.submit"
+    RUN_REPORT_PROGRESS = "run.report_progress"
+    GIT_STATUS_READ = "git.status_read"
+    GIT_DIFF_READ = "git.diff_read"
+    GIT_WRITE = "git.write"
+    ENV_READ = "env.read"
+    ENV_WRITE = "env.write"
+    UPSTREAM_TOOL_USE = "upstream.tool_use"
+    WEB_SEARCH = "web.search"
+    WEB_VISIT = "web.visit"
+    MEDIA_READ = "media.read"
 
 
 MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
@@ -276,10 +145,12 @@ _APPROVED_WITH_RESTRICTION_VALUES = {
 
 
 def normalize_token(value: str) -> str:
+    """Normalize a capability or policy token to lowercase with underscores."""
     return value.strip().replace("-", "_").replace(" ", "_").lower()
 
 
 def extract_text_field(value: object, field_name: str) -> str | None:
+    """Extract a named string field from a dict or object attribute, returning None if absent."""
     if isinstance(value, dict):
         field_value = value.get(field_name)
     else:
@@ -288,6 +159,7 @@ def extract_text_field(value: object, field_name: str) -> str | None:
 
 
 def extract_named_value(value: object) -> str | None:
+    """Extract the canonical string value from a string, Enum, or structured object."""
     if isinstance(value, str):
         return value
     if isinstance(value, Enum):
@@ -302,6 +174,7 @@ def extract_named_value(value: object) -> str | None:
 
 
 def coerce_session_drain(value: SessionDrain | str) -> SessionDrain:
+    """Coerce a string or SessionDrain to a SessionDrain, raising ValueError for unknown values."""
     if isinstance(value, SessionDrain):
         return value
 
@@ -325,6 +198,7 @@ def coerce_session_drain(value: SessionDrain | str) -> SessionDrain:
 
 
 def coerce_capability(value: Capability | str) -> Capability:
+    """Coerce a string or Capability to a Capability enum, raising ValueError for unknown values."""
     if isinstance(value, Capability):
         return value
 
@@ -340,6 +214,7 @@ def coerce_capability(value: Capability | str) -> Capability:
 
 
 def coerce_mcp_capability(value: McpCapability | str) -> McpCapability:
+    """Coerce a string or McpCapability to a McpCapability enum."""
     if isinstance(value, McpCapability):
         return value
 
@@ -355,6 +230,7 @@ def coerce_mcp_capability(value: McpCapability | str) -> McpCapability:
 
 
 def normalize_policy_outcome(value: object) -> PolicyOutcome:
+    """Normalize any policy outcome representation to a PolicyOutcome."""
     if isinstance(value, PolicyOutcome):
         return value
     if value is True:
@@ -377,6 +253,7 @@ def resolved_policy_status(
     normalized_status: str,
     reason: str | None,
 ) -> PolicyOutcomeStatus | None:
+    """Resolve a normalized status string to a PolicyOutcomeStatus, or None if unrecognized."""
     if normalized_status in _APPROVED_POLICY_VALUES:
         return PolicyOutcomeStatus.APPROVED
     if normalized_status in _APPROVED_WITH_RESTRICTION_VALUES:
@@ -398,7 +275,8 @@ def drain_class_for_drain_name(
 
     Resolution order:
     1. Explicit drain_class on the AgentDrainConfig (highest priority).
-    2. PolicyValidationError when no explicit drain_class is declared.
+    2. Drain name itself is a valid DrainClass value (fallback).
+    3. PolicyValidationError when neither applies.
     """
     policy_validation_error = _policy_validation_error_type()
     if agents_policy is not None:
@@ -411,6 +289,10 @@ def drain_class_for_drain_name(
                     f"Drain '{name}' has invalid drain_class '{drain_cfg.drain_class}'; "
                     f"expected one of: planning, development, analysis, review, fix, commit."
                 ) from err
+    try:
+        return DrainClass(name)
+    except ValueError:
+        pass
     raise policy_validation_error(
         f"Drain '{name}' has no drain_class declared in agents.toml; "
         f"add drain_class = '<class>' under [agent_drains.{name}] "

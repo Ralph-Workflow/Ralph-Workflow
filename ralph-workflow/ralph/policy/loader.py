@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 __all__ = [
-    "PolicyValidationError",
     "load_policy",
     "load_policy_or_die",
 ]
@@ -108,17 +107,20 @@ def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
 
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
+    """Format all pydantic ValidationError errors into human-readable strings."""
     details = cast("ValidationErrorDetails", exc.errors())
     return [format_validation_error_detail(detail) for detail in details]
 
 
 def format_validation_error_detail(detail: ValidationErrorDetail) -> str:
+    """Format a single pydantic validation error detail as 'location: message'."""
     loc = detail.get("loc")
     msg = detail.get("msg")
     return f"  {format_validation_location(loc)}: {format_validation_message(msg)}"
 
 
 def format_validation_location(raw_loc: object | None) -> str:
+    """Format a pydantic error location tuple to a dotted path string."""
     if raw_loc is None:
         return "<root>"
     if isinstance(raw_loc, list | tuple):
@@ -129,6 +131,7 @@ def format_validation_location(raw_loc: object | None) -> str:
 
 
 def format_validation_message(raw_msg: object | None) -> str:
+    """Return the validation error message string, substituting a placeholder if absent."""
     if isinstance(raw_msg, str):
         return raw_msg
     if raw_msg is None:

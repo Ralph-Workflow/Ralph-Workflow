@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.mcp.protocol.capability_mapping import DrainClass
+from ralph.mcp.protocol.capability_mapping import DrainClass, SessionDrain
 from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
@@ -16,7 +16,7 @@ from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
     tool_name_prefix_for_transport,
 )
-from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.prompts.types import SessionCapabilities
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:

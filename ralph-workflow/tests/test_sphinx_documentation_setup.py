@@ -5,7 +5,7 @@ import runpy
 import tomllib
 from pathlib import Path
 
-from ralph import __version__
+from ralph import version
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONF_PATH = REPO_ROOT / "docs" / "sphinx" / "conf.py"
@@ -66,8 +66,8 @@ def _index_toctree_docnames(index_content: str) -> list[str]:
 def test_sphinx_conf_uses_package_version() -> None:
     namespace = runpy.run_path(str(CONF_PATH))
 
-    assert namespace["release"] == __version__
-    assert namespace["version"] == __version__
+    assert namespace["release"] == version
+    assert namespace["version"] == version
 
 
 def test_root_gitignore_ignores_real_sphinx_build_tree() -> None:

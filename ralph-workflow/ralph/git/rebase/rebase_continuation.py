@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING
 from git import GitCommandError, InvalidGitRepositoryError, Repo
 
 from ralph.git.operations import GitOperationError, find_repo_root
+from ralph.git.rebase._conflict_remaining_error import ConflictRemainingError
+from ralph.git.rebase._no_rebase_in_progress_error import NoRebaseInProgressError
+from ralph.git.rebase._rebase_continuation_error import RebaseContinuationError
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 if TYPE_CHECKING:
@@ -42,20 +45,6 @@ def _git_env() -> dict[str, str]:
 
 class RebaseVerificationError(Exception):
     """Raised when verifying rebase completion fails."""
-
-    class RebaseContinuationError(Exception):
-        """Base exception for rebase continuation helpers."""
-
-    class NoRebaseInProgressError(RebaseContinuationError):
-        """Raised when no rebase is active but continuation was requested."""
-
-    class ConflictRemainingError(RebaseContinuationError):
-        """Raised when conflicts remain while attempting to continue."""
-
-
-RebaseContinuationError = RebaseVerificationError.RebaseContinuationError
-NoRebaseInProgressError = RebaseVerificationError.NoRebaseInProgressError
-ConflictRemainingError = RebaseVerificationError.ConflictRemainingError
 
 
 def _open_repo(repo_root: Path | str) -> Repo:

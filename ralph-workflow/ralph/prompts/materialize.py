@@ -45,8 +45,10 @@ from ralph.prompts.developer import (
 )
 from ralph.prompts.payload_refs import (
     build_prompt_payload_variables,
-    sanitize_surrogates as _sanitize_surrogates,
     write_payload_to_directory,
+)
+from ralph.prompts.payload_refs import (
+    sanitize_surrogates as _sanitize_surrogates,
 )
 from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
@@ -822,6 +824,7 @@ def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
 
 
 def resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
+    """Return (content, path) for the fix_result artifact, with a fallback if absent."""
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="fix_result",

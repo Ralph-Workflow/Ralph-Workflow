@@ -176,6 +176,7 @@ def handle_read_env(
 
 
 def read_env_value(env: dict[str, str] | os._Environ[str], name: str) -> str:
+    """Return the value of an environment variable, or '[not found]' if absent."""
     return env.get(name, "[not found]")
 
 

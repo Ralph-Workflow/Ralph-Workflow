@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 
+from ralph.git.rebase._process_executor import ProcessExecutor
 from ralph.git.subprocess_runner import GitRunOptions, run_git
 
 from .rebase_kinds import RebaseErrorKind, RebaseKind, classify_rebase_error
@@ -18,17 +19,6 @@ if TYPE_CHECKING:
 
     from git.objects.commit import Commit
 
-if TYPE_CHECKING:
-    class ProcessExecutor(Protocol):
-        """Executor that runs external processes."""
-
-        def execute(
-            self,
-            command: str,
-            args: Sequence[str],
-            env: Mapping[str, str] | None = None,
-            cwd: Path | None = None,
-        ) -> ProcessResult: ...
 
 REBASE_APPLY_DIR = "rebase-apply"
 REBASE_MERGE_DIR = "rebase-merge"

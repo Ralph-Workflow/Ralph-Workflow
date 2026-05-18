@@ -10,33 +10,11 @@ from typing import IO, TYPE_CHECKING
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
-    from ralph.process.manager._process_manager import ProcessManager
+    from ralph.process.manager._process_manager import (
+        ProcessManager,
+        _SyncProcessLike,
+    )
     from ralph.process.manager._process_record import ProcessRecord
-
-    class _SyncProcessLike:
-        pid: int
-
-        @property
-        def stdin(self) -> IO[bytes] | None: ...
-
-        @property
-        def stdout(self) -> IO[bytes] | None: ...
-
-        @property
-        def stderr(self) -> IO[bytes] | None: ...
-
-        @property
-        def returncode(self) -> int | None: ...
-
-        def poll(self) -> int | None: ...
-        def wait(self, timeout: float | None = None) -> int: ...
-        def communicate(
-            self,
-            input: bytes | None = None,
-            timeout: float | None = None,
-        ) -> tuple[bytes | None, bytes | None]: ...
-        def terminate(self) -> None: ...
-        def kill(self) -> None: ...
 
 
 class ManagedProcess:

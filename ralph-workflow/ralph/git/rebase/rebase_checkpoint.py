@@ -8,17 +8,17 @@ import shutil
 import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ralph.git.rebase._rebase_lock import RebaseLock
+from ralph.git.rebase._rebase_phase import RebasePhase
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
     "RebaseCheckpoint",
-    "RebaseLock",
-    "RebasePhase",
     "acquire_rebase_lock",
     "clear_rebase_checkpoint",
     "load_rebase_checkpoint",
@@ -93,8 +93,86 @@ def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
             return default
 
 
+@dataclass
+class RebaseCheckpoint:
+    """Persisted state for a rebase operation, written to ``.agent/rebase_checkpoint.json``."""
 
+    phase: RebasePhase = field(default_factory=lambda: RebasePhase.NotStarted)
+    upstream_branch: str = ""
+    conflicted_files: list[str] = field(default_factory=list)
+    resolved_files: list[str] = field(default_factory=list)
+    error_count: int = 0
+    last_error: str | None = None
+    timestamp: str = field(default_factory=_current_timestamp)
+    phase_error_count: int = 0
 
+    @classmethod
+    def new(cls, upstream_branch: str) -> RebaseCheckpoint:
+        return cls(upstream_branch=upstream_branch)
+
+    def set_phase(self, phase: RebasePhase) -> None:
+        if self.phase != phase:
+            self.phase_error_count = 0
+        self.phase = phase
+        self.timestamp = _current_timestamp()
+
+    def add_conflicted_file(self, file: str) -> None:
+        if file not in self.conflicted_files:
+            self.conflicted_files.append(file)
+            self.timestamp = _current_timestamp()
+
+    def add_resolved_file(self, file: str) -> None:
+        if file not in self.resolved_files:
+            self.resolved_files.append(file)
+            self.timestamp = _current_timestamp()
+
+    def record_error(self, error: str) -> None:
+        self.error_count += 1
+        self.phase_error_count += 1
+        self.last_error = error
+        self.timestamp = _current_timestamp()
+
+    def all_conflicts_resolved(self) -> bool:
+        return all(file in self.resolved_files for file in self.conflicted_files)
+
+    def unresolved_conflict_count(self) -> int:
+        return sum(1 for file in self.conflicted_files if file not in self.resolved_files)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "phase": self.phase.value,
+            "upstream_branch": self.upstream_branch,
+            "conflicted_files": list(self.conflicted_files),
+            "resolved_files": list(self.resolved_files),
+            "error_count": self.error_count,
+            "last_error": self.last_error,
+            "timestamp": self.timestamp,
+            "phase_error_count": self.phase_error_count,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, object]) -> RebaseCheckpoint:
+        phase_value = data.get("phase")
+        phase = RebasePhase.NotStarted
+        if isinstance(phase_value, str):
+            try:
+                phase = RebasePhase(phase_value)
+            except ValueError:
+                phase = RebasePhase.NotStarted
+
+        last_error_value = data.get("last_error")
+        last_error = None if last_error_value is None else str(last_error_value)
+
+        return cls(
+            phase=phase,
+            upstream_branch=str(data.get("upstream_branch", "")),
+            conflicted_files=_string_list(data, "conflicted_files"),
+            resolved_files=_string_list(data, "resolved_files"),
+            error_count=_int_value(data, "error_count"),
+            last_error=last_error,
+            timestamp=str(data.get("timestamp", _current_timestamp())),
+            phase_error_count=_int_value(data, "phase_error_count"),
+        )
 
 
 def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
@@ -246,134 +324,7 @@ def _is_lock_stale() -> bool:
     return True
 
 
-class RebaseLock:
-    """Context manager that acquires and releases the rebase lock."""
-
-    class RebasePhase(StrEnum):
-        """Lifecycle phase of an in-progress rebase operation."""
-
-        NotStarted = "not_started"
-        PreRebaseCheck = "pre_rebase_check"
-        RebaseInProgress = "rebase_in_progress"
-        ConflictDetected = "conflict_detected"
-        ConflictResolutionInProgress = "conflict_resolution_in_progress"
-        CompletingRebase = "completing_rebase"
-        RebaseComplete = "rebase_complete"
-        RebaseAborted = "rebase_aborted"
-
-        def max_recovery_attempts(self) -> int:
-            if self == RebasePhase.ConflictResolutionInProgress:
-                return 5
-            if self in {RebasePhase.RebaseInProgress, RebasePhase.CompletingRebase}:
-                return 2
-            if self == RebasePhase.PreRebaseCheck:
-                return 1
-            return 3
-
-    @dataclass
-    class RebaseCheckpoint:
-        """Persisted state for a rebase operation, written to ``.agent/rebase_checkpoint.json``."""
-
-        phase: RebasePhase = field(default_factory=lambda: RebasePhase.NotStarted)
-        upstream_branch: str = ""
-        conflicted_files: list[str] = field(default_factory=list)
-        resolved_files: list[str] = field(default_factory=list)
-        error_count: int = 0
-        last_error: str | None = None
-        timestamp: str = field(default_factory=_current_timestamp)
-        phase_error_count: int = 0
-
-        @classmethod
-        def new(cls, upstream_branch: str) -> RebaseCheckpoint:
-            return cls(upstream_branch=upstream_branch)
-
-        def set_phase(self, phase: RebasePhase) -> None:
-            if self.phase != phase:
-                self.phase_error_count = 0
-            self.phase = phase
-            self.timestamp = _current_timestamp()
-
-        def add_conflicted_file(self, file: str) -> None:
-            if file not in self.conflicted_files:
-                self.conflicted_files.append(file)
-                self.timestamp = _current_timestamp()
-
-        def add_resolved_file(self, file: str) -> None:
-            if file not in self.resolved_files:
-                self.resolved_files.append(file)
-                self.timestamp = _current_timestamp()
-
-        def record_error(self, error: str) -> None:
-            self.error_count += 1
-            self.phase_error_count += 1
-            self.last_error = error
-            self.timestamp = _current_timestamp()
-
-        def all_conflicts_resolved(self) -> bool:
-            return all(file in self.resolved_files for file in self.conflicted_files)
-
-        def unresolved_conflict_count(self) -> int:
-            return sum(1 for file in self.conflicted_files if file not in self.resolved_files)
-
-        def to_dict(self) -> dict[str, object]:
-            return {
-                "phase": self.phase.value,
-                "upstream_branch": self.upstream_branch,
-                "conflicted_files": list(self.conflicted_files),
-                "resolved_files": list(self.resolved_files),
-                "error_count": self.error_count,
-                "last_error": self.last_error,
-                "timestamp": self.timestamp,
-                "phase_error_count": self.phase_error_count,
-            }
-
-        @classmethod
-        def from_dict(cls, data: Mapping[str, object]) -> RebaseCheckpoint:
-            phase_value = data.get("phase")
-            phase = RebasePhase.NotStarted
-            if isinstance(phase_value, str):
-                try:
-                    phase = RebasePhase(phase_value)
-                except ValueError:
-                    phase = RebasePhase.NotStarted
-
-            last_error_value = data.get("last_error")
-            last_error = None if last_error_value is None else str(last_error_value)
-
-            return cls(
-                phase=phase,
-                upstream_branch=str(data.get("upstream_branch", "")),
-                conflicted_files=_string_list(data, "conflicted_files"),
-                resolved_files=_string_list(data, "resolved_files"),
-                error_count=_int_value(data, "error_count"),
-                last_error=last_error,
-                timestamp=str(data.get("timestamp", _current_timestamp())),
-                phase_error_count=_int_value(data, "phase_error_count"),
-            )
+RebaseLock._acquire_fn = acquire_rebase_lock
+RebaseLock._release_fn = release_rebase_lock
 
 
-    def __init__(self) -> None:
-        self.owns_lock = False
-
-    def __enter__(self) -> RebaseLock:
-        acquire_rebase_lock()
-        self.owns_lock = True
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object | None,
-    ) -> None:
-        if self.owns_lock:
-            release_rebase_lock()
-
-    def leak(self) -> bool:
-        owns = self.owns_lock
-        self.owns_lock = False
-        return owns
-
-
-RebasePhase = RebaseLock.RebasePhase
-RebaseCheckpoint = RebaseLock.RebaseCheckpoint

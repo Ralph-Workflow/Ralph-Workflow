@@ -88,7 +88,6 @@ __all__ = [
     "PolicyFlag",
     "PolicyFlagSet",
     "SessionCapabilities",
-    "SessionDrain",
     "bool_to_template_value",
     "capability_template_variables",
     "format_capability_summary",

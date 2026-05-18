@@ -7,9 +7,11 @@ from typing import TYPE_CHECKING
 from ralph.pipeline.state import AgentChainState
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from ralph.pipeline.state import PipelineState
 
-    class _NotifiableSubscriber:
+    class _NotifiableSubscriber(Protocol):
         def notify(self, state: PipelineState) -> None: ...
 
 

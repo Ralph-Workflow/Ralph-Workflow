@@ -56,7 +56,7 @@ def test_no_direct_subprocess_calls_outside_process_manager() -> None:
     violations: list[str] = []
     for py_file in sorted(RALPH_ROOT.rglob("*.py")):
         rel = py_file.relative_to(RALPH_ROOT).as_posix()
-        if rel == "process/manager.py" or _allowed(rel):
+        if rel == "process/manager/__init__.py" or _allowed(rel):
             continue
         content = py_file.read_text(encoding="utf-8")
         violations.extend(
@@ -64,7 +64,8 @@ def test_no_direct_subprocess_calls_outside_process_manager() -> None:
         )
 
     assert not violations, (
-        "Direct subprocess calls found outside ralph/process/manager.py:\n" + "\n".join(violations)
+        "Direct subprocess calls found outside ralph/process/manager/__init__.py:\n"
+        + "\n".join(violations)
     )
 
 

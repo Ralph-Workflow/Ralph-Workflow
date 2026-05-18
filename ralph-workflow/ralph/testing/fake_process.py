@@ -14,16 +14,16 @@ from typing import IO, TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    from ralph.process.manager import (
-        SpawnOptions,
-        _PsutilProcessLike,
-    )
-    from ralph.process.manager import (
+    from ralph.process.manager._process_manager import (
         _AsyncProcessFactory as AsyncFactoryCallable,
     )
-    from ralph.process.manager import (
+    from ralph.process.manager._process_manager import (
+        _PsutilProcessLike,
+    )
+    from ralph.process.manager._process_manager import (
         _SyncProcessFactory as SyncFactoryCallable,
     )
+    from ralph.process.manager._spawn_options import SpawnOptions
 
 
 class FakeControllableAsyncProcess:

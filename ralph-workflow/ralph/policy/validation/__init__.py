@@ -20,13 +20,11 @@ from ralph.policy.validation._checkpoint_policy_mismatch_error import (
 )
 from ralph.policy.validation._policy_validation_error import (
     PolicyValidationError,
-    PolicyViolation,
 )
 
 __all__ = [
     "CheckpointPolicyMismatchError",
     "PolicyValidationError",
-    "PolicyViolation",
     "get_drain_resolution_matrix",
     "validate_agent_chains_satisfiable",
     "validate_chain_exists",

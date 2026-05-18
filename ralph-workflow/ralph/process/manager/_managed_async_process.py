@@ -9,30 +9,11 @@ from ralph.process.manager._process_status import _TERMINAL_STATUSES
 if TYPE_CHECKING:
     import asyncio
 
-    from ralph.process.manager._process_manager import ProcessManager
+    from ralph.process.manager._process_manager import (
+        ProcessManager,
+        _AsyncProcessLike,
+    )
     from ralph.process.manager._process_record import ProcessRecord
-
-    class _AsyncProcessLike:
-        pid: int
-
-        @property
-        def stdin(self) -> asyncio.StreamWriter | None: ...
-
-        @property
-        def stdout(self) -> asyncio.StreamReader | None: ...
-
-        @property
-        def stderr(self) -> asyncio.StreamReader | None: ...
-
-        @property
-        def returncode(self) -> int | None: ...
-
-        async def wait(self) -> int: ...
-        async def communicate(
-            self, input: bytes | None = None
-        ) -> tuple[bytes | None, bytes | None]: ...
-        def terminate(self) -> None: ...
-        def kill(self) -> None: ...
 
 
 class ManagedAsyncProcess:

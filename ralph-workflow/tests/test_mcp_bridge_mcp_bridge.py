@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import fnmatch
 import json
 from pathlib import Path
 from typing import cast
@@ -17,6 +16,7 @@ from ralph.mcp.artifacts.bridge import (
     MCPBridge,
 )
 from ralph.mcp.artifacts.store import ArtifactExistsError, ArtifactNotFoundError
+from tests.test_mcp_bridge_memory_backend import MemoryBackend
 
 METHOD_NOT_FOUND_CODE = -32601
 INVALID_REQUEST_CODE = -32600
@@ -33,38 +33,6 @@ def _object_list(value: object) -> list[object]:
 
 
 class TestMCPBridge:
-    class _MemoryBackend:
-        def __init__(self) -> None:
-            self._data: dict[str, str] = {}
-
-        def exists(self, path: Path) -> bool:
-            return str(path) in self._data
-
-        def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
-            pass
-
-        def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
-            return self._data[str(path)]
-
-        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-            self._data[str(path)] = content
-
-        def replace(self, source: Path, destination: Path) -> None:
-            self._data[str(destination)] = self._data.pop(str(source))
-
-        def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
-            key = str(path)
-            if key in self._data:
-                del self._data[key]
-            elif not missing_ok:
-                raise FileNotFoundError(path)
-
-        def glob(self, path: Path, pattern: str) -> list[Path]:
-            return [
-                Path(k)
-                for k in self._data
-                if Path(k).parent == path and fnmatch.fnmatch(Path(k).name, pattern)
-            ]
 
     def _make_bridge(self, transport: MagicMock | None = None) -> MCPBridge:
         config = BridgeConfig(transport=transport)
@@ -212,5 +180,3 @@ class TestMCPBridge:
         listed = _object_list(list_result["artifacts"])
         assert [_object_dict(item)["name"] for item in listed] == ["test_artifact"]
 
-
-MemoryBackend = TestMCPBridge._MemoryBackend

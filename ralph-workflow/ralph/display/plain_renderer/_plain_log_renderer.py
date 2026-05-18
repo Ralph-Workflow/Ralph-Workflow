@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.display.long_content_summary import build_ai_summary, build_headline_or_placeholder
-from ralph.display.plain_renderer._activity_line_options import ActivityLineOptions as _ActivityLineOptions
+from ralph.display.plain_renderer._activity_line_options import (
+    ActivityLineOptions as _ActivityLineOptions,
+)
 from ralph.display.plain_renderer._constants import (
     _KIND_TO_LEVEL,
     _KIND_TO_TAG,

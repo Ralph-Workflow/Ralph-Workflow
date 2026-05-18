@@ -13,10 +13,8 @@ from __future__ import annotations
 
 import base64
 import json
-import os
-import subprocess
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 import httpx
 
@@ -28,69 +26,20 @@ from ralph.mcp.protocol.startup import (
     legacy_sse_jsonrpc_exchange,
     looks_like_legacy_sse_endpoint,
 )
+from ralph.mcp.upstream._has_media_manifest import HasMediaManifest
+from ralph.mcp.upstream._stdio_upstream_client import StdioUpstreamClient
+from ralph.mcp.upstream._upstream_mcp_client import UpstreamMcpClient
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
-from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
-    from ralph.mcp.multimodal.resources import MediaManifest
     from ralph.mcp.upstream.config import UpstreamMcpServer
-
-if TYPE_CHECKING:
-    class UpstreamMcpClient(Protocol):
-        """Protocol satisfied by both HTTP and stdio upstream MCP client implementations."""
-
-        def list_tools(self) -> list[UpstreamTool]: ...
-        def call_tool(self, name: str, arguments: JsonObject) -> object: ...
-
-    class HasMediaManifest(Protocol):
-        """Protocol for upstream clients that expose a media artifact manifest."""
-
-        @property
-        def media_manifest(self) -> MediaManifest: ...
 
 JsonObject = dict[str, object]
 JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
-class StdioUpstreamClient:
-    """Upstream MCP client that communicates over stdio with a subprocess."""
-
-    class HttpUpstreamClient:
-        """Upstream MCP client that communicates over HTTP JSON-RPC."""
-
-        def __init__(
-            self,
-            server: UpstreamMcpServer,
-            *,
-            caller: JsonRpcCaller | None = None,
-        ) -> None:
-            self._server = server
-            self._caller: JsonRpcCaller = (
-                caller if caller is not None else _make_http_caller(server.url or "")
-            )
-
-        def list_tools(self) -> list[UpstreamTool]:
-            try:
-                result = self._caller("tools/list", {})
-            except UpstreamCallError:
-                raise
-            except Exception as exc:
-                raise UpstreamCallError(
-                    f"upstream server '{self._server.name}' tools/list failed: {exc}"
-                ) from exc
-            return _parse_tools(result)
-
-        def call_tool(self, name: str, arguments: JsonObject) -> object:
-            try:
-                result = self._caller("tools/call", {"name": name, "arguments": arguments})
-            except UpstreamCallError:
-                raise
-            except Exception as exc:
-                raise UpstreamCallError(
-                    f"upstream server '{self._server.name}' tool '{name}' failed: {exc}"
-                ) from exc
-            return result
-
+class HttpUpstreamClient:
+    """Upstream MCP client that communicates over HTTP JSON-RPC."""
 
     def __init__(
         self,
@@ -99,7 +48,9 @@ class StdioUpstreamClient:
         caller: JsonRpcCaller | None = None,
     ) -> None:
         self._server = server
-        self._caller: JsonRpcCaller = caller if caller is not None else _make_stdio_caller(server)
+        self._caller: JsonRpcCaller = (
+            caller if caller is not None else _make_http_caller(server.url or "")
+        )
 
     def list_tools(self) -> list[UpstreamTool]:
         try:
@@ -122,9 +73,6 @@ class StdioUpstreamClient:
                 f"upstream server '{self._server.name}' tool '{name}' failed: {exc}"
             ) from exc
         return result
-
-
-HttpUpstreamClient = StdioUpstreamClient.HttpUpstreamClient
 
 
 def make_upstream_client(
@@ -433,68 +381,6 @@ def _make_http_caller(url: str) -> JsonRpcCaller:
             raise UpstreamCallError(f"HTTP request to '{url}' failed: {exc}") from exc
         raw: object = json.loads(response.content)
         return _json_rpc_result(raw, f"'{url}'")
-
-    return _call
-
-
-def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
-    def _call(method: str, params: JsonObject) -> JsonObject:
-        if not server.command:
-            raise UpstreamCallError(f"upstream server '{server.name}' has no command configured")
-        command = [server.command, *server.args]
-        initialize_payload: JsonObject = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "ralph-upstream", "version": "0"},
-            },
-        }
-        initialized_payload: JsonObject = {
-            "jsonrpc": "2.0",
-            "method": "notifications/initialized",
-            "params": {},
-        }
-        method_payload: JsonObject = {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": method,
-            "params": params,
-        }
-        payload_lines = [
-            json.dumps(initialize_payload, separators=(",", ":")),
-            json.dumps(initialized_payload, separators=(",", ":")),
-            json.dumps(method_payload, separators=(",", ":")),
-        ]
-        payload = "\n".join(payload_lines) + "\n"
-        env: dict[str, str] = {**os.environ, **server.env}
-        handle = get_process_manager().spawn(
-            command,
-            SpawnOptions(
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=env,
-                label=f"upstream:{server.name}",
-            ),
-        )
-        try:
-            stdout_bytes, _stderr = handle.communicate(input=payload.encode(), timeout=30)
-        except subprocess.TimeoutExpired:
-            handle.terminate(grace_period_s=0)
-            raise UpstreamCallError(f"upstream server '{server.name}' timed out") from None
-        if (handle.returncode or 0) != 0:
-            raise UpstreamCallError(
-                f"upstream server '{server.name}' process exited {handle.returncode}"
-            )
-        stdout_str = stdout_bytes.decode() if stdout_bytes else ""
-        stdout_lines = [line for line in stdout_str.splitlines() if line.strip()]
-        if not stdout_lines:
-            raise UpstreamCallError(f"upstream server '{server.name}' returned no JSON-RPC output")
-        raw: object = json.loads(stdout_lines[-1])
-        return _json_rpc_result(raw, f"'{server.name}'")
 
     return _call
 

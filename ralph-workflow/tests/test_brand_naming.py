@@ -31,7 +31,7 @@ _AUDIT_FILES: list[Path] = [
     REPO_ROOT / "ralph" / "cli" / "commands" / "cleanup.py",
     REPO_ROOT / "ralph" / "cli" / "main.py",
     REPO_ROOT / "ralph" / "config" / "welcome.py",
-    REPO_ROOT / "ralph" / "policy" / "validation.py",
+    REPO_ROOT / "ralph" / "policy" / "validation" / "__init__.py",
     REPO_ROOT / "README.md",
     REPO_ROOT / "CONTRIBUTING.md",
 ]

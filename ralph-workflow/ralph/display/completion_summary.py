@@ -11,6 +11,15 @@ from rich.console import Group
 from rich.rule import Rule
 from rich.text import Text
 
+from ralph.display._decision_labels import (
+    DECISION_BADGE_MAP as _DECISION_LABELS,
+)
+from ralph.display._decision_labels import (
+    PROCEED_DECISION_VALUES as _PROCEED_DECISIONS,
+)
+from ralph.display._decision_labels import (
+    REVISE_DECISION_VALUES as _REVISE_DECISIONS,
+)
 from ralph.display.phase_banner import phase_style
 from ralph.display.phase_status import (
     format_dev_cycle,
@@ -26,15 +35,7 @@ if TYPE_CHECKING:
     from ralph.display.snapshot import PipelineSnapshot
     from ralph.policy.models import PipelinePolicy
 
-
 _VERIFICATION_ARTIFACT = ".agent/artifacts/verification.json"
-_DECISION_LABELS: dict[str, str] = {
-    "proceed": "PASS",
-    "complete": "PASS",
-    "pr_opened": "INFO",
-    "revise": "WARN",
-    "failed": "FAIL",
-}
 
 _BADGE_THEME_KEYS: dict[str, str] = {
     "PASS": "theme.status.success",
@@ -210,9 +211,9 @@ def _analysis_decision_summary(
         if "analysis" in phase.lower():
             # Normalize decision to proceed/revise
             normalized = decision.lower().strip()
-            if normalized in ("proceed", "complete", "pr_opened"):
+            if normalized in _PROCEED_DECISIONS:
                 label = "proceed"
-            elif normalized in ("revise", "failed"):
+            elif normalized in _REVISE_DECISIONS:
                 label = "revise"
             else:
                 label = decision

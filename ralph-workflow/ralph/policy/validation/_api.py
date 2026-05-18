@@ -33,7 +33,7 @@ from ralph.policy.validation._pipeline_validators import (
     _validate_terminal_failure_phase_declared,
     _validate_tracked_counters_have_positive_max,
 )
-from ralph.policy.validation._policy_validation_error import PolicyValidationError, PolicyViolation
+from ralph.policy.validation._policy_validation_error import PolicyValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -260,7 +260,7 @@ def validate_work_units_against_policy(
     work_units_count = len(work_units.work_units)
 
     if work_units_count > parallel_policy.max_work_units:
-        raise PolicyViolation(
+        raise PolicyValidationError(
             f"work_units count {work_units_count} exceeds cap {parallel_policy.max_work_units}"
         )
 

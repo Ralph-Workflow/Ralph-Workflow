@@ -14,9 +14,9 @@ from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.tools.workspace._media_io import _load_artifact_bytes
 
 if TYPE_CHECKING:
-    from ralph.workspace import Workspace
+    from collections.abc import Callable
 
-_MEDIA_SESSION_SCHEMA_VERSION = "2"
+    from ralph.workspace import Workspace
 
 
 def _get_media_manifest(session: object) -> MediaManifest | None:
@@ -52,26 +52,9 @@ def _workspace_artifact_loader(
     workspace: Workspace,
     cache_path: str,
     source_path: str,
-) -> object:
+) -> Callable[[], bytes | None]:
     """Build a lazy artifact loader bound to a workspace replay source."""
     def _loader() -> bytes | None:
         return _load_artifact_bytes(workspace, cache_path, source_path)
 
     return _loader
-
-
-def _media_session_identity(entry: dict[str, str]) -> str:
-    """Return the dedupe identity for a persisted media-session entry."""
-    identity_key = entry.get("identity_key", "")
-    if identity_key:
-        return identity_key
-    source_uri = entry.get("source_uri", "")
-    source_path = entry.get("source_path", "")
-    modality = entry.get("modality", "")
-    artifact_id = entry.get("artifact_id", "")
-    uri = entry.get("uri", "")
-    if source_uri:
-        return f"source-uri:{modality}:{source_uri}"
-    if source_path:
-        return f"source-path:{modality}:{source_path}"
-    return f"artifact-id:{artifact_id or uri}"

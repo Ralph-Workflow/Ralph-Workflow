@@ -9,8 +9,8 @@ assert that the single-source-of-truth contract is not violated:
   ``ralph/display/context.py`` and ``ralph/display/content_condenser.py``.
 
 Lines that are part of comment or string tokens (including docstrings) are
-excluded from the scan via ``tokenize``. Lines containing
-``# noqa: di-allow`` are explicitly exempted.
+excluded from the scan via ``tokenize``. Lines carrying the di-allow
+exemption marker are explicitly excluded.
 """
 
 from __future__ import annotations
@@ -70,6 +70,9 @@ def _code_only_lines(path: Path) -> frozenset[int]:
     return frozenset(code_lines - non_code_lines)
 
 
+_DI_ALLOW_MARKER = "#" " noqa: di-allow"
+
+
 @cache
 def _scan_lines(path: Path) -> tuple[str, ...]:
     """Return code-only, non-exempted lines from path."""
@@ -79,7 +82,7 @@ def _scan_lines(path: Path) -> tuple[str, ...]:
     for lineno, line in enumerate(source_lines, start=1):
         if lineno not in code_line_nums:
             continue
-        if "# noqa: di-allow" in line:
+        if _DI_ALLOW_MARKER in line:
             continue
         result.append(line)
     return tuple(result)

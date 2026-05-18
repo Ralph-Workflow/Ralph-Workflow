@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from ralph.git.rebase._rebase_lock import RebaseLock
+from ralph.git.rebase._rebase_phase import RebasePhase
+
 from .rebase_checkpoint import (
     RebaseCheckpoint,
-    RebaseLock,
-    RebasePhase,
     acquire_rebase_lock,
     clear_rebase_checkpoint,
     load_rebase_checkpoint,

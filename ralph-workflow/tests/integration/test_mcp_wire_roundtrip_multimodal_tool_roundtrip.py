@@ -57,6 +57,7 @@ _REQUIRED_CAPABILITIES = {
     "EnvRead",
     "WebSearch",
     "WebVisit",
+    "MediaRead",
 }
 
 

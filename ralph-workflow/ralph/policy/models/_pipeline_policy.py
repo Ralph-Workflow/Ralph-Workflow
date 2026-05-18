@@ -1,30 +1,16 @@
 """PipelinePolicy Pydantic model."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
+from typing import Self
 
 from pydantic import Field, model_validator
 
+from ralph.policy.models._budget_counter_config import BudgetCounterConfig
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.policy.models._loop_counter_config import LoopCounterConfig
+from ralph.policy.models._phase_definition import PhaseDefinition
 from ralph.policy.models._phase_retry_policy import PhaseRetryPolicy
+from ralph.policy.models._post_commit_route import PostCommitRoute
 from ralph.policy.models._recovery_policy import RecoveryPolicy
-
-if TYPE_CHECKING:
-    from ralph.policy.models._budget_counter_config import BudgetCounterConfig
-    from ralph.policy.models._loop_counter_config import LoopCounterConfig
-    from ralph.policy.models._phase_definition import PhaseDefinition
-    from ralph.policy.models._post_commit_route import PostCommitRoute
-
-
-def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
-    """Return all terminal phase names from policy."""
-    names: set[str] = {
-        policy.terminal_phase,
-        policy.recovery.failed_route,
-    }
-    names.update(name for name, defn in policy.phases.items() if defn.role == "terminal")
-    return names
 
 
 class PipelinePolicy(_FrozenPolicyModel):
@@ -88,7 +74,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return _terminal_phase_names(self)
 
     @model_validator(mode="after")
-    def all_transitions_reference_known_phases(self) -> PipelinePolicy:
+    def all_transitions_reference_known_phases(self) -> Self:
         ts = self.terminal_states()
         for phase_name, phase_def in self.phases.items():
             t = phase_def.transitions
@@ -105,13 +91,13 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def entry_phase_exists(self) -> PipelinePolicy:
+    def entry_phase_exists(self) -> Self:
         if self.entry_phase not in self.phases:
             raise ValueError(f"entry_phase '{self.entry_phase}' is not defined in phases")
         return self
 
     @model_validator(mode="after")
-    def no_phase_cycles_without_loopback(self) -> PipelinePolicy:
+    def no_phase_cycles_without_loopback(self) -> Self:
         terminal = self.terminal_states()
         for name, phase_def in self.phases.items():
             if name in terminal:
@@ -125,7 +111,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def post_commit_routes_reference_known_targets(self) -> PipelinePolicy:
+    def post_commit_routes_reference_known_targets(self) -> Self:
         ts = self.terminal_states()
         for route in self.post_commit_routes:
             if route.target not in ts and route.target not in self.phases:
@@ -133,7 +119,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def post_commit_routes_unique_conditions(self) -> PipelinePolicy:
+    def post_commit_routes_unique_conditions(self) -> Self:
         seen: set[tuple[str, str]] = set()
         for route in self.post_commit_routes:
             key = (route.when.phase, route.when.budget_state)
@@ -146,7 +132,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def parallelization_targets_non_terminal_phases(self) -> PipelinePolicy:
+    def parallelization_targets_non_terminal_phases(self) -> Self:
         for phase_name, phase_def in self.phases.items():
             if phase_def.parallelization is not None and phase_def.role == "terminal":
                 raise ValueError(
@@ -155,7 +141,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def decision_routes_target_known_phases(self) -> PipelinePolicy:
+    def decision_routes_target_known_phases(self) -> Self:
         ts = self.terminal_states()
         for phase_name, phase_def in self.phases.items():
             for decision_name, route in phase_def.decisions.items():
@@ -167,7 +153,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def bypass_routes_target_known_phases(self) -> PipelinePolicy:
+    def bypass_routes_target_known_phases(self) -> Self:
         ts = self.terminal_states()
         for phase_name, phase_def in self.phases.items():
             for outcome, target in phase_def.bypass_routes.items():
@@ -179,7 +165,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def loop_counter_references_valid(self) -> PipelinePolicy:
+    def loop_counter_references_valid(self) -> Self:
         if not self.loop_counters:
             return self
         for phase_name, phase_def in self.phases.items():
@@ -195,7 +181,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def budget_counter_references_valid(self) -> PipelinePolicy:
+    def budget_counter_references_valid(self) -> Self:
         if not self.budget_counters:
             return self
         for phase_name, phase_def in self.phases.items():
@@ -211,7 +197,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def workflow_fallback_targets_valid(self) -> PipelinePolicy:
+    def workflow_fallback_targets_valid(self) -> Self:
         ts = self.terminal_states()
         for phase_name, phase_def in self.phases.items():
             if phase_def.workflow_fallback is not None:
@@ -224,7 +210,7 @@ class PipelinePolicy(_FrozenPolicyModel):
         return self
 
     @model_validator(mode="after")
-    def terminal_failure_phase_valid(self) -> PipelinePolicy:
+    def terminal_failure_phase_valid(self) -> Self:
         tfp = self.recovery.terminal_failure_phase
         if tfp is None:
             return self
@@ -247,3 +233,13 @@ class PipelinePolicy(_FrozenPolicyModel):
         if phase_def is not None and phase_def.retry_policy is not None:
             return phase_def.retry_policy
         return self.default_phase_retry_policy
+
+
+def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
+    """Return all terminal phase names from policy."""
+    names: set[str] = {
+        policy.terminal_phase,
+        policy.recovery.failed_route,
+    }
+    names.update(name for name, defn in policy.phases.items() if defn.role == "terminal")
+    return names

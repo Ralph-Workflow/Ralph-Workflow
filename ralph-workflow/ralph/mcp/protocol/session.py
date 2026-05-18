@@ -32,6 +32,8 @@ def session_has_capability(granted: set[str], requested: str) -> bool:
         mapped_granted = lookup_ralph_capability(value)
         if mapped_granted is not None:
             normalized_granted.add(_normalize_capability_token(mapped_granted.value))
+        if value in {"WorkspaceWriteAny", "FileWrite"}:
+            normalized_granted.update({"workspace_write_ephemeral", "workspace_write_tracked"})
 
     candidates = {_normalize_capability_token(requested)}
     mapped = lookup_ralph_capability(requested)

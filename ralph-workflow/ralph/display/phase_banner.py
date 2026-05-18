@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 from rich.rule import Rule
 from rich.text import Text
 
-from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
@@ -22,6 +21,7 @@ from ralph.display.phase_status import (
 if TYPE_CHECKING:
     from rich.console import Console
 
+    from ralph.display.context import DisplayContext
     from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
     from ralph.policy.models import PipelinePolicy
 
@@ -126,23 +126,12 @@ def _render_major_transition(
     c.print(Rule(title=title, style=_style))
 
 
-def _resolve_console(
-    console: Console | None,
-    display_context: DisplayContext | None,
-) -> Console:
-    if display_context is not None:
-        return display_context.console
-    if console is not None:
-        return console
-    raise TypeError("console or display_context is required")
-
-
 def show_phase_transition(
     from_phase: str,
     to_phase: str,
     *,
     context: dict[str, object] | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
     """Display a visual transition between pipeline phases.
@@ -153,8 +142,6 @@ def show_phase_transition(
     When pipeline_policy is provided, styles and descriptions are derived from
     declared phase roles so renamed phases render correctly.
     """
-    if display_context is None:
-        raise TypeError("display_context is required")
     c = display_context.console
     ctx = display_context
 
@@ -214,23 +201,19 @@ def show_phase_start(
     phase: str,
     *,
     agent_name: str | None = None,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
     """Display the start of a pipeline phase (no iteration context).
 
     For banners that carry iteration context, use :func:`show_phase_start_from_entry`.
     """
-    c = _resolve_console(console, display_context)
-    effective_ctx = (
-        display_context if display_context is not None else make_display_context(console=c)
-    )
+    c = display_context.console
     style = phase_style(phase, pipeline_policy)
     label = phase_label(phase)
 
     line = Text()
-    start_glyph = effective_ctx.glyph_for("start")
+    start_glyph = display_context.glyph_for("start")
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 

@@ -9,7 +9,7 @@ from ralph.pydantic_compat import RalphBaseModel
 
 from .agent_config import AgentConfig
 from .ccs_config import CcsAliasConfig, CcsConfig
-from .general_config import GeneralConfig, GeneralWorkflowFlags
+from .general_config import GeneralConfig
 
 
 def _normalize_chain_value(value: object) -> AgentChainConfig:
@@ -39,8 +39,9 @@ def _normalize_drain_value(value: object) -> AgentDrainConfig:
 
 
 class UnifiedConfig(RalphBaseModel):
-    model_config = ConfigDict(frozen=True)
     """Top-level merged configuration (global + local + CLI overrides)."""
+
+    model_config = ConfigDict(frozen=True)
 
     general: GeneralConfig = Field(default_factory=GeneralConfig)
     ccs: CcsConfig = Field(default_factory=CcsConfig)
@@ -93,9 +94,7 @@ class UnifiedConfig(RalphBaseModel):
 
 __all__ = [
     "AgentConfig",
-    "CcsAliasConfig",
     "CcsConfig",
     "GeneralConfig",
-    "GeneralWorkflowFlags",
     "UnifiedConfig",
 ]

@@ -9,6 +9,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
 
+from ralph.runtime._version_info import PythonVersionInfo
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 if TYPE_CHECKING:
@@ -64,35 +66,6 @@ if TYPE_CHECKING:
 class RuntimeEnvironment:
     """Snapshot of the active Python runtime environment."""
 
-    @dataclass(frozen=True)
-    class PythonVersionInfo:
-        """Structured Python runtime version metadata."""
-
-        major: int
-        minor: int
-        micro: int
-        releaselevel: str
-        serial: int
-        implementation: str
-        executable: Path
-        version: str
-
-        @classmethod
-        def from_sys(cls, sys_module: SysModuleProtocol) -> PythonVersionInfo:
-            """Build version metadata from a sys-like module."""
-
-            return cls(
-                major=sys_module.version_info.major,
-                minor=sys_module.version_info.minor,
-                micro=sys_module.version_info.micro,
-                releaselevel=sys_module.version_info.releaselevel,
-                serial=sys_module.version_info.serial,
-                implementation=sys_module.implementation.name,
-                executable=Path(sys_module.executable),
-                version=sys_module.version,
-            )
-
-
     python: PythonVersionInfo
     executable: Path
     prefix: Path
@@ -107,9 +80,6 @@ class RuntimeEnvironment:
         """Return an environment variable from the captured snapshot."""
 
         return self.env.get(name, default)
-
-
-PythonVersionInfo = RuntimeEnvironment.PythonVersionInfo
 
 
 _VIRTUAL_ENV_KEYS = ("VIRTUAL_ENV", "CONDA_PREFIX")
@@ -175,7 +145,6 @@ def detect_runtime_environment(
 
 
 __all__ = [
-    "PythonVersionInfo",
     "RuntimeEnvironment",
     "SysModuleProtocol",
     "detect_runtime_environment",

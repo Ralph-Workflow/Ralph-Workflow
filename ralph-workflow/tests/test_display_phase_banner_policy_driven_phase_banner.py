@@ -459,6 +459,7 @@ class TestPolicyDrivenPhaseBanner:
         """show_phase_start passes through pipeline_policy to _phase_style."""
         policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
         console = Console(record=True)
-        show_phase_start("my_work", pipeline_policy=policy, console=console)
+        ctx = _ctx_from_console(console)
+        show_phase_start("my_work", pipeline_policy=policy, display_context=ctx)
         output = console.export_text()
         assert "My Work" in output

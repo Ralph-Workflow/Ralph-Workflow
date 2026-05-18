@@ -7,7 +7,7 @@ from typing import cast
 
 from rich.console import Console
 
-from ralph import __version__
+from ralph import version
 from ralph.banner import (
     RichGroupProto,
     RichPanelProto,
@@ -42,7 +42,7 @@ def test_render_banner_includes_ascii_art_version_and_welcome_message() -> None:
 
     output = buffer.getvalue()
     assert "Ralph" in output
-    assert __version__ in output
+    assert version in output
     assert "Welcome to Ralph Workflow" in output
     assert "PROMPT-driven agent orchestrator" in output
     assert "____" in output or "╭" in output

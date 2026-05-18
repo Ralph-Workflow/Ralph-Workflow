@@ -1,16 +1,12 @@
 """AgentsPolicy Pydantic model."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
+from typing import Self
 
 from pydantic import Field, model_validator
 
+from ralph.policy.models._agent_chain_config import AgentChainConfig
+from ralph.policy.models._agent_drain_config import AgentDrainConfig
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
-
-if TYPE_CHECKING:
-    from ralph.policy.models._agent_chain_config import AgentChainConfig
-    from ralph.policy.models._agent_drain_config import AgentDrainConfig
 
 
 class AgentsPolicy(_FrozenPolicyModel):
@@ -30,14 +26,14 @@ class AgentsPolicy(_FrozenPolicyModel):
     )
 
     @model_validator(mode="after")
-    def drains_reference_known_chains(self) -> AgentsPolicy:
+    def drains_reference_known_chains(self) -> Self:
         for drain, cfg in self.agent_drains.items():
             if cfg.chain not in self.agent_chains:
                 raise ValueError(f"Drain '{drain}' references unknown chain '{cfg.chain}'")
         return self
 
     @model_validator(mode="after")
-    def no_empty_chains(self) -> AgentsPolicy:
+    def no_empty_chains(self) -> Self:
         for name, cfg in self.agent_chains.items():
             if not cfg.agents:
                 raise ValueError(f"Chain '{name}' has no agents")

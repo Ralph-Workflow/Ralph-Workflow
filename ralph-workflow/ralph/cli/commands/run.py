@@ -8,14 +8,20 @@ from __future__ import annotations
 import shutil
 from importlib import import_module
 from inspect import signature
-from typing import TYPE_CHECKING, NamedTuple, Protocol, TypedDict, cast
+from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
 from loguru import logger
 from rich.panel import Panel
 from rich.text import Text
 
 from ralph.agents.registry import AgentRegistry
+from ralph.cli.commands._execute_pipeline_request import _ExecutePipelineRequest
+from ralph.cli.commands._load_result import _LoadResult
+from ralph.cli.commands._policy_preflight_request import _PolicyPreflightRequest
+from ralph.cli.commands._preflight_request import _PreflightRequest
+from ralph.cli.commands._run_func_state import _RUN_FUNC_UNSET, _RunFuncState
 from ralph.config.loader import load_config
+from ralph.display.context import make_display_context
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
 from ralph.policy.loader import (
@@ -34,18 +40,17 @@ from ralph.policy.validation import (
     validate_recovery_config,
     validate_required_inputs,
 )
-from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
+from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.cli.commands._legacy_run_pipeline_kwargs import _LegacyRunPipelineKwargs
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
-
-from ralph.display.context import make_display_context
 
 if TYPE_CHECKING:
     class _RunnerFunc(Protocol):
@@ -61,7 +66,7 @@ if TYPE_CHECKING:
 
         run: _RunnerFunc
 
-_RUN_FUNC_UNSET: object = object()
+_state = _RunFuncState()
 
 
 def _get_run_func() -> _RunnerFunc | None:
@@ -121,49 +126,6 @@ _GENERATED_AGENT_STATE_FILES: tuple[str, ...] = (
 class RunPipelineRequest(NamedTuple):
     """Parameters for a pipeline run request."""
 
-    class _RunFuncState:
-        """Holds the lazily-loaded pipeline runner function."""
-
-        def __init__(self) -> None:
-            self.run_func: _RunnerFunc | None | object = _RUN_FUNC_UNSET
-
-    class _LoadResult(NamedTuple):
-        config: UnifiedConfig
-        workspace_scope: WorkspaceScope | None
-        initial_state: PipelineState | None
-        policy_bundle: PolicyBundle | None
-
-    class _PolicyPreflightRequest(NamedTuple):
-        config: UnifiedConfig
-        policy_bundle: PolicyBundle
-        initial_state: PipelineState | None
-        counter_overrides: dict[str, int]
-
-    class _PreflightRequest(NamedTuple):
-        config: UnifiedConfig
-        workspace_scope: WorkspaceScope | None
-        policy_bundle: object
-        initial_state: PipelineState | None
-        counter_overrides: dict[str, int]
-        inline_prompt: str | None = None
-
-    class _ExecutePipelineRequest(NamedTuple):
-        config: UnifiedConfig
-        initial_state: PipelineState | None
-        policy_bundle: object
-        verbosity: Verbosity | None
-        counter_overrides: dict[str, int]
-
-    class _LegacyRunPipelineKwargs(TypedDict, total=False):
-        config_path: Path
-        cli_overrides: ConfigOverrides
-        dry_run: bool
-        resume: bool
-        verbosity: Verbosity
-        counter_overrides: dict[str, int]
-        inline_prompt: str
-
-
     config_path: Path | None = None
     cli_overrides: ConfigOverrides | None = None
     dry_run: bool = False
@@ -173,14 +135,6 @@ class RunPipelineRequest(NamedTuple):
     inline_prompt: str | None = None
 
 
-_RunFuncState = RunPipelineRequest._RunFuncState
-_LoadResult = RunPipelineRequest._LoadResult
-_PolicyPreflightRequest = RunPipelineRequest._PolicyPreflightRequest
-_PreflightRequest = RunPipelineRequest._PreflightRequest
-_ExecutePipelineRequest = RunPipelineRequest._ExecutePipelineRequest
-_LegacyRunPipelineKwargs = RunPipelineRequest._LegacyRunPipelineKwargs
-
-_state = _RunFuncState()
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:

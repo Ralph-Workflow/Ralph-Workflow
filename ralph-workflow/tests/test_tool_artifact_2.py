@@ -328,7 +328,7 @@ def test_piecewise_plan_submission_produces_same_plan_json_as_atomic(tmp_path: P
     assert stored == atomic_stored
     assert stored["type"] == "plan"
     summary = cast("dict[str, object]", stored["content"]["summary"])
-    assert summary["context"] == "Plan the MCP validation rollout."
+    assert summary["context"] == "Test context for unit tests."
     assert (
         (atomic_path / ".agent" / "PLAN.md")
         .read_text(encoding="utf-8")

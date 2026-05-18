@@ -6,27 +6,25 @@ Exposes tools for agent interactions, artifact submission, and state queries.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
-from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts._bridge_artifact_deps import BridgeArtifactDeps
+from ralph.mcp.artifacts._bridge_config import BridgeConfig
+from ralph.mcp.artifacts._bridge_error import BridgeError
+from ralph.mcp.artifacts._mcp_tool import MCPTool
 from ralph.mcp.artifacts.store import (
-    DEFAULT_ARTIFACT_PERSISTENCE,
     ArtifactExistsError,
     ArtifactNotFoundError,
-    ArtifactPersistence,
     ArtifactSubmitOptions,
     get_artifact,
     list_artifacts,
     submit_artifact,
 )
-from ralph.mcp.protocol.transport import MCPMessage, MCPTransport, StdioTransport
+from ralph.mcp.protocol.transport import MCPMessage, StdioTransport
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
 
     class _ToolHandler(Protocol):
         """Protocol for MCP tool handler callables."""
@@ -37,58 +35,6 @@ if TYPE_CHECKING:
         """Protocol for MCP method dispatcher callables."""
 
         def __call__(self, message: MCPMessage, /) -> MCPMessage: ...
-
-
-class BridgeError(Exception):
-    """Raised when bridge operations fail."""
-
-
-@dataclass(frozen=True)
-class BridgeArtifactDeps:
-    """Dependencies injected into bridge artifact operations."""
-
-    backend: FileBackend = DEFAULT_FILE_BACKEND
-    now_iso: Callable[[], str] = DEFAULT_ARTIFACT_PERSISTENCE.now_iso
-
-    @property
-    def persistence(self) -> ArtifactPersistence:
-        return ArtifactPersistence(backend=self.backend, now_iso=self.now_iso)
-
-
-DEFAULT_BRIDGE_ARTIFACT_DEPS = BridgeArtifactDeps()
-
-
-@dataclass
-class BridgeConfig:
-    """Configuration for MCP bridge.
-
-    Attributes:
-        artifact_dir: Directory for storing artifacts.
-        transport: Transport instance (stdio by default).
-        workspace_root: Root of the workspace.
-    """
-
-    artifact_dir: Path = Path(".agent/artifacts")
-    workspace_root: Path = Path()
-    transport: MCPTransport | None = None
-    artifact_deps: BridgeArtifactDeps = field(default_factory=BridgeArtifactDeps)
-
-
-@dataclass
-class MCPTool:
-    """Represents an MCP tool.
-
-    Attributes:
-        name: Tool name.
-        description: Tool description.
-        input_schema: JSON schema for tool input.
-        handler: Callable that handles tool invocations.
-    """
-
-    name: str
-    description: str
-    input_schema: dict[str, object]
-    handler: _ToolHandler
 
 
 class MCPBridge:
@@ -350,3 +296,6 @@ class MCPBridge:
         self._running = False
         await self._transport.close()
         logger.info("MCP bridge closed")
+
+
+__all__ = ["BridgeArtifactDeps", "BridgeConfig", "BridgeError", "MCPBridge"]

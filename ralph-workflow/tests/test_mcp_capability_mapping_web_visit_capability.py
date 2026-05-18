@@ -106,7 +106,7 @@ class TestWebVisitCapability:
             f"SessionDrain.{drain.name} is missing Capability.WEB_VISIT"
         )
 
-    @pytest.mark.parametrize("drain", list(_COMMIT_DRAINS))
+    @pytest.mark.parametrize("drain", sorted(_COMMIT_DRAINS))
     def test_web_visit_not_granted_to_commit_drains(self, drain: SessionDrain) -> None:
         assert not CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_VISIT), (
             f"SessionDrain.{drain.name} should not have Capability.WEB_VISIT "

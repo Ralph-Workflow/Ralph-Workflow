@@ -7,10 +7,6 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.mcp.tools.workspace._media_session import (
-    _MEDIA_SESSION_SCHEMA_VERSION,
-    _media_session_identity,
-)
 from ralph.prompts.debug_dump import (
     media_cache_artifact_path,
     media_registry_path,
@@ -19,6 +15,25 @@ from ralph.prompts.debug_dump import (
 
 if TYPE_CHECKING:
     from ralph.workspace import Workspace
+
+_MEDIA_SESSION_SCHEMA_VERSION = "2"
+
+
+def _media_session_identity(entry: dict[str, str]) -> str:
+    """Return the dedupe identity for a persisted media-session entry."""
+    identity_key = entry.get("identity_key", "")
+    if identity_key:
+        return identity_key
+    source_uri = entry.get("source_uri", "")
+    source_path = entry.get("source_path", "")
+    modality = entry.get("modality", "")
+    artifact_id = entry.get("artifact_id", "")
+    uri = entry.get("uri", "")
+    if source_uri:
+        return f"source-uri:{modality}:{source_uri}"
+    if source_path:
+        return f"source-path:{modality}:{source_path}"
+    return f"artifact-id:{artifact_id or uri}"
 
 
 def _write_durable_media_cache(

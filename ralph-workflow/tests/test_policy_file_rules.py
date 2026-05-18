@@ -10,6 +10,10 @@ import io
 import tokenize
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.timeout_seconds(5)
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RALPH_DIR = REPO_ROOT / "ralph"
 TESTS_DIR = REPO_ROOT / "tests"
@@ -61,15 +65,19 @@ def _private_ralph_imports(path: Path) -> list[tuple[str, list[str]]]:
             private_names = [
                 alias.name
                 for alias in node.names
-                if alias.name.startswith("_") and not alias.name.startswith("__")
+                if alias.name.startswith("_")
             ]
             if private_names:
                 results.append((mod, private_names))
     return results
 
 
+_TYPE_IGNORE_MARKER = "# type:" " ignore"
+_NOQA_MARKER = "#" " noqa"
+
+
 def _has_bypass_comment(path: Path) -> list[tuple[int, str]]:
-    """Return (lineno, line) for lines with actual # type: ignore or # noqa comments.
+    """Return (lineno, line) for lines with actual type-check or lint-bypass comments.
 
     Uses tokenize to distinguish comment tokens from string literals.
     """
@@ -79,7 +87,7 @@ def _has_bypass_comment(path: Path) -> list[tuple[int, str]]:
         tokens = tokenize.generate_tokens(io.StringIO(src).readline)
         for tok_type, tok_string, (start_row, _), _, _ in tokens:
             if tok_type == tokenize.COMMENT and (
-                "# type: ignore" in tok_string or "# noqa" in tok_string
+                _TYPE_IGNORE_MARKER in tok_string or _NOQA_MARKER in tok_string
             ):
                 lines = src.splitlines()
                 line = lines[start_row - 1] if start_row <= len(lines) else ""
@@ -136,7 +144,7 @@ def test_no_private_imports_from_ralph_in_tests() -> None:
 
 
 def test_no_type_ignore_or_noqa_in_maintained_source() -> None:
-    """No # type: ignore or # noqa bypass comments in ralph/ or tests/."""
+    """No type-check or lint-bypass comments in ralph/ or tests/."""
     violations = []
     for base in (RALPH_DIR, TESTS_DIR):
         for path in _all_py_files(base):

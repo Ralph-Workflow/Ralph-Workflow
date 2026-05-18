@@ -244,7 +244,7 @@ def _run_fan_out_sync(
         )
 
     monkeypatch.setattr(
-        "ralph.pipeline.runner.build_session_mcp_plan",
+        "ralph.pipeline.fan_out.build_session_mcp_plan",
         _fake_build_session_mcp_plan,
     )
 

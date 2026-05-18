@@ -8,17 +8,18 @@ from __future__ import annotations
 
 import shlex
 import subprocess
-from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
+from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
+from ralph.mcp.tools._exec_execution_error import ExecutionError
+from ralph.mcp.tools._exec_params import ExecParams
+from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
-    ToolError,
     ToolResult,
     require_capability,
 )
@@ -58,55 +59,14 @@ _REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
 _CONTAINER_COMMANDS = {"docker", "podman", "chroot", "nsenter", "unshare"}
 _PACKAGE_MANAGERS = {"apt", "yum", "dnf", "pacman", "brew"}
 
-type CwdProvider = Callable[[], Path]
-
-
-
-
-type CommandRunner = Callable[[list[str], Path, float | None], _CompletedProcessAdapter]
-
-
 @runtime_checkable
 class WorkspaceWithRoot(Protocol):
     """Workspace surface required for command execution."""
-
-    @dataclass(frozen=True)
-    class _CompletedProcessAdapter:
-        """Adapter exposing stdout/stderr/returncode like subprocess.CompletedProcess."""
-
-        stdout: bytes
-        stderr: bytes
-        returncode: int
-
-    class ExecutionError(ToolError):
-        """Raised when the exec subprocess cannot be started or times out."""
-
-    @dataclass(frozen=True)
-    class ExecParams:
-        """Parsed parameters for the MCP exec tool."""
-
-        command: str
-        args: list[str]
-        timeout_ms: int
-
-    @dataclass(frozen=True)
-    class ExecRunDeps:
-        """Injectable dependencies for exec tool command execution."""
-
-        runner: CommandRunner | None = None
-        cwd_provider: CwdProvider | None = None
-
 
     @property
     def root(self) -> Path:
         """Return the absolute workspace root path."""
         ...
-
-
-_CompletedProcessAdapter = WorkspaceWithRoot._CompletedProcessAdapter
-ExecutionError = WorkspaceWithRoot.ExecutionError
-ExecParams = WorkspaceWithRoot.ExecParams
-ExecRunDeps = WorkspaceWithRoot.ExecRunDeps
 
 
 def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
@@ -563,8 +523,10 @@ def handle_exec_command(
 
 
 __all__ = [
+    "DEFAULT_TIMEOUT_MS",
     "PROCESS_EXEC_BOUNDED_CAPABILITY",
     "ExecParams",
+    "ExecRunDeps",
     "ExecutionError",
     "WorkspaceWithRoot",
     "apply_exec_policy",

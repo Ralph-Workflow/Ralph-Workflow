@@ -1,4 +1,4 @@
-"""PolicyValidationError exception and PolicyViolation alias."""
+"""PolicyValidationError exception."""
 
 from __future__ import annotations
 
@@ -15,6 +15,3 @@ class PolicyValidationError(Exception):
         self.message = message
         self.source = source
         super().__init__(message)
-
-
-PolicyViolation = PolicyValidationError

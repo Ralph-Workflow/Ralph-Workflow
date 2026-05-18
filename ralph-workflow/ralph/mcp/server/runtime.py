@@ -34,7 +34,7 @@ import os
 import uuid
 from dataclasses import dataclass
 from enum import StrEnum
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from importlib import import_module
 from pathlib import Path
 from threading import Event
@@ -49,6 +49,7 @@ from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server.runtime_session import FileBackedSession, session_from_env
 from ralph.mcp.tools.bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
 from ralph.mcp.upstream.config import (
@@ -521,20 +522,6 @@ class McpServerExtras:
                 return decoded_payload
             return {"content": _serialize_content_blocks(payload_source)}
 
-    class _FallbackHttpServer(ThreadingHTTPServer):
-        daemon_threads = True
-        mcp_server: McpServer
-        state: ServerState
-        shutdown_event: Event
-
-        def shutdown(self) -> None:
-            self.shutdown_event.set()
-            super().shutdown()
-
-        def server_close(self) -> None:
-            self.shutdown_event.set()
-            super().server_close()
-
     class _FallbackHttpHandler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -670,8 +657,9 @@ ServerState = McpServerExtras.ServerState
 JsonRpcRequest = McpServerExtras.JsonRpcRequest
 JsonRpcResponse = McpServerExtras.JsonRpcResponse
 McpServer = McpServerExtras.McpServer
-_FallbackHttpServer = McpServerExtras._FallbackHttpServer
 _FallbackHttpHandler = McpServerExtras._FallbackHttpHandler
+
+
 _FallbackStandaloneServer = McpServerExtras._FallbackStandaloneServer
 _StandaloneHttpServer = McpServerExtras._StandaloneHttpServer
 

@@ -24,9 +24,13 @@ ralph.main
 ralph.banner
 ~~~~~~~~~~~~
 
+.. Note: RichGroupProto/RichPanelProto/RichTextProto are excluded here to avoid duplicate
+   object descriptions; they are documented under ralph.rich_protocols.
+
 .. automodule:: ralph.banner
    :members:
    :show-inheritance:
+   :exclude-members: RichGroupProto, RichPanelProto, RichTextProto
 
 ralph.logging
 ~~~~~~~~~~~~~
@@ -1483,9 +1487,11 @@ ralph.mcp.protocol.transport
 ralph.mcp.server
 ~~~~~~~~~~~~~~~~
 
+.. Note: ralph.mcp.server re-exports from its submodules; using :no-members:
+   avoids duplicate object-description warnings.
+
 .. automodule:: ralph.mcp.server
-   :members:
-   :show-inheritance:
+   :no-members:
 
 ralph.mcp.server.factory
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1799,9 +1805,11 @@ ralph.mcp.webvisit.fetcher
 ralph.mcp.websearch
 ~~~~~~~~~~~~~~~~~~~
 
+.. Note: ralph.mcp.websearch re-exports from its submodules; using :no-members:
+   avoids duplicate object-description warnings.
+
 .. automodule:: ralph.mcp.websearch
-   :members:
-   :show-inheritance:
+   :no-members:
 
 ralph.mcp.websearch.backends
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1861,8 +1869,6 @@ ralph.mcp.websearch.secrets
    :members:
    :show-inheritance:
 
-----
-
 Git
 ---
 
@@ -1897,9 +1903,11 @@ ralph.git.operations
 ralph.git.rebase
 ~~~~~~~~~~~~~~~~
 
+.. Note: ralph.git.rebase re-exports from its private submodules; using
+   :no-members: avoids duplicate object-description warnings.
+
 .. automodule:: ralph.git.rebase
-   :members:
-   :show-inheritance:
+   :no-members:
 
 ralph.git.rebase.rebase
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -2147,9 +2155,11 @@ Process
 ralph.process
 ~~~~~~~~~~~~~
 
+.. Note: ralph.process re-exports from its submodules; using :no-members: avoids
+   duplicate object-description warnings.
+
 .. automodule:: ralph.process
-   :members:
-   :show-inheritance:
+   :no-members:
 
 ralph.process.child_liveness
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2184,8 +2194,6 @@ ralph.process.mcp_supervisor
 .. automodule:: ralph.process.mcp_supervisor
    :members:
    :show-inheritance:
-
-----
 
 API
 ---
@@ -2519,9 +2527,11 @@ ralph.display.tool_args
 ralph.executor
 ~~~~~~~~~~~~~~
 
+.. Note: ralph.executor re-exports from its submodules; using :no-members: avoids
+   duplicate object-description warnings.
+
 .. automodule:: ralph.executor
-   :members:
-   :show-inheritance:
+   :no-members:
 
 ralph.executor.process
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -2591,9 +2601,11 @@ ralph.interrupt.signal_setter
 ralph.files
 ~~~~~~~~~~~
 
+.. Note: ralph.files re-exports from its submodules; using :no-members: avoids
+   duplicate object-description warnings.
+
 .. automodule:: ralph.files
-   :members:
-   :show-inheritance:
+   :no-members:
 
 ralph.files.operations
 ~~~~~~~~~~~~~~~~~~~~~~

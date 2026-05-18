@@ -29,11 +29,11 @@ from ralph.onboarding import (
     starter_prompt_validation_hint,
 )
 from ralph.policy.loader import (
-    PolicyValidationError,
     load_policy,
     load_policy_for_workspace_scope,
 )
 from ralph.policy.validation import (
+    PolicyValidationError,
     validate_agent_chains_satisfiable,
     validate_recovery_config,
 )

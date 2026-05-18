@@ -79,7 +79,7 @@ if TYPE_CHECKING:
             to_phase: str,
             *,
             context: dict[str, object] | None = ...,
-            display_context: DisplayContext | None = ...,
+            display_context: DisplayContext,
             pipeline_policy: PipelinePolicy | None = ...,
         ) -> None: ...
 
