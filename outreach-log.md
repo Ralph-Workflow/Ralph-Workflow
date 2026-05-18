@@ -2,6 +2,17 @@
 
 ## 2026-05-18 (Monday)
 
+### RalphWorkflow Distribution Infrastructure
+- **Reddit freshness-scoring rollover fix**: Patched `agents/marketing/reddit_autopost.py` so absolute-date freshness scoring now uses the actual current date instead of the hardcoded May 17, 2026 reference; added a regression test to lock the May 18+ behavior before the next posting window opens.
+  - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`
+  - Live state check: `python3 agents/marketing/reddit_watchdog.py` still correctly returns `volume_guard_active:3_posts_in_6h`, so no safe Reddit post was forced during the cooldown window.
+  - Why: distribution is still the highest-leverage lane that is actually executable from this environment, and the autoposter had a date rollover bug that would increasingly mis-rank fresh vs older Reddit opportunities after May 17. Fixing that now protects the next real distribution move instead of spending another cycle on generic content.
+
+### RalphWorkflow Distribution Infrastructure
+- **Reddit watchdog retry fix**: Patched `agents/marketing/reddit_watchdog.py` so a fresh monitor report is no longer treated as permanently handled after `cooldown_skip` or `fresh_opportunity_rate_limited`; added `agents/marketing/tests/test_reddit_watchdog.py` to lock the behavior and reran the watchdog to confirm it now re-attempts the same fresh report instead of idling behind stale state.
+  - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost agents.marketing.tests.test_reddit_watchdog -v`; `python3 agents/marketing/reddit_watchdog.py` now reaches `autopost_attempted` on `seo-reports/reddit_monitor_2026-05-17_2115.md` and reports the live burst gate instead of `already_handled`
+  - Why: the strongest available move right now was fixing a real distribution stall. The watchdog had been freezing fresh Reddit opportunities after one cooldown-limited pass, which meant the marketer could miss a still-usable thread even after the rate window changed.
+
 ### RalphWorkflow Conversion
 - **Hosted docs SEO + free-use landing page**: Added and pushed a new public Sphinx page, `unattended-coding-agent`, then surfaced it from the docs homepage and set `language = "en"` in Sphinx config to address the missing docs lang attribute.
   - Commit: `9836c95e` — `Add unattended coding agent landing page`

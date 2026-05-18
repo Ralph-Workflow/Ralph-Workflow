@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 
 from agents.marketing import reddit_autopost
 
@@ -117,6 +118,12 @@ class RedditAutopostTests(unittest.TestCase):
             reddit_autopost.detect_category("People running 2–5 coding agents: what actually breaks first for you?"),
             "breaks_first",
         )
+
+    def test_freshness_score_uses_current_reference_date_for_absolute_dates(self):
+        reference = datetime(2026, 5, 18, 1, 55)
+        self.assertEqual(reddit_autopost.freshness_score("May 17, 2026", reference=reference), 5)
+        self.assertEqual(reddit_autopost.freshness_score("May 11, 2026", reference=reference), 4)
+        self.assertEqual(reddit_autopost.freshness_score("April 10, 2026", reference=reference), 1)
 
     def test_live_high_fit_threads_generate_distinct_bodies(self):
         handoff = reddit_autopost.Opportunity(
