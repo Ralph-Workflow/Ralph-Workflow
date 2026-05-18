@@ -1,3 +1,8 @@
+.. title:: Ralph Workflow: Free open-source unattended coding CLI
+
+.. meta::
+   :description: Ralph Workflow is a free open-source CLI that orchestrates Claude Code, Codex CLI, and OpenCode on your own machine for reviewable overnight coding work.
+
 Ralph Workflow
 ==============
 
