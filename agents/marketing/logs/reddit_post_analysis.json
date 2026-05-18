@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-05-18T02:57:40.929130",
-  "count": 15,
+  "generated_at": "2026-05-18T03:35:07.597179",
+  "count": 16,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 12
+    "Informal-Salt827": 13
   },
   "by_community": {
     "r/AI_Agents": 1,
-    "r/ClaudeCode": 8,
+    "r/ClaudeCode": 9,
     "r/codex": 5,
     "r/ClaudeAI": 1
   },
@@ -29,37 +29,37 @@
     "anyone"
   ],
   "top_body_tokens": [
-    "workflow",
     "agent",
+    "workflow",
     "diff",
     "ralph",
+    "instead",
+    "done",
     "tool",
     "before",
     "trust",
-    "instead",
-    "done",
+    "checks",
+    "agents",
     "work",
     "task",
+    "reviewable",
+    "small",
     "after",
     "pass",
     "needs",
-    "reviewable",
     "ralphworkflow",
-    "checks",
-    "agents",
-    "small",
-    "better"
+    "receipt"
   ],
   "phrase_hits": {
-    "worktree": 6,
-    "diff": 14,
+    "worktree": 7,
+    "diff": 15,
     "verify": 1,
     "handoff": 8,
-    "reviewable": 10,
+    "reviewable": 11,
     "done criteria": 6,
-    "scope": 6,
+    "scope": 7,
     "final check": 1,
-    "overnight": 2,
+    "overnight": 3,
     "review bundle": 1,
     "trust": 9,
     "small scoped": 1
@@ -75,14 +75,6 @@
     }
   ],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-17T09:27:18.195313",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeCode",
-      "title": "How are you handling merge safety when running multiple coding agents on the same repo?",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t9prcp/how_are_you_handling_merge_safety_when_running/om9n4uw/",
-      "opening_line": "That exact signature-drift case is why I stopped calling a branch “safe” just because its own CI is green."
-    },
     {
       "timestamp": "2026-05-17T12:22:24.898560",
       "account": "Informal-Salt827",
@@ -154,6 +146,14 @@
       "title": "Running two Claude Code agents on the same repo simultaneously. Git worktrees make it work.",
       "comment_url": "https://old.reddit.com/r/ClaudeAI/comments/1t9tolw/running_two_claude_code_agents_on_the_same_repo/omddojv/",
       "opening_line": "Git worktrees definitely solve the collision problem, but the thing that bites me later is semantic invalidation."
+    },
+    {
+      "timestamp": "2026-05-18T03:28:01.659500",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Claude utilizing other agents?",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tg50xl/claude_utilizing_other_agents/omemy51/",
+      "opening_line": "That can work well, but I’ve had the best results when each extra agent owns a different phase instead of all of them touching the same task at once."
     }
   ],
   "recommendations": [

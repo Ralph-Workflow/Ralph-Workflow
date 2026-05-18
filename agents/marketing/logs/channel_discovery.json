@@ -9,7 +9,22 @@
     "lobsters",
     "producthunt",
     "indiehackers",
-    "medium"
+    "medium",
+    "dev.to-gist",
+    "slashdot",
+    "newsbrew",
+    "toolhunt",
+    "theresanaiforthat",
+    "alternativeTo",
+    "saashub",
+    "productpapa",
+    "stackshare",
+    "github-readme",
+    "RSS directories",
+    "dmoz",
+    "dirwell",
+    "smashingmagazine",
+    "css-tricks"
   ],
   "results": [
     {
@@ -114,7 +129,170 @@
       "http_code": "403",
       "status": "blocked",
       "note": "Cloudflare or bot protection"
+    },
+    {
+      "name": "dev.to-gist",
+      "url": "https://gist.github.com",
+      "method": "gist",
+      "difficulty": "blocked",
+      "timestamp": "2026-05-18T03:55:47.456024",
+      "http_code": "302",
+      "status": "http_302"
+    },
+    {
+      "name": "slashdot",
+      "url": "https://slashdot.org/submission",
+      "method": "submit",
+      "difficulty": "medium",
+      "timestamp": "2026-05-18T04:00:37.706309",
+      "http_code": "200",
+      "final_url": "https://slashdot.org/submission",
+      "status": "login_required",
+      "note": "submission requires login"
+    },
+    {
+      "name": "newsbrew",
+      "url": "https://newsbrew.io",
+      "method": "submit",
+      "difficulty": "unknown",
+      "timestamp": "2026-05-18T03:55:49.890293",
+      "http_code": "000",
+      "status": "http_000"
+    },
+    {
+      "name": "toolhunt",
+      "url": "https://toolhunt.ai",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-18T03:59:45.912399",
+      "http_code": "200",
+      "final_url": "https://toolhunt.ai",
+      "status": "parked",
+      "note": "domain is parked / for sale"
+    },
+    {
+      "name": "theresanaiforthat",
+      "url": "https://theresanaiforthat.com",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-18T03:55:51.869004",
+      "http_code": "403",
+      "status": "blocked",
+      "note": "Cloudflare or bot protection"
+    },
+    {
+      "name": "alternativeTo",
+      "url": "https://alternativeto.net",
+      "method": "submit",
+      "difficulty": "blocked",
+      "timestamp": "2026-05-18T03:58:32.978777",
+      "http_code": "403",
+      "final_url": "https://alternativeto.net",
+      "status": "blocked",
+      "note": "Cloudflare or bot protection"
+    },
+    {
+      "name": "saashub",
+      "url": "https://saashub.com",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-18T04:00:39.029279",
+      "http_code": "200",
+      "final_url": "https://www.saashub.com/",
+      "status": "accessible"
+    },
+    {
+      "name": "productpapa",
+      "url": "https://productpapa.com",
+      "method": "submit",
+      "difficulty": "unknown",
+      "timestamp": "2026-05-18T03:58:34.921931",
+      "status": "error",
+      "note": "<urlopen error timed out>"
+    },
+    {
+      "name": "stackshare",
+      "url": "https://stackshare.io",
+      "method": "submit",
+      "difficulty": "unknown",
+      "timestamp": "2026-05-18T03:58:45.509561",
+      "http_code": "429",
+      "final_url": "https://stackshare.io",
+      "status": "http_429"
+    },
+    {
+      "name": "github-readme",
+      "url": "https://github.com/RalphWorkflow/Ralph-Workflow",
+      "method": "update",
+      "difficulty": "blocked",
+      "timestamp": "2026-05-18T03:58:46.171630",
+      "http_code": "404",
+      "final_url": "https://github.com/RalphWorkflow/Ralph-Workflow",
+      "status": "missing",
+      "note": "page not found"
+    },
+    {
+      "name": "RSS directories",
+      "url": "https://blogsearch.google.com",
+      "method": "submit",
+      "difficulty": "medium",
+      "timestamp": "2026-05-18T04:00:40.419411",
+      "http_code": "200",
+      "final_url": "https://www.google.com/",
+      "status": "accessible"
+    },
+    {
+      "name": "dmoz",
+      "url": "https://dmoz-odp.org",
+      "method": "submit",
+      "difficulty": "blocked",
+      "timestamp": "2026-05-18T03:59:49.326963",
+      "status": "error",
+      "note": "<urlopen error [Errno -3] Temporary failure in name resolution>"
+    },
+    {
+      "name": "dirwell",
+      "url": "https://dirwell.com",
+      "method": "submit",
+      "difficulty": "unknown",
+      "timestamp": "2026-05-18T04:00:26.164042",
+      "http_code": "526",
+      "final_url": "https://dirwell.com",
+      "status": "http_526"
+    },
+    {
+      "name": "smashingmagazine",
+      "url": "https://smashingmagazine.com",
+      "method": "contribute",
+      "difficulty": "hard",
+      "timestamp": "2026-05-18T04:00:27.127113",
+      "http_code": "200",
+      "final_url": "https://www.smashingmagazine.com/",
+      "status": "accessible"
+    },
+    {
+      "name": "css-tricks",
+      "url": "https://css-tricks.com",
+      "method": "article",
+      "difficulty": "hard",
+      "timestamp": "2026-05-18T04:00:40.984100",
+      "http_code": "200",
+      "final_url": "https://css-tricks.com",
+      "status": "accessible"
     }
   ],
-  "working": []
+  "working": [
+    {
+      "name": "saashub",
+      "url": "https://saashub.com",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "RSS directories",
+      "url": "https://blogsearch.google.com",
+      "method": "submit",
+      "difficulty": "medium"
+    }
+  ]
 }

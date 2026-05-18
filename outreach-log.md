@@ -663,3 +663,54 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Reddit fresh-thread fallback fix**: Patched `agents/marketing/reddit_autopost.py` so monitor phrases like `active same-day page visibility during this pass` now score as genuinely fresh, and the chooser now holds for those same-day opportunities when they are only community-cooldown-limited instead of falling through to older leftover threads that are already in the log.
   - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v`; direct selection probe against `seo-reports/reddit_monitor_2026-05-17_2115.md` now returns `fresh_rate_limited` with fresh unused top threads (`People running 2–5 coding agents`, `Claude -> Codex -> Claude`, `Pattern I'm using to keep Claude Code productive on overnight unattended runs`) instead of trying to repost the already-logged May 9 `r/codex` comparison thread.
   - Why: distribution is still the bottleneck, and the next live Reddit move was about to waste the safe posting window on a stale thread. Fixing the freshness/rate-limit fallback keeps the autoposter pointed at real same-day opportunities and protects account quality for the next executable post.
+
+## 2026-05-18 (Monday) — 03:20 UTC — Marketing Workflow Audit
+
+### Bottleneck verdict
+**Distribution, not conversion quality.** GitHub: 0 stars / 0 forks. Codeberg: 9 stars / 2 forks.
+
+### What's working
+- Reddit distribution healthy: 15 logged posts, fresh varied bodies, pacing guards, no bans
+- All conversion surfaces done: proof bundle, first-task templates, START_HERE, quickstart, task-fit, Aider/Claude Code comparisons, finish-receipt guide, homepage hero
+- Four marketing questions answered everywhere; free OSS framing intact
+- Repeated-opening-line risk resolved (old hardcoded template removed from `build_comment_variants`)
+- GitHub CTA correctly injected into high-fit r/ClaudeCode / r/codex posts
+
+### What's broken
+- GitHub stars: 0 — Reddit posts with GitHub links are not driving measurable GitHub adoption
+- write.as articles (6 published May 11–16) have zero external distribution — never submitted to HN, Lobsters, or any searchable platform
+- HN submission: HTTP 429 (rate-limited from this host); Lobsters: requires login; both packets are ready in `drafts/2026-05-18_hackernews_post.txt` / `drafts/2026-05-18_lobsters_post.txt`
+
+### Diminishing returns confirmed
+Stop adding conversion assets. Surfaces are strong enough.
+
+### Next highest-leverage moves (in priority order)
+1. **HN + Lobsters submission** — only untried distribution channel; packets are ready and waiting; this is the single highest-leverage move
+2. **Keep Reddit pressure** — genuine same-day thread fits only; body generator is healthy
+3. **Watch GitHub stars after next ~10 high-fit posts** — if zero stars persist, the bottleneck is GitHub discoverability from non-Reddit sources, not Reddit CTR
+
+### Decision: no material workflow direction change
+Bottleneck remains distribution-to-adoption conversion. Conversion surfaces are done. Stop adding proof assets. Shift all effort to distribution.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1tg50xl/claude_utilizing_other_agents/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1tg50xl/claude_utilizing_other_agents/omemy51/
+- **Status:** ✅ Published
+- **Notes:** Manual post on fresh r/ClaudeCode thread: Claude utilizing other agents?
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution
+- **Fresh same-day Reddit reply**: Posted on `r/ClaudeCode` thread "Claude utilizing other agents?"
+  - URL: https://old.reddit.com/r/ClaudeCode/comments/1tg50xl/claude_utilizing_other_agents/omemy51/
+  - Status: ✅ Published
+  - Why: HN/Lobsters remain the highest theoretical leverage but were not the executable move from this machine at 2026-05-18 03:25 CEST. The best real action available right then was keeping distribution pressure on a same-day, high-fit workflow thread with a fresh phase-ownership/reviewable-finish answer that naturally positioned Ralph Workflow as the free/open-source way to orchestrate existing agents on your own machine for overnight reviewable output.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 03:35:07
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### RalphWorkflow Distribution Infrastructure
+- **Non-Reddit channel discovery false-positive fix**: Patched `agents/marketing/channel_discovery.py` so channel checks now inspect the real submission surface and page body instead of trusting a homepage `200`, classify login-gated submission pages and parked domains correctly, and revalidate previously marked "working" channels on each run so stale positives do not linger.
+  - Verification: `python3 -m unittest agents.marketing.tests.test_channel_discovery agents.marketing.tests.test_reddit_watchdog -v`; `python3 agents/marketing/channel_discovery.py`
+  - Live result: Slashdot now resolves to `login_required` on the submission page, Toolhunt is correctly identified as a parked domain, and the old false-positive "actionable channels" set was narrowed to the genuinely still-open candidates the loop can evaluate next.
+  - Why: distribution is the bottleneck, and the non-Reddit discovery loop was wasting effort by presenting dead-end channels as immediately usable just when Reddit was stale. Tightening that classifier improves the next real distribution decision more than adding another generic asset.
