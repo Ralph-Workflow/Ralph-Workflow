@@ -19,6 +19,30 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 - **Why is it different?** It is repo-native and built to hand back a reviewable result — diff, checks, artifacts, and traceable reasoning — not just a transcript and a claim that the task is done.
 - **Why use it now?** You can install it for free, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
+## What you should get back tomorrow morning
+
+If Ralph Workflow is doing its job, the morning-after handoff should look reviewable before you read a single long log:
+
+```text
+Task: Add empty-project-name validation to the CLI create flow
+
+Changed files:
+- cli/create.py
+- tests/test_create.py
+
+Checks run:
+- unit tests for create flow
+- lint / formatting checks if applicable
+
+Open questions:
+- should reserved names be rejected too?
+- should whitespace be trimmed before validation?
+```
+
+That is the real promise: not “the agent seemed smart,” but **a bounded diff, checks that actually ran, and a clear merge decision**.
+
+If you want the fuller artifact shape before you install, inspect the public [example review bundle](./docs/example-review-bundle.md).
+
 ## Start here in the path that matches your question
 
 - **I want the fastest honest first run.** Read [START_HERE.md](./START_HERE.md).

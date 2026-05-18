@@ -24,6 +24,29 @@ If you want a little more outside proof before you install, you can also inspect
 
 ## What a good first handoff looks like
 
+Before you install, this is the shape you should expect back from a real overnight run:
+
+```text
+Task: Add empty-project-name validation to the CLI create flow
+
+Changed files:
+- cli/create.py
+- tests/test_create.py
+
+Checks run:
+- unit tests for create flow
+- lint / formatting checks if applicable
+
+Open questions:
+- should reserved names be rejected too?
+- should whitespace be trimmed before validation?
+```
+
+That is the standard to hold Ralph Workflow to: **a reviewable result, not a transcript and a promise**.
+
+If you want the longer version of that artifact before you run anything, inspect the public [example review bundle](./docs/example-review-bundle.md).
+
+
 A good first run should be easy to judge in five minutes the next morning:
 
 1. **One bounded brief** in `PROMPT.md`
