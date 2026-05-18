@@ -70,6 +70,14 @@ def test_sphinx_conf_uses_package_version() -> None:
     assert namespace["version"] == __version__
 
 
+def test_sphinx_conf_disables_low_intent_index_pages() -> None:
+    namespace = runpy.run_path(str(CONF_PATH))
+
+    assert "sphinx.ext.viewcode" not in namespace["extensions"]
+    assert namespace["html_use_index"] is False
+    assert namespace["html_domain_indices"] is False
+
+
 def test_root_gitignore_ignores_real_sphinx_build_tree() -> None:
     gitignore = GITIGNORE_PATH.read_text(encoding="utf-8")
 
