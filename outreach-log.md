@@ -2,6 +2,18 @@
 
 ## 2026-05-18 (Monday)
 
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-18_0915.md`
+- **Scan summary:** 30 candidate Reddit threads/posts scanned, 5 shortlisted, 25 rejected.
+- **Current verdict:** Mixed — 5 shortlist-worthy discussion threads were found, but only 2–3 are strong RalphWorkflow mention fits after prior-use, freshness, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code Agent Teams W/ Gemini and Codex"
+  - `r/ClaudeCode` — "Pattern I'm using to keep Claude Code productive on overnight unattended runs"
+  - `r/ClaudeCode` — "Autonomous Claude Code runs in the new reality."
+- **Repeated pains worth tracking:** handoff-state clarity, morning-after review/reconstruction, shared-boundary ownership, worktree preview/testing friction, and checkpoint/review-state noise.
+- **Risk note:** the search pool is getting saturated with already-used or setup-only threads, so the monitor should keep separating **helpful reply fit** from **RalphWorkflow mention fit** instead of forcing a quota.
+- **Posting note:** No posting attempted from this monitor pass.
+
 ### RalphWorkflow Distribution
 - **DevTool Center submission**: Submitted Ralph Workflow to DevTool Center as a free `AI Helpers` developer tool, using a four-question description that keeps the core promise intact: free and open source, orchestrates Claude Code/Codex/other coding agents on your own machine, built for repo-native work too big to babysit and too risky to trust blindly, and meant to produce overnight reviewable output.
   - Submission path: `https://www.devtool.center/submit` → backend `https://devshelf-backend.onrender.com/api/v1/submissions`
@@ -834,3 +846,22 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
 ### Marketing momentum watchdog
 - **When:** 2026-05-18 08:42:01
 - **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### RalphWorkflow Distribution
+- **Toolrank honest-directory submission**: Submitted Ralph Workflow to Toolrank's live `AGENT` directory via its public API, positioning it as a free open-source workflow that orchestrates Claude Code, Codex, and OpenCode on your own machine so you wake up to reviewable code instead of a half-done transcript.
+  - Submission path: `POST https://toolrank.org/api/tools`
+  - Verification: live API returned `201` with slug `ralph-workflow` at first submit; a follow-up API probe confirmed the endpoint accepts immediate writes without a duplicate guard, so future verification should stop at the first `201` instead of re-posting.
+  - Why: the current bottleneck is still distribution into developer-native, comparison-friendly discovery surfaces beyond Reddit. Toolrank already lists direct RalphWorkflow alternatives like Claude Code, Aider, Continue, Devin, and OpenDevin, so getting Ralph Workflow into that same evaluation set is a stronger trust/distribution move than writing another generic asset.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1svxcb7/pattern_im_using_to_keep_claude_code_productive/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1svxcb7/pattern_im_using_to_keep_claude_code_productive/omg10z9/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #2 Pattern I'm using to keep Claude Code productive on overnight unattended runs (`r/ClaudeCode`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution
+- **ToolShelf developer-directory submission**: Submitted Ralph Workflow to ToolShelf, a curated developer-tools directory with dedicated `AI Coding Tools & Agents` taxonomy and visible GitHub-centric discovery framing.
+  - Submission path: `POST https://toolshelf.dev/api/submit`
+  - Verification: live API returned `200` with `{"success":true,"message":"Tool submitted successfully! We'll review it soon."}`
+  - Why: the current bottleneck is still distribution into developer-native, GitHub-adjacent discovery surfaces beyond Reddit. ToolShelf is a stronger-fit channel than another generic asset because it is explicitly built for developer tools, highlights maintenance/quality signals, and gives Ralph Workflow a path into the same search/browse flow developers use to compare AI coding tools.

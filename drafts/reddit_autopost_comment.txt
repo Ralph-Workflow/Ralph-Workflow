@@ -1,5 +1,5 @@
-What usually breaks first in a Claude/Codex setup isn't the models, it's the handoff.
+The part that bites me overnight is rarely raw code quality first. It's scope creep, weak stop conditions, and no clean re-entry point in the morning.
 
-If the first agent leaves a vague pile of edits, the second one just inherits confusion. If the first leaves a clear diff, a short receipt, and explicit open questions, the review pass becomes genuinely useful.
+So I bias hard toward tasks that can end with one readable diff, one check bundle, and one note about unresolved decisions.
 
-So I'd optimize for a clean baton pass, not maximum parallelism.
+If the handoff is clean, the overnight run was useful even when it didn't finish everything.

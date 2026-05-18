@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-17T21:22:54.244282+02:00",
+  "timestamp": "2026-05-18T09:22:08.636666+02:00",
   "summary": {
     "blocked": 7,
     "partial": 0,
@@ -23,7 +23,7 @@
               "Ad/tracker blocking is optional for usability/privacy, not for bypassing protections"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.244510+02:00"
+          "timestamp": "2026-05-18T09:22:08.636897+02:00"
         },
         {
           "action": "prepare_manual_api_key_request",
@@ -35,14 +35,14 @@
               "User provides API key or OAuth approval"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.244520+02:00"
+          "timestamp": "2026-05-18T09:22:08.636907+02:00"
         },
         {
           "action": "check_auth_status",
           "status": "blocked",
           "summary": "No dev.to API key configured.",
           "details": {},
-          "timestamp": "2026-05-17T21:22:54.244526+02:00"
+          "timestamp": "2026-05-18T09:22:08.636913+02:00"
         }
       ],
       "next_actions": [
@@ -68,7 +68,7 @@
               "Ad/tracker blocking is optional for privacy only"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.244685+02:00"
+          "timestamp": "2026-05-18T09:22:08.637079+02:00"
         },
         {
           "action": "document_policy_requirements",
@@ -91,14 +91,14 @@
               "User provides approved API/session route if allowed"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.244693+02:00"
+          "timestamp": "2026-05-18T09:22:08.637086+02:00"
         },
         {
           "action": "check_auth_status",
           "status": "blocked",
           "summary": "No approved Twitter auth path configured yet. Keep pursuing the best legitimate local route toward a usable session/API path.",
           "details": {},
-          "timestamp": "2026-05-17T21:22:54.244696+02:00"
+          "timestamp": "2026-05-18T09:22:08.637090+02:00"
         }
       ],
       "next_actions": [
@@ -126,7 +126,7 @@
               "User builds genuine participation history manually"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.244722+02:00"
+          "timestamp": "2026-05-18T09:22:08.637117+02:00"
         },
         {
           "action": "verify_browser_readiness",
@@ -140,7 +140,7 @@
               "Ad/tracker blocking is optional for privacy only"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.244850+02:00"
+          "timestamp": "2026-05-18T09:22:08.637299+02:00"
         }
       ],
       "next_actions": [
@@ -167,7 +167,7 @@
               "User manually submits launch/post when ready"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.244872+02:00"
+          "timestamp": "2026-05-18T09:22:08.637324+02:00"
         },
         {
           "action": "verify_browser_readiness",
@@ -179,7 +179,7 @@
             ],
             "notes": []
           },
-          "timestamp": "2026-05-17T21:22:54.244998+02:00"
+          "timestamp": "2026-05-18T09:22:08.637457+02:00"
         }
       ],
       "next_actions": [
@@ -205,7 +205,7 @@
               "User obtains legitimate account/invite"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.245019+02:00"
+          "timestamp": "2026-05-18T09:22:08.637477+02:00"
         }
       ],
       "next_actions": [
@@ -229,7 +229,7 @@
               "Browser should be stable for manual launch prep"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.245212+02:00"
+          "timestamp": "2026-05-18T09:22:08.637627+02:00"
         },
         {
           "action": "document_policy_requirements",
@@ -250,7 +250,7 @@
               "User completes launch assets and manual submission"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.245220+02:00"
+          "timestamp": "2026-05-18T09:22:08.637633+02:00"
         }
       ],
       "next_actions": [
@@ -273,7 +273,7 @@
               "User confirms which repos/actions are authorized"
             ]
           },
-          "timestamp": "2026-05-17T21:22:54.245241+02:00"
+          "timestamp": "2026-05-18T09:22:08.637655+02:00"
         },
         {
           "action": "check_auth_status",
@@ -282,7 +282,7 @@
           "details": {
             "output": "You are not logged into any GitHub hosts. To log in, run: gh auth login"
           },
-          "timestamp": "2026-05-17T21:22:54.276970+02:00"
+          "timestamp": "2026-05-18T09:22:08.667780+02:00"
         }
       ],
       "next_actions": [
