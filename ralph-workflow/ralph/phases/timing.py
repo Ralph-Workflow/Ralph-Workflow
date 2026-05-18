@@ -35,19 +35,19 @@ def elapsed_seconds(start: float) -> int:
 
 
 @dataclass(frozen=True)
-class PhaseTimingRecord:
-    """Structured timing result for a completed phase execution."""
-
-    phase: str
-    iteration: int
-    started_at: float
-    elapsed: timedelta
-    elapsed_seconds: int
-
-
-@dataclass(frozen=True)
 class PhaseTimer:
     """Simple helper for measuring phase execution durations."""
+
+    @dataclass(frozen=True)
+    class PhaseTimingRecord:
+        """Structured timing result for a completed phase execution."""
+
+        phase: str
+        iteration: int
+        started_at: float
+        elapsed: timedelta
+        elapsed_seconds: int
+
 
     phase: str
     iteration: int
@@ -68,6 +68,9 @@ class PhaseTimer:
             elapsed=duration,
             elapsed_seconds=int(duration.total_seconds()),
         )
+
+
+PhaseTimingRecord = PhaseTimer.PhaseTimingRecord
 
 
 __all__ = [

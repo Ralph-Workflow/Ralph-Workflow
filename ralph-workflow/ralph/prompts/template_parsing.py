@@ -12,53 +12,15 @@ if TYPE_CHECKING:
 METADATA_COMMENT_MIN_LENGTH = 4
 
 
-@dataclass
-class TemplateNode:
-    """Base class for parsed template nodes."""
 
 
-@dataclass
-class TextNode(TemplateNode):
-    """A literal text segment in a parsed template."""
-
-    text: str
 
 
-@dataclass
-class VariableNode(TemplateNode):
-    """A `{{ VARIABLE }}` substitution with an optional default value."""
-
-    name: str
-    default: str | None
-    placeholder: str
 
 
-@dataclass
-class PartialNode(TemplateNode):
-    """A `{{> partial_name }}` include directive."""
-
-    name: str
 
 
-@dataclass
-class LoopNode(TemplateNode):
-    """A `{% for x in iterable %}` loop with a body."""
 
-    variable: str
-    iterable: str
-    body: list[TemplateNode]
-
-
-@dataclass
-class ConditionalNode(TemplateNode):
-    """An `{% if condition %}` block with truthy and falsy branches."""
-
-    condition: str
-    truthy: list[TemplateNode]
-    falsy: list[TemplateNode]
-
-
-TemplateAST = list[TemplateNode]
 
 
 __all__ = [
@@ -77,16 +39,67 @@ __all__ = [
 ]
 
 
-class _Token:
-    def __init__(self, kind: str, value: str) -> None:
-        self.kind = kind
-        self.value = value
-
-
 class _AstFrame(TypedDict):
+
+    @dataclass
+    class TemplateNode:
+        """Base class for parsed template nodes."""
+
+    @dataclass
+    class TextNode(TemplateNode):
+        """A literal text segment in a parsed template."""
+
+        text: str
+
+    @dataclass
+    class VariableNode(TemplateNode):
+        """A `{{ VARIABLE }}` substitution with an optional default value."""
+
+        name: str
+        default: str | None
+        placeholder: str
+
+    @dataclass
+    class PartialNode(TemplateNode):
+        """A `{{> partial_name }}` include directive."""
+
+        name: str
+
+    @dataclass
+    class LoopNode(TemplateNode):
+        """A `{% for x in iterable %}` loop with a body."""
+
+        variable: str
+        iterable: str
+        body: list[TemplateNode]
+
+    @dataclass
+    class ConditionalNode(TemplateNode):
+        """An `{% if condition %}` block with truthy and falsy branches."""
+
+        condition: str
+        truthy: list[TemplateNode]
+        falsy: list[TemplateNode]
+
+    class _Token:
+        def __init__(self, kind: str, value: str) -> None:
+            self.kind = kind
+            self.value = value
+
     type: Literal["root", "loop", "if_truthy", "if_falsy"]
     nodes: list[TemplateNode]
     node: LoopNode | ConditionalNode | None
+
+
+TemplateNode = _AstFrame.TemplateNode
+TextNode = _AstFrame.TextNode
+VariableNode = _AstFrame.VariableNode
+PartialNode = _AstFrame.PartialNode
+LoopNode = _AstFrame.LoopNode
+ConditionalNode = _AstFrame.ConditionalNode
+_Token = _AstFrame._Token
+
+TemplateAST = list[TemplateNode]
 
 
 def parse_template(content: str) -> TemplateAST:

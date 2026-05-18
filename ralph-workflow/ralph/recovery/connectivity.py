@@ -9,24 +9,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
-
-class ConnectivityState(StrEnum):
-    """Enumeration of observed network connectivity states."""
-
-    ONLINE = "online"
-    OFFLINE = "offline"
-    UNKNOWN = "unknown"
-
-
-@dataclass
-class ConnectivityEvent:
-    """A snapshot of a connectivity state transition."""
-
-    state: ConnectivityState
-    since: datetime
-    reason: str
-
-
 # Default probe targets: DNS resolvers over TCP
 _DEFAULT_PROBE_TARGETS: list[tuple[str, int]] = [
     ("1.1.1.1", 53),
@@ -53,7 +35,6 @@ async def _default_probe(host: str, port: int, timeout_s: float) -> bool:
 
 
 ProbeCallable = Callable[[str, int, float], Awaitable[bool]]
-ListenerCallable = Callable[[ConnectivityEvent], None]
 
 
 class ConnectivityMonitor:
@@ -62,6 +43,22 @@ class ConnectivityMonitor:
     All timing and network I/O is injectable so tests run deterministically
     without real sockets.
     """
+
+    class ConnectivityState(StrEnum):
+        """Enumeration of observed network connectivity states."""
+
+        ONLINE = "online"
+        OFFLINE = "offline"
+        UNKNOWN = "unknown"
+
+    @dataclass
+    class ConnectivityEvent:
+        """A snapshot of a connectivity state transition."""
+
+        state: ConnectivityState
+        since: datetime
+        reason: str
+
 
     def __init__(
         self,
@@ -140,3 +137,9 @@ class ConnectivityMonitor:
                     with contextlib.suppress(Exception):
                         listener(evt)
             await asyncio.sleep(self._interval)
+
+
+ConnectivityState = ConnectivityMonitor.ConnectivityState
+ConnectivityEvent = ConnectivityMonitor.ConnectivityEvent
+
+ListenerCallable = Callable[[ConnectivityEvent], None]

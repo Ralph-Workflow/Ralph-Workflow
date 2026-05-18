@@ -6,7 +6,7 @@ import json
 from contextlib import suppress
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -32,6 +32,8 @@ from ralph.pipeline.legacy_console_display import (
 )
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from ralph.config.models import UnifiedConfig
     from ralph.display.artifact_reader import AnalysisDecisionSummary, PlanSummary
     from ralph.display.context import DisplayContext
@@ -44,26 +46,22 @@ if TYPE_CHECKING:
     from ralph.workspace import FsWorkspace
     from ralph.workspace.scope import WorkspaceScope
 
+    class _HandlePhaseFn(Protocol):
+        def __call__(self, effect: Effect, ctx: PhaseContext) -> list[Event]: ...
 
-class _HandlePhaseFn(Protocol):
-    def __call__(self, effect: Effect, ctx: PhaseContext) -> list[Event]: ...
+    class _ReadLatestAnalysisDecisionFn(Protocol):
+        def __call__(
+            self,
+            workspace_root: Path,
+            drain: str,
+        ) -> AnalysisDecisionSummary | None: ...
 
+    class _ReadPlanArtifactFn(Protocol):
+        def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
 
-class _ReadLatestAnalysisDecisionFn(Protocol):
-    def __call__(
-        self,
-        workspace_root: Path,
-        drain: str,
-    ) -> AnalysisDecisionSummary | None: ...
-
-
-class _ReadPlanArtifactFn(Protocol):
-    def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
-
-
-class _ArtifactReaderModule(Protocol):
-    read_latest_analysis_decision: _ReadLatestAnalysisDecisionFn
-    read_plan_artifact: _ReadPlanArtifactFn
+    class _ArtifactReaderModule(Protocol):
+        read_latest_analysis_decision: _ReadLatestAnalysisDecisionFn
+        read_plan_artifact: _ReadPlanArtifactFn
 
 
 def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:

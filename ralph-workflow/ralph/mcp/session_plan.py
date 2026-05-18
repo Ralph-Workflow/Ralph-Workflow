@@ -45,21 +45,24 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class SessionModelOpts:
-    """Optional model resolution parameters for build_session_mcp_plan."""
-
-    model_identity: MultimodalModelIdentity | None = None
-    model_flag: str | None = None
-
-
-@dataclass(frozen=True)
 class SessionMcpPlan:
     """Resolved MCP plan capturing capability grants and server environment for a session."""
+
+    @dataclass(frozen=True)
+    class SessionModelOpts:
+        """Optional model resolution parameters for build_session_mcp_plan."""
+
+        model_identity: MultimodalModelIdentity | None = None
+        model_flag: str | None = None
+
 
     capabilities: frozenset[str]
     server_env: dict[str, str] | None = None
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
     capability_profile: ResolvedCapabilityProfile | None = None
+
+
+SessionModelOpts = SessionMcpPlan.SessionModelOpts
 
 
 def resolve_model_identity(

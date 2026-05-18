@@ -50,148 +50,153 @@ if TYPE_CHECKING:
     from ralph.pipeline.work_units import WorkUnit
 
 
-@dataclass(frozen=True)
-class WorkerLog:
-    """Paths and identifiers for per-worker log files."""
-
-    log_dir: Path
-    run_id: str
-
-
-@dataclass(frozen=True)
-class WorkerContext:
-    """Optional runtime context injected into each parallel worker."""
-
-    log: WorkerLog | None = None
-    same_workspace: SameWorkspaceContext | None = None
-    activity_router: ActivityRouter | None = None
-
-
-class ParallelCoordinator:
-    """Orchestrates parallel work-unit execution with DAG dependency ordering."""
-
-    def __init__(self, *, activity_router: ActivityRouter | None = None) -> None:
-        self.activity_router = activity_router
-
-    async def run_fan_out(
-        self,
-        effect: FanOutEffect,
-        executor: AgentExecutor,
-        display: ParallelDisplay,
-        ctx: WorkerContext | None = None,
-    ) -> list[Event]:
-        """Execute parallel work units while respecting DAG dependencies and worker caps."""
-        # Prefer the display's activity_router when the coordinator has none.
-        effective_router = self.activity_router
-        if effective_router is None and hasattr(display, "activity_router"):
-            effective_router = display.activity_router
-
-        worker_ctx = (
-            WorkerContext(activity_router=effective_router)
-            if ctx is None
-            else replace(ctx, activity_router=effective_router)
-        )
-
-        same_workspace = worker_ctx.same_workspace if worker_ctx is not None else None
-        ns_root = (
-            str(same_workspace.worker_namespace_root)
-            if same_workspace is not None and same_workspace.worker_namespace_root is not None
-            else "unknown"
-        )
-        logger.info(
-            "fan-out start mode=same_workspace units={n} namespace_root={ns}",
-            n=len(effect.work_units),
-            ns=ns_root,
-        )
-
-        # Fail-closed preflight: validate that the plan is safe for same-workspace
-        # execution before any worker is launched. This is a secondary guard; the
-        # runner also validates before calling us. Direct coordinator callers (e.g.
-        # tests, future tooling) are protected by this check too.
-        if effect.work_units:
-            try:
-                validate_for_same_workspace(WorkUnitsPlan(work_units=list(effect.work_units)))
-            except WorkUnitsValidationError as exc:
-                logger.error("coordinator preflight rejected plan: {}", exc)
-                return [
-                    WorkerFailedEvent(
-                        unit_id="__preflight__",
-                        exit_code=2,
-                        error=f"parallel preflight rejected plan: {exc}",
-                    )
-                ]
-
-        events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
-        if not effect.work_units:
-            return [*events, PipelineEvent.ALL_WORKERS_COMPLETE]
-
-        pending = {unit.unit_id for unit in effect.work_units}
-        completed: set[str] = set()
-        running: dict[str, WorkUnit] = {}
-        completion_queue: asyncio.Queue[WorkerResult] = asyncio.Queue()
-
-        try:
-            async with asyncio.TaskGroup() as task_group:
-                while pending or running:
-                    ready = schedule_next_wave(
-                        completed,
-                        effect.work_units,
-                        set(running),
-                        effect.max_workers,
-                    )
-
-                    for unit in ready:
-                        pending.discard(unit.unit_id)
-                        running[unit.unit_id] = unit
-                        events.append(WorkerStartedEvent(unit_id=unit.unit_id))
-                        task_group.create_task(
-                            _run_worker(
-                                unit,
-                                executor,
-                                display,
-                                completion_queue,
-                                worker_ctx,
-                            ),
-                            name=unit.unit_id,
-                        )
-
-                    if running:
-                        result = await completion_queue.get()
-                        running.pop(result.unit_id, None)
-                        completed.add(result.unit_id)
-                        events.append(
-                            WorkerCompletedEvent(
-                                unit_id=result.unit_id,
-                                exit_code=result.exit_code,
-                            )
-                        )
-                        continue
-
-                    if pending:
-                        break
-        except* Exception as group:
-            failures, unexpected = _flatten_worker_failures(group.exceptions)
-            _append_terminal_failure_events(
-                events=events,
-                work_units=effect.work_units,
-                pending=pending,
-                running=running,
-                failures=failures,
-            )
-            if unexpected:
-                raise ExceptionGroup("Unexpected fan-out coordinator failure", unexpected) from None
-        else:
-            events.append(PipelineEvent.ALL_WORKERS_COMPLETE)
-
-        return events
-
-
 class _WorkerFailureError(Exception):
+
+    @dataclass(frozen=True)
+    class WorkerLog:
+        """Paths and identifiers for per-worker log files."""
+
+        log_dir: Path
+        run_id: str
+
+    @dataclass(frozen=True)
+    class WorkerContext:
+        """Optional runtime context injected into each parallel worker."""
+
+        log: WorkerLog | None = None
+        same_workspace: SameWorkspaceContext | None = None
+        activity_router: ActivityRouter | None = None
+
+    class ParallelCoordinator:
+        """Orchestrates parallel work-unit execution with DAG dependency ordering."""
+
+        def __init__(self, *, activity_router: ActivityRouter | None = None) -> None:
+            self.activity_router = activity_router
+
+        async def run_fan_out(
+            self,
+            effect: FanOutEffect,
+            executor: AgentExecutor,
+            display: ParallelDisplay,
+            ctx: WorkerContext | None = None,
+        ) -> list[Event]:
+            """Execute parallel work units while respecting DAG dependencies and worker caps."""
+            # Prefer the display's activity_router when the coordinator has none.
+            effective_router = self.activity_router
+            if effective_router is None and hasattr(display, "activity_router"):
+                effective_router = display.activity_router
+
+            worker_ctx = (
+                WorkerContext(activity_router=effective_router)
+                if ctx is None
+                else replace(ctx, activity_router=effective_router)
+            )
+
+            same_workspace = worker_ctx.same_workspace if worker_ctx is not None else None
+            ns_root = (
+                str(same_workspace.worker_namespace_root)
+                if same_workspace is not None and same_workspace.worker_namespace_root is not None
+                else "unknown"
+            )
+            logger.info(
+                "fan-out start mode=same_workspace units={n} namespace_root={ns}",
+                n=len(effect.work_units),
+                ns=ns_root,
+            )
+
+            # Fail-closed preflight: validate that the plan is safe for same-workspace
+            # execution before any worker is launched. This is a secondary guard; the
+            # runner also validates before calling us. Direct coordinator callers (e.g.
+            # tests, future tooling) are protected by this check too.
+            if effect.work_units:
+                try:
+                    validate_for_same_workspace(WorkUnitsPlan(work_units=list(effect.work_units)))
+                except WorkUnitsValidationError as exc:
+                    logger.error("coordinator preflight rejected plan: {}", exc)
+                    return [
+                        WorkerFailedEvent(
+                            unit_id="__preflight__",
+                            exit_code=2,
+                            error=f"parallel preflight rejected plan: {exc}",
+                        )
+                    ]
+
+            events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
+            if not effect.work_units:
+                return [*events, PipelineEvent.ALL_WORKERS_COMPLETE]
+
+            pending = {unit.unit_id for unit in effect.work_units}
+            completed: set[str] = set()
+            running: dict[str, WorkUnit] = {}
+            completion_queue: asyncio.Queue[WorkerResult] = asyncio.Queue()
+
+            try:
+                async with asyncio.TaskGroup() as task_group:
+                    while pending or running:
+                        ready = schedule_next_wave(
+                            completed,
+                            effect.work_units,
+                            set(running),
+                            effect.max_workers,
+                        )
+
+                        for unit in ready:
+                            pending.discard(unit.unit_id)
+                            running[unit.unit_id] = unit
+                            events.append(WorkerStartedEvent(unit_id=unit.unit_id))
+                            task_group.create_task(
+                                _run_worker(
+                                    unit,
+                                    executor,
+                                    display,
+                                    completion_queue,
+                                    worker_ctx,
+                                ),
+                                name=unit.unit_id,
+                            )
+
+                        if running:
+                            result = await completion_queue.get()
+                            running.pop(result.unit_id, None)
+                            completed.add(result.unit_id)
+                            events.append(
+                                WorkerCompletedEvent(
+                                    unit_id=result.unit_id,
+                                    exit_code=result.exit_code,
+                                )
+                            )
+                            continue
+
+                        if pending:
+                            break
+            except* Exception as group:
+                failures, unexpected = _flatten_worker_failures(group.exceptions)
+                _append_terminal_failure_events(
+                    events=events,
+                    work_units=effect.work_units,
+                    pending=pending,
+                    running=running,
+                    failures=failures,
+                )
+                if unexpected:
+                    raise ExceptionGroup(
+                        "Unexpected fan-out coordinator failure", unexpected
+                    ) from None
+            else:
+                events.append(PipelineEvent.ALL_WORKERS_COMPLETE)
+
+            return events
+
     def __init__(self, unit_id: str, exit_code: int, error: str) -> None:
         super().__init__(error)
         self.unit_id = unit_id
         self.exit_code = exit_code
         self.error = error
+
+
+WorkerLog = _WorkerFailureError.WorkerLog
+WorkerContext = _WorkerFailureError.WorkerContext
+ParallelCoordinator = _WorkerFailureError.ParallelCoordinator
 
 
 WorkerFailureError = _WorkerFailureError

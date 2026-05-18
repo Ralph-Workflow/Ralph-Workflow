@@ -14,18 +14,18 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class GitRunResult:
-    """Result of a git subprocess invocation."""
-
-    args: tuple[str, ...]
-    returncode: int
-    stdout: str
-    stderr: str
-
-
-@dataclass(frozen=True)
 class GitRunOptions:
     """Options for run_git beyond the required args, cwd, and label."""
+
+    @dataclass(frozen=True)
+    class GitRunResult:
+        """Result of a git subprocess invocation."""
+
+        args: tuple[str, ...]
+        returncode: int
+        stdout: str
+        stderr: str
+
 
     phase: str | None = None
     timeout: float | None = None
@@ -33,6 +33,9 @@ class GitRunOptions:
     check: bool = False
     capture_output: bool = True
     text: bool = True
+
+
+GitRunResult = GitRunOptions.GitRunResult
 
 
 def run_git(

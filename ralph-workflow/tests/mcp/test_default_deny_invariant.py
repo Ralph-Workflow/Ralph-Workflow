@@ -17,23 +17,26 @@ from ralph.mcp.tools.coordination import ToolResult
 from ralph.mcp.tools.names import ALL_RALPH_TOOLS
 
 
-class _DenyAllSession:
-    """Session that denies every capability check."""
-
-    session_id = "deny-all-session"
-
-    def check_capability(self, capability: str) -> str:
-        return "denied"
-
-    def check_edit_area(self, path: str) -> bool:
-        return True
-
-
 class _FakeWorkspace:
     """Minimal workspace stub for capability-gate tests."""
 
+    class _DenyAllSession:
+        """Session that denies every capability check."""
+
+        session_id = "deny-all-session"
+
+        def check_capability(self, capability: str) -> str:
+            return "denied"
+
+        def check_edit_area(self, path: str) -> bool:
+            return True
+
+
     def absolute_path(self, path: str) -> str:
         return path
+
+
+_DenyAllSession = _FakeWorkspace._DenyAllSession
 
 
 def _get_ralph_tool_specs() -> dict[str, ToolSpec]:

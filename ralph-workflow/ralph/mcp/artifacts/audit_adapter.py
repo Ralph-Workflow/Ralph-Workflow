@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from threading import Lock
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ralph.mcp.protocol.capability_mapping import (
     AccessDecision,
@@ -18,6 +18,15 @@ from ralph.mcp.protocol.capability_mapping import (
 from ralph.mcp.protocol.capability_mapping import (
     Capability as RalphCapability,
 )
+
+if TYPE_CHECKING:
+
+    class AuditSink(Protocol):
+        """Protocol defining the MCP audit sink contract."""
+
+        def emit(self, record: McpAuditRecord) -> None: ...
+
+        def flush(self) -> None: ...
 
 
 class AgentSessionId:
@@ -37,14 +46,6 @@ class AgentSessionId:
 
     def __str__(self) -> str:
         return self._value
-
-
-class AuditSink(Protocol):
-    """Protocol defining the MCP audit sink contract."""
-
-    def emit(self, record: McpAuditRecord) -> None: ...
-
-    def flush(self) -> None: ...
 
 
 class McpAuditEventType(StrEnum):

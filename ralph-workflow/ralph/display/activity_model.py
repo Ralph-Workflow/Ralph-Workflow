@@ -13,35 +13,33 @@ from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_visibility_hint import ActivityVisibilityHint
 
-
-@dataclass(frozen=True, slots=True)
-class EventOptions:
-    """Options for constructing an AgentActivityEvent."""
-
-    content: str | None = None
-    metadata: dict[str, object] | None = None
-    visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE
-    source: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class AgentActivityEvent:
-    """Typed canonical activity event for future parser normalization work."""
-
-    provider: ActivityProvider
-    kind: ActivityEventKind
-    content: str | None = None
-    metadata: dict[str, object] = field(default_factory=dict)
-    visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE
-    source: str = ""
-    sequence: int | None = None
-    timestamp: str | None = None
-
-
 _module_sequence_lock = threading.Lock()
 
 
 class _ModuleSequence:
+
+    @dataclass(frozen=True, slots=True)
+    class EventOptions:
+        """Options for constructing an AgentActivityEvent."""
+
+        content: str | None = None
+        metadata: dict[str, object] | None = None
+        visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE
+        source: str = ""
+
+    @dataclass(frozen=True, slots=True)
+    class AgentActivityEvent:
+        """Typed canonical activity event for future parser normalization work."""
+
+        provider: ActivityProvider
+        kind: ActivityEventKind
+        content: str | None = None
+        metadata: dict[str, object] = field(default_factory=dict)
+        visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE
+        source: str = ""
+        sequence: int | None = None
+        timestamp: str | None = None
+
     __slots__ = ("_counter",)
 
     def __init__(self) -> None:
@@ -51,6 +49,10 @@ class _ModuleSequence:
         with _module_sequence_lock:
             self._counter += 1
             return self._counter
+
+
+EventOptions = _ModuleSequence.EventOptions
+AgentActivityEvent = _ModuleSequence.AgentActivityEvent
 
 
 module_sequence = _ModuleSequence()
@@ -130,4 +132,4 @@ __all__ = [
 ]
 
 # Backward compatibility alias
-_SequenceCounter = _ModuleSequence
+SequenceCounter = _ModuleSequence

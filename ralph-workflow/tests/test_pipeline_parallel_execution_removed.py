@@ -6,8 +6,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from ralph.policy.loader import PolicyValidationError, load_policy
+from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseParallelization, PipelinePolicy
+from ralph.policy.validation import PolicyValidationError
 
 
 def _load_default_bundle() -> object:

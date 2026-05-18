@@ -47,33 +47,21 @@ if TYPE_CHECKING:
 
 from ralph.display.context import make_display_context
 
+if TYPE_CHECKING:
+    class _RunnerFunc(Protocol):
+        def __call__(
+            self,
+            config: UnifiedConfig,
+            initial_state: PipelineState | None,
+            **kwargs: object,
+        ) -> int: ...
 
-class _RunnerFunc(Protocol):
-    def __call__(
-        self,
-        config: UnifiedConfig,
-        initial_state: PipelineState | None,
-        **kwargs: object,
-    ) -> int: ...
+    class _RunnerModule(Protocol):
+        """Typed accessor for the lazily imported pipeline runner module."""
 
-
-class _RunnerModule(Protocol):
-    """Typed accessor for the lazily imported pipeline runner module."""
-
-    run: _RunnerFunc
-
+        run: _RunnerFunc
 
 _RUN_FUNC_UNSET: object = object()
-
-
-class _RunFuncState:
-    """Holds the lazily-loaded pipeline runner function."""
-
-    def __init__(self) -> None:
-        self.run_func: _RunnerFunc | None | object = _RUN_FUNC_UNSET
-
-
-_state = _RunFuncState()
 
 
 def _get_run_func() -> _RunnerFunc | None:
@@ -130,49 +118,51 @@ _GENERATED_AGENT_STATE_FILES: tuple[str, ...] = (
 )
 
 
-class _LoadResult(NamedTuple):
-    config: UnifiedConfig
-    workspace_scope: WorkspaceScope | None
-    initial_state: PipelineState | None
-    policy_bundle: PolicyBundle | None
-
-
-class _PolicyPreflightRequest(NamedTuple):
-    config: UnifiedConfig
-    policy_bundle: PolicyBundle
-    initial_state: PipelineState | None
-    counter_overrides: dict[str, int]
-
-
-class _PreflightRequest(NamedTuple):
-    config: UnifiedConfig
-    workspace_scope: WorkspaceScope | None
-    policy_bundle: object
-    initial_state: PipelineState | None
-    counter_overrides: dict[str, int]
-    inline_prompt: str | None = None
-
-
-class _ExecutePipelineRequest(NamedTuple):
-    config: UnifiedConfig
-    initial_state: PipelineState | None
-    policy_bundle: object
-    verbosity: Verbosity | None
-    counter_overrides: dict[str, int]
-
-
-class _LegacyRunPipelineKwargs(TypedDict, total=False):
-    config_path: Path
-    cli_overrides: ConfigOverrides
-    dry_run: bool
-    resume: bool
-    verbosity: Verbosity
-    counter_overrides: dict[str, int]
-    inline_prompt: str
-
-
 class RunPipelineRequest(NamedTuple):
     """Parameters for a pipeline run request."""
+
+    class _RunFuncState:
+        """Holds the lazily-loaded pipeline runner function."""
+
+        def __init__(self) -> None:
+            self.run_func: _RunnerFunc | None | object = _RUN_FUNC_UNSET
+
+    class _LoadResult(NamedTuple):
+        config: UnifiedConfig
+        workspace_scope: WorkspaceScope | None
+        initial_state: PipelineState | None
+        policy_bundle: PolicyBundle | None
+
+    class _PolicyPreflightRequest(NamedTuple):
+        config: UnifiedConfig
+        policy_bundle: PolicyBundle
+        initial_state: PipelineState | None
+        counter_overrides: dict[str, int]
+
+    class _PreflightRequest(NamedTuple):
+        config: UnifiedConfig
+        workspace_scope: WorkspaceScope | None
+        policy_bundle: object
+        initial_state: PipelineState | None
+        counter_overrides: dict[str, int]
+        inline_prompt: str | None = None
+
+    class _ExecutePipelineRequest(NamedTuple):
+        config: UnifiedConfig
+        initial_state: PipelineState | None
+        policy_bundle: object
+        verbosity: Verbosity | None
+        counter_overrides: dict[str, int]
+
+    class _LegacyRunPipelineKwargs(TypedDict, total=False):
+        config_path: Path
+        cli_overrides: ConfigOverrides
+        dry_run: bool
+        resume: bool
+        verbosity: Verbosity
+        counter_overrides: dict[str, int]
+        inline_prompt: str
+
 
     config_path: Path | None = None
     cli_overrides: ConfigOverrides | None = None
@@ -181,6 +171,16 @@ class RunPipelineRequest(NamedTuple):
     verbosity: Verbosity | None = None
     counter_overrides: dict[str, int] | None = None
     inline_prompt: str | None = None
+
+
+_RunFuncState = RunPipelineRequest._RunFuncState
+_LoadResult = RunPipelineRequest._LoadResult
+_PolicyPreflightRequest = RunPipelineRequest._PolicyPreflightRequest
+_PreflightRequest = RunPipelineRequest._PreflightRequest
+_ExecutePipelineRequest = RunPipelineRequest._ExecutePipelineRequest
+_LegacyRunPipelineKwargs = RunPipelineRequest._LegacyRunPipelineKwargs
+
+_state = _RunFuncState()
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:

@@ -165,114 +165,100 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
 }
 
 
-class PolicyFlag(StrEnum):
-    """Policy flags that may modify prompt rendering."""
-
-    NO_EDIT = "no_edit"
-    ALLOW_SHELL = "allow_shell"
-    ALLOW_GIT_READ = "allow_git_read"
-    ALLOW_GIT_WRITE = "allow_git_write"
-    ALLOW_PARALLEL_WORKERS = "allow_parallel_workers"
-    ALLOW_NETWORK = "allow_network"
-    ALLOW_ENV_READ = "allow_env_read"
-
-
-DEFAULT_POLICY_FLAGS: dict[SessionDrain, tuple[PolicyFlag, ...]] = {
-    SessionDrain.PLANNING: (PolicyFlag.NO_EDIT,),
-    SessionDrain.ANALYSIS: (PolicyFlag.NO_EDIT,),
-    SessionDrain.DEVELOPMENT_ANALYSIS: (PolicyFlag.NO_EDIT,),
-    SessionDrain.REVIEW_ANALYSIS: (PolicyFlag.NO_EDIT,),
-    SessionDrain.REVIEW: (PolicyFlag.NO_EDIT,),
-    SessionDrain.DEVELOPMENT: (PolicyFlag.ALLOW_SHELL,),
-    SessionDrain.FIX: (PolicyFlag.ALLOW_SHELL,),
-    SessionDrain.COMMIT: (PolicyFlag.ALLOW_GIT_WRITE,),
-}
-
-
 def default_capability_identifiers_for_drain(drain: SessionDrain) -> set[str]:
     """Return the canonical default capability identifiers for a drain."""
     return {cap.value for cap in DEFAULT_CAPABILITIES.get(_default_drain_key(drain), ())}
 
 
-class CapabilitySet:
-    """Lightweight set of Ralph capabilities."""
-
-    def __init__(self, values: Iterable[RalphCapability] | None = None) -> None:
-        self._values = frozenset(values or ())
-
-    def contains(self, capability: RalphCapability) -> bool:
-        return capability in self._values
-
-    def insert(self, capability: RalphCapability) -> None:
-        self._values = frozenset((*self._values, capability))
-
-    def __iter__(self) -> Iterator[RalphCapability]:
-        return iter(self._values)
-
-    def iter(self) -> Iterable[RalphCapability]:
-        return iter(self._values)
-
-    def to_vec(self) -> tuple[RalphCapability, ...]:
-        return tuple(self._values)
-
-    @classmethod
-    def defaults_for_drain(cls, drain: SessionDrain) -> CapabilitySet:
-        return cls(DEFAULT_CAPABILITIES.get(_default_drain_key(drain), ()))
-
-    @classmethod
-    def from_identifiers(cls, identifiers: Iterable[str] | None) -> CapabilitySet:
-        if not identifiers:
-            return cls()
-        values: list[RalphCapability] = []
-        for identifier in identifiers:
-            try:
-                values.append(RalphCapability(identifier))
-            except ValueError:
-                continue
-        return cls(values)
-
-
-class PolicyFlagSet:
-    """Set of Ralph policy flags."""
-
-    def __init__(self, values: Iterable[PolicyFlag] | None = None) -> None:
-        self._values = frozenset(values or ())
-
-    def contains(self, flag: PolicyFlag) -> bool:
-        return flag in self._values
-
-    def insert(self, flag: PolicyFlag) -> None:
-        self._values = frozenset((*self._values, flag))
-
-    def __iter__(self) -> Iterator[PolicyFlag]:
-        return iter(self._values)
-
-    def iter(self) -> Iterable[PolicyFlag]:
-        return iter(self._values)
-
-    def to_vec(self) -> tuple[PolicyFlag, ...]:
-        return tuple(self._values)
-
-    @classmethod
-    def defaults_for_drain(cls, drain: SessionDrain) -> PolicyFlagSet:
-        return cls(DEFAULT_POLICY_FLAGS.get(_default_drain_key(drain), ()))
-
-    @classmethod
-    def from_identifiers(cls, identifiers: Iterable[str] | None) -> PolicyFlagSet:
-        if not identifiers:
-            return cls()
-        values: list[PolicyFlag] = []
-        for identifier in identifiers:
-            try:
-                values.append(PolicyFlag(identifier))
-            except ValueError:
-                continue
-        return cls(values)
-
-
 @dataclass(frozen=True)
 class SessionCapabilities:
     """Helper bundling capabilities and policy flags for prompt rendering."""
+
+    class PolicyFlag(StrEnum):
+        """Policy flags that may modify prompt rendering."""
+
+        NO_EDIT = "no_edit"
+        ALLOW_SHELL = "allow_shell"
+        ALLOW_GIT_READ = "allow_git_read"
+        ALLOW_GIT_WRITE = "allow_git_write"
+        ALLOW_PARALLEL_WORKERS = "allow_parallel_workers"
+        ALLOW_NETWORK = "allow_network"
+        ALLOW_ENV_READ = "allow_env_read"
+
+    class CapabilitySet:
+        """Lightweight set of Ralph capabilities."""
+
+        def __init__(self, values: Iterable[RalphCapability] | None = None) -> None:
+            self._values = frozenset(values or ())
+
+        def contains(self, capability: RalphCapability) -> bool:
+            return capability in self._values
+
+        def insert(self, capability: RalphCapability) -> None:
+            self._values = frozenset((*self._values, capability))
+
+        def __iter__(self) -> Iterator[RalphCapability]:
+            return iter(self._values)
+
+        def iter(self) -> Iterable[RalphCapability]:
+            return iter(self._values)
+
+        def to_vec(self) -> tuple[RalphCapability, ...]:
+            return tuple(self._values)
+
+        @classmethod
+        def defaults_for_drain(cls, drain: SessionDrain) -> CapabilitySet:
+            return cls(DEFAULT_CAPABILITIES.get(_default_drain_key(drain), ()))
+
+        @classmethod
+        def from_identifiers(cls, identifiers: Iterable[str] | None) -> CapabilitySet:
+            if not identifiers:
+                return cls()
+            values: list[RalphCapability] = []
+            for identifier in identifiers:
+                try:
+                    values.append(RalphCapability(identifier))
+                except ValueError:
+                    continue
+            return cls(values)
+
+    class PolicyFlagSet:
+        """Set of Ralph policy flags."""
+
+        def __init__(self, values: Iterable[PolicyFlag] | None = None) -> None:
+            self._values = frozenset(values or ())
+
+        def contains(self, flag: PolicyFlag) -> bool:
+            return flag in self._values
+
+        def insert(self, flag: PolicyFlag) -> None:
+            self._values = frozenset((*self._values, flag))
+
+        def __iter__(self) -> Iterator[PolicyFlag]:
+            return iter(self._values)
+
+        def iter(self) -> Iterable[PolicyFlag]:
+            return iter(self._values)
+
+        def to_vec(self) -> tuple[PolicyFlag, ...]:
+            return tuple(self._values)
+
+        @classmethod
+        def defaults_for_drain(cls, drain: SessionDrain) -> PolicyFlagSet:
+            return cls(DEFAULT_POLICY_FLAGS.get(_default_drain_key(drain), ()))
+
+        @classmethod
+        def from_identifiers(cls, identifiers: Iterable[str] | None) -> PolicyFlagSet:
+            if not identifiers:
+                return cls()
+            values: list[PolicyFlag] = []
+            for identifier in identifiers:
+                try:
+                    values.append(PolicyFlag(identifier))
+                except ValueError:
+                    continue
+            return cls(values)
+
 
     capabilities: CapabilitySet
     policy_flags: PolicyFlagSet
@@ -317,6 +303,22 @@ class SessionCapabilities:
 
     def as_parts(self) -> tuple[CapabilitySet, PolicyFlagSet]:
         return self.capabilities, self.policy_flags
+
+
+PolicyFlag = SessionCapabilities.PolicyFlag
+CapabilitySet = SessionCapabilities.CapabilitySet
+PolicyFlagSet = SessionCapabilities.PolicyFlagSet
+
+DEFAULT_POLICY_FLAGS: dict[SessionDrain, tuple[PolicyFlag, ...]] = {
+    SessionDrain.PLANNING: (PolicyFlag.NO_EDIT,),
+    SessionDrain.ANALYSIS: (PolicyFlag.NO_EDIT,),
+    SessionDrain.DEVELOPMENT_ANALYSIS: (PolicyFlag.NO_EDIT,),
+    SessionDrain.REVIEW_ANALYSIS: (PolicyFlag.NO_EDIT,),
+    SessionDrain.REVIEW: (PolicyFlag.NO_EDIT,),
+    SessionDrain.DEVELOPMENT: (PolicyFlag.ALLOW_SHELL,),
+    SessionDrain.FIX: (PolicyFlag.ALLOW_SHELL,),
+    SessionDrain.COMMIT: (PolicyFlag.ALLOW_GIT_WRITE,),
+}
 
 
 def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet, PolicyFlagSet]:

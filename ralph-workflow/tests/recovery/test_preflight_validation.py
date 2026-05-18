@@ -30,23 +30,22 @@ from ralph.policy.validation import (
 from ralph.workspace.scope import WorkspaceScope
 
 
-class _FakeAgentRegistry:
-    """Minimal fake registry for test injection."""
-
-    def __init__(self, known_agents: set[str]) -> None:
-        self._known = known_agents
-
-    def get(self, name: str) -> object | None:
-        return object() if name in self._known else None
-
-
-class _FakeChainConfig:
-    def __init__(self, agents: list[str], max_retries: int = 3) -> None:
-        self.agents = agents
-        self.max_retries = max_retries
-
-
 class _FakeBundle:
+
+    class _FakeAgentRegistry:
+        """Minimal fake registry for test injection."""
+
+        def __init__(self, known_agents: set[str]) -> None:
+            self._known = known_agents
+
+        def get(self, name: str) -> object | None:
+            return object() if name in self._known else None
+
+    class _FakeChainConfig:
+        def __init__(self, agents: list[str], max_retries: int = 3) -> None:
+            self.agents = agents
+            self.max_retries = max_retries
+
     def __init__(
         self,
         chains: dict[str, _FakeChainConfig],
@@ -55,6 +54,10 @@ class _FakeBundle:
     ) -> None:
         self.agents = type("_Agents", (), {"agent_chains": chains, "agent_drains": drains})()
         self.pipeline = type("_Pipeline", (), {"phases": phases})()
+
+
+_FakeAgentRegistry = _FakeBundle._FakeAgentRegistry
+_FakeChainConfig = _FakeBundle._FakeChainConfig
 
 
 def test_validate_agent_chains_satisfiable_passes_with_known_agents() -> None:

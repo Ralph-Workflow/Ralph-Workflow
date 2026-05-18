@@ -61,45 +61,45 @@ if TYPE_CHECKING:
         console: NotRequired[Console | None]
 
 
-@dataclass(frozen=True)
-class PhaseContext:
-    """Context passed to every phase handler.
-
-    Attributes:
-        workspace: Workspace for file I/O.
-        registry: Agent registry for looking up agent configs.
-        chain_manager: Chain manager for drain-to-chain resolution.
-        pipeline_policy: Pipeline policy (phase graph).
-        agents_policy: Agents policy (chains and drain bindings).
-        artifacts_policy: Artifacts policy (artifact contracts).
-        config: Optional legacy unified config for backward compatibility.
-        console: Rich console for output (optional).
-    """
-
-    workspace: Workspace
-    registry: AgentRegistry
-    chain_manager: ChainManager
-    pipeline_policy: PipelinePolicy
-    agents_policy: AgentsPolicy
-    artifacts_policy: ArtifactsPolicy
-    config: UnifiedConfig | None = None
-    console: Console | None = None
-
-    @classmethod
-    def construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
-        return cls(**kwargs)
-
-    @classmethod
-    def model_construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
-        return cls.construct(**kwargs)
-
-
 class PhaseHandlerNotFoundError(Exception):
     """Raised when no handler is registered for a phase.
 
     Attributes:
         phase: Phase name that has no handler.
     """
+
+    @dataclass(frozen=True)
+    class PhaseContext:
+        """Context passed to every phase handler.
+
+        Attributes:
+            workspace: Workspace for file I/O.
+            registry: Agent registry for looking up agent configs.
+            chain_manager: Chain manager for drain-to-chain resolution.
+            pipeline_policy: Pipeline policy (phase graph).
+            agents_policy: Agents policy (chains and drain bindings).
+            artifacts_policy: Artifacts policy (artifact contracts).
+            config: Optional legacy unified config for backward compatibility.
+            console: Rich console for output (optional).
+        """
+
+        workspace: Workspace
+        registry: AgentRegistry
+        chain_manager: ChainManager
+        pipeline_policy: PipelinePolicy
+        agents_policy: AgentsPolicy
+        artifacts_policy: ArtifactsPolicy
+        config: UnifiedConfig | None = None
+        console: Console | None = None
+
+        @classmethod
+        def construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
+            return cls(**kwargs)
+
+        @classmethod
+        def model_construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
+            return cls.construct(**kwargs)
+
 
     def __init__(self, phase: str) -> None:
         self.phase = phase
@@ -109,6 +109,9 @@ class PhaseHandlerNotFoundError(Exception):
             f"or use a built-in phase name."
         )
         super().__init__(msg)
+
+
+PhaseContext = PhaseHandlerNotFoundError.PhaseContext
 
 
 # Phase handler signature: takes Effect and PhaseContext, returns list of Events

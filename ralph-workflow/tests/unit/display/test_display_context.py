@@ -7,18 +7,18 @@ from rich.console import Console
 from ralph.display import DisplayContext as DisplayContextExport
 from ralph.display import make_display_context as make_display_context_export
 from ralph.display.context import (
-    _COMPACT_CONDENSER_HARD_LIMIT,
-    _COMPACT_CONDENSER_SOFT_LIMIT,
-    _COMPACT_HEADLINE_MAX_CHARS,
-    _COMPACT_STREAMING_CHECKPOINT_CHARS,
-    _COMPACT_THINKING_PREVIEW_MIN_CHARS,
-    _COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS,
-    _WIDE_CONDENSER_HARD_LIMIT,
-    _WIDE_CONDENSER_SOFT_LIMIT,
-    _WIDE_HEADLINE_MAX_CHARS,
-    _WIDE_STREAMING_CHECKPOINT_CHARS,
-    _WIDE_THINKING_PREVIEW_MIN_CHARS,
-    _WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS,
+    COMPACT_CONDENSER_HARD_LIMIT,
+    COMPACT_CONDENSER_SOFT_LIMIT,
+    COMPACT_HEADLINE_MAX_CHARS,
+    COMPACT_STREAMING_CHECKPOINT_CHARS,
+    COMPACT_THINKING_PREVIEW_MIN_CHARS,
+    COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS,
+    WIDE_CONDENSER_HARD_LIMIT,
+    WIDE_CONDENSER_SOFT_LIMIT,
+    WIDE_HEADLINE_MAX_CHARS,
+    WIDE_STREAMING_CHECKPOINT_CHARS,
+    WIDE_THINKING_PREVIEW_MIN_CHARS,
+    WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS,
     DisplayContext,
     make_display_context,
 )
@@ -75,7 +75,7 @@ def test_force_mode_overrides_width() -> None:
     assert ctx.mode == "compact"
     assert ctx.narrow is True
     # Limits should be compact, not wide
-    assert ctx.headline_max_chars == _COMPACT_HEADLINE_MAX_CHARS
+    assert ctx.headline_max_chars == COMPACT_HEADLINE_MAX_CHARS
 
 
 def test_force_width_overrides_console_width() -> None:
@@ -116,32 +116,32 @@ def test_color_enabled_by_default() -> None:
 def test_wide_mode_limits() -> None:
     console = Console(width=120, force_terminal=True)
     ctx = make_display_context(console=console, env={})
-    assert ctx.headline_max_chars == _WIDE_HEADLINE_MAX_CHARS
-    assert ctx.condenser_soft_limit == _WIDE_CONDENSER_SOFT_LIMIT
-    assert ctx.condenser_hard_limit == _WIDE_CONDENSER_HARD_LIMIT
-    assert ctx.streaming_checkpoint_chars == _WIDE_STREAMING_CHECKPOINT_CHARS
-    assert ctx.thinking_preview_min_chars == _WIDE_THINKING_PREVIEW_MIN_CHARS
-    assert ctx.tool_result_headline_min_chars == _WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS
+    assert ctx.headline_max_chars == WIDE_HEADLINE_MAX_CHARS
+    assert ctx.condenser_soft_limit == WIDE_CONDENSER_SOFT_LIMIT
+    assert ctx.condenser_hard_limit == WIDE_CONDENSER_HARD_LIMIT
+    assert ctx.streaming_checkpoint_chars == WIDE_STREAMING_CHECKPOINT_CHARS
+    assert ctx.thinking_preview_min_chars == WIDE_THINKING_PREVIEW_MIN_CHARS
+    assert ctx.tool_result_headline_min_chars == WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS
 
 
 def test_compact_mode_limits() -> None:
     console = Console(width=40, force_terminal=True)
     ctx = make_display_context(console=console, env={})
-    assert ctx.headline_max_chars == _COMPACT_HEADLINE_MAX_CHARS
-    assert ctx.condenser_soft_limit == _COMPACT_CONDENSER_SOFT_LIMIT
-    assert ctx.condenser_hard_limit == _COMPACT_CONDENSER_HARD_LIMIT
-    assert ctx.streaming_checkpoint_chars == _COMPACT_STREAMING_CHECKPOINT_CHARS
-    assert ctx.thinking_preview_min_chars == _COMPACT_THINKING_PREVIEW_MIN_CHARS
-    assert ctx.tool_result_headline_min_chars == _COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS
+    assert ctx.headline_max_chars == COMPACT_HEADLINE_MAX_CHARS
+    assert ctx.condenser_soft_limit == COMPACT_CONDENSER_SOFT_LIMIT
+    assert ctx.condenser_hard_limit == COMPACT_CONDENSER_HARD_LIMIT
+    assert ctx.streaming_checkpoint_chars == COMPACT_STREAMING_CHECKPOINT_CHARS
+    assert ctx.thinking_preview_min_chars == COMPACT_THINKING_PREVIEW_MIN_CHARS
+    assert ctx.tool_result_headline_min_chars == COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS
 
 
 def test_compact_limits_smaller_than_wide() -> None:
-    assert _COMPACT_HEADLINE_MAX_CHARS < _WIDE_HEADLINE_MAX_CHARS
-    assert _COMPACT_CONDENSER_SOFT_LIMIT < _WIDE_CONDENSER_SOFT_LIMIT
-    assert _COMPACT_CONDENSER_HARD_LIMIT < _WIDE_CONDENSER_HARD_LIMIT
-    assert _COMPACT_STREAMING_CHECKPOINT_CHARS < _WIDE_STREAMING_CHECKPOINT_CHARS
-    assert _COMPACT_THINKING_PREVIEW_MIN_CHARS <= _WIDE_THINKING_PREVIEW_MIN_CHARS
-    assert _COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS <= _WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS
+    assert COMPACT_HEADLINE_MAX_CHARS < WIDE_HEADLINE_MAX_CHARS
+    assert COMPACT_CONDENSER_SOFT_LIMIT < WIDE_CONDENSER_SOFT_LIMIT
+    assert COMPACT_CONDENSER_HARD_LIMIT < WIDE_CONDENSER_HARD_LIMIT
+    assert COMPACT_STREAMING_CHECKPOINT_CHARS < WIDE_STREAMING_CHECKPOINT_CHARS
+    assert COMPACT_THINKING_PREVIEW_MIN_CHARS <= WIDE_THINKING_PREVIEW_MIN_CHARS
+    assert COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS <= WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS
 
 
 def test_display_context_is_frozen() -> None:

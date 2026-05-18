@@ -7,7 +7,7 @@ import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -30,6 +30,7 @@ from ralph.recovery.events import FalloverEvent as _FalloverEvent
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Protocol
 
     from ralph.config.agent_config import AgentConfig
     from ralph.config.models import UnifiedConfig
@@ -40,44 +41,37 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
+    class _PipelineSubscriberProtocol(Protocol):
+        def notify(self, state: PipelineState) -> None: ...
 
-class _PipelineSubscriberProtocol(Protocol):
-    def notify(self, state: PipelineState) -> None: ...
+    class _RegistryLike(Protocol):
+        def get(self, name: str) -> AgentConfig | None: ...
 
+    class _ConnectivityMonitorLike(Protocol):
+        @property
+        def current_state(self) -> ConnectivityState: ...
 
-class _RegistryLike(Protocol):
-    def get(self, name: str) -> AgentConfig | None: ...
+        def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
 
+    class _DisplayContextOwner(Protocol):
+        _ctx: DisplayContext
 
-class _ConnectivityMonitorLike(Protocol):
-    @property
-    def current_state(self) -> ConnectivityState: ...
+    class _DisplayWithPlainRenderer(_DisplayContextOwner, Protocol):
+        _plain_renderer: _DisplayContextOwner
 
-    def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
+    class _PhaseAwareDisplay(Protocol):
+        def begin_phase(self, phase: str) -> None: ...
 
-
-class _DisplayContextOwner(Protocol):
-    _ctx: DisplayContext
-
-
-class _DisplayWithPlainRenderer(_DisplayContextOwner, Protocol):
-    _plain_renderer: _DisplayContextOwner
-
-
-class _PhaseAwareDisplay(Protocol):
-    def begin_phase(self, phase: str) -> None: ...
-
-
-class _RunEndDisplay(Protocol):
-    def emit_run_end(
-        self,
-        *,
-        phase: str,
-        total_agent_calls: int,
-        pr_url: str | None = None,
-        exit_trigger: str | None = None,
-        outer_dev_iteration: int | None = None,
-    ) -> None: ...
+    class _RunEndDisplay(Protocol):
+        def emit_run_end(
+            self,
+            *,
+            phase: str,
+            total_agent_calls: int,
+            pr_url: str | None = None,
+            exit_trigger: str | None = None,
+            outer_dev_iteration: int | None = None,
+        ) -> None: ...
 
 
 @dataclass

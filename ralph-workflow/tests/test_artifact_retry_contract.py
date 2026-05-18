@@ -40,7 +40,7 @@ from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import (
     PromptPhaseContext,
     PromptPhaseOptions,
-    _read_and_clear_retry_hint,
+    read_and_clear_retry_hint,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
@@ -339,7 +339,7 @@ def test_read_and_clear_retry_hint_returns_content_and_deletes_file() -> None:
     workspace = MemoryWorkspace()
     workspace.write(retry_hint_path("review"), "hint content here")
 
-    result = _read_and_clear_retry_hint(workspace, "review")
+    result = read_and_clear_retry_hint(workspace, "review")
 
     assert result == "hint content here"
     assert not workspace.exists(retry_hint_path("review")), "Hint file must be deleted after read"
@@ -347,7 +347,7 @@ def test_read_and_clear_retry_hint_returns_content_and_deletes_file() -> None:
 
 def test_read_and_clear_retry_hint_returns_empty_when_absent() -> None:
     workspace = MemoryWorkspace()
-    result = _read_and_clear_retry_hint(workspace, "review")
+    result = read_and_clear_retry_hint(workspace, "review")
     assert result == ""
 
 

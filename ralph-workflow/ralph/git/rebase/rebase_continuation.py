@@ -40,20 +40,22 @@ def _git_env() -> dict[str, str]:
     return env
 
 
-class RebaseContinuationError(Exception):
-    """Base exception for rebase continuation helpers."""
-
-
-class NoRebaseInProgressError(RebaseContinuationError):
-    """Raised when no rebase is active but continuation was requested."""
-
-
-class ConflictRemainingError(RebaseContinuationError):
-    """Raised when conflicts remain while attempting to continue."""
-
-
 class RebaseVerificationError(Exception):
     """Raised when verifying rebase completion fails."""
+
+    class RebaseContinuationError(Exception):
+        """Base exception for rebase continuation helpers."""
+
+    class NoRebaseInProgressError(RebaseContinuationError):
+        """Raised when no rebase is active but continuation was requested."""
+
+    class ConflictRemainingError(RebaseContinuationError):
+        """Raised when conflicts remain while attempting to continue."""
+
+
+RebaseContinuationError = RebaseVerificationError.RebaseContinuationError
+NoRebaseInProgressError = RebaseVerificationError.NoRebaseInProgressError
+ConflictRemainingError = RebaseVerificationError.ConflictRemainingError
 
 
 def _open_repo(repo_root: Path | str) -> Repo:

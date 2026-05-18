@@ -21,96 +21,6 @@ MAX_AGENT_NAME_LENGTH = 20
 
 
 @dataclass
-class CommitAttemptLog:
-    """Per-attempt log for commit message generation.
-
-    Captures all details about a single attempt to generate a commit message.
-
-    Attributes:
-        attempt_number: Attempt number within this session.
-        agent: Agent being used (e.g., "claude", "glm").
-        strategy: Retry strategy (e.g., "initial", "strict_json").
-        timestamp: Timestamp when attempt started.
-        prompt_size_bytes: Size of the prompt in bytes.
-        diff_size_bytes: Size of the diff in bytes.
-        diff_was_truncated: Whether the diff was pre-truncated.
-        raw_output: Raw output from the agent.
-        outcome: Final outcome of this attempt.
-    """
-
-    attempt_number: int
-    agent: str
-    strategy: str
-    timestamp: datetime = field(default_factory=datetime.now)
-    prompt_size_bytes: int = 0
-    diff_size_bytes: int = 0
-    diff_was_truncated: bool = False
-    raw_output: str | None = None
-    outcome: str | None = None
-
-    def with_prompt_size(self, size: int) -> CommitAttemptLog:
-        """Set the prompt size.
-
-        Args:
-            size: Prompt size in bytes.
-
-        Returns:
-            A copy with the prompt size set.
-        """
-        self.prompt_size_bytes = size
-        return self
-
-    def with_diff_info(self, size: int, was_truncated: bool) -> CommitAttemptLog:
-        """Set the diff information.
-
-        Args:
-            size: Diff size in bytes.
-            was_truncated: Whether the diff was truncated.
-
-        Returns:
-            A copy with the diff info set.
-        """
-        self.diff_size_bytes = size
-        self.diff_was_truncated = was_truncated
-        return self
-
-    def with_raw_output(self, output: str) -> CommitAttemptLog:
-        """Set the raw output from the agent.
-
-        Truncates very large outputs to prevent log file bloat.
-
-        Args:
-            output: Raw output string.
-
-        Returns:
-            A copy with the raw output set (truncated if too large).
-        """
-        const_max_output_size = 50000
-        if len(output) > const_max_output_size:
-            half = const_max_output_size // 2
-            self.raw_output = (
-                f"{output[:half]}\n\n"
-                f"[... truncated {len(output) - const_max_output_size} bytes ...]\n\n"
-                f"{output[len(output) - half :]}"
-            )
-        else:
-            self.raw_output = output
-        return self
-
-    def with_outcome(self, outcome: str) -> CommitAttemptLog:
-        """Set the final outcome.
-
-        Args:
-            outcome: Outcome string.
-
-        Returns:
-            A copy with the outcome set.
-        """
-        self.outcome = outcome
-        return self
-
-
-@dataclass
 class CommitLoggingSession:
     """Session tracker for commit generation logging.
 
@@ -122,6 +32,96 @@ class CommitLoggingSession:
         attempt_counter: Current attempt counter.
         is_noop: Whether this is a no-op session.
     """
+
+    @dataclass
+    class CommitAttemptLog:
+        """Per-attempt log for commit message generation.
+
+        Captures all details about a single attempt to generate a commit message.
+
+        Attributes:
+            attempt_number: Attempt number within this session.
+            agent: Agent being used (e.g., "claude", "glm").
+            strategy: Retry strategy (e.g., "initial", "strict_json").
+            timestamp: Timestamp when attempt started.
+            prompt_size_bytes: Size of the prompt in bytes.
+            diff_size_bytes: Size of the diff in bytes.
+            diff_was_truncated: Whether the diff was pre-truncated.
+            raw_output: Raw output from the agent.
+            outcome: Final outcome of this attempt.
+        """
+
+        attempt_number: int
+        agent: str
+        strategy: str
+        timestamp: datetime = field(default_factory=datetime.now)
+        prompt_size_bytes: int = 0
+        diff_size_bytes: int = 0
+        diff_was_truncated: bool = False
+        raw_output: str | None = None
+        outcome: str | None = None
+
+        def with_prompt_size(self, size: int) -> CommitAttemptLog:
+            """Set the prompt size.
+
+            Args:
+                size: Prompt size in bytes.
+
+            Returns:
+                A copy with the prompt size set.
+            """
+            self.prompt_size_bytes = size
+            return self
+
+        def with_diff_info(self, size: int, was_truncated: bool) -> CommitAttemptLog:
+            """Set the diff information.
+
+            Args:
+                size: Diff size in bytes.
+                was_truncated: Whether the diff was truncated.
+
+            Returns:
+                A copy with the diff info set.
+            """
+            self.diff_size_bytes = size
+            self.diff_was_truncated = was_truncated
+            return self
+
+        def with_raw_output(self, output: str) -> CommitAttemptLog:
+            """Set the raw output from the agent.
+
+            Truncates very large outputs to prevent log file bloat.
+
+            Args:
+                output: Raw output string.
+
+            Returns:
+                A copy with the raw output set (truncated if too large).
+            """
+            const_max_output_size = 50000
+            if len(output) > const_max_output_size:
+                half = const_max_output_size // 2
+                self.raw_output = (
+                    f"{output[:half]}\n\n"
+                    f"[... truncated {len(output) - const_max_output_size} bytes ...]\n\n"
+                    f"{output[len(output) - half :]}"
+                )
+            else:
+                self.raw_output = output
+            return self
+
+        def with_outcome(self, outcome: str) -> CommitAttemptLog:
+            """Set the final outcome.
+
+            Args:
+                outcome: Outcome string.
+
+            Returns:
+                A copy with the outcome set.
+            """
+            self.outcome = outcome
+            return self
+
 
     run_dir: Path
     attempt_counter: int = 0
@@ -240,7 +240,7 @@ class CommitLoggingSession:
         if self.is_noop:
             return
 
-        sanitized_agent = _sanitize_agent_name(attempt_log.agent)
+        sanitized_agent = sanitize_agent_name(attempt_log.agent)
         filename = (
             f"attempt_{attempt_log.attempt_number:03d}_"
             f"{sanitized_agent}_"
@@ -310,7 +310,10 @@ class CommitLoggingSession:
         return "\n".join(lines)
 
 
-def _sanitize_agent_name(agent: str) -> str:
+CommitAttemptLog = CommitLoggingSession.CommitAttemptLog
+
+
+def sanitize_agent_name(agent: str) -> str:
     """Sanitize agent name for use in filename.
 
     Args:

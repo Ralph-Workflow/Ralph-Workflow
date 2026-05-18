@@ -9,34 +9,37 @@ from types import MappingProxyType
 from typing import cast
 
 
-class RebaseKind(Enum):
-    """Enum describing every supported rebase failure mode."""
-
-    INVALID_REVISION = "invalid_revision"
-    DIRTY_WORKING_TREE = "dirty_working_tree"
-    CONCURRENT_OPERATION = "concurrent_operation"
-    REPOSITORY_CORRUPT = "repository_corrupt"
-    ENVIRONMENT_FAILURE = "environment_failure"
-    HOOK_REJECTION = "hook_rejection"
-    CONTENT_CONFLICT = "content_conflict"
-    PATCH_APPLICATION_FAILED = "patch_application_failed"
-    INTERACTIVE_STOP = "interactive_stop"
-    EMPTY_COMMIT = "empty_commit"
-    AUTOSTASH_FAILED = "autostash_failed"
-    COMMIT_CREATION_FAILED = "commit_creation_failed"
-    REFERENCE_UPDATE_FAILED = "reference_update_failed"
-    UNKNOWN = "unknown"
-
-
 @dataclass(frozen=True)
 class RebaseErrorKind:
     """Payload for a classified rebase failure."""
+
+    class RebaseKind(Enum):
+        """Enum describing every supported rebase failure mode."""
+
+        INVALID_REVISION = "invalid_revision"
+        DIRTY_WORKING_TREE = "dirty_working_tree"
+        CONCURRENT_OPERATION = "concurrent_operation"
+        REPOSITORY_CORRUPT = "repository_corrupt"
+        ENVIRONMENT_FAILURE = "environment_failure"
+        HOOK_REJECTION = "hook_rejection"
+        CONTENT_CONFLICT = "content_conflict"
+        PATCH_APPLICATION_FAILED = "patch_application_failed"
+        INTERACTIVE_STOP = "interactive_stop"
+        EMPTY_COMMIT = "empty_commit"
+        AUTOSTASH_FAILED = "autostash_failed"
+        COMMIT_CREATION_FAILED = "commit_creation_failed"
+        REFERENCE_UPDATE_FAILED = "reference_update_failed"
+        UNKNOWN = "unknown"
+
 
     kind: RebaseKind
     metadata: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "metadata", _freeze_metadata(self.metadata))
+
+
+RebaseKind = RebaseErrorKind.RebaseKind
 
 
 def _freeze_metadata(metadata: Mapping[str, object]) -> Mapping[str, object]:

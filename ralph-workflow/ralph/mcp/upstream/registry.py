@@ -31,21 +31,20 @@ _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
 UpstreamClientFactory = Callable[[UpstreamMcpServer], _AnyUpstreamClient]
 
 
-class RegistryCollisionError(ValueError):
-    """Raised when two upstream servers produce the same proxy alias for a tool."""
-
-
-@dataclass(frozen=True)
-class ProxiedTool:
-    """A single upstream tool mapped to a stable proxy alias."""
-
-    alias: str
-    server_name: str
-    tool: UpstreamTool
-
-
 class UpstreamRegistry:
     """Aggregates tools from multiple upstream MCP servers under stable proxy aliases."""
+
+    class RegistryCollisionError(ValueError):
+        """Raised when two upstream servers produce the same proxy alias for a tool."""
+
+    @dataclass(frozen=True)
+    class ProxiedTool:
+        """A single upstream tool mapped to a stable proxy alias."""
+
+        alias: str
+        server_name: str
+        tool: UpstreamTool
+
 
     def __init__(
         self,
@@ -118,6 +117,10 @@ class UpstreamRegistry:
             )
             return result
         return raw_result
+
+
+RegistryCollisionError = UpstreamRegistry.RegistryCollisionError
+ProxiedTool = UpstreamRegistry.ProxiedTool
 
 
 __all__ = [

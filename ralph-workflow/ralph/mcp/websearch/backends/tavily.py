@@ -23,18 +23,19 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from ..secrets import resolve_secret
 from .base import SearchResult, WebSearchError
 
+if TYPE_CHECKING:
+    from typing import Protocol
 
-class _TavilyClient(Protocol):
-    def search(self, query: str, *, max_results: int) -> Mapping[str, object]: ...
+    class _TavilyClient(Protocol):
+        def search(self, query: str, *, max_results: int) -> Mapping[str, object]: ...
 
-
-class _TavilyClientType(Protocol):
-    def __call__(self, *, api_key: str) -> _TavilyClient: ...
+    class _TavilyClientType(Protocol):
+        def __call__(self, *, api_key: str) -> _TavilyClient: ...
 
 
 @dataclass(frozen=True)

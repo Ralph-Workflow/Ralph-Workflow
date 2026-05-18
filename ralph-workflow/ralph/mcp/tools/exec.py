@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
-_DEFAULT_TIMEOUT_MS = 30_000
+DEFAULT_TIMEOUT_MS = 30_000
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2
 _ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")
@@ -61,47 +61,52 @@ _PACKAGE_MANAGERS = {"apt", "yum", "dnf", "pacman", "brew"}
 type CwdProvider = Callable[[], Path]
 
 
-@dataclass(frozen=True)
-class _CompletedProcessAdapter:
-    """Adapter exposing stdout/stderr/returncode like subprocess.CompletedProcess."""
-
-    stdout: bytes
-    stderr: bytes
-    returncode: int
 
 
 type CommandRunner = Callable[[list[str], Path, float | None], _CompletedProcessAdapter]
-
-
-class ExecutionError(ToolError):
-    """Raised when the exec subprocess cannot be started or times out."""
-
-
-@dataclass(frozen=True)
-class ExecParams:
-    """Parsed parameters for the MCP exec tool."""
-
-    command: str
-    args: list[str]
-    timeout_ms: int
-
-
-@dataclass(frozen=True)
-class ExecRunDeps:
-    """Injectable dependencies for exec tool command execution."""
-
-    runner: CommandRunner | None = None
-    cwd_provider: CwdProvider | None = None
 
 
 @runtime_checkable
 class WorkspaceWithRoot(Protocol):
     """Workspace surface required for command execution."""
 
+    @dataclass(frozen=True)
+    class _CompletedProcessAdapter:
+        """Adapter exposing stdout/stderr/returncode like subprocess.CompletedProcess."""
+
+        stdout: bytes
+        stderr: bytes
+        returncode: int
+
+    class ExecutionError(ToolError):
+        """Raised when the exec subprocess cannot be started or times out."""
+
+    @dataclass(frozen=True)
+    class ExecParams:
+        """Parsed parameters for the MCP exec tool."""
+
+        command: str
+        args: list[str]
+        timeout_ms: int
+
+    @dataclass(frozen=True)
+    class ExecRunDeps:
+        """Injectable dependencies for exec tool command execution."""
+
+        runner: CommandRunner | None = None
+        cwd_provider: CwdProvider | None = None
+
+
     @property
     def root(self) -> Path:
         """Return the absolute workspace root path."""
         ...
+
+
+_CompletedProcessAdapter = WorkspaceWithRoot._CompletedProcessAdapter
+ExecutionError = WorkspaceWithRoot.ExecutionError
+ExecParams = WorkspaceWithRoot.ExecParams
+ExecRunDeps = WorkspaceWithRoot.ExecRunDeps
 
 
 def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
@@ -111,11 +116,11 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     command = command_tokens[0] if command_tokens else ""
     merged_args = [*command_tokens[1:], *args]
 
-    timeout_value = params.get("timeout_ms", _DEFAULT_TIMEOUT_MS)
+    timeout_value = params.get("timeout_ms", DEFAULT_TIMEOUT_MS)
     timeout_ms = (
         timeout_value
         if isinstance(timeout_value, int) and timeout_value >= 0
-        else _DEFAULT_TIMEOUT_MS
+        else DEFAULT_TIMEOUT_MS
     )
 
     return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)

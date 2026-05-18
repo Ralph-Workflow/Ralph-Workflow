@@ -27,89 +27,92 @@ _READ_CHUNK_SIZE = 4096
 _STDERR_FD = 2
 
 
-@dataclass
-class PtyProcess:
-    """Tracked PTY child process owned by the parent master file descriptor."""
+class _SuppressCloseError:
 
-    pid: int
-    master_fd: int
-    slave_fd: int
-    _returncode: int | None = None
-    _closed: bool = False
+    @dataclass
+    class PtyProcess:
+        """Tracked PTY child process owned by the parent master file descriptor."""
 
-    @property
-    def returncode(self) -> int | None:
-        self.poll()
-        return self._returncode
+        pid: int
+        master_fd: int
+        slave_fd: int
+        _returncode: int | None = None
+        _closed: bool = False
 
-    def poll(self) -> int | None:
-        if self._returncode is not None:
+        @property
+        def returncode(self) -> int | None:
+            self.poll()
             return self._returncode
-        pid, status = os.waitpid(self.pid, os.WNOHANG)
-        if pid == 0:
-            return None
-        self._returncode = _status_to_returncode(status)
-        return self._returncode
 
-    def wait(self, timeout: float | None = None) -> int:
-        if self._returncode is not None:
-            return self._returncode
-        if timeout is None:
-            _pid, status = os.waitpid(self.pid, 0)
+        def poll(self) -> int | None:
+            if self._returncode is not None:
+                return self._returncode
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+            if pid == 0:
+                return None
             self._returncode = _status_to_returncode(status)
             return self._returncode
 
-        deadline = time.monotonic() + timeout
-        while True:
-            rc = self.poll()
-            if rc is not None:
-                return rc
-            if time.monotonic() >= deadline:
-                raise TimeoutError from None
-            time.sleep(0.01)
+        def wait(self, timeout: float | None = None) -> int:
+            if self._returncode is not None:
+                return self._returncode
+            if timeout is None:
+                _pid, status = os.waitpid(self.pid, 0)
+                self._returncode = _status_to_returncode(status)
+                return self._returncode
 
-    def terminate(self) -> None:
-        with _SuppressMissingProcess():
-            os.kill(self.pid, signal.SIGTERM)
+            deadline = time.monotonic() + timeout
+            while True:
+                rc = self.poll()
+                if rc is not None:
+                    return rc
+                if time.monotonic() >= deadline:
+                    raise TimeoutError from None
+                time.sleep(0.01)
 
-    def kill(self) -> None:
-        with _SuppressMissingProcess():
-            os.kill(self.pid, signal.SIGKILL)
+        def terminate(self) -> None:
+            with _SuppressMissingProcess():
+                os.kill(self.pid, signal.SIGTERM)
 
-    def read(self, max_bytes: int = _READ_CHUNK_SIZE) -> bytes:
-        return os.read(self.master_fd, max_bytes)
+        def kill(self) -> None:
+            with _SuppressMissingProcess():
+                os.kill(self.pid, signal.SIGKILL)
 
-    def fileno(self) -> int:
-        return self.master_fd
+        def read(self, max_bytes: int = _READ_CHUNK_SIZE) -> bytes:
+            return os.read(self.master_fd, max_bytes)
 
-    def isatty(self) -> bool:
-        return os.isatty(self.master_fd)
+        def fileno(self) -> int:
+            return self.master_fd
 
-    def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        for fd in (self.master_fd, self.slave_fd):
-            with _SuppressCloseError():
-                os.close(fd)
+        def isatty(self) -> bool:
+            return os.isatty(self.master_fd)
 
+        def close(self) -> None:
+            if self._closed:
+                return
+            self._closed = True
+            for fd in (self.master_fd, self.slave_fd):
+                with _SuppressCloseError():
+                    os.close(fd)
 
-class _SuppressMissingProcess:
-    def __enter__(self) -> None:
-        return None
+    class _SuppressMissingProcess:
+        def __enter__(self) -> None:
+            return None
 
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
-        del exc, tb
-        return exc_type in (ProcessLookupError, PermissionError)
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
+            del exc, tb
+            return exc_type in (ProcessLookupError, PermissionError)
 
-
-class _SuppressCloseError:
     def __enter__(self) -> None:
         return None
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
         del exc, tb
         return exc_type is OSError
+
+
+PtyProcess = _SuppressCloseError.PtyProcess
+_SuppressMissingProcess = _SuppressCloseError._SuppressMissingProcess
 
 
 def spawn_pty_process(

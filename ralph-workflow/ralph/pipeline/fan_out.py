@@ -56,23 +56,22 @@ if TYPE_CHECKING:
     from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import PipelinePolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
-
-
-class _PipelineSubscriberLike(Protocol):
-    def notify(self, state: PipelineState) -> None: ...
-
-
-@dataclass(frozen=True)
-class VerificationResult:
-    """Outcome of the post-fan-out serialized verification run."""
-
-    ran: bool
-    passed: bool | None
-    exit_code: int | None
+if TYPE_CHECKING:
+    class _PipelineSubscriberLike(Protocol):
+        def notify(self, state: PipelineState) -> None: ...
 
 
 @dataclass(frozen=True)
 class _FanOutCtx:
+
+    @dataclass(frozen=True)
+    class VerificationResult:
+        """Outcome of the post-fan-out serialized verification run."""
+
+        ran: bool
+        passed: bool | None
+        exit_code: int | None
+
     effect: FanOutEffect
     state: PipelineState
     display: ParallelDisplay
@@ -82,6 +81,9 @@ class _FanOutCtx:
     pipeline_subscriber: _PipelineSubscriberLike | None
     config: UnifiedConfig | None
     monitor_stop_cb: Callable[[], None] | None
+
+
+VerificationResult = _FanOutCtx.VerificationResult
 
 
 def _notify_subscriber(

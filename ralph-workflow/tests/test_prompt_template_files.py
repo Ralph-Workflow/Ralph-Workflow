@@ -16,23 +16,26 @@ TEMPLATES_ROOT = PROMPTS_ROOT / "templates"
 SHARED_ROOT = TEMPLATES_ROOT / "shared"
 
 
-class _ApprovedSession:
-    session_id = "session-1"
-
-    def __init__(self, *, drain: str = "development_analysis") -> None:
-        self.drain = drain
-
-    def check_capability(self, capability: str) -> object:
-        assert capability == "artifact.submit"
-        return "approved"
-
-
 class _Workspace:
+
+    class _ApprovedSession:
+        session_id = "session-1"
+
+        def __init__(self, *, drain: str = "development_analysis") -> None:
+            self.drain = drain
+
+        def check_capability(self, capability: str) -> object:
+            assert capability == "artifact.submit"
+            return "approved"
+
     def __init__(self, root: Path) -> None:
         self._root = root
 
     def absolute_path(self, path: str) -> str:
         return str((self._root / path).resolve())
+
+
+_ApprovedSession = _Workspace._ApprovedSession
 
 
 def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:

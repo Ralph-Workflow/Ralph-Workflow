@@ -19,8 +19,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
-class WorkUnitsValidationError(ValueError):
-    """Raised when a planning artifact contains invalid work_units."""
 
 
 _UNIT_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
@@ -41,51 +39,47 @@ RESERVED_EDIT_PATHS: frozenset[str] = frozenset(
 )
 
 
-class _FrozenWorkUnitModel(RalphBaseModel):
-    """Private base for frozen work unit models.
-
-    Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
-    repeat it. Pydantic v2 inherits ``model_config`` when descendants do not
-    declare one of their own.
-    """
+class WorkUnitsPlan(RalphBaseModel):
+    """Typed representation of work_units[] in planning artifacts."""
 
     model_config = ConfigDict(frozen=True)
 
+    class WorkUnitsValidationError(ValueError):
+        """Raised when a planning artifact contains invalid work_units."""
 
-class WorkUnit(_FrozenWorkUnitModel):
-    """Single planning work unit declaration."""
+    class WorkUnit(RalphBaseModel):
+        model_config = ConfigDict(frozen=True)
 
-    unit_id: str = Field(..., min_length=1)
-    description: str = Field(..., min_length=1, max_length=MAX_DESCRIPTION_CHARS)
-    allowed_directories: list[str] = Field(default_factory=list)
-    dependencies: list[str] = Field(default_factory=list)
+        """Single planning work unit declaration."""
 
-    @field_validator("unit_id")
-    @classmethod
-    def _validate_unit_id(cls, v: str) -> str:
-        if _UNIT_ID_RE.fullmatch(v):
-            return v
-        if not v:
-            raise ValueError("unit_id must be 1-64 chars from [a-zA-Z0-9_-] (got empty string)")
-        if len(v) > _UNIT_ID_MAX_LEN:
-            raise ValueError(
-                f"unit_id must be at most {_UNIT_ID_MAX_LEN} chars (got length {len(v)}: {v!r})"
-            )
-        invalid_char = next((ch for ch in v if not re.fullmatch(r"[a-zA-Z0-9_-]", ch)), None)
-        if invalid_char is not None:
-            raise ValueError(
-                f"unit_id contains invalid character {invalid_char!r}; allowed: [a-zA-Z0-9_-]"
-            )
-        raise ValueError(f"unit_id must match ^[a-zA-Z0-9_-]{{1,64}}$ (got: {v!r})")
+        unit_id: str = Field(..., min_length=1)
+        description: str = Field(..., min_length=1, max_length=MAX_DESCRIPTION_CHARS)
+        allowed_directories: list[str] = Field(default_factory=list)
+        dependencies: list[str] = Field(default_factory=list)
 
-    @field_validator("allowed_directories")
-    @classmethod
-    def _validate_allowed_directories(cls, v: list[str]) -> list[str]:
-        return [_validate_relative_subpath(path) for path in v]
+        @field_validator("unit_id")
+        @classmethod
+        def _validate_unit_id(cls, v: str) -> str:
+            if _UNIT_ID_RE.fullmatch(v):
+                return v
+            if not v:
+                raise ValueError("unit_id must be 1-64 chars from [a-zA-Z0-9_-] (got empty string)")
+            if len(v) > _UNIT_ID_MAX_LEN:
+                raise ValueError(
+                    f"unit_id must be at most {_UNIT_ID_MAX_LEN} chars (got length {len(v)}: {v!r})"
+                )
+            invalid_char = next((ch for ch in v if not re.fullmatch(r"[a-zA-Z0-9_-]", ch)), None)
+            if invalid_char is not None:
+                raise ValueError(
+                    f"unit_id contains invalid character {invalid_char!r}; allowed: [a-zA-Z0-9_-]"
+                )
+            raise ValueError(f"unit_id must match ^[a-zA-Z0-9_-]{{1,64}}$ (got: {v!r})")
 
+        @field_validator("allowed_directories")
+        @classmethod
+        def _validate_allowed_directories(cls, v: list[str]) -> list[str]:
+            return [_validate_relative_subpath(path) for path in v]
 
-class WorkUnitsPlan(_FrozenWorkUnitModel):
-    """Typed representation of work_units[] in planning artifacts."""
 
     work_units: list[WorkUnit] = Field(default_factory=list)
 
@@ -112,6 +106,10 @@ class WorkUnitsPlan(_FrozenWorkUnitModel):
 
         _validate_acyclic(dependency_map)
         return self
+
+
+WorkUnitsValidationError = WorkUnitsPlan.WorkUnitsValidationError
+WorkUnit = WorkUnitsPlan.WorkUnit
 
 
 def validate_for_same_workspace(plan: WorkUnitsPlan) -> None:

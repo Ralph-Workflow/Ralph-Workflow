@@ -48,40 +48,8 @@ SESSION_NOT_FOUND_SUBSTRINGS: tuple[str, ...] = (
 )
 
 
-class FailureCategory(StrEnum):
-    """Categories of pipeline failures for attribution and routing."""
-
-    ENVIRONMENTAL = "environmental"
-    AGENT = "agent"
-    USER_CONFIG = "user_config"
-    ARTIFACT_VALIDATION = "artifact_validation"
-    AMBIGUOUS = "ambiguous"
 
 
-@dataclass(frozen=True)
-class ClassifiedFailure:
-    """A failure with its category, attribution, and budget-counting decision.
-
-    Attributes:
-        category: Failure category for routing decisions.
-        reason: Human-readable failure description.
-        attributed_agent: Agent name when category is AGENT, else None.
-        attributed_phase: Pipeline phase where the failure occurred.
-        counts_against_budget: Whether this failure debits the agent retry budget.
-        original_exception: Original exception object, if available.
-        raw_message: Raw error message string.
-        reset_session: When True the agent session ID is stale and must be cleared
-            before the next retry attempt.
-    """
-
-    category: FailureCategory
-    reason: str
-    attributed_agent: str | None
-    attributed_phase: str
-    counts_against_budget: bool
-    original_exception: BaseException | None
-    raw_message: str
-    reset_session: bool = field(default=False)
 
 
 def _is_environmental_exc(exc: BaseException) -> bool:
@@ -133,7 +101,7 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
 )
 
 
-def _is_missing_artifact_message(raw_message: str) -> bool:
+def is_missing_artifact_message(raw_message: str) -> bool:
     """Return True if the message indicates a missing required artifact."""
     return any(s in raw_message for s in _MISSING_ARTIFACT_SUBSTRINGS)
 
@@ -155,7 +123,7 @@ def _is_artifact_validation_message(raw_message: str) -> bool:
         "Unknown plan_item reference",
         "Unknown how_to_fix_item reference",
     )
-    return _is_missing_artifact_message(raw_message) or any(
+    return is_missing_artifact_message(raw_message) or any(
         s in raw_message for s in artifact_validation_substrings
     )
 
@@ -165,132 +133,171 @@ def _is_stale_session_message(raw_message: str) -> bool:
     return any(s in raw_message for s in SESSION_NOT_FOUND_SUBSTRINGS)
 
 
-class FailureClassifier:
-    """Classify failures into categories for intelligent recovery routing.
-
-    This is a pure, stateless classifier. All classification rules are
-    encapsulated here so new failure modes are added once, not at call sites.
-    """
-
-    def classify(
-        self,
-        exc: BaseException | str,
-        *,
-        phase: str,
-        agent: str | None,
-    ) -> ClassifiedFailure:
-        """Classify a failure and return a ClassifiedFailure.
-
-        Args:
-            exc: The exception or string message to classify.
-            phase: The pipeline phase where the failure occurred.
-            agent: The agent name, if known.
-
-        Returns:
-            ClassifiedFailure with category, attribution, and budget decision.
-        """
-        if isinstance(exc, str):
-            raw_message = exc
-            original: BaseException | None = None
-        else:
-            exc_msg = str(exc)
-            type_name = type(exc).__name__
-            raw_message = f"{type_name}: {exc_msg}" if exc_msg else type_name
-            original = exc
-
-        exc_obj = exc if isinstance(exc, BaseException) else None
-        category, counts, reset_session = self._categorize(exc_obj, raw_message)
-
-        if category == FailureCategory.AMBIGUOUS:
-            logger.warning(
-                "Ambiguous failure classification in phase={} agent={}: "
-                "{} [flagged_for_review=true]",
-                phase,
-                agent,
-                raw_message[:200],
-            )
-
-        return ClassifiedFailure(
-            category=category,
-            reason=self._build_reason(category, raw_message),
-            attributed_agent=agent if category == FailureCategory.AGENT else None,
-            attributed_phase=phase,
-            counts_against_budget=counts,
-            original_exception=original,
-            raw_message=raw_message,
-            reset_session=reset_session,
-        )
-
-    def _categorize_exc(
-        self,
-        exc: BaseException,
-        raw_message: str,
-    ) -> tuple[FailureCategory, bool, bool] | None:
-        """Try to categorize based on exception type.
-
-        Args:
-            exc: Exception to classify.
-            raw_message: Formatted message string.
-
-        Returns:
-            Tuple of (category, counts_against_budget, reset_session) or None if uncategorized.
-        """
-        if _is_user_config_exc(exc):
-            return FailureCategory.USER_CONFIG, False, False
-        if _is_environmental_exc(exc):
-            return FailureCategory.ENVIRONMENTAL, False, False
-        type_name = type(exc).__name__
-        if type_name == "AgentInactivityTimeoutError":
-            return FailureCategory.AGENT, True, False
-        if type_name == "AgentInvocationError":
-            if _is_stale_session_message(raw_message):
-                return FailureCategory.AGENT, True, True
-            msg_lower = raw_message.lower()
-            if not _message_looks_environmental(raw_message) and (
-                "empty" in msg_lower or "no output" in msg_lower or "timed out" in msg_lower
-            ):
-                return FailureCategory.AGENT, True, False
-        return None
-
-    def _categorize(
-        self,
-        exc: BaseException | None,
-        raw_message: str,
-    ) -> tuple[FailureCategory, bool, bool]:
-        """Return (category, counts_against_budget, reset_session) for a failure."""
-        if exc is not None:
-            result = self._categorize_exc(exc, raw_message)
-            if result is not None:
-                return result
-        if _message_looks_environmental(raw_message):
-            return FailureCategory.ENVIRONMENTAL, False, False
-        if _is_user_config_message(raw_message):
-            return FailureCategory.USER_CONFIG, False, False
-        if _is_artifact_validation_message(raw_message):
-            return FailureCategory.ARTIFACT_VALIDATION, False, False
-        return FailureCategory.AMBIGUOUS, False, False
-
-    def _build_reason(self, category: FailureCategory, raw_message: str) -> str:
-        prefix_map = {
-            FailureCategory.ENVIRONMENTAL: "Environmental fault",
-            FailureCategory.AGENT: "Agent fault",
-            FailureCategory.USER_CONFIG: "Configuration fault",
-            FailureCategory.ARTIFACT_VALIDATION: "Artifact validation fault",
-            FailureCategory.AMBIGUOUS: "Ambiguous fault (flagged for review)",
-        }
-        prefix = prefix_map.get(category, "Unknown fault")
-        msg = raw_message[:300] if raw_message else "(no message)"
-        return f"{prefix}: {msg}"
-
-
 @dataclass(frozen=True)
 class FailureContext:
     """Context for a failure event passed to RecoveryController.handle."""
+
+    class FailureCategory(StrEnum):
+        """Categories of pipeline failures for attribution and routing."""
+
+        ENVIRONMENTAL = "environmental"
+        AGENT = "agent"
+        USER_CONFIG = "user_config"
+        ARTIFACT_VALIDATION = "artifact_validation"
+        AMBIGUOUS = "ambiguous"
+
+    @dataclass(frozen=True)
+    class ClassifiedFailure:
+        """A failure with its category, attribution, and budget-counting decision.
+
+        Attributes:
+            category: Failure category for routing decisions.
+            reason: Human-readable failure description.
+            attributed_agent: Agent name when category is AGENT, else None.
+            attributed_phase: Pipeline phase where the failure occurred.
+            counts_against_budget: Whether this failure debits the agent retry budget.
+            original_exception: Original exception object, if available.
+            raw_message: Raw error message string.
+            reset_session: When True the agent session ID is stale and must be cleared
+                before the next retry attempt.
+        """
+
+        category: FailureCategory
+        reason: str
+        attributed_agent: str | None
+        attributed_phase: str
+        counts_against_budget: bool
+        original_exception: BaseException | None
+        raw_message: str
+        reset_session: bool = field(default=False)
+
+    class FailureClassifier:
+        """Classify failures into categories for intelligent recovery routing.
+
+        This is a pure, stateless classifier. All classification rules are
+        encapsulated here so new failure modes are added once, not at call sites.
+        """
+
+        def classify(
+            self,
+            exc: BaseException | str,
+            *,
+            phase: str,
+            agent: str | None,
+        ) -> ClassifiedFailure:
+            """Classify a failure and return a ClassifiedFailure.
+
+            Args:
+                exc: The exception or string message to classify.
+                phase: The pipeline phase where the failure occurred.
+                agent: The agent name, if known.
+
+            Returns:
+                ClassifiedFailure with category, attribution, and budget decision.
+            """
+            if isinstance(exc, str):
+                raw_message = exc
+                original: BaseException | None = None
+            else:
+                exc_msg = str(exc)
+                type_name = type(exc).__name__
+                raw_message = f"{type_name}: {exc_msg}" if exc_msg else type_name
+                original = exc
+
+            exc_obj = exc if isinstance(exc, BaseException) else None
+            category, counts, reset_session = self._categorize(exc_obj, raw_message)
+
+            if category == FailureCategory.AMBIGUOUS:
+                logger.warning(
+                    "Ambiguous failure classification in phase={} agent={}: "
+                    "{} [flagged_for_review=true]",
+                    phase,
+                    agent,
+                    raw_message[:200],
+                )
+
+            return ClassifiedFailure(
+                category=category,
+                reason=self._build_reason(category, raw_message),
+                attributed_agent=agent if category == FailureCategory.AGENT else None,
+                attributed_phase=phase,
+                counts_against_budget=counts,
+                original_exception=original,
+                raw_message=raw_message,
+                reset_session=reset_session,
+            )
+
+        def _categorize_exc(
+            self,
+            exc: BaseException,
+            raw_message: str,
+        ) -> tuple[FailureCategory, bool, bool] | None:
+            """Try to categorize based on exception type.
+
+            Args:
+                exc: Exception to classify.
+                raw_message: Formatted message string.
+
+            Returns:
+                Tuple of (category, counts_against_budget, reset_session) or None if uncategorized.
+            """
+            if _is_user_config_exc(exc):
+                return FailureCategory.USER_CONFIG, False, False
+            if _is_environmental_exc(exc):
+                return FailureCategory.ENVIRONMENTAL, False, False
+            type_name = type(exc).__name__
+            if type_name == "AgentInactivityTimeoutError":
+                return FailureCategory.AGENT, True, False
+            if type_name == "AgentInvocationError":
+                if _is_stale_session_message(raw_message):
+                    return FailureCategory.AGENT, True, True
+                msg_lower = raw_message.lower()
+                if not _message_looks_environmental(raw_message) and (
+                    "empty" in msg_lower or "no output" in msg_lower or "timed out" in msg_lower
+                ):
+                    return FailureCategory.AGENT, True, False
+            return None
+
+        def _categorize(
+            self,
+            exc: BaseException | None,
+            raw_message: str,
+        ) -> tuple[FailureCategory, bool, bool]:
+            """Return (category, counts_against_budget, reset_session) for a failure."""
+            if exc is not None:
+                result = self._categorize_exc(exc, raw_message)
+                if result is not None:
+                    return result
+            if _message_looks_environmental(raw_message):
+                return FailureCategory.ENVIRONMENTAL, False, False
+            if _is_user_config_message(raw_message):
+                return FailureCategory.USER_CONFIG, False, False
+            if _is_artifact_validation_message(raw_message):
+                return FailureCategory.ARTIFACT_VALIDATION, False, False
+            return FailureCategory.AMBIGUOUS, False, False
+
+        def _build_reason(self, category: FailureCategory, raw_message: str) -> str:
+            prefix_map = {
+                FailureCategory.ENVIRONMENTAL: "Environmental fault",
+                FailureCategory.AGENT: "Agent fault",
+                FailureCategory.USER_CONFIG: "Configuration fault",
+                FailureCategory.ARTIFACT_VALIDATION: "Artifact validation fault",
+                FailureCategory.AMBIGUOUS: "Ambiguous fault (flagged for review)",
+            }
+            prefix = prefix_map.get(category, "Unknown fault")
+            msg = raw_message[:300] if raw_message else "(no message)"
+            return f"{prefix}: {msg}"
+
 
     phase: str
     agent: str | None = None
     retry_in_session: bool = False
     classified_failure: ClassifiedFailure | None = None
+
+
+FailureCategory = FailureContext.FailureCategory
+ClassifiedFailure = FailureContext.ClassifiedFailure
+FailureClassifier = FailureContext.FailureClassifier
 
 
 def is_retryable_without_budget(failure: ClassifiedFailure) -> bool:

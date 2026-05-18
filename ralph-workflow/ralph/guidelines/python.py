@@ -8,25 +8,25 @@ and Flask projects.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from typing import Protocol
 
+    class ReviewGuidelines(Protocol):
+        """Protocol for language-specific review guideline collections."""
 
-class ReviewGuidelines(Protocol):
-    """Protocol for language-specific review guideline collections."""
+        quality_checks: list[str]
+        security_checks: list[str]
+        performance_checks: list[str]
+        testing_checks: list[str]
+        documentation_checks: list[str]
+        idioms: list[str]
+        anti_patterns: list[str]
 
-    quality_checks: list[str]
-    security_checks: list[str]
-    performance_checks: list[str]
-    testing_checks: list[str]
-    documentation_checks: list[str]
-    idioms: list[str]
-    anti_patterns: list[str]
-
-    def summary(self) -> str: ...
-    def total_checks(self) -> int: ...
+        def summary(self) -> str: ...
+        def total_checks(self) -> int: ...
 
 
 @dataclass

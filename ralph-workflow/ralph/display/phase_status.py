@@ -11,7 +11,20 @@ No Console construction, no env reads, no pipeline logic.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Protocol
+
+    class _ExitState(Protocol):
+        @property
+        def interrupted_by_user(self) -> bool: ...
+
+        @property
+        def is_terminal_success(self) -> bool: ...
+
+        @property
+        def is_terminal_failure(self) -> bool: ...
 
 
 def format_dev_cycle(n: int, cap: int | None = None) -> str:
@@ -35,17 +48,6 @@ def format_analysis_cycle(n: int, cap: int | None = None) -> str:
 def format_elapsed_seconds(s: float) -> str:
     """Return canonical elapsed-time label."""
     return f"{round(s, 1)}s"
-
-
-class _ExitState(Protocol):
-    @property
-    def interrupted_by_user(self) -> bool: ...
-
-    @property
-    def is_terminal_success(self) -> bool: ...
-
-    @property
-    def is_terminal_failure(self) -> bool: ...
 
 
 def format_exit_trigger(snapshot: _ExitState) -> str:

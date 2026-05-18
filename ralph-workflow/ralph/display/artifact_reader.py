@@ -20,23 +20,26 @@ PLAN_ARTIFACT_REL = "plan.json"
 
 
 @dataclass(frozen=True, slots=True)
-class PlanSummary:
-    """A stable, presentation-friendly projection of a plan.json artifact."""
-
-    summary: str | None = None
-    scope_items: tuple[str, ...] = ()
-    total_steps: int = 0
-    risks_mitigations: tuple[str, ...] = field(default_factory=tuple)
-
-
-@dataclass(frozen=True, slots=True)
 class AnalysisDecisionSummary:
     """A stable projection of an ``*_analysis_decision.json`` artifact."""
+
+    @dataclass(frozen=True, slots=True)
+    class PlanSummary:
+        """A stable, presentation-friendly projection of a plan.json artifact."""
+
+        summary: str | None = None
+        scope_items: tuple[str, ...] = ()
+        total_steps: int = 0
+        risks_mitigations: tuple[str, ...] = field(default_factory=tuple)
+
 
     drain: str
     decision: str
     reason: str | None = None
     iso_ts: str | None = None
+
+
+PlanSummary = AnalysisDecisionSummary.PlanSummary
 
 
 def _load_json(path: Path) -> dict[str, object] | None:

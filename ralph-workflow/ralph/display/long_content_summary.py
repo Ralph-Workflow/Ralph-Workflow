@@ -40,7 +40,7 @@ _DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 _ENABLED_VALUES: frozenset[str] = frozenset({"1", "true", "yes"})
 
 _PLACEHOLDER_HEADLINE = "(no headline available)"
-_AI_SUMMARY_MAX_CHARS = 400
+AI_SUMMARY_MAX_CHARS = 400
 
 _SENTENCE_END = re.compile(r"[.!?\n]")
 
@@ -133,7 +133,7 @@ def build_ai_summary(text: str, env: Mapping[str, str]) -> str | None:
         return None
     if result is None:
         return None
-    return result[:_AI_SUMMARY_MAX_CHARS] + "…" if len(result) > _AI_SUMMARY_MAX_CHARS else result
+    return result[:AI_SUMMARY_MAX_CHARS] + "…" if len(result) > AI_SUMMARY_MAX_CHARS else result
 
 
 __all__ = [

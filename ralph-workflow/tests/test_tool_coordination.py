@@ -11,18 +11,6 @@ from ralph.mcp.tools.coordination import (
 )
 
 
-class MockSession:
-    session_id = "session-1"
-
-    def check_capability(self, capability: str) -> object:
-        return True
-
-
-class MockWorkspace:
-    def absolute_path(self, path: str) -> str:
-        return path
-
-
 def test_report_progress_accepts_injected_timestamp() -> None:
     result = handle_report_progress(
         MockSession(),
@@ -56,18 +44,33 @@ def test_coordinate_accepts_injected_timestamp() -> None:
     assert "timestamp=789" in result.content[0].text
 
 
-class MockCapableSession:
-    session_id = "session-env"
-
-    def check_capability(self, cap: object) -> object:
-        return "approved"
-
-
 class MockDeniedSession:
+
+    class MockSession:
+        session_id = "session-1"
+
+        def check_capability(self, capability: str) -> object:
+            return True
+
+    class MockWorkspace:
+        def absolute_path(self, path: str) -> str:
+            return path
+
+    class MockCapableSession:
+        session_id = "session-env"
+
+        def check_capability(self, cap: object) -> object:
+            return "approved"
+
     session_id = "denied"
 
     def check_capability(self, cap: object) -> object:
         return "denied"
+
+
+MockSession = MockDeniedSession.MockSession
+MockWorkspace = MockDeniedSession.MockWorkspace
+MockCapableSession = MockDeniedSession.MockCapableSession
 
 
 def test_read_env_returns_variable_value() -> None:

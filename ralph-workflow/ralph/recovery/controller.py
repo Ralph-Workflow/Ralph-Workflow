@@ -30,16 +30,6 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentChainConfig, PolicyBundle
 
 
-@dataclass(frozen=True)
-class RecoveryControllerOptions:
-    """Options for constructing a RecoveryController."""
-
-    cycle_cap: int = 200
-    classifier: FailureClassifier | None = None
-    event_bus: FailureEventBus | None = None
-    budget_registry: AgentBudgetRegistry | None = None
-    policy_bundle: PolicyBundle | None = None
-    backoff_attempts: dict[str, int] | None = None
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
@@ -92,6 +82,18 @@ class RecoveryController:
     Handles classification, budget debiting, chain fallover, and cycle cap.
     Delegates nothing to the reducer's internal retry counter when active.
     """
+
+    @dataclass(frozen=True)
+    class RecoveryControllerOptions:
+        """Options for constructing a RecoveryController."""
+
+        cycle_cap: int = 200
+        classifier: FailureClassifier | None = None
+        event_bus: FailureEventBus | None = None
+        budget_registry: AgentBudgetRegistry | None = None
+        policy_bundle: PolicyBundle | None = None
+        backoff_attempts: dict[str, int] | None = None
+
 
     def __init__(
         self,
@@ -450,3 +452,6 @@ class RecoveryController:
             last_failure_category=str(category),
             last_retry_delay_ms=0,
         )
+
+
+RecoveryControllerOptions = RecoveryController.RecoveryControllerOptions

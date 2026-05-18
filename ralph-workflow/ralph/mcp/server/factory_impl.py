@@ -20,31 +20,30 @@ from ralph.mcp.protocol.startup import SessionBridgeLike, WorkspaceLike
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
 
+if TYPE_CHECKING:
+    class StartServer(Protocol):
+        """Callable signature for the MCP server start function."""
 
-class StartServer(Protocol):
-    """Callable signature for the MCP server start function."""
-
-    def __call__(
-        self,
-        session: AgentSession,
-        workspace: WorkspaceLike,
-        *,
-        deps: lifecycle.LifecycleDeps | None = None,
-    ) -> SessionBridgeLike: ...
-
-
-@runtime_checkable
-class _ProcessWithPid(Protocol):
-    pid: int
-
-
-@runtime_checkable
-class _BridgeWithProcess(SessionBridgeLike, Protocol):
-    process: _ProcessWithPid
+        def __call__(
+            self,
+            session: AgentSession,
+            workspace: WorkspaceLike,
+            *,
+            deps: lifecycle.LifecycleDeps | None = None,
+        ) -> SessionBridgeLike: ...
 
 
 class DynamicBindingMcpServerFactory(McpServerFactory):
     """Build MCP server handles with dynamically allocated localhost endpoints."""
+
+    @runtime_checkable
+    class _ProcessWithPid(Protocol):
+        pid: int
+
+    @runtime_checkable
+    class _BridgeWithProcess(SessionBridgeLike, Protocol):
+        process: _ProcessWithPid
+
 
     def __init__(
         self,
@@ -98,6 +97,10 @@ class DynamicBindingMcpServerFactory(McpServerFactory):
             return session
         msg = "DynamicBindingMcpServerFactory.build requires an AgentSession"
         raise TypeError(msg)
+
+
+_ProcessWithPid = DynamicBindingMcpServerFactory._ProcessWithPid
+_BridgeWithProcess = DynamicBindingMcpServerFactory._BridgeWithProcess
 
 
 __all__ = ["DynamicBindingMcpServerFactory"]

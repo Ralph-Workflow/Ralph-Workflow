@@ -39,100 +39,42 @@ if TYPE_CHECKING:
     from ralph.mcp.upstream.registry import UpstreamRegistry
 
 
+if TYPE_CHECKING:
+    class ProcessLike(Protocol):
+        """Subset of ManagedProcess API required by the MCP server lifecycle."""
+
+        def poll(self) -> int | None: ...
+        def terminate(self, grace_period_s: float = 5.0) -> None: ...
+        def wait(self, timeout: float | None = None) -> int | None: ...
+        def kill(self) -> None: ...
+
+        @property
+        def pid(self) -> int: ...
+
+    class SpawnProcess(Protocol):
+        """Callable that spawns the MCP server subprocess.
+
+        The ``phase`` keyword argument, when set, is used to label the process
+        ``phase:<phase>:mcp-server`` so it is reaped by the phase-scope cleanup.
+        """
+
+        def __call__(
+            self,
+            command: list[str],
+            cwd: Path,
+            env: dict[str, str],
+            *,
+            phase: str | None = None,
+        ) -> ProcessLike: ...
+
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
 
-class ProcessLike(Protocol):
-    """Subset of ManagedProcess API required by the MCP server lifecycle."""
-
-    def poll(self) -> int | None: ...
-    def terminate(self, grace_period_s: float = 5.0) -> None: ...
-    def wait(self, timeout: float | None = None) -> int | None: ...
-    def kill(self) -> None: ...
-
-    @property
-    def pid(self) -> int: ...
 
 
-class SpawnProcess(Protocol):
-    """Callable that spawns the MCP server subprocess.
-
-    The ``phase`` keyword argument, when set, is used to label the process
-    ``phase:<phase>:mcp-server`` so it is reaped by the phase-scope cleanup.
-    """
-
-    def __call__(
-        self,
-        command: list[str],
-        cwd: Path,
-        env: dict[str, str],
-        *,
-        phase: str | None = None,
-    ) -> ProcessLike: ...
 
 
 type PreflightFn = Callable[[str, list[str], timedelta], None]
-
-
-@dataclass(frozen=True)
-class LifecycleDeps:
-    """Injectable dependencies for MCP server lifecycle management."""
-
-    reserve_port: Callable[[], int]
-    create_session_file: Callable[[Path, SessionLike], Path]
-    subprocess_env: Callable[[Path], dict[str, str]]
-    spawn_process: SpawnProcess
-    preflight: PreflightFn
-    preflight_timeout: Callable[[], timedelta]
-    probe: Callable[[str, timedelta], None] | None = None
-    probe_timeout: Callable[[], timedelta] | None = None
-
-
-@dataclass
-class StandaloneMcpProcess:
-    """A running standalone MCP HTTP server process with its endpoint and session file."""
-
-    endpoint: str
-    process: ProcessLike
-    session_file: Path
-
-    def start(self) -> None:
-        return
-
-    def agent_endpoint_uri(self) -> str:
-        return self.endpoint
-
-    def endpoint_uri(self) -> str:
-        return self.endpoint
-
-    def shutdown(self) -> None:
-        if self.process.poll() is None:
-            self.process.terminate(grace_period_s=5.0)
-        self.session_file.unlink(missing_ok=True)
-
-
-class McpServerError(Exception):
-    """Raised when the MCP server fails and the restart budget is exhausted."""
-
-    def __init__(self, message: str, *, restart_count: int) -> None:
-        self.restart_count = restart_count
-        super().__init__(message)
-
-
-@dataclass(frozen=True)
-class McpRestartPolicy:
-    """Bounded restart policy for the MCP server bridge."""
-
-    max_restarts: int = 1000
-
-
-@dataclass(frozen=True)
-class McpServerExtras:
-    """Optional runtime extras for start_mcp_server."""
-
-    phase: str | None = None
-    extra_env: dict[str, str] | None = None
-    restart_policy: McpRestartPolicy | None = None
 
 
 class RestartAwareMcpBridge:
@@ -148,6 +90,63 @@ class RestartAwareMcpBridge:
     McpSupervisor can safely call check_health_and_restart_if_needed() while
     the main thread is executing agent output streaming.
     """
+
+    @dataclass(frozen=True)
+    class LifecycleDeps:
+        """Injectable dependencies for MCP server lifecycle management."""
+
+        reserve_port: Callable[[], int]
+        create_session_file: Callable[[Path, SessionLike], Path]
+        subprocess_env: Callable[[Path], dict[str, str]]
+        spawn_process: SpawnProcess
+        preflight: PreflightFn
+        preflight_timeout: Callable[[], timedelta]
+        probe: Callable[[str, timedelta], None] | None = None
+        probe_timeout: Callable[[], timedelta] | None = None
+
+    @dataclass
+    class StandaloneMcpProcess:
+        """A running standalone MCP HTTP server process with its endpoint and session file."""
+
+        endpoint: str
+        process: ProcessLike
+        session_file: Path
+
+        def start(self) -> None:
+            return
+
+        def agent_endpoint_uri(self) -> str:
+            return self.endpoint
+
+        def endpoint_uri(self) -> str:
+            return self.endpoint
+
+        def shutdown(self) -> None:
+            if self.process.poll() is None:
+                self.process.terminate(grace_period_s=5.0)
+            self.session_file.unlink(missing_ok=True)
+
+    class McpServerError(Exception):
+        """Raised when the MCP server fails and the restart budget is exhausted."""
+
+        def __init__(self, message: str, *, restart_count: int) -> None:
+            self.restart_count = restart_count
+            super().__init__(message)
+
+    @dataclass(frozen=True)
+    class McpRestartPolicy:
+        """Bounded restart policy for the MCP server bridge."""
+
+        max_restarts: int = 1000
+
+    @dataclass(frozen=True)
+    class McpServerExtras:
+        """Optional runtime extras for start_mcp_server."""
+
+        phase: str | None = None
+        extra_env: dict[str, str] | None = None
+        restart_policy: McpRestartPolicy | None = None
+
 
     def __init__(
         self,
@@ -242,6 +241,13 @@ class RestartAwareMcpBridge:
                 self._restart_count,
             )
             return True
+
+
+LifecycleDeps = RestartAwareMcpBridge.LifecycleDeps
+StandaloneMcpProcess = RestartAwareMcpBridge.StandaloneMcpProcess
+McpServerError = RestartAwareMcpBridge.McpServerError
+McpRestartPolicy = RestartAwareMcpBridge.McpRestartPolicy
+McpServerExtras = RestartAwareMcpBridge.McpServerExtras
 
 
 def check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:

@@ -27,44 +27,47 @@ from ralph.process.manager import SpawnOptions, get_process_manager
 
 GIT_STATUS_READ_CAPABILITY = "GitStatusRead"
 GIT_DIFF_READ_CAPABILITY = "GitDiffRead"
-_DEFAULT_LOG_COUNT = 10
+DEFAULT_LOG_COUNT = 10
 type GitRunner = Callable[[list[str], Path], subprocess.CompletedProcess[bytes]]
 type CwdProvider = Callable[[], Path]
-
-
-class ExecutionError(ToolError):
-    """Raised when a git subprocess cannot be started or fails."""
-
-
-@dataclass(frozen=True)
-class GitDiffParams:
-    """Parsed parameters for the git diff tool."""
-
-    args: list[str]
-
-
-@dataclass(frozen=True)
-class GitLogParams:
-    """Parsed parameters for the git log tool."""
-
-    count: int
-
-
-@dataclass(frozen=True)
-class GitShowParams:
-    """Parsed parameters for the git show tool."""
-
-    git_ref: str
 
 
 @runtime_checkable
 class WorkspaceWithRoot(Protocol):
     """Workspace surface required for git command execution."""
 
+    class ExecutionError(ToolError):
+        """Raised when a git subprocess cannot be started or fails."""
+
+    @dataclass(frozen=True)
+    class GitDiffParams:
+        """Parsed parameters for the git diff tool."""
+
+        args: list[str]
+
+    @dataclass(frozen=True)
+    class GitLogParams:
+        """Parsed parameters for the git log tool."""
+
+        count: int
+
+    @dataclass(frozen=True)
+    class GitShowParams:
+        """Parsed parameters for the git show tool."""
+
+        git_ref: str
+
+
     @property
     def root(self) -> Path:
         """Return the absolute workspace root path."""
         ...
+
+
+ExecutionError = WorkspaceWithRoot.ExecutionError
+GitDiffParams = WorkspaceWithRoot.GitDiffParams
+GitLogParams = WorkspaceWithRoot.GitLogParams
+GitShowParams = WorkspaceWithRoot.GitShowParams
 
 
 def _workspace_root(workspace: object, *, cwd_provider: CwdProvider = Path.cwd) -> Path:
@@ -91,8 +94,8 @@ def parse_git_diff_params(params: Mapping[str, object]) -> GitDiffParams:
 
 def parse_git_log_params(params: Mapping[str, object]) -> GitLogParams:
     """Parse git log params with the Rust default count."""
-    count_value = params.get("count", _DEFAULT_LOG_COUNT)
-    count = count_value if isinstance(count_value, int) and count_value >= 0 else _DEFAULT_LOG_COUNT
+    count_value = params.get("count", DEFAULT_LOG_COUNT)
+    count = count_value if isinstance(count_value, int) and count_value >= 0 else DEFAULT_LOG_COUNT
     return GitLogParams(count=count)
 
 

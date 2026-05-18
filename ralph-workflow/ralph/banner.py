@@ -9,9 +9,9 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from ralph.display.context import DisplayContext
+    from ralph.rich_protocols import RichGroupProto, RichPanelProto, RichTextProto
 
 from ralph import __version__
-from ralph.rich_protocols import RichGroupProto, RichPanelProto, RichTextProto
 
 ASCII_ART = (
     " ____       _       _     _     ",
@@ -25,9 +25,6 @@ WELCOME_MESSAGE = "Welcome to Ralph Workflow"
 TAGLINE = "PROMPT-driven agent orchestrator"
 
 __all__ = [
-    "RichGroupProto",
-    "RichPanelProto",
-    "RichTextProto",
     "SupportsPrint",
     "render_banner",
     "show_banner",

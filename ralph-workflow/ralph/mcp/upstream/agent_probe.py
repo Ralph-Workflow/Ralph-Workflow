@@ -51,19 +51,22 @@ _DEFAULT_TRANSPORTS: tuple[AgentTransport, ...] = (
 )
 
 
-class AgentTransportProbeError(RuntimeError):
-    """Raised when the synthesized agent config payload is malformed."""
-
-
 @dataclass(frozen=True)
 class AgentProbeReport:
     """Result of probing one (transport, upstream server) combination."""
+
+    class AgentTransportProbeError(RuntimeError):
+        """Raised when the synthesized agent config payload is malformed."""
+
 
     transport: AgentTransport
     server_name: str
     ok: bool
     error: str | None = None
     note: str | None = None
+
+
+AgentTransportProbeError = AgentProbeReport.AgentTransportProbeError
 
 
 _ClaudeMcpConfigFn = Callable[[str], str]

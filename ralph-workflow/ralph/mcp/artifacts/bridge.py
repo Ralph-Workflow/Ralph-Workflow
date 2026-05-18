@@ -6,7 +6,7 @@ Exposes tools for agent interactions, artifact submission, and state queries.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -42,8 +42,6 @@ if TYPE_CHECKING:
 class BridgeError(Exception):
     """Raised when bridge operations fail."""
 
-    pass
-
 
 @dataclass(frozen=True)
 class BridgeArtifactDeps:
@@ -73,7 +71,7 @@ class BridgeConfig:
     artifact_dir: Path = Path(".agent/artifacts")
     workspace_root: Path = Path()
     transport: MCPTransport | None = None
-    artifact_deps: BridgeArtifactDeps = DEFAULT_BRIDGE_ARTIFACT_DEPS
+    artifact_deps: BridgeArtifactDeps = field(default_factory=BridgeArtifactDeps)
 
 
 @dataclass

@@ -17,22 +17,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
-class ExitOutcome(StrEnum):
-    """Possible outcomes that affect pause behavior."""
-
-    SUCCESS = "success"
-    FAILURE = "failure"
-    INTERRUPTED = "interrupted"
-
-
-class PauseOnExitMode(StrEnum):
-    """When to pause before exiting."""
-
-    NEVER = "never"
-    ALWAYS = "always"
-    AUTO = "auto"
-
-
 @dataclass(frozen=True)
 class LaunchContext:
     """Context about how Ralph was launched.
@@ -43,9 +27,28 @@ class LaunchContext:
         parent_process_name: Name of the parent process if detectable.
     """
 
+    class ExitOutcome(StrEnum):
+        """Possible outcomes that affect pause behavior."""
+
+        SUCCESS = "success"
+        FAILURE = "failure"
+        INTERRUPTED = "interrupted"
+
+    class PauseOnExitMode(StrEnum):
+        """When to pause before exiting."""
+
+        NEVER = "never"
+        ALWAYS = "always"
+        AUTO = "auto"
+
+
     is_windows: bool
     has_terminal_session_marker: bool
     parent_process_name: str | None
+
+
+ExitOutcome = LaunchContext.ExitOutcome
+PauseOnExitMode = LaunchContext.PauseOnExitMode
 
 
 TERMINAL_MARKERS: list[str] = [

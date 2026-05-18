@@ -11,18 +11,8 @@ from .web_search_config import WebSearchBackendSpec, WebSearchConfig
 from .web_service_configs import MediaConfig, WebVisitConfig
 
 
-class _FrozenMcpModel(RalphBaseModel):
-    """Private base for frozen MCP config models.
-
-    Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
-    repeat it. Pydantic v2 inherits ``model_config`` when descendants do not
-    declare one of their own.
-    """
-
+class McpConfig(RalphBaseModel):
     model_config = ConfigDict(frozen=True)
-
-
-class McpConfig(_FrozenMcpModel):
     """Top-level `mcp.toml` document."""
 
     mcp_servers: dict[str, McpServerSpec] = Field(default_factory=dict)

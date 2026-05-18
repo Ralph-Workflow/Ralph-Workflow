@@ -11,7 +11,7 @@ from ralph.display import activity_model
 from ralph.display.activity_model import (
     ActivityEventKind,
     ActivityProvider,
-    _SequenceCounter,
+    SequenceCounter,
     make_event,
     render_event_line,
 )
@@ -25,7 +25,7 @@ TRUNCATED_SMILEYS = 100
 
 
 def test_make_event_returns_sequence_and_timestamp() -> None:
-    activity_model.module_sequence = _SequenceCounter()
+    activity_model.module_sequence = SequenceCounter()
 
     event = make_event(provider=ActivityProvider.CLAUDE, kind=ActivityEventKind.TEXT)
 
@@ -35,7 +35,7 @@ def test_make_event_returns_sequence_and_timestamp() -> None:
 
 
 def test_make_event_sequences_strictly_increase() -> None:
-    activity_model.module_sequence = _SequenceCounter()
+    activity_model.module_sequence = SequenceCounter()
 
     first = make_event(provider=ActivityProvider.CLAUDE, kind=ActivityEventKind.TEXT)
     second = make_event(provider=ActivityProvider.CLAUDE, kind=ActivityEventKind.TEXT)
@@ -46,7 +46,7 @@ def test_make_event_sequences_strictly_increase() -> None:
 
 
 def test_make_event_is_thread_safe_for_unique_sequences() -> None:
-    activity_model.module_sequence = _SequenceCounter()
+    activity_model.module_sequence = SequenceCounter()
 
     sequences: list[int] = []
     lock = threading.Lock()

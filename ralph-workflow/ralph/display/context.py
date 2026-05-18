@@ -29,29 +29,29 @@ if TYPE_CHECKING:
     from rich.console import Console
     from rich.theme import Theme
 
-_COMPACT_HEADLINE_MAX_CHARS: Final[int] = 80
+COMPACT_HEADLINE_MAX_CHARS: Final[int] = 80
 _MEDIUM_HEADLINE_MAX_CHARS: Final[int] = 100
-_WIDE_HEADLINE_MAX_CHARS: Final[int] = 120
+WIDE_HEADLINE_MAX_CHARS: Final[int] = 120
 
-_COMPACT_CONDENSER_SOFT_LIMIT: Final[int] = 240
+COMPACT_CONDENSER_SOFT_LIMIT: Final[int] = 240
 _MEDIUM_CONDENSER_SOFT_LIMIT: Final[int] = 300
-_WIDE_CONDENSER_SOFT_LIMIT: Final[int] = 400
+WIDE_CONDENSER_SOFT_LIMIT: Final[int] = 400
 
-_COMPACT_CONDENSER_HARD_LIMIT: Final[int] = 2400
+COMPACT_CONDENSER_HARD_LIMIT: Final[int] = 2400
 _MEDIUM_CONDENSER_HARD_LIMIT: Final[int] = 3200
-_WIDE_CONDENSER_HARD_LIMIT: Final[int] = 4000
+WIDE_CONDENSER_HARD_LIMIT: Final[int] = 4000
 
-_COMPACT_STREAMING_CHECKPOINT_CHARS: Final[int] = 2400
+COMPACT_STREAMING_CHECKPOINT_CHARS: Final[int] = 2400
 _MEDIUM_STREAMING_CHECKPOINT_CHARS: Final[int] = 3200
-_WIDE_STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
+WIDE_STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
 
-_COMPACT_THINKING_PREVIEW_MIN_CHARS: Final[int] = 60
+COMPACT_THINKING_PREVIEW_MIN_CHARS: Final[int] = 60
 _MEDIUM_THINKING_PREVIEW_MIN_CHARS: Final[int] = 70
-_WIDE_THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
+WIDE_THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
 
-_COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 60
+COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 60
 _MEDIUM_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 70
-_WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
+WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
 
 _STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
 
@@ -59,27 +59,6 @@ _STREAMING_DEDUP_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no"
 _STREAMING_CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 
 
-@dataclass(frozen=True)
-class _ResolvedEnv:
-    """Resolved environment settings for display configuration.
-
-    Attributes:
-        no_color: True when NO_COLOR is present in environment.
-        force_color: True when FORCE_COLOR is present in environment.
-        force_narrow: True when RALPH_FORCE_NARROW is set to a truthy value.
-        columns: Terminal width override from COLUMNS env, or None.
-        force_ascii: True when RALPH_FORCE_ASCII is set to a truthy value.
-        streaming_dedup_enabled: True when RALPH_STREAMING_DEDUP is not disabled.
-        streaming_checkpoints_enabled: True when RALPH_STREAMING_CHECKPOINTS is not disabled.
-    """
-
-    no_color: bool
-    force_color: bool
-    force_narrow: bool
-    columns: int | None
-    force_ascii: bool
-    streaming_dedup_enabled: bool
-    streaming_checkpoints_enabled: bool
 
 
 _RALPH_FORCE_NARROW_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
@@ -130,127 +109,6 @@ def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:
     )
 
 
-@dataclass(frozen=True)
-class DisplayContext:
-    """Immutable container for all display configuration and dependencies.
-
-    This is the single source of truth for display behavior. No renderer
-    may construct its own Console. Obtain one via make_display_context().
-
-    Attributes:
-        console: Rich Console instance for all rendering.
-        theme: Rich Theme with Ralph's Okabe-Ito color palette.
-        width: Effective terminal width in characters.
-        mode: Display mode - 'compact', 'medium', or 'wide'.
-        narrow: True when mode is 'compact'.
-        color_enabled: True when color output is enabled.
-        glyphs_enabled: True when Unicode glyphs should be used, False for ASCII fallbacks.
-        headline_max_chars: Max characters for condensed headlines.
-        condenser_soft_limit: Soft limit for content condensation.
-        condenser_hard_limit: Hard limit for content condensation.
-        streaming_checkpoint_chars: Chars between streaming checkpoints.
-        streaming_checkpoint_fragments: Emit checkpoint every N fragments.
-        streaming_dedup_enabled: Whether to deduplicate consecutive identical fragments.
-        streaming_checkpoints_enabled: Whether to emit streaming checkpoints.
-        thinking_preview_min_chars: Min chars for thinking preview.
-        tool_result_headline_min_chars: Min chars for tool result headline.
-    """
-
-    console: Console
-    theme: Theme
-    width: int
-    mode: Literal["compact", "medium", "wide"]
-    narrow: bool
-    color_enabled: bool
-    glyphs_enabled: bool
-    headline_max_chars: int
-    condenser_soft_limit: int
-    condenser_hard_limit: int
-    streaming_checkpoint_chars: int
-    streaming_checkpoint_fragments: int
-    streaming_dedup_enabled: bool
-    streaming_checkpoints_enabled: bool
-    thinking_preview_min_chars: int
-    tool_result_headline_min_chars: int
-    # Captured env mapping used to resolve flags; excluded from equality and hash
-    env: Mapping[str, str] = field(default_factory=dict, compare=False, repr=False)
-    # Stored overrides for refreshed() — excluded from equality and hash
-    _resolved_env: _ResolvedEnv = field(
-        default_factory=lambda: _ResolvedEnv(
-            no_color=False,
-            force_color=False,
-            force_narrow=False,
-            columns=None,
-            force_ascii=False,
-            streaming_dedup_enabled=True,
-            streaming_checkpoints_enabled=True,
-        ),
-        repr=False,
-        compare=False,
-    )
-    _force_width: int | None = field(default=None, repr=False, compare=False)
-    _force_mode: Literal["compact", "medium", "wide"] | None = field(
-        default=None, repr=False, compare=False
-    )
-    _force_glyphs: bool | None = field(default=None, repr=False, compare=False)
-
-    def glyph_for(self, name: str) -> str:
-        """Return the glyph string for the given logical name.
-
-        Args:
-            name: Logical glyph name (e.g., 'success', 'error', 'milestone', 'arrow').
-
-        Returns:
-            Unicode glyph when glyphs_enabled is True, ASCII fallback otherwise.
-
-        Raises:
-            KeyError: If name is not a known glyph key.
-        """
-        if name not in UNICODE_GLYPHS:
-            known = ", ".join(sorted(UNICODE_GLYPHS))
-            raise KeyError(f"Unknown glyph {name!r}. Known glyphs: {known}")
-        if self.glyphs_enabled:
-            return UNICODE_GLYPHS[name]
-        return ASCII_GLYPHS[name]
-
-    def refreshed(self) -> DisplayContext:
-        """Return a new DisplayContext with refreshed terminal width and derived limits.
-
-        Re-resolves width and mode using the same precedence rules as make_display_context(),
-        preserving any active overrides (RALPH_FORCE_NARROW, COLUMNS, force_width, force_mode)
-        stored at construction time. The console identity, theme, color_enabled, and glyphs_enabled
-        are unchanged.
-
-        Returns:
-            New DisplayContext with updated width, mode, and limits.
-        """
-        new_width = _compute_width(self._resolved_env, self.console, self._force_width)
-        new_mode = _compute_mode(self._resolved_env, self._force_mode, new_width)
-        new_limits = _MODE_LIMITS.get(new_mode, _MODE_LIMITS["wide"])
-
-        return DisplayContext(
-            console=self.console,
-            theme=self.theme,
-            width=new_width,
-            mode=new_mode,
-            narrow=new_mode == "compact",
-            color_enabled=self.color_enabled,
-            glyphs_enabled=self.glyphs_enabled,
-            headline_max_chars=new_limits.headline_max_chars,
-            condenser_soft_limit=new_limits.condenser_soft_limit,
-            condenser_hard_limit=new_limits.condenser_hard_limit,
-            streaming_checkpoint_chars=new_limits.streaming_checkpoint_chars,
-            streaming_checkpoint_fragments=self.streaming_checkpoint_fragments,
-            streaming_dedup_enabled=self.streaming_dedup_enabled,
-            streaming_checkpoints_enabled=self.streaming_checkpoints_enabled,
-            thinking_preview_min_chars=new_limits.thinking_preview_min_chars,
-            tool_result_headline_min_chars=new_limits.tool_result_headline_min_chars,
-            _resolved_env=self._resolved_env,
-            env=self.env,
-            _force_width=self._force_width,
-            _force_mode=self._force_mode,
-            _force_glyphs=self._force_glyphs,
-        )
 
 
 def _console_has_no_color(console: Console) -> bool:
@@ -325,6 +183,151 @@ def _compute_mode(
 class _ModeAdaptiveLimits:
     """Mode-adaptive character limits for content condensation."""
 
+    @dataclass(frozen=True)
+    class _ResolvedEnv:
+        """Resolved environment settings for display configuration.
+
+        Attributes:
+            no_color: True when NO_COLOR is present in environment.
+            force_color: True when FORCE_COLOR is present in environment.
+            force_narrow: True when RALPH_FORCE_NARROW is set to a truthy value.
+            columns: Terminal width override from COLUMNS env, or None.
+            force_ascii: True when RALPH_FORCE_ASCII is set to a truthy value.
+            streaming_dedup_enabled: True when RALPH_STREAMING_DEDUP is not disabled.
+            streaming_checkpoints_enabled: True when RALPH_STREAMING_CHECKPOINTS is not disabled.
+        """
+
+        no_color: bool
+        force_color: bool
+        force_narrow: bool
+        columns: int | None
+        force_ascii: bool
+        streaming_dedup_enabled: bool
+        streaming_checkpoints_enabled: bool
+
+    @dataclass(frozen=True)
+    class DisplayContext:
+        """Immutable container for all display configuration and dependencies.
+
+        This is the single source of truth for display behavior. No renderer
+        may construct its own Console. Obtain one via make_display_context().
+
+        Attributes:
+            console: Rich Console instance for all rendering.
+            theme: Rich Theme with Ralph's Okabe-Ito color palette.
+            width: Effective terminal width in characters.
+            mode: Display mode - 'compact', 'medium', or 'wide'.
+            narrow: True when mode is 'compact'.
+            color_enabled: True when color output is enabled.
+            glyphs_enabled: True when Unicode glyphs should be used, False for ASCII fallbacks.
+            headline_max_chars: Max characters for condensed headlines.
+            condenser_soft_limit: Soft limit for content condensation.
+            condenser_hard_limit: Hard limit for content condensation.
+            streaming_checkpoint_chars: Chars between streaming checkpoints.
+            streaming_checkpoint_fragments: Emit checkpoint every N fragments.
+            streaming_dedup_enabled: Whether to deduplicate consecutive identical fragments.
+            streaming_checkpoints_enabled: Whether to emit streaming checkpoints.
+            thinking_preview_min_chars: Min chars for thinking preview.
+            tool_result_headline_min_chars: Min chars for tool result headline.
+        """
+
+        console: Console
+        theme: Theme
+        width: int
+        mode: Literal["compact", "medium", "wide"]
+        narrow: bool
+        color_enabled: bool
+        glyphs_enabled: bool
+        headline_max_chars: int
+        condenser_soft_limit: int
+        condenser_hard_limit: int
+        streaming_checkpoint_chars: int
+        streaming_checkpoint_fragments: int
+        streaming_dedup_enabled: bool
+        streaming_checkpoints_enabled: bool
+        thinking_preview_min_chars: int
+        tool_result_headline_min_chars: int
+        # Captured env mapping used to resolve flags; excluded from equality and hash
+        env: Mapping[str, str] = field(default_factory=dict, compare=False, repr=False)
+        # Stored overrides for refreshed() — excluded from equality and hash
+        _resolved_env: _ResolvedEnv = field(
+            default_factory=lambda: _ResolvedEnv(
+                no_color=False,
+                force_color=False,
+                force_narrow=False,
+                columns=None,
+                force_ascii=False,
+                streaming_dedup_enabled=True,
+                streaming_checkpoints_enabled=True,
+            ),
+            repr=False,
+            compare=False,
+        )
+        _force_width: int | None = field(default=None, repr=False, compare=False)
+        _force_mode: Literal["compact", "medium", "wide"] | None = field(
+            default=None, repr=False, compare=False
+        )
+        _force_glyphs: bool | None = field(default=None, repr=False, compare=False)
+
+        def glyph_for(self, name: str) -> str:
+            """Return the glyph string for the given logical name.
+
+            Args:
+                name: Logical glyph name (e.g., 'success', 'error', 'milestone', 'arrow').
+
+            Returns:
+                Unicode glyph when glyphs_enabled is True, ASCII fallback otherwise.
+
+            Raises:
+                KeyError: If name is not a known glyph key.
+            """
+            if name not in UNICODE_GLYPHS:
+                known = ", ".join(sorted(UNICODE_GLYPHS))
+                raise KeyError(f"Unknown glyph {name!r}. Known glyphs: {known}")
+            if self.glyphs_enabled:
+                return UNICODE_GLYPHS[name]
+            return ASCII_GLYPHS[name]
+
+        def refreshed(self) -> DisplayContext:
+            """Return a new DisplayContext with refreshed terminal width and derived limits.
+
+            Re-resolves width and mode using the same precedence rules as make_display_context(),
+            preserving any active overrides (RALPH_FORCE_NARROW, COLUMNS, force_width, force_mode)
+            stored at construction time. The console identity, theme, color_enabled,
+            and glyphs_enabled are unchanged.
+
+            Returns:
+                New DisplayContext with updated width, mode, and limits.
+            """
+            new_width = _compute_width(self._resolved_env, self.console, self._force_width)
+            new_mode = _compute_mode(self._resolved_env, self._force_mode, new_width)
+            new_limits = _MODE_LIMITS.get(new_mode, _MODE_LIMITS["wide"])
+
+            return DisplayContext(
+                console=self.console,
+                theme=self.theme,
+                width=new_width,
+                mode=new_mode,
+                narrow=new_mode == "compact",
+                color_enabled=self.color_enabled,
+                glyphs_enabled=self.glyphs_enabled,
+                headline_max_chars=new_limits.headline_max_chars,
+                condenser_soft_limit=new_limits.condenser_soft_limit,
+                condenser_hard_limit=new_limits.condenser_hard_limit,
+                streaming_checkpoint_chars=new_limits.streaming_checkpoint_chars,
+                streaming_checkpoint_fragments=self.streaming_checkpoint_fragments,
+                streaming_dedup_enabled=self.streaming_dedup_enabled,
+                streaming_checkpoints_enabled=self.streaming_checkpoints_enabled,
+                thinking_preview_min_chars=new_limits.thinking_preview_min_chars,
+                tool_result_headline_min_chars=new_limits.tool_result_headline_min_chars,
+                _resolved_env=self._resolved_env,
+                env=self.env,
+                _force_width=self._force_width,
+                _force_mode=self._force_mode,
+                _force_glyphs=self._force_glyphs,
+            )
+
+
     headline_max_chars: int
     condenser_soft_limit: int
     condenser_hard_limit: int
@@ -333,14 +336,18 @@ class _ModeAdaptiveLimits:
     tool_result_headline_min_chars: int
 
 
+_ResolvedEnv = _ModeAdaptiveLimits._ResolvedEnv
+DisplayContext = _ModeAdaptiveLimits.DisplayContext
+
+
 _MODE_LIMITS: Final[dict[str, _ModeAdaptiveLimits]] = {
     "compact": _ModeAdaptiveLimits(
-        headline_max_chars=_COMPACT_HEADLINE_MAX_CHARS,
-        condenser_soft_limit=_COMPACT_CONDENSER_SOFT_LIMIT,
-        condenser_hard_limit=_COMPACT_CONDENSER_HARD_LIMIT,
-        streaming_checkpoint_chars=_COMPACT_STREAMING_CHECKPOINT_CHARS,
-        thinking_preview_min_chars=_COMPACT_THINKING_PREVIEW_MIN_CHARS,
-        tool_result_headline_min_chars=_COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS,
+        headline_max_chars=COMPACT_HEADLINE_MAX_CHARS,
+        condenser_soft_limit=COMPACT_CONDENSER_SOFT_LIMIT,
+        condenser_hard_limit=COMPACT_CONDENSER_HARD_LIMIT,
+        streaming_checkpoint_chars=COMPACT_STREAMING_CHECKPOINT_CHARS,
+        thinking_preview_min_chars=COMPACT_THINKING_PREVIEW_MIN_CHARS,
+        tool_result_headline_min_chars=COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS,
     ),
     "medium": _ModeAdaptiveLimits(
         headline_max_chars=_MEDIUM_HEADLINE_MAX_CHARS,
@@ -351,12 +358,12 @@ _MODE_LIMITS: Final[dict[str, _ModeAdaptiveLimits]] = {
         tool_result_headline_min_chars=_MEDIUM_TOOL_RESULT_HEADLINE_MIN_CHARS,
     ),
     "wide": _ModeAdaptiveLimits(
-        headline_max_chars=_WIDE_HEADLINE_MAX_CHARS,
-        condenser_soft_limit=_WIDE_CONDENSER_SOFT_LIMIT,
-        condenser_hard_limit=_WIDE_CONDENSER_HARD_LIMIT,
-        streaming_checkpoint_chars=_WIDE_STREAMING_CHECKPOINT_CHARS,
-        thinking_preview_min_chars=_WIDE_THINKING_PREVIEW_MIN_CHARS,
-        tool_result_headline_min_chars=_WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS,
+        headline_max_chars=WIDE_HEADLINE_MAX_CHARS,
+        condenser_soft_limit=WIDE_CONDENSER_SOFT_LIMIT,
+        condenser_hard_limit=WIDE_CONDENSER_HARD_LIMIT,
+        streaming_checkpoint_chars=WIDE_STREAMING_CHECKPOINT_CHARS,
+        thinking_preview_min_chars=WIDE_THINKING_PREVIEW_MIN_CHARS,
+        tool_result_headline_min_chars=WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS,
     ),
 }
 

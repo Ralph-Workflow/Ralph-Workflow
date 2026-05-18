@@ -31,7 +31,7 @@ GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
 
 
-def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
+def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
     """Recursively merge override into base; override wins on conflict.
 
     Args:
@@ -44,7 +44,7 @@ def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[st
     result: dict[str, object] = dict(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(cast("dict[str, object]", result[key]), value)
+            result[key] = deep_merge(cast("dict[str, object]", result[key]), value)
         else:
             result[key] = value
     return result
@@ -180,7 +180,7 @@ def load_config(
         else:
             local_path = workspace_scope.local_config_path
             for propagated_path in workspace_scope.propagated_config_paths:
-                propagated_data = _deep_merge(propagated_data, load_toml(propagated_path))
+                propagated_data = deep_merge(propagated_data, load_toml(propagated_path))
     local_data = load_toml(local_path)
 
     # Convert legacy config format if needed
@@ -189,12 +189,12 @@ def load_config(
     local_data = _convert_legacy_config(local_data)
 
     # Merge: global -> propagated -> local
-    merged = _deep_merge(global_data, propagated_data)
-    merged = _deep_merge(merged, local_data)
+    merged = deep_merge(global_data, propagated_data)
+    merged = deep_merge(merged, local_data)
 
     # Apply CLI overrides last
     if cli_overrides:
-        merged = _deep_merge(merged, cli_overrides)
+        merged = deep_merge(merged, cli_overrides)
 
     try:
         config = UnifiedConfig.model_validate(merged)

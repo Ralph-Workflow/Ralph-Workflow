@@ -35,63 +35,62 @@ if TYPE_CHECKING:
     from ralph.mcp.multimodal.resources import MediaManifest
     from ralph.mcp.upstream.config import UpstreamMcpServer
 
+if TYPE_CHECKING:
+    class UpstreamMcpClient(Protocol):
+        """Protocol satisfied by both HTTP and stdio upstream MCP client implementations."""
+
+        def list_tools(self) -> list[UpstreamTool]: ...
+        def call_tool(self, name: str, arguments: JsonObject) -> object: ...
+
+    class HasMediaManifest(Protocol):
+        """Protocol for upstream clients that expose a media artifact manifest."""
+
+        @property
+        def media_manifest(self) -> MediaManifest: ...
+
 JsonObject = dict[str, object]
 JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
-class UpstreamMcpClient(Protocol):
-    """Protocol satisfied by both HTTP and stdio upstream MCP client implementations."""
-
-    def list_tools(self) -> list[UpstreamTool]: ...
-    def call_tool(self, name: str, arguments: JsonObject) -> object: ...
-
-
-class HasMediaManifest(Protocol):
-    """Protocol for upstream clients that expose a media artifact manifest."""
-
-    @property
-    def media_manifest(self) -> MediaManifest: ...
-
-
-class HttpUpstreamClient:
-    """Upstream MCP client that communicates over HTTP JSON-RPC."""
-
-    def __init__(
-        self,
-        server: UpstreamMcpServer,
-        *,
-        caller: JsonRpcCaller | None = None,
-    ) -> None:
-        self._server = server
-        self._caller: JsonRpcCaller = (
-            caller if caller is not None else _make_http_caller(server.url or "")
-        )
-
-    def list_tools(self) -> list[UpstreamTool]:
-        try:
-            result = self._caller("tools/list", {})
-        except UpstreamCallError:
-            raise
-        except Exception as exc:
-            raise UpstreamCallError(
-                f"upstream server '{self._server.name}' tools/list failed: {exc}"
-            ) from exc
-        return _parse_tools(result)
-
-    def call_tool(self, name: str, arguments: JsonObject) -> object:
-        try:
-            result = self._caller("tools/call", {"name": name, "arguments": arguments})
-        except UpstreamCallError:
-            raise
-        except Exception as exc:
-            raise UpstreamCallError(
-                f"upstream server '{self._server.name}' tool '{name}' failed: {exc}"
-            ) from exc
-        return result
-
-
 class StdioUpstreamClient:
     """Upstream MCP client that communicates over stdio with a subprocess."""
+
+    class HttpUpstreamClient:
+        """Upstream MCP client that communicates over HTTP JSON-RPC."""
+
+        def __init__(
+            self,
+            server: UpstreamMcpServer,
+            *,
+            caller: JsonRpcCaller | None = None,
+        ) -> None:
+            self._server = server
+            self._caller: JsonRpcCaller = (
+                caller if caller is not None else _make_http_caller(server.url or "")
+            )
+
+        def list_tools(self) -> list[UpstreamTool]:
+            try:
+                result = self._caller("tools/list", {})
+            except UpstreamCallError:
+                raise
+            except Exception as exc:
+                raise UpstreamCallError(
+                    f"upstream server '{self._server.name}' tools/list failed: {exc}"
+                ) from exc
+            return _parse_tools(result)
+
+        def call_tool(self, name: str, arguments: JsonObject) -> object:
+            try:
+                result = self._caller("tools/call", {"name": name, "arguments": arguments})
+            except UpstreamCallError:
+                raise
+            except Exception as exc:
+                raise UpstreamCallError(
+                    f"upstream server '{self._server.name}' tool '{name}' failed: {exc}"
+                ) from exc
+            return result
+
 
     def __init__(
         self,
@@ -123,6 +122,9 @@ class StdioUpstreamClient:
                 f"upstream server '{self._server.name}' tool '{name}' failed: {exc}"
             ) from exc
         return result
+
+
+HttpUpstreamClient = StdioUpstreamClient.HttpUpstreamClient
 
 
 def make_upstream_client(

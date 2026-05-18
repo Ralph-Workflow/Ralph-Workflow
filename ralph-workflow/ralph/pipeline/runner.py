@@ -7,14 +7,9 @@ plumbing that connects them.
 
 from __future__ import annotations
 
-import os
-import signal
-import threading
-from contextlib import suppress
 from inspect import signature
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
-from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 
 from ralph.agents.invoke import AgentInvocationError, invoke_agent
@@ -26,9 +21,7 @@ from ralph.display.context import install_width_refresher, make_display_context
 from ralph.display.phase_banner import show_phase_close_banner, show_phase_transition
 from ralph.executor.process import run_process_async
 from ralph.git.operations import create_commit, stage_all
-from ralph.interrupt import controller_from_process_manager
 from ralph.interrupt.asyncio_bridge import install_signal_handlers
-from ralph.interrupt.controller import install_force_kill_handler
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
 from ralph.mcp.server.lifecycle import (
@@ -37,15 +30,35 @@ from ralph.mcp.server.lifecycle import (
     start_mcp_server,
 )
 from ralph.mcp.session_plan import build_session_mcp_plan
-from ralph.mcp.transport import common as transport_common_module
-from ralph.mcp.upstream.agent_probe import AgentProbeReport, probe_agent_transports
-from ralph.mcp.upstream.validation import (
-    UpstreamValidationError,
-    strict_mode_from_env,
-    validate_upstream_mcp_servers,
-)
 from ralph.phases import handle_phase, register_role_handlers
 from ralph.pipeline import checkpoint as ckpt
+from ralph.pipeline._runner_cycle_setup import (
+    write_start_commit_if_absent as _write_start_commit_if_absent,
+)
+from ralph.pipeline._runner_interrupt import (
+    handle_keyboard_interrupt as _handle_keyboard_interrupt,
+)
+from ralph.pipeline._runner_mcp_validation import (
+    default_probe_agent_transports as _default_probe_agent_transports,
+)
+from ralph.pipeline._runner_mcp_validation import (
+    default_validate_mcp as _default_validate_mcp,
+)
+from ralph.pipeline._runner_mcp_validation import (
+    run_custom_mcp_validation,
+)
+from ralph.pipeline._runner_session import (
+    apply_session_capture as _apply_session_capture,
+)
+from ralph.pipeline._runner_session import (
+    set_last_captured_session_id as _set_last_captured_session_id,
+)
+from ralph.pipeline._runner_state_helpers import (
+    notify_pipeline_subscriber as _notify_pipeline_subscriber,
+)
+from ralph.pipeline._runner_state_helpers import (
+    reset_phase_chain_for_recovery as _reset_phase_chain_for_recovery,
+)
 from ralph.pipeline.activity_stream import (
     MAX_METADATA_SUMMARY_LENGTH,
     MAX_TEXT_LENGTH,
@@ -56,11 +69,7 @@ from ralph.pipeline.activity_stream import (
     terminal_width,
     truncate,
 )
-from ralph.pipeline.cycle_baseline import (
-    clear_cycle_baseline,
-    read_cycle_baseline,
-    write_cycle_baseline,
-)
+from ralph.pipeline.cycle_baseline import clear_cycle_baseline
 from ralph.pipeline.effect_executor import (
     AgentExecutionDeps,
     AgentRecoveryPlan,
@@ -129,7 +138,7 @@ from ralph.pipeline.prompt_prep import (
 )
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.run_loop import run
-from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
+from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.state_init import create_initial_state
 from ralph.policy.loader import (
     load_policy_for_workspace_scope,
@@ -137,7 +146,7 @@ from ralph.policy.loader import (
 from ralph.policy.loader import (
     load_policy_or_die as _dir_load_policy_or_die,
 )
-from ralph.process.manager import get_process_manager, process_phase_scope
+from ralph.process.manager import process_phase_scope
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.materialize import MissingPlanHandoffError, materialize_prompt_for_phase
 from ralph.prompts.system_prompt import materialize_system_prompt
@@ -146,14 +155,13 @@ from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Mapping
     from pathlib import Path
+    from typing import Protocol
 
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.mcp.upstream.config import UpstreamMcpServer
-    from ralph.mcp.upstream.validation import UpstreamValidationReport
     from ralph.pipeline.effect_executor import (
         _CheckMcpBridgeHealthFn,
         _McpSupervisorFactory,
@@ -224,81 +232,37 @@ __all__ = [
 ]
 
 
-class _PipelineSubscriber(Protocol):
-    def notify(self, state: PipelineState) -> None: ...
+if TYPE_CHECKING:
+    class _PipelineSubscriber(Protocol):
+        def notify(self, state: PipelineState) -> None: ...
 
+    class _RegistryLike(Protocol):
+        def get(self, name: str) -> AgentConfig | None: ...
 
-class _RegistryLike(Protocol):
-    def get(self, name: str) -> AgentConfig | None: ...
+    class _AgentRegistryFactory(Protocol):
+        @classmethod
+        def from_config(cls, config: UnifiedConfig) -> _RegistryLike: ...
 
+    class _ExecuteEffectKwargsFn(Protocol):
+        def __call__(
+            self,
+            effect: Effect,
+            config: UnifiedConfig,
+            workspace_scope: WorkspaceScope,
+            **kwargs: object,
+        ) -> Event: ...
 
-class _AgentRegistryFactory(Protocol):
-    @classmethod
-    def from_config(cls, config: UnifiedConfig) -> _RegistryLike: ...
+    class _ConnectivityMonitorLike(Protocol):
+        @property
+        def current_state(self) -> object: ...
 
-
-class _ExecuteEffectKwargsFn(Protocol):
-    def __call__(
-        self,
-        effect: Effect,
-        config: UnifiedConfig,
-        workspace_scope: WorkspaceScope,
-        **kwargs: object,
-    ) -> Event: ...
-
-
-class _ConnectivityMonitorLike(Protocol):
-    @property
-    def current_state(self) -> object: ...
-
-    def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
+        def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
 
 
 _LEGACY_EXECUTE_EFFECT_ARITY = 3
 _POLICY_LOADER_CONFIG_ARITY = 2
 
 load_policy_or_die = _dir_load_policy_or_die
-
-
-class _SessionCapture(threading.local):
-    session_id: str | None = None
-
-
-_session_capture_local = _SessionCapture()
-
-
-def _set_last_captured_session_id(session_id: str | None) -> None:
-    _session_capture_local.session_id = session_id
-
-
-def _pop_last_captured_session_id() -> str | None:
-    session_id = _session_capture_local.session_id
-    _session_capture_local.session_id = None
-    return session_id
-
-
-def _write_start_commit_if_absent(workspace_root: Path) -> None:
-    if read_cycle_baseline(workspace_root) is not None:
-        return
-    try:
-        repo = Repo(workspace_root)
-    except InvalidGitRepositoryError:
-        return
-    if not repo.head.is_valid():
-        return
-    write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
-
-
-def _default_validate_mcp(
-    servers: Iterable[UpstreamMcpServer], *, strict: bool
-) -> UpstreamValidationReport:
-    return validate_upstream_mcp_servers(servers, strict=strict)
-
-
-def _default_probe_agent_transports(
-    servers: Iterable[UpstreamMcpServer], *, workspace_path: Path | None
-) -> tuple[AgentProbeReport, ...]:
-    return probe_agent_transports(servers, workspace_path=workspace_path)
 
 
 VALIDATE_MCP = _default_validate_mcp
@@ -308,53 +272,15 @@ _PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
 
 
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:
-    """Fail-fast validation of custom MCP servers + per-agent transports.
-
-    Returns the exit code the runner should propagate (0 to continue, 1 to abort).
-    """
-    upstreams = transport_common_module.mcp_toml_as_upstreams(workspace_root)
-    if not upstreams:
-        return 0
-
-    strict = strict_mode_from_env()
-    _effective_validate = (
+    effective_validate = (
         VALIDATE_MCP if VALIDATE_MCP is not _default_validate_mcp else _VALIDATE_MCP
     )
-    try:
-        upstream_report = _effective_validate(upstreams, strict=strict)
-    except UpstreamValidationError as exc:
-        logger.error("Custom MCP servers failed startup validation:\n{}", exc)
-        return 1
-
-    healthy_names = {r.name for r in upstream_report.servers if r.ok}
-    healthy_servers = tuple(s for s in upstreams if s.name in healthy_names)
-    if not healthy_servers:
-        return 0
-
-    _effective_probe = (
+    effective_probe = (
         PROBE_AGENT_TRANSPORTS
         if PROBE_AGENT_TRANSPORTS is not _default_probe_agent_transports
         else _PROBE_AGENT_TRANSPORTS
     )
-    probe_results = _effective_probe(healthy_servers, workspace_path=workspace_root)
-    failures = [p for p in probe_results if not p.ok]
-    if failures and strict:
-        for failure in failures:
-            logger.error(
-                "Agent transport probe failed: server={} transport={} error={}",
-                failure.server_name,
-                failure.transport,
-                failure.error,
-            )
-        return 1
-    for failure in failures:
-        logger.warning(
-            "Agent transport probe failed (soft mode): server={} transport={} error={}",
-            failure.server_name,
-            failure.transport,
-            failure.error,
-        )
-    return 0
+    return run_custom_mcp_validation(workspace_root, effective_validate, effective_probe)
 
 
 validate_custom_mcp_servers = _validate_custom_mcp_servers
@@ -488,36 +414,6 @@ def _invoke_execute_effect_with_optional_display(
     )
 
 
-def _notify_dashboard_subscriber(
-    dashboard_subscriber: _PipelineSubscriber | None,
-    state: PipelineState,
-) -> None:
-    if dashboard_subscriber is None:
-        return
-    dashboard_subscriber.notify(state)
-
-
-def _notify_pipeline_subscriber(
-    pipeline_subscriber: _PipelineSubscriber | None,
-    state: PipelineState,
-) -> None:
-    _notify_dashboard_subscriber(pipeline_subscriber, state)
-
-
-def _reset_phase_chain_for_recovery(
-    state: PipelineState,
-    target_phase: str,
-) -> PipelineState:
-    """Reset the target phase chain when re-entering after the terminal failure route."""
-    chain = state.chain_for_phase(target_phase)
-    if chain is None:
-        return state
-    return state.with_phase_chain(
-        target_phase,
-        AgentChainState(agents=chain.agents, current_index=0, retries=0),
-    )
-
-
 def _reduce_runtime_recovery(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
@@ -554,63 +450,6 @@ def _save_checkpoint_or_log(
         ckpt.save(state)
     except Exception as exc:
         logger.exception(message, phase=state.phase, err=exc)
-
-
-def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -> None:
-    """Gracefully stop tracked children, escalating on a second SIGINT."""
-    process_manager = get_process_manager()
-    controller = controller_from_process_manager(
-        process_manager=process_manager,
-        stop_connectivity=monitor_stop,
-    )
-    interrupt_done = threading.Event()
-    interrupt_error: list[BaseException] = []
-
-    def _force_exit() -> None:
-        kill_method = os.killpg if hasattr(os, "killpg") else os.kill
-        try:
-            active_records = list(process_manager.list_active())
-        except Exception:
-            active_records = []
-        for record in active_records:
-            with suppress(ProcessLookupError, PermissionError):
-                if kill_method is os.killpg:
-                    kill_method(record.pgid, signal.SIGKILL)
-                else:
-                    kill_method(record.pid, signal.SIGKILL)
-        os._exit(130)
-
-    def _begin_interrupt() -> None:
-        try:
-            controller.begin_interrupt(grace_period_s=process_manager.policy.default_grace_period_s)
-        except BaseException as exc:
-            interrupt_error.append(exc)
-        finally:
-            interrupt_done.set()
-
-    restore_force_kill = install_force_kill_handler(_force_exit)
-    interrupt_thread = threading.Thread(target=_begin_interrupt, daemon=True)
-    interrupt_thread.start()
-    try:
-        while not interrupt_done.wait(timeout=0.05):
-            continue
-    finally:
-        with suppress(Exception):
-            restore_force_kill()
-    if interrupt_error:
-        logger.warning("Interrupt controller raised during KeyboardInterrupt")
-
-
-def _apply_session_capture(state: PipelineState) -> PipelineState:
-    captured_session_id = _pop_last_captured_session_id()
-    if captured_session_id:
-        return state.copy_with(
-            last_agent_session_id=captured_session_id,
-            session_preserve_retry_pending=False,
-        )
-    if state.session_preserve_retry_pending is True:
-        return state.copy_with(session_preserve_retry_pending=False)
-    return state
 
 
 def _run_pipeline_step(

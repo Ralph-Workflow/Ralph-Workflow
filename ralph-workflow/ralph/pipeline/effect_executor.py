@@ -74,6 +74,70 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
+if TYPE_CHECKING:
+    class _InvokeAgentFn(Protocol):
+        def __call__(
+            self,
+            config: AgentConfig,
+            prompt_file: str,
+            *,
+            options: InvokeOptions | None = None,
+        ) -> Iterable[str]: ...
+
+    class _RegistryLike(Protocol):
+        def get(self, name: str) -> AgentConfig | None: ...
+
+    class _AgentRegistryFactory(Protocol):
+        @classmethod
+        def from_config(cls, config: UnifiedConfig) -> _RegistryLike: ...
+
+    class _ShowPhaseStartFn(Protocol):
+        def __call__(
+            self,
+            phase: str,
+            agent_name: str,
+            display_context: DisplayContext,
+            state: PipelineState,
+            *,
+            pipeline_policy: PipelinePolicy,
+        ) -> None: ...
+
+    class _StartMcpServerFn(Protocol):
+        def __call__(self, *args: object, **kwargs: object) -> RestartAwareMcpBridge: ...
+
+    class _CreateCommitFn(Protocol):
+        def __call__(self, repo_root: Path | str, message: str, **kwargs: object) -> str: ...
+
+    class _StageAllFn(Protocol):
+        def __call__(self, repo_root: Path | str) -> None: ...
+
+    class _HasCommitWorkFn(Protocol):
+        def __call__(self, repo_root: Path) -> bool: ...
+
+    class _RenderCommitMessageFn(Protocol):
+        def __call__(self, repo_root: Path, display_context: object) -> None: ...
+
+    class _ShutdownMcpServerFn(Protocol):
+        def __call__(self, bridge: object) -> None: ...
+
+    class _CheckMcpBridgeHealthFn(Protocol):
+        def __call__(self, bridge: object) -> None: ...
+
+    class _MaterializeSystemPromptFn(Protocol):
+        def __call__(self, *, workspace_root: Path, name: str) -> str: ...
+
+    class _McpSupervisorFactory(Protocol):
+        def __call__(
+            self,
+            bridge: object,
+            *,
+            check_interval: object,
+            on_restart: object,
+        ) -> AbstractContextManager[None]: ...
+
+    class _HeartbeatPolicyFromEnvFn(Protocol):
+        def __call__(self) -> HeartbeatPolicy: ...
+
 _VERBOSE_LOG_LEVEL = 2
 _AGENT_RAW_OUTPUT_TAIL_LINES = 256
 _AGENT_RENDERED_OUTPUT_TAIL_LINES = 64
@@ -93,154 +157,80 @@ _TRANSIENT_CONNECTIVITY_MARKERS = (
 )
 
 
-class _InvokeAgentFn(Protocol):
-    def __call__(
-        self,
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
-    ) -> Iterable[str]: ...
-
-
-class _RegistryLike(Protocol):
-    def get(self, name: str) -> AgentConfig | None: ...
-
-
-class _AgentRegistryFactory(Protocol):
-    @classmethod
-    def from_config(cls, config: UnifiedConfig) -> _RegistryLike: ...
-
-
-class _ShowPhaseStartFn(Protocol):
-    def __call__(
-        self,
-        phase: str,
-        agent_name: str,
-        display_context: DisplayContext,
-        state: PipelineState,
-        *,
-        pipeline_policy: PipelinePolicy,
-    ) -> None: ...
-
-
-class _StartMcpServerFn(Protocol):
-    def __call__(self, *args: object, **kwargs: object) -> RestartAwareMcpBridge: ...
-
-
-class _CreateCommitFn(Protocol):
-    def __call__(self, repo_root: Path | str, message: str, **kwargs: object) -> str: ...
-
-
-class _StageAllFn(Protocol):
-    def __call__(self, repo_root: Path | str) -> None: ...
-
-
-class _HasCommitWorkFn(Protocol):
-    def __call__(self, repo_root: Path) -> bool: ...
-
-
-class _RenderCommitMessageFn(Protocol):
-    def __call__(self, repo_root: Path, display_context: object) -> None: ...
-
-
-class _ShutdownMcpServerFn(Protocol):
-    def __call__(self, bridge: object) -> None: ...
-
-
-class _CheckMcpBridgeHealthFn(Protocol):
-    def __call__(self, bridge: object) -> None: ...
-
-
-class _MaterializeSystemPromptFn(Protocol):
-    def __call__(self, *, workspace_root: Path, name: str) -> str: ...
-
-
-class _McpSupervisorFactory(Protocol):
-    def __call__(
-        self,
-        bridge: object,
-        *,
-        check_interval: object,
-        on_restart: object,
-    ) -> AbstractContextManager[None]: ...
-
-
-class _HeartbeatPolicyFromEnvFn(Protocol):
-    def __call__(self) -> HeartbeatPolicy: ...
-
-
-@dataclass(frozen=True)
-class AgentExecutionDeps:
-    """Injectable dependencies for executing an agent-invocation effect."""
-
-    invoke_agent: _InvokeAgentFn
-    agent_invocation_error: type[Exception]
-    agent_registry: _AgentRegistryFactory
-    show_phase_start_cb: _ShowPhaseStartFn | None = None
-    set_session_id_cb: Callable[[str | None], None] | None = None
-    start_mcp_server_fn: _StartMcpServerFn | None = None
-    shutdown_mcp_server_fn: _ShutdownMcpServerFn | None = None
-    check_mcp_bridge_health_fn: _CheckMcpBridgeHealthFn | None = None
-    materialize_system_prompt_fn: _MaterializeSystemPromptFn | None = None
-    mcp_supervisor_factory: _McpSupervisorFactory | None = None
-    heartbeat_policy_from_env_fn: _HeartbeatPolicyFromEnvFn | None = None
-
-
-@dataclass(frozen=True)
-class AgentRecoveryPlan:
-    """Resolved retry plan for a failed agent invocation."""
-
-    prompt_file: str
-    session_id: str | None
-    reason: str
-
-
-@dataclass(frozen=True)
-class AgentRecoveryInput:
-    """All inputs required to determine whether and how to retry an agent invocation."""
-
-    exc: Exception
-    attempt_index: int
-    max_recovery_attempts: int
-    effect: InvokeAgentEffect
-    workspace_root: Path
-    raw_output: list[str]
-    rendered_output: list[str]
-    extracted_session_id: str | None
-    inactivity_error_type: type[Exception]
-
-
-@dataclass(frozen=True)
-class _AgentInvocationCtx:
-    effect: InvokeAgentEffect
-    config: UnifiedConfig
-    deps: AgentExecutionDeps
-    workspace_scope: WorkspaceScope
-    verbosity: Verbosity
-    resolved_display_context: DisplayContext | None
-    display_subscriber: PipelineSubscriber | None
-    max_recovery_attempts: int
-    effective_agents_policy: AgentsPolicy
-    state: PipelineState | None
-    policy_bundle: PolicyBundle | None
-    waiting_listener: Callable[[object], None]
-    agent_config: AgentConfig
-    display: ParallelDisplay | LegacyConsoleDisplay | None
-
-
-@dataclass(frozen=True)
-class _AgentBridgeCtx:
-    bridge: RestartAwareMcpBridge
-    session: AgentSession
-    system_prompt_file: str
-
-
 @dataclass(frozen=True)
 class _AttemptResult:
+
+    @dataclass(frozen=True)
+    class AgentExecutionDeps:
+        """Injectable dependencies for executing an agent-invocation effect."""
+
+        invoke_agent: _InvokeAgentFn
+        agent_invocation_error: type[Exception]
+        agent_registry: _AgentRegistryFactory
+        show_phase_start_cb: _ShowPhaseStartFn | None = None
+        set_session_id_cb: Callable[[str | None], None] | None = None
+        start_mcp_server_fn: _StartMcpServerFn | None = None
+        shutdown_mcp_server_fn: _ShutdownMcpServerFn | None = None
+        check_mcp_bridge_health_fn: _CheckMcpBridgeHealthFn | None = None
+        materialize_system_prompt_fn: _MaterializeSystemPromptFn | None = None
+        mcp_supervisor_factory: _McpSupervisorFactory | None = None
+        heartbeat_policy_from_env_fn: _HeartbeatPolicyFromEnvFn | None = None
+
+    @dataclass(frozen=True)
+    class AgentRecoveryPlan:
+        """Resolved retry plan for a failed agent invocation."""
+
+        prompt_file: str
+        session_id: str | None
+        reason: str
+
+    @dataclass(frozen=True)
+    class AgentRecoveryInput:
+        """All inputs required to determine whether and how to retry an agent invocation."""
+
+        exc: Exception
+        attempt_index: int
+        max_recovery_attempts: int
+        effect: InvokeAgentEffect
+        workspace_root: Path
+        raw_output: list[str]
+        rendered_output: list[str]
+        extracted_session_id: str | None
+        inactivity_error_type: type[Exception]
+
+    @dataclass(frozen=True)
+    class _AgentInvocationCtx:
+        effect: InvokeAgentEffect
+        config: UnifiedConfig
+        deps: AgentExecutionDeps
+        workspace_scope: WorkspaceScope
+        verbosity: Verbosity
+        resolved_display_context: DisplayContext | None
+        display_subscriber: PipelineSubscriber | None
+        max_recovery_attempts: int
+        effective_agents_policy: AgentsPolicy
+        state: PipelineState | None
+        policy_bundle: PolicyBundle | None
+        waiting_listener: Callable[[object], None]
+        agent_config: AgentConfig
+        display: ParallelDisplay | LegacyConsoleDisplay | None
+
+    @dataclass(frozen=True)
+    class _AgentBridgeCtx:
+        bridge: RestartAwareMcpBridge
+        session: AgentSession
+        system_prompt_file: str
+
     event: PipelineEvent | None
     next_prompt_file: str
     next_session_id: str | None
+
+
+AgentExecutionDeps = _AttemptResult.AgentExecutionDeps
+AgentRecoveryPlan = _AttemptResult.AgentRecoveryPlan
+AgentRecoveryInput = _AttemptResult.AgentRecoveryInput
+_AgentInvocationCtx = _AttemptResult._AgentInvocationCtx
+_AgentBridgeCtx = _AttemptResult._AgentBridgeCtx
 
 
 def execute_agent_effect(

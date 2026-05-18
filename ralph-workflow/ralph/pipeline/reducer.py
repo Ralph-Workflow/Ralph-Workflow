@@ -24,6 +24,21 @@ if TYPE_CHECKING:
 from loguru import logger
 
 from ralph.pipeline import progress
+from ralph.pipeline._reducer_worker_state import (
+    handle_fan_out_started as _handle_fan_out_started,
+)
+from ralph.pipeline._reducer_worker_state import (
+    handle_worker_completed as _handle_worker_completed,
+)
+from ralph.pipeline._reducer_worker_state import (
+    handle_worker_failed as _handle_worker_failed,
+)
+from ralph.pipeline._reducer_worker_state import (
+    handle_worker_started as _handle_worker_started,
+)
+from ralph.pipeline._reducer_worker_state import (
+    handle_workers_resumed as _handle_workers_resumed,
+)
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
     AnalysisDecisionEvent,
@@ -41,7 +56,7 @@ from ralph.pipeline.handoffs import (
     resolve_post_commit_phase,
 )
 from ralph.pipeline.state import CommitState, PipelineState
-from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseDefinition, PhaseLoopPolicy
 from ralph.recovery.classifier import ClassifiedFailure, FailureContext
@@ -920,69 +935,7 @@ def _resolve_or_terminal(
     return new_state, []
 
 
-def _handle_fan_out_started(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    if not state.work_units or state.worker_states:
-        return state, []
-    new_worker_states = {
-        unit.unit_id: WorkerState(unit_id=unit.unit_id, status=WorkerStatus.PENDING)
-        for unit in state.work_units
-    }
-    return state.copy_with(worker_states=new_worker_states), []
 
-
-def _handle_workers_resumed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    if not state.worker_states:
-        return state, []
-    resumed_states = {
-        unit_id: (
-            worker_state.copy_with(status=WorkerStatus.PENDING)
-            if worker_state.status == WorkerStatus.RUNNING
-            else worker_state
-        )
-        for unit_id, worker_state in state.worker_states.items()
-    }
-    return state.copy_with(worker_states=resumed_states), []
-
-
-def _handle_worker_started(
-    state: PipelineState,
-    event: WorkerStartedEvent,
-) -> tuple[PipelineState, list[Effect]]:
-    if event.unit_id not in state.worker_states:
-        return state, []
-    updated = state.worker_states[event.unit_id].copy_with(
-        status=WorkerStatus.RUNNING, started_at=datetime.now(UTC)
-    )
-    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
-
-
-def _handle_worker_completed(
-    state: PipelineState,
-    event: WorkerCompletedEvent,
-) -> tuple[PipelineState, list[Effect]]:
-    if event.unit_id not in state.worker_states:
-        return state, []
-    updated = state.worker_states[event.unit_id].copy_with(
-        status=WorkerStatus.SUCCEEDED,
-        exit_code=event.exit_code,
-        finished_at=datetime.now(UTC),
-    )
-    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
-
-
-def _handle_worker_failed(
-    state: PipelineState,
-    event: WorkerFailedEvent,
-) -> tuple[PipelineState, list[Effect]]:
-    if event.unit_id not in state.worker_states:
-        return state, []
-    updated = state.worker_states[event.unit_id].copy_with(
-        status=WorkerStatus.FAILED,
-        exit_code=event.exit_code,
-        error_message=event.error,
-        finished_at=datetime.now(UTC),
-    )
-    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
 
 
 def _handle_all_workers_complete(

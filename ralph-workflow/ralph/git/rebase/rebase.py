@@ -18,89 +18,92 @@ if TYPE_CHECKING:
 
     from git.objects.commit import Commit
 
+if TYPE_CHECKING:
+    class ProcessExecutor(Protocol):
+        """Executor that runs external processes."""
+
+        def execute(
+            self,
+            command: str,
+            args: Sequence[str],
+            env: Mapping[str, str] | None = None,
+            cwd: Path | None = None,
+        ) -> ProcessResult: ...
+
 REBASE_APPLY_DIR = "rebase-apply"
 REBASE_MERGE_DIR = "rebase-merge"
 _STATUS_PREFIX_LEN = 3
 
 
 @dataclass(frozen=True)
-class ProcessResult:
-    """Represents the result of running a git subprocess."""
-
-    returncode: int
-    stdout: str
-    stderr: str
-
-    @property
-    def succeeded(self) -> bool:
-        return self.returncode == 0
-
-
-class ProcessExecutor(Protocol):
-    """Executor that runs external processes."""
-
-    def execute(
-        self,
-        command: str,
-        args: Sequence[str],
-        env: Mapping[str, str] | None = None,
-        cwd: Path | None = None,
-    ) -> ProcessResult: ...
-
-
-@dataclass(frozen=True)
-class SubprocessExecutor:
-    """Default executor powered by ProcessManager."""
-
-    def execute(
-        self,
-        command: str,
-        args: Sequence[str],
-        env: Mapping[str, str] | None = None,
-        cwd: Path | None = None,
-    ) -> ProcessResult:
-        subcommand = args[0] if args else "unknown"
-        result = run_git(
-            args,
-            cwd=cwd,
-            label=f"git-rebase:{subcommand}",
-            options=GitRunOptions(env=env),
-        )
-        return ProcessResult(
-            returncode=result.returncode,
-            stdout=result.stdout.strip(),
-            stderr=result.stderr.strip(),
-        )
-
-
-class RebaseOperationError(Exception):
-    """Raised when a rebase operation fails."""
-
-
-@dataclass(frozen=True)
-class RebaseSuccess:
-    """Rebase completed successfully."""
-
-
-@dataclass(frozen=True)
-class RebaseConflicts:
-    """Rebase stopped because conflicts remain."""
-
-    files: list[str]
-
-
-@dataclass(frozen=True)
-class RebaseNoOp:
-    """Rebase was not applicable (already up-to-date or invalid state)."""
-
-    reason: str
-
-
-@dataclass(frozen=True)
 class RebaseFailed:
     """Rebase failed with a specific error kind."""
 
+    @dataclass(frozen=True)
+    class ProcessResult:
+        """Represents the result of running a git subprocess."""
+
+        returncode: int
+        stdout: str
+        stderr: str
+
+        @property
+        def succeeded(self) -> bool:
+            return self.returncode == 0
+
+    @dataclass(frozen=True)
+    class SubprocessExecutor:
+        """Default executor powered by ProcessManager."""
+
+        def execute(
+            self,
+            command: str,
+            args: Sequence[str],
+            env: Mapping[str, str] | None = None,
+            cwd: Path | None = None,
+        ) -> ProcessResult:
+            subcommand = args[0] if args else "unknown"
+            result = run_git(
+                args,
+                cwd=cwd,
+                label=f"git-rebase:{subcommand}",
+                options=GitRunOptions(env=env),
+            )
+            return ProcessResult(
+                returncode=result.returncode,
+                stdout=result.stdout.strip(),
+                stderr=result.stderr.strip(),
+            )
+
+    class RebaseOperationError(Exception):
+        """Raised when a rebase operation fails."""
+
+    @dataclass(frozen=True)
+    class RebaseSuccess:
+        """Rebase completed successfully."""
+
+    @dataclass(frozen=True)
+    class RebaseConflicts:
+        """Rebase stopped because conflicts remain."""
+
+        files: list[str]
+
+    @dataclass(frozen=True)
+    class RebaseNoOp:
+        """Rebase was not applicable (already up-to-date or invalid state)."""
+
+        reason: str
+
+
     kind: RebaseErrorKind
+
+
+ProcessResult = RebaseFailed.ProcessResult
+SubprocessExecutor = RebaseFailed.SubprocessExecutor
+RebaseOperationError = RebaseFailed.RebaseOperationError
+RebaseSuccess = RebaseFailed.RebaseSuccess
+RebaseConflicts = RebaseFailed.RebaseConflicts
+RebaseNoOp = RebaseFailed.RebaseNoOp
 
 
 RebaseResult = RebaseSuccess | RebaseConflicts | RebaseNoOp | RebaseFailed

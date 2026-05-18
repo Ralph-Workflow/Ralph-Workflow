@@ -17,8 +17,8 @@ from ralph.agents.parsers import AgentOutputLine
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands.commit import (
     CommitAttemptContext,
-    _collect_commit_agent_output,
-    _invoke_commit_agent_attempt,
+    collect_commit_agent_output,
+    invoke_commit_agent_attempt,
 )
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig
@@ -56,7 +56,7 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
         patch("ralph.cli.commands.commit.read_commit_message_artifact", return_value=None),
     ):
         mock_materialize.return_value = str(tmp_path / ".agent" / "tmp" / "commit_system_prompt.md")
-        _invoke_commit_agent_attempt(
+        invoke_commit_agent_attempt(
             _claude_commit_agent(),
             prompt_file=str(prompt_file),
             attempt_context=CommitAttemptContext(
@@ -171,7 +171,7 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
         patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
         patch("ralph.cli.commands.commit.read_commit_message_artifact", return_value=None),
     ):
-        _invoke_commit_agent_attempt(
+        invoke_commit_agent_attempt(
             _claude_commit_agent(),
             prompt_file=str(prompt_file),
             attempt_context=attempt_context,
@@ -192,7 +192,7 @@ def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() 
     session_line = '{"session_id":"sess-early"}'
     filler = ["x" * 8192 for _ in range(_OUTPUT_BATCH)]
 
-    parsed_output, raw_output, resume_session_id = _collect_commit_agent_output(
+    parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
         [session_line, *filler],
         parser_type="generic",
         agent_name="claude",

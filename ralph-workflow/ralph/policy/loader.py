@@ -107,18 +107,18 @@ def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
     return dict(cast("Mapping[str, object]", nested_pipeline))
 
 
-def _format_validation_error_messages(exc: ValidationError) -> list[str]:
+def format_validation_error_messages(exc: ValidationError) -> list[str]:
     details = cast("ValidationErrorDetails", exc.errors())
-    return [_format_validation_error_detail(detail) for detail in details]
+    return [format_validation_error_detail(detail) for detail in details]
 
 
-def _format_validation_error_detail(detail: ValidationErrorDetail) -> str:
+def format_validation_error_detail(detail: ValidationErrorDetail) -> str:
     loc = detail.get("loc")
     msg = detail.get("msg")
-    return f"  {_format_validation_location(loc)}: {_format_validation_message(msg)}"
+    return f"  {format_validation_location(loc)}: {format_validation_message(msg)}"
 
 
-def _format_validation_location(raw_loc: object | None) -> str:
+def format_validation_location(raw_loc: object | None) -> str:
     if raw_loc is None:
         return "<root>"
     if isinstance(raw_loc, list | tuple):
@@ -128,7 +128,7 @@ def _format_validation_location(raw_loc: object | None) -> str:
     return str(raw_loc)
 
 
-def _format_validation_message(raw_msg: object | None) -> str:
+def format_validation_message(raw_msg: object | None) -> str:
     if isinstance(raw_msg, str):
         return raw_msg
     if raw_msg is None:
@@ -151,7 +151,7 @@ def _validate_agents(data: dict[str, object]) -> AgentsPolicy:
     try:
         return AgentsPolicy.model_validate(data)
     except ValidationError as exc:
-        msgs = _format_validation_error_messages(exc)
+        msgs = format_validation_error_messages(exc)
         raise PolicyValidationError(
             "agents.toml validation failed:\n" + "\n".join(msgs),
             source="agents",
@@ -173,7 +173,7 @@ def _validate_pipeline(data: dict[str, object]) -> PipelinePolicy:
     try:
         return PipelinePolicy.model_validate(_normalize_pipeline_data(data))
     except ValidationError as exc:
-        msgs = _format_validation_error_messages(exc)
+        msgs = format_validation_error_messages(exc)
         raise PolicyValidationError(
             "pipeline.toml validation failed:\n" + "\n".join(msgs),
             source="pipeline",
@@ -195,7 +195,7 @@ def _validate_artifacts(data: dict[str, object]) -> ArtifactsPolicy:
     try:
         return ArtifactsPolicy.model_validate(data)
     except ValidationError as exc:
-        msgs = _format_validation_error_messages(exc)
+        msgs = format_validation_error_messages(exc)
         raise PolicyValidationError(
             "artifacts.toml validation failed:\n" + "\n".join(msgs),
             source="artifacts",
@@ -429,7 +429,7 @@ def _load_policy_from_paths(
             artifacts=artifacts_policy,
         )
     except ValidationError as exc:
-        msgs = _format_validation_error_messages(exc)
+        msgs = format_validation_error_messages(exc)
         raise PolicyValidationError(
             "Cross-policy validation failed (drain bindings / analysis contracts):\n"
             + "\n".join(msgs),

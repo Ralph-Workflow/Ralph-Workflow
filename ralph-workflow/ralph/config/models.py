@@ -12,12 +12,6 @@ from .ccs_config import CcsAliasConfig, CcsConfig
 from .general_config import GeneralConfig, GeneralWorkflowFlags
 
 
-class _FrozenConfigModel(RalphBaseModel):
-    """Private base for frozen configuration models."""
-
-    model_config = ConfigDict(frozen=True)
-
-
 def _normalize_chain_value(value: object) -> AgentChainConfig:
     if isinstance(value, AgentChainConfig):
         return value
@@ -44,7 +38,8 @@ def _normalize_drain_value(value: object) -> AgentDrainConfig:
     return AgentDrainConfig(chain=str(value))
 
 
-class UnifiedConfig(_FrozenConfigModel):
+class UnifiedConfig(RalphBaseModel):
+    model_config = ConfigDict(frozen=True)
     """Top-level merged configuration (global + local + CLI overrides)."""
 
     general: GeneralConfig = Field(default_factory=GeneralConfig)

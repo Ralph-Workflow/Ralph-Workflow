@@ -44,8 +44,8 @@ from ralph.prompts.developer import (
     prompt_planning_xml_with_context,
 )
 from ralph.prompts.payload_refs import (
-    _sanitize_surrogates,
     build_prompt_payload_variables,
+    sanitize_surrogates as _sanitize_surrogates,
     write_payload_to_directory,
 )
 from ralph.prompts.plan_format import format_plan_for_execution
@@ -62,66 +62,69 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
-class MissingPlanHandoffError(ValueError):
-    """Raised when a template requires an existing plan handoff that is absent."""
-
-
-@dataclass(frozen=True)
-class MultimodalSidecarEntry:
-    """A single multimodal artifact entry in the prompt-to-invoke handoff sidecar."""
-
-    artifact_id: str
-    uri: str
-    mime_type: str
-    title: str
-    modality: str
-    delivery: str
-    reason: str = ""
-    source_path: str = ""
-    cache_path: str = ""
-    source_uri: str = ""
-    block_type: str = ""
-    failure_kind: str = ""
-    identity_key: str = ""
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "artifact_id": self.artifact_id,
-            "uri": self.uri,
-            "mime_type": self.mime_type,
-            "title": self.title,
-            "modality": self.modality,
-            "delivery": self.delivery,
-            "reason": self.reason,
-            "source_path": self.source_path,
-            "cache_path": self.cache_path,
-            "source_uri": self.source_uri,
-            "block_type": self.block_type,
-            "failure_kind": self.failure_kind,
-            "identity_key": self.identity_key,
-        }
-
-
-@dataclass(frozen=True)
-class PromptPhaseContext:
-    """Required inputs for prompt materialization: the phase, workspace, and policy bindings."""
-
-    phase: str
-    workspace: Workspace
-    pipeline_policy: PipelinePolicy
-    session_caps: SessionCapabilities
-    workspace_root: Path
-
-
 @dataclass(frozen=True)
 class PromptPhaseOptions:
     """Optional inputs for prompt materialization with sensible defaults."""
+
+    class MissingPlanHandoffError(ValueError):
+        """Raised when a template requires an existing plan handoff that is absent."""
+
+    @dataclass(frozen=True)
+    class MultimodalSidecarEntry:
+        """A single multimodal artifact entry in the prompt-to-invoke handoff sidecar."""
+
+        artifact_id: str
+        uri: str
+        mime_type: str
+        title: str
+        modality: str
+        delivery: str
+        reason: str = ""
+        source_path: str = ""
+        cache_path: str = ""
+        source_uri: str = ""
+        block_type: str = ""
+        failure_kind: str = ""
+        identity_key: str = ""
+
+        def to_dict(self) -> dict[str, object]:
+            return {
+                "artifact_id": self.artifact_id,
+                "uri": self.uri,
+                "mime_type": self.mime_type,
+                "title": self.title,
+                "modality": self.modality,
+                "delivery": self.delivery,
+                "reason": self.reason,
+                "source_path": self.source_path,
+                "cache_path": self.cache_path,
+                "source_uri": self.source_uri,
+                "block_type": self.block_type,
+                "failure_kind": self.failure_kind,
+                "identity_key": self.identity_key,
+            }
+
+    @dataclass(frozen=True)
+    class PromptPhaseContext:
+        """Required inputs for prompt materialization: the phase, workspace, and policy bindings."""
+
+        phase: str
+        workspace: Workspace
+        pipeline_policy: PipelinePolicy
+        session_caps: SessionCapabilities
+        workspace_root: Path
+
 
     artifacts_policy: ArtifactsPolicy | None = None
     worker_namespace: Path | None = None
     previous_phase: str | None = None
     resume_existing_phase: bool = False
     multimodal_entries: list[MultimodalSidecarEntry] | None = None
+
+
+MissingPlanHandoffError = PromptPhaseOptions.MissingPlanHandoffError
+MultimodalSidecarEntry = PromptPhaseOptions.MultimodalSidecarEntry
+PromptPhaseContext = PromptPhaseOptions.PromptPhaseContext
 
 
 def _sidecar_entry_identity(entry: MultimodalSidecarEntry) -> str:
@@ -262,7 +265,7 @@ def _loopback_template_name_for_phase(phase_def: PhaseDefinition | None) -> str 
     return phase_def.loopback_prompt_template or phase_def.continuation_template
 
 
-def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
+def read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
     """Read the retry hint file for a phase and delete it after reading."""
     path = retry_hint_path(phase)
     if not workspace.exists(path):
@@ -314,8 +317,8 @@ def _render_prompt_for_phase(
             analysis_feedback_path,
             template_name,
         ) = _prepare_planning_prompt_context(context, options)
-        last_retry_error = _read_and_clear_retry_hint(workspace, phase)
-        artifact_history_path = _resolve_planning_history_path(workspace_root)
+        last_retry_error = read_and_clear_retry_hint(workspace, phase)
+        artifact_history_path = resolve_planning_history_path(workspace_root)
         return prompt_planning_xml_with_context(
             context=tmpl_ctx,
             inputs=PlanningPromptInputs(
@@ -373,7 +376,7 @@ def _render_prompt_for_phase(
         analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
             workspace, phase, pipeline_policy, artifacts_policy
         )
-        last_retry_error = _read_and_clear_retry_hint(workspace, phase)
+        last_retry_error = read_and_clear_retry_hint(workspace, phase)
         return prompt_developer_iteration_xml_with_context(
             context=tmpl_ctx,
             inputs=DeveloperPromptInputs(
@@ -400,11 +403,11 @@ def _render_prompt_for_phase(
             workspace, phase, pipeline_policy, artifacts_policy
         )
         issues_content, issues_path = _resolve_issues_content(workspace)
-        fix_result_content, fix_result_path = _resolve_fix_result_content(workspace)
+        fix_result_content, fix_result_path = resolve_fix_result_content(workspace)
         analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
             workspace, phase, pipeline_policy, artifacts_policy
         )
-        last_retry_error = _read_and_clear_retry_hint(workspace, phase)
+        last_retry_error = read_and_clear_retry_hint(workspace, phase)
         variables = phase_payload_variables(
             phase=phase,
             workspace_root=workspace_root,
@@ -646,7 +649,7 @@ def _artifact_history_dir_from_path(history_path: str) -> str:
     return str(Path(history_path).parent)
 
 
-def _resolve_planning_history_path(
+def resolve_planning_history_path(
     workspace_root: Path,
 ) -> str:
     """Return the absolute path to the planning artifact history index, if it exists."""
@@ -818,7 +821,7 @@ def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
     return content or "(no review issues available)", path
 
 
-def _resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
+def resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="fix_result",

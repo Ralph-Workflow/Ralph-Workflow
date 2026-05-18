@@ -15,7 +15,7 @@ from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.loader import (
     GLOBAL_CONFIG_PATH,
     LOCAL_CONFIG_PATH,
-    _deep_merge,
+    deep_merge,
     load_config,
 )
 from ralph.config.models import AgentConfig, GeneralConfig
@@ -76,7 +76,7 @@ def test_deep_merge_simple() -> None:
     """Test basic dictionary merge."""
     base: dict[str, object] = {"a": 1, "b": 2}
     override: dict[str, object] = {"b": 3, "c": 4}
-    result = _deep_merge(base, override)
+    result = deep_merge(base, override)
     assert result == {"a": 1, "b": 3, "c": 4}
 
 
@@ -84,7 +84,7 @@ def test_deep_merge_nested() -> None:
     """Test nested dictionary merge."""
     base: dict[str, object] = {"general": {"a": 1, "b": 2}}
     override: dict[str, object] = {"general": {"b": 3, "c": 4}}
-    result = _deep_merge(base, override)
+    result = deep_merge(base, override)
     assert result == {"general": {"a": 1, "b": 3, "c": 4}}
 
 
@@ -92,7 +92,7 @@ def test_deep_merge_override_wins() -> None:
     """Test that override values take precedence."""
     base: dict[str, object] = {"a": 1, "b": {"x": 1, "y": 2}}
     override: dict[str, object] = {"b": {"y": 3, "z": 4}}
-    result = _deep_merge(base, override)
+    result = deep_merge(base, override)
     assert result == {"a": 1, "b": {"x": 1, "y": 3, "z": 4}}
 
 

@@ -42,21 +42,6 @@ __all__ = [
 ]
 
 
-class PostExitVerdict(StrEnum):
-    """Result of a PostExitWatchdog wait method."""
-
-    # wait_for_process_exit
-    CONTINUE = "continue"  # predicate returned True before deadline (process exited)
-    FIRE_PROCESS_EXIT_HANG = "fire_process_exit_hang"  # deadline elapsed, predicate still False
-
-    # wait_parent_exit_grace / wait_descendant_quiesce
-    SIGNALS_PRESENT = "signals_present"  # TERMINAL_COMPLETE seen
-    CHILDREN_ACTIVE = "children_active"  # WAITING_ON_CHILD returned
-    QUIESCED_NO_SIGNALS = "quiesced_no_signals"  # RESUMABLE_CONTINUE at/after deadline
-    # descendant_wait deadline elapsed with WAITING_ON_CHILD persistent
-    FIRE_DESCENDANT_HANG = "fire_descendant_hang"
-
-
 @dataclass
 class PostExitWatchdog:
     """Post-exit wall-clock watchdog for process-exit, parent-exit grace, and descendant-wait.
@@ -70,6 +55,21 @@ class PostExitWatchdog:
             FIRE_PROCESS_EXIT_HANG; None otherwise.  Exposed so integration
             tests can assert the correct reason without introspecting private state.
     """
+
+    class PostExitVerdict(StrEnum):
+        """Result of a PostExitWatchdog wait method."""
+
+        # wait_for_process_exit
+        CONTINUE = "continue"  # predicate returned True before deadline (process exited)
+        FIRE_PROCESS_EXIT_HANG = "fire_process_exit_hang"  # deadline elapsed, predicate still False
+
+        # wait_parent_exit_grace / wait_descendant_quiesce
+        SIGNALS_PRESENT = "signals_present"  # TERMINAL_COMPLETE seen
+        CHILDREN_ACTIVE = "children_active"  # WAITING_ON_CHILD returned
+        QUIESCED_NO_SIGNALS = "quiesced_no_signals"  # RESUMABLE_CONTINUE at/after deadline
+        # descendant_wait deadline elapsed with WAITING_ON_CHILD persistent
+        FIRE_DESCENDANT_HANG = "fire_descendant_hang"
+
 
     _policy: TimeoutPolicy
     _clock: Clock
@@ -201,3 +201,6 @@ class PostExitWatchdog:
             return PostExitVerdict.FIRE_DESCENDANT_HANG
         self.last_verdict_reason = PostExitVerdict.QUIESCED_NO_SIGNALS
         return PostExitVerdict.QUIESCED_NO_SIGNALS
+
+
+PostExitVerdict = PostExitWatchdog.PostExitVerdict

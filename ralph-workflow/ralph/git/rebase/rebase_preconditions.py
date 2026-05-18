@@ -19,14 +19,17 @@ REBASE_MERGE_DIR = "rebase-merge"
 _LOCK_FILES = ("index.lock", "packed-refs.lock", "HEAD.lock")
 
 
-class RebasePreconditionError(Exception):
-    """Raised when a rebase cannot start because a precondition failed."""
-
-
 @dataclass(frozen=True)
 class _ConcurrentOperation:
+
+    class RebasePreconditionError(Exception):
+        """Raised when a rebase cannot start because a precondition failed."""
+
     kind: str
     description: str
+
+
+RebasePreconditionError = _ConcurrentOperation.RebasePreconditionError
 
 
 def check_rebase_preconditions(repo_root: Path | str) -> None:

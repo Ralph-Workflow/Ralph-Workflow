@@ -83,24 +83,27 @@ def _seed_artifact(artifact_dir: object) -> None:
     )
 
 
-class _RecordingDisplay:
-    def __init__(self) -> None:
-        self.statuses: dict[str, list[WorkerStatus]] = {}
-
-    def emit(self, unit_id: str | None, line: str) -> None:
-        pass
-
-    def set_status(self, unit_id: str, status: WorkerStatus) -> None:
-        self.statuses.setdefault(unit_id, []).append(status)
-
-
 class _RecordingMcpFactory:
+
+    class _RecordingDisplay:
+        def __init__(self) -> None:
+            self.statuses: dict[str, list[WorkerStatus]] = {}
+
+        def emit(self, unit_id: str | None, line: str) -> None:
+            pass
+
+        def set_status(self, unit_id: str, status: WorkerStatus) -> None:
+            self.statuses.setdefault(unit_id, []).append(status)
+
     def build(self, session: object) -> McpServerHandle:
         return McpServerHandle(
             endpoint="http://127.0.0.1:19999/mcp",
             pid=9999,
             shutdown=lambda: None,
         )
+
+
+_RecordingDisplay = _RecordingMcpFactory._RecordingDisplay
 
 
 def _make_ctx(module: object, same_workspace: object) -> object:

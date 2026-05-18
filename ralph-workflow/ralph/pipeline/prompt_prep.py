@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.capability_mapping import DrainClass
 from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
@@ -21,6 +21,7 @@ from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from typing import Protocol
 
     from ralph.config.models import AgentConfig
     from ralph.pipeline.effects import Effect
@@ -29,18 +30,16 @@ if TYPE_CHECKING:
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
     from ralph.workspace.scope import WorkspaceScope
 
+    class _RegistryLike(Protocol):
+        def get(self, name: str) -> AgentConfig | None: ...
 
-class _RegistryLike(Protocol):
-    def get(self, name: str) -> AgentConfig | None: ...
-
-
-class _MaterializePromptFn(Protocol):
-    def __call__(
-        self,
-        context: PromptPhaseContext | None = ...,
-        options: PromptPhaseOptions | None = ...,
-        **kwargs: object,
-    ) -> str: ...
+    class _MaterializePromptFn(Protocol):
+        def __call__(
+            self,
+            context: PromptPhaseContext | None = ...,
+            options: PromptPhaseOptions | None = ...,
+            **kwargs: object,
+        ) -> str: ...
 
 
 def _prompt_session_drain_for_phase(

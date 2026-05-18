@@ -41,7 +41,7 @@ class ArtifactSubmitOptions:
 
     metadata: dict[str, object] | None = None
     overwrite: bool = False
-    persistence: ArtifactPersistence = DEFAULT_ARTIFACT_PERSISTENCE
+    persistence: ArtifactPersistence = field(default_factory=ArtifactPersistence)
 
 
 @dataclass(frozen=True)
@@ -50,25 +50,19 @@ class ArtifactUpdateOptions:
 
     content: dict[str, object] | None = None
     metadata: dict[str, object] | None = None
-    persistence: ArtifactPersistence = DEFAULT_ARTIFACT_PERSISTENCE
+    persistence: ArtifactPersistence = field(default_factory=ArtifactPersistence)
 
 
 class ArtifactError(Exception):
     """Base exception for artifact errors."""
 
-    pass
-
 
 class ArtifactNotFoundError(ArtifactError):
     """Raised when an artifact is not found."""
 
-    pass
-
 
 class ArtifactExistsError(ArtifactError):
     """Raised when attempting to create an artifact that already exists."""
-
-    pass
 
 
 @dataclass

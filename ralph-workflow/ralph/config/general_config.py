@@ -30,20 +30,20 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-class GeneralWorkflowFlags(RalphBaseModel):
-    """General configuration workflow automation flags.
-
-    Attributes:
-        checkpoint_enabled: Enable checkpoint/resume functionality.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    checkpoint_enabled: bool = True
-
-
 class GeneralConfig(RalphBaseModel):
     """[general] section of ralph-workflow.toml."""
+
+    class GeneralWorkflowFlags(RalphBaseModel):
+        """General configuration workflow automation flags.
+
+        Attributes:
+            checkpoint_enabled: Enable checkpoint/resume functionality.
+        """
+
+        model_config = ConfigDict(frozen=True)
+
+        checkpoint_enabled: bool = True
+
 
     model_config = ConfigDict(frozen=True)
 
@@ -244,6 +244,9 @@ class GeneralConfig(RalphBaseModel):
             )
             raise ValueError(msg)
         return self
+
+
+GeneralWorkflowFlags = GeneralConfig.GeneralWorkflowFlags
 
 
 __all__ = ["GeneralConfig", "GeneralWorkflowFlags"]

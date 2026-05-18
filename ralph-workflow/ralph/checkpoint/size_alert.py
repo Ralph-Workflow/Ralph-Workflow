@@ -5,11 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 
-class _StringEnum(StrEnum):
-    """Compat base for string-valued enums across tooling versions."""
-
-
-class SizeAlert(_StringEnum):
+class SizeAlert(StrEnum):
     """Alert level for checkpoint size checks."""
 
     OK = "ok"

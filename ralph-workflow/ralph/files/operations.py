@@ -24,38 +24,41 @@ DEFAULT_TRACKED_FILES: tuple[Path, ...] = (
 _READ_CHUNK_SIZE = 1024 * 1024
 
 
-class FileStateKind(Enum):
-    """Kinds of file-state drift detected during checkpoint validation."""
-
-    MISSING = "missing"
-    UNEXPECTED = "unexpected"
-    CHANGED = "changed"
-
-
-@dataclass(frozen=True)
-class FileSnapshot:
-    """Captured state for a single tracked file."""
-
-    path: Path
-    checksum: str
-    size: int
-    exists: bool
-
-
-@dataclass(frozen=True)
-class FileStateIssue:
-    """A mismatch between captured and current file state."""
-
-    kind: FileStateKind
-    path: Path
-
-
 @dataclass(frozen=True)
 class FileSystemState:
     """Snapshots for tracked Ralph files rooted at a workspace path."""
 
+    class FileStateKind(Enum):
+        """Kinds of file-state drift detected during checkpoint validation."""
+
+        MISSING = "missing"
+        UNEXPECTED = "unexpected"
+        CHANGED = "changed"
+
+    @dataclass(frozen=True)
+    class FileSnapshot:
+        """Captured state for a single tracked file."""
+
+        path: Path
+        checksum: str
+        size: int
+        exists: bool
+
+    @dataclass(frozen=True)
+    class FileStateIssue:
+        """A mismatch between captured and current file state."""
+
+        kind: FileStateKind
+        path: Path
+
+
     root: Path
     files: dict[Path, FileSnapshot]
+
+
+FileStateKind = FileSystemState.FileStateKind
+FileSnapshot = FileSystemState.FileSnapshot
+FileStateIssue = FileSystemState.FileStateIssue
 
 
 def calculate_checksum(path: Path | str) -> str:

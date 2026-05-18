@@ -23,22 +23,22 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from ..secrets import resolve_secret
 from .base import SearchResult, WebSearchError
 
+if TYPE_CHECKING:
+    from typing import Protocol
 
-class _ExaSearchResponse(Protocol):
-    results: Iterable[object]
+    class _ExaSearchResponse(Protocol):
+        results: Iterable[object]
 
+    class _ExaClient(Protocol):
+        def search(self, query: str, *, num_results: int) -> _ExaSearchResponse: ...
 
-class _ExaClient(Protocol):
-    def search(self, query: str, *, num_results: int) -> _ExaSearchResponse: ...
-
-
-class _ExaType(Protocol):
-    def __call__(self, *, api_key: str) -> _ExaClient: ...
+    class _ExaType(Protocol):
+        def __call__(self, *, api_key: str) -> _ExaClient: ...
 
 
 @dataclass(frozen=True)

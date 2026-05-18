@@ -53,7 +53,7 @@ from ralph.prompts.commit import (
     prompt_commit_message,
     prompt_commit_message_for_opencode,
 )
-from ralph.prompts.payload_refs import _sanitize_surrogates
+from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.workspace.fs import FsWorkspace
@@ -78,71 +78,74 @@ _MAX_COMMIT_RAW_OUTPUT_LINES = 256
 
 
 @dataclass(frozen=True)
-class CommitAgentAttempt:
-    """Result of a single commit-message agent invocation attempt."""
-
-    message: str = ""
-    skipped: bool = False
-    failure_detail: str = ""
-    parsed_output: list[str] = field(default_factory=list)
-    raw_output: list[str] = field(default_factory=list)
-    resume_session_id: str | None = None
-
-
-@dataclass(frozen=True)
-class CommitAttemptContext:
-    """Runtime context threaded into each commit agent invocation attempt.
-
-    Attributes:
-        repo_root: Repository root path.
-        verbose: Whether verbose output is enabled.
-        extra_env: Extra environment variables for the agent subprocess.
-        general_config: Full general config supplying all timeout fields.
-    """
-
-    repo_root: Path
-    verbose: bool
-    extra_env: dict[str, str]
-    general_config: GeneralConfig | None = None
-
-
-@dataclass(frozen=True)
-class CommitChainConfig:
-    """Configuration bundle for the commit message chain invocation."""
-
-    registry: AgentRegistry
-    agents: list[str]
-    verbose: bool
-    agents_policy: AgentsPolicy
-    general_config: GeneralConfig | None = None
-
-
-@dataclass(frozen=True)
-class CommitPlumbingOptions:
-    """Options for commit plumbing operations.
-
-    Attributes:
-        generate_commit_msg: Generate commit message without applying.
-        generate_commit: Generate and apply commit.
-        show_commit_msg: Show current commit message.
-        config_path: Path to configuration file.
-        cli_overrides: CLI flag overrides.
-    """
-
-    generate_commit_msg: bool = False
-    generate_commit: bool = False
-    show_commit_msg: bool = False
-    config_path: Path | None = None
-    cli_overrides: dict[str, object] | None = None
-
-
-@dataclass(frozen=True)
 class CommitAgentResult:
     """Aggregated result returned after all commit-message agent attempts complete."""
+
+    @dataclass(frozen=True)
+    class CommitAgentAttempt:
+        """Result of a single commit-message agent invocation attempt."""
+
+        message: str = ""
+        skipped: bool = False
+        failure_detail: str = ""
+        parsed_output: list[str] = field(default_factory=list)
+        raw_output: list[str] = field(default_factory=list)
+        resume_session_id: str | None = None
+
+    @dataclass(frozen=True)
+    class CommitAttemptContext:
+        """Runtime context threaded into each commit agent invocation attempt.
+
+        Attributes:
+            repo_root: Repository root path.
+            verbose: Whether verbose output is enabled.
+            extra_env: Extra environment variables for the agent subprocess.
+            general_config: Full general config supplying all timeout fields.
+        """
+
+        repo_root: Path
+        verbose: bool
+        extra_env: dict[str, str]
+        general_config: GeneralConfig | None = None
+
+    @dataclass(frozen=True)
+    class CommitChainConfig:
+        """Configuration bundle for the commit message chain invocation."""
+
+        registry: AgentRegistry
+        agents: list[str]
+        verbose: bool
+        agents_policy: AgentsPolicy
+        general_config: GeneralConfig | None = None
+
+    @dataclass(frozen=True)
+    class CommitPlumbingOptions:
+        """Options for commit plumbing operations.
+
+        Attributes:
+            generate_commit_msg: Generate commit message without applying.
+            generate_commit: Generate and apply commit.
+            show_commit_msg: Show current commit message.
+            config_path: Path to configuration file.
+            cli_overrides: CLI flag overrides.
+        """
+
+        generate_commit_msg: bool = False
+        generate_commit: bool = False
+        show_commit_msg: bool = False
+        config_path: Path | None = None
+        cli_overrides: dict[str, object] | None = None
+
 
     message: str = ""
     skipped: bool = False
     failure_details: list[str] = field(default_factory=list)
+
+
+CommitAgentAttempt = CommitAgentResult.CommitAgentAttempt
+CommitAttemptContext = CommitAgentResult.CommitAttemptContext
+CommitChainConfig = CommitAgentResult.CommitChainConfig
+CommitPlumbingOptions = CommitAgentResult.CommitPlumbingOptions
 
 
 def commit_plumbing(
@@ -483,7 +486,7 @@ def _generate_commit_message_with_agent(
     display_context: DisplayContext,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
-    initial_attempt = _invoke_commit_agent_attempt(
+    initial_attempt = invoke_commit_agent_attempt(
         agent,
         prompt_file=prompt_file,
         attempt_context=attempt_context,
@@ -498,7 +501,7 @@ def _generate_commit_message_with_agent(
         return CommitAgentResult(failure_details=failure_details)
 
     if initial_attempt.resume_session_id:
-        session_retry = _invoke_commit_agent_attempt(
+        session_retry = invoke_commit_agent_attempt(
             agent,
             prompt_file=prompt_file,
             attempt_context=attempt_context,
@@ -520,7 +523,7 @@ def _generate_commit_message_with_agent(
             initial_attempt.parsed_output,
         ),
     )
-    summary_retry = _invoke_commit_agent_attempt(
+    summary_retry = invoke_commit_agent_attempt(
         agent,
         prompt_file=summary_prompt_file,
         attempt_context=attempt_context,
@@ -539,7 +542,7 @@ def _is_skip_response(text: str) -> bool:
     return text.strip().lower().startswith(_SKIP_PREFIX)
 
 
-def _invoke_commit_agent_attempt(
+def invoke_commit_agent_attempt(
     agent: AgentConfig,
     *,
     prompt_file: str,
@@ -588,7 +591,7 @@ def _invoke_commit_agent_attempt(
         )
 
     try:
-        parsed_output, raw_output, resume_session_id = _collect_commit_agent_output(
+        parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
             lines,
             parser_type=str(agent.json_parser),
             agent_name=agent.cmd.split()[0],
@@ -768,7 +771,7 @@ def _format_commit_agent_failure(
     return "\n".join(lines)
 
 
-def _collect_commit_agent_output(
+def collect_commit_agent_output(
     lines: Iterable[object],
     *,
     parser_type: str,

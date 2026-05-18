@@ -76,21 +76,21 @@ _CRASH_MARKERS = (
 
 
 @dataclass(frozen=True)
-class SmokeRunParams:
-    """Grouped parameters for a smoke run."""
-
-    agent_name: str
-    config: AgentConfig
-    workspace_root: Path
-    prompt_file: Path
-    output_file: Path
-    options: InvokeOptions
-    display_context: DisplayContext
-
-
-@dataclass(frozen=True)
 class SmokeRunResult:
     """Observed results from the interactive Claude smoke run."""
+
+    @dataclass(frozen=True)
+    class SmokeRunParams:
+        """Grouped parameters for a smoke run."""
+
+        agent_name: str
+        config: AgentConfig
+        workspace_root: Path
+        prompt_file: Path
+        output_file: Path
+        options: InvokeOptions
+        display_context: DisplayContext
+
 
     agent_name: str
     transport: str
@@ -104,6 +104,9 @@ class SmokeRunResult:
     artifact_submitted: bool
     meaningful_output_lines: list[str]
     errors: list[str]
+
+
+SmokeRunParams = SmokeRunResult.SmokeRunParams
 
 
 def _submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:

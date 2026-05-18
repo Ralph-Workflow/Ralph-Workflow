@@ -11,90 +11,87 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+if TYPE_CHECKING:
+    class _VersionInfoProtocol(Protocol):
+        @property
+        def major(self) -> int: ...
 
+        @property
+        def minor(self) -> int: ...
 
-class _VersionInfoProtocol(Protocol):
-    @property
-    def major(self) -> int: ...
+        @property
+        def micro(self) -> int: ...
 
-    @property
-    def minor(self) -> int: ...
+        @property
+        def releaselevel(self) -> str: ...
 
-    @property
-    def micro(self) -> int: ...
+        @property
+        def serial(self) -> int: ...
 
-    @property
-    def releaselevel(self) -> str: ...
+    class _ImplementationProtocol(Protocol):
+        @property
+        def name(self) -> str: ...
 
-    @property
-    def serial(self) -> int: ...
+    class SysModuleProtocol(Protocol):
+        """Subset of the sys module interface required for runtime environment detection."""
 
+        @property
+        def version_info(self) -> _VersionInfoProtocol: ...
 
-class _ImplementationProtocol(Protocol):
-    @property
-    def name(self) -> str: ...
+        @property
+        def version(self) -> str: ...
 
+        @property
+        def executable(self) -> str: ...
 
-class SysModuleProtocol(Protocol):
-    """Subset of the sys module interface required for runtime environment detection."""
+        @property
+        def prefix(self) -> str: ...
 
-    @property
-    def version_info(self) -> _VersionInfoProtocol: ...
+        @property
+        def base_prefix(self) -> str: ...
 
-    @property
-    def version(self) -> str: ...
+        @property
+        def exec_prefix(self) -> str: ...
 
-    @property
-    def executable(self) -> str: ...
+        @property
+        def base_exec_prefix(self) -> str: ...
 
-    @property
-    def prefix(self) -> str: ...
-
-    @property
-    def base_prefix(self) -> str: ...
-
-    @property
-    def exec_prefix(self) -> str: ...
-
-    @property
-    def base_exec_prefix(self) -> str: ...
-
-    @property
-    def implementation(self) -> _ImplementationProtocol: ...
-
-
-@dataclass(frozen=True)
-class PythonVersionInfo:
-    """Structured Python runtime version metadata."""
-
-    major: int
-    minor: int
-    micro: int
-    releaselevel: str
-    serial: int
-    implementation: str
-    executable: Path
-    version: str
-
-    @classmethod
-    def from_sys(cls, sys_module: SysModuleProtocol) -> PythonVersionInfo:
-        """Build version metadata from a sys-like module."""
-
-        return cls(
-            major=sys_module.version_info.major,
-            minor=sys_module.version_info.minor,
-            micro=sys_module.version_info.micro,
-            releaselevel=sys_module.version_info.releaselevel,
-            serial=sys_module.version_info.serial,
-            implementation=sys_module.implementation.name,
-            executable=Path(sys_module.executable),
-            version=sys_module.version,
-        )
+        @property
+        def implementation(self) -> _ImplementationProtocol: ...
 
 
 @dataclass(frozen=True)
 class RuntimeEnvironment:
     """Snapshot of the active Python runtime environment."""
+
+    @dataclass(frozen=True)
+    class PythonVersionInfo:
+        """Structured Python runtime version metadata."""
+
+        major: int
+        minor: int
+        micro: int
+        releaselevel: str
+        serial: int
+        implementation: str
+        executable: Path
+        version: str
+
+        @classmethod
+        def from_sys(cls, sys_module: SysModuleProtocol) -> PythonVersionInfo:
+            """Build version metadata from a sys-like module."""
+
+            return cls(
+                major=sys_module.version_info.major,
+                minor=sys_module.version_info.minor,
+                micro=sys_module.version_info.micro,
+                releaselevel=sys_module.version_info.releaselevel,
+                serial=sys_module.version_info.serial,
+                implementation=sys_module.implementation.name,
+                executable=Path(sys_module.executable),
+                version=sys_module.version,
+            )
+
 
     python: PythonVersionInfo
     executable: Path
@@ -110,6 +107,9 @@ class RuntimeEnvironment:
         """Return an environment variable from the captured snapshot."""
 
         return self.env.get(name, default)
+
+
+PythonVersionInfo = RuntimeEnvironment.PythonVersionInfo
 
 
 _VIRTUAL_ENV_KEYS = ("VIRTUAL_ENV", "CONDA_PREFIX")

@@ -41,12 +41,12 @@ PLAN_DRAFT_SCHEMA_VERSION = 1
 SectionMode = Literal["replace", "append"]
 
 
-class PlanArtifactValidationError(ValueError):
-    """Raised when a planning artifact does not match the formal schema."""
-
-
 class PlanArtifact(RalphBaseModel):
     """Top-level validated schema for a plan artifact."""
+
+    class PlanArtifactValidationError(ValueError):
+        """Raised when a planning artifact does not match the formal schema."""
+
 
     model_config = ConfigDict(extra="forbid")
 
@@ -58,6 +58,9 @@ class PlanArtifact(RalphBaseModel):
     verification_strategy: list[VerificationStep] = Field(..., min_length=1)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
     work_units: list[dict[str, object]] = Field(default_factory=list)
+
+
+PlanArtifactValidationError = PlanArtifact.PlanArtifactValidationError
 
 
 PLAN_SECTION_OBJECT_MODELS: dict[str, type[RalphBaseModel]] = {

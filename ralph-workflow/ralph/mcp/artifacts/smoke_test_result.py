@@ -15,12 +15,12 @@ from ralph.pydantic_compat import RalphBaseModel
 SMOKE_TEST_RESULT_ARTIFACT_TYPE = "smoke_test_result"
 
 
-class SmokeTestResultValidationError(ValueError):
-    """Raised when a smoke_test_result artifact is malformed."""
-
-
 class SmokeTestResult(RalphBaseModel):
     """Validated schema for a smoke_test_result artifact."""
+
+    class SmokeTestResultValidationError(ValueError):
+        """Raised when a smoke_test_result artifact is malformed."""
+
 
     model_config = ConfigDict(extra="forbid")
 
@@ -40,6 +40,9 @@ class SmokeTestResult(RalphBaseModel):
         if not self.headless_guide_checks:
             raise ValueError("smoke_test_result artifacts must include headless_guide_checks")
         return self
+
+
+SmokeTestResultValidationError = SmokeTestResult.SmokeTestResultValidationError
 
 
 def normalize_smoke_test_result_content(content: dict[str, object]) -> dict[str, object]:

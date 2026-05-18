@@ -33,30 +33,8 @@ __all__ = [
 ]
 
 
-class AliveBy(StrEnum):
-    """Typed corroboration reasons describing why child work still appears alive."""
-
-    FRESH_PROGRESS = "fresh_progress"
-    FRESH_HEARTBEAT_ONLY = "fresh_heartbeat_only"
-    STALE_LABEL_ONLY = "stale_label_only"
-    OS_DESCENDANT_ONLY_STALE_PROGRESS = "os_descendant_only_stale_progress"
 
 
-@dataclass(frozen=True)
-class ChildEvidenceVerdict:
-    """Unified verdict from child-liveness evidence classification.
-
-    Attributes:
-        alive_by: Why child work appears alive (for diagnostics and ceiling selection),
-            or None if there is no evidence.
-        deferral_allowed: Whether WAITING_ON_CHILD deferral should apply.
-        all_children_terminal: All Ralph-tracked children have terminated and none
-            remain active (terminal-only registry state).
-    """
-
-    alive_by: AliveBy | None
-    deferral_allowed: bool
-    all_children_terminal: bool = False
 
 
 def classify_child_snapshot(
@@ -111,50 +89,6 @@ def classify_child_snapshot(
     return ChildEvidenceVerdict(alive_by=None, deferral_allowed=False)
 
 
-@dataclass(frozen=True)
-class ChildLivenessRecord:
-    """Immutable snapshot of a single child's liveness state."""
-
-    child_id: str
-    scope_prefix: str
-    pid: int | None
-    started_at: float
-    last_progress_at: float | None
-    last_heartbeat_at: float | None
-    last_ack_at: float | None
-    last_known_phase: str = "spawned"
-    terminal_state: str | None = None
-    lease_expires_at: float | None = None
-
-
-@dataclass(frozen=True)
-class ChildActivitySnapshot:
-    """Freshness-aware aggregate snapshot for a scope prefix."""
-
-    scope_prefix: str
-    has_process: bool
-    has_fresh_label: bool
-    has_fresh_progress: bool
-    oldest_live_child_seconds: float | None
-    active_count: int
-    terminal_count: int
-    has_fresh_heartbeat: bool = False  # Default False for backward compatibility
-
-
-@dataclass
-class _MutableRecord:
-    child_id: str
-    scope_prefix: str
-    pid: int | None
-    started_at: float
-    last_progress_at: float | None = None
-    last_heartbeat_at: float | None = None
-    last_ack_at: float | None = None
-    last_known_phase: str = "spawned"
-    terminal_state: str | None = None
-    lease_expires_at: float | None = None
-
-
 class ChildLivenessRegistry:
     """In-memory registry of active child leases with freshness tracking.
 
@@ -171,6 +105,72 @@ class ChildLivenessRegistry:
         now: Callable returning current monotonic time; defaults to time.monotonic.
     """
 
+    class AliveBy(StrEnum):
+        """Typed corroboration reasons describing why child work still appears alive."""
+
+        FRESH_PROGRESS = "fresh_progress"
+        FRESH_HEARTBEAT_ONLY = "fresh_heartbeat_only"
+        STALE_LABEL_ONLY = "stale_label_only"
+        OS_DESCENDANT_ONLY_STALE_PROGRESS = "os_descendant_only_stale_progress"
+
+    @dataclass(frozen=True)
+    class ChildEvidenceVerdict:
+        """Unified verdict from child-liveness evidence classification.
+
+        Attributes:
+            alive_by: Why child work appears alive (for diagnostics and ceiling selection),
+                or None if there is no evidence.
+            deferral_allowed: Whether WAITING_ON_CHILD deferral should apply.
+            all_children_terminal: All Ralph-tracked children have terminated and none
+                remain active (terminal-only registry state).
+        """
+
+        alive_by: AliveBy | None
+        deferral_allowed: bool
+        all_children_terminal: bool = False
+
+    @dataclass(frozen=True)
+    class ChildLivenessRecord:
+        """Immutable snapshot of a single child's liveness state."""
+
+        child_id: str
+        scope_prefix: str
+        pid: int | None
+        started_at: float
+        last_progress_at: float | None
+        last_heartbeat_at: float | None
+        last_ack_at: float | None
+        last_known_phase: str = "spawned"
+        terminal_state: str | None = None
+        lease_expires_at: float | None = None
+
+    @dataclass(frozen=True)
+    class ChildActivitySnapshot:
+        """Freshness-aware aggregate snapshot for a scope prefix."""
+
+        scope_prefix: str
+        has_process: bool
+        has_fresh_label: bool
+        has_fresh_progress: bool
+        oldest_live_child_seconds: float | None
+        active_count: int
+        terminal_count: int
+        has_fresh_heartbeat: bool = False  # Default False for backward compatibility
+
+    @dataclass
+    class MutableRecord:
+        child_id: str
+        scope_prefix: str
+        pid: int | None
+        started_at: float
+        last_progress_at: float | None = None
+        last_heartbeat_at: float | None = None
+        last_ack_at: float | None = None
+        last_known_phase: str = "spawned"
+        terminal_state: str | None = None
+        lease_expires_at: float | None = None
+
+
     def __init__(
         self,
         *,
@@ -185,7 +185,7 @@ class ChildLivenessRegistry:
         self._stale_label_ttl = stale_label_ttl
         self._exit_reconcile = exit_reconcile
         self._now = now
-        self._records: dict[str, _MutableRecord] = {}
+        self._records: dict[str, MutableRecord] = {}
 
     def register_child(
         self,
@@ -197,7 +197,7 @@ class ChildLivenessRegistry:
     ) -> None:
         """Register a new child with the registry."""
         t = self._now()
-        self._records[child_id] = _MutableRecord(
+        self._records[child_id] = MutableRecord(
             child_id=child_id,
             scope_prefix=scope_prefix,
             pid=pid,
@@ -340,3 +340,10 @@ class ChildLivenessRegistry:
         for child_id in to_prune:
             del self._records[child_id]
         return len(to_prune)
+
+
+AliveBy = ChildLivenessRegistry.AliveBy
+ChildEvidenceVerdict = ChildLivenessRegistry.ChildEvidenceVerdict
+ChildLivenessRecord = ChildLivenessRegistry.ChildLivenessRecord
+ChildActivitySnapshot = ChildLivenessRegistry.ChildActivitySnapshot
+MutableRecord = ChildLivenessRegistry.MutableRecord

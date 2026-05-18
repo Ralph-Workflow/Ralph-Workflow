@@ -12,8 +12,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from ralph.policy.loader import PolicyValidationError, load_policy
+from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseLoopPolicy
+from ralph.policy.validation import PolicyValidationError
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS_DIR = ROOT / "ralph" / "policy" / "defaults"

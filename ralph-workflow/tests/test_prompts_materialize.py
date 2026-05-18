@@ -21,8 +21,8 @@ from ralph.policy.models import (
 from ralph.prompts.materialize import (
     PromptPhaseContext,
     PromptPhaseOptions,
-    _resolve_fix_result_content,
     materialize_prompt_for_phase,
+    resolve_fix_result_content,
     tool_name_prefix_for_transport,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
@@ -40,7 +40,7 @@ def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) ->
     expected = '{"summary": "Applied fixes"}'
     (artifact_dir / "fix_result.json").write_text(expected, encoding="utf-8")
 
-    content, path = _resolve_fix_result_content(workspace)
+    content, path = resolve_fix_result_content(workspace)
     assert "# Fix Result" in content
     assert "Applied fixes" in content
     assert path == str(tmp_path / ".agent" / "FIX_RESULT.md")
@@ -49,7 +49,7 @@ def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) ->
 def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: Path) -> None:
     workspace = FsWorkspace(tmp_path)
 
-    content, path = _resolve_fix_result_content(workspace)
+    content, path = resolve_fix_result_content(workspace)
     assert content == "(no fix result available)"
     assert path == ""
 

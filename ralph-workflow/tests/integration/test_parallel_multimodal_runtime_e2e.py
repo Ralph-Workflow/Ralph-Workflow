@@ -64,18 +64,6 @@ def _make_work_unit(uid: str) -> WorkUnit:
     )
 
 
-class _FakeDisplay:
-    def emit(self, unit_id: str | None, line: str) -> None:
-        del unit_id, line
-
-    def set_status(self, unit_id: str, status: object) -> None:
-        del unit_id, status
-
-    def __enter__(self) -> _FakeDisplay:
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        return None
 
 
 def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
@@ -93,22 +81,8 @@ def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
     return bundle
 
 
-class _SessionContract(NamedTuple):
-    """Session contract parameters for parallel worker testing."""
-
-    drain: str
-    capabilities: frozenset[str]
-    model_identity: MultimodalModelIdentity
 
 
-class _CapturedContext:
-    """Holds captured session contract values from the coordinator's run_fan_out call."""
-
-    def __init__(self) -> None:
-        self.session_drain: str | None = None
-        self.session_capabilities: frozenset[str] | None = None
-        self.session_model_identity: MultimodalModelIdentity | None = None
-        self.session_capability_profile: object | None = None
 
 
 def _setup_patches(
@@ -146,6 +120,36 @@ class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
     output artifacts in the worker's artifacts/ and handoffs/ directories.
     """
 
+    class _FakeDisplay:
+        def emit(self, unit_id: str | None, line: str) -> None:
+            del unit_id, line
+
+        def set_status(self, unit_id: str, status: object) -> None:
+            del unit_id, status
+
+        def __enter__(self) -> _FakeDisplay:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    class _SessionContract(NamedTuple):
+        """Session contract parameters for parallel worker testing."""
+
+        drain: str
+        capabilities: frozenset[str]
+        model_identity: MultimodalModelIdentity
+
+    class _CapturedContext:
+        """Holds captured session contract values from the coordinator's run_fan_out call."""
+
+        def __init__(self) -> None:
+            self.session_drain: str | None = None
+            self.session_capabilities: frozenset[str] | None = None
+            self.session_model_identity: MultimodalModelIdentity | None = None
+            self.session_capability_profile: object | None = None
+
+
     def __init__(self, runs: dict[str, FakeRun], tmp_path: Path) -> None:
         super().__init__(runs)
         self._tmp_path = tmp_path
@@ -181,6 +185,11 @@ class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
         )
 
         return await super().run(unit, on_output=on_output, on_status=on_status)
+
+
+_FakeDisplay = _FakeAgentExecutorWithArtifacts._FakeDisplay
+_SessionContract = _FakeAgentExecutorWithArtifacts._SessionContract
+_CapturedContext = _FakeAgentExecutorWithArtifacts._CapturedContext
 
 
 def _run_fan_out_sync(

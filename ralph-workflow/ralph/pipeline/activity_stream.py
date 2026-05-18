@@ -46,6 +46,13 @@ if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
 
+if TYPE_CHECKING:
+    class _ReadPlanArtifactFn(Protocol):
+        def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
+
+    class _ParallelDisplayModule(Protocol):
+        ParallelDisplay: type[ParallelDisplay]
+
 _MAX_TEXT_LENGTH = 200
 _MAX_TOOL_INPUT_LENGTH = 120
 _MAX_TOOL_RESULT_LENGTH = 150
@@ -55,12 +62,8 @@ _MAX_METADATA_PARTS = 3
 _MAX_METADATA_SUMMARY_LENGTH = 120
 
 
-class _ReadPlanArtifactFn(Protocol):
-    def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
 
 
-class _ParallelDisplayModule(Protocol):
-    ParallelDisplay: type[ParallelDisplay]
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
@@ -82,23 +85,26 @@ def _available_width(prefix_len: int) -> int:
 
 
 @dataclass(frozen=True)
-class ArtifactHandoffContext:
-    """Optional context for render_phase_artifact_handoff."""
-
-    display_context: DisplayContext | None = None
-    verbosity: Verbosity = Verbosity.VERBOSE
-    drain: str | None = None
-    policy_bundle: PolicyBundle | None = None
-    state: PipelineState | None = None
-
-
-@dataclass(frozen=True)
 class _ArtifactRenderCtx:
+
+    @dataclass(frozen=True)
+    class ArtifactHandoffContext:
+        """Optional context for render_phase_artifact_handoff."""
+
+        display_context: DisplayContext | None = None
+        verbosity: Verbosity = Verbosity.VERBOSE
+        drain: str | None = None
+        policy_bundle: PolicyBundle | None = None
+        state: PipelineState | None = None
+
     workspace_root: Path
     display_context: DisplayContext
     display: ParallelDisplay | LegacyConsoleDisplay | None
     verbosity: Verbosity
     ra: RequiredArtifact
+
+
+ArtifactHandoffContext = _ArtifactRenderCtx.ArtifactHandoffContext
 
 
 def render_phase_artifact_handoff(

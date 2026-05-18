@@ -36,7 +36,7 @@ from ralph.testing.fake_process import (
 )
 
 if TYPE_CHECKING:
-    from ralph.testing.fake_process import _AsyncFactoryCallable, _SyncFactoryCallable
+    from ralph.testing.fake_process import AsyncFactoryCallable, SyncFactoryCallable
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
@@ -53,8 +53,8 @@ def _reset_pm() -> object:
 
 def _make_pm(
     *,
-    sync_factory: _SyncFactoryCallable | None = None,
-    async_factory: _AsyncFactoryCallable | None = None,
+    sync_factory: SyncFactoryCallable | None = None,
+    async_factory: AsyncFactoryCallable | None = None,
     psutil_mod: FakePsutil | None = None,
 ) -> ProcessManager:
     """Build a ProcessManager with injected fake process factories."""

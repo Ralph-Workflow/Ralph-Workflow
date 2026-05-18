@@ -40,65 +40,74 @@ if TYPE_CHECKING:
     from ralph.workspace import FsWorkspace
 
 
-class _PhaseCountersProtocol(Protocol):
-    content_blocks: int
-    thinking_blocks: int
-    tool_calls: int
-    errors: int
 
 
-class _ShowCloseBannerFn(Protocol):
-    def __call__(
-        self,
-        exit_model: PhaseExitModel,
-        *,
-        display_context: DisplayContext,
-        pipeline_policy: PipelinePolicy | None = ...,
-    ) -> None: ...
 
 
-class _ShowTransitionFn(Protocol):
-    def __call__(
-        self,
-        from_phase: str,
-        to_phase: str,
-        *,
-        context: dict[str, object] | None = ...,
-        display_context: DisplayContext | None = ...,
-        pipeline_policy: PipelinePolicy | None = ...,
-    ) -> None: ...
 
 
-class _ParallelDisplayModule(Protocol):
-    ParallelDisplay: type[ParallelDisplay]
 
 
-class _EmitCompletionSummaryFn(Protocol):
-    def __call__(
-        self,
-        snapshot: PipelineSnapshot,
-        *,
-        display_context: DisplayContext,
-        options: CompletionSummaryOptions | None = None,
-    ) -> None: ...
 
 
-class _CompletionSummaryModule(Protocol):
-    CompletionSummaryOptions: type[CompletionSummaryOptions]
-    emit_completion_summary: _EmitCompletionSummaryFn
 
 
-class _SnapshotFromStateFn(Protocol):
-    def __call__(
-        self,
-        state: PipelineState,
-        context: SnapshotContext = ...,
-    ) -> PipelineSnapshot: ...
 
 
-class _SnapshotModule(Protocol):
-    snapshot_from_state: _SnapshotFromStateFn
 
+
+if TYPE_CHECKING:
+    class _PhaseCountersProtocol(Protocol):
+        content_blocks: int
+        thinking_blocks: int
+        tool_calls: int
+        errors: int
+
+    class _ShowCloseBannerFn(Protocol):
+        def __call__(
+            self,
+            exit_model: PhaseExitModel,
+            *,
+            display_context: DisplayContext,
+            pipeline_policy: PipelinePolicy | None = ...,
+        ) -> None: ...
+
+    class _ShowTransitionFn(Protocol):
+        def __call__(
+            self,
+            from_phase: str,
+            to_phase: str,
+            *,
+            context: dict[str, object] | None = ...,
+            display_context: DisplayContext | None = ...,
+            pipeline_policy: PipelinePolicy | None = ...,
+        ) -> None: ...
+
+    class _ParallelDisplayModule(Protocol):
+        ParallelDisplay: type[ParallelDisplay]
+
+    class _EmitCompletionSummaryFn(Protocol):
+        def __call__(
+            self,
+            snapshot: PipelineSnapshot,
+            *,
+            display_context: DisplayContext,
+            options: CompletionSummaryOptions | None = None,
+        ) -> None: ...
+
+    class _CompletionSummaryModule(Protocol):
+        CompletionSummaryOptions: type[CompletionSummaryOptions]
+        emit_completion_summary: _EmitCompletionSummaryFn
+
+    class _SnapshotFromStateFn(Protocol):
+        def __call__(
+            self,
+            state: PipelineState,
+            context: SnapshotContext = ...,
+        ) -> PipelineSnapshot: ...
+
+    class _SnapshotModule(Protocol):
+        snapshot_from_state: _SnapshotFromStateFn
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
     module = cast("_ParallelDisplayModule", import_module("ralph.display.parallel_display"))
@@ -204,22 +213,25 @@ def _show_phase_start_with_context(
 
 
 @dataclass(frozen=True)
-class _PhaseChangeRenderData:
-    """Canonical display payload for a single phase change."""
-
-    previous_phase: str
-    current_phase: str
-    exit_model: PhaseExitModel
-    transition_context: dict[str, object] | None
-
-
-@dataclass(frozen=True)
 class _PendingPhaseTransitionMetadata:
+
+    @dataclass(frozen=True)
+    class _PhaseChangeRenderData:
+        """Canonical display payload for a single phase change."""
+
+        previous_phase: str
+        current_phase: str
+        exit_model: PhaseExitModel
+        transition_context: dict[str, object] | None
+
     previous_phase: str
     current_phase: str
     transition_context: dict[str, object] | None = None
     routing_note: str | None = None
     skipped_phases: tuple[str, ...] = ()
+
+
+_PhaseChangeRenderData = _PendingPhaseTransitionMetadata._PhaseChangeRenderData
 
 
 _PENDING_PHASE_TRANSITION_METADATA_ATTR = "_pending_phase_transition_metadata"

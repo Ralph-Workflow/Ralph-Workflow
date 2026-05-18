@@ -5,7 +5,7 @@ from __future__ import annotations
 import gc
 import json
 import tracemalloc
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -34,75 +34,78 @@ _RETAINED_DELTA_LIMIT = 2_000_000
 _PEAK_DELTA_LIMIT = 6_000_000
 
 
-@dataclass
-class _GeneralConfigStub:
-    verbosity: int = 0
-    max_same_agent_retries: int = 0
-    agent_idle_timeout_seconds: float | None = 300.0
-    agent_idle_drain_window_seconds: float = 2.0
-    agent_idle_max_waiting_on_child_seconds: float = 1800.0
-    agent_idle_poll_interval_seconds: float = 0.5
-    agent_max_session_seconds: float | None = None
-    agent_descendant_wait_timeout_seconds: float = 30.0
-    agent_descendant_wait_poll_seconds: float = 0.25
-    agent_parent_exit_grace_seconds: float = 5.0
-    agent_waiting_status_interval_seconds: float = 60.0
-    agent_suspect_waiting_on_child_seconds: float | None = 300.0
-    agent_idle_no_progress_waiting_on_child_seconds: float = 600.0
-    agent_child_progress_ttl_seconds: float = 300.0
-    agent_child_heartbeat_ttl_seconds: float = 60.0
-    agent_child_stale_label_ttl_seconds: float = 120.0
-    agent_child_exit_reconcile_seconds: float = 5.0
-    agent_process_exit_wait_seconds: float = 5.0
-    agent_system_prompt: str | None = None
-    agent_provider: str | None = None
-    verbose: bool = False
-
-
-@dataclass
-class _CcsConfigStub:
-    enabled: bool = False
-
-
-@dataclass
-class _ConfigStub:
-    general: _GeneralConfigStub = field(default_factory=_GeneralConfigStub)
-    ccs: _CcsConfigStub = field(default_factory=_CcsConfigStub)
-    ccs_aliases: dict[str, str] = field(default_factory=dict)
-
-
-class _RegistryInstance:
-    def get(self, name: str) -> AgentConfig | None:
-        del name
-        return AgentConfig(
-            cmd="generic-agent",
-            output_flag="--json-stream",
-            json_parser=JsonParserType.GENERIC,
-        )
-
-
-class _RegistryFactory:
-    @classmethod
-    def from_config(cls, config: UnifiedConfig) -> _RegistryInstance:
-        del cls, config
-        return _RegistryInstance()
-
-
-class _FakeBridge:
-    def shutdown(self) -> None:
-        return
-
-    def agent_endpoint_uri(self) -> str:
-        return "http://127.0.0.1:12345/mcp"
-
-
 class _NullSupervisor:
+
+    @dataclass
+    class _GeneralConfigStub:
+        verbosity: int = 0
+        max_same_agent_retries: int = 0
+        agent_idle_timeout_seconds: float | None = 300.0
+        agent_idle_drain_window_seconds: float = 2.0
+        agent_idle_max_waiting_on_child_seconds: float = 1800.0
+        agent_idle_poll_interval_seconds: float = 0.5
+        agent_max_session_seconds: float | None = None
+        agent_descendant_wait_timeout_seconds: float = 30.0
+        agent_descendant_wait_poll_seconds: float = 0.25
+        agent_parent_exit_grace_seconds: float = 5.0
+        agent_waiting_status_interval_seconds: float = 60.0
+        agent_suspect_waiting_on_child_seconds: float | None = 300.0
+        agent_idle_no_progress_waiting_on_child_seconds: float = 600.0
+        agent_child_progress_ttl_seconds: float = 300.0
+        agent_child_heartbeat_ttl_seconds: float = 60.0
+        agent_child_stale_label_ttl_seconds: float = 120.0
+        agent_child_exit_reconcile_seconds: float = 5.0
+        agent_process_exit_wait_seconds: float = 5.0
+        agent_system_prompt: str | None = None
+        agent_provider: str | None = None
+        verbose: bool = False
+
+    @dataclass
+    class _CcsConfigStub:
+        enabled: bool = False
+
+    class _ConfigStub:
+        def __init__(self) -> None:
+            self.general = _NullSupervisor._GeneralConfigStub()
+            self.ccs = _NullSupervisor._CcsConfigStub()
+            self.ccs_aliases: dict[str, str] = {}
+
+    class _RegistryInstance:
+        def get(self, name: str) -> AgentConfig | None:
+            del name
+            return AgentConfig(
+                cmd="generic-agent",
+                output_flag="--json-stream",
+                json_parser=JsonParserType.GENERIC,
+            )
+
+    class _RegistryFactory:
+        @classmethod
+        def from_config(cls, config: UnifiedConfig) -> _RegistryInstance:
+            del cls, config
+            return _RegistryInstance()
+
+    class _FakeBridge:
+        def shutdown(self) -> None:
+            return
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:12345/mcp"
+
     def __enter__(self) -> None:
         return None
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
         del exc_type, exc, tb
         return False
+
+
+_GeneralConfigStub = _NullSupervisor._GeneralConfigStub
+_CcsConfigStub = _NullSupervisor._CcsConfigStub
+_ConfigStub = _NullSupervisor._ConfigStub
+_RegistryInstance = _NullSupervisor._RegistryInstance
+_RegistryFactory = _NullSupervisor._RegistryFactory
+_FakeBridge = _NullSupervisor._FakeBridge
 
 
 def _start_mcp_server(*_args: object, **_kwargs: object) -> _FakeBridge:

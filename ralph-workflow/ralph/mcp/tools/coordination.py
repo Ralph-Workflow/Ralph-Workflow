@@ -168,14 +168,14 @@ def handle_read_env(
     """Read an environment variable by name."""
     require_capability(session, ENV_READ_CAPABILITY, "Environment variable read")
     name = _parameter_as_string(params, "name")
-    value = _read_env_value(env, name)
+    value = read_env_value(env, name)
     return ToolResult(
         content=[ToolContent.text_content(f"{name}={value}")],
         is_error=False,
     )
 
 
-def _read_env_value(env: dict[str, str] | os._Environ[str], name: str) -> str:
+def read_env_value(env: dict[str, str] | os._Environ[str], name: str) -> str:
     return env.get(name, "[not found]")
 
 

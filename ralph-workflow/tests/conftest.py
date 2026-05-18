@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
+from typer.testing import CliRunner
 
 from ralph.policy.models import (
     AgentChainConfig,
@@ -25,7 +26,7 @@ from ralph.runtime import (
     timeout_seconds_from_env,
 )
 from ralph.workspace.memory import MemoryWorkspace
-from tests.integration.test_pipeline_happy_path import MockAgentInvoker
+from tests.integration.test_pipeline_happy_path_pipeline_happy_path import MockAgentInvoker
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -287,3 +288,9 @@ def _isolate_global_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     config_dir = tmp_path / "xdg-config"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
+
+
+@pytest.fixture
+def cli_runner() -> CliRunner:
+    """Provide a Typer CLI test runner."""
+    return CliRunner()

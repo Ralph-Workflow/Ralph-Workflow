@@ -26,75 +26,77 @@ _KILLED_RETURN_CODE = -9
 _ROOT_ONLY_WAIT_CALLS = 2
 
 
-@dataclass
-class _FakePtyProcess:
-    pid: int
-    master_fd: int
-    slave_fd: int
-    returncode: int | None = None
-    terminated: bool = False
-    killed: bool = False
-    closed: bool = False
+class _TimeoutThenKillPtyFactory:
 
-    def poll(self) -> int | None:
-        return self.returncode
-
-    def wait(self, timeout: float | None = None) -> int:
-        del timeout
-        return self.returncode if self.returncode is not None else 0
-
-    def terminate(self) -> None:
-        self.terminated = True
-        if self.returncode is None:
-            self.returncode = -15
-
-    def kill(self) -> None:
-        self.killed = True
-        self.returncode = -9
-
-    def close(self) -> None:
-        self.closed = True
-
-    def fileno(self) -> int:
-        return self.master_fd
-
-    def isatty(self) -> bool:
-        return True
-
-
-class _FakePtyFactory:
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[str, ...], str | None, dict[str, str] | None]] = []
         self._pids = itertools.count(2000)
 
-    def __call__(
-        self,
-        command: Sequence[str],
-        *,
-        cwd: str | None,
-        env: dict[str, str] | None,
-        cols: int,
-        rows: int,
-    ) -> _FakePtyProcess:
-        assert cols == _PTY_COLUMNS
-        assert rows == _PTY_ROWS
-        self.calls.append((tuple(command), cwd, env))
-        pid = next(self._pids)
-        return _FakePtyProcess(pid=pid, master_fd=pid + 10, slave_fd=pid + 11)
+    @dataclass
+    class _FakePtyProcess:
+        pid: int
+        master_fd: int
+        slave_fd: int
+        returncode: int | None = None
+        terminated: bool = False
+        killed: bool = False
+        closed: bool = False
 
+        def poll(self) -> int | None:
+            return self.returncode
 
-class _TimeoutThenKillPtyProcess(_FakePtyProcess):
-    wait_calls: int = 0
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return self.returncode if self.returncode is not None else 0
 
-    def wait(self, timeout: float | None = None) -> int:
-        del timeout
-        self.wait_calls += 1
-        if self.killed:
-            return self.returncode if self.returncode is not None else -9
-        raise TimeoutError
+        def terminate(self) -> None:
+            self.terminated = True
+            if self.returncode is None:
+                self.returncode = -15
 
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
 
-class _TimeoutThenKillPtyFactory(_FakePtyFactory):
+        def close(self) -> None:
+            self.closed = True
+
+        def fileno(self) -> int:
+            return self.master_fd
+
+        def isatty(self) -> bool:
+            return True
+
+    class _FakePtyFactory:
+        def __init__(self) -> None:
+            self.calls: list[tuple[tuple[str, ...], str | None, dict[str, str] | None]] = []
+            self._pids = itertools.count(2000)
+
+        def __call__(
+            self,
+            command: Sequence[str],
+            *,
+            cwd: str | None,
+            env: dict[str, str] | None,
+            cols: int,
+            rows: int,
+        ) -> _FakePtyProcess:
+            assert cols == _PTY_COLUMNS
+            assert rows == _PTY_ROWS
+            self.calls.append((tuple(command), cwd, env))
+            pid = next(self._pids)
+            return _FakePtyProcess(pid=pid, master_fd=pid + 10, slave_fd=pid + 11)
+
+    class _TimeoutThenKillPtyProcess(_FakePtyProcess):
+        wait_calls: int = 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            self.wait_calls += 1
+            if self.killed:
+                return self.returncode if self.returncode is not None else -9
+            raise TimeoutError
+
     def __call__(
         self,
         command: Sequence[str],
@@ -109,6 +111,11 @@ class _TimeoutThenKillPtyFactory(_FakePtyFactory):
         self.calls.append((tuple(command), cwd, env))
         pid = next(self._pids)
         return _TimeoutThenKillPtyProcess(pid=pid, master_fd=pid + 10, slave_fd=pid + 11)
+
+
+_FakePtyProcess = _TimeoutThenKillPtyFactory._FakePtyProcess
+_FakePtyFactory = _TimeoutThenKillPtyFactory._FakePtyFactory
+_TimeoutThenKillPtyProcess = _TimeoutThenKillPtyFactory._TimeoutThenKillPtyProcess
 
 
 def test_spawn_pty_records_pid_pgid_and_terminal_status(tmp_path: Path) -> None:

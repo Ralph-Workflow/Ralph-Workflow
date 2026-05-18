@@ -33,6 +33,64 @@ if TYPE_CHECKING:
     from ralph.mcp.upstream.registry import UpstreamRegistry
     from ralph.policy.models import AgentsPolicy
 
+if TYPE_CHECKING:
+    class HttpPostFn(Protocol):
+        """Callable protocol for posting JSON-RPC requests over HTTP."""
+
+        def __call__(
+            self,
+            url: str,
+            *,
+            json: JsonRpcResponse,
+            headers: dict[str, str],
+            timeout: float,
+        ) -> httpx.Response: ...
+
+    class HttpJsonRpcWithSessionFn(Protocol):
+        """Callable protocol for sending a JSON-RPC request
+        and returning a response with session ID."""
+
+        def __call__(
+            self,
+            endpoint_or_target: str | HttpEndpointTarget,
+            target_or_payload: HttpEndpointTarget | JsonRpcResponse,
+            payload: JsonRpcResponse | None = None,
+            *,
+            session_id: str | None = None,
+            post_fn: HttpPostFn = ...,
+        ) -> tuple[JsonRpcResponse, str | None]: ...
+
+    class SessionLike(Protocol):
+        """Minimum API surface needed from an agent session."""
+
+        session_id: str
+        run_id: str
+        drain: str
+        capabilities: set[str]
+
+    class SessionBridgeLike(Protocol):
+        """Protocol describing the session bridge interface used here."""
+
+        def start(self) -> None:
+            """Start accepting MCP connections."""
+
+            ...
+
+        def agent_endpoint_uri(self) -> str:
+            """Return the agent-facing endpoint URI."""
+
+            ...
+
+        def endpoint_uri(self) -> str:
+            """Return the raw endpoint URI used for transport-level preflight."""
+
+            ...
+
+        def shutdown(self) -> None:
+            """Shut down the bridge."""
+
+            ...
+
 JsonRpcResponse = dict[str, object]
 
 
@@ -57,39 +115,10 @@ def _default_http_post(
     )
 
 
-class HttpPostFn(Protocol):
-    """Callable protocol for posting JSON-RPC requests over HTTP."""
-
-    def __call__(
-        self,
-        url: str,
-        *,
-        json: JsonRpcResponse,
-        headers: dict[str, str],
-        timeout: float,
-    ) -> httpx.Response: ...
 
 
-class HttpJsonRpcWithSessionFn(Protocol):
-    """Callable protocol for sending a JSON-RPC request and returning a response with session ID."""
-
-    def __call__(
-        self,
-        endpoint_or_target: str | HttpEndpointTarget,
-        target_or_payload: HttpEndpointTarget | JsonRpcResponse,
-        payload: JsonRpcResponse | None = None,
-        *,
-        session_id: str | None = None,
-        post_fn: HttpPostFn = _default_http_post,
-    ) -> tuple[JsonRpcResponse, str | None]: ...
 
 
-@dataclass(frozen=True)
-class PreflightTcpDeps:
-    """Injectable dependencies for TCP MCP server preflight probes."""
-
-    connect_to_endpoint_fn: Callable[[str, tuple[str, int], timedelta], socket.socket] | None = None
-    list_tools_fn: Callable[[socket.socket, timedelta], list[str]] | None = None
 
 
 def initialize_request() -> JsonRpcResponse:
@@ -128,72 +157,54 @@ def tools_list_request() -> JsonRpcResponse:
     }
 
 
-class SessionLike(Protocol):
-    """Minimum API surface needed from an agent session."""
-
-    session_id: str
-    run_id: str
-    drain: str
-    capabilities: set[str]
 
 
 WorkspaceLike = Workspace
-
-
-class SessionBridgeLike(Protocol):
-    """Protocol describing the session bridge interface used here."""
-
-    def start(self) -> None:
-        """Start accepting MCP connections."""
-
-        ...
-
-    def agent_endpoint_uri(self) -> str:
-        """Return the agent-facing endpoint URI."""
-
-        ...
-
-    def endpoint_uri(self) -> str:
-        """Return the raw endpoint URI used for transport-level preflight."""
-
-        ...
-
-    def shutdown(self) -> None:
-        """Shut down the bridge."""
-
-        ...
-
-
-class SessionBridgeError(Exception):
-    """Raised when the session bridge fails to start or preflight fails."""
-
-
-@dataclass(frozen=True)
-class HeartbeatPolicy:
-    """Supervision interval configuration for active MCP health monitoring."""
-
-    interval: timedelta
-
-
-class PreflightError(Exception):
-    """Base class for MCP preflight failures."""
-
-
-class RetryablePreflightError(PreflightError):
-    """Transient preflight errors that may succeed if retried."""
-
-
-class PermanentPreflightError(PreflightError):
-    """Preflight errors that must abort the connection attempt."""
 
 
 @dataclass(frozen=True)
 class HttpEndpointTarget:
     """Parsed metadata for an HTTP MCP endpoint."""
 
+    @dataclass(frozen=True)
+    class PreflightTcpDeps:
+        """Injectable dependencies for TCP MCP server preflight probes."""
+
+        connect_to_endpoint_fn: Callable[
+            [str, tuple[str, int], timedelta], socket.socket
+        ] | None = None
+        list_tools_fn: Callable[[socket.socket, timedelta], list[str]] | None = None
+
+    class SessionBridgeError(Exception):
+        """Raised when the session bridge fails to start or preflight fails."""
+
+    @dataclass(frozen=True)
+    class HeartbeatPolicy:
+        """Supervision interval configuration for active MCP health monitoring."""
+
+        interval: timedelta
+
+    class PreflightError(Exception):
+        """Base class for MCP preflight failures."""
+
+    class RetryablePreflightError(PreflightError):
+        """Transient preflight errors that may succeed if retried."""
+
+    class PermanentPreflightError(PreflightError):
+        """Preflight errors that must abort the connection attempt."""
+
+
     address: tuple[str, int]
     host_header: str
     path: str
+
+
+PreflightTcpDeps = HttpEndpointTarget.PreflightTcpDeps
+SessionBridgeError = HttpEndpointTarget.SessionBridgeError
+HeartbeatPolicy = HttpEndpointTarget.HeartbeatPolicy
+PreflightError = HttpEndpointTarget.PreflightError
+RetryablePreflightError = HttpEndpointTarget.RetryablePreflightError
+PermanentPreflightError = HttpEndpointTarget.PermanentPreflightError
 
 
 def _visible_mcp_tool_names_owned(

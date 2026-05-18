@@ -2,25 +2,24 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from typing import Protocol
 
-class RichTextProto(Protocol):
-    """Protocol for rich.Text class."""
+    class RichTextProto(Protocol):
+        """Protocol for rich.Text class."""
 
-    def __call__(self, text: str = "", *, style: str = "") -> object: ...
+        def __call__(self, text: str = "", *, style: str = "") -> object: ...
 
+    class RichPanelProto(Protocol):
+        """Protocol for rich.Panel class."""
 
-class RichPanelProto(Protocol):
-    """Protocol for rich.Panel class."""
+        def fit(self, _renderable: object, **kwargs: object) -> object: ...
 
-    def fit(self, _renderable: object, **kwargs: object) -> object: ...
+    class RichGroupProto(Protocol):
+        """Protocol for rich.Group class."""
 
-
-class RichGroupProto(Protocol):
-    """Protocol for rich.Group class."""
-
-    def __call__(self, *_renderables: object) -> object: ...
-
+        def __call__(self, *_renderables: object) -> object: ...
 
 __all__ = ["RichGroupProto", "RichPanelProto", "RichTextProto"]

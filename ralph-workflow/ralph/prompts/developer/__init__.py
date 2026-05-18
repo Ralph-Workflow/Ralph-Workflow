@@ -20,23 +20,23 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class DeveloperPromptInputs:
-    """Inputs for rendering a developer-iteration prompt."""
-
-    prompt_content: str | None
-    plan_content: str | None
-    analysis_feedback_content: str | None = None
-    plan_path: str = ""
-    analysis_feedback_path: str = ""
-    artifact_history_path: str = ""
-    artifact_history_dir: str = ""
-    prompt_name_prefix: str = "development"
-    last_retry_error: str = ""
-
-
-@dataclass(frozen=True)
 class PlanningPromptInputs:
     """Inputs for rendering a planning-phase prompt."""
+
+    @dataclass(frozen=True)
+    class DeveloperPromptInputs:
+        """Inputs for rendering a developer-iteration prompt."""
+
+        prompt_content: str | None
+        plan_content: str | None
+        analysis_feedback_content: str | None = None
+        plan_path: str = ""
+        analysis_feedback_path: str = ""
+        artifact_history_path: str = ""
+        artifact_history_dir: str = ""
+        prompt_name_prefix: str = "development"
+        last_retry_error: str = ""
+
 
     prompt_content: str | None
     plan_content: str | None = None
@@ -46,6 +46,9 @@ class PlanningPromptInputs:
     artifact_history_path: str = ""
     artifact_history_dir: str = ""
     last_retry_error: str = ""
+
+
+DeveloperPromptInputs = PlanningPromptInputs.DeveloperPromptInputs
 
 
 def prompt_developer_iteration_xml_with_context(

@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from .base import SearchResult, WebSearchError
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
+    from typing import Protocol
 
+    class _DdgsTextClient(Protocol):
+        """Minimal structural protocol matching the DDGS text-search API."""
 
-class _DdgsTextClient(Protocol):
-    """Minimal structural protocol matching the DDGS text-search API."""
-
-    def text(self, query: str, max_results: int) -> Iterable[Mapping[str, object]] | None: ...
+        def text(self, query: str, max_results: int) -> Iterable[Mapping[str, object]] | None: ...
 
 
 _ddgs_module: object | None

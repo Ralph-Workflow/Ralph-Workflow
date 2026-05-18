@@ -10,34 +10,33 @@ from loguru import logger
 if TYPE_CHECKING:
     from pathlib import Path
 
+if TYPE_CHECKING:
+    class _HasStop(Protocol):
+        """Protocol for watchdog Observer-like objects that have a stop method."""
+
+        def stop(self) -> None: ...
+        def join(self, _timeout: float | None = None) -> None: ...
+
+    class _ObserverProtocol(_HasStop, Protocol):
+        """Protocol for watchdog Observer-like objects used by this module."""
+
+        def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None: ...
+        def start(self) -> None: ...
+
+    class _WatchdogObserversModule(Protocol):
+        """Typed accessor for the optional watchdog.observers module."""
+
+        Observer: type[_ObserverProtocol]
+
 _MAX_WORKSPACE_CHANGED_FILES = 512
 
 
-class _HasStop(Protocol):
-    """Protocol for watchdog Observer-like objects that have a stop method."""
-
-    def stop(self) -> None: ...
-    def join(self, _timeout: float | None = None) -> None: ...
 
 
-@runtime_checkable
-class _HasSrcPath(Protocol):
-    """Protocol for watchdog events that expose a source path."""
-
-    src_path: str
 
 
-class _ObserverProtocol(_HasStop, Protocol):
-    """Protocol for watchdog Observer-like objects used by this module."""
-
-    def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None: ...
-    def start(self) -> None: ...
 
 
-class _WatchdogObserversModule(Protocol):
-    """Typed accessor for the optional watchdog.observers module."""
-
-    Observer: type[_ObserverProtocol]
 
 
 def _create_watchdog_observer() -> _ObserverProtocol | None:
@@ -58,6 +57,13 @@ class WorkspaceMonitor:
     This allows the pipeline to detect when an agent has completed significant
     work by watching for file modifications in the workspace.
     """
+
+    @runtime_checkable
+    class _HasSrcPath(Protocol):
+        """Protocol for watchdog events that expose a source path."""
+
+        src_path: str
+
 
     def __init__(self, workspace_path: Path) -> None:
         """Initialize workspace monitor.
@@ -127,3 +133,6 @@ class WorkspaceMonitor:
     def changed_files(self) -> set[str]:
         """Set of file paths that changed during monitoring."""
         return set(self._seen_files)
+
+
+_HasSrcPath = WorkspaceMonitor._HasSrcPath

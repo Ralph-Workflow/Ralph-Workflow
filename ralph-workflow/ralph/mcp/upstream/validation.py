@@ -28,37 +28,36 @@ if TYPE_CHECKING:
 
     from ralph.mcp.upstream.config import UpstreamMcpServer
 
+if TYPE_CHECKING:
+    class HttpPreflightFn(Protocol):
+        """Callable protocol for running an HTTP MCP server preflight check."""
+
+        def __call__(
+            self, endpoint: str, required_tools: tuple[str, ...], timeout: timedelta
+        ) -> None: ...
+
 _STRICT_ENV_VAR = "RALPH_MCP_STRICT"
 _STRICT_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
-
-
-class HttpPreflightFn(Protocol):
-    """Callable protocol for running an HTTP MCP server preflight check."""
-
-    def __call__(
-        self, endpoint: str, required_tools: tuple[str, ...], timeout: timedelta
-    ) -> None: ...
-
-
-class UpstreamValidationError(RuntimeError):
-    """Raised in strict mode when one or more upstream MCP servers fail validation."""
-
-
-@dataclass(frozen=True)
-class UpstreamServerReport:
-    """Validation result for a single upstream MCP server."""
-
-    name: str
-    transport: Literal["http", "stdio"]
-    ok: bool
-    tool_count: int = 0
-    error: str | None = None
-    secret_keys: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
 class UpstreamValidationReport:
     """Aggregated validation results for all configured upstream MCP servers."""
+
+    class UpstreamValidationError(RuntimeError):
+        """Raised in strict mode when one or more upstream MCP servers fail validation."""
+
+    @dataclass(frozen=True)
+    class UpstreamServerReport:
+        """Validation result for a single upstream MCP server."""
+
+        name: str
+        transport: Literal["http", "stdio"]
+        ok: bool
+        tool_count: int = 0
+        error: str | None = None
+        secret_keys: tuple[str, ...] = field(default_factory=tuple)
+
 
     servers: tuple[UpstreamServerReport, ...]
 
@@ -69,6 +68,10 @@ class UpstreamValidationReport:
     @property
     def failures(self) -> tuple[UpstreamServerReport, ...]:
         return tuple(s for s in self.servers if not s.ok)
+
+
+UpstreamValidationError = UpstreamValidationReport.UpstreamValidationError
+UpstreamServerReport = UpstreamValidationReport.UpstreamServerReport
 
 
 def strict_mode_from_env(env: Mapping[str, str] | None = None) -> bool:
