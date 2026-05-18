@@ -872,3 +872,10 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- ralph-workflow/docs/sphinx/index.rst ralph-workflow/docs/sphinx/_themes/ralph-docs/page.html`; `grep -n "title::\|description:\|noindex, nofollow" ...`; local build/test unverified in this environment due to missing `sphinx`
   - Why: current conversion surfaces are already strong, but the latest SEO audit still showed a too-long homepage title plus search pollution from generated docs utility pages. Cleaning those signals is higher leverage than another generic asset because it sharpens what evaluators and search engines see first without changing the core free/open-source overnight-reviewable message.
+
+### RalphWorkflow Conversion
+- **Docs sitemap/indexing cleanup**: removed Sphinx `viewcode` output plus general/module index generation from the public docs build so low-intent `_modules/*`, `genindex`, and `py-modindex` pages stop inflating the live sitemap and competing with real conversion pages.
+  - Commit: `5f44c5bc` — `Trim low-intent Sphinx index pages`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `python3` config check confirmed `sphinx.ext.viewcode` is absent and `html_use_index = False` / `html_domain_indices = False`; local build/test unverified in this environment due to missing `uv`
+  - Why: distribution is still important, but the live site review showed the sitemap still exposing a large volume of low-intent docs utility pages. Tightening that index surface is a higher-leverage trust/SEO move than another small generic submission because it concentrates crawl/index attention on the pages that actually answer what Ralph Workflow is, who it is for, why it is different, and why to try it now.
