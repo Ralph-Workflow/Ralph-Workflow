@@ -34,6 +34,16 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "accessible")
         self.assertIsNone(note)
 
+    def test_classifies_cross_host_homepage_redirect_as_non_actionable(self):
+        status, note = channel_discovery.classify_platform_response(
+            "https://blogsearch.google.com",
+            "https://www.google.com/",
+            200,
+            "Google",
+        )
+        self.assertEqual(status, "redirects")
+        self.assertIn("redirected away from original host", note)
+
     def test_classifies_broken_submit_surface_when_copy_loads_without_controls(self):
         status, note = channel_discovery.classify_submission_surface_probe({
             "probe_status": "ok",

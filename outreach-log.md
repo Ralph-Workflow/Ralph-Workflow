@@ -3,6 +3,18 @@
 ## 2026-05-18 (Monday)
 
 ### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-18_2115.md`
+- **Scan summary:** 28 candidate Reddit threads/posts scanned, 6 shortlisted, 22 rejected.
+- **Current verdict:** Mixed — 6 credible discussion opportunities were found, but only 1–2 are strong RalphWorkflow mention fits and 2–3 more are arguable at best after prior-use, freshness, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Autonomous Claude Code runs in the new reality."
+  - `r/ClaudeCode` — "Claude Code approval / plan mode questions"
+  - `r/ClaudeCode` — "Remote supervision of coding agents"
+- **Repeated pains worth tracking:** approval drag, morning-after review/reconstruction, shared-boundary ownership, worktree/setup friction that does not answer the merge question, bounded-autonomy / runaway-cost control, and remote-supervision requests that are really finish-state trust problems.
+- **Risk note:** search saturation is worse tonight and prior-body repetition is now as much about **builder/reviewer split + proof/link close** as exact phrasing; keep separating **helpful reply fit** from **mention fit**, and reject drafts that fall back to the same concept cadence.
+- **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit monitoring
 - **Report:** `seo-reports/reddit_monitor_2026-05-18_0915.md`
 - **Scan summary:** 30 candidate Reddit threads/posts scanned, 5 shortlisted, 25 rejected.
 - **Current verdict:** Mixed — 5 shortlist-worthy discussion threads were found, but only 2–3 are strong RalphWorkflow mention fits after prior-use, freshness, and no-product-value filtering.
@@ -1106,3 +1118,21 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Seed targets now route to stronger proof/comparison pages on the GitHub mirror first: `when-unattended-coding-fits.md`, `review-ai-coding-output-before-merge.md`, `claude-code-codex-workflow.md`, and `what-a-good-ai-coding-finish-receipt-looks-like.md`.
   - Verification: live watchdog check plus readback/grep on the refreshed packet.
   - Why: the bottleneck is still Reddit-to-GitHub adoption, but posting was not executable right now. Refreshing the next safe-window packet was the highest-leverage cooldown move because it upgrades the next live distribution slot from a stale thread/body into a proof-led conversion path.
+
+### RalphWorkflow Marketing Workflow Hygiene
+- **Channel-discovery false-positive cleanup for dead RSS submission surface**: Patched `agents/marketing/channel_discovery.py` so cross-host redirects to a generic homepage no longer count as `accessible` submission channels. This removes the bogus `RSS directories` / `blogsearch.google.com` opportunity from the actionable list instead of letting the loop mistake a dead Google redirect for a live distribution surface.
+  - Verification: `python3 -m unittest agents.marketing.tests.test_channel_discovery -v`; `python3 agents/marketing/channel_discovery.py` now reports `RSS directories` as `redirects` and leaves `saashub` as the only actionable channel.
+  - Why: the current bottleneck is not more generic content; it is making sure each cycle spends effort on real adoption/distribution moves. Leaving a fake-easy channel in the queue creates false progress and wastes future posting/discovery time that should go toward actual public proof or live distribution.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/omjjo73/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #1 Autonomous Claude Code runs in the new reality. (`r/ClaudeCode`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution
+- **Reddit comment**: Posted on fresh `r/ClaudeCode` thread "Autonomous Claude Code runs in the new reality."
+  - URL: https://old.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/omjjo73/
+  - Status: ✅ Published
+  - Why: the Reddit pacing window reopened, this was still the strongest live mention-fit opportunity from the latest 2026-05-18 21:15 monitor pass, and it directly hits the current pain around unattended runs needing a bounded, reviewable morning-after handoff rather than another babysat session.

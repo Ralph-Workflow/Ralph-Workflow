@@ -198,7 +198,7 @@
       "url": "https://saashub.com",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-18T20:56:13.966273",
+      "timestamp": "2026-05-18T21:58:35.358525",
       "http_code": "200",
       "final_url": "https://www.saashub.com/",
       "status": "accessible"
@@ -238,10 +238,11 @@
       "url": "https://blogsearch.google.com",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-18T20:56:15.290442",
+      "timestamp": "2026-05-18T21:58:36.751304",
       "http_code": "200",
       "final_url": "https://www.google.com/",
-      "status": "accessible"
+      "status": "redirects",
+      "note": "redirected away from original host to google.com"
     },
     {
       "name": "dmoz",
@@ -357,12 +358,6 @@
       "url": "https://saashub.com",
       "method": "submit",
       "difficulty": "easy"
-    },
-    {
-      "name": "RSS directories",
-      "url": "https://blogsearch.google.com",
-      "method": "submit",
-      "difficulty": "medium"
     }
   ]
 }
