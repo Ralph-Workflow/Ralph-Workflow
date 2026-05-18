@@ -1,6 +1,9 @@
 {
-  "last_attempt_at": "2026-05-18T01:57:07.032038",
+  "last_attempt_at": "2026-05-18T02:57:41.053428",
   "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-17_2115.md",
-  "last_attempt_status": "cooldown_skip",
-  "last_detail": "volume_guard_active:3_posts_in_6h"
+  "last_thread_url": "<https://www.reddit.com/r/codex/comments/1t8n9rs/codex_vs_claude_code_my_current_take_after/>",
+  "last_comment_url": null,
+  "last_attempt_status": "already_logged",
+  "last_poster_status": "already_logged",
+  "last_detail": "Thread already exists in outreach-log.md"
 }

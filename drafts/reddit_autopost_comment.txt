@@ -1,9 +1,5 @@
-The cleanest split I've found is boring on purpose: one tool writes, the other challenges.
+What usually breaks first in a Claude/Codex setup isn't the models, it's the handoff.
 
-Have the builder make the change, then have the second pass look for gaps in tests, edge cases, or assumptions. After that, judge the run on the diff + checks rather than on either tool's self-report.
+If the first agent leaves a vague pile of edits, the second one just inherits confusion. If the first leaves a clear diff, a short receipt, and explicit open questions, the review pass becomes genuinely useful.
 
-That usually works better than trying to make both tools do everything at once.
-
-If the useful part here is "one tool builds, one checks, then judge the result like a PR," RalphWorkflow is my free/open-source take on that loop. It keeps the agents on your own machine and pushes toward reviewable output rather than another long transcript.
-
-https://github.com/Ralph-Workflow/Ralph-Workflow
+So I'd optimize for a clean baton pass, not maximum parallelism.

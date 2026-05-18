@@ -125,6 +125,74 @@ class RedditAutopostTests(unittest.TestCase):
         self.assertEqual(reddit_autopost.freshness_score("May 11, 2026", reference=reference), 4)
         self.assertEqual(reddit_autopost.freshness_score("April 10, 2026", reference=reference), 1)
 
+    def test_freshness_score_treats_same_day_monitor_language_as_fresh(self):
+        reference = datetime(2026, 5, 18, 1, 55)
+        self.assertEqual(
+            reddit_autopost.freshness_score(
+                "active same-day page visibility during this pass",
+                reference=reference,
+            ),
+            5,
+        )
+
+    def test_choose_opportunity_prefers_fresh_rate_limited_over_stale_fallback(self):
+        fresh = reddit_autopost.Opportunity(
+            rank=1,
+            title="Claude -> Codex -> Claude",
+            url="https://www.reddit.com/r/ClaudeCode/comments/fresh/",
+            community="`r/ClaudeCode`",
+            angle="keep the handoff small",
+            freshness="active same-day page visibility during this pass",
+            mention_fit="**high**",
+        )
+        stale = reddit_autopost.Opportunity(
+            rank=7,
+            title="Older codex thread",
+            url="https://www.reddit.com/r/codex/comments/stale/",
+            community="`r/codex`",
+            angle="reviewable finish matters",
+            freshness="Saturday, May 9, 2026",
+            mention_fit="**medium**",
+        )
+        original_load_recent = reddit_autopost.load_recent_post_records
+        original_already_used = reddit_autopost.already_used
+        try:
+            reddit_autopost.load_recent_post_records = lambda hours=24: [
+                {
+                    "__parsed_timestamp": datetime.now(),
+                    "metadata": {"community": "r/ClaudeCode"},
+                }
+            ]
+            reddit_autopost.already_used = lambda url: False
+            chosen, state = reddit_autopost.choose_opportunity([fresh, stale])
+        finally:
+            reddit_autopost.load_recent_post_records = original_load_recent
+            reddit_autopost.already_used = original_already_used
+        self.assertIsNone(chosen)
+        self.assertEqual(state, "fresh_rate_limited")
+
+    def test_posting_gate_reports_next_safe_time_for_global_cooldown(self):
+        now = datetime(2026, 5, 18, 0, 30)
+        recent_posts = [{"__parsed_timestamp": datetime(2026, 5, 18, 0, 10)}]
+        allowed, reason, retry_after, next_safe = reddit_autopost.posting_gate(now, recent_posts)
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "global_cooldown_active:20m_since_last_post")
+        self.assertEqual(retry_after, 25)
+        self.assertEqual(next_safe, "2026-05-18T00:55:00")
+
+    def test_posting_gate_reports_next_safe_time_for_volume_guard(self):
+        now = datetime(2026, 5, 18, 0, 30)
+        recent_posts = [
+            {"__parsed_timestamp": datetime(2026, 5, 17, 19, 0)},
+            {"__parsed_timestamp": datetime(2026, 5, 17, 21, 0)},
+            {"__parsed_timestamp": datetime(2026, 5, 17, 23, 0)},
+        ]
+        allowed, reason, retry_after, next_safe = reddit_autopost.posting_gate(now, recent_posts)
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "volume_guard_active:3_posts_in_6h")
+        self.assertEqual(retry_after, 31)
+        self.assertEqual(next_safe, "2026-05-18T01:01:00")
+
     def test_live_high_fit_threads_generate_distinct_bodies(self):
         handoff = reddit_autopost.Opportunity(
             rank=2,
