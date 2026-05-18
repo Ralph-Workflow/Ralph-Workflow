@@ -14,6 +14,18 @@
 - **Risk note:** the search pool is getting saturated with already-used or setup-only threads, so the monitor should keep separating **helpful reply fit** from **RalphWorkflow mention fit** instead of forcing a quota.
 - **Posting note:** No posting attempted from this monitor pass.
 
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-18_1215.md`
+- **Scan summary:** 31 candidate Reddit threads/posts scanned, 6 shortlisted, 25 rejected.
+- **Current verdict:** Mixed — 6 shortlist-worthy discussion/research threads were found, but only 2–3 are strong RalphWorkflow mention fits after prior-use, freshness, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code Agent Teams W/ Gemini and Codex"
+  - `r/ClaudeCode` — "Autonomous Claude Code runs in the new reality."
+  - `r/ClaudeAI` — "Claude Code's checkpoint commits are polluting my git history. How are you handling this?"
+- **Repeated pains worth tracking:** handoff-contract clarity, cleanup/checkpoint noise, review/reconstruction, worktree preview/testing friction, and visible finish-state ownership.
+- **Risk note:** the search pool is still saturating with already-used or setup-only threads, so the monitor should keep separating **helpful reply fit** from **RalphWorkflow mention fit** and avoid forcing a 5–10 product-fit quota when only 2–3 threads really qualify.
+- **Posting note:** No posting attempted from this monitor pass.
+
 ### RalphWorkflow Distribution
 - **DevTool Center submission**: Submitted Ralph Workflow to DevTool Center as a free `AI Helpers` developer tool, using a four-question description that keeps the core promise intact: free and open source, orchestrates Claude Code/Codex/other coding agents on your own machine, built for repo-native work too big to babysit and too risky to trust blindly, and meant to produce overnight reviewable output.
   - Submission path: `https://www.devtool.center/submit` → backend `https://devshelf-backend.onrender.com/api/v1/submissions`
@@ -879,3 +891,10 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `python3` config check confirmed `sphinx.ext.viewcode` is absent and `html_use_index = False` / `html_domain_indices = False`; local build/test unverified in this environment due to missing `uv`
   - Why: distribution is still important, but the live site review showed the sitemap still exposing a large volume of low-intent docs utility pages. Tightening that index surface is a higher-leverage trust/SEO move than another small generic submission because it concentrates crawl/index attention on the pages that actually answer what Ralph Workflow is, who it is for, why it is different, and why to try it now.
+
+### RalphWorkflow Conversion
+- **Docs homepage SEO / crawl-surface cleanup**: tightened the public hosted-docs homepage title to a 55-character combined title (`Free open-source unattended coding CLI — Ralph Workflow`) and removed the leftover `genindex` / `modindex` / `search` refs from `ralph-workflow/docs/sphinx/index.rst`, so the docs entry page gives a cleaner search/social title and stops linking low-intent utility pages from a primary conversion surface.
+  - Commit: `e71e969d` — `Tighten docs homepage title and index surface`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: `git diff -- ralph-workflow/docs/sphinx/index.rst`; scripted check confirmed combined title length `55` and no remaining `genindex` / `modindex` / `search` refs in the homepage source; local build/test unverified in this environment due to missing `sphinx`
+  - Why: the latest live SEO report still showed an overlong homepage title plus low-intent docs utility pages lingering in the crawl surface. Since the current bottleneck is conversion/adoption quality rather than more generic awareness, cleaning the primary public docs entry point was the highest-leverage move that was actually executable right now.

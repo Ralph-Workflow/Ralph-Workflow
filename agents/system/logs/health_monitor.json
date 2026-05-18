@@ -123,3 +123,5 @@
 {"ts": "2026-05-18T10:35:11.546878", "jobs_checked": 16, "issues_found": 0, "issues": []}
 {"ts": "2026-05-18T11:00:08.691474", "jobs_checked": 16, "issues_found": 0, "issues": []}
 {"ts": "2026-05-18T11:32:40.361725", "jobs_checked": 16, "issues_found": 0, "issues": []}
+{"ts": "2026-05-18T12:05:26.695434", "jobs_checked": 16, "issues_found": 0, "issues": []}
+{"ts": "2026-05-18T12:35:10.116612", "jobs_checked": 16, "issues_found": 1, "issues": [{"job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854", "name": "marketing-active-loop", "consecutive_errors": 2, "last_status": "error", "last_error": "cron: job execution timed out", "timeout_seconds": 600, "last_duration_ms": 600377, "likely_cause": "TIMEOUT_TOO_TIGHT: script took 600377ms but limit was 600s - needs more headroom"}]}

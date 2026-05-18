@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-05-18T09:22:08.668075+02:00",
+  "updated_at": "2026-05-18T12:22:54.285805+02:00",
   "channels": [
     {
       "id": "devto",
@@ -337,6 +337,39 @@
           "summary": "No dev.to API key configured.",
           "details": {},
           "timestamp": "2026-05-18T09:22:08.636913+02:00"
+        },
+        {
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": [
+              "Ad/tracker blocking is optional for usability/privacy, not for bypassing protections"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258181+02:00"
+        },
+        {
+          "action": "prepare_manual_api_key_request",
+          "status": "useful",
+          "summary": "Prepared API key request checklist for user completion.",
+          "details": {
+            "steps": [
+              "User creates or confirms dev.to account",
+              "User provides API key or OAuth approval"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258192+02:00"
+        },
+        {
+          "action": "check_auth_status",
+          "status": "blocked",
+          "summary": "No dev.to API key configured.",
+          "details": {},
+          "timestamp": "2026-05-18T12:22:54.258197+02:00"
         }
       ]
     },
@@ -775,6 +808,50 @@
           "summary": "No approved Twitter auth path configured yet. Keep pursuing the best legitimate local route toward a usable session/API path.",
           "details": {},
           "timestamp": "2026-05-18T09:22:08.637090+02:00"
+        },
+        {
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": [
+              "Ad/tracker blocking is optional for privacy only"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258360+02:00"
+        },
+        {
+          "action": "document_policy_requirements",
+          "status": "useful",
+          "summary": "Documented policy-sensitive prerequisites and manual steps.",
+          "details": {
+            "blockers": [
+              "Login/session flow unreliable",
+              "No approved posting session or API access"
+            ],
+            "forbidden_actions": [
+              "bot_evasion",
+              "stealth_automation",
+              "synthetic_identity_creation",
+              "captcha_evasion"
+            ],
+            "manual_prerequisites": [
+              "User creates or confirms account",
+              "User completes any phone/email verification",
+              "User provides approved API/session route if allowed"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258368+02:00"
+        },
+        {
+          "action": "check_auth_status",
+          "status": "blocked",
+          "summary": "No approved Twitter auth path configured yet. Keep pursuing the best legitimate local route toward a usable session/API path.",
+          "details": {},
+          "timestamp": "2026-05-18T12:22:54.258372+02:00"
         }
       ]
     },
@@ -1084,6 +1161,36 @@
             ]
           },
           "timestamp": "2026-05-18T09:22:08.637299+02:00"
+        },
+        {
+          "action": "document_community_requirements",
+          "status": "useful",
+          "summary": "Documented that this channel requires genuine manual participation before promotion.",
+          "details": {
+            "blockers": [
+              "Needs account and subreddit reputation",
+              "Automated posting likely inappropriate without established presence"
+            ],
+            "manual_prerequisites": [
+              "User creates account",
+              "User builds genuine participation history manually"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258400+02:00"
+        },
+        {
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": [
+              "Ad/tracker blocking is optional for privacy only"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258534+02:00"
         }
       ]
     },
@@ -1372,6 +1479,34 @@
             "notes": []
           },
           "timestamp": "2026-05-18T09:22:08.637457+02:00"
+        },
+        {
+          "action": "document_community_requirements",
+          "status": "useful",
+          "summary": "Documented that this channel requires genuine manual participation before promotion.",
+          "details": {
+            "blockers": [
+              "Needs account",
+              "Posting should be manual and policy-aware"
+            ],
+            "manual_prerequisites": [
+              "User creates account",
+              "User manually submits launch/post when ready"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258558+02:00"
+        },
+        {
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": []
+          },
+          "timestamp": "2026-05-18T12:22:54.258685+02:00"
         }
       ]
     },
@@ -1540,6 +1675,21 @@
             ]
           },
           "timestamp": "2026-05-18T09:22:08.637477+02:00"
+        },
+        {
+          "action": "document_community_requirements",
+          "status": "useful",
+          "summary": "Documented that this channel requires genuine manual participation before promotion.",
+          "details": {
+            "blockers": [
+              "Needs account/invite",
+              "Community fit should be validated manually"
+            ],
+            "manual_prerequisites": [
+              "User obtains legitimate account/invite"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258705+02:00"
         }
       ]
     },
@@ -1893,6 +2043,41 @@
             ]
           },
           "timestamp": "2026-05-18T09:22:08.637633+02:00"
+        },
+        {
+          "action": "verify_browser_readiness",
+          "status": "useful",
+          "summary": "Desktop browser available: chromium.",
+          "details": {
+            "available_browsers": [
+              "chromium"
+            ],
+            "notes": [
+              "Browser should be stable for manual launch prep"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258849+02:00"
+        },
+        {
+          "action": "document_policy_requirements",
+          "status": "useful",
+          "summary": "Documented policy-sensitive prerequisites and manual steps.",
+          "details": {
+            "blockers": [
+              "Manual launch flow required",
+              "Anti-bot protections on submit flow"
+            ],
+            "forbidden_actions": [
+              "anti_bot_evasion",
+              "fake_accounts",
+              "launch_spam"
+            ],
+            "manual_prerequisites": [
+              "User creates or confirms Product Hunt account",
+              "User completes launch assets and manual submission"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258855+02:00"
         }
       ]
     },
@@ -2118,6 +2303,27 @@
             "output": "You are not logged into any GitHub hosts. To log in, run: gh auth login"
           },
           "timestamp": "2026-05-18T09:22:08.667780+02:00"
+        },
+        {
+          "action": "prepare_manual_token_upgrade",
+          "status": "useful",
+          "summary": "Prepared token upgrade checklist for user completion.",
+          "details": {
+            "steps": [
+              "User creates new PAT or GitHub App with required scopes",
+              "User confirms which repos/actions are authorized"
+            ]
+          },
+          "timestamp": "2026-05-18T12:22:54.258875+02:00"
+        },
+        {
+          "action": "check_auth_status",
+          "status": "partial",
+          "summary": "GitHub auth status checked.",
+          "details": {
+            "output": "You are not logged into any GitHub hosts. To log in, run: gh auth login"
+          },
+          "timestamp": "2026-05-18T12:22:54.285522+02:00"
         }
       ]
     }
