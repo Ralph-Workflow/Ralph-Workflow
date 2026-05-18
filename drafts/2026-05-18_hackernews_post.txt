@@ -3,6 +3,7 @@
 Primary asset:
 - Article: How to Tell if an AI Coding Task Is Actually Done
 - Article URL: https://write.as/7pqpd2y0v0re2.md
+- Primary Codeberg repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 - GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 - Main site: https://ralphworkflow.com
 
@@ -23,7 +24,7 @@ Why this asset:
 Suggested first comment:
 I wrote this because most AI coding discussion still focuses on model quality, but the workflow gap feels more important: agents say "done" before the result is something you'd actually merge.
 
-The product angle behind the piece is Ralph Workflow: a free and open-source tool that orchestrates the coding agents you already use on your own machine, so longer unattended runs end in something reviewable instead of just a transcript. Repo if you want to inspect the implementation: https://github.com/Ralph-Workflow/Ralph-Workflow
+The product angle behind the piece is Ralph Workflow: a free and open-source tool that orchestrates the coding agents you already use on your own machine, so longer unattended runs end in something reviewable instead of just a transcript. Repo if you want to inspect the implementation: https://codeberg.org/RalphWorkflow/Ralph-Workflow (primary). If you mainly track projects on GitHub, the mirror is https://github.com/Ralph-Workflow/Ralph-Workflow
 
 Likely reply angles if discussion starts:
 - worktrees solve file conflicts, not semantic trust
@@ -34,5 +35,5 @@ Likely reply angles if discussion starts:
 Manual posting steps:
 1. Open https://news.ycombinator.com/submit
 2. Submit as a link post with the title and URL above
-3. If comments open, add the suggested first comment with the GitHub mirror link
+3. If comments open, add the suggested first comment with the primary Codeberg repo link (and mention the GitHub mirror only if that context helps)
 4. Watch for early skepticism around worktrees / code review / hype and answer with the reply angles above

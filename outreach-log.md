@@ -1157,3 +1157,31 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Verification: live POST returned `200` and landed on `https://formspree.io/thanks`
   - Positioning used: free and open source; orchestrates Claude Code, Codex, and OpenCode on your own machine; for developers with engineering work too big to babysit and too risky to trust blindly; different because it runs plan → build → verify unattended and hands back substantial reviewable output; worth trying now because you can run one real backlog task tonight and decide tomorrow whether you would merge it.
   - Why: the strongest executable move right now was still net-new distribution into developer-native discovery surfaces that can feed GitHub inspection and adoption. DeepYard was untried, high-fit, and actually writable from this environment, so it beat another internal asset tweak.
+
+### Site messaging review — 2026-05-18 22:15 CEST
+- Reviewed live https://ralphworkflow.com against REDDIT_LEARNINGS.md and outreach-log.md
+- **Verdict:** No directional change. Core positioning, three-phase flow, overnight promise, PR-review framing, and "would you merge it?" evaluation remain intact.
+- **Sharpened language confirmed live:** "Other AI tools give you a start. Ralph Workflow gives you a finish."; "Start the job and close the laptop"; "What you can ship tonight"; "Plan → Build → Verify" three-phase shorthand.
+- **New additions observed:** sharper "Sound familiar?" problem statement block with explicit hallucinate/babysitting/midnight failure framing; nine concrete "What you can ship tonight" task types listed; three phases now numbered and explicit on page; "Ralph Workflow does not replace your AI tool — it gives it a clearer finish line" objection-handler confirmed live.
+- REDDIT_LEARNINGS.md updated with second review note. outreach-log.md appended.
+
+### RalphWorkflow Conversion
+- **Codeberg-primary adoption CTA rewrite across first-screen public surfaces**: Rewrote the public README, `START_HERE.md`, hosted docs homepage source, and three high-intent trust pages (`which-agent-should-i-start-with`, `claude-code-codex-workflow`, `what-breaks-first-with-multiple-coding-agents`, `what-a-good-ai-coding-finish-receipt-looks-like`) so they now point to **Codeberg as the primary repo/adoption action** and treat GitHub explicitly as the mirror.
+  - Commit: `ee15a0e0` — `Prioritize Codeberg on public adoption surfaces`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: reviewed `git diff`; grep confirmed new `primary Codeberg repo` / `star or watch it on Codeberg` language on all edited surfaces; live push succeeded to both `origin` (Codeberg) and `github`; public raw README fetch succeeded from both `codeberg.org` and `raw.githubusercontent.com`
+  - Why: this is a **rewritten tactic replacing a failed mirror-first conversion push**. The latest audit and adoption window were flat, while the workflow principles explicitly say Codeberg is the primary adoption surface. Public CTAs were still over-weighting GitHub-native inspection language, which mismatched the actual metric we care about.
+  - Expected outcome: higher Codeberg star/watch/fork conversion from existing traffic because the first-screen public path now sends evaluators to the primary repo instead of splitting intent toward the mirror.
+  - Measurement window: next 7 days / next 9 adoption samples, with Codeberg stars/watchers/forks as the primary scorecard and GitHub mirror movement only as secondary evidence.
+  - Replace if it fails: if Codeberg adoption stays flat through the next 7-day / 9-sample window, stop spending cycles on repo-CTA wording tweaks and replace this with a net-new Codeberg-native distribution push that sends warm traffic directly to Codeberg proof pages or issue/discussion surfaces.
+
+
+## 2026-05-19 (Tuesday)
+
+### RalphWorkflow Primary-repo conversion repair
+- **Repaired distribution handoff to the primary repo**: rewired the live comparison-page generator (`agents/marketing/competitor_analysis.py`), all current generated comparison pages under `seo-reports/comparisons/`, the HN/Lobsters submission packets, and the current Reddit next-window packets so they now point warm evaluation traffic to the **primary Codeberg repo first** instead of treating GitHub as the default destination; also fixed a stale Hacker News draft article URL back to the canonical `How to Tell if an AI Coding Task Is Actually Done` write.as link.
+  - Verification: `python3 -m py_compile agents/marketing/competitor_analysis.py`; grep check confirmed all 8 comparison pages now contain `Primary Codeberg repo →` and no longer use the old GitHub-only CTA; grep checks confirmed the HN/Lobsters packets now name Codeberg as primary and the Reddit next-window packets now seed Codeberg doc links.
+  - Why: this is a **repaired tactic replacing a failed GitHub-first handoff**. The latest audit says Codeberg is the primary adoption surface, but several live/proximate distribution assets were still routing inspection intent to GitHub or even using a stale owned-content URL. That mismatch quietly optimized the wrong repo and weakened the next executable distribution moves.
+  - Expected outcome: better alignment between marketing traffic and the primary adoption metric, plus cleaner next-window Reddit / HN / Lobsters handoffs because evaluators now land on Codeberg first when they want to inspect Ralph Workflow.
+  - Measurement window: next 7 days / next 9 adoption samples, with Codeberg stars/watchers/forks as the primary scorecard and GitHub mirror movement only as secondary evidence.
+  - Replace if it fails: if Codeberg still stays flat across the next measurement window, stop spending cycles on repo-destination routing tweaks and replace this tactic with a fresh distribution move that creates new high-intent traffic (not more CTA rewrites).

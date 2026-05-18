@@ -6,7 +6,8 @@ Text:
 
 Primary asset:
 - Article: How to Tell if an AI Coding Task Is Actually Done
-- Article URL: https://write.as/qpvecytuagtph.md
+- Article URL: https://write.as/7pqpd2y0v0re2.md
+- Primary Codeberg repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 - GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 - Main site: https://ralphworkflow.com
 
@@ -17,7 +18,7 @@ Title:
 How to Tell if an AI Coding Task Is Actually Done
 
 URL:
-https://write.as/qpvecytuagtph.md
+https://write.as/7pqpd2y0v0re2.md
 
 Why this asset:
 - strongest current trust/pain framing for HN

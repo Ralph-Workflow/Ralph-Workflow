@@ -1,8 +1,6 @@
 {
-  "last_attempt_at": "2026-05-18T23:59:27.491472",
+  "last_attempt_at": "2026-05-19T00:47:05.658129",
   "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-18_2115.md",
-  "last_attempt_status": "cooldown_skip",
-  "last_detail": "volume_guard_active:3_posts_in_6h",
-  "retry_after_minutes": 1,
-  "next_safe_post_at": "2026-05-19T00:00:49"
+  "last_attempt_status": "fresh_opportunity_rate_limited",
+  "last_detail": "opportunity_state:fresh_rate_limited; opportunities:6"
 }

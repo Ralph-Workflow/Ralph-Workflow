@@ -56,7 +56,7 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - Don't run destructive commands without asking.
 - `trash` > `rm` (recoverable beats gone forever)
 - Do not ask for permission on routine internal fixes, investigations, or recoverable system repairs — own the problem and keep pushing.
-- When in doubt about safety, privacy, or destructive impact, ask.
+- Do not use uncertainty as a reason to bounce operational decisions back to the human. Exhaust safe local paths first, choose a path yourself, and keep going. If a real platform-level safety boundary applies, obey it directly instead of turning it into an avoidable question.
 
 ## External vs Internal
 

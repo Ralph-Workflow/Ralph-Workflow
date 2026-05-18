@@ -7,7 +7,8 @@ Story: === LOBSTERS SUBMISSION PACKET ===
 
 Primary asset:
 - Article: How to Tell if an AI Coding Task Is Actually Done
-- Article URL: https://write.as/qpvecytuagtph.md
+- Article URL: https://write.as/7pqpd2y0v0re2.md
+- Primary Codeberg repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 - GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 - Main site: https://ralphworkflow.com
 
@@ -21,17 +22,17 @@ Tags:
 ai, programming, tools
 
 URL:
-https://write.as/qpvecytuagtph.md
+https://write.as/7pqpd2y0v0re2.md
 
 Why this asset:
 - technical enough for Lobsters if kept workflow-first and non-promotional
 - centers on verification, reviewability, and merge judgment instead of model hype
-- gives interested readers a free/open-source implementation path on their own machine via the GitHub mirror
+- gives interested readers a free/open-source implementation path on their own machine via the primary Codeberg repo, with GitHub available as a mirror
 
 Suggested story/comment framing:
 This is the workflow question I keep finding more useful than "which coding agent is best?" — what evidence do you need before an AI-generated change is actually ready to merge?
 
-The implementation behind the essay is Ralph Workflow, a free and open-source tool that orchestrates existing coding agents on your own machine for unattended project-scale work and reviewable morning-after output. Source: https://github.com/Ralph-Workflow/Ralph-Workflow
+The implementation behind the essay is Ralph Workflow, a free and open-source tool that orchestrates existing coding agents on your own machine for unattended project-scale work and reviewable morning-after output. Source: https://codeberg.org/RalphWorkflow/Ralph-Workflow (primary repo). GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 
 Likely reply angles if discussion starts:
 - worktrees help isolation but do not prove the merged result holds up

@@ -62,4 +62,4 @@ $EDITOR PROMPT.md  # write your task
 ralph  # walk away
 ```
 
-[Install guide →](https://ralphworkflow.com/docs) · [Quick start →](https://ralphworkflow.com/docs#quick-start) · [GitHub →](https://github.com/Ralph-Workflow/Ralph-Workflow)
+[Install guide →](https://ralphworkflow.com/docs) · [Quick start →](https://ralphworkflow.com/docs#quick-start) · [Primary Codeberg repo →](https://codeberg.org/RalphWorkflow/Ralph-Workflow) · [GitHub mirror →](https://github.com/Ralph-Workflow/Ralph-Workflow)

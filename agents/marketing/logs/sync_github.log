@@ -942,3 +942,8 @@
 [2026-05-19 00:00:01] Starting Codeberg → GitHub sync
 [2026-05-19 00:00:01] Pulling latest from Codeberg
 [2026-05-19 00:00:10] Already up to date (HEAD=52145b10792a816d7277f268c962d3d5b06e6d85)
+[2026-05-19 00:30:01] Starting Codeberg -> GitHub sync
+[2026-05-19 00:30:01] Creating dedicated sync clone in /tmp/ralph-github-sync
+[2026-05-19 01:00:01] Starting Codeberg -> GitHub sync
+[2026-05-19 01:00:01] Creating dedicated sync clone in /tmp/ralph-github-sync
+[2026-05-19 01:00:21] Already up to date (HEAD=ee15a0e00126f5d4dbdc497836f9c0d0bbc82757)
