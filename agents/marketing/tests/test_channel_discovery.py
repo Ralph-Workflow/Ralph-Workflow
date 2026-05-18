@@ -46,6 +46,34 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "broken_submit_surface")
         self.assertIn("no usable form controls", note)
 
+    def test_classifies_noop_submit_surface_when_form_only_swaps_to_success_copy(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {
+                "probe_status": "ok",
+                "form_count": 1,
+                "input_count": 5,
+                "textarea_count": 1,
+                "select_count": 1,
+                "body_excerpt": "Submit a Tool\nTool Name\nWebsite URL\nDescription\nSubmit Tool",
+                "forms": [
+                    {
+                        "action": None,
+                        "method": None,
+                        "control_count": 7,
+                        "named_control_count": 0,
+                    }
+                ],
+            },
+            {
+                "probe_status": "ok",
+                "has_prevent_default": True,
+                "has_success_markers": True,
+                "has_network_submission_markers": False,
+            },
+        )
+        self.assertEqual(status, "noop_submit_surface")
+        self.assertIn("client-side only", note)
+
     def test_submission_probe_gate_only_triggers_for_real_submit_pages(self):
         self.assertTrue(channel_discovery.submission_surface_needs_form_probe(
             "https://www.toolhunter.cc/submit",
@@ -62,6 +90,7 @@ class ChannelDiscoveryTests(unittest.TestCase):
         working = channel_discovery.build_working_channels([
             {"name": "slashdot", "status": "login_required", "difficulty": "medium", "url": "u", "method": "submit"},
             {"name": "toolhunt", "status": "parked", "difficulty": "easy", "url": "u", "method": "submit"},
+            {"name": "devpages", "status": "noop_submit_surface", "difficulty": "easy", "url": "u", "method": "submit"},
             {"name": "saashub", "status": "accessible", "difficulty": "easy", "url": "u", "method": "submit"},
         ])
         self.assertEqual([item["name"] for item in working], ["saashub"])

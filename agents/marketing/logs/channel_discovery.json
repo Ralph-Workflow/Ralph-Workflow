@@ -198,7 +198,7 @@
       "url": "https://saashub.com",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-18T13:34:06.596585",
+      "timestamp": "2026-05-18T14:55:53.677636",
       "http_code": "200",
       "final_url": "https://www.saashub.com/",
       "status": "accessible"
@@ -238,7 +238,7 @@
       "url": "https://blogsearch.google.com",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-18T13:34:08.053904",
+      "timestamp": "2026-05-18T14:55:55.081729",
       "http_code": "200",
       "final_url": "https://www.google.com/",
       "status": "accessible"
@@ -306,18 +306,49 @@
       "url": "https://devpages.io/submit-a-tool",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-18T13:34:14.094801",
+      "timestamp": "2026-05-18T14:32:08.944546",
       "http_code": "200",
       "final_url": "https://devpages.io/submit-a-tool",
-      "status": "accessible",
+      "status": "noop_submit_surface",
       "surface_probe": {
         "probe_status": "ok",
         "form_count": 2,
         "input_count": 285,
         "textarea_count": 1,
         "select_count": 2,
-        "body_excerpt": "D\nDevPagesbeta\nHome\nCategories\nTop 20\nBlog\nSubmit Tool\nCommunity\nLight mode\nSearch\nSign In\nBack to Home\nSubmit a Tool\n\nKnow a great developer tool that should be in our directory? Submit it below and help fellow developers discover it.\n\nTool Name *\nWebsite URL *\nDescription *\nCategory *\nSelect a category\nGenerative AI\nAI/ML Tools\nDevOps\nCloud Infrastructure\nObservability\nAPIs\nFrameworks\nDatabases\nSecurity\nFinance Tools\nLearning Platforms\nPricing Model\nFree\nFreemium\nPaid\nOpen Source\nGitHub URL (optional)\nYour Email *\n\nWe'll notify you when your submission is reviewed.\n\nSubmit Tool\nD\nDevPages.io\n\nDev Pages - The Developer Tools Directory. Discover, Compare & Master Software Development Tools. Your ultimate hub for builders.\n\nNavigation\nHome\nCategories\nTop 20\nSubmit Tool\nCommunity\nResources\nA"
-      }
+        "body_excerpt": "D\nDevPagesbeta\nHome\nCategories\nTop 20\nBlog\nSubmit Tool\nCommunity\nLight mode\nSearch\nSign In\nBack to Home\nSubmit a Tool\n\nKnow a great developer tool that should be in our directory? Submit it below and help fellow developers discover it.\n\nTool Name *\nWebsite URL *\nDescription *\nCategory *\nSelect a category\nGenerative AI\nAI/ML Tools\nDevOps\nCloud Infrastructure\nObservability\nAPIs\nFrameworks\nDatabases\nSecurity\nFinance Tools\nLearning Platforms\nPricing Model\nFree\nFreemium\nPaid\nOpen Source\nGitHub URL (optional)\nYour Email *\n\nWe'll notify you when your submission is reviewed.\n\nSubmit Tool\nD\nDevPages.io\n\nDev Pages - The Developer Tools Directory. Discover, Compare & Master Software Development Tools. Your ultimate hub for builders.\n\nNavigation\nHome\nCategories\nTop 20\nSubmit Tool\nCommunity\nResources\nA",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "Tool Name *\nWebsite URL *\nDescription *\nCategory *\nSelect a category\nGenerative AI\nAI/ML Tools\nDevOps\nCloud Infrastructure\nObservability\nAPIs\nFrameworks\nDatabases\nSecurity\nFinance Tools\nLearning Platforms\nPricing Model\nFree\nFreemium\nPaid\nOpen Source\nGitHub URL (optional)\nYour Email *\n\nWe'll notify y",
+            "control_count": 7,
+            "named_control_count": 0
+          },
+          {
+            "index": 1,
+            "action": null,
+            "method": null,
+            "text": "Email address\nSubscribe",
+            "control_count": 1,
+            "named_control_count": 0
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 13,
+        "same_origin_script_count": 13,
+        "scripts_fetched": 12,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": true,
+        "submit_handler_window_count": 1,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": true
+      },
+      "note": "submission UI appears client-side only: form has no action, controls have no names, success copy is embedded, and no network submission markers were found"
     }
   ],
   "working": [
@@ -332,12 +363,6 @@
       "url": "https://blogsearch.google.com",
       "method": "submit",
       "difficulty": "medium"
-    },
-    {
-      "name": "devpages",
-      "url": "https://devpages.io/submit-a-tool",
-      "method": "submit",
-      "difficulty": "easy"
     }
   ]
 }
