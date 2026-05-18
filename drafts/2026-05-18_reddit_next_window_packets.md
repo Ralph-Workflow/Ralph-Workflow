@@ -1,87 +1,113 @@
-# RalphWorkflow Reddit next-window seeding packet — 2026-05-18
+# RalphWorkflow Reddit next-window seeding packet — 2026-05-18 20:25 Europe/Berlin
 
-Use these only if the threads are still fresh enough and there is a real safe posting window. The goal is not to force a mention. The goal is to have 2–3 thread-native, non-repetitive replies ready before the next window opens **and** to seed a stronger conversion path than a bare GitHub link.
+Live posting is **not** the move right now.
 
-**Conversion rule for this packet:** when the fit is real, link to the most relevant comparison / trust page on the GitHub mirror first, because that puts the reader on a concrete proof page that can still convert into a star/watch from the same surface.
+Latest watchdog check at 2026-05-18 20:26 Europe/Berlin returned:
+- `status: cooldown_skip`
+- `detail: volume_guard_active:3_posts_in_6h`
+- `retry_after_minutes: 94`
+- `next_safe_post_at: 2026-05-18T22:00:46`
+
+So this packet is optimized for the **next safe window**, not for forcing a post now.
+
+Use these only if the threads are still fresh enough and the next watchdog check clears the rate window. The job here is to turn the next live Reddit reply into a cleaner **Reddit → proof page → GitHub inspection/star** path.
+
+**Why this refresh mattered:** the previous packet had gone stale and still centered a checkpoint-commits thread that has already been used. This version only keeps current unused threads from the latest monitor and pushes them toward the strongest matching public proof/comparison pages.
 
 Messaging guardrails preserved in every draft:
 - what it is: Ralph Workflow is a free and open-source tool that orchestrates the coding agents you already use on your own machine
 - who it is for: developers doing engineering work too big to babysit and too risky to trust blindly
-- why different: it is about reviewable finish state, not just more agent sessions
+- why different: it is about a reviewable finish state, not just more agent sessions
 - why now: you can use it tonight for overnight work and wake up to something you can actually review
 
 ---
 
-## 1) r/ClaudeCode — Autonomous Claude Code runs in the new reality
+## 1) Primary: r/ClaudeCode — Autonomous Claude Code runs in the new reality
 - URL: https://www.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/
 - Best landing page to seed:
-  - https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/review-ai-coding-output-before-merge.md
-- Why this is the best next fit:
-  - explicit unattended-run thread
-  - room for bounded-autonomy advice instead of hype
-  - naturally supports the overnight-reviewable promise
-  - strongest path for review-standard -> proof page -> GitHub star/watch
+  - https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/when-unattended-coding-fits.md
+- Why this is first:
+  - strongest current unused unattended-run thread
+  - naturally matches the core promise: start the job, close the laptop, review the result later
+  - this page answers all four marketing questions without feeling like a generic product pitch
 
 ### Draft body A
-I think the useful target is boring autonomy, not maximum autonomy.
+The part that matters to me is not whether a run *looks* autonomous. It is whether the task was shaped tightly enough that I can judge the result fast the next morning.
 
-If a run needs constant steering, it is not really unattended. But if it comes back with a giant diff, fuzzy stop conditions, and no evidence, that is not useful either. The sweet spot is a task that ends with a small review packet: one bounded objective, checks that ran before the agent called it done, and a short note on assumptions or unresolved decisions.
+A lot of overnight failures are really task-fit failures: vague scope, no real stop condition, or a job that needed live judgment all along. When the task is bounded and the checks are obvious, unattended runs get much more boring in a good way.
 
-That is why I care less about whether a tool feels autonomous and more about whether the morning-after handoff is easy to judge. If it helps, I wrote up the merge standard I use here:
-https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/review-ai-coding-output-before-merge.md
+I wrote down the filter I use here:
+https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/when-unattended-coding-fits.md
 
-That page is in Ralph Workflow’s repo because that is the workflow I wanted: free and open source, uses the agents you already run on your own machine, and is aimed at overnight work that is too big to babysit but too risky to trust blindly. Use Ralph or not, I’d still keep the same bar: if you cannot answer “what changed, what passed, and would I merge it?” in a couple minutes, the unattended run was too loose.
+That page lives in Ralph Workflow’s repo because Ralph is the free/open-source version of the workflow I wanted for this: keep the agents you already run on your own machine, hand them real work overnight, and come back to something reviewable instead of another transcript that only sounds done.
 
 ---
 
-## 2) r/ClaudeAI — Claude Code’s checkpoint commits are polluting my git history. How are you handling this?
-- URL: https://www.reddit.com/r/ClaudeAI/comments/1taz6hd/claude_codes_checkpoint_commits_are_polluting_my/
+## 2) Strong backup: r/ClaudeCode — Claude Code approval / plan mode questions
+- URL: https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/
 - Best landing page to seed:
   - https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/review-ai-coding-output-before-merge.md
-- Why keep this as strong backup:
-  - valuable cleanup pain signal
-  - tactical thread, but still directly about the human review surface
-  - cleanest available path for “review surface > execution noise” positioning
+- Why this is the best backup:
+  - real approval drag thread, not abstract tool fandom
+  - lets the reply stay useful even if Ralph stays secondary
+  - this trust page keeps the focus on finish contract, not prompt tricks
 
 ### Draft body B
-My rule is that checkpoint commits are for recovery, not for the human review surface.
+Approval friction usually gets worse when the real finish line is fuzzy.
 
-So I separate the two jobs. Let the agent checkpoint as much as it needs while it is executing, then collapse that noise before handoff into one branch or PR surface a human can review without archaeology. What matters at the end is not every intermediate save point. It is whether I can see the final diff, the checks that ran, and the still-open judgment calls.
+If the system keeps asking for input because the task has no clean review surface, you end up supervising the whole run anyway. The fix is less about cleverer prompt choreography and more about making the handoff legible: bounded scope, real checks, and a short summary of what changed and what still needs a human call.
 
-I wrote up that merge-surface standard here because this is the part most people actually feel in the morning:
+This is the review bar I keep coming back to:
 https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/review-ai-coding-output-before-merge.md
 
-That guide lives inside Ralph Workflow’s GitHub mirror because Ralph is the free/open-source version of the workflow I wanted: orchestrate the agents you already use on your own machine, let them run overnight, and come back to something reviewable instead of a pile of checkpoints and “done” messages.
+That guide is in Ralph Workflow’s repo because Ralph is the free/open-source workflow I built around this exact pain: orchestrate the agents you already use on your own machine, let them do substantial unattended work, and wake up to something you can actually review instead of babysitting plan mode all night.
 
 ---
 
-## 3) r/ClaudeCode — Impressions two weeks after moving from Claude Code to Codex
+## 3) Comparison backup: r/ClaudeCode — Impressions two weeks after moving from Claude Code to Codex
 - URL: https://www.reddit.com/r/ClaudeCode/comments/1tbcfmi/impressions_two_weeks_after_moving_from_claude/
 - Best landing page to seed:
   - https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/claude-code-codex-workflow.md
-- Why this is the best comparison backup:
-  - comparative thread, but workflow-aware instead of pure model-fandom
-  - good fit for role-split language and cleaner handoff framing
-  - direct path into a comparison page that already routes to first-task / proof / GitHub actions
+- Why this stays in the packet:
+  - comparative thread, but still workflow-shaped
+  - best fit for role split / handoff / morning-after re-entry language
+  - gives a softer path than a raw repo link because it starts with a concrete workflow page
 
 ### Draft body C
-My take after using both is that the tool choice matters less than whether the handoff between phases stays clean.
+What usually changes for me when I switch between Claude Code and Codex is not “which one won.” It is where I place the phase boundaries.
 
-Codex can be great when I want a harder implementation push. Claude is often better when I want planning pressure or a skeptical read on the diff. The pain starts when I am manually glueing those roles together at 1 a.m. and then reconstructing the run again the next morning.
+One tool can be better for pushing the implementation forward, the other can be better for challenging the result, but the annoying part is still the glue: who owns the diff, who owns the checks, and what I reopen in the morning so I do not have to reconstruct the whole night.
 
-That is the workflow gap I tried to write down here:
+I ended up writing that workflow down here:
 https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/claude-code-codex-workflow.md
 
-It is part of Ralph Workflow because Ralph is the free/open-source way I handle that on my own machine now: keep the agents I already use, let the run go overnight, and come back to something substantial I can inspect instead of another transcript claiming it is done.
+That page is part of Ralph Workflow because Ralph is the free/open-source way I handle that on my own machine now: keep the agents I already use, let them work overnight, and come back to something substantial I can inspect instead of another “done” claim.
 
-If I were choosing tonight, I would optimize less for “which model won?” and more for “who owns planning, who owns implementation, who owns the final judgment, and can I review the finish in one sitting?”
+---
+
+## Optional fourth thread only if the first three have cooled off
+### r/ClaudeCode — Remote supervision of coding agents
+- URL: https://www.reddit.com/r/ClaudeCode/comments/1tacxs0/remote_supervision_of_coding_agents/
+- Best landing page to seed:
+  - https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/what-a-good-ai-coding-finish-receipt-looks-like.md
+
+### Draft body D
+Remote supervision sounds useful, but the bigger win for me has been making the handoff self-explanatory enough that I do not need to supervise much in the first place.
+
+If the result comes back with a short finish receipt, a bounded diff, and real checks, I can review it whenever I am back at the desk. If it needs live remote watching to stay trustworthy, the workflow is still doing too much work in the transcript and not enough in the finish state.
+
+This is the receipt standard I use:
+https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/what-a-good-ai-coding-finish-receipt-looks-like.md
+
+Ralph Workflow is the free/open-source workflow I built around that idea: use the agents you already have on your own machine, let them run when the task is a good unattended fit, and come back to a reviewable morning-after handoff.
 
 ---
 
 ## Posting discipline before using any of these
 1. Re-read the last 3 logged Reddit bodies first.
-2. If the thread has shifted, rewrite the opener instead of forcing the draft.
-3. If the reply is useful without Ralph, keep Ralph secondary.
-4. If the mention feels bolted on, drop it and treat the thread as research-only.
-5. Prefer one seeded link to the most relevant trust/comparison page, not both a docs link and a second raw GitHub CTA.
-6. Prefer only one of these in the next window unless a second thread is clearly exceptional.
+2. Re-run `python3 agents/marketing/reddit_watchdog.py` before posting; do not trust this file alone on timing.
+3. If the thread has shifted, rewrite the opener instead of forcing the draft.
+4. If the reply is useful without Ralph, keep Ralph secondary.
+5. Use one seeded proof/comparison link only — no link pile.
+6. Prefer only one post in the next safe window unless a second thread is clearly exceptional.
+7. Reject any draft that falls back into the same cadence as the last three bodies.

@@ -1,8 +1,8 @@
 {
-  "last_attempt_at": "2026-05-18T19:55:40.738896",
+  "last_attempt_at": "2026-05-18T20:56:35.902255",
   "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-18_1815.md",
   "last_attempt_status": "cooldown_skip",
   "last_detail": "volume_guard_active:3_posts_in_6h",
-  "retry_after_minutes": 125,
+  "retry_after_minutes": 64,
   "next_safe_post_at": "2026-05-18T22:00:46"
 }

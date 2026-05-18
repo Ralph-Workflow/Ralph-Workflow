@@ -1098,3 +1098,11 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Submission path: `https://aixlist.com/submit` → backend `https://aixlist.com/api/submit`
   - Verification: `POST /api/tools/generate-detail-preview` returned `200`; live `POST /api/submit` returned `200` with `{"success":true}`; follow-up duplicate check via `POST /api/autofill` for `https://ralphworkflow.com` now returns `409` with `duplicate: true` and `existingName: "Ralph Workflow"`
   - Why: today’s bottleneck is still distribution-to-adoption, not more conversion copy. AIXList was a genuinely executable, high-fit AI/developer discovery surface that could be shipped immediately from this environment, so it was higher leverage than writing another generic asset.
+
+### RalphWorkflow Reddit conversion prep
+- **Next-safe-window seeding packet refresh**: Rebuilt `drafts/2026-05-18_reddit_next_window_packets.md` around the current unused `r/ClaudeCode` opportunities after confirming the live post window was still blocked (`cooldown_skip`, `volume_guard_active:3_posts_in_6h`, `retry_after_minutes: 94`, `next_safe_post_at: 2026-05-18T22:00:46` from `python3 agents/marketing/reddit_watchdog.py`).
+  - Replaced the stale packet that still centered the already-used checkpoint-commits thread.
+  - Prepared fresh thread-native bodies for: `Autonomous Claude Code runs in the new reality`, `Claude Code approval / plan mode questions`, `Impressions two weeks after moving from Claude Code to Codex`, plus a `Remote supervision of coding agents` backup.
+  - Seed targets now route to stronger proof/comparison pages on the GitHub mirror first: `when-unattended-coding-fits.md`, `review-ai-coding-output-before-merge.md`, `claude-code-codex-workflow.md`, and `what-a-good-ai-coding-finish-receipt-looks-like.md`.
+  - Verification: live watchdog check plus readback/grep on the refreshed packet.
+  - Why: the bottleneck is still Reddit-to-GitHub adoption, but posting was not executable right now. Refreshing the next safe-window packet was the highest-leverage cooldown move because it upgrades the next live distribution slot from a stale thread/body into a proof-led conversion path.
