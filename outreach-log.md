@@ -826,3 +826,11 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Submission path: `https://forgeindex.ai/` → Google Form `1FAIpQLSeB39gVawXep0o0WRjck8ESaJ96ZLloUIgqspMfjEYOcd-IDg`
   - Verification: direct POST to the live Google Form returned the ForgeIndex response page and included the confirmation text `Ihre Antwort wurde aufgezeichnet`.
   - Why: the current bottleneck is still distribution into GitHub-native / local-AI discovery surfaces beyond Reddit, and ForgeIndex is a tighter fit than another generic directory because it is explicitly built around open-source local AI projects and includes a dedicated `Local Agents & Automation` topic lane.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 08:05:06
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 08:42:01
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.

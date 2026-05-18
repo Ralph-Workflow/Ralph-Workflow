@@ -1,0 +1,193 @@
+{
+  "timestamp": "2026-05-18T09:05:51.667652",
+  "weekly_mode": true,
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "robots": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "sitemap": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    }
+  },
+  "totals": {
+    "posts_last_30d": 7,
+    "views_last_30d": 0
+  },
+  "content_summary": {
+    "philosophy": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "unknown": {
+      "posts": 5,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "usecase": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    }
+  },
+  "decisions": [
+    {
+      "priority": "high",
+      "action": "Fix on-page SEO issues before investing in new content.",
+      "reason": "SEO score is 65/100 \u2014 technical foundation needs attention."
+    },
+    {
+      "priority": "medium",
+      "action": "Keep publishing philosophy content.",
+      "reason": "Best avg views: 0.0 \u2014 lean into what's working."
+    },
+    {
+      "priority": "high",
+      "action": "Build backlinks \u2014 submit to directories and pursue guest post opportunities.",
+      "reason": "Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now."
+    },
+    {
+      "priority": "medium",
+      "action": "Fix top on-page SEO issues (current score: 65/100)",
+      "reason": "Identified by daily SEO analysis as a top priority."
+    },
+    {
+      "priority": "medium",
+      "action": "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+      "reason": "Identified by daily SEO analysis as a top priority."
+    },
+    {
+      "priority": "ongoing",
+      "action": "Continue write.as + Telegraph posting until blocked channels are unblocked.",
+      "reason": "Working distribution channel. Track ratio of views per post to gauge platform value."
+    },
+    {
+      "priority": "medium",
+      "action": "Leverage competitor comparison pages in content and outreach.",
+      "reason": "Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked."
+    },
+    {
+      "priority": "info",
+      "action": "Note: hermes-agent has 155320 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
+      "reason": "Competitor intelligence for positioning decisions."
+    }
+  ],
+  "blocked_channels": {
+    "dev.to": "Needs API key or OAuth",
+    "twitter": "Login/session blocked",
+    "reddit": "Posting blocked until the intended main Reddit account is verified live",
+    "hackernews": "Needs account",
+    "lobsters": "Needs invite/account",
+    "producthunt": "Protected flow / manual launch required"
+  },
+  "seo": {
+    "score": "65/100 (C)",
+    "ranked_keywords": 0,
+    "backlinks_approx": 0,
+    "domain_rating": null,
+    "trends": {
+      "rank_delta": 0.0,
+      "backlinks_delta": 0.0,
+      "domain_rating": null,
+      "prev_avg_ranks": 0.0,
+      "prev_avg_bl": 0.0
+    },
+    "priority_actions": [
+      "Fix top on-page SEO issues (current score: 65/100)",
+      "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+      "Build backlinks: submit to directories, guest post, earn citations"
+    ],
+    "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-18.md",
+    "seo_daily_error": "",
+    "sitemap_urls": 0,
+    "competitor_analysis": {
+      "ran_ok": true,
+      "report_path": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-18.md",
+      "stdout": "[competitor_analysis] Starting competitor analysis at 2026-05-18 09:05\n  \u2192 Monitoring competitors...\n    done in 12.3s\n  \u2192 Generating comparison pages...\n    done in 0.0s\n  \u2192 Discovering new competitors...\n    done in 0.1s (found 0)\n\nCompetitor analysis complete (12.4s total):\n  - Monitored: 8 compe",
+      "competitor_count": 8,
+      "competitors": {
+        "hermes-agent": {
+          "status": 200,
+          "stars": 155320,
+          "features_found": [
+            "Persistent memory"
+          ]
+        },
+        "conductor-oss": {
+          "status": 200,
+          "stars": 31832,
+          "features_found": [
+            "Durable execution"
+          ]
+        },
+        "conductor-teams": {
+          "status": 200,
+          "stars": null,
+          "features_found": [
+            "Local-first"
+          ]
+        },
+        "aider": {
+          "status": 200,
+          "stars": 44955,
+          "features_found": []
+        },
+        "continue": {
+          "status": 200,
+          "stars": 33238,
+          "features_found": []
+        },
+        "cursor": {
+          "status": 200,
+          "stars": null,
+          "features_found": [
+            "Composer",
+            "Context-aware"
+          ]
+        },
+        "claude-code": {
+          "status": 0,
+          "stars": null,
+          "features_found": []
+        },
+        "copilot": {
+          "status": 200,
+          "stars": null,
+          "features_found": [
+            "Inline suggestions"
+          ]
+        }
+      },
+      "comparison_pages": 8,
+      "comparison_pages_list": [
+        "conductor-oss",
+        "cursor",
+        "hermes-agent",
+        "aider",
+        "continue",
+        "claude-code",
+        "conductor-teams",
+        "copilot"
+      ]
+    }
+  },
+  "content_generation": {
+    "returncode": 0,
+    "stdout": "[ContentGen] Created: /home/mistlight/.openclaw/workspace/drafts/2026-05-18_philosophy_draft.md",
+    "stderr": ""
+  },
+  "posting": {
+    "returncode": 0,
+    "stdout": "{\n  \"timestamp\": \"2026-05-18T09:06:12.346293\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-18_philosophy_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"2dce5c1faddaa1fb30423b26df15630eb1c4a09384a928de0fa83f5088f6ff0f\",\n      \"experiment_id\": \"2026-05-18-philosophy\"\n    }\n  ]\n}",
+    "stderr": ""
+  }
+}

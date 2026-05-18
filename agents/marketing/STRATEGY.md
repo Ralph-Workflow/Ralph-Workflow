@@ -224,3 +224,29 @@ The marketing agent runs and asks:
   → *Twitter would unlock massive reach*
 
 ---
+
+## Weekly Review — 2026-05-18
+
+### SEO Health
+**SEO Score:** 65/100 (C) | Ranked keywords: 0 | Backlinks: 0 | DR: None
+**Trends:** ranks 0.0
+
+### Content Performance
+- philosophy: 1 posts, 0 total views, 0.0 avg views/publish
+- unknown: 5 posts, 0 total views, 0.0 avg views/publish
+- usecase: 1 posts, 0 total views, 0.0 avg views/publish
+
+### Weekly Decisions
+- **[HIGH]** Fix on-page SEO issues before investing in new content. — SEO score is 65/100 — technical foundation needs attention.
+- **[MEDIUM]** Keep publishing philosophy content. — Best avg views: 0.0 — lean into what's working.
+- **[HIGH]** Build backlinks — submit to directories and pursue guest post opportunities. — Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now.
+- **[MEDIUM]** Fix top on-page SEO issues (current score: 65/100) — Identified by daily SEO analysis as a top priority.
+- **[MEDIUM]** Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent — Identified by daily SEO analysis as a top priority.
+- **[ONGOING]** Continue write.as + Telegraph posting until blocked channels are unblocked. — Working distribution channel. Track ratio of views per post to gauge platform value.
+- **[MEDIUM]** Leverage competitor comparison pages in content and outreach. — Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked.
+- **[INFO]** Note: hermes-agent has 155320 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
+
+### Priority Actions (from SEO analysis)
+- Fix top on-page SEO issues (current score: 65/100)
+- Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent
+- Build backlinks: submit to directories, guest post, earn citations
