@@ -10,6 +10,7 @@ from ralph.mcp.multimodal.artifacts import (
     INLINE_IMAGE_MIME_TYPES,
     AudioContent,
     DocumentContent,
+    ImageContent,
     PdfContent,
     ResourceReferenceContent,
     VideoContent,
@@ -23,7 +24,7 @@ from ralph.mcp.multimodal.resources import (
     build_media_identity,
     parse_media_uri,
 )
-from ralph.mcp.tools.coordination import ImageContent, ToolContent, ToolResult
+from ralph.mcp.tools.coordination import ToolContent, ToolResult
 from ralph.mcp.tools.workspace._media_io import (
     _load_artifact_bytes,
     _load_persisted_registry_entry,
@@ -40,7 +41,6 @@ from ralph.mcp.tools.workspace._utils import (
 )
 
 if TYPE_CHECKING:
-
     from ralph.mcp.multimodal.capabilities import CapabilityVerdict
     from ralph.mcp.multimodal.resources import ManifestEntry
     from ralph.mcp.tools.coordination import ContentBlock, CoordinationSessionLike

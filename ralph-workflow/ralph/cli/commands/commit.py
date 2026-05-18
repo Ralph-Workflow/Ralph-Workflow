@@ -28,6 +28,10 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
+from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
+from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
+from ralph.cli.commands._commit_chain_config import CommitChainConfig
+from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.artifact_renderer import render_commit_message
@@ -56,17 +60,15 @@ from ralph.prompts.commit import (
 from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
-from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
-from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
-from ralph.cli.commands._commit_chain_config import CommitChainConfig
-from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
+
+__all__ = ["CommitPlumbingOptions", "commit_plumbing"]
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-    from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.policy.models import AgentsPolicy
 

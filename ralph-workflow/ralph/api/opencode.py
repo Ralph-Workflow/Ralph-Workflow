@@ -49,7 +49,6 @@ class _CatalogFetcher:
         self._cache = None
 
 
-
 def _parse_catalog_payload(payload: object) -> list[dict[str, object]]:
     if not isinstance(payload, list):
         msg = "Model catalog JSON must be a list"

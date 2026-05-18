@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
@@ -17,6 +16,7 @@ from ralph.agents.invoke import (
     check_process_result,
 )
 from ralph.process.liveness import FakeLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -29,8 +29,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 class TestClassifyExitDefersWhenChildrenAlive:
     """classify_exit must return WAITING_ON_CHILD when children are alive."""
-
-
 
     def test_classify_exit_returns_waiting_when_liveness_probe_active(self) -> None:
         """Liveness probe reporting active agents → WAITING_ON_CHILD."""
@@ -76,5 +74,3 @@ class TestClassifyExitDefersWhenChildrenAlive:
         state = strategy.classify_exit(handle, signals)
 
         assert state == AgentExecutionState.WAITING_ON_CHILD
-
-

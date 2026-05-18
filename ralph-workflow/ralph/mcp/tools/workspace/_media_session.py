@@ -54,6 +54,7 @@ def _workspace_artifact_loader(
     source_path: str,
 ) -> Callable[[], bytes | None]:
     """Build a lazy artifact loader bound to a workspace replay source."""
+
     def _loader() -> bytes | None:
         return _load_artifact_bytes(workspace, cache_path, source_path)
 

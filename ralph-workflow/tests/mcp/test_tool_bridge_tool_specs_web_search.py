@@ -103,5 +103,3 @@ class TestToolSpecsWebSearch:
                 f"submit-plan-section description is missing schema-supported section "
                 f"{section_name!r}"
             )
-
-

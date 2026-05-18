@@ -61,7 +61,6 @@ def _argv(args: tuple[object, ...]) -> list[str]:
     return list(cast("Iterable[str]", args[0]))
 
 
-
 def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

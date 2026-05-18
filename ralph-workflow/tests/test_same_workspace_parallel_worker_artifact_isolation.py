@@ -37,7 +37,6 @@ class _FakeMcpServerFactory:
 
 
 class TestWorkerArtifactIsolation:
-
     def test_per_worker_artifact_dirs_are_separate(self, tmp_path: Path) -> None:
         unit_a = _make_unit("unit-a")
         unit_b = _make_unit("unit-b", ["src/b"])
@@ -52,7 +51,6 @@ class TestWorkerArtifactIsolation:
         assert (ns_root / "unit-b" / "artifacts").is_dir()
         # Namespaces are separate
         assert ns_root / "unit-a" != ns_root / "unit-b"
-
 
 
 def _make_same_workspace_context(

@@ -34,7 +34,6 @@ class _FakePtyHandle:
 
 
 class _FakePtyManager:
-
     def __init__(self) -> None:
         self.spawn_called = False
         self.spawn_pty_called = False
@@ -48,8 +47,6 @@ class _FakePtyManager:
         del args, kwargs
         self.spawn_pty_called = True
         return _FakePtyHandle()
-
-
 
 
 def test_pending_vt_snapshot_line_surfaces_semantic_activity_without_newline() -> None:

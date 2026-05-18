@@ -30,6 +30,9 @@ from ralph.phases.required_artifacts import (
 )
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
 from ralph.policy.models import ROLE_REVIEW
+from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
+from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
+from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import (
     dump_rendered_prompt,
@@ -53,10 +56,17 @@ from ralph.prompts.payload_refs import (
 from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
-from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
-from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
-from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
+
+__all__ = [
+    "MissingPlanHandoffError",
+    "PromptPhaseContext",
+    "PromptPhaseOptions",
+    "collect_media_entries_for_phase",
+    "materialize_prompt_for_phase",
+    "prompt_file_for_phase",
+    "tool_name_prefix_for_transport",
+]
 
 if TYPE_CHECKING:
     from collections.abc import Callable

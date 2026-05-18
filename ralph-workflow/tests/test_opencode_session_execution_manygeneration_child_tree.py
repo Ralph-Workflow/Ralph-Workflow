@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 from ralph.agents.execution_state import (
     AgentExecutionState,
@@ -16,6 +15,7 @@ from ralph.agents.invoke import (
     check_process_result,
 )
 from ralph.process.liveness import FakeLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -27,8 +27,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestManygenerationChildTree:
-
-
     def test_opencode_tree_with_many_generations_of_children(self) -> None:
         """Liveness probe reporting any active agent keeps the run alive."""
         strategy = OpenCodeExecutionStrategy()
@@ -38,5 +36,3 @@ class TestManygenerationChildTree:
         state = strategy.classify_quiet(handle, probe)
 
         assert state == AgentExecutionState.WAITING_ON_CHILD
-
-

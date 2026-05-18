@@ -23,9 +23,7 @@ class AnalysisDecision(RalphBaseModel):
     def _check_status_and_remediation(self) -> Self:
         if self.status in ("request_changes", "failed"):
             if not self.what_came_up_short:
-                raise ValueError(
-                    f'what_came_up_short is required when status is "{self.status}"'
-                )
+                raise ValueError(f'what_came_up_short is required when status is "{self.status}"')
             if not self.how_to_fix:
                 raise ValueError(f'how_to_fix is required when status is "{self.status}"')
         return self

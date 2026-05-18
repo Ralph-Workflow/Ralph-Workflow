@@ -14,8 +14,6 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING, cast
 
-from tests.unit.display.di_result import DIResult
-
 import pytest
 from rich.console import Console
 
@@ -36,6 +34,7 @@ from ralph.display.phase_banner import (
 )
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.tables import show_agents, show_providers
+from tests.unit.display.di_result import DIResult
 
 if TYPE_CHECKING:
     import pathlib

@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loguru import logger
 
+from ralph import __version__
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.session import AgentSession
@@ -68,6 +69,7 @@ if TYPE_CHECKING:
     from ralph.config.mcp_models import McpConfig
 
 if TYPE_CHECKING:
+
     class RegisteredToolLike(Protocol):
         """Minimal registered FastMCP tool surface used by tests."""
 
@@ -132,6 +134,7 @@ if TYPE_CHECKING:
         def __call__(self, *args: object, **kwargs: object) -> FastMcpServerLike:
             """Construct a FastMCP server instance."""
             ...
+
 
 try:
     _fastmcp_module = import_module("mcp.server.fastmcp")
@@ -295,11 +298,15 @@ def build_fastmcp_server(
 ) -> FastMcpServerLike:
     """Build a standalone FastMCP server exposing Ralph tools over HTTP."""
     _extras = extras or McpServerExtras()
-    effective_session = session or _extras.session or AgentSession(
-        session_id=f"standalone-{uuid.uuid4().hex[:8]}",
-        run_id=str(uuid.uuid4()),
-        drain="standalone",
-        capabilities=_all_capability_values(),
+    effective_session = (
+        session
+        or _extras.session
+        or AgentSession(
+            session_id=f"standalone-{uuid.uuid4().hex[:8]}",
+            run_id=str(uuid.uuid4()),
+            drain="standalone",
+            capabilities=_all_capability_values(),
+        )
     )
     workspace = FsWorkspace(workspace_root)
     mcp_cfg = (
@@ -322,9 +329,7 @@ def build_fastmcp_server(
     if FastMCP is None or Tool is None:
         return cast(
             "FastMcpServerLike",
-            FallbackStandaloneServer(
-                host, port, McpServer(effective_session, workspace, registry)
-            ),
+            FallbackStandaloneServer(host, port, McpServer(effective_session, workspace, registry)),
         )
     tools = cast(
         "list[ToolClass]",
@@ -428,6 +433,7 @@ __all__ = [
     "McpServer",
     "McpServerExtras",
     "ServerState",
+    "__version__",
     "build_fastmcp_server",
     "build_standalone_http_server",
     "load_runtime_upstream_servers",

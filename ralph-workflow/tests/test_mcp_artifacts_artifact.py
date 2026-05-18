@@ -48,7 +48,6 @@ class FakeFileBackend:
 
 
 class TestArtifact:
-
     def test_to_dict(self) -> None:
         artifact = Artifact(
             name="test_artifact",
@@ -95,4 +94,3 @@ class TestArtifact:
         data: dict[str, object] = {"name": "test", "type": "code"}
         artifact = Artifact.from_dict(data)
         assert artifact.content == {}
-

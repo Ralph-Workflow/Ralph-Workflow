@@ -7,17 +7,17 @@ from dataclasses import dataclass
 from ralph.recovery.classified_failure import ClassifiedFailure
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.failure_classifier import (
-    FailureClassifier,
     SESSION_NOT_FOUND_SUBSTRINGS,
+    FailureClassifier,
     is_missing_artifact_message,
 )
 
 __all__ = [
+    "SESSION_NOT_FOUND_SUBSTRINGS",
     "ClassifiedFailure",
     "FailureCategory",
     "FailureClassifier",
     "FailureContext",
-    "SESSION_NOT_FOUND_SUBSTRINGS",
     "is_missing_artifact_message",
     "is_retryable_without_budget",
 ]
@@ -26,10 +26,6 @@ __all__ = [
 @dataclass(frozen=True)
 class FailureContext:
     """Context for a failure event passed to RecoveryController.handle."""
-
-    FailureCategory = FailureCategory
-    ClassifiedFailure = ClassifiedFailure
-    FailureClassifier = FailureClassifier
 
     phase: str
     agent: str | None = None

@@ -63,8 +63,6 @@ class _FakeRegistry:
         return self._agents.get(name)
 
 
-
-
 def _make_console() -> tuple[StringIO, Console]:
     buf = StringIO()
     return buf, Console(file=buf, force_terminal=False, theme=RALPH_THEME)

@@ -29,7 +29,6 @@ from ralph.agents.invoke import (
 from ralph.process.liveness import FakeLivenessProbe
 
 if TYPE_CHECKING:
-
     from ralph.process.manager import ManagedProcess
 
 

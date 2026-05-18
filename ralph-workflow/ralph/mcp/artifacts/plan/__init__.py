@@ -57,7 +57,6 @@ class PlanArtifact(RalphBaseModel):
     work_units: list[dict[str, object]] = Field(default_factory=list)
 
 
-
 PLAN_SECTION_OBJECT_MODELS: dict[str, type[RalphBaseModel]] = {
     "summary": Summary,
     "skills_mcp": SkillsMcp,

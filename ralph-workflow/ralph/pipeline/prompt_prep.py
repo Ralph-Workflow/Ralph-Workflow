@@ -144,9 +144,7 @@ def _materialize_prepared_prompt(
         pipeline_policy=pipeline_policy,
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
-                effect.drain
-                or resolve_phase_drain(effect.phase, pipeline_policy)
-                or effect.phase,
+                effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase,
                 agents_policy=agents_policy,
             )
         ),

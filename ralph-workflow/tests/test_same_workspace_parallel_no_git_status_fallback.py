@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> WorkUnit:
     dirs = allowed_directories if allowed_directories is not None else [f"src/{unit_id}"]
     return WorkUnit(
@@ -46,7 +45,6 @@ class _FakeMcpServerFactory:
 
 
 class TestNoGitStatusFallback:
-
     def test_worker_success_requires_worker_local_artifact(self, tmp_path: Path) -> None:
         """Worker success is determined by artifacts, never by git status."""
         unit = _make_unit("unit-a")
@@ -109,7 +107,6 @@ class TestNoGitStatusFallback:
         failed = [ev for ev in events if isinstance(ev, WorkerFailedEvent)]
         assert len(failed) == 1
         assert failed[0].unit_id == "unit-a"
-
 
 
 def _make_same_workspace_context(

@@ -73,9 +73,7 @@ def _planning_bypass_policy() -> PipelinePolicy:
             "planning_analysis": PhaseDefinition(
                 drain="planning_analysis",
                 role="analysis",
-                loop_policy=PhaseLoopPolicy(
-                    iteration_state_field="planning_analysis_iteration"
-                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                 transitions=PhaseTransition(
                     on_success="development",
                     on_loopback="planning_analysis",

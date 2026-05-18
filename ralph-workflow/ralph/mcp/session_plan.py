@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ralph.api.opencode import get_model_by_id
-from ralph.mcp._session_model_opts import SessionModelOpts
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp._session_model_opts import SessionModelOpts
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,

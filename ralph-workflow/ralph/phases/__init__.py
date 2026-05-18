@@ -53,7 +53,6 @@ class PhaseHandlerNotFoundError(Exception):
         super().__init__(msg)
 
 
-
 # Phase handler signature: takes Effect and PhaseContext, returns list of Events
 PhaseHandler = Callable[["Effect", PhaseContext], list[Event]]
 

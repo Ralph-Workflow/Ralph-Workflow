@@ -122,7 +122,9 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
         def shutdown(self) -> None:
             bridge_shutdown.append(True)
 
-    def fake_invoke_agent(config: AgentConfig, prompt_file: str, *, options: object=None) -> object:
+    def fake_invoke_agent(
+        config: AgentConfig, prompt_file: str, *, options: object = None
+    ) -> object:
         assert config.yolo_flag == "--dangerously-skip-permissions"
         assert options is not None
         assert options.extra_env is not None

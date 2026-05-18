@@ -47,7 +47,6 @@ class _SessionRegistry:
 
 
 class _McpHandler(BaseHTTPRequestHandler):
-
     protocol_version = "HTTP/1.1"
 
     def log_message(self, format: str, *args: object) -> None:

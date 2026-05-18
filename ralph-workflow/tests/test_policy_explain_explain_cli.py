@@ -75,7 +75,6 @@ class TestExplainCLI:
 
     def test_cli_explain_policy_flag(self) -> None:
 
-
         runner = CliRunner()
         result = runner.invoke(
             app,

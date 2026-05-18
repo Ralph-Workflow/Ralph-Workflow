@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 from typing import TYPE_CHECKING, cast
 
@@ -21,6 +20,7 @@ from ralph.agents.invoke import (
     check_process_result,
 )
 from ralph.phases.required_artifacts import RequiredArtifact
+from tests.fake_handle import _FakeHandle
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -39,8 +39,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 class TestCheckProcessResultClaudeInteractiveSeam:
     """Completion contract with ClaudeInteractiveExecutionStrategy."""
-
-
 
     def test_explicit_completion_without_artifact_does_not_raise(self, tmp_path: Path) -> None:
         """declare_complete marker prevents OpenCodeResumableExitError without artifact."""
@@ -128,5 +126,3 @@ class TestCheckProcessResultClaudeInteractiveSeam:
                     policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
                 ),
             )
-
-

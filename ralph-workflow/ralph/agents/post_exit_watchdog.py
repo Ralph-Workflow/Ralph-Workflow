@@ -186,5 +186,3 @@ class PostExitWatchdog:
             return PostExitVerdict.FIRE_DESCENDANT_HANG
         self.last_verdict_reason = PostExitVerdict.QUIESCED_NO_SIGNALS
         return PostExitVerdict.QUIESCED_NO_SIGNALS
-
-

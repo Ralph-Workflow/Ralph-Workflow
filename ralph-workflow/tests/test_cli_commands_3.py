@@ -85,7 +85,6 @@ def _stub_commit_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(commit_module, "start_commit_bridge", lambda _repo_root: FakeBridge())
 
 
-
 def test_agent_session_falls_back_to_resolved_profile_when_not_stored() -> None:
     session = AgentSession(
         session_id="commit-test",

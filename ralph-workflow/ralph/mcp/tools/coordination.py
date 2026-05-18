@@ -12,14 +12,7 @@ import time
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
-from ralph.mcp.multimodal.artifacts import (
-    AudioContent,
-    DocumentContent,
-    ImageContent,
-    PdfContent,
-    ResourceReferenceContent,
-    VideoContent,
-)
+from ralph.mcp.multimodal import ImageContent
 
 from .capability_denied_error import CapabilityDeniedError
 from .coordination_session_like import CoordinationSessionLike
@@ -184,19 +177,14 @@ __all__ = [
     "ARTIFACT_SUBMIT_CAPABILITY",
     "ENV_READ_CAPABILITY",
     "RUN_REPORT_PROGRESS_CAPABILITY",
-    "AudioContent",
     "CapabilityDeniedError",
     "ContentBlock",
     "CoordinationSessionLike",
-    "DocumentContent",
     "ImageContent",
     "InvalidParamsError",
-    "PdfContent",
-    "ResourceReferenceContent",
     "ToolContent",
     "ToolError",
     "ToolResult",
-    "VideoContent",
     "WorkspaceLike",
     "format_coordination_text",
     "format_progress_text",

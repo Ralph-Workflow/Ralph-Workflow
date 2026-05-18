@@ -26,11 +26,11 @@ from ralph.phases.required_artifacts import (
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.legacy_console_display import LegacyConsoleDisplay, get_display_context
-from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.policy.models import AgentsPolicy, PolicyBundle
+    from ralph.workspace import FsWorkspace
 
 _PORCELAIN_STATUS_PREFIX_LEN = 3
 
@@ -133,9 +133,7 @@ def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[s
     excluded = {
         path.strip()
         for item in raw_excluded
-        if isinstance(item, dict)
-        and isinstance((path := item.get("path")), str)
-        and path.strip()
+        if isinstance(item, dict) and isinstance((path := item.get("path")), str) and path.strip()
     }
     changed = _changed_commit_paths(repo_root)
     return [path for path in changed if path not in excluded]

@@ -8,9 +8,6 @@ import tempfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-
-from tests.mock_session import MockSession
-from tests.mock_session_with_manifest import MockSessionWithManifest
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -35,13 +32,14 @@ from ralph.mcp.tools.workspace import (
     handle_read_media,
 )
 from ralph.workspace.fs import FsWorkspace
+from tests.mock_session import MockSession
+from tests.mock_session_with_manifest import MockSessionWithManifest
 
 MEDIA_READ_CAPABILITY = "media.read"
 DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 class TestHandleReadMedia:
-
     def test_no_manifest_returns_explicit_error(self) -> None:
         """When no session manifest is available, resource-reference delivery returns an error."""
         pdf_bytes = b"%PDF-1.4 fake pdf content"
@@ -654,5 +652,3 @@ class TestHandleReadMedia:
         assert doc.to_dict()["type"] == "document"
         assert audio.to_dict()["type"] == "audio"
         assert video.to_dict()["type"] == "video"
-
-

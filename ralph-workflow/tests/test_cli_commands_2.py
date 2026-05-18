@@ -44,6 +44,7 @@ def _artifact_invoke(tmp_path: Path, message: str) -> object:
     def _fake(agent: object, prompt_file: str, *, options: object = None) -> object:
         write_commit_message_artifact(tmp_path, message)
         return iter([])
+
     return _fake
 
 
@@ -110,7 +111,6 @@ def _stub_commit_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
             return None
 
     monkeypatch.setattr(commit_module, "start_commit_bridge", lambda _repo_root: FakeBridge())
-
 
 
 def test_generate_commit_preserves_artifacts_when_commit_fails(

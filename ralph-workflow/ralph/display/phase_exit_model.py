@@ -6,11 +6,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.display.exit_context import ExitContext
-from ralph.display.phase_entry_model import PhaseEntryModel
 from ralph.display.phase_status import PhaseIterationContext
 
 if TYPE_CHECKING:
-    pass
+    from ralph.display.phase_entry_model import PhaseEntryModel
 
 
 @dataclass(frozen=True)

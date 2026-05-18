@@ -32,7 +32,7 @@ def _make_subscriber(
     *,
     maxsize: int = 0,
     workspace_root: Path | None = None,
-    prompt_reader: object=None,
+    prompt_reader: object = None,
 ) -> tuple[Queue[PipelineSnapshot], PipelineSubscriber]:
     q: Queue[PipelineSnapshot] = Queue(maxsize=maxsize)
     kwargs: dict = {

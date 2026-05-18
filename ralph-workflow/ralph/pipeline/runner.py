@@ -67,23 +67,27 @@ from ralph.pipeline.activity_stream import (
     terminal_width,
     truncate,
 )
-from ralph.pipeline.cycle_baseline import (
-    clear_cycle_baseline,
-    read_cycle_baseline,
-    write_cycle_baseline,
-)
 from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
 from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
     commit_effect,
     default_mcp_capabilities_for_phase,
-    execute_commit_effect as _ee_execute_commit_effect,
     phase_output_artifact_paths,
     repo_has_commit_work,
 )
+from ralph.pipeline.commit_executor import (
+    execute_commit_effect as _ee_execute_commit_effect,
+)
+from ralph.pipeline.cycle_baseline import (
+    clear_cycle_baseline,
+    read_cycle_baseline,
+    write_cycle_baseline,
+)
 from ralph.pipeline.effect_executor import (
     execute_agent_effect as _ee_execute_agent_effect,
+)
+from ralph.pipeline.effect_executor import (
     recovery_context_lines,
     recovery_error_parts,
     resolve_recovery_session_id,
@@ -230,6 +234,7 @@ __all__ = [
 
 
 if TYPE_CHECKING:
+
     class _PipelineSubscriber(Protocol):
         def notify(self, state: PipelineState) -> None: ...
 
@@ -517,11 +522,7 @@ def _run_pipeline_step(
             if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
                 if recovery_controller is not None:
                     recovery_controller.reset_backoff(effect.phase, effect.agent_name)
-                _hp_fn = (
-                    handle_phase
-                    if handle_phase is not _original_handle_phase
-                    else None
-                )
+                _hp_fn = handle_phase if handle_phase is not _original_handle_phase else None
                 event = phase_event_after_agent_run(
                     effect=effect,
                     config=config,
@@ -801,7 +802,6 @@ def execute_fan_out_sync(
     )
 
 
-
 def materialize_prepared_prompt(
     effect: PreparePromptEffect,
     pipeline_policy: PipelinePolicy,
@@ -957,6 +957,8 @@ def write_start_commit_if_absent(workspace_root: Path) -> None:
     if not repo.head.is_valid():
         return
     write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
+
+
 call_determine_effect_from_policy = _call_determine_effect_from_policy
 invoke_execute_effect_with_optional_display = _invoke_execute_effect_with_optional_display
 handle_inline_effect = _handle_inline_effect

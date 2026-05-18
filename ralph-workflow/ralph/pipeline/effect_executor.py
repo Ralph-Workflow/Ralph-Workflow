@@ -33,11 +33,9 @@ from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline._agent_bridge_ctx import _AgentBridgeCtx
 from ralph.pipeline._agent_invocation_ctx import _AgentInvocationCtx
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
-from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
 from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
 from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
-from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.legacy_console_display import (
     LegacyConsoleDisplay,
@@ -57,15 +55,17 @@ from ralph.workspace import FsWorkspace
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.agent_execution_deps import (
+        AgentExecutionDeps,
         _CheckMcpBridgeHealthFn,
         _McpSupervisorFactory,
         _ShutdownMcpServerFn,
         _StartMcpServerFn,
     )
+    from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
@@ -128,7 +128,10 @@ def execute_agent_effect(
     )
     if state is not None and policy_bundle is not None and deps.show_phase_start_cb is not None:
         deps.show_phase_start_cb(
-            effect.phase, effect.agent_name, resolved_display_context, state,
+            effect.phase,
+            effect.agent_name,
+            resolved_display_context,
+            state,
             pipeline_policy=policy_bundle.pipeline,
         )
     display_subscriber = subscriber_for_display(display)

@@ -41,7 +41,6 @@ def _argv(args: tuple[object, ...]) -> list[str]:
     return list(cast("Iterable[str]", args[0]))
 
 
-
 class _BlockingStdout:
     """Stdout that blocks forever — drives the idle timeout path.
 
@@ -243,5 +242,3 @@ class TestResolveInvocationRuntime:
             config, extra_env, None, _base_env={"CODEX_HOME": "/injected/home"}
         )
         assert captured[0] == "/injected/home"
-
-

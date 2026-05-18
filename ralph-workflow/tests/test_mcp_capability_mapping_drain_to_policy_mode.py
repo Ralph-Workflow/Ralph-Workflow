@@ -18,6 +18,7 @@ from ralph.policy.validation import PolicyValidationError
 def _builtin_agents_policy() -> AgentsPolicy:
     return load_agents_policy(Path("/nonexistent"))
 
+
 # =============================================================================
 # Helper function tests
 # =============================================================================

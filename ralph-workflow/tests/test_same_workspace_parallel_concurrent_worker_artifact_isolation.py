@@ -38,7 +38,6 @@ class _FakeMcpServerFactory:
 
 
 class TestConcurrentWorkerArtifactIsolation:
-
     def test_concurrent_workers_write_to_separate_artifact_dirs(self, tmp_path: Path) -> None:
         """Each worker gets its own artifact directory;
         writing to one never appears in the other."""
@@ -70,7 +69,6 @@ class TestConcurrentWorkerArtifactIsolation:
         assert (
             not (ns_b / "artifacts" / "result.json").read_text().startswith('{"unit_id": "unit-A"}')
         )
-
 
 
 def _make_same_workspace_context(

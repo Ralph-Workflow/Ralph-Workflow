@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, cast
 from ralph import __version__
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.resources import parse_media_uri
-from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._server_state import ServerState
 
 if TYPE_CHECKING:
     from ralph.mcp.protocol.session import AgentSession
+    from ralph.mcp.server._json_rpc_request import JsonRpcRequest
     from ralph.mcp.tools.bridge import ToolBridge
     from ralph.workspace.fs import FsWorkspace
 
@@ -101,9 +101,7 @@ def _extract_client_capabilities(params: dict[str, object] | None) -> set[str]:
 class McpServer:
     """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools."""
 
-    def __init__(
-        self, session: AgentSession, workspace: FsWorkspace, registry: ToolBridge
-    ) -> None:
+    def __init__(self, session: AgentSession, workspace: FsWorkspace, registry: ToolBridge) -> None:
         self._session = session
         self._workspace = workspace
         self._registry = registry
@@ -132,9 +130,7 @@ class McpServer:
         error = {"code": -32601, "message": f"Method not found: {request.method}"}
         return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
-    def _handle_initialize(
-        self, request: JsonRpcRequest
-    ) -> tuple[JsonRpcResponse, ServerState]:
+    def _handle_initialize(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
         self._client_capabilities = _extract_client_capabilities(request.params)
         self._registry.set_client_capabilities(self._client_capabilities)
 
@@ -152,9 +148,7 @@ class McpServer:
             ServerState.RUNNING,
         )
 
-    def _handle_tools_list(
-        self, request: JsonRpcRequest
-    ) -> tuple[JsonRpcResponse, ServerState]:
+    def _handle_tools_list(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
         tools = [
             {
                 "name": definition.name,
@@ -168,9 +162,7 @@ class McpServer:
             ServerState.RUNNING,
         )
 
-    def _handle_prompts_list(
-        self, request: JsonRpcRequest
-    ) -> tuple[JsonRpcResponse, ServerState]:
+    def _handle_prompts_list(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
         return (
             JsonRpcResponse(jsonrpc="2.0", result={"prompts": []}, msg_id=request.msg_id),
             ServerState.RUNNING,
@@ -184,9 +176,7 @@ class McpServer:
             entry.resource_list_entry() for entry in self._session.media_manifest.list_entries()
         )
         return (
-            JsonRpcResponse(
-                jsonrpc="2.0", result={"resources": resources}, msg_id=request.msg_id
-            ),
+            JsonRpcResponse(jsonrpc="2.0", result={"resources": resources}, msg_id=request.msg_id),
             ServerState.RUNNING,
         )
 

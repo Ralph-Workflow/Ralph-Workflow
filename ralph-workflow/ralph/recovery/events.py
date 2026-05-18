@@ -20,9 +20,6 @@ _AnyListener = Callable[[FailureEvent | FalloverEvent], None]
 class FailureEventBus:
     """Simple publish/subscribe bus for failure and fallover events."""
 
-    FailureEvent = FailureEvent
-    FalloverEvent = FalloverEvent
-
     def __init__(self) -> None:
         self._listeners: list[_AnyListener] = []
 

@@ -150,7 +150,6 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     )
 
 
-
 def test_resolve_display_defaults_to_legacy_console_display() -> None:
     display = runner_module.resolve_display(None, make_display_context())
 

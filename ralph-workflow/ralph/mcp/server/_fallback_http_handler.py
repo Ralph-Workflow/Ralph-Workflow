@@ -8,12 +8,10 @@ from time import sleep
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
-from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._runtime_constants import DEFAULT_MOUNT_PATH
 
 if TYPE_CHECKING:
     from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
-    from ralph.mcp.server._server_state import ServerState
 
 
 class _FallbackHttpHandler(BaseHTTPRequestHandler):

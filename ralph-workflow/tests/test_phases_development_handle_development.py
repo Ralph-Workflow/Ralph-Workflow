@@ -44,7 +44,7 @@ def _default_policy_bundle() -> object:
 
 class TestHandleDevelopment:
     @classmethod
-    def _make_context(cls, workspace: object=None, console: object=None) -> PhaseContext:
+    def _make_context(cls, workspace: object = None, console: object = None) -> PhaseContext:
         policy = _default_policy_bundle()
         ws = workspace if workspace is not None else MagicMock()
         registry: Any = object()

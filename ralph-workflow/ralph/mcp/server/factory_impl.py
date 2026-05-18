@@ -10,16 +10,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 from threading import Lock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
+    from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server._bridge_with_process import _BridgeWithProcess
-from ralph.mcp.server._process_with_pid import _ProcessWithPid
 from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
 
 if TYPE_CHECKING:

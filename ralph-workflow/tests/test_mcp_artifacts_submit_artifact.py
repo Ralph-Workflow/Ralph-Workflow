@@ -53,7 +53,6 @@ class _FakeFileBackend:
 
 
 class TestSubmitArtifact:
-
     def test_submit_artifact_creates_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             artifact_dir = Path(tmpdir) / ".agent" / "artifacts"
@@ -151,4 +150,3 @@ class TestSubmitArtifact:
         stored = json.loads(backend.read_text(artifact_dir / "virtual.json"))
         assert artifact.created_at == "STATIC-TIME"
         assert stored["created_at"] == "STATIC-TIME"
-

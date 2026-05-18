@@ -914,7 +914,6 @@ class TestFileBackedSessionModelIdentity:
     def test_lifecycle_payload_roundtrip_preserves_model_identity(self, tmp_path: Path) -> None:
         """session_payload_json + FileBackedSession restores the same model identity."""
 
-
         agent_session = AgentSession(
             session_id="sid-rt",
             run_id="run-rt",

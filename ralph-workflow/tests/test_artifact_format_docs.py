@@ -86,14 +86,11 @@ class MockSession:
 
 
 class MockWorkspace:
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
     def absolute_path(self, path: str) -> str:
         return str(self.root / path)
-
-
 
 
 def _extract_complete_example_inner_payload(doc: str) -> dict[str, object]:

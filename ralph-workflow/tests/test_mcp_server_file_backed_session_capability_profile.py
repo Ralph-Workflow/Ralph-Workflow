@@ -874,7 +874,6 @@ class TestFileBackedSessionCapabilityProfile:
     ) -> None:
         """FileBackedSession.capability_profile reads from the serialized payload."""
 
-
         agent_session = AgentSession(
             session_id="sid-cap",
             run_id="run-cap",
@@ -904,7 +903,6 @@ class TestFileBackedSessionCapabilityProfile:
         self, tmp_path: Path
     ) -> None:
         """FileBackedSession.capability_profile falls back to computing from model_identity."""
-
 
         # Write a payload that has model_identity but no capability_profile
         payload = {

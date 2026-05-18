@@ -95,8 +95,6 @@ def test_friendly_tool_name_leaves_other_names_unchanged() -> None:
 def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path: Path) -> None:
     """tool_use with mcp__ralph__ prefix renders with ralph. in output."""
 
-
-
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=2000)
     pd = ParallelDisplay(
@@ -127,7 +125,6 @@ def test_tool_use_metadata_preserves_original_name() -> None:
     The friendly_tool_name transform is render-only: the router's on_event callback
     receives the original parser content and metadata untransformed.
     """
-
 
     received: list[tuple[str | None, dict[str, object]]] = []
 

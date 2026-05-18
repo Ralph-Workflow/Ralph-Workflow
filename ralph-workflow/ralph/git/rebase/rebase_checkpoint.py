@@ -326,5 +326,3 @@ def _is_lock_stale() -> bool:
 
 RebaseLock._acquire_fn = acquire_rebase_lock
 RebaseLock._release_fn = release_rebase_lock
-
-

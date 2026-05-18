@@ -7,6 +7,14 @@ from typing import TYPE_CHECKING
 
 from ralph.prompts.template_not_found_error import TemplateNotFoundError
 
+__all__ = [
+    "TemplateNotFoundError",
+    "TemplateRegistry",
+    "default_template_dirs",
+    "load_partial_templates",
+    "packaged_template_root",
+]
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -42,8 +50,6 @@ class TemplateRegistry:
                 if path.exists() and path.is_file():
                     return path.read_text(encoding="utf-8")
         return None
-
-
 
 
 def load_partial_templates(template_dirs: Iterable[Path]) -> dict[str, str]:

@@ -7,7 +7,7 @@ from ralph.testing._fake_psutil_process import FakePsutilProcess
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ralph.process.manager._process_manager import _PsutilProcessLike
+    from ralph.process.manager._process_manager_types import _PsutilProcessLike
 
 
 class FakePsutil:

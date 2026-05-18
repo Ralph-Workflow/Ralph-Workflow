@@ -102,7 +102,6 @@ class SessionCapabilities:
         return self.capabilities, self.policy_flags
 
 
-
 def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet, PolicyFlagSet]:
     return (CapabilitySet.defaults_for_drain(drain), PolicyFlagSet.defaults_for_drain(drain))
 

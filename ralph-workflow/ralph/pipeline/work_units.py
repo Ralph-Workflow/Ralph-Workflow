@@ -19,6 +19,14 @@ from ralph.pydantic_compat import RalphBaseModel
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+__all__ = [
+    "RESERVED_EDIT_PATHS",
+    "WorkUnit",
+    "WorkUnitsPlan",
+    "WorkUnitsValidationError",
+    "parse_work_units_from_artifact",
+    "validate_for_same_workspace",
+]
 
 RESERVED_EDIT_PATHS: frozenset[str] = frozenset(
     {

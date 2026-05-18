@@ -420,7 +420,6 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(index_payload), encoding="utf-8")
 
-
     captured_entries: list[object] = []
 
     def _spy_materialize(

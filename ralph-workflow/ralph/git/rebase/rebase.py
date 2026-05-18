@@ -20,8 +20,6 @@ from ralph.git.rebase.subprocess_executor import SubprocessExecutor
 from .rebase_kinds import RebaseErrorKind, RebaseKind, classify_rebase_error
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
-
     from git.objects.commit import Commit
 
 

@@ -30,9 +30,7 @@ class TestResolvedPolicyStatus:
 
     def test_dict_with_reason_denies(self) -> None:
         # Any dict with "reason" key is denied
-        assert (
-            resolved_policy_status({"reason": "because"}, "", None) == PolicyOutcomeStatus.DENIED
-        )
+        assert resolved_policy_status({"reason": "because"}, "", None) == PolicyOutcomeStatus.DENIED
 
     def test_reason_present_denies(self) -> None:
         assert resolved_policy_status({}, "", "because") == PolicyOutcomeStatus.DENIED

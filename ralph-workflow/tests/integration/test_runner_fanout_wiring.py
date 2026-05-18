@@ -454,8 +454,11 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     effect = PreparePromptEffect(phase="development", iteration=1)
 
     runner_module.materialize_prepared_prompt(
-        effect, policy.pipeline, policy.artifacts, workspace_scope,
-        env={str(WORKER_NAMESPACE_ENV): str(worker_ns)}
+        effect,
+        policy.pipeline,
+        policy.artifacts,
+        workspace_scope,
+        env={str(WORKER_NAMESPACE_ENV): str(worker_ns)},
     )
 
     assert len(recorded_kwargs) == 1
@@ -479,7 +482,6 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
     def _fake_materialize(**kwargs: object) -> str:
         recorded_kwargs.append(dict(kwargs))
         return "rendered-prompt"
-
 
     monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", lambda *a, **k: "/p")

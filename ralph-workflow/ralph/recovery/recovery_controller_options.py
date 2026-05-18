@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_budget_registry import AgentBudgetRegistry
     from ralph.recovery.events import FailureEventBus
     from ralph.recovery.failure_classifier import FailureClassifier
-    from ralph.policy.models import PolicyBundle
 
 
 @dataclass(frozen=True)

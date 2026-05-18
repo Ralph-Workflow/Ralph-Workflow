@@ -123,7 +123,6 @@ def _write_plan_handoff(workspace: MemoryWorkspace) -> None:
     workspace.write(".agent/PLAN.md", MINIMAL_PLAN_HANDOFF)
 
 
-
 def test_sidecar_entries_built_from_capability_profile_verdicts_preserve_all_metadata() -> None:
     """Capability-profile-derived metadata flows correctly through the media session index.
 
@@ -225,7 +224,6 @@ def test_collect_media_entries_preserves_failure_kind_through_sidecar_round_trip
     unsupported_runtime_seam distinct from unsupported_modality all the way to invoke time.
     """
 
-
     payload = json.dumps(
         {
             "schema_version": "2",
@@ -286,7 +284,6 @@ def test_collect_media_entries_preserves_failure_kind_through_sidecar_round_trip
 
 
 def test_collect_media_entries_dedupes_repeated_identity_key() -> None:
-
 
     workspace = MemoryWorkspace()
     workspace.write(

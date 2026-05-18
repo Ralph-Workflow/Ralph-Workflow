@@ -166,5 +166,3 @@ class TestRollbackSymmetry:
 
         artifact_file = artifact_dir / "commit_message.json"
         assert not artifact_file.exists()
-
-

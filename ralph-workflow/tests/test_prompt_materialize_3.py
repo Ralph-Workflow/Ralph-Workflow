@@ -197,13 +197,13 @@ def test_commit_phase_prompt_excludes_mid_cycle_committed_files(
     policy = load_policy(tmp_git_repo / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_git_repo))
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development_commit",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
-        workspace_root=tmp_git_repo,
-    ),
+        PromptPhaseContext(
+            phase="development_commit",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+            workspace_root=tmp_git_repo,
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -253,13 +253,13 @@ def test_materialize_commit_phase_handles_surrogate_diff(
     )
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development_commit",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
-        workspace_root=tmp_path,
-    ),
+        PromptPhaseContext(
+            phase="development_commit",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+            workspace_root=tmp_path,
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -282,13 +282,13 @@ def test_materialize_commit_phase_with_oversized_surrogate_diff(
     )
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development_commit",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
-        workspace_root=tmp_path,
-    ),
+        PromptPhaseContext(
+            phase="development_commit",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+            workspace_root=tmp_path,
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -341,16 +341,16 @@ def test_development_analysis_prompt_renders_without_development_result(
 
     with patch.object(materialize_module, "git_diff", return_value="diff --git a/x.py"):
         prompt_path = materialize_prompt_for_phase(
-        PromptPhaseContext(
-            phase="development_analysis",
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-            workspace_root=tmp_path,
-        ),
-        PromptPhaseOptions(
-            artifacts_policy=policy.artifacts,
-        ),
+            PromptPhaseContext(
+                phase="development_analysis",
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=policy.artifacts,
+            ),
         )
 
     rendered = workspace.read(prompt_path)
@@ -391,17 +391,17 @@ def test_fresh_planning_clears_all_artifact_history_on_entry(
     development_index_file.write_text("# History", encoding="utf-8")
 
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+        ),
     )
 
     assert not archived_plan_json.exists(), (
@@ -503,17 +503,17 @@ def test_planning_loopback_from_analysis_preserves_history(
 
     with patch.object(materialize_module, "git_diff", return_value="diff"):
         materialize_prompt_for_phase(
-        PromptPhaseContext(
-            phase="planning",
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-            workspace_root=tmp_path,
-        ),
-        PromptPhaseOptions(
-            artifacts_policy=policy.artifacts,
-            previous_phase="planning_analysis",
-        ),
+            PromptPhaseContext(
+                phase="planning",
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=policy.artifacts,
+                previous_phase="planning_analysis",
+            ),
         )
 
     assert archived_json.exists(), "archive json must be preserved on planning loopback"
@@ -533,17 +533,17 @@ def test_missing_history_does_not_break_fresh_planning(
     assert not (artifact_dir / "history").exists()
 
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+        ),
     )
     # Must complete without error; no history is also fine
     assert not (artifact_dir / "history").exists()
@@ -567,18 +567,18 @@ def test_materialize_with_no_multimodal_entries_does_not_create_sidecar(
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
 
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-        multimodal_entries=None,
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+            multimodal_entries=None,
+        ),
     )
 
     assert not workspace.exists(multimodal_sidecar_path("development"))
@@ -593,18 +593,18 @@ def test_materialize_with_empty_multimodal_entries_does_not_create_sidecar(
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\nStep 1.\n")
 
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-        multimodal_entries=[],
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+            multimodal_entries=[],
+        ),
     )
 
     assert not workspace.exists(multimodal_sidecar_path("development"))
@@ -620,18 +620,18 @@ def test_materialize_with_multimodal_entries_creates_sidecar(
 
     entry = _make_sidecar_entry()
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-        multimodal_entries=[entry],
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+            multimodal_entries=[entry],
+        ),
     )
 
     sidecar_path = multimodal_sidecar_path("development")
@@ -679,18 +679,18 @@ def test_materialize_sidecar_contains_all_artifacts(
         ),
     ]
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-        multimodal_entries=entries,
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+            multimodal_entries=entries,
+        ),
     )
 
     data = json.loads(workspace.read(multimodal_sidecar_path("development")))
@@ -710,36 +710,36 @@ def test_stale_sidecar_is_cleared_on_text_only_run(
     # First run: multimodal
     entry = _make_sidecar_entry()
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-        multimodal_entries=[entry],
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+            multimodal_entries=[entry],
+        ),
     )
     sidecar_path = multimodal_sidecar_path("development")
     assert workspace.exists(sidecar_path)
 
     # Second run: text-only (no entries)
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-        multimodal_entries=None,
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+            multimodal_entries=None,
+        ),
     )
 
     assert not workspace.exists(sidecar_path), "Stale sidecar must be removed on text-only run"

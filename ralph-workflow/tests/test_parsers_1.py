@@ -26,7 +26,6 @@ def _make_lines(data: list[str]) -> Iterator[str]:
     return iter(data)
 
 
-
 def test_claude_parser_content_block_delta() -> None:
     """Claude parser should accumulate orphan content_block_delta text coherently."""
     parser = ClaudeParser()

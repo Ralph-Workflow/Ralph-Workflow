@@ -8,7 +8,7 @@ import os
 import subprocess
 from collections import OrderedDict
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -17,170 +17,33 @@ from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
 from ralph.process.manager._process_event import ProcessEvent
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
+from ralph.process.manager._process_manager_runtime import (
+    load_psutil_module,
+    loguru_event_listener,
+)
+from ralph.process.manager._process_manager_types import (
+    _async_cell,
+    _AsyncProcessFactory,
+    _AsyncProcessLike,
+    _PsutilModuleLike,
+    _pty_cell,
+    _PtyProcessFactory,
+    _PtyProcessLike,
+    _sync_cell,
+    _SyncProcessFactory,
+    _SyncProcessLike,
+)
 from ralph.process.manager._process_record import ProcessRecord
 from ralph.process.manager._process_status import _TERMINAL_STATUSES, ProcessStatus
 from ralph.process.manager._process_termination_error import ProcessTerminationError
 from ralph.process.manager._pty_spawn_options import PtySpawnOptions
 from ralph.process.manager._spawn_options import SpawnOptions
 
-# Injected by ralph.process.manager on first import.
-# Lists are used as mutable cells to avoid PLW0603 (global statement).
-_sync_cell: list[_SyncProcessFactory] = []
-_async_cell: list[_AsyncProcessFactory] = []
-_pty_cell: list[_PtyProcessFactory] = []
-
-
-def _set_defaults(
-    sync: _SyncProcessFactory,
-    async_: _AsyncProcessFactory,
-    pty: _PtyProcessFactory,
-) -> None:
-    _sync_cell[:] = [sync]
-    _async_cell[:] = [async_]
-    _pty_cell[:] = [pty]
-
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
-    from typing import IO, Protocol
-
-    class _PsutilProcessLike(Protocol):
-        def children(self, recursive: bool = False) -> Sequence[_PsutilProcessLike]: ...
-        def terminate(self) -> None: ...
-        def kill(self) -> None: ...
-        def is_running(self) -> bool: ...
-        def status(self) -> str: ...
-        def create_time(self) -> float: ...
-
-    class _PsutilModuleLike(Protocol):
-        NoSuchProcess: type[BaseException]
-        AccessDenied: type[BaseException]
-
-        def process_from_pid(self, pid: int) -> _PsutilProcessLike: ...
-
-        def wait_procs(
-            self,
-            procs: Sequence[_PsutilProcessLike],
-            timeout: float | None = None,
-        ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]: ...
-
-    class _SyncProcessLike(Protocol):
-        pid: int
-
-        @property
-        def stdin(self) -> IO[bytes] | None: ...
-
-        @property
-        def stdout(self) -> IO[bytes] | None: ...
-
-        @property
-        def stderr(self) -> IO[bytes] | None: ...
-
-        @property
-        def returncode(self) -> int | None: ...
-
-        def poll(self) -> int | None: ...
-        def wait(self, timeout: float | None = None) -> int: ...
-        def communicate(
-            self,
-            input: bytes | None = None,
-            timeout: float | None = None,
-        ) -> tuple[bytes | None, bytes | None]: ...
-        def terminate(self) -> None: ...
-        def kill(self) -> None: ...
-
-    class _AsyncProcessLike(Protocol):
-        pid: int
-
-        @property
-        def stdin(self) -> asyncio.StreamWriter | None: ...
-
-        @property
-        def stdout(self) -> asyncio.StreamReader | None: ...
-
-        @property
-        def stderr(self) -> asyncio.StreamReader | None: ...
-
-        @property
-        def returncode(self) -> int | None: ...
-
-        async def wait(self) -> int: ...
-        async def communicate(
-            self, input: bytes | None = None
-        ) -> tuple[bytes | None, bytes | None]: ...
-        def terminate(self) -> None: ...
-        def kill(self) -> None: ...
-
-    class _SyncProcessFactory(Protocol):
-        def __call__(
-            self,
-            command: Sequence[str],
-            opts: SpawnOptions,
-        ) -> _SyncProcessLike: ...
-
-    class _AsyncProcessFactory(Protocol):
-        async def __call__(
-            self,
-            command: Sequence[str],
-            *,
-            cwd: str | None,
-            env: dict[str, str] | None,
-            stdin: int | None,
-            stdout: int | None,
-            stderr: int | None,
-            start_new_session: bool,
-        ) -> _AsyncProcessLike: ...
-
-    class _PtyProcessLike(Protocol):
-        pid: int
-        master_fd: int
-        slave_fd: int
-
-        @property
-        def returncode(self) -> int | None: ...
-
-        def poll(self) -> int | None: ...
-        def wait(self, timeout: float | None = None) -> int: ...
-        def terminate(self) -> None: ...
-        def kill(self) -> None: ...
-        def close(self) -> None: ...
-        def fileno(self) -> int: ...
-        def isatty(self) -> bool: ...
-
-    class _PtyProcessFactory(Protocol):
-        def __call__(
-            self,
-            command: Sequence[str],
-            *,
-            cwd: str | None,
-            env: dict[str, str] | None,
-            cols: int,
-            rows: int,
-        ) -> _PtyProcessLike: ...
 
 
-_psutil_module: _PsutilModuleLike | None = None
-try:
-    import psutil as _psutil_import
-except ModuleNotFoundError:
-    _psutil_module = None
-else:
-    _psutil_module = cast("_PsutilModuleLike", _psutil_import)
-
-
-def _loguru_event_listener(event: ProcessEvent) -> None:
-    """Default listener: log process lifecycle transitions via loguru."""
-    record = event.record
-    new_status = event.new_status
-    bound = logger.bind(component="process", pid=record.pid, label=record.label)
-    if new_status in (ProcessStatus.SPAWNED, ProcessStatus.RUNNING):
-        bound.debug("process {} {} rc={}", record.pid, new_status.name, record.returncode)
-    elif new_status == ProcessStatus.EXITED:
-        bound.info("process {} {} rc={}", record.pid, new_status.name, record.returncode)
-    elif new_status == ProcessStatus.KILLED:
-        bound.warning("process {} {} rc={}", record.pid, new_status.name, record.returncode)
-    elif new_status == ProcessStatus.FAILED:
-        bound.error("process {} {} rc={}", record.pid, new_status.name, record.returncode)
+_psutil_module: _PsutilModuleLike | None = load_psutil_module()
 
 
 class ProcessManager:
@@ -236,11 +99,7 @@ class ProcessManager:
             if async_process_factory is not None
             else next(iter(_async_cell), None)
         )
-        pf = (
-            pty_process_factory
-            if pty_process_factory is not None
-            else next(iter(_pty_cell), None)
-        )
+        pf = pty_process_factory if pty_process_factory is not None else next(iter(_pty_cell), None)
         assert sf is not None and af is not None and pf is not None, (
             "No process factories set; import ralph.process.manager before creating ProcessManager"
         )
@@ -249,7 +108,7 @@ class ProcessManager:
         self._pty_process_factory: _PtyProcessFactory = pf
         self._psutil = psutil
         if self.policy.log_events:
-            self.register_listener(_loguru_event_listener)
+            self.register_listener(loguru_event_listener)
 
     def register_listener(self, callback: Callable[[ProcessEvent], None]) -> Callable[[], None]:
         """Subscribe to lifecycle events.  Returns an unsubscribe callable."""

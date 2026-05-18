@@ -64,8 +64,6 @@ def _make_work_unit(uid: str) -> WorkUnit:
     )
 
 
-
-
 def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
     bundle = MagicMock()
     para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=False)
@@ -79,10 +77,6 @@ def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
         "default": AgentChainConfig(agents=["default"]),
     }
     return bundle
-
-
-
-
 
 
 def _setup_patches(
@@ -187,7 +181,6 @@ class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
         )
 
         return await super().run(unit, on_output=on_output, on_status=on_status)
-
 
 
 def _run_fan_out_sync(

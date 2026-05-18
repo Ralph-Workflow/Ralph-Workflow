@@ -18,7 +18,6 @@ _module_sequence_lock = threading.Lock()
 
 
 class _ModuleSequence:
-
     __slots__ = ("_counter",)
 
     def __init__(self) -> None:
@@ -101,6 +100,7 @@ __all__ = [
     "ActivityProvider",
     "ActivityVisibilityHint",
     "AgentActivityEvent",
+    "EventOptions",
     "make_event",
     "module_sequence",
     "render_event_line",

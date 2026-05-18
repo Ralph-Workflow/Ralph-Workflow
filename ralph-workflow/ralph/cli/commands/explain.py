@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     class _RenderExplanationFn(Protocol):
         def __call__(self, explanation: PolicyExplanation) -> str: ...
 
+
 _BUNDLED_DEFAULTS_DIR: Path = Path(__file__).parent.parent.parent / "policy" / "defaults"
 
 

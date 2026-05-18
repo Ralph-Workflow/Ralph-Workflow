@@ -103,7 +103,6 @@ def _waiting() -> AgentExecutionState:
     return AgentExecutionState.WAITING_ON_CHILD
 
 
-
 def test_disabled_when_idle_timeout_is_none() -> None:
     watchdog, clock = _make_watchdog(idle_timeout=None)
     clock.advance(1_000_000)

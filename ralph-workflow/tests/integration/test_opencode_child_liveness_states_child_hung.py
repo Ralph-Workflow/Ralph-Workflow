@@ -12,7 +12,6 @@ PostExitWatchdog with FakeClock to validate the planned end-to-end behaviors.
 """
 
 from __future__ import annotations
-from tests.integration.fake_handle import _FakeHandle
 
 import json
 
@@ -20,6 +19,7 @@ from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import AgentExecutionState, OpenCodeExecutionStrategy
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import FakeLivenessProbe
+from tests.integration.fake_handle import _FakeHandle
 
 
 class TestChildHung:
@@ -31,8 +31,6 @@ class TestChildHung:
     based solely on the stale registry record.  Without OS descendants,
     the result must be RESUMABLE_CONTINUE.
     """
-
-
 
     def test_stale_process_without_fresh_evidence_is_not_waiting(self) -> None:
         """After progress_ttl + stale_label_ttl expire, stale child → RESUMABLE_CONTINUE."""
@@ -74,8 +72,6 @@ class TestChildHung:
         assert result == AgentExecutionState.RESUMABLE_CONTINUE, (
             f"Stale scoped evidence + OS descendants must yield RESUMABLE_CONTINUE; got {result!r}"
         )
-
-
 
 
 def _make_registry(*, t: list[float]) -> ChildLivenessRegistry:

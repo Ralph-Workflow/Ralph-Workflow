@@ -206,29 +206,31 @@ def _get_event_handlers() -> dict[
     Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
 ]:
     if not _EVENT_HANDLERS:
-        _EVENT_HANDLERS.update({
-            PipelineEvent.AGENT_SUCCESS: _handle_agent_success,
-            PipelineEvent.AGENT_FAILURE: _handle_agent_failure,
-            PipelineEvent.AGENT_RETRY: _ignore_policy(_handle_agent_retry),
-            PipelineEvent.ANALYSIS_SUCCESS: _handle_analysis_success,
-            PipelineEvent.ANALYSIS_LOOPBACK: _handle_analysis_loopback,
-            PipelineEvent.REVIEW_CLEAN: _handle_review_clean,
-            PipelineEvent.REVIEW_ISSUES_FOUND: _handle_review_issues_found,
-            PipelineEvent.FIX_SUCCESS: _handle_fix_success,
-            PipelineEvent.FIX_FAILURE: _handle_fix_failure,
-            PipelineEvent.COMMIT_SUCCESS: _handle_commit_success,
-            PipelineEvent.COMMIT_SKIPPED: _handle_commit_skipped,
-            PipelineEvent.COMMIT_FAILURE: _handle_commit_failure,
-            PipelineEvent.CHECKPOINT_SAVED: _ignore_policy(_handle_checkpoint_saved),
-            PipelineEvent.CONTEXT_CLEANED: _return_state,
-            PipelineEvent.INTERRUPTED: _ignore_policy(_handle_interrupted),
-            PipelineEvent.COMPLETE: _handle_complete,
-            PipelineEvent.FAILED: _handle_failed,
-            PipelineEvent.PHASE_ADVANCE: _handle_phase_advance,
-            PipelineEvent.FAN_OUT_STARTED: _ignore_policy(_handle_fan_out_started),
-            PipelineEvent.WORKERS_RESUMED: _ignore_policy(_handle_workers_resumed),
-            PipelineEvent.ALL_WORKERS_COMPLETE: _handle_all_workers_complete,
-        })
+        _EVENT_HANDLERS.update(
+            {
+                PipelineEvent.AGENT_SUCCESS: _handle_agent_success,
+                PipelineEvent.AGENT_FAILURE: _handle_agent_failure,
+                PipelineEvent.AGENT_RETRY: _ignore_policy(_handle_agent_retry),
+                PipelineEvent.ANALYSIS_SUCCESS: _handle_analysis_success,
+                PipelineEvent.ANALYSIS_LOOPBACK: _handle_analysis_loopback,
+                PipelineEvent.REVIEW_CLEAN: _handle_review_clean,
+                PipelineEvent.REVIEW_ISSUES_FOUND: _handle_review_issues_found,
+                PipelineEvent.FIX_SUCCESS: _handle_fix_success,
+                PipelineEvent.FIX_FAILURE: _handle_fix_failure,
+                PipelineEvent.COMMIT_SUCCESS: _handle_commit_success,
+                PipelineEvent.COMMIT_SKIPPED: _handle_commit_skipped,
+                PipelineEvent.COMMIT_FAILURE: _handle_commit_failure,
+                PipelineEvent.CHECKPOINT_SAVED: _ignore_policy(_handle_checkpoint_saved),
+                PipelineEvent.CONTEXT_CLEANED: _return_state,
+                PipelineEvent.INTERRUPTED: _ignore_policy(_handle_interrupted),
+                PipelineEvent.COMPLETE: _handle_complete,
+                PipelineEvent.FAILED: _handle_failed,
+                PipelineEvent.PHASE_ADVANCE: _handle_phase_advance,
+                PipelineEvent.FAN_OUT_STARTED: _ignore_policy(_handle_fan_out_started),
+                PipelineEvent.WORKERS_RESUMED: _ignore_policy(_handle_workers_resumed),
+                PipelineEvent.ALL_WORKERS_COMPLETE: _handle_all_workers_complete,
+            }
+        )
     return _EVENT_HANDLERS
 
 
@@ -933,9 +935,6 @@ def _resolve_or_terminal(
     )
     new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
     return new_state, []
-
-
-
 
 
 def _handle_all_workers_complete(

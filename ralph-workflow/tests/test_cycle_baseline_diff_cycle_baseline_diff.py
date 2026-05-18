@@ -42,7 +42,6 @@ class TestCycleBaselineDiff:
         _make_commit(repo, root, "change1.txt", "first change", "first mid-cycle commit")
         _make_commit(repo, root, "change2.txt", "second change", "second mid-cycle commit")
 
-
         real_diff = materialize_module.git_diff(root)
         assert "change1" in real_diff or "change2" in real_diff
 
@@ -64,7 +63,6 @@ class TestCycleBaselineDiff:
         uncommitted_file = root / "uncommitted.txt"
         uncommitted_file.write_text("uncommitted content", encoding="utf-8")
         repo.index.add(["uncommitted.txt"])
-
 
         real_diff = materialize_module.git_diff(root)
         assert "uncommitted" in real_diff

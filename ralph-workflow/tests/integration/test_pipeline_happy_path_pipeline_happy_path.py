@@ -161,5 +161,3 @@ class TestPipelineHappyPath:
             if phase_def.role == "terminal":
                 continue
             assert phase_def.drain in agents_policy.agent_drains
-
-

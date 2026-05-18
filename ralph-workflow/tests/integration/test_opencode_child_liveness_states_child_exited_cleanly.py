@@ -12,7 +12,6 @@ PostExitWatchdog with FakeClock to validate the planned end-to-end behaviors.
 """
 
 from __future__ import annotations
-from tests.integration.fake_handle import _FakeHandle
 
 import json
 
@@ -20,13 +19,11 @@ from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import AgentExecutionState, OpenCodeExecutionStrategy
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import FakeLivenessProbe
+from tests.integration.fake_handle import _FakeHandle
 
 
 class TestChildExitedCleanly:
     """Terminal ack causes TERMINAL_COMPLETE; no indefinite waiting."""
-
-
-
 
     def test_terminal_ack_produces_terminal_complete(self) -> None:
         """After child emits terminal ack, classify_exit returns TERMINAL_COMPLETE."""
@@ -63,8 +60,6 @@ class TestChildExitedCleanly:
         assert result == AgentExecutionState.TERMINAL_COMPLETE, (
             f"Terminal ack must outrank OS descendants; got {result!r}"
         )
-
-
 
 
 def _make_registry(*, t: list[float]) -> ChildLivenessRegistry:

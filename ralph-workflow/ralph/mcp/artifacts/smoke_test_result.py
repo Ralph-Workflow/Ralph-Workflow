@@ -39,8 +39,6 @@ class SmokeTestResult(RalphBaseModel):
         return self
 
 
-
-
 def normalize_smoke_test_result_content(content: dict[str, object]) -> dict[str, object]:
     """Validate and normalize a raw smoke_test_result content dict."""
     try:

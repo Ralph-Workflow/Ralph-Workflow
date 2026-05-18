@@ -20,6 +20,7 @@ from ralph.pydantic_compat import RalphBaseModel
 if TYPE_CHECKING:
     from collections.abc import Collection
 
+
 def _load_analysis_decision_vocabulary() -> frozenset[str]:
     """Load allowed analysis decision statuses from the bundled default artifacts.toml."""
     defaults = Path(__file__).parent.parent.parent / "policy" / "defaults" / "artifacts.toml"

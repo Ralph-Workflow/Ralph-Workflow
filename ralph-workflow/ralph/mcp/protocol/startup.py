@@ -7,13 +7,9 @@ import json
 import os
 import socket
 import time
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Protocol, cast
-from urllib.parse import urljoin, urlparse
-
-import httpx
+from urllib.parse import urlparse
 
 from ralph.mcp.protocol._heartbeat_policy import HeartbeatPolicy
 from ralph.mcp.protocol._permanent_preflight_error import PermanentPreflightError
@@ -21,6 +17,26 @@ from ralph.mcp.protocol._preflight_error import PreflightError
 from ralph.mcp.protocol._preflight_tcp_deps import PreflightTcpDeps
 from ralph.mcp.protocol._retryable_preflight_error import RetryablePreflightError
 from ralph.mcp.protocol._session_bridge_error import SessionBridgeError
+from ralph.mcp.protocol._startup_http import (
+    HttpEndpointTarget,
+    HttpJsonRpcWithSessionFn,
+    HttpPostFn,
+    JsonRpcResponse,
+    ensure_no_preflight_error,
+    ensure_required_tools,
+    extract_preflight_tool_names,
+    initialize_request,
+    initialized_notification,
+    legacy_sse_jsonrpc_exchange,
+    looks_like_legacy_sse_endpoint,
+    parse_http_endpoint,
+    post_http_jsonrpc,
+    post_http_jsonrpc_with_session,
+    preflight_http_attempt,
+    probe_mcp_http_endpoint,
+    read_legacy_sse_message_endpoint,
+    tools_list_request,
+)
 from ralph.mcp.protocol.capability_mapping import AccessMode, drain_to_access_mode
 from ralph.mcp.protocol.env import (
     MCP_PREFLIGHT_TIMEOUT_MS_ENV,
@@ -30,41 +46,46 @@ from ralph.mcp.protocol.env import (
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.workspace import Workspace
 
-_HTTP_OK = 200
-_HTTP_ACCEPTED = 202
+__all__ = [
+    "HeartbeatPolicy",
+    "HttpEndpointTarget",
+    "HttpJsonRpcWithSessionFn",
+    "HttpPostFn",
+    "JsonRpcResponse",
+    "PreflightError",
+    "SessionBridgeError",
+    "access_mode_for_drain",
+    "ensure_no_preflight_error",
+    "extract_preflight_tool_names",
+    "heartbeat_policy_from_env",
+    "initialize_request",
+    "initialized_notification",
+    "legacy_sse_jsonrpc_exchange",
+    "looks_like_legacy_sse_endpoint",
+    "mcp_preflight_timeout_from_env",
+    "mcp_probe_timeout_from_env",
+    "parse_http_endpoint",
+    "parse_tcp_endpoint",
+    "post_http_jsonrpc",
+    "post_http_jsonrpc_with_session",
+    "preflight_http_attempt",
+    "preflight_http_mcp_server_tools",
+    "preflight_mcp_server_tools",
+    "probe_mcp_http_endpoint",
+    "read_jsonrpc_response",
+    "read_legacy_sse_message_endpoint",
+    "tools_list_request",
+    "write_jsonrpc_request",
+]
 
 if TYPE_CHECKING:
     import io
+    from collections.abc import Callable, Iterable, Mapping
 
     from ralph.mcp.upstream.registry import UpstreamRegistry
     from ralph.policy.models import AgentsPolicy
 
 if TYPE_CHECKING:
-    class HttpPostFn(Protocol):
-        """Callable protocol for posting JSON-RPC requests over HTTP."""
-
-        def __call__(
-            self,
-            url: str,
-            *,
-            json: JsonRpcResponse,
-            headers: dict[str, str],
-            timeout: float,
-        ) -> httpx.Response: ...
-
-    class HttpJsonRpcWithSessionFn(Protocol):
-        """Callable protocol for sending a JSON-RPC request
-        and returning a response with session ID."""
-
-        def __call__(
-            self,
-            endpoint_or_target: str | HttpEndpointTarget,
-            target_or_payload: HttpEndpointTarget | JsonRpcResponse,
-            payload: JsonRpcResponse | None = None,
-            *,
-            session_id: str | None = None,
-            post_fn: HttpPostFn = ...,
-        ) -> tuple[JsonRpcResponse, str | None]: ...
 
     class SessionLike(Protocol):
         """Minimum API surface needed from an agent session."""
@@ -75,84 +96,7 @@ if TYPE_CHECKING:
         capabilities: set[str]
 
 
-JsonRpcResponse = dict[str, object]
-
-
-def _trust_env_for_http_endpoint(endpoint: str) -> bool:
-    """Use httpx environment-derived TLS settings only for HTTPS endpoints."""
-    return urlparse(endpoint).scheme == "https"
-
-
-def _default_http_post(
-    url: str,
-    *,
-    json: JsonRpcResponse,
-    headers: dict[str, str],
-    timeout: float,
-) -> httpx.Response:
-    return httpx.post(
-        url,
-        json=json,
-        headers=headers,
-        timeout=timeout,
-        trust_env=_trust_env_for_http_endpoint(url),
-    )
-
-
-
-
-
-
-
-
-def initialize_request() -> JsonRpcResponse:
-    """Build the standard JSON-RPC initialize request payload."""
-
-    return {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "ralph-preflight", "version": "0"},
-        },
-    }
-
-
-def initialized_notification() -> JsonRpcResponse:
-    """Build the post-initialize notification payload."""
-
-    return {
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized",
-        "params": {},
-    }
-
-
-def tools_list_request() -> JsonRpcResponse:
-    """Build the JSON-RPC request for tool discovery."""
-
-    return {
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/list",
-        "params": {},
-    }
-
-
-
-
 WorkspaceLike = Workspace
-
-
-@dataclass(frozen=True)
-class HttpEndpointTarget:
-    """Parsed metadata for an HTTP MCP endpoint."""
-
-    address: tuple[str, int]
-    host_header: str
-    path: str
 
 
 def _visible_mcp_tool_names_owned(
@@ -216,104 +160,6 @@ def preflight_http_mcp_server_tools(
     )
 
 
-def looks_like_legacy_sse_endpoint(endpoint: str) -> bool:
-    """Return True if the endpoint URL looks like a legacy SSE MCP server."""
-    parsed = urlparse(endpoint)
-    return (parsed.path or "/").rstrip("/").endswith("/sse")
-
-
-def legacy_sse_jsonrpc_exchange(
-    endpoint: str,
-    requests: Iterable[JsonRpcResponse],
-    *,
-    timeout_s: float,
-) -> list[JsonRpcResponse]:
-    """Send JSON-RPC requests over a legacy SSE MCP endpoint and collect responses."""
-    timeout = httpx.Timeout(timeout_s, connect=min(timeout_s, 5.0))
-    responses: list[JsonRpcResponse] = []
-    with (
-        httpx.Client(timeout=timeout, trust_env=_trust_env_for_http_endpoint(endpoint)) as client,
-        client.stream("GET", endpoint, headers={"Accept": "text/event-stream"}) as stream,
-    ):
-        if stream.status_code != _HTTP_OK:
-            raise PermanentPreflightError(
-                f"legacy SSE connect failed with status '{stream.status_code}': {stream.text}"
-            )
-        lines = stream.iter_lines()
-        message_endpoint = _read_legacy_sse_message_endpoint(endpoint, lines)
-        for request in requests:
-            post_response = client.post(
-                message_endpoint,
-                json=request,
-                headers={"Accept": "application/json, text/event-stream"},
-            )
-            if post_response.status_code not in {_HTTP_OK, _HTTP_ACCEPTED}:
-                raise PermanentPreflightError(
-                    "legacy SSE POST failed with status "
-                    f"'{post_response.status_code}': {post_response.text}"
-                )
-            if "id" not in request:
-                continue
-            responses.append(_read_legacy_sse_jsonrpc_message(lines))
-    return responses
-
-
-def _read_legacy_sse_message_endpoint(endpoint: str, lines: Iterable[str]) -> str:
-    while True:
-        event, data = _read_sse_event(lines)
-        if event == "endpoint":
-            return _resolve_legacy_sse_message_endpoint(endpoint, data)
-
-
-def _resolve_legacy_sse_message_endpoint(endpoint: str, advertised_endpoint: str) -> str:
-    if not advertised_endpoint:
-        raise PermanentPreflightError("legacy SSE endpoint event missing data")
-    resolved = urlparse(urljoin(endpoint, advertised_endpoint))
-    endpoint_target = parse_http_endpoint(endpoint)
-    resolved_target = parse_http_endpoint(resolved.geturl())
-    if (
-        resolved_target.address != endpoint_target.address
-        or resolved_target.host_header != endpoint_target.host_header
-    ):
-        raise PermanentPreflightError(
-            "legacy SSE endpoint event advertised cross-origin message URL"
-        )
-    return resolved.geturl()
-
-
-def _read_legacy_sse_jsonrpc_message(lines: Iterable[str]) -> JsonRpcResponse:
-    while True:
-        event, data = _read_sse_event(lines)
-        if event == "message":
-            try:
-                payload = cast("object", json.loads(data))
-            except json.JSONDecodeError as exc:
-                raise PermanentPreflightError(
-                    f"failed to parse legacy SSE JSON-RPC payload: {exc}"
-                ) from exc
-            if not isinstance(payload, dict):
-                raise PermanentPreflightError("legacy SSE JSON-RPC payload is not an object")
-            return cast("JsonRpcResponse", payload)
-
-
-def _read_sse_event(lines: Iterable[str]) -> tuple[str | None, str]:
-    event_name: str | None = None
-    data_parts: list[str] = []
-    for line in lines:
-        if line == "":
-            if event_name is not None or data_parts:
-                return event_name, "\n".join(data_parts)
-            continue
-        if line.startswith(":"):
-            continue
-        if line.startswith("event:"):
-            event_name = line.partition(":")[2].strip() or None
-            continue
-        if line.startswith("data:"):
-            data_parts.append(line.partition(":")[2].strip())
-    raise PermanentPreflightError("legacy SSE stream ended before expected event")
-
-
 def run_preflight_loop(
     endpoint: str,
     timeout: timedelta,
@@ -365,48 +211,6 @@ def preflight_tcp_attempt(
         sock.close()
 
 
-def preflight_http_attempt(
-    endpoint: str,
-    target: HttpEndpointTarget,
-    required_tools: Iterable[str],
-    remaining: timedelta,
-    *,
-    post_with_session_fn: HttpJsonRpcWithSessionFn | None = None,
-) -> None:
-    """Execute a single HTTP preflight check against an MCP endpoint."""
-    if looks_like_legacy_sse_endpoint(endpoint):
-        responses = legacy_sse_jsonrpc_exchange(
-            endpoint,
-            (initialize_request(), initialized_notification(), tools_list_request()),
-            timeout_s=max(remaining.total_seconds(), 0.001),
-        )
-        initialize_response = responses[0]
-        tools_response = responses[-1]
-        ensure_no_preflight_error("HTTP MCP initialize", initialize_response.get("error"))
-        ensure_no_preflight_error("HTTP MCP tools/list", tools_response.get("error"))
-        tools = extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
-        ensure_required_tools(required_tools, tools)
-        return
-    post_fn = post_with_session_fn or post_http_jsonrpc_with_session
-    initialize_response, session_id = post_fn(endpoint, target, initialize_request())
-    ensure_no_preflight_error("HTTP MCP initialize", initialize_response.get("error"))
-    if not session_id:
-        raise PermanentPreflightError("HTTP MCP initialize missing mcp-session-id header")
-    notification_response, session_id = post_fn(
-        endpoint,
-        target,
-        initialized_notification(),
-        session_id=session_id,
-    )
-    ensure_no_preflight_error(
-        "HTTP MCP notifications/initialized", notification_response.get("error")
-    )
-    tools_response, _ = post_fn(endpoint, target, tools_list_request(), session_id=session_id)
-    ensure_no_preflight_error("HTTP MCP tools/list", tools_response.get("error"))
-    tools = extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
-    ensure_required_tools(required_tools, tools)
-
-
 def connect_to_endpoint(
     endpoint: str,
     address: tuple[str, int],
@@ -432,15 +236,6 @@ def classify_connect_error(endpoint: str, error: OSError) -> PreflightError:
     if _retryable_connect_error_kind(error.errno):
         return RetryablePreflightError(message)
     return PermanentPreflightError(message)
-
-
-def ensure_required_tools(required_tools: Iterable[str], available_tools: list[str]) -> None:
-    """Raise PermanentPreflightError if any required tool is missing from the server."""
-    missing = [tool for tool in required_tools if tool not in available_tools]
-    if missing:
-        raise PermanentPreflightError(
-            f"missing required MCP tools: {missing}; available: {available_tools}"
-        )
 
 
 def list_tools_for_endpoint(sock: socket.socket, io_timeout: timedelta) -> list[str]:
@@ -518,87 +313,6 @@ def _read_content_length(reader: io.BufferedReader) -> int:
                 raise PermanentPreflightError("invalid Content-Length header") from exc
 
 
-def post_http_jsonrpc(
-    endpoint_or_target: str | HttpEndpointTarget,
-    target_or_payload: HttpEndpointTarget | JsonRpcResponse,
-    payload: JsonRpcResponse | None = None,
-) -> JsonRpcResponse:
-    """Send an HTTP JSON-RPC request and return the response payload."""
-    response_payload, _ = post_http_jsonrpc_with_session(
-        endpoint_or_target,
-        target_or_payload,
-        payload,
-    )
-    return response_payload
-
-
-def post_http_jsonrpc_with_session(
-    endpoint_or_target: str | HttpEndpointTarget,
-    target_or_payload: HttpEndpointTarget | JsonRpcResponse,
-    payload: JsonRpcResponse | None = None,
-    *,
-    session_id: str | None = None,
-    post_fn: HttpPostFn = _default_http_post,
-) -> tuple[JsonRpcResponse, str | None]:
-    """Send an HTTP JSON-RPC request and return the response payload and session id."""
-    if isinstance(endpoint_or_target, HttpEndpointTarget):
-        endpoint = f"http://{endpoint_or_target.host_header}{endpoint_or_target.path}"
-        assert payload is None
-        payload_obj = cast("JsonRpcResponse", target_or_payload)
-    else:
-        endpoint = endpoint_or_target
-        assert payload is not None
-        payload_obj = payload
-
-    try:
-        headers = {"Accept": "application/json, text/event-stream"}
-        if session_id:
-            headers["mcp-session-id"] = session_id
-        response = post_fn(
-            endpoint,
-            json=payload_obj,
-            headers=headers,
-            timeout=5.0,
-        )
-    except httpx.TransportError as exc:
-        raise RetryablePreflightError(
-            f"failed to connect to MCP endpoint {endpoint}: {exc}"
-        ) from exc
-
-    if response.status_code == _HTTP_ACCEPTED and not response.content.strip():
-        next_session_id = cast("str | None", response.headers.get("mcp-session-id"))
-        return {}, next_session_id or session_id
-
-    if response.status_code != _HTTP_OK:
-        raise PermanentPreflightError(
-            f"HTTP MCP request failed with status '{response.status_code}': {response.text}"
-        )
-    normalized_body = _normalize_http_jsonrpc_body(response.content)
-    try:
-        response_payload = cast("object", json.loads(normalized_body))
-    except json.JSONDecodeError as exc:
-        raise PermanentPreflightError(f"failed to parse HTTP MCP response JSON: {exc}") from exc
-    if not isinstance(response_payload, dict):
-        raise PermanentPreflightError("failed to parse HTTP MCP response JSON: expected object")
-    session_id = cast("str | None", response.headers.get("mcp-session-id"))
-    return cast("JsonRpcResponse", response_payload), session_id
-
-
-def _normalize_http_jsonrpc_body(body_bytes: bytes) -> bytes:
-    stripped = body_bytes.strip()
-    if stripped.startswith((b"event:", b"data:")):
-        for line in stripped.splitlines():
-            if line.startswith(b"data:"):
-                return line.removeprefix(b"data:").strip()
-    return stripped
-
-
-def ensure_http_initialize(endpoint: str, target: HttpEndpointTarget) -> None:
-    """Send an MCP initialize request and verify there is no error response."""
-    response = post_http_jsonrpc(endpoint, target, initialize_request())
-    ensure_no_preflight_error("HTTP MCP initialize", response.get("error"))
-
-
 def reconnect_http_tools_stream(
     endpoint: str, address: tuple[str, int], io_timeout: timedelta
 ) -> socket.socket:
@@ -609,35 +323,6 @@ def reconnect_http_tools_stream(
         raise classify_connect_error(endpoint, exc) from exc
     _configure_stream_timeouts(sock, io_timeout)
     return sock
-
-
-def read_http_tools_list_response(
-    endpoint: str, sock: socket.socket, target: HttpEndpointTarget
-) -> list[str]:
-    """POST a tools/list request to an HTTP MCP endpoint and return tool names."""
-    response = post_http_jsonrpc(endpoint, target, tools_list_request())
-    ensure_no_preflight_error("HTTP MCP tools/list", response.get("error"))
-    return extract_preflight_tool_names(response.get("result"), "HTTP MCP")
-
-
-def ensure_no_preflight_error(label: str, error: object) -> None:
-    """Raise PermanentPreflightError if the JSON-RPC error field is set."""
-    if error is not None:
-        raise PermanentPreflightError(f"{label} failed: {error}")
-
-
-def extract_preflight_tool_names(result: object, label: str) -> list[str]:
-    """Parse the tools/list result object and return all tool name strings."""
-    if not isinstance(result, Mapping):
-        raise PermanentPreflightError(f"{label} tools/list response missing result")
-    tools = result.get("tools")
-    if not isinstance(tools, list):
-        raise PermanentPreflightError("MCP tools/list result missing tools array")
-    return [
-        tool["name"]
-        for tool in tools
-        if isinstance(tool, Mapping) and isinstance(tool.get("name"), str)
-    ]
 
 
 def parse_tcp_endpoint(endpoint: str) -> tuple[str, int]:
@@ -652,23 +337,7 @@ def parse_tcp_endpoint(endpoint: str) -> tuple[str, int]:
     return host, port
 
 
-def parse_http_endpoint(endpoint: str) -> HttpEndpointTarget:
-    """Parse an http:// endpoint URL into an HttpEndpointTarget."""
-    parsed = urlparse(endpoint)
-    if parsed.scheme not in {"http", "https"}:
-        raise ValueError(
-            "unsupported MCP HTTP scheme "
-            f"'{parsed.scheme}' for endpoint '{endpoint}' "
-            "(only http:// is supported)"
-        )
-    host = parsed.hostname
-    if host is None:
-        raise ValueError(f"invalid HTTP MCP endpoint '{endpoint}': missing host")
-    port = parsed.port or (80 if parsed.scheme == "http" else 443)
-    path = parsed.path or "/"
-    if parsed.query:
-        path = f"{path}?{parsed.query}"
-    return HttpEndpointTarget(address=(host, port), host_header=parsed.netloc, path=path)
+_read_legacy_sse_message_endpoint = read_legacy_sse_message_endpoint
 
 
 def _connect_timeout_budget(remaining: timedelta) -> timedelta:
@@ -734,43 +403,6 @@ def mcp_probe_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelt
     except ValueError:
         return default
     return timedelta(milliseconds=max(1, parsed))
-
-
-def probe_mcp_http_endpoint(endpoint: str, timeout: timedelta) -> None:
-    """Verify MCP HTTP endpoint responsiveness via an isolated initialize/tools-list handshake.
-
-    Raises PreflightError if the endpoint does not respond within the timeout.
-    Uses a fresh, isolated MCP session that never reuses or mutates any active agent session.
-    """
-    timeout_s = max(0.001, timeout.total_seconds())
-    target = parse_http_endpoint(endpoint)
-
-    def _bounded_post(
-        url: str, *, json: JsonRpcResponse, headers: dict[str, str], timeout: float
-    ) -> httpx.Response:
-        del timeout
-        return httpx.post(url, json=json, headers=headers, timeout=timeout_s)
-
-    def _bounded_post_with_session(
-        endpoint_or_target: str | HttpEndpointTarget,
-        target_or_payload: HttpEndpointTarget | JsonRpcResponse,
-        payload: JsonRpcResponse | None = None,
-        *,
-        session_id: str | None = None,
-        post_fn: HttpPostFn = httpx.post,
-    ) -> tuple[JsonRpcResponse, str | None]:
-        del post_fn
-        return post_http_jsonrpc_with_session(
-            endpoint_or_target,
-            target_or_payload,
-            payload,
-            session_id=session_id,
-            post_fn=_bounded_post,
-        )
-
-    preflight_http_attempt(
-        endpoint, target, [], timeout, post_with_session_fn=_bounded_post_with_session
-    )
 
 
 def heartbeat_policy_from_env(env: Mapping[str, str] | None = None) -> HeartbeatPolicy:

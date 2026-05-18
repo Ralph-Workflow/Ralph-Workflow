@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 import threading
 import time as _time_module
@@ -32,6 +31,7 @@ from ralph.process.child_liveness import (
     ChildActivitySnapshot,
 )
 from ralph.process.liveness import FakeLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,8 +50,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 class TestCheckProcessResultWaitsForLiveChildren:
     """_check_process_result waits for child agents before raising OpenCodeResumableExitError."""
-
-
 
     def test_raises_resumable_exit_when_wait_times_out_without_artifact(
         self, tmp_path: Path
@@ -113,9 +111,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 ),
             )
 
-    def test_grace_window_runs_even_when_no_children_at_exit_time(
-        self, tmp_path: Path
-    ) -> None:
+    def test_grace_window_runs_even_when_no_children_at_exit_time(self, tmp_path: Path) -> None:
         """Grace window always runs for OpenCode rc=0 exits without completion signals."""
         probe = FakeLivenessProbe(active=False)
 
@@ -225,9 +221,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             f"Expected RESUMABLE_CONTINUE after timeout with children alive; got {result!r}"
         )
 
-    def test_artifact_appears_during_wait_produces_terminal_complete(
-        self, tmp_path: Path
-    ) -> None:
+    def test_artifact_appears_during_wait_produces_terminal_complete(self, tmp_path: Path) -> None:
         """Artifact appears during wait; no error raised (TERMINAL_COMPLETE).
 
         Sequence:
@@ -374,9 +368,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         )
         # No exception raised because descendants finished and artifact appeared during wait
 
-    def test_wait_helper_timeout_then_final_recheck_finds_completion(
-        self, tmp_path: Path
-    ) -> None:
+    def test_wait_helper_timeout_then_final_recheck_finds_completion(self, tmp_path: Path) -> None:
         """Deadline expires but completion appears exactly at deadline; final recheck catches it.
 
         The final recheck (added to fix the timeout gap) must evaluate completion one more
@@ -648,5 +640,3 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 ),
             ),
         )
-
-

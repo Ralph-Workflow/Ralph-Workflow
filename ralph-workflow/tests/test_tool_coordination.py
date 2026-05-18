@@ -62,9 +62,7 @@ def test_read_env_returns_variable_value() -> None:
 
 
 def test_read_env_returns_not_found_when_missing() -> None:
-    result = handle_read_env(
-        MockCapableSession(), MockWorkspace(), {"name": "MISSING"}, env={}
-    )
+    result = handle_read_env(MockCapableSession(), MockWorkspace(), {"name": "MISSING"}, env={})
     assert "MISSING=[not found]" in result.content[0].text
 
 

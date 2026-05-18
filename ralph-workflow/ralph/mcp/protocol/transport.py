@@ -9,7 +9,6 @@ from __future__ import annotations
 import contextlib
 import json
 import threading
-from dataclasses import dataclass
 from queue import Empty, Queue
 from subprocess import PIPE as _SUBPROCESS_PIPE
 from typing import IO, TYPE_CHECKING, Protocol, cast
@@ -25,9 +24,17 @@ from ralph.process.manager import (
     get_process_manager,
 )
 
+__all__ = [
+    "MCPMessage",
+    "MCPTransport",
+    "StdioTransport",
+    "TransportError",
+]
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
 if TYPE_CHECKING:
+
     class ProcessLike(Protocol):
         """Subset of subprocess.Popen required by StdioTransport."""
 

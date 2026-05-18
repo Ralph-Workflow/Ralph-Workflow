@@ -1,8 +1,6 @@
 """Tests for ralph/mcp/tools/git_read.py — MCP git read tool handlers."""
 
 from __future__ import annotations
-from tests.mock_workspace_root import MockWorkspaceRoot
-from tests.mock_session import MockSession
 
 from typing import TYPE_CHECKING
 
@@ -14,6 +12,8 @@ from ralph.mcp.tools.git_read import (
     ExecutionError,
     handle_git_show,
 )
+from tests.mock_session import MockSession
+from tests.mock_workspace_root import MockWorkspaceRoot
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -47,5 +47,3 @@ class TestHandleGitShow:
         # This should raise ExecutionError since the ref doesn't exist
         with pytest.raises(ExecutionError):
             handle_git_show(session, workspace, {"ref": "DOES_NOT_EXIST_12345"})
-
-

@@ -94,7 +94,6 @@ class SmokeRunResult:
     errors: list[str]
 
 
-
 def _submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
     if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         return claude_tool_name(SUBMIT_ARTIFACT_TOOL)

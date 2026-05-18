@@ -66,9 +66,7 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
     )
 
     controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10, budget_registry=registry, event_bus=bus
-        )
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry, event_bus=bus)
     )
     state = _make_state(["claude", "opencode"])
 

@@ -50,6 +50,7 @@ if TYPE_CHECKING:
         @classmethod
         def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
 
+
 from ralph.display.context import make_display_context
 from ralph.workspace.scope import resolve_workspace_scope
 

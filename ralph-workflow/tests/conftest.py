@@ -30,6 +30,8 @@ from ralph.runtime import (
 from ralph.workspace.memory import MemoryWorkspace
 from tests.integration.test_pipeline_happy_path_pipeline_happy_path import MockAgentInvoker
 
+pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
+
 if TYPE_CHECKING:
     from collections.abc import Generator
     from pathlib import Path

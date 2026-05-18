@@ -295,5 +295,3 @@ class TestHistoryIntegrationInSubmitOps:
         hist_dir = history_dir_for_artifact(artifact_dir, PLAN_ARTIFACT_TYPE)
         json_archives = list(hist_dir.glob("*.json"))
         assert json_archives == [], "history snapshot files must be removed after undo"
-
-

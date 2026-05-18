@@ -164,7 +164,6 @@ class _LoggingExecutor:
 class TestPreflightRejection:
     """Coordinator-level preflight rejects unsafe plans before any worker launches."""
 
-
     async def test_overlapping_edit_areas_rejected(self, tmp_path: Path) -> None:
         """Overlapping allowed_directories are rejected; no executor calls occur."""
         run_fan_out = _load_run_fan_out()
@@ -259,5 +258,3 @@ class TestPreflightRejection:
         )
         assert "parallel preflight rejected plan:" in preflight_event.error
         assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"
-
-

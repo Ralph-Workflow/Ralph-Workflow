@@ -5,15 +5,11 @@ from __future__ import annotations
 import errno
 import socket
 import urllib.error
-from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
-
-if TYPE_CHECKING:
-    pass
 
 # Network/transport error substrings that indicate environmental faults
 _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(

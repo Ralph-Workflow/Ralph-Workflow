@@ -1,8 +1,6 @@
 """Tests for ralph/mcp/tools/git_read.py — MCP git read tool handlers."""
 
 from __future__ import annotations
-from tests.mock_workspace_root import MockWorkspaceRoot
-from tests.mock_session import MockSession
 
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -14,6 +12,8 @@ from ralph.mcp.tools.git_read import (
     GIT_DIFF_READ_CAPABILITY,
     handle_git_diff,
 )
+from tests.mock_session import MockSession
+from tests.mock_workspace_root import MockWorkspaceRoot
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,5 +41,3 @@ class TestHandleGitDiff:
             mock_git.return_value = "diff --staged content"
             result = handle_git_diff(session, workspace, {"args": ["--staged"]})
             assert result.is_error is False
-
-

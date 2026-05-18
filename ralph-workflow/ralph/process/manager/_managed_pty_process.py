@@ -9,10 +9,8 @@ from typing import TYPE_CHECKING
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
-    from ralph.process.manager._process_manager import (
-        ProcessManager,
-        _PtyProcessLike,
-    )
+    from ralph.process.manager._process_manager import ProcessManager
+    from ralph.process.manager._process_manager_types import _PtyProcessLike
     from ralph.process.manager._process_record import ProcessRecord
 
 

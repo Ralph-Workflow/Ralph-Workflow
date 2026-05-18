@@ -560,7 +560,6 @@ def test_record_mcp_restart_forwarded_to_subscriber(
 ) -> None:
     """When bridge.restart_count > 0, record_mcp_restart is called on the display subscriber."""
 
-
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
@@ -648,7 +647,6 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """_execute_agent_effect passes heartbeat_policy_from_env().interval to McpSupervisor."""
-
 
     config = _make_config_with_watchdog()
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")

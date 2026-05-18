@@ -23,7 +23,7 @@ from ralph.pipeline.parallel.worker_session_bundle import WorkerSessionBundle
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
+    from ralph.mcp.server.factory import McpServerFactory
     from ralph.pipeline.work_units import WorkUnit
     from ralph.workspace.scope import WorkspaceScope
 
@@ -38,7 +38,6 @@ class WorkerSessionConfig:
     session_capabilities: frozenset[str] = frozenset()
     session_model_identity: MultimodalModelIdentity | None = None
     session_capability_profile: ResolvedCapabilityProfile | None = None
-
 
 
 def build_worker_session(
@@ -65,7 +64,8 @@ def build_worker_session(
         worker_artifact_dir=cfg.worker_artifact_dir,
         worker_namespace=cfg.worker_namespace,
         model_identity=(
-            cfg.session_model_identity if cfg.session_model_identity is not None
+            cfg.session_model_identity
+            if cfg.session_model_identity is not None
             else UNKNOWN_IDENTITY
         ),
         stored_capability_profile=cfg.session_capability_profile,

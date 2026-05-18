@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 __all__ = ["Clock", "FakeClock", "SystemClock"]
 
 
-
 class FakeClock:
     """Test Clock: advances logical time synchronously without real waits."""
 

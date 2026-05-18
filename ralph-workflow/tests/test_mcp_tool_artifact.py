@@ -30,14 +30,11 @@ class _ApprovedSession:
 
 
 class _Workspace:
-
     def __init__(self, root: Path) -> None:
         self._root = root
 
     def absolute_path(self, path: str) -> str:
         return str((self._root / path).resolve())
-
-
 
 
 def test_submit_artifact_rejects_missing_content_source_with_actionable_guidance(

@@ -160,9 +160,7 @@ class ParallelCoordinator:
                 failures=failures,
             )
             if unexpected:
-                raise ExceptionGroup(
-                    "Unexpected fan-out coordinator failure", unexpected
-                ) from None
+                raise ExceptionGroup("Unexpected fan-out coordinator failure", unexpected) from None
         else:
             events.append(PipelineEvent.ALL_WORKERS_COMPLETE)
 

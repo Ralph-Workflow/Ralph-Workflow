@@ -19,7 +19,6 @@ class FakeProcess:
 
 
 class FakeBridge:
-
     def __init__(self, endpoint: str, pid: int) -> None:
         self._endpoint = endpoint
         self.process = FakeProcess(pid)
@@ -36,8 +35,6 @@ class FakeBridge:
 
     def shutdown(self) -> None:
         self.shutdown_calls += 1
-
-
 
 
 def test_factory_is_runtime_checkable_protocol(tmp_path: Path) -> None:

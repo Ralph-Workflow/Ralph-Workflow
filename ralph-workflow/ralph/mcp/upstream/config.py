@@ -28,7 +28,6 @@ class UpstreamMcpServer:
     env: dict[str, str] = field(default_factory=dict)
 
 
-
 def normalize_upstream_mcp_servers(
     server_entries: Mapping[str, object],
 ) -> tuple[UpstreamMcpServer, ...]:

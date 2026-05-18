@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
-from ralph.cli._general_overrides import GeneralOverrides
+if TYPE_CHECKING:
+    from ralph.cli._general_overrides import GeneralOverrides
 
 
 class CLIOverrides(TypedDict):

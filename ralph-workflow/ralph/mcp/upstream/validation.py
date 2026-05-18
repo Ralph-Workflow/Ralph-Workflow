@@ -31,12 +31,14 @@ if TYPE_CHECKING:
     from ralph.mcp.upstream.config import UpstreamMcpServer
 
 if TYPE_CHECKING:
+
     class HttpPreflightFn(Protocol):
         """Callable protocol for running an HTTP MCP server preflight check."""
 
         def __call__(
             self, endpoint: str, required_tools: tuple[str, ...], timeout: timedelta
         ) -> None: ...
+
 
 _STRICT_ENV_VAR = "RALPH_MCP_STRICT"
 _STRICT_FALSE_VALUES = frozenset({"0", "false", "no", "off"})

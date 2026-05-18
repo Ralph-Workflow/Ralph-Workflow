@@ -46,6 +46,8 @@ __all__ = [
     "load_policy",
     "load_policy_or_die",
 ]
+
+
 def _load_toml(path: Path) -> dict[str, object]:
     """Load a TOML file, returning empty dict if absent.
 

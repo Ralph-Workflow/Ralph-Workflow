@@ -56,16 +56,16 @@ def _render_development_analysis(
     workspace.write(".agent/artifacts/development_result.json", _MINIMAL_DEV_RESULT)
     with patch.object(materialize_module, "git_diff", return_value="diff"):
         path = materialize_prompt_for_phase(
-        PromptPhaseContext(
-            phase="development_analysis",
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-            workspace_root=tmp_path,
-        ),
-        PromptPhaseOptions(
-            artifacts_policy=policy.artifacts,
-        ),
+            PromptPhaseContext(
+                phase="development_analysis",
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=policy.artifacts,
+            ),
         )
     return workspace.read(path)
 
@@ -81,16 +81,16 @@ def _render_development_analysis_no_dev_result(
     _write_plan_handoff(workspace)
     with patch.object(materialize_module, "git_diff", return_value="diff"):
         path = materialize_prompt_for_phase(
-        PromptPhaseContext(
-            phase="development_analysis",
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-            workspace_root=tmp_path,
-        ),
-        PromptPhaseOptions(
-            artifacts_policy=policy.artifacts,
-        ),
+            PromptPhaseContext(
+                phase="development_analysis",
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=policy.artifacts,
+            ),
         )
     return workspace.read(path)
 

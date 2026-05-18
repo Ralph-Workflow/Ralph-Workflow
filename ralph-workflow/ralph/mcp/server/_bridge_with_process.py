@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
-from ralph.mcp.server._process_with_pid import _ProcessWithPid
+
+if TYPE_CHECKING:
+    from ralph.mcp.server._process_with_pid import _ProcessWithPid
 
 
 @runtime_checkable

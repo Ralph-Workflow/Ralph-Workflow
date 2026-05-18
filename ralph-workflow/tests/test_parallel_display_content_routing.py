@@ -122,7 +122,6 @@ def test_malformed_ndjson_does_not_crash(tmp_path: Path) -> None:
 def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
     """SubprocessAgentExecutor writes raw lines to .agent/raw/<unit>.log."""
 
-
     received: list[str] = []
 
     router = ActivityRouter(
@@ -206,8 +205,6 @@ def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) ->
 def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> None:
     """Snapshot with active_tool + last_activity_line emits exactly ONE [activity] tagged line."""
 
-
-
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     renderer = PlainLogRenderer(make_display_context(console=console, env={}))
@@ -282,7 +279,6 @@ def test_emit_parsed_event_passes_through_non_lifecycle_content(tmp_path: Path) 
 def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_path: Path) -> None:
     """_stream_parsed_agent_activity must not emit [content][activity] for thinking events."""
 
-
     pd, buf = _make_display(tmp_path)
 
     thinking_line = json.dumps(
@@ -316,7 +312,6 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
 
 def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_path: Path) -> None:
     """_stream_parsed_agent_activity routes tool_use via emit_parsed_event with no duplication."""
-
 
     pd, buf = _make_display(tmp_path)
 

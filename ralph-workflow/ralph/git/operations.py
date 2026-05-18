@@ -151,7 +151,6 @@ def stage_all(repo_root: Path | str) -> None:
     logger.debug("Staged all changes in {}", repo_root)
 
 
-
 def stage_files(repo_root: Path | str, files: list[str]) -> None:
     """Stage only the provided repository-relative paths.
 

@@ -67,6 +67,7 @@ if TYPE_CHECKING:
 
 
 if TYPE_CHECKING:
+
     class _PipelineSubscriberLike(Protocol):
         def notify(self, state: PipelineState) -> None: ...
 
@@ -104,10 +105,7 @@ class _FanOutCtx:
     reducer_reduce_fn: _ReducerReduceFn | None = None
 
 
-
-def _notify_subscriber(
-    subscriber: _PipelineSubscriberLike | None, state: PipelineState
-) -> None:
+def _notify_subscriber(subscriber: _PipelineSubscriberLike | None, state: PipelineState) -> None:
     if subscriber is not None:
         subscriber.notify(state)
 
@@ -351,9 +349,7 @@ def _resume_fan_out_state(
         if reducer_reduce_fn is not None
         else cast("_ReducerReduceFn", reducer_reduce)
     )
-    resumed_state, _ = _reduce(
-        state, PipelineEvent.WORKERS_RESUMED, pipeline_policy
-    )
+    resumed_state, _ = _reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
     _notify_subscriber(subscriber, resumed_state)
     completed_ids = {
         uid
@@ -395,9 +391,7 @@ async def _run_verify_phase(
     if not ctx.effect.run_post_fanout_verification:
         return current, VerificationResult(ran=False, passed=None, exit_code=None)
     if any_worker_failed:
-        logger.debug(
-            "Post-fanout verification skipped: one or more workers failed in this wave"
-        )
+        logger.debug("Post-fanout verification skipped: one or more workers failed in this wave")
         return current, VerificationResult(ran=False, passed=None, exit_code=None)
     verify_error = await _run_post_fanout_verification(
         ctx.workspace_scope, run_process_async_fn=ctx.run_process_async_fn
@@ -507,9 +501,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
 
         any_worker_failed = any(isinstance(ev, WorkerFailedEvent) for ev in fan_out_events)
         current, verification = await _run_verify_phase(ctx, current, any_worker_failed)
-        write_parallel_development_summary(
-            ctx.workspace_scope, ctx.effect, current, verification
-        )
+        write_parallel_development_summary(ctx.workspace_scope, ctx.effect, current, verification)
         return current
     except KeyboardInterrupt:
         raise
@@ -524,9 +516,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             reason=f"Fan-out execution crashed: {type(exc).__name__}: {exc}",
             recoverable=True,
         )
-        recovered, _ = _reduce(
-            current, failure_event, ctx.policy_bundle.pipeline, recovery=None
-        )
+        recovered, _ = _reduce(current, failure_event, ctx.policy_bundle.pipeline, recovery=None)
         _notify_subscriber(ctx.pipeline_subscriber, recovered)
         _save_checkpoint_or_log(
             recovered,
@@ -548,9 +538,7 @@ def execute_fan_out_sync(
     policy_bundle = cast("PolicyBundle", opts["policy_bundle"])
     workspace_scope = cast("WorkspaceScope", opts["workspace_scope"])
     pipeline_subscriber = cast("_PipelineSubscriberLike | None", opts.get("pipeline_subscriber"))
-    dashboard_subscriber = cast(
-        "_PipelineSubscriberLike | None", opts.get("dashboard_subscriber")
-    )
+    dashboard_subscriber = cast("_PipelineSubscriberLike | None", opts.get("dashboard_subscriber"))
     config = cast("UnifiedConfig | None", opts.get("config"))
     monitor_stop_cb = cast("Callable[[], None] | None", opts.get("_monitor_stop_cb"))
     install_fn = cast("_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers"))

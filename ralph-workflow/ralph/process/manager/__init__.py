@@ -10,8 +10,14 @@ from ralph.process.manager._managed_async_process import ManagedAsyncProcess
 from ralph.process.manager._managed_process import ManagedProcess
 from ralph.process.manager._managed_pty_process import ManagedPtyProcess
 from ralph.process.manager._process_event import ProcessEvent
-from ralph.process.manager._process_manager import ProcessManager, _set_defaults
+from ralph.process.manager._process_manager import ProcessManager
 from ralph.process.manager._process_manager_policy import ProcessManagerPolicy
+from ralph.process.manager._process_manager_types import (
+    _AsyncProcessLike,
+    _PtyProcessLike,
+    _set_defaults,
+    _SyncProcessLike,
+)
 from ralph.process.manager._process_record import ProcessRecord
 from ralph.process.manager._process_status import ProcessStatus
 from ralph.process.manager._process_termination_error import ProcessTerminationError
@@ -27,12 +33,6 @@ from ralph.process.pty import spawn_pty_process
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from ralph.process.manager._process_manager import (
-        _AsyncProcessLike,
-        _PtyProcessLike,
-        _SyncProcessLike,
-    )
 
 
 def _default_sync_process_factory(

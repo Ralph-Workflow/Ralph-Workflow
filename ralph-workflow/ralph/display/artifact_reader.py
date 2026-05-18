@@ -31,7 +31,6 @@ class AnalysisDecisionSummary:
     iso_ts: str | None = None
 
 
-
 def _load_json(path: Path) -> dict[str, object] | None:
     try:
         raw = path.read_text(encoding="utf-8")

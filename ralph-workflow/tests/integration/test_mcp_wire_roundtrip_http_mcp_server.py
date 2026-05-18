@@ -133,8 +133,11 @@ def _assert_tool_descriptions(tools: list[dict[str, object]]) -> None:
 def _do_read_file_test(server: McpServer, state: ServerState) -> None:
     call_id = [99]
     _do_tool_call(
-        server, state, call_id, "write_file",
-        {"path": "_test_read_file.txt", "content": "hello roundtrip"}
+        server,
+        state,
+        call_id,
+        "write_file",
+        {"path": "_test_read_file.txt", "content": "hello roundtrip"},
     )
     result = _do_tool_call(server, state, call_id, "read_file", {"path": "_test_read_file.txt"})
     assert result.get("isError") is not True
@@ -180,9 +183,7 @@ def _do_workspace_read_roundtrips(
         server, state, call_id, "search_files", {"pattern": "*.txt", "path": "."}
     )
     assert result.get("isError") is not True, f"search_files failed: {result}"
-    result = _do_tool_call(
-        server, state, call_id, "grep_files", {"pattern": "hello", "path": "."}
-    )
+    result = _do_tool_call(server, state, call_id, "grep_files", {"pattern": "hello", "path": "."})
     assert result.get("isError") is not True, f"grep_files failed: {result}"
     result = _do_tool_call(
         server, state, call_id, "read_multiple_files", {"paths": ["seed_file.txt"]}
@@ -197,29 +198,39 @@ def _do_workspace_write_roundtrips(
     assert result.get("isError") is not True, f"create_directory failed: {result}"
     _do_tool_call(server, state, call_id, "write_file", {"path": "src_file.txt", "content": "src"})
     result = _do_tool_call(
-        server, state, call_id, "copy_file",
-        {"src": "src_file.txt", "dest": "copied_file.txt"}
+        server, state, call_id, "copy_file", {"src": "src_file.txt", "dest": "copied_file.txt"}
     )
     assert result.get("isError") is not True, f"copy_file failed: {result}"
     result = _do_tool_call(
-        server, state, call_id, "move_file",
-        {"src": "copied_file.txt", "dest": "moved_file.txt"}
+        server, state, call_id, "move_file", {"src": "copied_file.txt", "dest": "moved_file.txt"}
     )
     assert result.get("isError") is not True, f"move_file failed: {result}"
     result = _do_tool_call(
-        server, state, call_id, "append_file",
-        {"path": "moved_file.txt", "content": _APPEND_CONTENT}
+        server,
+        state,
+        call_id,
+        "append_file",
+        {"path": "moved_file.txt", "content": _APPEND_CONTENT},
     )
     assert result.get("isError") is not True, f"append_file failed: {result}"
     result = _do_tool_call(
-        server, state, call_id, "edit_file",
-        {"path": "moved_file.txt", "edits": [{"oldText": "src", "newText": "edited"}],
-         "dry_run": True}
+        server,
+        state,
+        call_id,
+        "edit_file",
+        {
+            "path": "moved_file.txt",
+            "edits": [{"oldText": "src", "newText": "edited"}],
+            "dry_run": True,
+        },
     )
     assert result.get("isError") is not True, f"edit_file dry_run failed: {result}"
     result = _do_tool_call(
-        server, state, call_id, "edit_file",
-        {"path": "moved_file.txt", "edits": [{"oldText": "src", "newText": "edited"}]}
+        server,
+        state,
+        call_id,
+        "edit_file",
+        {"path": "moved_file.txt", "edits": [{"oldText": "src", "newText": "edited"}]},
     )
     assert result.get("isError") is not True, f"edit_file apply failed: {result}"
     result = _do_tool_call(server, state, call_id, "delete_path", {"path": "moved_file.txt"})

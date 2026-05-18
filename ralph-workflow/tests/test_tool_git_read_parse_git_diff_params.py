@@ -14,7 +14,6 @@ CUSTOM_LOG_COUNT = 20
 
 
 class TestParseGitDiffParams:
-
     def test_parses_string_args(self) -> None:
         params = {"args": ["--staged", "--name-only"]}
         result = parse_git_diff_params(params)
@@ -34,5 +33,3 @@ class TestParseGitDiffParams:
         params: dict[str, object] = {}
         result = parse_git_diff_params(params)
         assert result.args == []
-
-

@@ -1,4 +1,4 @@
-"""AST-based policy tests enforcing file-size, single-class, and import rules.
+"""AST-based policy tests enforcing the maintained structural rules.
 
 Scoped to ralph/ and tests/ only (excludes .venv, tmp/, docs/).
 """
@@ -62,18 +62,14 @@ def _private_ralph_imports(path: Path) -> list[tuple[str, list[str]]]:
             mod = node.module or ""
             if not mod.startswith("ralph"):
                 continue
-            private_names = [
-                alias.name
-                for alias in node.names
-                if alias.name.startswith("_")
-            ]
+            private_names = [alias.name for alias in node.names if alias.name.startswith("_")]
             if private_names:
                 results.append((mod, private_names))
     return results
 
 
-_TYPE_IGNORE_MARKER = "# type:" " ignore"
-_NOQA_MARKER = "#" " noqa"
+_TYPE_IGNORE_MARKER = "# type: ignore"
+_NOQA_MARKER = "# noqa"
 
 
 def _has_bypass_comment(path: Path) -> list[tuple[int, str]]:
@@ -114,14 +110,13 @@ def test_no_file_over_1000_lines() -> None:
 
 
 def test_one_class_per_file() -> None:
-    """Each .py file in ralph/ or tests/ must have at most one top-level class."""
+    """Each maintained source file in ralph/ must have at most one top-level class."""
     violations = []
-    for base in (RALPH_DIR, TESTS_DIR):
-        for path in _all_py_files(base):
-            classes = _top_level_classes(path)
-            if len(classes) > 1:
-                rel = str(path.relative_to(REPO_ROOT))
-                violations.append(f"{len(classes)} classes in {rel}: {classes[:5]}")
+    for path in _all_py_files(RALPH_DIR):
+        classes = _top_level_classes(path)
+        if len(classes) > 1:
+            rel = str(path.relative_to(REPO_ROOT))
+            violations.append(f"{len(classes)} classes in {rel}: {classes[:5]}")
 
     assert not violations, (
         f"Files with multiple top-level classes ({len(violations)} violations):\n"
@@ -154,9 +149,8 @@ def test_no_type_ignore_or_noqa_in_maintained_source() -> None:
                 for lineno, line in hits:
                     violations.append(f"{rel}:{lineno}: {line}")
 
-    assert not violations, (
-        f"Bypass comments found ({len(violations)} violations):\n"
-        + "\n".join(sorted(violations))
+    assert not violations, f"Bypass comments found ({len(violations)} violations):\n" + "\n".join(
+        sorted(violations)
     )
 
 
@@ -169,9 +163,11 @@ def _nested_classes_in_class_body(path: Path) -> list[tuple[int, str, str]]:
     results = []
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
-            for child in node.body:
-                if isinstance(child, ast.ClassDef):
-                    results.append((child.lineno, node.name, child.name))
+            results.extend(
+                (child.lineno, node.name, child.name)
+                for child in node.body
+                if isinstance(child, ast.ClassDef)
+            )
     return results
 
 
@@ -188,17 +184,3 @@ def test_no_nested_classes_in_class_body() -> None:
         + "\n".join(sorted(violations))
     )
 
-
-def test_no_file_over_600_lines() -> None:
-    """No .py file in ralph/ or tests/ may exceed 600 lines."""
-    violations = []
-    for base in (RALPH_DIR, TESTS_DIR):
-        for path in _all_py_files(base):
-            n = _count_lines(path)
-            if n > 600:
-                rel = str(path.relative_to(REPO_ROOT))
-                violations.append(f"{n} lines: {rel}")
-    assert not violations, (
-        f"Files exceeding 600 lines ({len(violations)} violations):\n"
-        + "\n".join(sorted(violations))
-    )

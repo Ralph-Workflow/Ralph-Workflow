@@ -24,8 +24,8 @@ from ralph.display.artifact_renderer import (
     render_review_artifact,
 )
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
-from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.artifact_handoff_context import ArtifactHandoffContext
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.legacy_console_display import (
     LegacyConsoleDisplay,
     emit_display_line,
@@ -44,15 +44,15 @@ if TYPE_CHECKING:
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.events import Event
-    from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import PolicyBundle
 
 if TYPE_CHECKING:
+
     class _ReadPlanArtifactFn(Protocol):
         def __call__(self, workspace_root: Path) -> PlanSummary | None: ...
 
     class _ParallelDisplayModule(Protocol):
         ParallelDisplay: type[ParallelDisplay]
+
 
 _MAX_TEXT_LENGTH = 200
 _MAX_TOOL_INPUT_LENGTH = 120
@@ -61,10 +61,6 @@ _MAX_TOOL_RESULT_BRIEF = 80
 _TOOL_RESULT_BRIEF_THRESHOLD = 500
 _MAX_METADATA_PARTS = 3
 _MAX_METADATA_SUMMARY_LENGTH = 120
-
-
-
-
 
 
 def _parallel_display_cls() -> type[ParallelDisplay]:
@@ -92,7 +88,6 @@ class _ArtifactRenderCtx:
     display: ParallelDisplay | LegacyConsoleDisplay | None
     verbosity: Verbosity
     ra: RequiredArtifact
-
 
 
 def render_phase_artifact_handoff(

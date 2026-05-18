@@ -111,7 +111,6 @@ def _waiting() -> AgentExecutionState:
     return AgentExecutionState.WAITING_ON_CHILD
 
 
-
 def test_hard_stop_diag_includes_corroboration() -> None:
     """HARD_STOP diagnostic contains scoped_child_active and oldest_child_seconds."""
 

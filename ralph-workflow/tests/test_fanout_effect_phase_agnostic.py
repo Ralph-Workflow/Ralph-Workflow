@@ -47,7 +47,6 @@ class TestFanOutEffectIsPhaseAgnostic:
 
     def test_fan_out_effect_is_in_effect_union(self) -> None:
 
-
         args = typing.get_args(effects.Effect)
         assert FanOutEffect in args, "FanOutEffect must be in the Effect union type"
 

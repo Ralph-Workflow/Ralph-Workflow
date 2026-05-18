@@ -101,7 +101,6 @@ class _FakeDisplay:
 
 
 class TestParallelResume:
-
     def test_resume_skips_succeeded_workers(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -237,6 +236,3 @@ class TestParallelResume:
             ws = final_state.worker_states.get(uid)
             assert ws is not None, f"{uid} missing from final worker_states"
             assert ws.status == WorkerStatus.SUCCEEDED, f"{uid} expected SUCCEEDED, got {ws.status}"
-
-
-

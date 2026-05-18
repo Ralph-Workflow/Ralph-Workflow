@@ -14,9 +14,7 @@ class MemoryBackend:
 
     def exists(self, path: Path) -> bool:
         path_str = str(path)
-        return path_str in self._data or any(
-            k.startswith(path_str + "/") for k in self._data
-        )
+        return path_str in self._data or any(k.startswith(path_str + "/") for k in self._data)
 
     def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
         pass

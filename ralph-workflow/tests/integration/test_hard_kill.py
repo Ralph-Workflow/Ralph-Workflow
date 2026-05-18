@@ -38,7 +38,6 @@ class _FakeDisplay:
 
 
 class SleeperExecutor:
-
     def __init__(self) -> None:
         self.pids: list[int] = []
 
@@ -71,7 +70,6 @@ class SleeperExecutor:
             final_message="",
             duration_ms=int((time.monotonic() - start_time) * 1000),
         )
-
 
 
 def _make_work_unit(unit_id: str) -> WorkUnit:

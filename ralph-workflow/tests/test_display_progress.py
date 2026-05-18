@@ -118,7 +118,6 @@ class _DummyTqdmBar:
 
 
 class _DummyTTY(TextIOBase):
-
     def isatty(self) -> bool:
         return True
 

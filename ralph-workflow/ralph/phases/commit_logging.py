@@ -213,8 +213,6 @@ class CommitLoggingSession:
         return "\n".join(lines)
 
 
-
-
 def sanitize_agent_name(agent: str) -> str:
     """Sanitize agent name for use in filename.
 

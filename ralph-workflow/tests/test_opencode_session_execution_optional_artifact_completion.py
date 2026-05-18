@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 import threading
 import time as _time_module
@@ -26,6 +25,7 @@ from ralph.agents.invoke import (
 )
 from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.process.liveness import FakeLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,8 +44,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 class TestOptionalArtifactCompletion:
     """Optional-artifact phases terminal on clean exit; required phases enforce presence."""
-
-
 
     def test_optional_artifact_absent_with_declare_complete_does_not_raise(
         self, tmp_path: Path
@@ -159,9 +157,7 @@ class TestOptionalArtifactCompletion:
             ),
         )
 
-    def test_required_artifact_absent_still_raises_resumable(
-        self, tmp_path: Path
-    ) -> None:
+    def test_required_artifact_absent_still_raises_resumable(self, tmp_path: Path) -> None:
         """Required artifact absent without evidence still raises OpenCodeResumableExitError."""
         ra = RequiredArtifact(
             phase="development_analysis",
@@ -208,5 +204,3 @@ class TestOptionalArtifactCompletion:
                     evaluate_completion_fn=_fake_evaluate_completion,
                 ),
             )
-
-

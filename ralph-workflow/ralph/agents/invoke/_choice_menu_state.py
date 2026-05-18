@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from ralph.agents.invoke._choice_menu_option import _ChoiceMenuOption
+if TYPE_CHECKING:
+    from ralph.agents.invoke._choice_menu_option import _ChoiceMenuOption
 
 
 @dataclass(frozen=True)

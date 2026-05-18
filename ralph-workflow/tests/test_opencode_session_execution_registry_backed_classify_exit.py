@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 import json
 
@@ -22,6 +21,7 @@ from ralph.process.child_liveness import (
     ChildLivenessRegistry,
 )
 from ralph.process.liveness import DefaultLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -34,8 +34,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 class TestRegistryBackedClassifyExit:
     """classify_exit uses registry terminal_count to confirm all children exited."""
-
-
 
     def test_observe_line_routes_progress_event_to_registry(self) -> None:
         """A child_progress JSON line routed via observe_line updates registry progress."""
@@ -138,5 +136,3 @@ class TestRegistryBackedClassifyExit:
         assert state == AgentExecutionState.WAITING_ON_CHILD, (
             f"Expected WAITING_ON_CHILD with fresh progress; got {state!r}"
         )
-
-

@@ -250,7 +250,6 @@ def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() ->
 def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
     """Commit effect must record the sha as artifact outcome for the phase-close banner."""
 
-
     recorded: dict[str, str] = {}
 
     def _capture_outcome(outcome: str) -> None:
@@ -295,7 +294,6 @@ def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
 
 def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
     """Commit effect records sha artifact outcome even when state and policy are provided."""
-
 
     recorded: dict[str, str] = {}
 
@@ -558,8 +556,7 @@ def test_emit_phase_transition_review_issues_found_set_for_review_phase() -> Non
     )
 
 
-def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback(
-) -> None:
+def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback() -> None:
     """The live runner transition banner must show the capped planning-analysis loopback context."""
     display = _StubDisplay()
     state = PipelineState(

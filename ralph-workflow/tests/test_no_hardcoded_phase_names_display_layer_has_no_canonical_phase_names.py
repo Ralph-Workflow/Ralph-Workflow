@@ -75,8 +75,7 @@ class TestDisplayLayerHasNoCanonicalPhaseNames:
         plain_renderer = RALPH_ROOT / "display" / "plain_renderer"
         if plain_renderer.is_dir():
             return "\n".join(
-                p.read_text(encoding="utf-8")
-                for p in sorted(plain_renderer.rglob("*.py"))
+                p.read_text(encoding="utf-8") for p in sorted(plain_renderer.rglob("*.py"))
             )
         return (RALPH_ROOT / "display" / "plain_renderer.py").read_text(encoding="utf-8")
 

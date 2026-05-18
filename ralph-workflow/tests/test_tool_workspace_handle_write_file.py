@@ -1,7 +1,6 @@
 """Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
 
 from __future__ import annotations
-from tests.mock_session import MockSession
 
 from typing import cast
 from unittest.mock import MagicMock
@@ -17,6 +16,7 @@ from ralph.mcp.tools.workspace import (
     WORKSPACE_WRITE_TRACKED_CAPABILITY,
     handle_write_file,
 )
+from tests.mock_session import MockSession
 
 MEDIA_READ_CAPABILITY = "media.read"
 DEFAULT_MAX_INLINE_BYTES = 5_242_880
@@ -66,5 +66,3 @@ class TestHandleWriteFile:
                 ws,
                 {"path": "file.txt"},
             )
-
-

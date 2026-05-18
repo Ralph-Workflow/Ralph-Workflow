@@ -139,24 +139,23 @@ def _write_plan_handoff(workspace: MemoryWorkspace) -> None:
     workspace.write(".agent/PLAN.md", MINIMAL_PLAN_HANDOFF)
 
 
-
 def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_path: Path) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the template migration")
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+        ),
     )
 
     assert prompt_path == ".agent/tmp/planning_prompt.md"
@@ -184,17 +183,17 @@ def test_fresh_planning_prompt_does_not_include_artifact_history_even_if_history
     development_history_file.write_text("# Development History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -273,17 +272,17 @@ def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path)
         "# Planning Analysis Decision\n\nOld planning analysis handoff.\n",
     )
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -359,17 +358,17 @@ def test_materialize_planning_fallback_tolerates_missing_plan_and_clears_stale_a
         side_effect=TemplateRenderingError("primary template unavailable"),
     ):
         prompt_path = materialize_prompt_for_phase(
-        PromptPhaseContext(
-            phase="planning",
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-            workspace_root=tmp_path,
-        ),
-        PromptPhaseOptions(
-            artifacts_policy=policy.artifacts,
-            previous_phase=None,
-        ),
+            PromptPhaseContext(
+                phase="planning",
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=policy.artifacts,
+                previous_phase=None,
+            ),
         )
 
     rendered = workspace.read(prompt_path)
@@ -441,17 +440,17 @@ def test_planning_loopback_prompt_and_plan_edit_mcp_contract_stay_consistent(
     )
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase="planning_analysis",
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase="planning_analysis",
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -557,17 +556,17 @@ def test_planning_loopback_entry_preserves_plan_and_analysis_artifacts(
     )
 
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase="planning_analysis",
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase="planning_analysis",
+        ),
     )
 
     assert workspace.exists(".agent/artifacts/plan.json") is True
@@ -619,17 +618,17 @@ def test_repeated_planning_loopback_never_renders_fresh_template(
     )
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase="planning_analysis",
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase="planning_analysis",
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -678,17 +677,17 @@ def test_planning_loopback_prompt_includes_artifact_history_when_history_exists(
     development_history_file.write_text("# Development History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase="planning_analysis",
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase="planning_analysis",
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -733,17 +732,17 @@ def test_materialize_planning_retry_preserves_current_plan_context_when_last_ret
     )
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase="planning",
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase="planning",
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -783,18 +782,18 @@ def test_materialize_resumed_planning_with_draft_only_uses_draft_context(
     )
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-        resume_existing_phase=True,
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+            resume_existing_phase=True,
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -857,18 +856,18 @@ def test_materialize_resumed_planning_preserves_existing_plan_context(
     )
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="planning",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=policy.artifacts,
-        previous_phase=None,
-        resume_existing_phase=True,
-    ),
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=policy.artifacts,
+            previous_phase=None,
+            resume_existing_phase=True,
+        ),
     )
 
     rendered = workspace.read(prompt_path)

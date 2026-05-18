@@ -5,9 +5,6 @@ from __future__ import annotations
 import base64
 import tempfile
 from pathlib import Path
-
-from tests.mock_session import MockSession
-from tests.mock_session_with_manifest import MockSessionWithManifest
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -27,6 +24,8 @@ from ralph.mcp.tools.workspace import (
     handle_read_file,
     handle_read_image,
 )
+from tests.mock_session import MockSession
+from tests.mock_session_with_manifest import MockSessionWithManifest
 
 MEDIA_READ_CAPABILITY = "media.read"
 DEFAULT_MAX_INLINE_BYTES = 5_242_880

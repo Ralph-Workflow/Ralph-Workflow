@@ -10,10 +10,8 @@ from typing import IO, TYPE_CHECKING
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
-    from ralph.process.manager._process_manager import (
-        ProcessManager,
-        _SyncProcessLike,
-    )
+    from ralph.process.manager._process_manager import ProcessManager
+    from ralph.process.manager._process_manager_types import _SyncProcessLike
     from ralph.process.manager._process_record import ProcessRecord
 
 

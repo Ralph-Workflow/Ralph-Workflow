@@ -55,9 +55,7 @@ class CondenseOptions:
     env: Mapping[str, str] | None = None
 
 
-def _build_summaries(
-    text: str, env: Mapping[str, str] | None
-) -> tuple[str | None, str | None]:
+def _build_summaries(text: str, env: Mapping[str, str] | None) -> tuple[str | None, str | None]:
     """Build summary lines if content meets criteria, else return (None, None)."""
     _env = env if env is not None else os.environ
     if should_summarize(text, _env):
@@ -112,9 +110,7 @@ def _condense_head_only(text: str, options: CondenseOptions) -> _CondensedResult
     return _return_result(visible, True, options, text)
 
 
-def _condense_head_and_tail(
-    text: str, total: int, options: CondenseOptions
-) -> _CondensedResult:
+def _condense_head_and_tail(text: str, total: int, options: CondenseOptions) -> _CondensedResult:
     """Condense using head + tail with middle elision."""
     head_cells = options.hard_limit // 2
     tail_cells = options.hard_limit - head_cells

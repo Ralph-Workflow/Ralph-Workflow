@@ -48,9 +48,6 @@ class ConnectivityMonitor:
     without real sockets.
     """
 
-    ConnectivityState = ConnectivityState
-    ConnectivityEvent = ConnectivityEvent
-
     def __init__(
         self,
         *,

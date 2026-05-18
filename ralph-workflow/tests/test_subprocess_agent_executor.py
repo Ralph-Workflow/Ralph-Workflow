@@ -169,7 +169,7 @@ async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -
 
     async def fake_factory(
         command: str,
- *,
+        *,
         cwd: str | None,
         env: dict[str, str] | None,
         stdin: int | None,

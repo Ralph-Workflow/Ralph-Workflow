@@ -446,9 +446,7 @@ class ClaudeParser:
             return []
         return [AgentOutputLine(type="text", content=text, raw=raw)]
 
-    def _parse_structured_remainder(
-        self, raw: str, remainder: str
-    ) -> list[AgentOutputLine] | None:
+    def _parse_structured_remainder(self, raw: str, remainder: str) -> list[AgentOutputLine] | None:
         for role in ("user", "assistant"):
             role_prefix = f" {role}: message="
             if remainder.startswith(role_prefix):

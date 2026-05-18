@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
-
     from ralph.display.parallel_display import ParallelDisplay
 
 from rich.console import Console
@@ -51,14 +50,16 @@ def _seed_artifact(tmp_path: Path, unit_id: str) -> None:
     artifact_dir = tmp_path / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "development_result.json").write_text(
-        json.dumps({
-            "name": "development_result",
-            "type": "development_result",
-            "content": {"summary": f"Worker {unit_id} done", "changes": []},
-            "created_at": "2024-01-01T00:00:00+00:00",
-            "updated_at": "2024-01-01T00:00:00+00:00",
-            "metadata": {},
-        })
+        json.dumps(
+            {
+                "name": "development_result",
+                "type": "development_result",
+                "content": {"summary": f"Worker {unit_id} done", "changes": []},
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {},
+            }
+        )
     )
 
 
@@ -488,5 +489,3 @@ class TestSameWorkspaceFanOutE2E:
         assert any(e.unit_id == "unit-a" for e in completed_events), (
             "unit-a must have completed successfully (it had artifact evidence)"
         )
-
-

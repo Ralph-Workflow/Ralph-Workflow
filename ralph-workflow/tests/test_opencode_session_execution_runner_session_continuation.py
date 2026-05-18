@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     import pytest
 
 
-
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
@@ -70,7 +69,6 @@ class _RegistryFactory:
 
 class TestRunnerSessionContinuation:
     """Runner correctly threads OpenCodeResumableExitError.session_id into the retry attempt."""
-
 
     def test_opencode_resumable_exit_retries_with_same_session_id(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -167,7 +165,6 @@ class TestRunnerSessionContinuation:
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
-
 
 
 def _opencode_agent_config() -> AgentConfig:

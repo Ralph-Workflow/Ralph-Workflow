@@ -159,7 +159,6 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     )
 
 
-
 class AgentError(Exception):
     pass
 

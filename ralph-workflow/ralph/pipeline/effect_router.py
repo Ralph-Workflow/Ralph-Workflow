@@ -133,9 +133,7 @@ def _fan_out_effect(state: PipelineState, phase_def: PhaseDefinition) -> Effect:
     )
 
 
-def _terminal_phase_effect(
-    state: PipelineState, pipeline_policy: PipelinePolicy
-) -> Effect | None:
+def _terminal_phase_effect(state: PipelineState, pipeline_policy: PipelinePolicy) -> Effect | None:
     if state.phase == pipeline_policy.terminal_phase:
         return ExitSuccessEffect()
     if state.phase == pipeline_policy.recovery.failed_route:
@@ -187,9 +185,7 @@ def _commit_phase_effect(
     config: UnifiedConfig | None = None,
 ) -> Effect:
     if state.commit.agent_invoked:
-        return CommitEffect(
-            message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT)
-        )
+        return CommitEffect(message_file=str(workspace_scope.root / COMMIT_MESSAGE_ARTIFACT))
     if _should_early_skip_commit(workspace_scope.root):
         delete_commit_message_artifacts(workspace_scope.root)
         return EarlySkipCommitEffect()
@@ -307,9 +303,7 @@ def _config_agents_for_phase(
         direct_chain_cfg = config.agent_chains.get(drain_name)
         if direct_chain_cfg is not None:
             agents = (
-                direct_chain_cfg
-                if isinstance(direct_chain_cfg, list)
-                else direct_chain_cfg.agents
+                direct_chain_cfg if isinstance(direct_chain_cfg, list) else direct_chain_cfg.agents
             )
             return list(agents)
     return []

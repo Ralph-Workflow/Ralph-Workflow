@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
         def __call__(self, workspace: Workspace, root: str) -> object: ...
 
+
 CATEGORY_FIELDS = (
     "quality_checks",
     "security_checks",

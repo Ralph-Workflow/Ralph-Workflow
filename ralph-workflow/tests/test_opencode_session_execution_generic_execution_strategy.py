@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
@@ -17,6 +16,7 @@ from ralph.agents.invoke import (
     check_process_result,
 )
 from ralph.process.liveness import FakeLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -29,8 +29,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 class TestGenericExecutionStrategy:
     """GenericExecutionStrategy retains single-process exit-success semantics."""
-
-
 
     def test_classify_quiet_returns_active_when_no_descendants(self) -> None:
         """No descendants → classify_quiet returns ACTIVE (not WAITING_ON_CHILD)."""
@@ -83,5 +81,3 @@ class TestGenericExecutionStrategy:
         """Generic agents do not support session continuation."""
         strategy = GenericExecutionStrategy()
         assert strategy.supports_session_continuation() is False
-
-

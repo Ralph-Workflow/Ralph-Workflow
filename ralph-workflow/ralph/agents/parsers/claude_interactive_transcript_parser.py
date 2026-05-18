@@ -72,9 +72,7 @@ class ClaudeInteractiveTranscriptParser:
                 return [InteractiveTranscriptEvent(kind="thinking", text=text)]
         return []
 
-    def _events_from_assistant_message(
-        self, message: object
-    ) -> list[InteractiveTranscriptEvent]:
+    def _events_from_assistant_message(self, message: object) -> list[InteractiveTranscriptEvent]:
         if not isinstance(message, dict):
             return []
         content = message.get("content")

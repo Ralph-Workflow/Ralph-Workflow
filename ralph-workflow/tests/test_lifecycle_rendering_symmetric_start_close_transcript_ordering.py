@@ -111,8 +111,6 @@ class TestSymmetricStartCloseTranscriptOrdering:
     def test_start_and_close_use_same_dev_label_vocabulary(self) -> None:
         """Phase-start banner and [phase-close] transcript line use the same Dev label."""
 
-
-
         # Phase-start banner
         start_buf = StringIO()
         start_console = Console(

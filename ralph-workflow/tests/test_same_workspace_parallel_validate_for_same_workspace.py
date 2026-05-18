@@ -41,7 +41,6 @@ class _SessionContract:
 
 
 class TestValidateForSameWorkspace:
-
     def test_two_safe_disjoint_workers_passes(self) -> None:
         plan = WorkUnitsPlan(
             work_units=[
@@ -108,5 +107,3 @@ class TestValidateForSameWorkspace:
         )
         with pytest.raises(WorkUnitsValidationError, match="overlaps"):
             validate_for_same_workspace(plan)
-
-

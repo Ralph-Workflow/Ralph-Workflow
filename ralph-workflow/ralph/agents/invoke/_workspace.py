@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 if TYPE_CHECKING:
+
     class _HasStop(Protocol):
         """Protocol for watchdog Observer-like objects that have a stop method."""
 
@@ -30,15 +31,8 @@ if TYPE_CHECKING:
 
         Observer: type[_ObserverProtocol]
 
+
 _MAX_WORKSPACE_CHANGED_FILES = 512
-
-
-
-
-
-
-
-
 
 
 def _create_watchdog_observer() -> _ObserverProtocol | None:
@@ -128,5 +122,3 @@ class WorkspaceMonitor:
     def changed_files(self) -> set[str]:
         """Set of file paths that changed during monitoring."""
         return set(self._seen_files)
-
-

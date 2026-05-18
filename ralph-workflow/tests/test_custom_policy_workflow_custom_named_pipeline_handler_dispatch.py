@@ -197,7 +197,6 @@ class TestCustomNamedPipelineHandlerDispatch:
     def test_handle_phase_dispatches_custom_commit_phase(self, custom_bundle: PolicyBundle) -> None:
         """handle_phase dispatches sign_off (commit-role) via the generic commit handler."""
 
-
         HANDLERS.pop("sign_off", None)
         register_role_handlers(custom_bundle.pipeline)
         try:
@@ -227,7 +226,6 @@ class TestCustomNamedPipelineHandlerDispatch:
         self, custom_bundle: PolicyBundle
     ) -> None:
         """handle_phase dispatches audit (analysis-role) via the generic analysis handler."""
-
 
         HANDLERS.pop("audit", None)
         register_role_handlers(custom_bundle.pipeline)

@@ -1,7 +1,6 @@
 """Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
 
 from __future__ import annotations
-from tests.mock_session import MockSession
 
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
@@ -10,6 +9,7 @@ from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
     handle_list_directory_recursive,
 )
+from tests.mock_session import MockSession
 
 if TYPE_CHECKING:
     from ralph.mcp.tools.coordination import (
@@ -67,5 +67,3 @@ class TestHandleListDirectoryRecursive:
         assert ".git/objects" not in text
         assert "target/debug" not in text
         assert "wt-feature/scratch.txt" not in text
-
-

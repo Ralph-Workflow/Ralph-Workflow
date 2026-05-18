@@ -98,8 +98,6 @@ _KNOWN_ARTIFACT_TYPES = frozenset(
 )
 
 
-
-
 def execute_ops_with_rollback(ops: list[SubmitOp]) -> None:
     """Execute a sequence of ops; on failure roll back all completed ops in reverse."""
     completed: list[SubmitOp] = []

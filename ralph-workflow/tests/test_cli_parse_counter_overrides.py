@@ -95,4 +95,3 @@ class TestParseCounterOverrides:
     def test_zero_value_is_valid(self) -> None:
         result = parse_counter_overrides(["reviewer_pass=0"])
         assert result == {"reviewer_pass": 0}
-

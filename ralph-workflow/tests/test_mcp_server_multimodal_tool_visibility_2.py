@@ -64,7 +64,6 @@ def _http_call(
     )
 
 
-
 class TestMultimodalToolVisibility:
     """Tests for multimodal tool client capability filtering (Task 5)."""
 

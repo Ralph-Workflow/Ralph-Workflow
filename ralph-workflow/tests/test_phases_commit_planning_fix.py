@@ -38,7 +38,7 @@ def _default_policy() -> object:
         return load_policy(Path(tmp) / ".agent")
 
 
-def _mk_policy_context(workspace: object=None) -> PhaseContext:
+def _mk_policy_context(workspace: object = None) -> PhaseContext:
     """Context with real policy and mocked (nothing-exists) workspace."""
     policy = _default_policy()
     ws = workspace if workspace is not None else MagicMock()

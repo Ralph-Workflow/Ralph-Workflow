@@ -435,7 +435,8 @@ class TestPolicyDrivenPhaseBanner:
         policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
         console = Console(record=True)
         show_phase_transition(
-            "my_work", "my_check",
+            "my_work",
+            "my_check",
             pipeline_policy=policy,
             display_context=make_display_context(console=console),
         )
@@ -448,7 +449,8 @@ class TestPolicyDrivenPhaseBanner:
         """No policy → transition renders as minor (no description)."""
         console = Console(record=True)
         show_phase_transition(
-            "planning", "development",
+            "planning",
+            "development",
             display_context=make_display_context(console=console),
         )
         output = console.export_text()

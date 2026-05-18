@@ -213,9 +213,7 @@ def _emit_run_start(
     if not hasattr(ctx.active_display, "emit_run_start"):
         return
     with suppress(Exception):
-        _prompt_path_raw: object = getattr(
-            ctx.effective_pipeline_subscriber, "_prompt_path", None
-        )
+        _prompt_path_raw: object = getattr(ctx.effective_pipeline_subscriber, "_prompt_path", None)
         _prompt_path: str | None = cast("str | None", _prompt_path_raw)
         _dev_para = next(
             (
@@ -228,9 +226,7 @@ def _emit_run_start(
         _parallel_max_workers: int | None = (
             _dev_para.max_parallel_workers if _dev_para is not None else None
         )
-        _plan_present = (
-            ctx.workspace_scope.root / ".agent" / "artifacts" / "plan.json"
-        ).exists()
+        _plan_present = (ctx.workspace_scope.root / ".agent" / "artifacts" / "plan.json").exists()
         _dev_agent_raw: object = getattr(ctx.config, "developer_agent", None)
         _dev_model_raw: object = getattr(ctx.config, "developer_model", None)
         verbosity_str = (

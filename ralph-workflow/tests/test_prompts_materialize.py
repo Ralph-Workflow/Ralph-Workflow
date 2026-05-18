@@ -104,17 +104,17 @@ def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
     history_file.write_text("# History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=artifacts_policy,
-        previous_phase=None,
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase=None,
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -176,17 +176,17 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
     index_file.write_text("# History", encoding="utf-8")
 
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=artifacts_policy,
-        previous_phase=None,
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase=None,
+        ),
     )
 
     assert not archived_json.exists(), "archive json must be removed on fresh development entry"
@@ -282,17 +282,17 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
     index_file.write_text("# History", encoding="utf-8")
 
     materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=artifacts_policy,
-        previous_phase="development_analysis",
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase="development_analysis",
+        ),
     )
 
     assert archived_json.exists(), "archive json must be preserved on development loopback"
@@ -349,17 +349,17 @@ def test_development_prompt_includes_artifact_history_path_when_history_exists(
     index_file.write_text("# History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
-    PromptPhaseContext(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-    ),
-    PromptPhaseOptions(
-        artifacts_policy=artifacts_policy,
-        previous_phase=None,
-    ),
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase=None,
+        ),
     )
 
     rendered = workspace.read(prompt_path)

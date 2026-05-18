@@ -57,7 +57,6 @@ def _argv(args: tuple[object, ...]) -> list[str]:
     return list(cast("Iterable[str]", args[0]))
 
 
-
 def test_invoke_agent_times_out_when_agent_goes_idle(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
 

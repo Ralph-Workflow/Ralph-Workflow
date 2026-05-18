@@ -49,7 +49,6 @@ class TestRunnerCycleStartUsesForceTrue:
             captured_calls.append({"workspace_root": workspace_root, "sha": sha, "force": force})
             original(workspace_root, sha, force=force)
 
-
         with patch.object(runner_module, "write_cycle_baseline", recording_write):
             runner_module.write_start_commit_if_absent(root)
 
@@ -62,7 +61,6 @@ class TestRunnerCycleStartUsesForceTrue:
         root, _ = git_repo
         existing_sha = str(Repo(root).head.commit.hexsha)
         write_cycle_baseline(root, existing_sha, force=True)
-
 
         runner_module.write_start_commit_if_absent(root)
 

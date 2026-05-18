@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from ralph.display.activity_event_kind import ActivityEventKind
-from ralph.display.activity_provider import ActivityProvider
 from ralph.display.activity_visibility_hint import ActivityVisibilityHint
+
+if TYPE_CHECKING:
+    from ralph.display.activity_event_kind import ActivityEventKind
+    from ralph.display.activity_provider import ActivityProvider
 
 
 @dataclass(frozen=True, slots=True)

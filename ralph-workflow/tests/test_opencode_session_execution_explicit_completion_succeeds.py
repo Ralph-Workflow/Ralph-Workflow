@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import (
@@ -16,6 +15,7 @@ from ralph.agents.invoke import (
     CompletionCheckOptions,
     check_process_result,
 )
+from tests.fake_handle import _FakeHandle
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -27,8 +27,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestExplicitCompletionSucceeds:
-
-
     def test_explicit_completion_signal_succeeds(self) -> None:
         """OpenCodeExecutionStrategy: exit 0 with completion signals is TERMINAL_COMPLETE."""
         strategy = OpenCodeExecutionStrategy()
@@ -42,5 +40,3 @@ class TestExplicitCompletionSucceeds:
         state = strategy.classify_exit(handle, signals)
 
         assert state == AgentExecutionState.TERMINAL_COMPLETE
-
-

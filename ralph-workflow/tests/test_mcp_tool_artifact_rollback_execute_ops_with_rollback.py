@@ -151,4 +151,3 @@ class TestExecuteOpsWithRollback:
         ]
         with pytest.raises(RuntimeError, match="run error"):
             execute_ops_with_rollback(ops)
-

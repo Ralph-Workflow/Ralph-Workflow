@@ -1,7 +1,6 @@
 """Tests for ralph/mcp/tool_exec.py — MCP exec tool handler."""
 
 from __future__ import annotations
-from tests.mock_workspace_root import MockWorkspaceRoot
 
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -13,6 +12,7 @@ from ralph.mcp.tools.exec import (
     ExecutionError,
     run_command,
 )
+from tests.mock_workspace_root import MockWorkspaceRoot
 
 CUSTOM_TIMEOUT_MS = 5000
 EXPECTED_TIMEOUT_SECONDS = 2.5
@@ -80,4 +80,3 @@ class TestRunCommand:
         assert seen["command"] == ["python", "--version"]
         assert seen["cwd"] == tmp_path
         assert seen["timeout"] == EXPECTED_TIMEOUT_SECONDS
-

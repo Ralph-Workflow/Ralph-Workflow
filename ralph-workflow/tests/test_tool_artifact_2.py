@@ -72,9 +72,7 @@ class MemoryBackend(FileBackend):
 
 
 class FailingArtifactBackend(MemoryBackend):
-    def __init__(
-        self, failing_path: Path, *, message: str = "artifact store unavailable"
-    ) -> None:
+    def __init__(self, failing_path: Path, *, message: str = "artifact store unavailable") -> None:
         super().__init__()
         self._failing_path = failing_path
         self._message = message
@@ -116,19 +114,13 @@ def _full_plan_payload() -> dict[str, object]:
                 {"text": "Scope item three"},
             ],
         },
-        "steps": [
-            {"number": 1, "title": "Test step", "content": "Do the thing"}
-        ],
+        "steps": [{"number": 1, "title": "Test step", "content": "Do the thing"}],
         "critical_files": {
             "primary_files": [{"path": "test.py", "action": "modify"}],
             "reference_files": [],
         },
-        "risks_mitigations": [
-            {"risk": "Test risk", "mitigation": "Test mitigation"}
-        ],
-        "verification_strategy": [
-            {"method": "pytest", "expected_outcome": "all tests pass"}
-        ],
+        "risks_mitigations": [{"risk": "Test risk", "mitigation": "Test mitigation"}],
+        "verification_strategy": [{"method": "pytest", "expected_outcome": "all tests pass"}],
     }
 
 

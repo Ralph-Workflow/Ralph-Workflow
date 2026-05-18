@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import TYPE_CHECKING
 
-from ralph.display.budget_progress import BudgetProgress
-from ralph.display.worker_snapshot import WorkerSnapshot
-
 if TYPE_CHECKING:
-    pass
+    from datetime import datetime
+
+    from ralph.display.budget_progress import BudgetProgress
+    from ralph.display.worker_snapshot import WorkerSnapshot
 
 
 @dataclass(frozen=True, slots=True)

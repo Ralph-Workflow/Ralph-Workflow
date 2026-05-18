@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path as RuntimePath
-from typing import TYPE_CHECKING, Annotated, Protocol, TypedDict, cast
+from typing import TYPE_CHECKING, Annotated, Protocol, cast
 
 import rich_click as click
 import typer
@@ -20,6 +20,7 @@ from rich.text import Text
 
 from ralph import __version__
 from ralph.api.opencode import list_providers as fetch_providers
+from ralph.cli._cli_override_input import CLIOverrideInput
 from ralph.cli.commands.check_policy import check_policy_command
 from ralph.cli.commands.cleanup import cleanup
 from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
@@ -36,9 +37,6 @@ from ralph.config.bootstrap import (
     ensure_local_configs,
     regenerate_all,
 )
-from ralph.cli._cli_override_input import CLIOverrideInput
-from ralph.cli._cli_overrides import CLIOverrides
-from ralph.cli._general_overrides import GeneralOverrides
 from ralph.config.enums import Verbosity
 from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
@@ -55,17 +53,13 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from ralph.agents.registry import AgentRegistry
+    from ralph.cli._cli_overrides import CLIOverrides
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
 
 
-
-
-
-
-
-
 if TYPE_CHECKING:
+
     class _CommandMain(Protocol):
         def __call__(
             self,
@@ -83,6 +77,7 @@ if TYPE_CHECKING:
 
     class _ValidateCustomMcpServersFn(Protocol):
         def __call__(self, workspace_root: RuntimePath) -> int: ...
+
 
 click.rich_click.USE_RICH_MARKUP = True
 click.rich_click.USE_MARKDOWN = True
@@ -169,12 +164,6 @@ def _inject_quick_prompt(args: list[str]) -> list[str]:
             return result + list(args[i + 1 :])
         result.append(arg)
     return result
-
-
-
-
-
-
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:

@@ -30,6 +30,7 @@ if TYPE_CHECKING:
         def root(self) -> _HTMLNodeProtocol | None: ...
         def css(self, _selector: str) -> list[_HTMLNodeProtocol]: ...
 
+
 _MAX_LINKS = 100
 
 

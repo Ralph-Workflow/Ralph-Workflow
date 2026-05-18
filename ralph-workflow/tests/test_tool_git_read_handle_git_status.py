@@ -1,8 +1,6 @@
 """Tests for ralph/mcp/tools/git_read.py — MCP git read tool handlers."""
 
 from __future__ import annotations
-from tests.mock_workspace_root import MockWorkspaceRoot
-from tests.mock_session import MockSession
 
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -14,6 +12,8 @@ from ralph.mcp.tools.git_read import (
     GIT_STATUS_READ_CAPABILITY,
     handle_git_status,
 )
+from tests.mock_session import MockSession
+from tests.mock_workspace_root import MockWorkspaceRoot
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,5 +42,3 @@ class TestHandleGitStatus:
             result = handle_git_status(session, workspace, {})
             assert result.is_error is False
             assert "On branch main" in result.content[0].text
-
-

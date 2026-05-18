@@ -23,7 +23,6 @@ def _make_lines(data: list[str]) -> Iterator[str]:
     return iter(data)
 
 
-
 def test_generic_message_stop_type_is_suppressed() -> None:
     """Generic message_stop event type must produce no output."""
     parser = GenericParser()

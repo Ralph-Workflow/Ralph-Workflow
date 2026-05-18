@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-
 def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> WorkUnit:
     dirs = allowed_directories if allowed_directories is not None else [f"src/{unit_id}"]
     return WorkUnit(

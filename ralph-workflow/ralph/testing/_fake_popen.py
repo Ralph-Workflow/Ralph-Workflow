@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from typing import IO, TYPE_CHECKING
+from typing import IO
 
 from ralph.testing._process_state import ProcessState
 from ralph.testing._process_streams import ProcessStreams
-
-if TYPE_CHECKING:
-    pass
 
 
 class FakePopen:

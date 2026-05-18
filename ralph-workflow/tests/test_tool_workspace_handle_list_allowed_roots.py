@@ -1,7 +1,6 @@
 """Tests for ralph/mcp/tool_workspace.py — MCP workspace tool handlers."""
 
 from __future__ import annotations
-from tests.mock_session import MockSession
 
 import json
 from typing import cast
@@ -17,6 +16,7 @@ from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
     handle_list_allowed_roots,
 )
+from tests.mock_session import MockSession
 
 MEDIA_READ_CAPABILITY = "media.read"
 DEFAULT_MAX_INLINE_BYTES = 5_242_880
@@ -37,5 +37,3 @@ class TestHandleListAllowedRoots:
 
         with pytest.raises(CapabilityDeniedError):
             handle_list_allowed_roots(MockSession(), ws, {})
-
-

@@ -28,7 +28,6 @@ class _FakeResponse:
 
 
 class _FakeClient:
-
     def __init__(self, response_factory: Callable[[], _FakeResponse]) -> None:
         self._response_factory = response_factory
 
@@ -41,8 +40,6 @@ class _FakeClient:
     def get(self, url: str) -> _FakeResponse:
         assert url == opencode.CATALOG_URL
         return self._response_factory()
-
-
 
 
 @pytest.fixture(autouse=True)

@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 from ralph.agents.execution_state import (
     AgentExecutionState,
@@ -16,6 +15,7 @@ from ralph.agents.invoke import (
     check_process_result,
 )
 from ralph.process.liveness import FakeLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -34,8 +34,6 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
     is available, the strategy must ignore Ralph-tracked `agent:*` labels and
     rely on OS-level descendant detection instead.
     """
-
-
 
     def test_unrelated_agent_worker_does_not_suppress_timeout(self) -> None:
         """Unrelated agent:other-session worker does not keep scoped run alive."""
@@ -77,5 +75,3 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
         assert state == AgentExecutionState.ACTIVE, (
             f"Unscoped empty registry + no descendants must be ACTIVE; got {state!r}"
         )
-
-

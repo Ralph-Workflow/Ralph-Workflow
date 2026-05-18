@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import asyncio
+from typing import TYPE_CHECKING
 
 from ralph.testing._async_process_streams import AsyncProcessStreams
 from ralph.testing._process_state import ProcessState
+
+if TYPE_CHECKING:
+    import asyncio
 
 
 class FakeAsyncProcess:

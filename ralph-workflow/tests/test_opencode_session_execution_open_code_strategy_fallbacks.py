@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 from typing import TYPE_CHECKING, cast
 
@@ -18,6 +17,7 @@ from ralph.agents.invoke import (
     CompletionCheckOptions,
     check_process_result,
 )
+from tests.fake_handle import _FakeHandle
 
 if TYPE_CHECKING:
     from ralph.process.liveness import FakeLivenessProbe
@@ -32,8 +32,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestOpenCodeStrategyFallbacks:
-
-
     def test_classify_quiet_probe_exception_falls_back_to_descendants(self) -> None:
         class _RaisingProbe:
             def any_agent_active(self, label_prefix: str) -> bool:
@@ -82,5 +80,3 @@ class TestOpenCodeStrategyFallbacks:
         )
 
         assert state == AgentExecutionState.RESUMABLE_CONTINUE
-
-

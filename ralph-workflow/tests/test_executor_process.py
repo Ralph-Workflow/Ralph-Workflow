@@ -102,7 +102,6 @@ async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> Non
     after terminate() sets the event.
     """
 
-
     completion = asyncio.Event()  # never set → simulate a hanging process
     proc = FakeControllableAsyncProcess(
         pid=1,

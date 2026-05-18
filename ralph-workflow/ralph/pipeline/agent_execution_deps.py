@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from contextlib import AbstractContextManager
     from pathlib import Path
 
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
             prompt_file: str,
             *,
             options: InvokeOptions | None = None,
-        ) -> object: ...
+        ) -> Iterable[object]: ...
 
     class _RegistryLike(Protocol):
         def get(self, name: str) -> AgentConfig | None: ...

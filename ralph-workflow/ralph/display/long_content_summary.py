@@ -46,6 +46,7 @@ _SENTENCE_END = re.compile(r"[.!?\n]")
 
 AiSummaryHook = Callable[[str], "str | None"]
 
+
 @dataclass
 class _AiHookState:
     hook: AiSummaryHook | None = None

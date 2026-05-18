@@ -22,14 +22,14 @@ from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
+__all__ = ["RecoveryController", "RecoveryControllerOptions", "compute_backoff_ms"]
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import AgentChainState, PipelineState
-    from ralph.policy.models import AgentChainConfig, PolicyBundle
-
-
+    from ralph.policy.models import AgentChainConfig
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
@@ -82,8 +82,6 @@ class RecoveryController:
     Handles classification, budget debiting, chain fallover, and cycle cap.
     Delegates nothing to the reducer's internal retry counter when active.
     """
-
-    RecoveryControllerOptions = RecoveryControllerOptions
 
     def __init__(
         self,
@@ -442,5 +440,3 @@ class RecoveryController:
             last_failure_category=str(category),
             last_retry_delay_ms=0,
         )
-
-

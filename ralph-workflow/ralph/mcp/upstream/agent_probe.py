@@ -36,9 +36,9 @@ from ralph.mcp.protocol.startup import (
     tools_list_request,
 )
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
+from ralph.mcp.upstream._agent_transport_probe_error import AgentTransportProbeError
 from ralph.mcp.upstream.client import make_upstream_client
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.mcp.upstream._agent_transport_probe_error import AgentTransportProbeError
 from ralph.mcp.upstream.models import UpstreamCallError
 
 if TYPE_CHECKING:

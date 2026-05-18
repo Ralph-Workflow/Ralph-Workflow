@@ -162,7 +162,6 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     )
 
 
-
 class TestPipelineRunnerLoop:
     def test_run_pipeline_step_rewrites_stale_planning_prompt_before_agent_invoke(
         self,

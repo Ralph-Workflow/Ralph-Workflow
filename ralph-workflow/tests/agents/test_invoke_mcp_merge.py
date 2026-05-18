@@ -240,9 +240,7 @@ def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
     )
     seen_env: list[dict[str, str]] = []
 
-    def fake_run_pty_and_read_lines(
-        cmd: object, ctx: object, extras: object = None
-    ) -> object:
+    def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
         seen_env.append(getattr(ctx, "extra_env", None) or {})
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 

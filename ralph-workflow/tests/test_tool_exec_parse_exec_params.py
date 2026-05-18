@@ -17,7 +17,6 @@ EXPECTED_TIMEOUT_SECONDS = 2.5
 
 
 class TestParseExecParams:
-
     def test_parses_valid_params(self) -> None:
         params = {"command": "ls", "args": ["-la"], "timeout_ms": CUSTOM_TIMEOUT_MS}
         result = parse_exec_params(params)
@@ -109,5 +108,3 @@ class TestParseExecParams:
         params = {"command": "python -c \"print('hello')"}
         with pytest.raises(InvalidParamsError):
             parse_exec_params(params)
-
-

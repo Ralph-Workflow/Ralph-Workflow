@@ -597,7 +597,6 @@ def test_content_end_no_ai_summary_when_env_not_set() -> None:
 def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
     """Snapshot A emits [activity]; snapshot B emits exactly one [activity] line."""
 
-
     renderer, buf = _make_renderer()
 
     base_kwargs = {
@@ -652,7 +651,6 @@ def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
 def test_activity_appends_path_when_missing() -> None:
     """[activity] appends (path=...) when active_path is not in last_activity_line."""
 
-
     renderer, buf = _make_renderer()
     snapshot = PipelineSnapshot(
         phase="development",
@@ -681,7 +679,6 @@ def test_activity_appends_path_when_missing() -> None:
 
 def test_activity_does_not_double_append_path_when_already_present() -> None:
     """[activity] must NOT append (path=...) when active_path is already in the line."""
-
 
     renderer, buf = _make_renderer()
     snapshot = PipelineSnapshot(

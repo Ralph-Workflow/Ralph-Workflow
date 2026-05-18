@@ -38,14 +38,16 @@ def _seed_artifact(tmp_path: Path, unit_id: str) -> None:
     artifact_dir = tmp_path / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "development_result.json").write_text(
-        json.dumps({
-            "name": "development_result",
-            "type": "development_result",
-            "content": {"summary": f"Worker {unit_id} done", "changes": []},
-            "created_at": "2024-01-01T00:00:00+00:00",
-            "updated_at": "2024-01-01T00:00:00+00:00",
-            "metadata": {},
-        })
+        json.dumps(
+            {
+                "name": "development_result",
+                "type": "development_result",
+                "content": {"summary": f"Worker {unit_id} done", "changes": []},
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {},
+            }
+        )
     )
 
 
@@ -233,6 +235,3 @@ class TestPartialFailureHandoffContent:
         assert workers_by_id["unit-b"]["status"] != "succeeded", (
             f"unit-b must not be succeeded, got: {workers_by_id['unit-b']!r}"
         )
-
-
-

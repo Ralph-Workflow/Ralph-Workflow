@@ -81,9 +81,7 @@ class PlanningAnalysisRequestChangesOnceInvoker(MockAgentInvoker):
         if phase == "planning_analysis":
             self._planning_analysis_calls += 1
             if self._planning_analysis_calls == 1:
-                return AnalysisDecisionEvent(
-                    phase="planning_analysis", decision="request_changes"
-                )
+                return AnalysisDecisionEvent(phase="planning_analysis", decision="request_changes")
             return AnalysisDecisionEvent(phase="planning_analysis", decision="completed")
         return PipelineEvent.ANALYSIS_SUCCESS
 
@@ -103,7 +101,6 @@ class DevelopmentAnalysisAlwaysLoopbackInvoker(MockAgentInvoker):
         if phase == "development_analysis":
             return PipelineEvent.ANALYSIS_LOOPBACK
         return PipelineEvent.ANALYSIS_SUCCESS
-
 
 
 @lru_cache(maxsize=1)

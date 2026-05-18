@@ -5,9 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.mcp.protocol.session import AgentSession
-
 if TYPE_CHECKING:
+    from ralph.mcp.protocol.session import AgentSession
     from ralph.mcp.server.factory import McpServerHandle
     from ralph.workspace.scope import WorkspaceScope
 

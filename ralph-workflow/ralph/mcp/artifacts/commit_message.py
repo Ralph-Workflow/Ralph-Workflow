@@ -106,7 +106,6 @@ def read_commit_message_from_path(
     return contents or None
 
 
-
 def read_commit_message_payload_from_path(
     message_file: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> dict[str, object] | None:
@@ -204,7 +203,6 @@ def _read_commit_message_text_from_json_path(
     return render_commit_message_content(payload)
 
 
-
 def _read_commit_message_payload_from_json_path(
     message_file: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> dict[str, object] | None:
@@ -228,13 +226,11 @@ def _read_commit_message_payload_from_json_path(
         return _normalize_raw_commit_message_payload(payload)
 
 
-
 def _render_raw_commit_message_payload(payload: dict[str, object]) -> str | None:
     normalized = _normalize_raw_commit_message_payload(payload)
     if normalized is None:
         return None
     return render_commit_message_content(normalized)
-
 
 
 def _normalize_raw_commit_message_payload(payload: dict[str, object]) -> dict[str, object] | None:

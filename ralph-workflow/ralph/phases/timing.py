@@ -61,8 +61,6 @@ class PhaseTimer:
         )
 
 
-
-
 __all__ = [
     "PhaseTimer",
     "PhaseTimingRecord",

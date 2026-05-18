@@ -16,7 +16,6 @@ DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 class TestRequiredStringParam:
-
     def test_returns_string_value(self) -> None:
         params: dict[str, object] = {"path": "/some/path"}
         result = required_string_param(params, "path")
@@ -31,5 +30,3 @@ class TestRequiredStringParam:
         params: dict[str, object] = {"path": 123}
         with pytest.raises(InvalidParamsError):
             required_string_param(params, "path")
-
-

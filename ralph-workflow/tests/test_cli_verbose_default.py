@@ -29,17 +29,14 @@ def test_default_verbosity_is_verbose() -> None:
 
 def test_legacy_normal_is_mapped_to_verbose() -> None:
     assert (
-        resolve_effective_verbosity(Verbosity.NORMAL, quiet=False, debug=False)
-        == Verbosity.VERBOSE
+        resolve_effective_verbosity(Verbosity.NORMAL, quiet=False, debug=False) == Verbosity.VERBOSE
     )
 
 
 def test_quiet_wins_over_debug() -> None:
     # --quiet takes precedence over --debug so silent wrapper scripts
     # remain silent when both are passed.
-    assert (
-        resolve_effective_verbosity(Verbosity.VERBOSE, quiet=True, debug=True) == Verbosity.QUIET
-    )
+    assert resolve_effective_verbosity(Verbosity.VERBOSE, quiet=True, debug=True) == Verbosity.QUIET
 
 
 def test_explicit_full_is_preserved() -> None:

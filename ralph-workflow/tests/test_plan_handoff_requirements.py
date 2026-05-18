@@ -91,17 +91,17 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
         pytest.raises(ValueError, match=r"\.agent/PLAN\.md"),
     ):
         materialize_prompt_for_phase(
-        PromptPhaseContext(
-            phase=phase,
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(drain),
-            workspace_root=tmp_path,
-        ),
-        PromptPhaseOptions(
-            artifacts_policy=policy.artifacts,
-            previous_phase=previous_phase,
-        ),
+            PromptPhaseContext(
+                phase=phase,
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(drain),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=policy.artifacts,
+                previous_phase=previous_phase,
+            ),
         )
 
 
@@ -138,14 +138,14 @@ def test_review_role_requires_existing_plan_handoff(tmp_path: Path) -> None:
         pytest.raises(ValueError, match=r"\.agent/PLAN\.md"),
     ):
         materialize_prompt_for_phase(
-        PromptPhaseContext(
-            phase="review",
-            workspace=workspace,
-            pipeline_policy=pipeline_policy,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
-            workspace_root=tmp_path,
-        ),
-        PromptPhaseOptions(
-            artifacts_policy=artifacts_policy,
-        ),
+            PromptPhaseContext(
+                phase="review",
+                workspace=workspace,
+                pipeline_policy=pipeline_policy,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=artifacts_policy,
+            ),
         )

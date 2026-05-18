@@ -12,7 +12,6 @@ PostExitWatchdog with FakeClock to validate the planned end-to-end behaviors.
 """
 
 from __future__ import annotations
-from tests.integration.fake_handle import _FakeHandle
 
 import json
 
@@ -20,12 +19,11 @@ from ralph.agents.completion_signals import CompletionSignals
 from ralph.agents.execution_state import AgentExecutionState, OpenCodeExecutionStrategy
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import FakeLivenessProbe
+from tests.integration.fake_handle import _FakeHandle
 
 
 class TestChildStillWorking:
     """Fresh progress renewal keeps parent in WAITING_ON_CHILD."""
-
-
 
     def test_fresh_progress_holds_waiting(self) -> None:
         """Each progress event within progress_ttl maintains WAITING_ON_CHILD."""
@@ -91,8 +89,6 @@ class TestChildStillWorking:
         assert result == AgentExecutionState.RESUMABLE_CONTINUE, (
             f"Expired progress without renewal must yield RESUMABLE_CONTINUE; got {result!r}"
         )
-
-
 
 
 def _make_registry(*, t: list[float]) -> ChildLivenessRegistry:

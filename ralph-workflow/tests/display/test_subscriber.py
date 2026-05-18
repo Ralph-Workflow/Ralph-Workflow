@@ -70,9 +70,7 @@ def test_record_waiting_status_kind_specific_lines(tmp_path: Path) -> None:
     # PROGRESS with workspace delta
     sub.record_waiting_status(
         _event(
-            _EventOptions(
-                kind=WaitingStatusKind.PROGRESS, diagnostic={"workspace_event_delta": 3}
-            )
+            _EventOptions(kind=WaitingStatusKind.PROGRESS, diagnostic={"workspace_event_delta": 3})
         )
     )
     line = _last_line(sub)

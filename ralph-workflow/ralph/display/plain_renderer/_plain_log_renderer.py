@@ -609,8 +609,7 @@ class PlainLogRenderer(_PlainLogRendererBase):
                 )
                 cp_tag = f"{ctx.base_tag}-checkpoint#{seq}"
                 cp_suffix = (
-                    f"[{cp_tag}][{ctx.unit_id}]"
-                    f" ({seq} fragments, {total_chars} chars) {headline}"
+                    f"[{cp_tag}][{ctx.unit_id}] ({seq} fragments, {total_chars} chars) {headline}"
                 )
                 self._console.print(
                     self._build_line(ctx.timestamp, "INFO", "CONT", cp_suffix),
@@ -677,7 +676,9 @@ class PlainLogRenderer(_PlainLogRendererBase):
             elif opts.condensed_flag:
                 self._console.print(
                     self._build_line(
-                        timestamp, "INFO", cat,
+                        timestamp,
+                        "INFO",
+                        cat,
                         f"[{tag}][{unit_id}] ↳ summary: (no headline available)",
                     ),
                     markup=False,

@@ -23,7 +23,7 @@ from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.agents.invoke._types import _EvalCompletionFn
+    from ralph.agents.invoke._agent_run_ctx import _EvalCompletionFn
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
 

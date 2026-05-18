@@ -21,13 +21,10 @@ from ralph.testing._process_streams import ProcessStreams
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    from ralph.process.manager._process_manager import (
+    from ralph.process.manager._process_manager_types import (
         _AsyncProcessFactory as AsyncFactoryCallable,
     )
-    from ralph.process.manager._process_manager import (
-        _PsutilProcessLike,
-    )
-    from ralph.process.manager._process_manager import (
+    from ralph.process.manager._process_manager_types import (
         _SyncProcessFactory as SyncFactoryCallable,
     )
     from ralph.process.manager._spawn_options import SpawnOptions

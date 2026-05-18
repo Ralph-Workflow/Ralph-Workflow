@@ -116,5 +116,3 @@ class TestInvalidContentRollback:
         assert not artifact_file.exists(), (
             f"{artifact_type}: no artifact must remain on disk after validation failure"
         )
-
-

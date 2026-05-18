@@ -97,7 +97,6 @@ class _FakeBridge:
 
 
 class _NullSupervisor:
-
     def __enter__(self) -> None:
         return None
 

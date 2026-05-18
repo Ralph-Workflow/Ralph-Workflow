@@ -22,6 +22,7 @@ _URI_PATTERN = re.compile(
 
 MEDIA_URI_TEMPLATE = "ralph://media/{artifact_id}"
 
+
 def build_media_uri(artifact_id: str) -> str:
     """Build a ralph://media/{artifact_id} URI."""
     return f"{_RALPH_MEDIA_PREFIX}{artifact_id}"

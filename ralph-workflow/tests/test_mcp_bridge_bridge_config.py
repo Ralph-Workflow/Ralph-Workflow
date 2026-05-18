@@ -72,7 +72,6 @@ class MemoryBackend(FileBackend):
 
 
 class TestBridgeConfig:
-
     def test_default_values(self) -> None:
         config = BridgeConfig()
         assert config.artifact_dir == Path(".agent/artifacts")
@@ -96,4 +95,3 @@ class TestBridgeConfig:
         config = BridgeConfig(artifact_dir=Path("/virtual-artifacts"), artifact_deps=deps)
 
         assert config.artifact_deps is deps
-

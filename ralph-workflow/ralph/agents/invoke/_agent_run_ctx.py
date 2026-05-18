@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ralph.process.liveness import LivenessProbe
 
 if TYPE_CHECKING:
+
     class _EvalCompletionFn(Protocol):
         def __call__(
             self,

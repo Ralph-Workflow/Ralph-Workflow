@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PolicyBundle
 
 if TYPE_CHECKING:
+
     class _RunnerFunc(Protocol):
         def __call__(
             self,
@@ -65,6 +66,7 @@ if TYPE_CHECKING:
         """Typed accessor for the lazily imported pipeline runner module."""
 
         run: _RunnerFunc
+
 
 _state = _RunFuncState()
 
@@ -133,8 +135,6 @@ class RunPipelineRequest(NamedTuple):
     verbosity: Verbosity | None = None
     counter_overrides: dict[str, int] | None = None
     inline_prompt: str | None = None
-
-
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:

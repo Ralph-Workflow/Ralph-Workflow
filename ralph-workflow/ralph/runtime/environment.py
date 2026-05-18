@@ -14,6 +14,7 @@ from ralph.runtime._version_info import PythonVersionInfo
 if TYPE_CHECKING:
     from collections.abc import Mapping
 if TYPE_CHECKING:
+
     class _VersionInfoProtocol(Protocol):
         @property
         def major(self) -> int: ...

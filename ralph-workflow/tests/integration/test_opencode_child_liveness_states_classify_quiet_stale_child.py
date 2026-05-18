@@ -12,13 +12,13 @@ PostExitWatchdog with FakeClock to validate the planned end-to-end behaviors.
 """
 
 from __future__ import annotations
-from tests.integration.fake_handle import _FakeHandle
 
 import json
 
 from ralph.agents.execution_state import AgentExecutionState, OpenCodeExecutionStrategy
 from ralph.process.child_liveness import ChildActivitySnapshot, ChildLivenessRegistry
 from ralph.process.liveness import FakeLivenessProbe
+from tests.integration.fake_handle import _FakeHandle
 
 
 class TestClassifyQuietStaleChild:
@@ -38,8 +38,6 @@ class TestClassifyQuietStaleChild:
     matching the semantics already established in _check_probe_state and invoke.py's
     corroboration logic.
     """
-
-
 
     def test_stale_probe_snapshot_without_fresh_evidence_is_not_waiting(self) -> None:
         """Stale child_snapshot (has_process but not has_fresh_label)
@@ -163,8 +161,6 @@ class TestClassifyQuietStaleChild:
         assert result == AgentExecutionState.ACTIVE, (
             f"Stale scoped evidence + OS descendants must yield ACTIVE; got {result!r}"
         )
-
-
 
 
 def _make_registry(*, t: list[float]) -> ChildLivenessRegistry:

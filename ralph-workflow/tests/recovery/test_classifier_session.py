@@ -12,6 +12,7 @@ class _AgentInvocationError(Exception):
 class _AgentInactivityTimeoutError(Exception):
     """Simulates AgentInactivityTimeoutError via class name."""
 
+
 _AgentInvocationError.__name__ = "AgentInvocationError"
 _AgentInactivityTimeoutError.__name__ = "AgentInactivityTimeoutError"
 

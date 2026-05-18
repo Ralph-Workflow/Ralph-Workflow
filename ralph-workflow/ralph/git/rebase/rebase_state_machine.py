@@ -197,4 +197,3 @@ class RebaseStateMachine:
             self.abort_rebase()
         else:
             raise InvalidTransitionError("Unknown event")
-

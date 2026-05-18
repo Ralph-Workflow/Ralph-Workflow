@@ -154,4 +154,3 @@ class TestInlinePromptPersistence:
         assert not (tmp_path / "PROMPT.md").exists()
         result = run_module.run_pipeline(dry_run=True, inline_prompt="quick task")
         assert result == 0
-

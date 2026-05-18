@@ -75,7 +75,6 @@ class TestVerificationRunsOnlyWhenFlagTrue:
     def test_policy_post_fanout_verification_defaults_to_false(self) -> None:
         """The default pipeline policy must have post_fanout_verification=False."""
 
-
         defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
         bundle = load_policy(defaults_dir)
         dev_para = bundle.pipeline.phases["development"].parallelization

@@ -63,9 +63,7 @@ def test_environmental_failure_via_message_substring() -> None:
 
 def test_environmental_failure_via_reducer_with_controller() -> None:
     """PhaseFailureEvent with env error routes via controller, no budget debit."""
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
 
     event = PhaseFailureEvent(
@@ -99,9 +97,7 @@ def test_connectivity_monitor_state_transitions() -> None:
 
 def test_environmental_failure_no_fallover_record() -> None:
     """Environmental failures must not produce fallover records."""
-    controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10)
-    )
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude", "opencode"])
 
     controller.handle(
@@ -180,9 +176,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10, event_bus=bus, budget_registry=registry
-        )
+        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus, budget_registry=registry)
     )
     state = _make_state(["claude"])
 
@@ -242,9 +236,7 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(
-            cycle_cap=10, event_bus=bus, budget_registry=registry
-        )
+        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus, budget_registry=registry)
     )
     state = _make_state(["claude"])
 

@@ -1605,6 +1605,7 @@ ralph.mcp.tools.coordination
 .. automodule:: ralph.mcp.tools.coordination
    :members:
    :show-inheritance:
+   :exclude-members: ImageContent
 
 ralph.mcp.tools.exec
 ~~~~~~~~~~~~~~~~~~~~

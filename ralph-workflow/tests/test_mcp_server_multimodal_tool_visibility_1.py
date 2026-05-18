@@ -83,7 +83,6 @@ def _http_call(
     )
 
 
-
 def test_file_backed_session_allows_workspace_write_any_via_ephemeral_alias(
     tmp_path: Path,
 ) -> None:

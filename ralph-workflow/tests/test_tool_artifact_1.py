@@ -75,9 +75,7 @@ class MemoryBackend(FileBackend):
 
 
 class FailingArtifactBackend(MemoryBackend):
-    def __init__(
-        self, failing_path: Path, *, message: str = "artifact store unavailable"
-    ) -> None:
+    def __init__(self, failing_path: Path, *, message: str = "artifact store unavailable") -> None:
         super().__init__()
         self._failing_path = failing_path
         self._message = message

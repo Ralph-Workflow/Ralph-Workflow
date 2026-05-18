@@ -26,8 +26,6 @@ class GitRunOptions:
     text: bool = True
 
 
-
-
 def run_git(
     args: Sequence[str],
     *,
@@ -78,4 +76,4 @@ def run_git(
     return GitRunResult(args=cmd, returncode=returncode, stdout=stdout, stderr=stderr)
 
 
-__all__ = ["GitRunOptions", "GitRunResult", "run_git"]
+__all__ = ["GitRunOptions", "run_git"]

@@ -59,6 +59,7 @@ _REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
 _CONTAINER_COMMANDS = {"docker", "podman", "chroot", "nsenter", "unshare"}
 _PACKAGE_MANAGERS = {"apt", "yum", "dnf", "pacman", "brew"}
 
+
 @runtime_checkable
 class WorkspaceWithRoot(Protocol):
     """Workspace surface required for command execution."""

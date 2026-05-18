@@ -74,7 +74,6 @@ def test_probe_emits_claude_http_config_and_reaches_server(
     captured = _stub_http_handshake_pass(monkeypatch)
     captured_blobs: list[tuple[str, object]] = []
 
-
     def spy_claude(endpoint: str, **kw: object) -> str:
         blob = real_claude_config(endpoint, **kw)
         captured_blobs.append((endpoint, blob))

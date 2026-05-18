@@ -157,8 +157,6 @@ class RestartAwareMcpBridge:
             return True
 
 
-
-
 def check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:
     """Perform a health check on the MCP bridge, restarting if it crashed.
 
@@ -194,14 +192,24 @@ def start_mcp_server(
     # changed MCP_ENDPOINT_ENV value after a mid-run crash and restart.
     port = lifecycle_deps.reserve_port()
     inner = _spawn_mcp_process(
-        root, session, lifecycle_deps,
-        effective_extras.phase, effective_extras.extra_env, visible_tools, port=port
+        root,
+        session,
+        lifecycle_deps,
+        effective_extras.phase,
+        effective_extras.extra_env,
+        visible_tools,
+        port=port,
     )
 
     def _restart_fn() -> StandaloneMcpProcess:
         return _spawn_mcp_process(
-            root, session, lifecycle_deps,
-            effective_extras.phase, effective_extras.extra_env, visible_tools, port=port
+            root,
+            session,
+            lifecycle_deps,
+            effective_extras.phase,
+            effective_extras.extra_env,
+            visible_tools,
+            port=port,
         )
 
     return RestartAwareMcpBridge(

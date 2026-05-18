@@ -1,8 +1,6 @@
 """Tests for ralph/mcp/tool_exec.py — MCP exec tool handler."""
 
 from __future__ import annotations
-from tests.mock_workspace_root import MockWorkspaceRoot
-from tests.mock_session import MockSession
 
 from typing import TYPE_CHECKING
 
@@ -15,6 +13,8 @@ from ralph.mcp.tools.coordination import (
 from ralph.mcp.tools.exec import (
     handle_exec_command,
 )
+from tests.mock_session import MockSession
+from tests.mock_workspace_root import MockWorkspaceRoot
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,5 +62,3 @@ class TestHandleExecCommand:
 
         result = handle_exec_command(session, workspace, params)
         assert result.is_error is True
-
-

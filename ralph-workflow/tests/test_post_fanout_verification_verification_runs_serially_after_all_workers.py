@@ -66,7 +66,6 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
     def test_verification_summary_entry_added_on_failure(self, tmp_path: Path) -> None:
         """When verification ran and failed, parallel_development_summary must include it."""
 
-
         effect = FanOutEffect(
             work_units=(
                 WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),

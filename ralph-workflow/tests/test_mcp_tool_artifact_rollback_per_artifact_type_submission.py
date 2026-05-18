@@ -222,5 +222,3 @@ class TestPerArtifactTypeSubmission:
         assert artifact_file.exists(), (
             f"{artifact_type}: resubmission after failure must produce JSON artifact"
         )
-
-

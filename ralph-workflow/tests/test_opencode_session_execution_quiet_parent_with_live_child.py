@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 from ralph.agents.execution_state import (
     AgentExecutionState,
@@ -16,6 +15,7 @@ from ralph.agents.invoke import (
     check_process_result,
 )
 from ralph.process.liveness import FakeLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -27,9 +27,6 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestQuietParentWithLiveChild:
-
-
-
     def test_quiet_parent_with_live_child_is_not_idle(self) -> None:
         """OpenCodeExecutionStrategy classifies quiet parent with live child as WAITING_ON_CHILD."""
         strategy = OpenCodeExecutionStrategy()
@@ -39,5 +36,3 @@ class TestQuietParentWithLiveChild:
         state = strategy.classify_quiet(handle, probe)
 
         assert state == AgentExecutionState.WAITING_ON_CHILD
-
-

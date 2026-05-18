@@ -5,17 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.config.enums import Verbosity
-from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
-from ralph.pipeline.effects import InvokeAgentEffect
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.config.enums import Verbosity
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
+    from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
+    from ralph.pipeline.effects import InvokeAgentEffect
     from ralph.pipeline.legacy_console_display import LegacyConsoleDisplay
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PolicyBundle

@@ -69,7 +69,6 @@ class _FakeDisplay:
 
 
 class TestPartialFailureReporting:
-
     def test_successful_units_report_complete_before_dependent_fails(self) -> None:
         """Units B and C complete successfully before A (which depends on them) fails.
 
@@ -259,6 +258,3 @@ class TestPartialFailureReporting:
         assert last_error.index("unit-beta") < last_error.index("unit-gamma"), (
             f"unit-beta must appear before unit-gamma in last_error: {last_error!r}"
         )
-
-
-

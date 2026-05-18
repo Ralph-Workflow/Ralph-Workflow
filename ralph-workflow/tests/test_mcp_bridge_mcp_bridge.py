@@ -33,7 +33,6 @@ def _object_list(value: object) -> list[object]:
 
 
 class TestMCPBridge:
-
     def _make_bridge(self, transport: MagicMock | None = None) -> MCPBridge:
         config = BridgeConfig(transport=transport)
         return MCPBridge(config)
@@ -179,4 +178,3 @@ class TestMCPBridge:
         assert _object_dict(get_result["artifact"])["name"] == "test_artifact"
         listed = _object_list(list_result["artifacts"])
         assert [_object_dict(item)["name"] for item in listed] == ["test_artifact"]
-

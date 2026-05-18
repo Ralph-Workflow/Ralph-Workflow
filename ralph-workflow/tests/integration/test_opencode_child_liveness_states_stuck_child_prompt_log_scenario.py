@@ -76,6 +76,7 @@ class TestStuckChildPromptLogScenario:
 
         # Enter WAITING: no scoped Ralph evidence + OS descendants → WAITING_ON_CHILD.
         clock.advance(1.5)
+
         def classify_quiet() -> bool:
             return strategy.classify_quiet(handle, probe)
 

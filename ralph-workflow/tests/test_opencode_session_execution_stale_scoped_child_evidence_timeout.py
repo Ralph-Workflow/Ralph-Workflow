@@ -5,7 +5,6 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 """
 
 from __future__ import annotations
-from tests.fake_handle import _FakeHandle
 
 from typing import cast
 
@@ -24,6 +23,7 @@ from ralph.process.child_liveness import (
     MutableRecord,
 )
 from ralph.process.liveness import FakeLivenessProbe
+from tests.fake_handle import _FakeHandle
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -45,8 +45,6 @@ class TestStaleScopedChildEvidenceTimeout:
     with workspace_events_since_wait=0 and alive_by=os_descendant only, emitting
     SUSPECTED_FROZEN at 600s but not timing out until the 1800s hard ceiling.
     """
-
-
 
     def test_classify_quiet_stale_registry_with_raw_descendants_returns_active(self) -> None:
         """Stale registry evidence + raw descendants must NOT return WAITING_ON_CHILD.
@@ -324,5 +322,3 @@ class TestStaleScopedChildEvidenceTimeout:
             "No scoped evidence + raw descendants in exit must return "
             f"WAITING_ON_CHILD, not {state!r}."
         )
-
-
