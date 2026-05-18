@@ -20,6 +20,19 @@ If you want to inspect the project before you install anything, open the [GitHub
 
 If GitHub is where you already evaluate open-source tools, use the mirror as your inspection path and **star or watch it there** if Ralph looks worth trying on your next overnight backlog task.
 
+## What a good first handoff looks like
+
+A good first run should be easy to judge in five minutes the next morning:
+
+1. **One bounded brief** in `PROMPT.md`
+2. **One unattended run** on your own machine with the agent you already use
+3. **Checks that actually ran**
+4. **Fixes attempted before handoff**, not just a draft dumped back on you
+5. **Readable repo-local artifacts** you can open without replaying the terminal session
+6. **One merge question:** *would I merge this?*
+
+If that handoff shape sounds right, inspect the public [example review bundle](./docs/example-review-bundle.md) before you install or continue below for the fastest honest first run.
+
 ## Want the deeper workflow argument first?
 
 If you want a stronger answer to "what is this, who is it for, why is it different, and why should I try it now?" before you install, start with these:

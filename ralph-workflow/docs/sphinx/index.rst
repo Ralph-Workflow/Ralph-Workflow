@@ -38,6 +38,21 @@ Choose the first path that matches how you already work tonight:
    fits your work, start with :doc:`when-unattended-coding-fits`, :doc:`first-task-guide`,
    :doc:`first-task-prompt-templates`, and :doc:`reviewable-output`.
 
+What a good first handoff looks like
+====================================
+
+A strong first run should be easy to judge the next morning:
+
+1. **One bounded brief** in ``PROMPT.md``
+2. **One unattended run** on your own machine with the agent you already use
+3. **Checks that actually ran** instead of a draft that stops halfway
+4. **Fixes attempted before handoff** so weak spots are not just pushed back to you
+5. **Readable repo-local artifacts** you can open without replaying a terminal transcript
+6. **One merge question:** *would I merge this?*
+
+If that finish line is what you want, open the public :doc:`example-review-bundle`, follow
+:doc:`getting-started`, or inspect Ralph Workflow on the `GitHub mirror <https://github.com/Ralph-Workflow/Ralph-Workflow>`_.
+
 Want the deeper workflow argument before you install?
 =====================================================
 

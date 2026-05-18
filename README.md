@@ -37,6 +37,19 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 
 If you already judge open-source tools on GitHub, open the mirror first. If Ralph looks like a fit for your workflow, **star or watch it there before your first run** so you can track updates while you test it on a real backlog task.
 
+## What the morning-after handoff should look like
+
+A strong first run should feel concrete, not magical:
+
+1. **You write a bounded brief** in `PROMPT.md`.
+2. **Ralph runs the job unattended** with the agent already installed on your machine.
+3. **Checks actually run** instead of stopping at a draft.
+4. **Weak spots get fixed in the same loop** before the result is handed back.
+5. **Artifacts stay in the repo** so you can open the notes, logs, and result files without reconstructing the night from terminal scrollback.
+6. **You review one clean diff and ask:** *would I merge this?*
+
+If that is the kind of finish line you want, start with [START_HERE.md](./START_HERE.md), inspect the public [example review bundle](./docs/example-review-bundle.md), or open the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) first.
+
 ## Want the longer argument before you install?
 
 If you are still deciding what Ralph Workflow is for, whether unattended coding is a good fit, or how to judge the result honestly, these are the best deeper reads right now:
