@@ -19,7 +19,6 @@ release = __version__
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
-    "sphinx.ext.viewcode",
     # sphinx.ext.intersphinx removed — we have no live cross-doc targets and the inventory
     # fetch hangs or fails in offline/CI environments. ref.python warnings are suppressed anyway.
     "myst_parser",
@@ -54,9 +53,14 @@ html_theme_options = {
     "navigation_with_keys": True,
 }
 html_title = "Ralph Workflow"
+language = "en"
 html_show_sourcelink = True
 html_show_sphinx = False
 html_baseurl = "https://ralphworkflow.com/docs/"
+# Keep search-engine focus on task-fit, proof, and getting-started pages instead of
+# auto-generated API chrome that bloats the public sitemap without improving adoption.
+html_use_index = False
+html_domain_indices = False
 html_static_path = ["_static"]
 html_css_files: list[str] = []
 html_js_files = ["ralph-docs.js"]

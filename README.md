@@ -10,6 +10,134 @@ Ralph Workflow is an agent-agnostic orchestration CLI for spec-driven planning, 
 
 The point is not to generate a throwaway demo. Ralph Workflow is built for the kind of work that should leave you with a serious starting point for production: a working feature, a refactor in progress, a verified batch of tests, or a reviewable implementation foundation your team can keep pushing forward.
 
+**Important first-run expectation:** Ralph Workflow is free and open source, but it does **not** replace the coding agents you already use. Before your first run, have at least one supported agent CLI already installed and already authenticated on your own machine. Ralph orchestrates that agent and hands back a reviewable result.
+
+## Quick answer: is this for you?
+
+- **What is it?** A free and open-source orchestration CLI that runs the coding agents you already use on your own machine.
+- **Who is it for?** Developers and technical teams with work too big to babysit and too risky to trust blindly.
+- **Why is it different?** It is repo-native and built to hand back a reviewable result — diff, checks, artifacts, and traceable reasoning — not just a transcript and a claim that the task is done.
+- **Why use it now?** You can install it for free, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+
+## What you should get back tomorrow morning
+
+If Ralph Workflow is doing its job, the morning-after handoff should look reviewable before you read a single long log:
+
+```text
+Task: Add empty-project-name validation to the CLI create flow
+
+Changed files:
+- cli/create.py
+- tests/test_create.py
+
+Checks run:
+- unit tests for create flow
+- lint / formatting checks if applicable
+
+Open questions:
+- should reserved names be rejected too?
+- should whitespace be trimmed before validation?
+```
+
+That is the real promise: not “the agent seemed smart,” but **a bounded diff, checks that actually ran, and a clear merge decision**.
+
+If you want the fuller artifact shape before you install, inspect the public [example review bundle](./docs/example-review-bundle.md).
+
+## Start here in the path that matches your question
+
+- **I want the fastest honest first run.** Read [START_HERE.md](./START_HERE.md).
+- **I want help choosing the first agent path.** Read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
+- **I want copy-paste prompt shapes for a real first task.** Read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
+- **I am not sure whether my task is a good fit for unattended execution.** Read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
+- **I already use worktrees or multiple agent sessions. What does Ralph add?** Read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
+- **I already use Claude Code and want to know why I would add Ralph at all.** Read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
+- **I already use Claude Code + Codex together. What changes with Ralph?** Read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
+- **I run multiple agents already. What actually breaks first?** Read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
+- **I want a concrete merge-review path for AI output.** Read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
+- **I want to know what a strong morning-after handoff should actually contain.** Read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
+- **I already use Aider. Why would I use Ralph instead?** Read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
+- **I want to inspect the project where I already follow open-source tools.** Start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow), or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
+- **I want to see what a good result looks like before I try it.** Read [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete morning-after review path.
+
+Codeberg is the primary repo and the main adoption surface. If Ralph looks like a fit for your workflow, **star or watch it on Codeberg before your first run**. If you mainly follow projects on GitHub, the mirror is there too.
+
+## Independent places to inspect Ralph Workflow
+
+If you want third-party surfaces before you decide whether to try it, Ralph Workflow is now live or pending on a few developer-facing discovery pages:
+
+- [GitDB project page](https://gitdb.net/Ralph-Workflow/Ralph-Workflow) — inspect the GitHub mirror from a GitHub-native discovery surface.
+- [SaaSHub product page](https://www.saashub.com/ralph-workflow) — review the product card and alternatives context.
+- [SaaSHub alternatives](https://www.saashub.com/ralph-workflow-alternatives) — compare Ralph Workflow against adjacent tools in the same evaluation flow.
+- [TechTools Launchpad listing](https://techtools.cz/tools/launchpad/?tool=71) — a live developer-tools directory entry.
+
+Those pages all point back to the same honest evaluation path: Ralph Workflow is a free and open-source way to orchestrate the coding agents you already use on your own machine for overnight work you can review in the morning.
+
+## What the morning-after handoff should look like
+
+A strong first run should feel concrete, not magical:
+
+1. **You write a bounded brief** in `PROMPT.md`.
+2. **Ralph runs the job unattended** with the agent already installed on your machine.
+3. **Checks actually run** instead of stopping at a draft.
+4. **Weak spots get fixed in the same loop** before the result is handed back.
+5. **Artifacts stay in the repo** so you can open the notes, logs, and result files without reconstructing the night from terminal scrollback.
+6. **You review one clean diff and ask:** *would I merge this?*
+
+If that is the kind of finish line you want, start with [START_HERE.md](./START_HERE.md), inspect the public [example review bundle](./docs/example-review-bundle.md), or open the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first.
+
+## Want the longer argument before you install?
+
+If you are still deciding what Ralph Workflow is for, whether unattended coding is a good fit, or how to judge the result honestly, these are the best deeper reads right now:
+
+- [How to Tell if an AI Coding Task Is Actually Done](https://write.as/7pqpd2y0v0re2.md) — trust the finish line, not the model's confidence.
+- [Claude Code + Codex Workflow: Plan, Build, Review](https://write.as/vesqh0lzrm4en.md) — a practical phase-split workflow for people already using both tools.
+- [When Unattended AI Coding Actually Works](https://write.as/x5wil6pmtbvo1.md) — when to use an overnight run, and when not to.
+
+They all point back to the same free/open-source evaluation path: use the agents you already have on your own machine, run one real backlog task tonight, and ask tomorrow whether you would merge the result.
+
+## Tonight's first run in five minutes
+
+If you want the shortest honest test, do this in a real repo you already care about:
+
+Prerequisites before you start:
+
+- Python 3.12+
+- a git repo you can safely test in
+- at least one supported agent CLI already installed and already authenticated (for example Claude Code, Codex CLI, or OpenCode)
+
+If you are unsure which one to start with, use the one already working on your machine and read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
+
+```bash
+pipx install ralph-workflow
+cd /path/to/your/project
+ralph --init
+ralph --diagnose
+$EDITOR PROMPT.md
+ralph
+```
+
+Paste a spec this small into `PROMPT.md`:
+
+```markdown
+# Goal
+
+Add validation so the CLI rejects empty project names before creating files.
+Keep the rest of the flow unchanged.
+
+## Acceptance criteria
+
+- Empty or whitespace-only project names fail with a clear error
+- No project files are created for invalid names
+- Existing valid-name behavior stays unchanged
+- Tests cover the new validation
+```
+
+Then come back and ask one question:
+
+> **Would I merge this?**
+
+If yes, Ralph Workflow is useful for your codebase. If not, tighten the spec or task choice and run again.
+
 ## Why teams use Ralph Workflow
 
 - **Write a spec, not a babysitting script.** Define the task and acceptance criteria once, then let the run continue without constant prompting.
@@ -67,6 +195,41 @@ What to do in that flow:
 3. **`PROMPT.md`** should describe one concrete task with clear acceptance criteria.
 4. **`ralph`** directly invokes your configured agent CLIs and supervises the unattended run.
 
+## Start with one real task
+
+The best first test is not a vague demo.
+
+Pick one real backlog task and use Ralph Workflow on that.
+
+Good first tasks:
+- a bounded feature slice
+- a narrow refactor with tests
+- a known cleanup task with clear checks
+- repetitive implementation work where "done" is easy to judge
+
+Bad first tasks:
+- vague product exploration
+- risky production surgery
+- anything where nobody agrees what success looks like
+
+The evaluation question is simple:
+
+> **Would you merge this result?**
+
+If yes, Ralph Workflow is doing useful work. If not, tighten the task, verification, or phase routing and try again.
+
+For a practical walkthrough, read [START_HERE.md](./START_HERE.md).
+If you are unsure which agent path to use first, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
+If you want copy-paste starter specs instead of a blank page, read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
+If you are not sure whether your task is a good fit for unattended execution, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
+If you already use worktrees and want to understand what Ralph adds beyond isolation, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
+If you already use Claude Code and want the clearest answer to “why not just stay in Claude Code?”, read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
+If you already use Claude Code and Codex together and want the cleanest role split, read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
+If you already run multiple agents and the review/reconstruction step is what hurts, read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
+If the part you do not trust yet is the morning-after merge decision itself, read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
+If you want the clearest picture of what a short trustworthy handoff should say before you merge, read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
+If you already like Aider for interactive work and want to know when Ralph is the better fit, read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
+
 ## What a good run feels like
 
 You give Ralph Workflow a bounded product or engineering spec. It plans the work, hands implementation to the configured agents, runs review inside the workflow, and leaves you with something concrete to inspect afterward.
@@ -78,14 +241,27 @@ That usually means one of these outcomes:
 - a verified batch of tests, docs, or refactors completed without live supervision
 - a failed run with artifacts and logs that make the failure obvious instead of mysterious
 
-## Good first tasks
+## What good output looks like
 
-Start with boring, bounded work:
+A useful unattended run should not just say it is done.
 
-- add tests to an existing module
-- fix a known batch of lint failures
-- refactor one narrow subsystem
-- update docs that are backed by existing code
+It should leave you with:
+- a real diff
+- changed files you can inspect
+- checks that actually ran
+- clear notes about what changed
+- open questions where uncertainty remains
+
+See [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete first-task example, artifact bundle, and morning-after review path.
+See [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md) if the part you want to judge first is whether the handoff is actually mergeable.
+See [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md) if the main trust gap is still "what changed, what passed, and what still needs my judgment?"
+See [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md) if the only thing blocking you is choosing the first agent path.
+See [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md) if Claude Code is already your default and you want the sharpest contrast before trying Ralph.
+See [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md) for copy-paste starter specs you can adapt tonight.
+See [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md) for a simple good-task vs bad-task decision guide.
+See [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md) for the practical difference between simple workspace isolation and a reviewable unattended handoff.
+See [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md) if you already run parallel agents and want the clearest explanation of where trust actually breaks.
+See [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md) if your current baseline is interactive AI pair programming and you want the clearest contrast.
 
 ## Depth presets
 
@@ -130,7 +306,8 @@ Keep this README for onboarding. Use these when you want the full reference:
 - **Docs:** <https://ralphworkflow.com/docs>
 - **Issues:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Repository:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **GitHub mirror:** <https://github.com/mistlight/Ralph-Workflow>
+- **Primary Codeberg repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow> — inspect, star, or watch Ralph Workflow on the main repo
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow> — follow the mirror if GitHub is where you already track open-source tools
 - **PyPI package:** <https://pypi.org/project/ralph-workflow/>
 
 ## License

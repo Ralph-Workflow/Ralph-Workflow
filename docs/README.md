@@ -2,10 +2,35 @@
 
 This repository contains both **current Python documentation** and **legacy Rust-era reference material**.
 
+If you are evaluating Ralph Workflow rather than maintaining it, start with these four questions first:
+
+- **What is it?** A free and open-source tool that orchestrates coding agents you already run on your own machine.
+- **Who is it for?** Developers and technical teams handing off engineering work that is too big to babysit and too risky to trust blindly.
+- **Why is it different?** Ralph is built to return a reviewable result in the repo — not just a transcript and a "done" claim.
+- **Why use it now?** You can try it for free on one real backlog task and judge it with one question: would you merge this?
+
+Important expectation for evaluators: Ralph Workflow is free and open source, but it orchestrates coding agents you already have on your own machine. For the cleanest first impression, have at least one supported agent CLI already installed and already authenticated before you start the first-run docs.
+
+## Best first docs for evaluators
+
+- `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
+- `which-agent-should-i-start-with.md` — quick decision guide for the first agent path: choose the one already working on your machine
+- `example-review-bundle.md` — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
+- `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
+- `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
+- `review-ai-coding-output-before-merge.md` — five-minute merge review path for the morning-after handoff
+- `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
+- `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
+- `ralph-workflow-vs-claude-code.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing Claude Code habit
+- `claude-code-codex-workflow.md` — practical guide for developers already pairing Claude Code and Codex who want a cleaner finish than manual glue
+- `what-breaks-first-with-multiple-coding-agents.md` — shared-boundary drift, merged-state checks, finish receipts, and the trust failures that show up before raw Git conflicts
+- `ralph-workflow-vs-aider.md` — clearest comparison if your current baseline is interactive AI pair programming
+
 ## Current Python docs
 
 Start here for the maintained package:
 
+- `../START_HERE.md` — fastest path to using Ralph Workflow for free on a real task
 - `../ralph-workflow/README.md` — installation, development, and API overview
 - `../ralph-workflow/CONTRIBUTING.md` — contributor workflow for the Python package
 - `agents/verification.md` — required verification commands
@@ -60,6 +85,18 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `quick-reference.md` — command quick reference
 - `template-guide.md` — template usage
 - `git-workflow.md` — Git workflow with Ralph
+- `example-review-bundle.md` — public sample of a morning-after handoff: prompt, development result, review/fix notes, and machine-readable artifacts
+- `which-agent-should-i-start-with.md` — practical first-run agent-choice guide for Claude Code, Codex, and OpenCode users
+- `first-task-prompt-templates.md` — copy-paste starter prompt shapes for feature work, validation, refactors, tests, and docs
+- `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
+- `review-ai-coding-output-before-merge.md` — practical merge-review checklist for deciding whether the handoff is trustworthy
+- `what-a-good-ai-coding-finish-receipt-looks-like.md` — what a short trustworthy morning-after handoff should contain so review does not start with transcript archaeology
+- `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task
+- `why-worktrees-are-not-enough.md` — practical comparison for teams already using worktrees who still need a reviewable unattended handoff
+- `ralph-workflow-vs-claude-code.md` — practical comparison for developers deciding between staying interactive in Claude Code and handing off a reviewable unattended run
+- `claude-code-codex-workflow.md` — practical guide for splitting Claude Code and Codex across plan/build/review without manual glue chaos
+- `what-breaks-first-with-multiple-coding-agents.md` — practical guide for teams already running parallel agents who need a cleaner merged-state and morning-after handoff
+- `ralph-workflow-vs-aider.md` — comparison page for developers deciding between interactive pair programming and unattended reviewable handoff
 
 ## Architecture family (mixed state — see docs/architecture/README.md for explicit classification)
 

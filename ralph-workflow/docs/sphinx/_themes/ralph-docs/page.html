@@ -15,6 +15,13 @@
 {%- block sidebartoc %}{%- endblock %}
 {%- block sidebarsearch %}{%- endblock %}
 
+{%- block extrahead %}
+{{ super() }}
+{%- if pagename and (pagename.startswith('_modules/') or pagename in ['genindex', 'py-modindex', 'search']) %}
+<meta name="robots" content="noindex, nofollow">
+{%- endif %}
+{%- endblock %}
+
 {%- block document %}
 <input type="checkbox" id="__navigation" class="ralph-nav-toggle" aria-hidden="true">
 <a class="ralph-skip-link" href="#ralph-content">Skip to content</a>

@@ -1,0 +1,11 @@
+{
+  "status": "fixed",
+  "checks_run": [
+    "pytest tests/test_create.py"
+  ],
+  "final_state": [
+    "Empty input rejected",
+    "Whitespace-only input rejected",
+    "Valid-name behavior unchanged"
+  ]
+}
