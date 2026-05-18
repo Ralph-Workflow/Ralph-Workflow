@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-05-18T15:59:37.228010",
-  "count": 17,
+  "generated_at": "2026-05-18T16:35:12.467606",
+  "count": 18,
   "by_account": {
     "Clear-Past7954": 3,
-    "Informal-Salt827": 14
+    "Informal-Salt827": 15
   },
   "by_community": {
     "r/AI_Agents": 1,
-    "r/ClaudeCode": 10,
+    "r/ClaudeCode": 11,
     "r/codex": 5,
     "r/ClaudeAI": 1
   },
@@ -16,8 +16,8 @@
     "code",
     "codex",
     "agents",
-    "running",
     "agent",
+    "running",
     "workflow",
     "multiple",
     "overnight",
@@ -31,37 +31,37 @@
   "top_body_tokens": [
     "agent",
     "workflow",
-    "diff",
     "ralph",
+    "diff",
     "instead",
     "done",
-    "tool",
     "before",
     "trust",
-    "checks",
     "agents",
     "work",
+    "tool",
+    "checks",
     "task",
     "reviewable",
+    "ralphworkflow",
+    "receipt",
     "small",
     "after",
     "pass",
-    "needs",
-    "part",
-    "handoff"
+    "needs"
   ],
   "phrase_hits": {
     "worktree": 7,
     "diff": 16,
     "verify": 1,
-    "handoff": 9,
+    "handoff": 10,
     "reviewable": 11,
     "done criteria": 6,
     "scope": 8,
     "final check": 1,
-    "overnight": 4,
+    "overnight": 5,
     "review bundle": 1,
-    "trust": 9,
+    "trust": 10,
     "small scoped": 1
   },
   "repeated_openings": [
@@ -75,14 +75,6 @@
     }
   ],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-17T12:22:38.664612",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeCode",
-      "title": "Do you actually read and review the code",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1t7fi55/do_you_actually_read_and_review_the_code/oma6in3/",
-      "opening_line": "Most of the time the real answer is: review the diff, not the agent."
-    },
     {
       "timestamp": "2026-05-17T12:56:35.022150",
       "account": "Informal-Salt827",
@@ -154,6 +146,14 @@
       "title": "Pattern I'm using to keep Claude Code productive on overnight unattended runs",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1svxcb7/pattern_im_using_to_keep_claude_code_productive/omg10z9/",
       "opening_line": "The part that bites me overnight is rarely raw code quality first. It's scope creep, weak stop conditions, and no clean re-entry point in the morning."
+    },
+    {
+      "timestamp": "2026-05-18T15:59:46.593035",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Claude Code Agent Teams W/ Gemini and Codex",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tep6dl/claude_code_agent_teams_w_gemini_and_codex/omhhcbh/",
+      "opening_line": "If you're running Claude Code with Gemini or Codex, I'd design for stable handoffs before I optimized for more throughput."
     }
   ],
   "recommendations": [

@@ -1,6 +1,6 @@
 Primary asset:
 - Article: How to Tell if an AI Coding Task Is Actually Done
-- Article URL: https://write.as/7pqpd2y0v0re2.md
+- Article URL: https://write.as/qpvecytuagtph.md
 - GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 - Main site: https://ralphworkflow.com
 
@@ -14,7 +14,7 @@ Tags:
 ai, programming, tools
 
 URL:
-https://write.as/7pqpd2y0v0re2.md
+https://write.as/qpvecytuagtph.md
 
 Suggested story/comment framing:
 This is the workflow question I keep finding more useful than "which coding agent is best?" — what evidence do you need before an AI-generated change is actually ready to merge?

@@ -244,7 +244,7 @@ The marketing agent runs and asks:
 - **[MEDIUM]** Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent — Identified by daily SEO analysis as a top priority.
 - **[ONGOING]** Continue write.as + Telegraph posting until blocked channels are unblocked. — Working distribution channel. Track ratio of views per post to gauge platform value.
 - **[MEDIUM]** Leverage competitor comparison pages in content and outreach. — Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked.
-- **[INFO]** Note: hermes-agent has 155320 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
+- **[INFO]** Note: hermes-agent has 155986 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
 
 ### Priority Actions (from SEO analysis)
 - Fix top on-page SEO issues (current score: 65/100)

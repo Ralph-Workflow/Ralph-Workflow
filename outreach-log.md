@@ -484,6 +484,12 @@ _Last updated: 2026-05-11 06:29 UTC_
 
 ## 2026-05-18 (Monday) — Evening Audit — 15:24 UTC / 13:24 UTC
 
+### Site messaging review — 2026-05-18 (16:15 CEST)
+- Reviewed live https://ralphworkflow.com against current marketing assumptions in REDDIT_LEARNINGS.md and outreach-log.md.
+- **Verdict:** No meaningful directional shift. Core positioning ("finishes the job", three-phase Plan→Build→Verify, PR-review framing, "would you merge it?") is consistent with May 17 audit and current marketing direction.
+- **Refinements captured:** Site has sharpened several specific phrases not yet in REDDIT_LEARNINGS: "finishes the job", "Other AI tools give you a start. Ralph Workflow gives you a finish.", "Start the job and close the laptop", "What you can ship tonight", and the install-speed + tonight-promise combined framing. Added to REDDIT_LEARNINGS as new drafting vocabulary.
+- **No action needed on outreach-log beyond noting the review is done.**
+
 ### Bottleneck verdict
 `conversion_to_free_use` — unchanged from morning audit. GitHub stars: 0. Codeberg stars: 9.
 
@@ -1020,3 +1026,15 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
 - **Status:** ✅ Published
 - **Notes:** Autoposted from reddit-monitor shortlist: #1 Claude Code Agent Teams W/ Gemini and Codex (`r/ClaudeCode`).
 - **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution
+- **SkillsIndex AI-agent directory submission**: Submitted Ralph Workflow to SkillsIndex, a workflow/agent-tool index that reviews submissions, enriches them with GitHub/install metadata, and makes them searchable for developers comparing AI-agent tooling.
+  - Submission path: `POST https://skillsindex.dev/api/submit-tool`
+  - Verification: live API returned `200` with `{"success":true}`
+  - Why: the current bottleneck is still distribution into high-intent, developer-native discovery surfaces that can turn interest into GitHub inspection and eventual stars. SkillsIndex is a better use of this cycle than another generic asset because it is explicitly built around agent/workflow tools and has a real executable submit path from this environment.
+
+### RalphWorkflow Distribution
+- **ToolShelf submission**: Submitted Ralph Workflow to ToolShelf, a curated developer-tools directory with AI-coding and productivity categories, using the live `POST https://toolshelf.dev/api/submit` endpoint.
+  - Verification: live API response returned `200` with `{"success":true,"message":"Tool submitted successfully! We'll review it soon."}`
+  - Positioning used: free and open source; orchestrates Claude Code/Codex/OpenCode on your own machine; built for developers with work too big to babysit and too risky to trust blindly; different because it runs plan → build → verify unattended and hands back reviewable output; worth trying now because you can run one real backlog task tonight and wake up to code you can inspect, test, and decide whether to merge.
+  - Why: the current bottleneck is still distribution-to-adoption, and ToolShelf is a higher-fit developer discovery surface than another generic article or another Reddit monitor pass during cooldown.

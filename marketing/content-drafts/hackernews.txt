@@ -1,6 +1,6 @@
 Primary asset:
 - Article: How to Tell if an AI Coding Task Is Actually Done
-- Article URL: https://write.as/7pqpd2y0v0re2.md
+- Article URL: https://write.as/qpvecytuagtph.md
 - GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 - Main site: https://ralphworkflow.com
 
@@ -11,7 +11,7 @@ Title:
 How to Tell if an AI Coding Task Is Actually Done
 
 URL:
-https://write.as/7pqpd2y0v0re2.md
+https://write.as/qpvecytuagtph.md
 
 Suggested first comment:
 I wrote this because most AI coding discussion still focuses on model quality, but the workflow gap feels more important: agents say "done" before the result is something you'd actually merge.

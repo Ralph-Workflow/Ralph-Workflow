@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-18T09:05:51.667652",
+  "timestamp": "2026-05-18T17:00:50.526310",
   "weekly_mode": true,
   "site_health": {
     "homepage": {
@@ -77,7 +77,7 @@
     },
     {
       "priority": "info",
-      "action": "Note: hermes-agent has 155320 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
+      "action": "Note: hermes-agent has 155986 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
       "reason": "Competitor intelligence for positioning decisions."
     }
   ],
@@ -112,19 +112,19 @@
     "competitor_analysis": {
       "ran_ok": true,
       "report_path": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-18.md",
-      "stdout": "[competitor_analysis] Starting competitor analysis at 2026-05-18 09:05\n  \u2192 Monitoring competitors...\n    done in 12.3s\n  \u2192 Generating comparison pages...\n    done in 0.0s\n  \u2192 Discovering new competitors...\n    done in 0.1s (found 0)\n\nCompetitor analysis complete (12.4s total):\n  - Monitored: 8 compe",
+      "stdout": "[competitor_analysis] Starting competitor analysis at 2026-05-18 17:00\n  \u2192 Monitoring competitors...\n    done in 10.2s\n  \u2192 Generating comparison pages...\n    done in 0.0s\n  \u2192 Discovering new competitors...\n    done in 0.1s (found 0)\n\nCompetitor analysis complete (10.4s total):\n  - Monitored: 8 compe",
       "competitor_count": 8,
       "competitors": {
         "hermes-agent": {
           "status": 200,
-          "stars": 155320,
+          "stars": 155986,
           "features_found": [
             "Persistent memory"
           ]
         },
         "conductor-oss": {
           "status": 200,
-          "stars": 31832,
+          "stars": 31839,
           "features_found": [
             "Durable execution"
           ]
@@ -138,12 +138,12 @@
         },
         "aider": {
           "status": 200,
-          "stars": 44955,
+          "stars": 44976,
           "features_found": []
         },
         "continue": {
           "status": 200,
-          "stars": 33238,
+          "stars": 33252,
           "features_found": []
         },
         "cursor": {
@@ -187,7 +187,7 @@
   },
   "posting": {
     "returncode": 0,
-    "stdout": "{\n  \"timestamp\": \"2026-05-18T09:06:12.346293\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-18_philosophy_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"2dce5c1faddaa1fb30423b26df15630eb1c4a09384a928de0fa83f5088f6ff0f\",\n      \"experiment_id\": \"2026-05-18-philosophy\"\n    }\n  ]\n}",
+    "stdout": "{\n  \"timestamp\": \"2026-05-18T17:01:08.746982\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-18_philosophy_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"2dce5c1faddaa1fb30423b26df15630eb1c4a09384a928de0fa83f5088f6ff0f\",\n      \"experiment_id\": \"2026-05-18-philosophy\"\n    }\n  ]\n}",
     "stderr": ""
   }
 }
