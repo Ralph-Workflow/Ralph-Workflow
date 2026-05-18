@@ -8,6 +8,12 @@
   - Verification: duplicate check returned `{"exists":false,"count":0}` before submit; live POST returned `201` with pending submission id `6a0a95a93680f218e1983165` and status `pending`
   - Why: the current bottleneck is still distribution into developer-native discovery surfaces beyond Reddit, and HN/Lobsters remain account-gated from this environment. DevTool Center was a genuinely executable targeted channel right now, so shipping a live submission there was higher leverage than adding another conversion asset.
 
+### RalphWorkflow Distribution
+- **MadeWithStack submission**: Submitted Ralph Workflow to MadeWithStack's reviewed agent-built / agent-native product directory using its public API, positioning it as a free open-source developer workflow that orchestrates Claude Code, Codex CLI, and OpenCode on the user's own machine for unattended reviewable coding work.
+  - Submission path: `POST https://www.madewithstack.com/api/v1/submit`
+  - Verification: live `201` response returned slug `ralph-workflow`, `claim_eligibility: agent_directory`, and `next_action_code: UNDER_EDITORIAL_REVIEW`; follow-up status check at `https://www.madewithstack.com/api/v1/products/ralph-workflow?email=bot%40hireaegis.com` returned `status: pending` at `2026-05-18T05:28:47.564837+00:00`.
+  - Why: the current bottleneck is still trust/distribution into high-intent developer discovery surfaces, and MadeWithStack is a stronger fit than another generic post because it is explicitly a reviewed directory for agent-built / agent-native products with public proof and review-state visibility.
+
 ### RalphWorkflow GitHub conversion hygiene
 - **Broken GitHub mirror CTA fix across comparison assets**: corrected the GitHub mirror org slug from `RalphWorkflow/Ralph-Workflow` to `Ralph-Workflow/Ralph-Workflow` in the public comparison pages, their mirror copies, and the supporting marketing scripts (`competitor_analysis.py`, `weekly_review.py`, `channel_discovery.py`).
   - Verification: `python3 -m py_compile agents/marketing/competitor_analysis.py agents/marketing/weekly_review.py agents/marketing/channel_discovery.py`; spot-checked `seo-reports/comparisons/claude-code.md` plus the updated repo/URL references in the scripts.
@@ -806,3 +812,17 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Share URL: `https://techtools.cz/tools/launchpad/?tool=71`
   - Verification: direct `POST https://techtools.cz/launchpad-api/tools` returned `201` with live tool id `71`; follow-up `GET /tools/71` returned the stored listing; the submitted GitHub mirror URL resolves successfully.
   - Why: the bottleneck is still GitHub-native adoption beyond Reddit, and this was the strongest actually executable distribution move available right now: a developer-facing directory with no login, no CAPTCHA, auto-approval, and a direct path to inspect/star the free open-source repo.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 07:05:07
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-18 07:35:07
+- **Note:** Momentum check found: reddit_monitor_stale. Keep research/posting pressure on RalphWorkflow.
+
+### RalphWorkflow Distribution
+- **ForgeIndex local-AI directory submission**: Submitted Ralph Workflow to ForgeIndex's public project form as a free open-source local-agents workflow tool, positioning it around developers who want to orchestrate the agents already on their own machine for unattended overnight work that comes back as substantial, reviewable output.
+  - Submission path: `https://forgeindex.ai/` → Google Form `1FAIpQLSeB39gVawXep0o0WRjck8ESaJ96ZLloUIgqspMfjEYOcd-IDg`
+  - Verification: direct POST to the live Google Form returned the ForgeIndex response page and included the confirmation text `Ihre Antwort wurde aufgezeichnet`.
+  - Why: the current bottleneck is still distribution into GitHub-native / local-AI discovery surfaces beyond Reddit, and ForgeIndex is a tighter fit than another generic directory because it is explicitly built around open-source local AI projects and includes a dedicated `Local Agents & Automation` topic lane.

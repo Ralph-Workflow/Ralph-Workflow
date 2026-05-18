@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-05-18T08:00:07.582233",
+  "results": [
+    {
+      "draft": "2026-05-18_philosophy_draft.md",
+      "ok": true,
+      "status": "already_posted",
+      "draft_hash": "2dce5c1faddaa1fb30423b26df15630eb1c4a09384a928de0fa83f5088f6ff0f",
+      "experiment_id": "2026-05-18-philosophy"
+    }
+  ]
+}

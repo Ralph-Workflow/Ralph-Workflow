@@ -1,6 +1,6 @@
 # Ralph Workflow vs Hermes Agent
 
-**Last updated:** May 17, 2026 · [Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
+**Last updated:** May 18, 2026 · [Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · [← Back to all comparisons](/comparisons)
 
 ## At a Glance
 
