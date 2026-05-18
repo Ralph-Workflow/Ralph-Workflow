@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-18T22:10:05.734065",
+  "timestamp": "2026-05-18T23:30:06.846626",
   "metrics": [
     {
       "platform": "GitHub",
@@ -29,5 +29,32 @@
       "watchers_delta": 0,
       "forks_delta": 0
     }
+  },
+  "recent_window": {
+    "GitHub": {
+      "samples": 9,
+      "stars_delta_window": 0,
+      "watchers_delta_window": 0,
+      "forks_delta_window": 0
+    },
+    "Codeberg": {
+      "samples": 9,
+      "stars_delta_window": 0,
+      "watchers_delta_window": 0,
+      "forks_delta_window": 0
+    }
+  },
+  "evaluation": {
+    "findings": [
+      "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
+      "GitHub mirror adoption is also flat across the recent measurement window.",
+      "Codeberg remains the stronger adoption surface and should stay the primary evaluation target."
+    ],
+    "failing_signals": [
+      "primary_repo_flat"
+    ],
+    "next_focus": [
+      "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
+    ]
   }
 }

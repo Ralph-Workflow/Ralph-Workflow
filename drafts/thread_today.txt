@@ -1,14 +1,14 @@
-1. I've watched 200+ developers code in real interviews. The patterns are clear.
+1. 90% of technical interviews measure the wrong things. Here's what actually works:
 
-2. Candidates who write specs first solve the problem 3x faster. Not a typo.
+2. Senior devs don't write more code. They write less code that does more.
 
-3. The questions candidates ask during the interview predict on-the-job questions better than answers.
+3. The 'aha moment' usually happens at minute 12. If it hasn't by minute 20, it won't.
 
 4. The best performers explain their thinking out loud — even when they can't see the interviewer.
 
-5. Senior devs don't write more code. They write less code that does more.
+5. Docker preview wins every time. Candidates can see their code running, interviewers can see their debugging process.
 
-6. Docker preview wins every time. Candidates can see their code running, interviewers can see their debugging process.
+6. Candidates who write specs first solve the problem 3x faster. Not a typo.
 
 7. Full data breakdown: hireaegis.com/research
 

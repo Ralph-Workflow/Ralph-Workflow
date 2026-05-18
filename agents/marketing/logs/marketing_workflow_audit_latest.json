@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-18T22:20:08.346286",
-  "current_bottleneck": "conversion_to_free_use",
+  "generated_at": "2026-05-18T23:30:17.910021",
+  "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 10,
   "repeated_openings": [
@@ -24,16 +24,50 @@
       "html_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
     }
   ],
+  "recent_window": {
+    "GitHub": {
+      "samples": 9,
+      "stars_delta_window": 0,
+      "watchers_delta_window": 0,
+      "forks_delta_window": 0
+    },
+    "Codeberg": {
+      "samples": 9,
+      "stars_delta_window": 0,
+      "watchers_delta_window": 0,
+      "forks_delta_window": 0
+    }
+  },
+  "adoption_evaluation": {
+    "findings": [
+      "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
+      "GitHub mirror adoption is also flat across the recent measurement window.",
+      "Codeberg remains the stronger adoption surface and should stay the primary evaluation target."
+    ],
+    "failing_signals": [
+      "primary_repo_flat"
+    ],
+    "next_focus": [
+      "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
+    ]
+  },
+  "failing_tactics": [
+    "reddit_style_repetition",
+    "primary_repo_flat_window",
+    "mirror_repo_flat_window"
+  ],
   "reasons": [
     "Owned content and outreach exist, but repo/public adoption signals are still low.",
-    "GitHub stars remain low, which suggests trust-to-free-use conversion is still the limiting step.",
-    "Proof assets and first-task framing likely matter more right now than more generic awareness work."
+    "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
+    "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
+    "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
+    "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response."
   ],
   "next_moves": [
-    "Improve repo/site conversion surfaces before producing too much additional top-of-funnel content.",
-    "Keep publishing/distributing only when the asset clearly strengthens free use, trust, or adoption.",
-    "Reduce repetitive outreach patterns and keep messaging tied to real workflow pain.",
-    "Favor proof assets: examples, review bundles, first-task guides, and comparison pages."
+    "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
+    "Treat Codeberg movement as the primary outcome metric; GitHub is secondary mirror evidence only.",
+    "Reduce repetitive outreach patterns and keep messaging tied to real workflow pain in a native-sounding voice.",
+    "Require each new marketing action to name its expected outcome, measurement window, and replacement condition if it fails."
   ],
   "four_marketing_questions": {
     "what_is_it": "free and open-source tool that orchestrates existing agents on your machine",

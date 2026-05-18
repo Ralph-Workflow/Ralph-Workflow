@@ -2,6 +2,14 @@
 
 ## 2026-05-18 (Monday)
 
+### RalphWorkflow Distribution Infrastructure
+- **Cooldown-window packet automation repair**: Added `agents/marketing/reddit_next_window_packet.py` and patched `agents/marketing/reddit_watchdog.py` so a retryable Reddit state (`cooldown_skip` / `fresh_opportunity_rate_limited`) now automatically converts the latest monitor report into a fresh next-window seeding packet instead of wasting the cooldown on more analysis-only loops.
+  - Verification: `python3 -m py_compile agents/marketing/reddit_autopost.py agents/marketing/reddit_watchdog.py agents/marketing/reddit_next_window_packet.py`; `python3 -m unittest agents.marketing.tests.test_reddit_watchdog agents.marketing.tests.test_reddit_next_window_packet agents.marketing.tests.test_reddit_autopost -v`; live `python3 agents/marketing/reddit_watchdog.py` returned `cooldown_skip` with `next_window_packet.status: packet_generated` and wrote `drafts/reddit_next_window_packets_latest.md` plus refreshed `drafts/2026-05-18_reddit_next_window_packets.md`.
+  - Why: this is a **repaired tactic replacing a failed loop**. The recent audit showed repeated monitor passes during Reddit cooldown were flat and redundant. The better move was to make cooldown windows produce ready-to-use distribution ammo for the next safe post window automatically.
+  - Expected outcome: higher output quality and less wasted loop time during Reddit rate windows because the next post slot now comes pre-seeded with 3 current, proof-linked reply drafts.
+  - Measurement window: next 24 hours / next 2 safe Reddit posting windows.
+  - Replace if it fails: if the packet is not used or does not improve posting cadence/quality in the next 2 safe windows, stop investing in Reddit cooldown prep and shift the same cycles to executable non-Reddit distribution surfaces only.
+
 ### Reddit monitoring
 - **Report:** `seo-reports/reddit_monitor_2026-05-18_2115.md`
 - **Scan summary:** 28 candidate Reddit threads/posts scanned, 6 shortlisted, 22 rejected.
@@ -1142,3 +1150,10 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Verification: direct insert returned `201` with id `cd9a6b2b-38aa-42f3-9aa3-48f1882f975b`; readback query confirmed slug `ralph-workflow`, status `approved`, category `coding-development`, website `https://ralphworkflow.com`; public listing route `https://growdr.io/tool/ralph-workflow` returns `200`
   - Positioning used: free and open source; orchestrates Claude Code, Codex CLI, and OpenCode on your own machine; for developers with work too big to babysit and too risky to trust blindly; different because it runs unattended and hands back reviewable output; worth trying now because you can run one real backlog task tonight and judge it tomorrow.
   - Why: the current bottleneck is still distribution into live discovery surfaces that can route evaluators toward free use and public proof. GrowDR was a genuinely executable new channel tonight, so shipping a real listing there was higher leverage than adding more internal conversion copy.
+
+### RalphWorkflow Distribution
+- **DeepYard directory submission**: Submitted Ralph Workflow to DeepYard, an AI-agent / developer-tool directory that explicitly reviews submissions and promises GitHub-signal enrichment on approved listings.
+  - Submission path: `https://deepyard.dev/submit` → Formspree backend `https://formspree.io/f/mpqyzkbo`
+  - Verification: live POST returned `200` and landed on `https://formspree.io/thanks`
+  - Positioning used: free and open source; orchestrates Claude Code, Codex, and OpenCode on your own machine; for developers with engineering work too big to babysit and too risky to trust blindly; different because it runs plan → build → verify unattended and hands back substantial reviewable output; worth trying now because you can run one real backlog task tonight and decide tomorrow whether you would merge it.
+  - Why: the strongest executable move right now was still net-new distribution into developer-native discovery surfaces that can feed GitHub inspection and adoption. DeepYard was untried, high-fit, and actually writable from this environment, so it beat another internal asset tweak.
