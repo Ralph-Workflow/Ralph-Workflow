@@ -73,6 +73,13 @@
   - Live state check: `python3 agents/marketing/reddit_watchdog.py` still correctly returns `volume_guard_active:3_posts_in_6h`, so no safe Reddit post was forced during the cooldown window.
   - Why: distribution is still the highest-leverage lane that is actually executable from this environment, and the autoposter had a date rollover bug that would increasingly mis-rank fresh vs older Reddit opportunities after May 17. Fixing that now protects the next real distribution move instead of spending another cycle on generic content.
 
+### RalphWorkflow Reddit conversion prep
+- **Next-window Reddit seeding packet upgraded**: rewrote `drafts/2026-05-18_reddit_next_window_packets.md` around the current real bottleneck — Reddit interest is not converting into GitHub stars — so the next safe reply window now has three fresh, thread-specific bodies that seed the most relevant GitHub-hosted proof/comparison pages instead of dropping a bare repo link.
+  - Prepared threads: `Autonomous Claude Code runs in the new reality`, `Claude Code’s checkpoint commits are polluting my git history`, and `Impressions two weeks after moving from Claude Code to Codex`
+  - Seed targets: `docs/review-ai-coding-output-before-merge.md` and `docs/claude-code-codex-workflow.md` on the GitHub mirror
+  - Verification: direct readback of `drafts/2026-05-18_reddit_next_window_packets.md` plus grep check for the three target threads and the exact GitHub comparison/trust-page URLs
+  - Why: today’s audit showed the highest-leverage move during Reddit cooldown is not more monitoring or more generic content. It is pre-drafting fresh bodies that route warm thread traffic into the proof pages most likely to create real GitHub inspection/star behavior when the next posting window opens.
+
 ### RalphWorkflow Distribution Infrastructure
 - **Reddit watchdog retry fix**: Patched `agents/marketing/reddit_watchdog.py` so a fresh monitor report is no longer treated as permanently handled after `cooldown_skip` or `fresh_opportunity_rate_limited`; added `agents/marketing/tests/test_reddit_watchdog.py` to lock the behavior and reran the watchdog to confirm it now re-attempts the same fresh report instead of idling behind stale state.
   - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost agents.marketing.tests.test_reddit_watchdog -v`; `python3 agents/marketing/reddit_watchdog.py` now reaches `autopost_attempted` on `seo-reports/reddit_monitor_2026-05-17_2115.md` and reports the live burst gate instead of `already_handled`
@@ -1038,3 +1045,16 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Verification: live API response returned `200` with `{"success":true,"message":"Tool submitted successfully! We'll review it soon."}`
   - Positioning used: free and open source; orchestrates Claude Code/Codex/OpenCode on your own machine; built for developers with work too big to babysit and too risky to trust blindly; different because it runs plan → build → verify unattended and hands back reviewable output; worth trying now because you can run one real backlog task tonight and wake up to code you can inspect, test, and decide whether to merge.
   - Why: the current bottleneck is still distribution-to-adoption, and ToolShelf is a higher-fit developer discovery surface than another generic article or another Reddit monitor pass during cooldown.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeAI/comments/1taz6hd/claude_codes_checkpoint_commits_are_polluting_my/
+- **Comment URL:** https://old.reddit.com/r/ClaudeAI/comments/1taz6hd/claude_codes_checkpoint_commits_are_polluting_my/omi77jq/
+- **Status:** ✅ Published
+- **Notes:** Manual post from next-window packet: checkpoint commit cleanup / review-surface angle.
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow Distribution
+- **Reddit comment on checkpoint-noise cleanup pain**: Posted a concise review-surface answer in `r/ClaudeAI` on the thread "Claude Code’s checkpoint commits are polluting my git history. How are you handling this?"
+  - Comment URL: https://old.reddit.com/r/ClaudeAI/comments/1taz6hd/claude_codes_checkpoint_commits_are_polluting_my/omi77jq/
+  - Verification: `python3 agents/marketing/reddit_post.py ... --dry-run` reached `dry_run_ready`, then the live post returned `status: posted`
+  - Why: the strongest executable move right now was still live distribution, but `r/ClaudeCode` was inside the 6-hour community cooldown after the 2026-05-18 15:59 post. This adjacent `r/ClaudeAI` cleanup-pain thread still matched the current trust bottleneck, let RalphWorkflow answer all four marketing questions in a thread-native way, and seeded the highest-fit GitHub proof page instead of idling or adding more generic content.

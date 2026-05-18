@@ -1,0 +1,8 @@
+My rule is that checkpoint commits are for recovery, not for the human review surface.
+
+So I let the agent checkpoint as much as it needs while it is executing, then collapse that noise before handoff into one branch or PR surface a human can review without archaeology. What matters at the end is not every intermediate save point. It is the final diff, the checks that ran, and the still-open judgment calls.
+
+I wrote up the merge-surface standard I use here:
+https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/review-ai-coding-output-before-merge.md
+
+That guide lives in Ralph Workflow’s repo because Ralph is the free/open-source workflow I wanted for this exact problem: orchestrate the agents you already use on your own machine, let them run unattended overnight, and come back to something reviewable instead of a pile of checkpoints and “done” messages.
