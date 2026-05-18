@@ -1,5 +1,9 @@
-The part that bites me overnight is rarely raw code quality first. It's scope creep, weak stop conditions, and no clean re-entry point in the morning.
+If you're running Claude Code with Gemini or Codex, I'd design for stable handoffs before I optimized for more throughput.
 
-So I bias hard toward tasks that can end with one readable diff, one check bundle, and one note about unresolved decisions.
+The painful failures are usually permission mismatch, stale assumptions, and nobody owning the cross-cutting bits like config, schema, or tests.
 
-If the handoff is clean, the overnight run was useful even when it didn't finish everything.
+If you are already thinking in builder/reviewer phases, RalphWorkflow is the free/open-source version of that flow: orchestrate the agents you already use on your own machine, let them work unattended overnight, then come back to something substantial you can inspect like a real code review.
+
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+One owner per shared boundary plus a short finish receipt does more for trust than another parallel branch.

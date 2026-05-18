@@ -26,6 +26,25 @@
 - **Risk note:** the search pool is still saturating with already-used or setup-only threads, so the monitor should keep separating **helpful reply fit** from **RalphWorkflow mention fit** and avoid forcing a 5–10 product-fit quota when only 2–3 threads really qualify.
 - **Posting note:** No posting attempted from this monitor pass.
 
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-18_1515.md`
+- **Scan summary:** 26 candidate Reddit threads/posts scanned, 6 shortlisted, 20 rejected.
+- **Current verdict:** Mixed — 6 shortlist-worthy discussion/research threads were found, but only 2–3 are strong RalphWorkflow mention fits after prior-use, freshness, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code Agent Teams W/ Gemini and Codex"
+  - `r/ClaudeCode` — "Autonomous Claude Code runs in the new reality."
+  - `r/ClaudeAI` — "Claude Code's checkpoint commits are polluting my git history. How are you handling this?"
+- **Repeated pains worth tracking:** cleanup/checkpoint noise, visible finish-state ownership, handoff/reconstruction clarity, worktree preview/testing friction, and bounded autonomy with a boring reviewable finish.
+- **Risk note:** the search pool is now saturated enough that 5–10 shortlist-worthy threads can exist while only 2–3 are real RalphWorkflow mention fits; keep separating **helpful reply fit** from **mention fit** and keep checking the last 3 full post bodies for concept-cadence repetition.
+- **Posting note:** No posting attempted from this monitor pass.
+
+### RalphWorkflow Distribution Infrastructure
+- **Reddit monitor parser drift fix + live post recovery**: Patched `agents/marketing/reddit_autopost.py` so newer monitor reports still parse when they use `Best RalphWorkflow angle` blocks without a separate `Freshness:` line, and so stale `no_unused_opportunity` state no longer blocks a report once opportunities can actually be parsed again.
+  - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost agents.marketing.tests.test_reddit_watchdog -v`; direct probe against `seo-reports/reddit_monitor_2026-05-18_1515.md` now returns `count: 6`, `state: fresh`, `chosen: Claude Code Agent Teams W/ Gemini and Codex`
+  - Distribution result: reran `python3 agents/marketing/reddit_autopost.py` and it published to `r/ClaudeCode` thread `Claude Code Agent Teams W/ Gemini and Codex`
+  - Comment URL: https://old.reddit.com/r/ClaudeCode/comments/1tep6dl/claude_code_agent_teams_w_gemini_and_codex/omhhcbh/
+  - Why: this was a real stalled-marketing-infrastructure bug. The monitor had already found a live, medium-high-fit thread, but the autoposter silently treated the report as empty, which blocked a real distribution move. Fixing the parser and immediately converting the saved opportunity into a live post was higher leverage than creating another asset.
+
 ### RalphWorkflow Distribution
 - **DevTool Center submission**: Submitted Ralph Workflow to DevTool Center as a free `AI Helpers` developer tool, using a four-question description that keeps the core promise intact: free and open source, orchestrates Claude Code/Codex/other coding agents on your own machine, built for repo-native work too big to babysit and too risky to trust blindly, and meant to produce overnight reviewable output.
   - Submission path: `https://www.devtool.center/submit` → backend `https://devshelf-backend.onrender.com/api/v1/submissions`
@@ -462,6 +481,67 @@ _Last updated: 2026-05-11 06:29 UTC_
 - **Status:** ✅ Published
 - **Notes:** Fresh body — no thesis opener, no soft last-paragraph Ralph mention. Review-first angle targeting skeptical audience.
 - **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+## 2026-05-18 (Monday) — Evening Audit — 15:24 UTC / 13:24 UTC
+
+### Bottleneck verdict
+`conversion_to_free_use` — unchanged from morning audit. GitHub stars: 0. Codeberg stars: 9.
+
+### What actually worked today
+- **DevTool Center + MadeWithStack submissions** — both shipped to live endpoints with 201/pending responses. These are genuine distribution moves into high-intent developer discovery surfaces. Impact is deferred (pending editorial review) but the channels are now open.
+- **GitHub mirror CTA fix** — wrong org slug corrected across all comparison pages and scripts. Conversion hygiene issue that was quietly suppressing GitHub trust at the inspection step.
+- **Reddit watchdog retry fix, freshness rollover fix, pacing-window visibility fix** — infrastructure is genuinely tighter. The autoposter now handles cooldown states cleanly and will use the next real posting window without retry ambiguity.
+- **Reddit body freshness** — Informal-Salt827 posts continue to show genuine workflow advice, no formulaic product pushes. The body-variation discipline is holding.
+
+### What did not work
+- **Zero GitHub stars despite Reddit distribution + directory submissions.** The funnel from mention → repo visit → star is not closing. This is the same problem flagged in the morning audit and it persists.
+- **Three Reddit monitor passes today (09:15, 12:15, 15:15) — all produced "no posting attempted."** The cooldown window consumed the entire day. Three monitor passes during cooldown is three passes of analysis that produced zero distribution output.
+- **write.as articles from May 11–16 have zero external distribution.** No HN, no Lobsters, no Medium/DEV seeding. The articles exist but nobody outside their direct URLs has seen them.
+- **Reddit search pool saturation is confirmed.** Today's pass (26 threads scanned, 6 shortlisted, 20 rejected) mirrors yesterday's pattern: 6 shortlist-worthy threads available but only 2–3 are strong RalphWorkflow mention fits after prior-use and freshness filtering.
+
+### What is repetitive / low leverage right now
+- **More conversion assets would be noise.** START_HERE, first-task templates, proof bundle, Aider comparison, task-fit guide, reviewable-output page, unattended-coding-agent page, multi-agent trust-break guide, worktrees comparison — all shipped and surfaced. The conversion surface is ready.
+- **More Reddit monitor passes during active cooldown are redundant.** The monitor correctly produces "no posting" during cooldown windows. Running it three times today consumed analysis cycles that could have been spent on body drafting or non-Reddit channels.
+- **More write.as articles without a distribution plan.** Creating more owned content while existing owned content has zero reach beyond its own URLs is low leverage.
+
+### Repetition risk still alive
+- The repeated opening line ("I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units") has been confirmed fixed in the autoposter.
+- The remaining risk is **concept cadence** — same paragraph order, same product-mention slot, same logic rhythm with different words. The 15:15 monitor pass correctly identified this and recommended a last-3-body check for opening move, paragraph order, concept cadence, and product-mention placement.
+
+### The current bottleneck in one sentence
+People arrive (Reddit mentions, directory listings, search) but don't star on GitHub. Conversion surfaces are ready. The gap is distribution-to-adoption handoff: getting existing owned content in front of a larger audience and giving GitHub visitors a concrete reason to star tonight.
+
+### What to stop doing
+1. Running Reddit monitor passes during active cooldown windows — redundant analysis, zero distribution output
+2. Creating more conversion assets — surfaces are ready, adding more is noise
+3. Creating more write.as articles without a distribution path — reach is zero, adding more reaches nobody
+
+### What to start doing
+1. **Prioritize non-Reddit distribution for existing owned content.** The strongest move right now is submitting the best write.as article(s) to HN or Lobsters. Both have real viral reach and an audience that matches "free, open-source, runs your own agents, overnight project work." Both require accounts. Getting accounts is the action item.
+2. **Draft Reddit comment bodies during cooldown windows instead of running monitors.** The next posting window will open in ~4–6 hours. Having 2–3 pre-drafted fresh bodies ready for the best current opportunities ("Pattern I'm using to keep Claude Code productive on overnight unattended runs" + "Autonomous Claude Code runs in the new reality") means the next window gets maximum output instead of another monitor pass.
+3. **Add a "cleanup / handoff-surface" filter to monitor decisions.** Today's monitor pass recommended this: only reply in threads where the pain is about the visible finish state (what changed, what passed, what to merge, what to clean up, how to re-enter safely). Threads that are pure setup or tool-comparison should be research-only and not count toward the posting target.
+4. **Track GitHub stars as the primary signal.** If directory submissions produce any referral traffic, the GitHub mirror CTA fix should convert it. Watching the star count weekly is the honest measure of whether distribution is working.
+
+### Rules compliance check
+- Four marketing questions still answered in all assets ✅
+- Free OSS framing preserved ✅
+- Messaging aligned to: free and open source, existing agents on your own machine, overnight unattended work, wake up to reviewable output ✅
+- No repetitive opening lines in current autoposter bodies ✅
+- Body-variation discipline holding ✅
+
+### Next posting window
+- Reddit volume guard is active (~3 posts in 6h as of 15:24 UTC). Next safe window likely ~4–6h out.
+- Best pre-drafted opportunities: "Pattern I'm using to keep Claude Code productive on overnight unattended runs" (r/ClaudeCode, high mention fit) + "Autonomous Claude Code runs in the new reality" (r/ClaudeCode, medium mention fit).
+- Operational rule added: do not run monitor during cooldown windows. Use that time to draft bodies for next window instead.
+
+### Human action needed
+**Two things require you, not me:**
+1. **Create a Hacker News account** — the submission checklist and article packet already exist at `drafts/checklist_2026-05-18_hackernews_post.txt`. The best article to submit is "How to Tell if an AI Coding Task Is Actually Done" (write.as). HN has real viral reach for this exact audience: developers who care about free/open-source tools, unattended overnight work, and reviewable output.
+2. **Create a Lobsters account** — same submission packet at `drafts/checklist_2026-05-18_lobsters_post.txt`. Same article. Lobsters is a strong fit for the workflow-first, non-promotional tone of the piece.
+
+Both accounts are the highest-leverage human action available right now. Everything else is queued.
+
+---
 
 ## 2026-05-18 (Monday) — Midday Audit — 11:20 UTC
 - **Bottleneck verdict:** unchanged — `conversion_to_free_use`. GitHub stars: 0. Codeberg stars: 9.
@@ -928,3 +1008,15 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Status: ✅ Pushed to Codeberg and GitHub mirror
   - Verification: `git diff -- README.md START_HERE.md ralph-workflow/docs/sphinx/index.rst`; `grep -nE "GitDB|SaaSHub|TechTools Launchpad|Independent places to inspect|Third-party places to inspect" README.md START_HERE.md ralph-workflow/docs/sphinx/index.rst`; local build/test unverified in this environment due to missing `sphinx`
   - Why: the bottleneck is still trust/adoption conversion, and Ralph now has real third-party directory/discovery pages live. Surfacing those proof points directly on the first public screens is higher leverage than another generic asset or another low-signal directory submission because it strengthens public trust right at the moment someone decides whether Ralph is real enough to inspect, star, or try tonight.
+
+### RalphWorkflow Reddit next-window prep
+- **Pre-drafted fresh Reddit bodies for the next safe posting window**: added `drafts/2026-05-18_reddit_next_window_packets.md` with three thread-specific reply drafts for the strongest live fits: `Claude Code Agent Teams W/ Gemini and Codex`, `Autonomous Claude Code runs in the new reality`, and a cleanup-pain backup on checkpoint-commit noise.
+  - Verification: spot-checked the packet content and confirmed the previously overused opener (`I’ve had the best results when I stop optimizing for more agents and start optimizing for reviewable work units.`) does not appear in the new drafts.
+  - Why: the latest audits show Reddit cooldown windows were being wasted on more monitoring instead of usable output. Pre-drafting thread-native bodies is the highest-leverage executable move right now because it turns the next posting window into a live distribution opportunity without adding more generic content or more redundant scans.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1tep6dl/claude_code_agent_teams_w_gemini_and_codex/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1tep6dl/claude_code_agent_teams_w_gemini_and_codex/omhhcbh/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #1 Claude Code Agent Teams W/ Gemini and Codex (`r/ClaudeCode`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`

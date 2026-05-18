@@ -18,6 +18,22 @@ class RedditAutopostTests(unittest.TestCase):
         self.assertEqual(len(opps), 1)
         self.assertEqual(opps[0].mention_fit, "**medium-high**")
 
+    def test_parse_opportunities_supports_inline_angle_and_missing_freshness(self):
+        report = """### 1) Claude Code Agent Teams W/ Gemini and Codex
+- URL: https://www.reddit.com/r/ClaudeCode/comments/example/
+- Community: `r/ClaudeCode`
+- Best RalphWorkflow angle:
+  - **the weak point is not the model mix; it is the handoff contract and who owns the finish state**
+- Mention fit: **medium-high**
+"""
+        opps = reddit_autopost.parse_opportunities(report)
+        self.assertEqual(len(opps), 1)
+        self.assertEqual(opps[0].freshness, "during this pass")
+        self.assertEqual(
+            opps[0].angle,
+            "the weak point is not the model mix; it is the handoff contract and who owns the finish state",
+        )
+
     def test_build_comment_adds_github_link_for_high_fit_codex_thread(self):
         opp = reddit_autopost.Opportunity(
             rank=1,
@@ -219,6 +235,33 @@ class RedditAutopostTests(unittest.TestCase):
         self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, mixed_team_body)
         self.assertIn("free/open-source", handoff_body)
         self.assertIn("free/open-source", mixed_team_body)
+
+
+    def test_parse_current_report_shape_finds_live_opportunities(self):
+        report = """### 1) Claude Code Agent Teams W/ Gemini and Codex
+- URL: https://www.reddit.com/r/ClaudeCode/comments/1tep6dl/claude_code_agent_teams_w_gemini_and_codex/
+- Community: `r/ClaudeCode`
+- Sentiment: enthusiastic but friction-aware
+- Why it fits:
+  - real handoff-state pain instead of generic “more agents” hype
+- Best RalphWorkflow angle:
+  - **the weak point is not the model mix; it is the handoff contract and who owns the finish state**
+- Mention fit: **medium-high**
+
+### 2) Autonomous Claude Code runs in the new reality.
+- URL: https://www.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/
+- Community: `r/ClaudeCode`
+- Sentiment: practical, cost-aware, slightly frustrated
+- Why it fits:
+  - explicit unattended-run thread with real operational constraints
+- Best RalphWorkflow angle:
+  - **the goal is not autonomy by itself; it is a bounded run that comes back reviewable**
+- Mention fit: **medium**
+"""
+        opps = reddit_autopost.parse_opportunities(report)
+        self.assertEqual(len(opps), 2)
+        self.assertEqual(opps[0].title, "Claude Code Agent Teams W/ Gemini and Codex")
+        self.assertEqual(opps[1].mention_fit, "**medium**")
 
 
 if __name__ == "__main__":
