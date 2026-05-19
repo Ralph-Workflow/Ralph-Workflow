@@ -12,8 +12,9 @@ If you are evaluating Ralph Workflow rather than maintaining it, start with the 
 4. `ai-agent-orchestration-cli.md` — practical evaluation path for orchestration-CLI intent
 5. `spec-driven-ai-agent.md` — practical evaluation path for spec-first intent
 6. `claude-code-automation.md` — practical evaluation path for Claude Code automation intent
-7. `ralph-workflow-vs-opencode.md` — comparison path for OpenCode users deciding whether a reviewable unattended handoff is missing
-8. `unattended-coding-agent.md` — category-intent page for developers searching for an unattended coding agent they can actually trust
+7. `claude-code-approval-mode.md` — practical evaluation path for Claude Code users stuck in approval-mode babysitting
+8. `ralph-workflow-vs-opencode.md` — comparison path for OpenCode users deciding whether a reviewable unattended handoff is missing
+9. `unattended-coding-agent.md` — category-intent page for developers searching for an unattended coding agent they can actually trust
 
 Keep the first public project relationship on Codeberg:
 
@@ -29,6 +30,7 @@ Keep the first public project relationship on Codeberg:
 - `ai-agent-orchestration-cli.md` — practical evaluation path for orchestration-CLI intent
 - `spec-driven-ai-agent.md` — practical evaluation path for spec-first intent
 - `claude-code-automation.md` — practical evaluation path for Claude Code automation intent
+- `claude-code-approval-mode.md` — practical repo-native path if approval mode is still the thing keeping Claude Code from feeling unattended
 - `ralph-workflow-vs-opencode.md` — direct repo-native comparison for OpenCode evaluators
 - `unattended-coding-agent.md` — practical page for unattended-coding-agent intent
 - `../docs/sphinx/example-review-bundle.md` — public proof bundle before setup

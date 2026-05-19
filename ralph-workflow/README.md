@@ -23,6 +23,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 - [AI Agent Orchestration CLI](docs/ai-agent-orchestration-cli.md) — practical repo-native path if you are comparing orchestration CLIs
 - [Spec-Driven AI Agent](docs/spec-driven-ai-agent.md) — practical repo-native path if your real question is spec-first execution
 - [Claude Code Automation](docs/claude-code-automation.md) — practical repo-native path if your real question is Claude Code automation
+- [Claude Code Approval Mode](docs/claude-code-approval-mode.md) — practical repo-native path if approval mode still turns "autonomous" work into transcript babysitting
 - [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md) — choose the agent already installed and authenticated on your machine
 - [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better
 - [Ralph Workflow vs Aider](docs/sphinx/ralph-workflow-vs-aider.md) — decide when interactive pair-programming is enough and when an unattended morning-after handoff is better
