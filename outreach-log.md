@@ -1,5 +1,14 @@
 # Outreach Log
 
+## 2026-05-19 (Tuesday) — Claude Code approval-mode conversion repair (20:33 UTC)
+- **Shipped a new repo-native evaluator page for the live pain `Claude Code approval mode` and surfaced it across the top conversion path**: added `docs/claude-code-approval-mode.md`, linked it from `README.md`, `START_HERE.md`, and `docs/README.md`, committed `c8c0f458` (`Add approval-mode evaluator path`), and pushed to the primary Codeberg repo.
+  - Why: this is **REPAIRED / REPLACING** a flat tactic. The audit says the bottleneck is still `distribution_and_message_to_primary_repo_conversion`, Reddit monitoring keeps surfacing approval-loop / approval-mode babysitting pain, and the hosted docs already had a good page for that intent while the repo-native conversion surfaces did not. The highest-leverage local repair was to make that exact evaluator question reachable from the primary repo path instead of burying it in the hosted docs only.
+  - Expected outcome: more qualified Claude Code evaluators who land on the repo should self-route into a high-fit trust page, then inspect / star / watch / issue on **Codeberg** instead of bouncing or defaulting to the GitHub mirror.
+  - Measurement window: next 7 days for clicks / references into `docs/claude-code-approval-mode.md`; next 14 days for **Codeberg** stars/watchers/issues delta (through **2026-06-02**).
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat on **2026-06-02**, stop spending cycles on more approval-mode owned-surface tweaks and shift the next replacement move to a fresh external distribution/backlink surface that sends traffic directly into the strongest Codeberg-first proof/comparison pages.
+  - Type: **REPAIRED / REPLACING**
+  - Docs review note: reviewed the user journey in order (`README.md` → `START_HERE.md` → `docs/README.md`). The new link belongs on these surfaces because approval-mode babysitting is now a live high-intent evaluator objection, not a deep-doc edge case. Nothing else was added beyond one new path on each top-level surface, duplication stayed low, and the top-level experience is better because a current pain now has a direct Codeberg-first answer without expanding those screens into a link dump.
+
 ## 2026-05-19 (Tuesday) — Website refresh check (18:18 UTC)
 - **No directional change detected.** Core positioning, three-phase flow, overnight promise, and PR-review framing all intact and consistent with all prior learnings.
 - **Two refinements observed:** (1) OpenCode now explicitly named alongside Claude Code and Codex CLI — expands the "works with tools you already trust" frame; (2) the problem/pain block now leads with a visceral conversational failure sequence ("You write a task. The AI starts. You answer a prompt. Then another. It hallucinates. You correct it.") — slightly more conversational and failure-story in tone than the May 18 version.
@@ -2397,3 +2406,47 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Expected outcome:** more qualified GitHub/Codeberg evaluators should stay on the main path, reach the Codeberg-first next step faster, and convert into primary-repo inspections, stars, watches, or first-run issues instead of bouncing into docs sprawl.
 - **Measurement window:** next 7 days for clearer top-level evaluator flow and referral behavior from repo entry surfaces; next 14 days (through `2026-06-02`) for **Codeberg** stars/watchers/issues delta.
 - **Replace if it fails:** if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending the next cycle on more top-level docs pruning alone and replace this lane with a warmer external competitor-citation/distribution move that sends traffic directly into the tightened evaluator path.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 22:15:51
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow repo-native intent-page conversion repair
+- **Surfaced the strongest evaluator intents directly on the primary repo docs surface instead of leaving them mostly buried in hosted Sphinx paths**: added repo-native `docs/after-your-first-run.md`, `docs/ai-agent-orchestration-cli.md`, `docs/spec-driven-ai-agent.md`, and `docs/claude-code-automation.md`, then rewired `README.md`, `START_HERE.md`, and `docs/README.md` to route Codeberg visitors into those pages first.
+  - Commit: `d7b7aac0` — `Surface repo-native conversion intent pages`
+  - Status: ✅ Pushed to Codeberg (`origin/main`)
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/after-your-first-run.md`, `docs/ai-agent-orchestration-cli.md`, `docs/spec-driven-ai-agent.md`, `docs/claude-code-automation.md`
+  - Verification: repo-local relative-link check returned `LINK_CHECK_OK`; push to Codeberg succeeded.
+  - Why: this is **REPAIRED / REPLACING** a flat tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, and the repo-root docs surface on Codeberg was still weaker than the hosted docs for exact evaluator intents and the post-run Codeberg action path. The highest-leverage same-run repair was to make the primary repo itself answer those intents and close on Codeberg-first actions.
+  - Expected outcome: more qualified Codeberg visitors should reach a sharper repo-native evaluation path, resolve exact-intent objections faster, and convert into primary-repo inspect/star/watch/issue actions instead of bouncing into generic docs flow.
+  - Measurement window: next 7 days for clicks/usage on the new repo-native intent pages and `START_HERE`; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending cycles on more repo-root intent-page expansion and shift the next replacement move to a fresh external distribution or backlink surface that sends warmer traffic into these repaired Codeberg-first pages.
+  - Type: **REPAIRED / REPLACING**
+  - Docs review note: this change belongs on `README.md`, `START_HERE.md`, and `docs/README.md` because those are the first repo surfaces Codeberg evaluators actually see; it pruned reliance on buried `docs/sphinx/*` paths for exact-intent entry points, reduced duplication by giving the repo-root docs a clearer job instead of scattering the same decision across mixed surfaces, and improves the top-level experience by making the shortest path obvious: repo inspect → fit page → first run → Codeberg action.
+
+### RalphWorkflow Claude Code automation Telegraph distribution repair
+- **Published a Codeberg-first Telegraph page for the exact evaluator phrase `Claude Code automation`**: shipped `Claude Code Automation for Real Repo Work` to Telegraph so the repo-native conversion page now also has a matching unblocked external distribution surface that points readers to Codeberg first and GitHub second.
+  - Live URL: `https://telegra.ph/Claude-Code-Automation-for-Real-Repo-Work-05-19`
+  - Source draft: `/home/mistlight/.openclaw/workspace/drafts/2026-05-19_claude-code-automation_telegraph.md`
+  - Verification: `web_fetch` returned HTTP 200 and extracted the published title/content successfully.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. Codeberg adoption is still flat, the audit still says Telegraph keyword-gap distribution is the active repair path, and `Claude Code automation` had a strong owned/repo-native conversion page but no matching public Telegraph surface. This closes that distribution gap without repeating stale Reddit or write.as loops.
+  - Expected outcome: more qualified developers searching for or sharing around `Claude Code automation` should land on a Codeberg-first explanation, then click through to inspect, star/watch, or file first-run issues on the primary repo.
+  - Measurement window: next 7 days for Telegraph page-path / repo-inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replacement condition: if Codeberg still shows no measurable delta by `2026-06-02`, stop expanding Telegraph around this theme and shift the next replacement move to fresh backlink/directory surfaces that send traffic into the repaired Codeberg-first pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 22:40:02
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow Reddit next-window packet repair
+- **When:** 2026-05-19 23:16:00 CEST
+- **Type:** REWRITTEN / REPAIRED / REPLACING
+- **What I executed:** rewired `agents/marketing/reddit_next_window_packet.py` so cooldown-window Reddit packets now draft bodies through the hardened anti-repetition generator instead of a static generic template, then regenerated the live packet files:
+  - `/home/mistlight/.openclaw/workspace/drafts/2026-05-19_reddit_next_window_packets.md`
+  - `/home/mistlight/.openclaw/workspace/drafts/reddit_next_window_packets_latest.md`
+  - New packet outcome: 2 queued drafts with distinct openings for the current `r/ClaudeCode` opportunities (`run until done` and `parallel without chaos`), both seeded to **Codeberg-first** proof paths instead of GitHub-first or no-link generic replies.
+  - Code/tests: updated `agents/marketing/tests/test_reddit_next_window_packet.py` to prove the packet generator now avoids the banned repeated opener and produces distinct first lines within the same packet; verified with `python3 -m unittest agents.marketing.tests.test_reddit_next_window_packet agents.marketing.tests.test_reddit_autopost -v` (23 tests passed).
+- **Why this action:** this was the highest-leverage viable pending repair left in this run. External distribution is currently largely consumed or blocked from this environment, while the latest audit still explicitly carries `repetitive_outreach` as an active failure. The strongest local move was to make the next safe Reddit window use the already-hardened fresh-body generator automatically, so the loop stops shipping stale cadence during cooldown prep.
+- **Expected outcome:** the next Reddit posting window should produce more native-sounding, less repetitive replies that still route qualified evaluators to **Codeberg** first, improving the odds that Reddit traffic becomes real primary-repo inspections instead of more flat activity.
+- **Measurement window:** next 1-3 Reddit posting windows for opening diversity / no banned opener recurrence; next audit window for `repetitive_outreach` clearing; next 14 days (through `2026-06-02`) for any **Codeberg** stars/watchers/issues delta from Reddit-driven traffic.
+- **Replace if it fails:** if the next audit still flags repeated openings or Reddit-driven traffic still produces no Codeberg movement by `2026-06-02`, stop trusting packet-generation alone and replace this lane with either stricter per-thread manual drafting for only high-fit threads or a warmer non-Reddit distribution surface.

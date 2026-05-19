@@ -1,10 +1,10 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-19 21:58 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-19 23:14 CEST
 
 Live posting is **not** the move right now.
 
 Latest watchdog state references report `reddit_monitor_2026-05-19_2115.md`.
-- `status: fresh_opportunity_rate_limited`
-- `detail: opportunity_state:fresh_rate_limited; opportunities:7`
+- `status: already_logged`
+- `detail: Thread already exists in outreach-log.md`
 
 So this packet is optimized for the **next safe window**, not for forcing a post now.
 
@@ -29,14 +29,11 @@ Messaging guardrails preserved in every draft:
   - best RalphWorkflow angle from the monitor: run-until-done only helps if done is bounded, fail-closed, and easy to review
 
 ### Draft body A
-The most useful constraint I added to my agent workflow was not more prompts. It was a finish-state definition.
+A new autonomy mode only matters if it knows how to stop without making you do transcript archaeology later.
 
-Agents are not good at knowing when to stop. Humans are not good at reviewing a transcript. The gap closes when the run produces a bounded diff, real checks, and a short summary of open questions — not just a claim that the job is done.
+Longer runtime is cheap. A clear finish state is the expensive part: what changed, what ran, and whether you'd actually merge it.
 
-What that looks like in practice:
 https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
-
-Ralph Workflow is free and open-source: uses the agent tools you already run on your own machine, and tries to make the output something you can actually evaluate instead of another transcript.
 
 ---
 
@@ -51,14 +48,11 @@ Ralph Workflow is free and open-source: uses the agent tools you already run on 
   - best RalphWorkflow angle from the monitor: parallel work only helps if the final review surface stays boring and legible
 
 ### Draft body B
-The most useful constraint I added to my agent workflow was not more prompts. It was a finish-state definition.
+Multi-tool runs only help if the baton pass stays cleaner than the code they produce.
 
-Agents are not good at knowing when to stop. Humans are not good at reviewing a transcript. The gap closes when the run produces a bounded diff, real checks, and a short summary of open questions — not just a claim that the job is done.
+One scoped task, one readable diff, real checks, and a short note about what still looks sketchy gives you something you can actually judge.
 
-What that looks like in practice:
 https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
-
-Ralph Workflow is free and open-source: uses the agent tools you already run on your own machine, and tries to make the output something you can actually evaluate instead of another transcript.
 
 ---
 

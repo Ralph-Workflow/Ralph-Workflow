@@ -1,6 +1,9 @@
 {
-  "last_attempt_at": "2026-05-19T21:58:03.896794",
+  "last_attempt_at": "2026-05-19T22:15:43.242638",
   "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-19_2115.md",
-  "last_attempt_status": "fresh_opportunity_rate_limited",
-  "last_detail": "opportunity_state:fresh_rate_limited; opportunities:7"
+  "last_thread_url": "<https://www.reddit.com/r/ClaudeCode/comments/1taty8a/claude_code_just_shipped_a_run_until_done_mode/>",
+  "last_comment_url": null,
+  "last_attempt_status": "already_logged",
+  "last_poster_status": "already_logged",
+  "last_detail": "Thread already exists in outreach-log.md"
 }
