@@ -114,9 +114,18 @@ Ask:
 If yes, Ralph Workflow earned a bigger task.
 If no, you learned something useful without a subscription or a risky migration.
 
+## Turn the first run into a real Codeberg signal
+
+Do not let the first run end as a private opinion.
+
+- If the result looked genuinely useful, put the adoption signal on the **primary Codeberg repo**: star it, watch it, and keep the repo handy for the next real task.
+- If the run exposed friction, file it on **Codeberg** so the fix lands on the primary repo instead of disappearing into a private note.
+- Use [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md) for the short scorecard and the exact Codeberg-first next step.
+
 ## Next links
 
 - [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts before your own first run
+- [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md) — turn a promising run or a rough run into the right Codeberg-first action
 - [Getting Started](docs/sphinx/getting-started.md)
 - [Quickstart](docs/sphinx/quickstart.md)
 - [Docs site](https://ralphworkflow.com/docs)

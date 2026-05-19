@@ -41,10 +41,14 @@ This package is a good fit when you want more than a demo. Ralph Workflow is des
 If yes, give it a harder task next.
 If no, tighten the spec, checks, or task choice and run again.
 
+If the first run teaches you something real either way, turn that result into the right public Codeberg action with [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md): star/watch the primary repo if it earned trust, or report the exact first-run friction on Codeberg if it did not.
+
 ## Proof before you install
 
 If you want the fastest trust check before a first run, open the public [Example Review Bundle](docs/sphinx/example-review-bundle.md).
 It shows the exact kind of morning-after handoff Ralph Workflow is trying to produce: a real `PROMPT.md`, result notes, review feedback, fix notes, and artifact files you can inspect before deciding whether to try Ralph Workflow on your own backlog.
+
+If you already ran Ralph Workflow once and want the shortest path from private evaluation to a real public next step, use [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md).
 
 If your real question is "which setup should I start with tonight?", use one of these paths instead of reading generic docs first:
 

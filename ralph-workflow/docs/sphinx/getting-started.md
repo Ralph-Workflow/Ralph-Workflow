@@ -179,6 +179,11 @@ If you want to see what a trustworthy handoff looks like before your first run, 
 
 If the run is promising or exposes useful friction, use [After Your First Ralph Workflow Run](after-your-first-run.md) to turn that private result into the right public Codeberg action.
 
+In plain terms:
+
+- if the run earned trust, put the signal on the **primary Codeberg repo** first
+- if the run missed, file the exact first-run friction on **Codeberg** so the next run is easier to judge
+
 ## What happens during a run
 
 You do not need the full internal model to operate Ralph Workflow. The short version is:

@@ -74,11 +74,11 @@ Want the deeper workflow argument before you install?
 If you want a longer answer to what Ralph Workflow is, who it is for, why it is different, and why
 it is worth trying now, these are the best supporting reads right now:
 
-- `How to Tell if an AI Coding Task Is Actually Done <https://write.as/7pqpd2y0v0re2.md>`_
-- `Claude Code + Codex Workflow: Plan, Build, Review <https://write.as/vesqh0lzrm4en.md>`_
-- `When Unattended AI Coding Actually Works <https://write.as/x5wil6pmtbvo1.md>`_
+- `How to Tell if an AI Coding Task Is Actually Done <https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2>`_
+- `Claude Code + Codex Workflow: Plan, Build, Review <https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-19>`_
+- :doc:`when-unattended-coding-fits`
 
-Those essays all drive back to the same practical free-use path: use the agents you already have on
+Those reads all drive back to the same practical free-use path: use the agents you already have on
 your own machine, run one real backlog task tonight, and ask tomorrow whether you would merge the
 result.
 
@@ -206,6 +206,8 @@ Then come back and ask one question:
 
    **Would I merge this?**
 
+If yes, put the public trust signal on the **primary Codeberg repo**. If no, report the exact first-run friction on **Codeberg** so the next evaluator has a cleaner path. The shortest route for either outcome is :doc:`after-your-first-run`.
+
 .. grid:: 1 2 2 2
    :gutter: 3
 
@@ -298,6 +300,12 @@ Then come back and ask one question:
       :link-type: doc
 
       Open a public sample prompt, result notes, review feedback, and artifact files before your own first run.
+
+   .. grid-item-card:: What should I do after the first run?
+      :link: after-your-first-run
+      :link-type: doc
+
+      Convert a promising run into a Codeberg star/watch or convert rough edges into a useful primary-repo issue.
 
    .. grid-item-card:: Learn the concepts
       :link: concepts
