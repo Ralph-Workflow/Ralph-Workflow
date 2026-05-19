@@ -19,6 +19,13 @@ Open the example bundle here:
 - [examples/first-review-bundle/.agent/FIX_RESULT.md](../../../examples/first-review-bundle/.agent/FIX_RESULT.md)
 - [examples/first-review-bundle/.agent/artifacts/](../../../examples/first-review-bundle/.agent/artifacts/)
 
+If that bundle looks like the kind of morning-after handoff you would actually trust, take the next public step on **Codeberg**:
+
+- **Inspect the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star / watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 ## What this example proves
 
 This bundle is intentionally small.
@@ -50,3 +57,4 @@ If it feels vague, the handoff is still too weak.
 - Start with [../START_HERE.md](../../../START_HERE.md)
 - See [reviewable-output.md](./reviewable-output.md) for the shorter proof overview
 - Use [first-task-prompt-templates.md](./first-task-prompt-templates.md) if you want a copy-paste `PROMPT.md` shape for your own first run
+- If this proof asset makes Ralph Workflow look worth trying, put the adoption signal on **Codeberg** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
