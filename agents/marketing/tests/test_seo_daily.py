@@ -422,7 +422,35 @@ class RetroactiveAnalysisTests(unittest.TestCase):
         self.assertIn("Missing canonical tag", content)
 
 
-# ── On-page scoring ─────────────────────────────────────────────────────────────
+# ── Homepage fetch / on-page scoring ───────────────────────────────────────────
+
+class HomepageFetchTests(unittest.TestCase):
+
+    def test_fetch_homepage_retries_when_first_response_is_suspiciously_thin(self):
+        from agents.marketing import seo_daily
+
+        thin = """<html><head><title>Ralph Workflow</title></head><body><nav></nav><main><h1>Ralph Workflow</h1></main></body></html>"""
+        healthy = """<!DOCTYPE html><html lang='en'><head><title>Free Unattended AI Coding CLI for Developers — Ralph Workflow</title><meta name='description' content='Free open-source AI agent orchestration CLI for Claude Code, Codex, and OpenCode.'><link rel='canonical' href='https://ralphworkflow.com/'><meta property='og:title' content='Free Unattended AI Coding CLI for Developers'><meta property='og:description' content='Free open-source AI agent orchestration CLI for Claude Code, Codex, and OpenCode.'><meta property='og:url' content='https://ralphworkflow.com/'><meta property='og:type' content='website'><meta name='twitter:card' content='summary_large_image'></head><body><nav></nav><main><h1>Ralph Workflow</h1><p>This homepage has enough real body copy to clear the thin-content retry guard and prove the first fetch was a transient thin response rather than the actual page.</p></main></body></html>"""
+
+        with patch.object(seo_daily, "http_get", side_effect=[(200, thin), (200, healthy)]):
+            homepage = seo_daily.fetch_homepage()
+
+        self.assertEqual(homepage["title"], "Free Unattended AI Coding CLI for Developers — Ralph Workflow")
+        self.assertEqual(homepage["lang_attr"], "en")
+        self.assertTrue(homepage.get("retried_after_suspicious_probe"))
+        self.assertGreater(homepage["word_count"], 30)
+
+    def test_fetch_homepage_does_not_retry_healthy_response(self):
+        from agents.marketing import seo_daily
+
+        healthy = """<!DOCTYPE html><html lang='en'><head><title>Ralph Workflow — AI Agent Orchestration CLI</title><meta name='description' content='Preconfigured AI engineering workflow with planning, development, nested analysis feedback loops, and fresh plan on every pass.'><link rel='canonical' href='https://ralphworkflow.com/'><meta property='og:title' content='x'><meta property='og:description' content='x'><meta property='og:url' content='x'><meta property='og:type' content='website'><meta name='twitter:card' content='summary'></head><body><nav></nav><main><h1>Ralph Workflow</h1><p>This is a healthy homepage with enough body text to avoid the retry path entirely while still looking realistic.</p></main></body></html>"""
+
+        with patch.object(seo_daily, "http_get", return_value=(200, healthy)) as mock_get:
+            homepage = seo_daily.fetch_homepage()
+
+        self.assertEqual(mock_get.call_count, 1)
+        self.assertFalse(homepage.get("retried_after_suspicious_probe", False))
+
 
 class OnPageScoreTests(unittest.TestCase):
 

@@ -202,6 +202,9 @@ Ship-blocking checks:
 
 If clutter, duplication, or navigation anxiety increased, do not ship the docs change until it is pruned or reorganized.
 - Every once in a while, if `README.md` / `START_HERE.md` / docs surfaces drift into a bad state, do a **full-house docs audit** instead of another local patch. That audit should review the whole top-level docs system, not just the page that currently looks wrong.
+- If a docs/process audit is in progress, use the findings to strengthen the **process/governance rules first** before editing the public docs surfaces themselves. Do not drift from process repair into content cleanup until the new rules are codified.
+- Docs work is not done unless `README.md` and the docs it routes people into make sense **together**: clear roles, good information hierarchy, obvious next steps, low duplication, and copy that is easy to understand on a first pass.
+- When I set up or change a process, watchdog, cron, or other enforcement loop, I must verify the result with parallel third-party agents before calling it done. Do not stop at self-verification.
 
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 
