@@ -17,20 +17,21 @@ Ralph Workflow
        <a class="hero-cta hero-cta-secondary" href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Inspect on Codeberg</a>
      </div>
      <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
-     <p class="hero-proof-note">Prefer to inspect the code before installing or follow the project where you already evaluate open source? <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Review, star, watch, or fork the primary Codeberg repo</a>. If GitHub is where you already track projects, the <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">mirror is there too</a>.</p>
+     <p class="hero-proof-note">Prefer to inspect the code before installing or follow the project where you already evaluate open source? <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Review, star, watch, or fork the primary Codeberg repo</a>. If GitHub is where you already track projects, the <a href="https://github.com/ralph-workflow/ralph-workflow">mirror is there too</a>.</p>
    </section>
 
 Choose the first path that matches how you already work tonight:
 
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
-- Already using **Claude Code** and deciding whether you even need Ralph? Start with :doc:`ralph-workflow-vs-claude-code`.
+- Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
 - Already using **Claude Code** and specifically searching for a better automation / unattended path? Start with :doc:`claude-code-automation`.
-- Already using **Codex CLI** and deciding whether you need Ralph for the morning-after handoff? Start with :doc:`ralph-workflow-vs-codex-cli`.
+- Already using **Codex CLI** and deciding whether you need Ralph Workflow for the morning-after handoff? Start with :doc:`ralph-workflow-vs-codex-cli`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
 - Already using **worktrees** and still not trusting the morning-after result? Read :doc:`why-worktrees-are-not-enough`.
 - Want a clearer **merge decision** for the morning-after handoff? Read :doc:`review-ai-coding-output-before-merge`.
 - Want the cleanest possible **finish receipt / re-entry path** before you trust the run? Read :doc:`what-a-good-ai-coding-finish-receipt-looks-like`.
+- Want unattended runs to stay **bounded and fail-closed** instead of drifting all night? Read :doc:`bounded-autonomy-for-unattended-coding`.
 - Searching for an **open-source AI coding orchestrator** you can inspect on Codeberg first? Read :doc:`open-source-ai-coding-orchestrator`.
 - Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
@@ -41,6 +42,11 @@ Choose the first path that matches how you already work tonight:
    without making you learn the internals first. If you are still deciding whether Ralph Workflow
    fits your work, start with :doc:`when-unattended-coding-fits`, :doc:`first-task-guide`,
    :doc:`first-task-prompt-templates`, and :doc:`reviewable-output`.
+
+.. toctree::
+   :hidden:
+
+   agents
 
 What a good first handoff looks like
 ====================================
@@ -94,12 +100,12 @@ the coding agents you already use. Before you start, have at least one supported
 installed and already authenticated on your own machine.
 
 Third-party places to inspect Ralph Workflow
-===========================================
+============================================
 
 If you want outside discovery or comparison surfaces before you install, Ralph Workflow is also
 showing up on a few developer-facing directories now:
 
-- `GitDB project page <https://gitdb.net/Ralph-Workflow/Ralph-Workflow>`_ — inspect the GitHub mirror from a GitHub-native discovery surface.
+- `GitDB project page <https://gitdb.net/ralph-workflow/ralph-workflow>`_ — inspect the GitHub mirror from a GitHub-native discovery surface.
 - `SaaSHub product page <https://www.saashub.com/ralph-workflow>`_ — review the product card with the current positioning.
 - `SaaSHub alternatives <https://www.saashub.com/ralph-workflow-alternatives>`_ — compare Ralph Workflow against adjacent tools in the same browse flow.
 - `TechTools Launchpad listing <https://techtools.cz/tools/launchpad/?tool=71>`_ — a live developer-tools directory entry.
@@ -312,6 +318,7 @@ Then come back and ask one question:
 
    getting-started
    when-unattended-coding-fits
+   open-source-ai-coding-orchestrator
    unattended-coding-agent
    first-task-guide
    which-agent-should-i-start-with
@@ -348,7 +355,7 @@ Then come back and ask one question:
    :maxdepth: 2
    :caption: Developer Reference
 
-   agents
+   developer-internals
    developer-reference
    display
 
@@ -363,6 +370,6 @@ Related Links
 
 - `Ralph Workflow website <https://ralphworkflow.com>`_
 - `Source code on Codeberg <https://codeberg.org/RalphWorkflow/Ralph-Workflow.git>`_
-- `GitHub mirror <https://github.com/Ralph-Workflow/Ralph-Workflow>`_
+- `GitHub mirror <https://github.com/ralph-workflow/ralph-workflow>`_
 - `Issue tracker <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>`_
 - `License (AGPL-3.0) <https://www.gnu.org/licenses/agpl-3.0.html>`_
