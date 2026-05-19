@@ -25,6 +25,7 @@ Choose the first path that matches how you already work tonight:
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already using **OpenCode** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-opencode`.
 - Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
+- Already using **Aider** and deciding whether interactive pair-programming is enough? Start with :doc:`ralph-workflow-vs-aider`.
 - Already using **Claude Code** and specifically searching for a better automation / unattended path? Start with :doc:`claude-code-automation`.
 - Already searching for how to run **Claude Code overnight without babysitting**? Start with :doc:`run-claude-code-overnight-without-babysitting`.
 - Already using **Claude Code** but still stuck in approval mode or plan mode babysitting? Read :doc:`claude-code-approval-mode`.
@@ -64,6 +65,7 @@ Keep the post-run branch simple:
    getting-started
    developer-reference
    claude-code-run-until-done
+   agents
 
 What a good first handoff looks like
 ======================================

@@ -21,6 +21,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 - [Quickstart reference](docs/sphinx/quickstart.md)
 - [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md) — choose the agent already installed and authenticated on your machine
 - [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better
+- [Ralph Workflow vs Aider](docs/sphinx/ralph-workflow-vs-aider.md) — decide when interactive pair-programming is enough and when an unattended morning-after handoff is better
 - [Ralph Workflow vs OpenCode](docs/ralph-workflow-vs-opencode.md) — decide when direct provider flexibility is enough and when a reviewable unattended handoff is better
 - [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md) — keep the role split, but come back to a cleaner reviewable handoff
 - [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md) — the short morning-after handoff that should tell you what changed, what passed, and what still needs judgment

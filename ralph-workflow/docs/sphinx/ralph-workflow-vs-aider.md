@@ -90,3 +90,14 @@ Use one real backlog task, not a vague demo.
 If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
 
 If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).
+
+## If Ralph Workflow looks like the missing piece, make the next step public
+
+Do not let the comparison end as a private maybe.
+
+- **Inspect the primary repo on Codeberg first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg if the unattended handoff is the thing you were missing:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg so the gap gets fixed on the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror if that is where you track projects:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+If you want the shortest post-run scorecard before you decide, use [After Your First Ralph Workflow Run](after-your-first-run.md).
