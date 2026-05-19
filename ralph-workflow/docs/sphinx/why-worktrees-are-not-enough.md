@@ -89,9 +89,10 @@ If yes, that is the product value.
 
 ## Next steps
 
-- Start with [../START_HERE.md](../START_HERE.md)
-- See [free-open-source-proof.md](./free-open-source-proof.md) for an example reviewable result
-- See [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) to choose a good first task
+- Start with [Getting Started](getting-started.md)
+- See [What Good Ralph Workflow Output Looks Like](reviewable-output.md) for an example reviewable result
+- See [When Unattended Coding Fits](when-unattended-coding-fits.md) to choose a good first task
+- See [Example Review Bundle](example-review-bundle.md) if you want a public proof asset before your first run
 
 If worktree isolation is already familiar but you still need a trustworthy unattended finish, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 

@@ -103,10 +103,10 @@ That is the real product test.
 
 ## Next step
 
-- Continue with [Getting Started](getting-started.md) for the install and first-run flow
-- Read [First-Task Prompt Templates](first-task-prompt-templates.md) if you want copy-paste starter specs instead of drafting from scratch
-- Read [What Good Output Looks Like](reviewable-output.md) to see the kind of handoff you should expect
-- Read [Example Review Bundle](example-review-bundle.md) if you want a public sample `PROMPT.md`, result notes, and artifacts before your first run
+- Continue with [../START_HERE.md](../START_HERE.md) for the install and first-run flow
+- Read [First-Task Prompt Templates](./first-task-prompt-templates.md) if you want copy-paste starter specs instead of drafting from scratch
+- Read [What Good Output Looks Like](./free-open-source-proof.md) to see the kind of handoff you should expect
+- Read [Example Review Bundle](./example-review-bundle.md) if you want a public sample `PROMPT.md`, result notes, and artifacts before your first run
 
 If this first-task filter matches how you want to evaluate Ralph Workflow, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 

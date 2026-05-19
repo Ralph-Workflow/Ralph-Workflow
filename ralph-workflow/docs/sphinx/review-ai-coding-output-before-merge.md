@@ -70,9 +70,16 @@ That is the right test because Ralph Workflow is not just about generating code.
 
 Best first-task companions:
 
-- [Start Here](../START_HERE.md) — shortest path to a real first run
+- [Getting Started](getting-started.md) — shortest path to a real first run
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste spec shapes for strong first runs
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — what good output should look like
 - [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, finish receipts, and clean re-entry
 
 If the morning-after result gives you a clean diff, real checks, and a merge decision you can make quickly, Ralph Workflow is doing useful work.
+
+If that is the evaluation path you want, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+
+Best next public actions:
+- **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

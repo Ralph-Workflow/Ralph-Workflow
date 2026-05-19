@@ -76,3 +76,10 @@ Best first-task companions:
 - [what-breaks-first-with-multiple-coding-agents.md](./what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, finish receipts, and clean re-entry
 
 If the morning-after result gives you a clean diff, real checks, and a merge decision you can make quickly, Ralph Workflow is doing useful work.
+
+If that is the evaluation path you want, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+
+Best next public actions:
+- **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
