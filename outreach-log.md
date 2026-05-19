@@ -2,6 +2,15 @@
 
 ## 2026-05-19 (Tuesday)
 
+### RalphWorkflow ToolShelf backlink repair
+- **Submitted Ralph Workflow to ToolShelf with Codeberg as the primary listing URL**: used the live public submit API at `https://toolshelf.dev/api/submit` to place Ralph Workflow on a fresh developer-tools directory surface that can send qualified evaluators to `https://codeberg.org/RalphWorkflow/Ralph-Workflow` first, with `https://github.com/Ralph-Workflow/Ralph-Workflow` supplied only as the mirror URL.
+  - Verification: live API `POST` returned HTTP `200` with `{"success":true,"message":"Tool submitted successfully! We'll review it soon."}`.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The current audit says Codeberg adoption is flat and explicitly prioritizes backlink building via executable directory submissions over more write.as-only or generic content output. ToolShelf was not yet logged in `outreach-log.md`, its public submit API is live from this environment, and this action directly expands Codeberg-first distribution instead of rewriting the same owned surfaces again.
+  - Expected outcome: a new indexed backlink / directory listing should send developer-tool evaluators to Codeberg first and improve primary-repo inspection volume.
+  - Measurement window: next 7 days for listing approval / discoverability evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if ToolShelf approves or exposes the listing and Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop prioritizing more directory-only submissions and shift the next replacement move to a stronger external discussion/distribution surface or competitor-citation path that can deliver warmer traffic.
+  - Type: **REPAIRED / REPLACING**
+
 ### RalphWorkflow open-source-orchestrator keyword distribution repair
 - **Published a Codeberg-first Telegraph post for the exact search term `open-source AI coding orchestrator`**: shipped `Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For` to Telegraph so another evaluator-intent keyword now has a live external surface that routes readers to Codeberg first and GitHub second.
   - Live URL: `https://telegra.ph/Open-Source-AI-Coding-Orchestrator-What-Ralph-Workflow-Is-Actually-For-05-19`
@@ -1873,3 +1882,48 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Expected outcome:** more Codeberg visitors should stay on repo-native evaluator paths, resolve the OpenCode and trust objections faster, and convert into Codeberg stars, watches, forks, or issues instead of bouncing into nested docs confusion or a broken docs-map path.
 - **Measurement window:** next 7 days for repo-entry-path/referral clues and whether the restored root docs get visited/shared; next 14 days for **Codeberg** stars/watchers/forks/issues delta.
 - **Replace if it fails:** if Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on repo-root evaluator-doc rewiring and replace this lane with a fresh external distribution/backlink move that can send net-new qualified traffic directly into the strongest Codeberg-first proof/comparison page.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 14:12:25
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow external backlink/distribution repair
+- **When:** 2026-05-19 14:22:00
+- **Type:** NEW / REPLACING
+- **What I executed:** submitted Ralph Workflow to **The Next AI** through its live public submission endpoint, using **Codeberg as the primary listing URL** instead of the homepage so approved directory traffic lands on the primary adoption surface first.
+  - Submission page: `https://www.thenextai.com/submit-ai-tool/`
+  - Live endpoint: `https://script.google.com/macros/s/AKfycbxUeDQGc1leci0-kiZxSKKrzR8I9A-O3NpVrde9rD4sFoWW6VhBTswzsMlJKqvnWmtC/exec`
+  - Verification: direct `GET` on the endpoint returned `200` with `{"error":"Unknown action"}`, confirming the endpoint is live; the real submission `POST` with the Ralph Workflow payload returned `200` with `{"success":true}`.
+- **Why this action:** this is **NEW / REPLACING** a failed tactic. Codeberg adoption is still flat, the live homepage title fix is still not deployed publicly, and the audit explicitly says to replace stale distribution with executable backlink/directory work that can send fresh qualified evaluators into Codeberg-first conversion paths. The Next AI exposed a real writable submission flow from this environment, so using it was higher leverage than another same-surface copy tweak.
+- **Expected outcome:** if the listing is approved, it should create a new third-party discovery/backlink surface that sends qualified AI/dev-tool evaluators directly to the **Codeberg** repo instead of splitting that first click across the homepage or GitHub mirror.
+- **Measurement window:** next 3-7 days for listing approval / visibility, then next 14 days for **Codeberg** stars/watchers/forks/issues delta.
+- **Replace if it fails:** if the listing does not go live or Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on generic directory expansion and replace this lane with either (a) another verified executable backlink source with direct Codeberg routing or (b) a deployment-path repair that gets the stronger homepage title/CTA live.
+
+### RalphWorkflow external backlink/distribution repair
+- **When:** 2026-05-19 14:41:00
+- **Type:** NEW / REPLACING
+- **What I executed:** submitted Ralph Workflow to **Tools AI Online** through its public submit page, using **Codeberg** as the listing URL and uploading a current RalphWorkflow homepage screenshot so the directory review lands evaluators on the primary repo first.
+  - Submit page: `https://www.tools-ai.online/submit-tool`
+  - Live submit API behind the form: `https://cms.tools-ai.online/wp-json/api/submit-tools`
+  - Payload choices used: categories `Productivity`, `Research & Learning`, `Web & Design`; tags `Code generation`, `Generative Code`, `Task automation`, `Workflow management`, `Productivity apps`; pricing `Open Source`
+  - Verification: automated browser submission reached the success state `Tool Submitted Successfully!` and the underlying `POST` to `https://cms.tools-ai.online/wp-json/api/submit-tools` returned HTTP `200`.
+- **Why this action:** this is **NEW / REPLACING** a failed tactic. The audit still says primary-repo adoption is flat and explicitly prioritizes replacing stale distribution with executable backlink/directory work. Tools AI Online was not yet logged, exposed a real writable submission flow from this environment, and let me point the first click straight at Codeberg instead of repeating another owned-surface tweak.
+- **Expected outcome:** if approved, this should create another third-party discovery/backlink surface that sends qualified AI-tool evaluators directly to the **Codeberg** repo and reinforces the product as an open-source, workflow-oriented coding tool rather than a generic article topic.
+- **Measurement window:** next 3-7 days for listing approval / visibility, then next 14 days for **Codeberg** stars/watchers/forks/issues delta.
+- **Replace if it fails:** if the listing does not go live or Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on broad directory expansion and replace this lane with either (a) a different verified executable backlink source with direct Codeberg routing or (b) the strongest remaining repo/site conversion repair that removes a known evaluator leak.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 14:43:21
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow external backlink/distribution repair
+- **When:** 2026-05-19 15:11:00
+- **Type:** NEW / REPLACING
+- **What I executed:** submitted Ralph Workflow to **ToolWise** through its live public submit API, using **Codeberg** (`https://codeberg.org/RalphWorkflow/Ralph-Workflow`) as the listing URL so approval traffic lands on the primary repo first.
+  - Submit page: `https://toolwise.ai/submit-tool`
+  - Live submit API: `POST https://toolwise.ai/api/tools`
+  - Verification: the first attempt exposed a real backend constraint (`pricing_model: free` must use `starting_price: null`, not `0`); the corrected submission returned HTTP `201` with a created `tool.id` (`af51b39e-458f-4ac6-9769-481c25a43efc`), and the public listing page now resolves at `https://toolwise.ai/tools/ralph-workflow` with the Ralph Workflow title/tagline visible.
+- **Why this action:** this is **NEW / REPLACING** a failed tactic. Codeberg adoption is still flat, the audit says to replace stale distribution with executable backlink work, and ToolWise was an unlogged writable surface that let me route the first click directly to Codeberg instead of repeating another owned-surface tweak.
+- **Expected outcome:** a new third-party listing should send additional qualified evaluators to the **Codeberg** repo and improve the chance of a primary-repo star/watch/fork/issue delta if the audience matches workflow-tool evaluation intent.
+- **Measurement window:** next 3-7 days for listing persistence / visibility, then next 14 days for **Codeberg** stars/watchers/forks/issues delta.
+- **Replace if it fails:** if the listing disappears, never goes visible in browse/search, or Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on broad directory expansion and replace this lane with either (a) another verified executable backlink source with direct Codeberg routing or (b) the strongest remaining deployment/conversion repair on owned surfaces.
