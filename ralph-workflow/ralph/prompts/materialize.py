@@ -645,16 +645,41 @@ def _clear_accepted_analysis_history_if_needed(
 ) -> None:
     """Clear artifact history per policy when an analysis phase accepts and advances.
 
-    Handles both planning_analysis→development and development_analysis→development_commit
-    transitions. The history remains available throughout analysis iterations. Once an
-    analysis phase succeeds and the workflow advances to its on_success target,
-    artifact history is cleared per the per-phase clear_on_fresh_entry policy.
+    Handles both planning_analysis\u2192development and
+    development_analysis\u2192development_commit transitions. The history remains
+    available throughout analysis iterations. Once an analysis phase succeeds and
+    the workflow advances to its on_success target, artifact history is cleared
+    per the per-phase clear_on_fresh_entry policy.
+
+    Also handles the bypass case where an analysis phase is skipped due to
+    iteration cap being hit. In that case, previous_phase is an execution-role
+    phase whose on_success leads to an analysis phase that routes to the current
+    phase.
     """
     if previous_phase is None:
         return
     previous_phase_def = pipeline_policy.phases.get(previous_phase)
-    if previous_phase_def is None or previous_phase_def.role != "analysis":
+    if previous_phase_def is None:
         return
+
+    if previous_phase_def.role == "analysis":
+        _handle_analysis_accepted(
+            workspace_root, pipeline_policy, phase, previous_phase_def, artifacts_policy
+        )
+    elif previous_phase_def.role == "execution":
+        _handle_execution_bypass(
+            workspace_root, pipeline_policy, phase, previous_phase_def, artifacts_policy
+        )
+
+
+def _handle_analysis_accepted(
+    workspace_root: Path,
+    pipeline_policy: PipelinePolicy,
+    phase: str,
+    previous_phase_def: PhaseDefinition,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> None:
+    """Handle the normal case where an analysis phase accepted and advanced."""
     if previous_phase_def.transitions.on_success != phase:
         return
     loopback_phase = previous_phase_def.transitions.on_loopback
@@ -664,6 +689,25 @@ def _clear_accepted_analysis_history_if_needed(
     if loopback_phase_def is None:
         return
     if loopback_phase_def.role != "execution":
+        return
+    _clear_artifact_history_per_policy(workspace_root, pipeline_policy, artifacts_policy)
+
+
+def _handle_execution_bypass(
+    workspace_root: Path,
+    pipeline_policy: PipelinePolicy,
+    phase: str,
+    previous_phase_def: PhaseDefinition,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> None:
+    """Handle bypass case where execution phase skipped its analysis phase."""
+    analysis_phase = previous_phase_def.transitions.on_success
+    analysis_phase_def = pipeline_policy.phases.get(analysis_phase)
+    if analysis_phase_def is None:
+        return
+    if analysis_phase_def.role != "analysis":
+        return
+    if analysis_phase_def.transitions.on_success != phase:
         return
     _clear_artifact_history_per_policy(workspace_root, pipeline_policy, artifacts_policy)
 

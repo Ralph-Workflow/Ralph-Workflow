@@ -416,6 +416,18 @@ class TestPhaseStyleDisplayStyle:
         style = phase_style("development", pipeline)
         assert style == "theme.phase.development"
 
+    def test_phase_style_development_analysis_uses_display_style(self) -> None:
+        """development_analysis returns its display_style policy value."""
+        pipeline, _ = _load_default_policy_bundle()
+        style = phase_style("development_analysis", pipeline)
+        assert style == "theme.phase.development_analysis"
+
+    def test_phase_style_development_commit_uses_display_style(self) -> None:
+        """development_commit returns its display_style policy value."""
+        pipeline, _ = _load_default_policy_bundle()
+        style = phase_style("development_commit", pipeline)
+        assert style == "theme.phase.development_commit"
+
     def test_show_phase_start_renders_planning_banner_with_correct_style(
         self,
     ) -> None:
