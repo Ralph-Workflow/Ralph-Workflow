@@ -68,7 +68,6 @@ from ralph.pipeline.activity_stream import (
     truncate,
 )
 from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
-from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
     commit_effect,
@@ -86,13 +85,6 @@ from ralph.pipeline.cycle_baseline import (
 )
 from ralph.pipeline.effect_executor import (
     execute_agent_effect as _ee_execute_agent_effect,
-)
-from ralph.pipeline.effect_executor import (
-    recovery_context_lines,
-    recovery_error_parts,
-    resolve_recovery_session_id,
-    retry_prompt_file_for_context,
-    retryable_agent_failure_reason,
 )
 from ralph.pipeline.effect_router import (
     determine_effect_from_policy,
@@ -192,7 +184,6 @@ __all__ = [
     "PendingPhaseTransitionMetadata",
     "SubprocessAgentExecutor",
     "available_width",
-    "build_agent_recovery_plan",
     "build_session_mcp_plan",
     "check_mcp_bridge_health",
     "clear_cycle_baseline",
@@ -735,36 +726,6 @@ def _call_determine_effect_from_policy(
         return fn(state, policy_bundle, workspace_scope)
     return fn(state, policy_bundle)
 
-
-def build_agent_recovery_plan(
-    *,
-    exc: Exception,
-    attempt_index: int,
-    max_recovery_attempts: int,
-    effect: InvokeAgentEffect,
-    workspace_root: Path,
-    raw_output: list[str],
-    rendered_output: list[str],
-    extracted_session_id: str | None,
-    inactivity_error_type: type[Exception],
-) -> AgentRecoveryPlan | None:
-    """Determine whether and how to retry a failed agent invocation."""
-    if attempt_index >= max_recovery_attempts:
-        return None
-    reason = retryable_agent_failure_reason(exc, inactivity_error_type)
-    if reason is None:
-        return None
-    context_lines = recovery_context_lines(
-        exc, raw_output, rendered_output, _fn=recovery_error_parts
-    )
-    prompt_file = retry_prompt_file_for_context(
-        workspace_root=workspace_root,
-        prompt_file=effect.prompt_file,
-        reason=reason,
-        context_lines=context_lines,
-    )
-    session_id = resolve_recovery_session_id(exc, extracted_session_id, inactivity_error_type)
-    return AgentRecoveryPlan(prompt_file=prompt_file, session_id=session_id, reason=reason)
 
 
 _original_start_mcp_server = start_mcp_server

@@ -86,9 +86,6 @@ _RESULT_ARTIFACT_SPECS: dict[str, tuple[str, list[str]]] = {
     "fix_result": ("# Fix Result", ["files_changed", "next_steps"]),
 }
 
-# Proof fields that require list rendering, not _string_value
-_RESULT_PROOF_FIELDS = ("plan_items_proven", "analysis_items_addressed")
-
 
 def _render_by_artifact_type(artifact_type: str, content: Mapping[str, object]) -> str:
     if artifact_type == "plan":
@@ -99,17 +96,10 @@ def _render_by_artifact_type(artifact_type: str, content: Mapping[str, object]) 
         return _render_parallel_summary_markdown(content)
     if artifact_type in _RESULT_ARTIFACT_SPECS:
         title, field_names = _RESULT_ARTIFACT_SPECS[artifact_type]
-        # Build sections: proof fields need special list rendering
-        sections: list[tuple[str, str | None]] = []
-        for field in field_names:
-            if field in _RESULT_PROOF_FIELDS:
-                rendered = _render_proof_list(content.get(field))
-                if rendered:
-                    sections.append((field.replace("_", " ").title(), rendered))
-            else:
-                sections.append(
-                    (field.replace("_", " ").title(), _string_value(content.get(field)))
-                )
+        sections: list[tuple[str, str | None]] = [
+            (field.replace("_", " ").title(), _string_value(content.get(field)))
+            for field in field_names
+        ]
         # Add proof sections for development_result
         if artifact_type == "development_result":
             proof_sections = _build_development_result_proof_sections(content)
