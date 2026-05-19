@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Post scheduled RalphWorkflow drafts to write.as and log outcomes.
+"""Post scheduled RalphWorkflow drafts to write.as and Telegraph, with Codeberg CTAs.
 
 Rules:
 - only publish markdown drafts for today
 - never generate filler posts automatically
-- skip a draft if the same content hash already posted successfully
+- skip a draft if the same content hash already posted successfully to all platforms
+- always include Codeberg primary + GitHub mirror CTA footer
+- post to write.as AND Telegraph simultaneously (diversified distribution)
+
+Repair (2026-05-19): stop write.as-only publishing. Diversified distribution
+is critical for Codeberg repo adoption growth.
 """
 from __future__ import annotations
 
@@ -13,6 +18,7 @@ import json
 import os
 import re
 import subprocess
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple
@@ -23,6 +29,17 @@ DRAFTS_DIR = Path("/home/mistlight/.openclaw/workspace/drafts")
 POSTED_FILE = LOG_DIR / "posted_urls.json"
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+# CTA footer appended to every post body
+CODEBERG_PRIMARY = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+GITHUB_MIRROR = "https://github.com/Ralph-Workflow/Ralph-Workflow"
+CTA_FOOTER = (
+    f"\n\n---\n\n"
+    f"**Ralph Workflow** — "
+    f"[View on Codeberg]({CODEBERG_PRIMARY}) (primary) · "
+    f"[GitHub mirror]({GITHUB_MIRROR}). "
+    f"Free, open-source CLI that orchestrates the coding agents you already use on your own machine."
+)
 
 
 def load_posted() -> dict:
@@ -103,6 +120,63 @@ def post_writeas(title: str, body: str) -> Tuple[bool, str]:
     return False, json.dumps(parsed)[:200]
 
 
+def post_telegraph(title: str, body: str) -> Tuple[bool, str]:
+    """Post article to Telegraph; returns (ok, url_or_error)."""
+    r1 = subprocess.run(
+        [
+            "curl", "-s",
+            "https://api.telegra.ph/createAccount?short_name=rwbot&author_name=RW+Marketing"
+        ],
+        capture_output=True, text=True, timeout=10,
+    )
+    try:
+        account = json.loads(r1.stdout)
+        if not account.get("ok"):
+            return False, f"Account error: {account.get('error', r1.stdout[:50])}"
+        token = account["result"]["access_token"]
+    except Exception:
+        return False, f"Token error: {r1.stdout[:100]}"
+
+    # Convert markdown body to Telegraph-compatible HTML
+    paragraphs = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("# "):
+            paragraphs.append(f"<h3>{line[2:]}</h3>")
+        elif line.startswith("## "):
+            paragraphs.append(f"<h4>{line[3:]}</h4>")
+        elif line.startswith("```"):
+            paragraphs.append(f"<pre>{line[3:]}</pre>")
+        else:
+            paragraphs.append(f"<p>{line}</p>")
+
+    content = "".join(paragraphs)
+
+    params = urllib.parse.urlencode({
+        "access_token": token,
+        "title": title,
+        "author_name": "RW Marketing",
+        "content": content,
+        "return_content": "false",
+    })
+    r2 = subprocess.run(
+        [
+            "curl", "-s", "-X", "POST",
+            f"https://api.telegra.ph/createArticle?{params}",
+        ],
+        capture_output=True, text=True, timeout=15,
+    )
+    try:
+        article = json.loads(r2.stdout)
+        if article.get("ok"):
+            return True, article["result"]["url"]
+        return False, article.get("error", r2.stdout[:100])
+    except Exception:
+        return False, f"Article error: {r2.stdout[:100]}"
+
+
 def find_todays_drafts(today: str) -> list[Path]:
     if not DRAFTS_DIR.exists():
         return []
@@ -129,7 +203,7 @@ def main() -> int:
             continue
 
         draft_hash = digest_text(body)
-        if already_posted_successfully(posted, draft_hash):
+        if already_posted_successfully(posted, draft_hash, "write.as"):
             results.append({
                 "draft": draft.name,
                 "ok": True,
@@ -139,16 +213,20 @@ def main() -> int:
             })
             continue
 
-        ok, url_or_error = post_writeas(title, body)
-        record = {
+        # Append CTA footer — every post drives Codeberg primary adoption
+        body_with_cta = body + CTA_FOOTER
+
+        # Post to write.as
+        ok_was, url_was = post_writeas(title, body_with_cta)
+        record_was = {
             "date": today,
             "draft": draft.name,
             "title": title,
             "platform": "write.as",
-            "ok": ok,
-            "status": "posted" if ok else "failed",
-            "url": url_or_error if ok else None,
-            "error": None if ok else url_or_error,
+            "ok": ok_was,
+            "status": "posted" if ok_was else "failed",
+            "url": url_was if ok_was else None,
+            "error": None if ok_was else url_was,
             "draft_hash": draft_hash,
             "experiment_id": metadata.get("experiment_id"),
             "content_type": metadata.get("content_type"),
@@ -156,8 +234,25 @@ def main() -> int:
             "cta": metadata.get("cta"),
             "hypothesis": metadata.get("hypothesis"),
         }
-        results.append(record)
-        posted.setdefault("posts", []).append(record)
+        results.append(record_was)
+        posted.setdefault("posts", []).append(record_was)
+
+        # Also post to Telegraph (diversified distribution — was write.as-only)
+        ok_tg, url_tg = post_telegraph(title, body_with_cta)
+        record_tg = {
+            "date": today,
+            "draft": draft.name,
+            "title": title,
+            "platform": "telegraph",
+            "ok": ok_tg,
+            "status": "posted" if ok_tg else "failed",
+            "url": url_tg if ok_tg else None,
+            "error": None if ok_tg else url_tg,
+            "draft_hash": draft_hash,
+            "experiment_id": metadata.get("experiment_id"),
+        }
+        results.append(record_tg)
+        posted.setdefault("posts", []).append(record_tg)
 
     posted["last_run"] = now.isoformat()
     save_posted(posted)

@@ -80,7 +80,23 @@
       "keyword": "ai agent workflow",
       "cta": "install_ralphworkflow",
       "hypothesis": "Philosophy posts clarify positioning and should build baseline awareness."
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_technical_draft.md",
+      "title": "How Nested Analysis Loops Catch Bugs Before They Commit",
+      "platform": "write.as",
+      "ok": true,
+      "status": "posted",
+      "url": "https://write.as/l50eein665a2i",
+      "error": null,
+      "draft_hash": "05715b7714d064adb44a13c8df7be58766dc70adfa623e373e042d9308841b03",
+      "experiment_id": "2026-05-19-technical",
+      "content_type": "technical",
+      "keyword": "unattended ai coding",
+      "cta": "install_ralphworkflow",
+      "hypothesis": "Technical posts should outperform philosophy posts on write.as because they are more concrete and searchable."
     }
   ],
-  "last_run": "2026-05-18T17:01:08.746982"
+  "last_run": "2026-05-19T01:50:30.182020"
 }

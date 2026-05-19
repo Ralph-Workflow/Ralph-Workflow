@@ -1,11 +1,9 @@
 {
-  "generated_at": "2026-05-19T00:20:06.837783",
+  "generated_at": "2026-05-19T01:55:46.327370",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
-  "reddit_posts_analyzed": 10,
-  "repeated_openings": [
-    "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
-  ],
+  "reddit_posts_analyzed": 6,
+  "repeated_openings": [],
   "adoption_metrics": [
     {
       "platform": "GitHub",
@@ -52,16 +50,33 @@
     ]
   },
   "failing_tactics": [
-    "reddit_style_repetition",
     "primary_repo_flat_window",
     "mirror_repo_flat_window"
   ],
+  "repair_actions": [
+    {
+      "target_tactic": "content_distribution",
+      "failure_type": "primary_repo_flat",
+      "action": "REPLACE current content distribution approach. Stop defaulting to write.as-only publishing. Redirect effort to: (a) README/CONTRIBUTING improvements with stronger repo conversion surfaces, (b) SEO landing pages targeting repo-specific search terms, (c) cross-post already-strong content to any unblocked platform with explicit Codeberg CTA.",
+      "kill_condition": "Still no Codeberg delta after 7 days of new approach",
+      "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
+      "priority": 1
+    },
+    {
+      "target_tactic": "github_mirror_outreach",
+      "failure_type": "mirror_repo_flat",
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
+      "kill_condition": "N/A (mirror, not primary)",
+      "success_metric": "GitHub mirror shows any adoption delta",
+      "priority": 3
+    }
+  ],
+  "has_failing_tactics": true,
   "reasons": [
     "Owned content and outreach exist, but repo/public adoption signals are still low.",
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
-    "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
-    "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response."
+    "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",

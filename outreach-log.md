@@ -1185,3 +1185,71 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Expected outcome: better alignment between marketing traffic and the primary adoption metric, plus cleaner next-window Reddit / HN / Lobsters handoffs because evaluators now land on Codeberg first when they want to inspect Ralph Workflow.
   - Measurement window: next 7 days / next 9 adoption samples, with Codeberg stars/watchers/forks as the primary scorecard and GitHub mirror movement only as secondary evidence.
   - Replace if it fails: if Codeberg still stays flat across the next measurement window, stop spending cycles on repo-destination routing tweaks and replace this tactic with a fresh distribution move that creates new high-intent traffic (not more CTA rewrites).
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:24:38
+- **Note:** Momentum check found: primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:35:10
+- **Note:** Momentum check found: primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:50:09
+- **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:54:54
+- **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:55:03
+- **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach.
+
+### RalphWorkflow conversion-path repair
+- **Broken trust-path docs fix**: repaired public conversion leaks by adding the missing repo doc `docs/first-task-guide.md`, adding the missing hosted docs page `ralph-workflow/docs/sphinx/why-worktrees-are-not-enough.md`, fixing the broken hosted-docs `Start Here` link in `review-ai-coding-output-before-merge.md`, and wiring the new hosted page into the docs homepage/toctree.
+  - Verification: custom local link checks now return `ROOT_DOC_LINKS_MISSING 0` and `SPHINX_MD_LINKS_MISSING 0`; reviewed `git diff` for the repaired surfaces.
+  - Why: this is a **repaired tactic replacing a silently failing conversion surface**. Adoption is flat, and several high-intent trust pages were sending evaluators into dead links right at the inspection/free-use step. Repairing that leak is higher leverage than adding more generic marketing copy.
+  - Expected outcome: fewer drop-offs from repo/docs visitors who arrive through trust/comparison pages, plus a cleaner path from interest → first task → Codeberg inspection.
+  - Measurement window: next 7 days / next 9 adoption samples, watching Codeberg stars/watchers/forks first.
+  - Replace if it fails: if Codeberg adoption is still flat after the next 7-day window, stop treating link-path cleanup as the active lever and replace it with a new executable distribution move that creates fresh qualified traffic.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:55:46
+- **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:57:11
+- **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:58:48
+- **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:58:54
+- **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages.
+
+### RalphWorkflow Distribution Infrastructure
+- **Executable channel replacement guardrail**: audited the only newly-available non-Reddit channel candidate (`saashub`) and attempted the live next step. Result: the public `/submit` surface is only a leaderboard; real submission requires account creation and the registration flow is blocked by hCaptcha from this environment. Patched `agents/marketing/channel_discovery.py` and `agents/marketing/marketing_momentum_watchdog.py` so auth/captcha-gated or broken submission surfaces are no longer treated as actionable distribution wins.
+  - Verification: direct live fetches of `https://www.saashub.com/submit`, `https://www.saashub.com/register`, and registration POST probe; `python3 -m py_compile agents/marketing/channel_discovery.py agents/marketing/marketing_momentum_watchdog.py`; reran `python3 agents/marketing/marketing_momentum_watchdog.py` and it now reports `channel_access_mismatch` alongside `primary_repo_adoption_flat`.
+  - Why: Codeberg-primary adoption is still flat, and repeating fake-available channel research is a failed tactic. The highest-leverage safe move I could fully execute now was replacing that failure mode with a stricter executable-channel gate so the loop stops mistaking blocked surfaces for real distribution options and escalates the need for human-authenticated HN/Lobsters/SaaSHub submission instead.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 01:59:17
+- **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 02:06:28
+- **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages, toolshelf, agentdepot.
+
+## 2026-05-19 (Tuesday)
+
+### RalphWorkflow Codeberg-first conversion repair
+- **GitHub mirror → Codeberg handoff upgrade**: added a top-of-page mirror notice across the public root `README.md`, `START_HERE.md`, `CONTRIBUTING.md`, `docs/README.md`, and the package `ralph-workflow/README.md` + `ralph-workflow/START_HERE.md` so GitHub/docs visitors now immediately see that Codeberg is the primary repo for inspection, stars, watches, issues, and contribution tracking.
+  - Commit: `73b5356d` — `Strengthen Codeberg-first repo conversion CTA`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Why: this is a **REPLACING** action for a failed tactic. The latest audit showed repo adoption was flat and explicitly told the loop to stop defaulting to more owned-content/distribution-only work and instead improve README/CONTRIBUTING conversion surfaces with Codeberg as the primary target.
+  - Expected outcome: more GitHub-native and docs-native evaluators click through to Codeberg instead of treating the mirror as the main home, which should improve Codeberg stars/watchers and issue/contribution routing quality.
+  - Measurement window: next 7 days for click-path behavior and next 14 days for a Codeberg adoption delta.
+  - Replace if it fails: if Codeberg stars/watchers/forks are still flat after 14 days, stop spending cycles on mirror-routing copy alone and replace it with a stronger public proof/distribution move that can create fresh high-intent Codeberg visits.

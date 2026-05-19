@@ -26,7 +26,9 @@
     "smashingmagazine",
     "css-tricks",
     "toolhunter",
-    "devpages"
+    "devpages",
+    "toolshelf",
+    "agentdepot"
   ],
   "results": [
     {
@@ -198,10 +200,11 @@
       "url": "https://saashub.com",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-18T21:58:35.358525",
+      "timestamp": "2026-05-19T01:58:47.202843",
       "http_code": "200",
       "final_url": "https://www.saashub.com/",
-      "status": "accessible"
+      "status": "login_required",
+      "note": "submission leaderboard is public, but executable submission is blocked in practice by account creation/auth requirements and hCaptcha"
     },
     {
       "name": "productpapa",
@@ -350,14 +353,99 @@
         "submit_handler_has_success_markers": true
       },
       "note": "submission UI appears client-side only: form has no action, controls have no names, success copy is embedded, and no network submission markers were found"
+    },
+    {
+      "name": "toolshelf",
+      "url": "https://toolshelf.dev/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-19T02:05:53.062012",
+      "http_code": "200",
+      "final_url": "https://toolshelf.dev/submit",
+      "status": "login_required",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 2,
+        "input_count": 2,
+        "textarea_count": 0,
+        "select_count": 0,
+        "body_excerpt": "T\nToolShelf\nEnter\nBrowse\nCollections\nBlog\nAPI\nSubmit\nSign In\nHome/Submit a Tool\nSubmit a Tool\n\nKnow a great developer tool that should be on ToolShelf? Let us know! We review every submission and enrich it with quality scores.\n\nSign in required\n\nSign in to submit a developer tool to ToolShelf. We review every submission and enrich it with quality scores.\n\nSign In\nSign Up\nCategories\nCLI Tools\nAI Coding\nMCP Servers\nSelf-Hosted\nProductivity\nResources\nSearch\nCollections\nSubmit a Tool\nBlog\nDevelopers\nAPI Access\nllms.txt\nMCP Server\nStay in the loop\n\nGet the best new developer tools delivered to your inbox. No spam, unsubscribe anytime.\n\nGet Weekly Picks\n\nJoin 1 developers\n\nToolShelf.dev \u2014 Built for developers who care about their tools.\n\nGitHub",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "Enter",
+            "control_count": 1,
+            "named_control_count": 0
+          },
+          {
+            "index": 1,
+            "action": null,
+            "method": null,
+            "text": "Get Weekly Picks",
+            "control_count": 1,
+            "named_control_count": 0
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 11,
+        "same_origin_script_count": 11,
+        "scripts_fetched": 11,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 1,
+        "submit_handler_has_network_markers": true,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": true
+      },
+      "note": "submission requires account authentication"
+    },
+    {
+      "name": "agentdepot",
+      "url": "https://agentdepot.dev/submit",
+      "method": "submit",
+      "difficulty": "medium",
+      "timestamp": "2026-05-19T02:05:58.107944",
+      "http_code": "200",
+      "final_url": "https://agentdepot.dev/submit",
+      "status": "login_required",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 1,
+        "input_count": 3,
+        "textarea_count": 1,
+        "select_count": 3,
+        "body_excerpt": "AgentDepot\nBrowse\nBlog\nFAQ\nSign In\nStar us\n20\nJoin 70+ agents in the directory\nShip It.\n\nDon't let your agent gather dust. Share it with 10k+ devs and grow your community.\n\n24h\nReview Time\nFree\nForever\n10k+\nMonthly Visitors\nBasic Info\nInstallation\nAuthor & Links\nPreview\nBasic Information\nAgent Name *\nShort Description *\n0/150\nFull Description (Markdown supported)\nTool *\nSelect tool...\nCursor\nWindsurf\nClaude Code\nReplit\nMCP\n\u25bc\nType *\nSelect type...\nRule\nAgent\nPlugin\nSkill\nTemplate\n\u25bc\nCategory *\nSelect category...\nCoding\nDebugging\nTesting\nProductivity\nData\nWeb\nOther\n\u25bc\nTags (comma-separated)\nBack\nContinue\nOther Submission Methods\nThe Git Way\n\nPush to GitHub. Open an issue, we'll merge it.\n\nOpen Issue\nEmail Us\n\nOld school? That works too. Send us the details.\n\nSend Email\nSubmission Guidelines\nAg",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "Basic Information\nAgent Name *\nShort Description *\n0/150\nFull Description (Markdown supported)\nTool *\nSelect tool...\nCursor\nWindsurf\nClaude Code\nReplit\nMCP\n\u25bc\nType *\nSelect type...\nRule\nAgent\nPlugin\nSkill\nTemplate\n\u25bc\nCategory *\nSelect category...\nCoding\nDebugging\nTesting\nProductivity\nData\nWeb\nOther\n\u25bc\n",
+            "control_count": 7,
+            "named_control_count": 7
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 15,
+        "same_origin_script_count": 15,
+        "scripts_fetched": 12,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 0,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": true
+      },
+      "note": "submission requires account authentication"
     }
   ],
-  "working": [
-    {
-      "name": "saashub",
-      "url": "https://saashub.com",
-      "method": "submit",
-      "difficulty": "easy"
-    }
-  ]
+  "working": []
 }

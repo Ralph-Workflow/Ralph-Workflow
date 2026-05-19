@@ -1,112 +1,68 @@
 {
-  "generated_at": "2026-05-19T00:35:06.258694",
+  "generated_at": "2026-05-19T02:06:28.318390",
   "count": 21,
+  "recent_window_count": 6,
   "by_account": {
-    "Clear-Past7954": 3,
-    "Informal-Salt827": 18
+    "Informal-Salt827": 6
   },
   "by_community": {
-    "r/AI_Agents": 2,
-    "r/ClaudeCode": 12,
-    "r/codex": 5,
-    "r/ClaudeAI": 2
+    "r/ClaudeCode": 4,
+    "r/ClaudeAI": 1,
+    "r/AI_Agents": 1
   },
   "top_title_words": [
     "claude",
     "code",
-    "codex",
-    "agents",
+    "runs",
     "agent",
-    "running",
-    "workflow",
-    "multiple",
+    "utilizing",
+    "other",
+    "agents",
+    "pattern",
+    "using",
+    "keep",
+    "productive",
     "overnight",
-    "handling",
-    "coding",
-    "same",
-    "repo",
-    "both",
-    "actually"
+    "unattended",
+    "teams",
+    "gemini"
   ],
   "top_body_tokens": [
-    "workflow",
     "agent",
     "ralph",
-    "diff",
-    "instead",
-    "done",
-    "before",
-    "checks",
-    "agents",
-    "trust",
-    "work",
-    "task",
-    "tool",
-    "reviewable",
+    "workflow",
     "review",
-    "receipt",
-    "small",
-    "after",
-    "needs",
-    "handoff"
+    "overnight",
+    "instead",
+    "diff",
+    "checks",
+    "done",
+    "agents",
+    "open",
+    "already",
+    "result",
+    "usually",
+    "finish",
+    "free",
+    "source",
+    "orchestrate",
+    "machine",
+    "output"
   ],
   "phrase_hits": {
-    "worktree": 7,
-    "diff": 18,
-    "verify": 1,
-    "handoff": 11,
-    "reviewable": 12,
-    "done criteria": 7,
-    "scope": 9,
-    "final check": 1,
-    "overnight": 6,
-    "review bundle": 1,
-    "trust": 11,
-    "small scoped": 2
+    "reviewable": 2,
+    "worktree": 1,
+    "diff": 4,
+    "overnight": 4,
+    "scope": 3,
+    "handoff": 3,
+    "trust": 2,
+    "done criteria": 1,
+    "small scoped": 1
   },
-  "repeated_openings": [
-    "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
-  ],
-  "account_switches": [
-    {
-      "from": "Clear-Past7954",
-      "to": "Informal-Salt827",
-      "timestamp": "2026-05-16T20:17:09.076737"
-    }
-  ],
+  "repeated_openings": [],
+  "account_switches": [],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-17T19:28:34.972968",
-      "account": "Informal-Salt827",
-      "community": "r/codex",
-      "title": "Did anyone here moved from claude to codex recently? And why?",
-      "comment_url": "https://old.reddit.com/r/codex/comments/1tao42q/did_anyone_here_moved_from_claude_to_codex/omc9mon/",
-      "opening_line": "I didn’t fully switch so much as change which tool owns which phase."
-    },
-    {
-      "timestamp": "2026-05-17T20:57:01.999101",
-      "account": "Informal-Salt827",
-      "community": "r/codex",
-      "title": "Codex vs Claude Code: my current take after watching both mature",
-      "comment_url": "https://old.reddit.com/r/codex/comments/1t8n9rs/codex_vs_claude_code_my_current_take_after/omcpyg9/",
-      "opening_line": "The sharpest difference for me isn’t model IQ, it’s operating posture."
-    },
-    {
-      "timestamp": "2026-05-17T21:42:16.276253",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeCode",
-      "title": "People running 2–5 coding agents: what actually breaks first for you?",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1stu0cr/people_running_25_coding_agents_what_actually/omcywrd/",
-      "opening_line": "What breaks first for me is confidence in the merged state, not the individual agent runs."
-    },
-    {
-      "timestamp": "2026-05-17T22:58:04.849315",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeAI",
-      "title": "Running two Claude Code agents on the same repo simultaneously. Git worktrees make it work.",
-      "comment_url": "https://old.reddit.com/r/ClaudeAI/comments/1t9tolw/running_two_claude_code_agents_on_the_same_repo/omddojv/",
-      "opening_line": "Git worktrees definitely solve the collision problem, but the thing that bites me later is semantic invalidation."
-    },
     {
       "timestamp": "2026-05-18T03:28:01.659500",
       "account": "Informal-Salt827",
@@ -157,9 +113,7 @@
     }
   ],
   "recommendations": [
-    "Avoid reusing the same opening line; vary the first paragraph deliberately.",
     "ClaudeCode is the strongest current venue, but avoid stacking too many similar comments there without fresh thread-specific advice.",
-    "Treat pre-switch Clear-Past7954 posts as historical only; future retros and posting rules should optimize for Informal-Salt827 only.",
     "Before each autopost, compare the candidate body against the last 3 logged bodies and rewrite if the opening, structure, or closing feel too similar.",
     "Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments."
   ]

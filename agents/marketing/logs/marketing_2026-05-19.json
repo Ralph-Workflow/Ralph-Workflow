@@ -1,0 +1,184 @@
+{
+  "timestamp": "2026-05-19T01:50:23.056578",
+  "weekly_mode": false,
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "robots": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "sitemap": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    }
+  },
+  "totals": {
+    "posts_last_30d": 8,
+    "views_last_30d": 0
+  },
+  "content_summary": {
+    "philosophy": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "technical": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "unknown": {
+      "posts": 5,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "usecase": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    }
+  },
+  "decisions": [
+    {
+      "priority": "high",
+      "action": "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
+      "reason": "Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)",
+      "repair": "Replace current content format/distribution approach. Stop write.as-only publishing. Try: (a) direct repo README/CONTRIBUTING improvement, (b) SEO landing pages targeting repo-specific terms, (c) cross-post strategy with explicit Codeberg CTAs.",
+      "is_failing_signal": true
+    },
+    {
+      "priority": "medium",
+      "action": "Keep publishing philosophy content.",
+      "reason": "Best avg views: 0.0 \u2014 lean into what's working."
+    },
+    {
+      "priority": "high",
+      "action": "Build backlinks \u2014 submit to directories and pursue guest post opportunities.",
+      "reason": "Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now."
+    },
+    {
+      "priority": "medium",
+      "action": "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+      "reason": "Identified by daily SEO analysis as a top priority."
+    },
+    {
+      "priority": "medium",
+      "action": "Build backlinks: submit to directories, guest post, earn citations",
+      "reason": "Identified by daily SEO analysis as a top priority."
+    },
+    {
+      "priority": "ongoing",
+      "action": "Continue write.as + Telegraph posting until blocked channels are unblocked.",
+      "reason": "Working distribution channel. Track ratio of views per post to gauge platform value."
+    }
+  ],
+  "blocked_channels": {
+    "dev.to": "Needs API key or OAuth",
+    "twitter": "Login/session blocked",
+    "reddit": "Posting blocked until the intended main Reddit account is verified live",
+    "hackernews": "Needs account",
+    "lobsters": "Needs invite/account",
+    "producthunt": "Protected flow / manual launch required"
+  },
+  "seo": {
+    "score": "85/100 (B)",
+    "ranked_keywords": 0,
+    "backlinks_approx": 0,
+    "domain_rating": null,
+    "trends": {
+      "rank_delta": 0.0,
+      "backlinks_delta": 0.0,
+      "domain_rating": null,
+      "prev_avg_ranks": 0.0,
+      "prev_avg_bl": 0.0
+    },
+    "priority_actions": [
+      "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+      "Build backlinks: submit to directories, guest post, earn citations"
+    ],
+    "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-19.md",
+    "seo_daily_error": "",
+    "sitemap_urls": 0,
+    "competitor_analysis": null
+  },
+  "adoption": {
+    "timestamp": "2026-05-19T01:35:18.400975",
+    "metrics": [
+      {
+        "platform": "GitHub",
+        "stars": 0,
+        "watchers": 2,
+        "forks": 0,
+        "open_issues": 0,
+        "html_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+      },
+      {
+        "platform": "Codeberg",
+        "stars": 9,
+        "watchers": 2,
+        "forks": 2,
+        "open_issues": 4,
+        "html_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+      }
+    ],
+    "deltas": {
+      "GitHub": {
+        "stars_delta": 0,
+        "watchers_delta": 0,
+        "forks_delta": 0
+      },
+      "Codeberg": {
+        "stars_delta": 0,
+        "watchers_delta": 0,
+        "forks_delta": 0
+      }
+    },
+    "recent_window": {
+      "GitHub": {
+        "samples": 9,
+        "stars_delta_window": 0,
+        "watchers_delta_window": 0,
+        "forks_delta_window": 0
+      },
+      "Codeberg": {
+        "samples": 9,
+        "stars_delta_window": 0,
+        "watchers_delta_window": 0,
+        "forks_delta_window": 0
+      }
+    },
+    "evaluation": {
+      "findings": [
+        "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
+        "GitHub mirror adoption is also flat across the recent measurement window.",
+        "Codeberg remains the stronger adoption surface and should stay the primary evaluation target."
+      ],
+      "failing_signals": [
+        "primary_repo_flat"
+      ],
+      "next_focus": [
+        "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
+      ]
+    }
+  },
+  "failure_signals": [
+    "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption."
+  ],
+  "marketing_status": "failing",
+  "content_generation": {
+    "returncode": 0,
+    "stdout": "[ContentGen] Created: /home/mistlight/.openclaw/workspace/drafts/2026-05-19_technical_draft.md",
+    "stderr": ""
+  },
+  "posting": {
+    "returncode": 0,
+    "stdout": "{\n  \"timestamp\": \"2026-05-19T01:50:30.182020\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-19_technical_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"05715b7714d064adb44a13c8df7be58766dc70adfa623e373e042d9308841b03\",\n      \"experiment_id\": \"2026-05-19-technical\"\n    }\n  ]\n}",
+    "stderr": ""
+  }
+}

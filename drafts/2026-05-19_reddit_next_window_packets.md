@@ -1,4 +1,4 @@
-# RalphWorkflow Reddit next-window packet — 2026-05-19 00:47 CEST
+# RalphWorkflow Reddit next-window packet — 2026-05-19 01:47 CEST
 
 Live posting is **not** the move right now.
 
@@ -22,7 +22,7 @@ Messaging guardrails preserved in every draft:
 - URL: <https://www.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/>
 - Mention fit: medium
 - Best landing page to seed:
-  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/when-unattended-coding-fits.md
+  - https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/when-unattended-coding-fits.md
 - Why this stays in the packet:
   - direct unattended-run thread with pain around scope, drift, and boring morning-after review
   - best chance to seed task-fit language instead of generic autonomy hype
@@ -34,9 +34,9 @@ What matters to me is not whether the run *looks* autonomous. It is whether the 
 A lot of overnight failures are really task-fit failures: vague scope, no real stop condition, or a job that needed live judgment all along. When the task is bounded and the checks are obvious, unattended runs get much more boring in a good way.
 
 I wrote down the filter I use here:
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/when-unattended-coding-fits.md
+https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/when-unattended-coding-fits.md
 
-That page lives in Ralph Workflow’s primary Codeberg repo because Ralph is the free/open-source workflow I wanted for this: keep the agents you already run on your own machine, hand them real work overnight, and come back to something reviewable instead of another transcript that only sounds done.
+That page lives in Ralph Workflow’s repo because Ralph is the free/open-source workflow I wanted for this: keep the agents you already run on your own machine, hand them real work overnight, and come back to something reviewable instead of another transcript that only sounds done.
 
 ---
 
@@ -44,7 +44,7 @@ That page lives in Ralph Workflow’s primary Codeberg repo because Ralph is the
 - URL: <https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/>
 - Mention fit: medium-low
 - Best landing page to seed:
-  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+  - https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/START_HERE.md
 - Why this stays in the packet:
   - still usable as a workflow reply without forcing a product pitch
   - landing page keeps the CTA on a concrete first-use or proof path
@@ -55,8 +55,8 @@ The useful shift for me was optimizing for a cleaner morning-after review, not m
 
 If the run ends with one bounded diff, real checks, and a short note on what still needs judgment, I can use the tools aggressively without pretending the transcript itself is proof.
 
-Closest write-up I have for that on the primary Codeberg repo is here:
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+Closest write-up I have for that is here:
+https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/START_HERE.md
 
 Ralph Workflow exists for that exact problem: free and open source, runs the agent CLIs you already use on your own machine, and aims to turn larger unattended tasks into something you can actually review.
 
@@ -66,7 +66,7 @@ Ralph Workflow exists for that exact problem: free and open source, runs the age
 - URL: <https://www.reddit.com/r/ClaudeCode/comments/1tbcfmi/impressions_two_weeks_after_moving_from_claude/>
 - Mention fit: medium-low
 - Best landing page to seed:
-  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/claude-code-codex-workflow.md
+  - https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/claude-code-codex-workflow.md
 - Why this stays in the packet:
   - thread naturally fits builder/reviewer phase boundaries and handoff discipline
   - landing page explains why mixed-agent flow only matters when the finish stays inspectable
@@ -78,9 +78,9 @@ What usually changes for me when I mix Claude Code, Codex, or another agent is n
 One tool can be better for pushing the implementation forward and another can be better for challenging the result, but the annoying part is still the glue: who owns the diff, who owns the checks, and what I reopen in the morning so I do not have to reconstruct the whole night.
 
 I ended up writing that workflow down here:
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/claude-code-codex-workflow.md
+https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/claude-code-codex-workflow.md
 
-That page is part of Ralph Workflow’s primary Codeberg repo because Ralph is the free/open-source way I handle that on my own machine now: keep the agents I already use, let them work overnight, and come back to something substantial I can inspect instead of another “done” claim.
+That page is part of Ralph Workflow because Ralph is the free/open-source way I handle that on my own machine now: keep the agents I already use, let them work overnight, and come back to something substantial I can inspect instead of another “done” claim.
 
 ---
 

@@ -27,6 +27,7 @@ LOG_DIR = AGENTS_DIR / "logs"
 STRATEGY_FILE = AGENTS_DIR / "STRATEGY.md"
 POSTED_FILE = LOG_DIR / "posted_urls.json"
 SEO_REPORTS_DIR = Path("/home/mistlight/.openclaw/workspace/seo-reports")
+ADOPTION_FILE = LOG_DIR / "adoption_metrics_latest.json"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 BLOCKED_CHANNELS = {
@@ -72,7 +73,7 @@ def run_competitor_analysis() -> dict:
         [sys.executable, str(AGENTS_DIR / "competitor_analysis.py")],
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=180,
     )
     today = datetime.now().strftime("%Y-%m-%d")
     report_path = SEO_REPORTS_DIR / f"competitor_analysis_{today}.md"
@@ -161,6 +162,41 @@ def compute_trends(current: dict, history: list[dict]) -> dict:
 
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
+
+# ── Adoption (repo traffic) helpers ───────────────────────────────────────
+
+def load_adoption_data() -> dict | None:
+    """Load the latest adoption_metrics_latest.json if available."""
+    if not ADOPTION_FILE.exists():
+        return None
+    try:
+        return json.loads(ADOPTION_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def adoption_is_flat(adoption: dict | None) -> bool:
+    """Return True if the primary repo (Codeberg) shows no delta in the recent window."""
+    if not adoption:
+        return False
+    eval_data = adoption.get("evaluation", {})
+    failing_signals = eval_data.get("failing_signals", [])
+    return "primary_repo_flat" in failing_signals
+
+
+def adoption_flat_reason(adoption: dict | None) -> str:
+    if not adoption:
+        return "no adoption data available"
+    recent = adoption.get("recent_window", {})
+    cb = recent.get("Codeberg", {})
+    window_samples = cb.get("samples", 0)
+    return (
+        f"Codeberg repo adoption flat across {window_samples} samples "
+        f"(stars {cb.get('stars_delta_window', 0):+d}, "
+        f"watchers {cb.get('watchers_delta_window', 0):+d}, "
+        f"forks {cb.get('forks_delta_window', 0):+d})"
+    )
+
 
 def http_status(url: str) -> dict:
     for method in ("HEAD", "GET"):
@@ -258,9 +294,21 @@ def build_weekly_decisions(
     seo_current: dict,
     seo_actions: list[str],
     competitor_data: dict | None = None,
+    adoption_data: dict | None = None,
 ) -> list[dict]:
-    """Build weekly decisions informed by actual SEO data + content performance + competitor intelligence."""
+    """Build weekly decisions informed by actual SEO data + content performance + competitor intelligence + repo adoption."""
     decisions: list[dict] = []
+
+    # Repo adoption gate — Codeberg flat means current tactics are failing
+    if adoption_is_flat(adoption_data):
+        reason = adoption_flat_reason(adoption_data)
+        decisions.append({
+            "priority": "high",
+            "action": "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
+            "reason": reason,
+            "repair": "Replace current content format/distribution approach. Stop write.as-only publishing. Try: (a) direct repo README/CONTRIBUTING improvement, (b) SEO landing pages targeting repo-specific terms, (c) cross-post strategy with explicit Codeberg CTAs.",
+            "is_failing_signal": True,
+        })
 
     # SEO health gate
     onpage_score_raw = seo_current.get("onpage_score", "?/100")
@@ -422,6 +470,14 @@ def write_seo_insights(seo_current: dict, decisions: list[dict]) -> Path:
     return path
 
 
+def competitor_report_is_stale(now: datetime, hours: int = 18) -> bool:
+    report = SEO_REPORTS_DIR / f"competitor_analysis_{now.strftime('%Y-%m-%d')}.md"
+    if not report.exists():
+        return True
+    modified = datetime.fromtimestamp(report.stat().st_mtime)
+    return (now - modified) > timedelta(hours=hours)
+
+
 def main() -> int:
     now = datetime.now()
     weekday = now.weekday()
@@ -454,22 +510,25 @@ def main() -> int:
         "views_last_30d": sum(int(post.get("views", 0)) for post in posts),
     }
 
-    # Run competitor analysis on Mondays
+    # Run competitor analysis on Mondays or whenever the report is stale/missing.
     competitor_data = None
-    if is_monday:
-        print("[run.py] Monday — running competitor analysis...", flush=True)
+    if is_monday or competitor_report_is_stale(now):
+        print("[run.py] Running competitor analysis...", flush=True)
         competitor_data = run_competitor_analysis()
         print(f"[run.py] Competitor analysis: {competitor_data.get('competitor_count', 0)} competitors tracked", flush=True)
 
-    # Weekly decisions
+    adoption_data = load_adoption_data()
+
+    # Decisions should update whenever the primary repo is flat, not only on Mondays.
     decisions = []
-    if is_monday:
+    if is_monday or adoption_is_flat(adoption_data):
         decisions = build_weekly_decisions(
             content_summary,
             seo_trends,
             seo_current,
             seo_current.get("priority_actions", []),
             competitor_data=competitor_data,
+            adoption_data=adoption_data,
         )
         update_strategy_file(now, {
             "content_summary": content_summary,
@@ -527,6 +586,9 @@ def main() -> int:
             "sitemap_urls": (site_health.get("sitemap") or {}).get("url_count", 0) if isinstance(site_health.get("sitemap"), dict) else 0,
             "competitor_analysis": competitor_data,
         },
+        "adoption": adoption_data,
+        "failure_signals": [d["action"] for d in decisions if d.get("is_failing_signal")],
+        "marketing_status": "failing" if any(d.get("is_failing_signal") for d in decisions) else "mixed" if decisions else "initial",
         "content_generation": {
             "returncode": generation_result.returncode,
             "stdout": generation_stdout,

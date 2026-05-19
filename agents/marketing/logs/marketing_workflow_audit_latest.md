@@ -1,20 +1,18 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-19T00:20:06.837783
+- Generated: 2026-05-19T01:55:46.327370
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
-- Reddit posts analyzed: **10**
+- Reddit posts analyzed: **6**
 
 ## Why this is the bottleneck
 - Owned content and outreach exist, but repo/public adoption signals are still low.
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
-- Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
 
 ## Observed risks
-- Repetition risk in outreach opening: "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
-- Failing tactic detected: reddit_style_repetition
+- No exact repeated outreach opening detected in the latest audit inputs.
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
 
@@ -24,6 +22,14 @@
 - Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
+
+## Repair actions (execute in this run)
+- **primary_repo_flat** → REPLACE current content distribution approach. Stop defaulting to write.as-only publishing. Redirect effort to: (a) README/CONTRIBUTING improvements with stronger repo conversion surfaces, (b) SEO landing pages targeting repo-specific search terms, (c) cross-post already-strong content to any unblocked platform with explicit Codeberg CTA.
+  - Kill condition: Still no Codeberg delta after 7 days of new approach
+  - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
+- **mirror_repo_flat** → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
+  - Kill condition: N/A (mirror, not primary)
+  - Success metric: GitHub mirror shows any adoption delta
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

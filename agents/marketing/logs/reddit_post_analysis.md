@@ -1,21 +1,19 @@
 # Reddit Post Analysis
 
-- Generated: 2026-05-19T00:35:06.258694
-- Logged posts analyzed: 21
-- Accounts seen: Clear-Past7954 (3), Informal-Salt827 (18)
-- Communities seen: r/AI_Agents (2), r/ClaudeCode (12), r/codex (5), r/ClaudeAI (2)
+- Generated: 2026-05-19T02:06:28.318390
+- Logged posts analyzed: 21 total / 6 recent-window posts
+- Accounts seen: Informal-Salt827 (6)
+- Communities seen: r/ClaudeCode (4), r/ClaudeAI (1), r/AI_Agents (1)
 
 ## What the past posts actually say
-- Most repeated themes: diff, reviewable, handoff, trust, scope, worktree, done criteria, overnight
-- Frequent body tokens: workflow, agent, ralph, diff, instead, done, before, checks, agents, trust, work, task
+- Most repeated themes: diff, overnight, scope, handoff, reviewable, trust, worktree, done criteria
+- Frequent body tokens: agent, ralph, workflow, review, overnight, instead, diff, checks, done, agents, open, already
 
 ## Repetition risks
-- Reused opening line: "I've had the best results when I stop optimizing for more agents and start optimizing for reviewable work units."
+- No exact repeated opening line detected.
 
 ## Recommendations
-- Avoid reusing the same opening line; vary the first paragraph deliberately.
 - ClaudeCode is the strongest current venue, but avoid stacking too many similar comments there without fresh thread-specific advice.
-- Treat pre-switch Clear-Past7954 posts as historical only; future retros and posting rules should optimize for Informal-Salt827 only.
 - Before each autopost, compare the candidate body against the last 3 logged bodies and rewrite if the opening, structure, or closing feel too similar.
 - Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments.
 

@@ -121,10 +121,18 @@ The marketing agent runs and asks:
 4. **dev.to via GitHub OAuth** — if PAT becomes read-write
 5. **Buy a反向链接 (backlink) via guest post** — requires finding dev blogs
 
-## Open Questions (need human input)
-- Should ralphworkflow.com link to the GitHub mirror or codeberg as primary?
-- What pricing model? LS product was deleted — what's the actual offer?
-- Is there a newsletter or email list to announce content?
+## Operating goal
+The sole marketing goal is to drive qualified traffic to the Ralph Workflow repositories.
+
+Priority order:
+1. Codeberg primary repo
+2. GitHub mirror repo
+
+That means the loop should prefer actions that increase repo visits, repo inspection, repo stars/watchers/forks, and real first-run interest over generic awareness work.
+
+## Open Questions
+- Improve measurement of which tactics plausibly increase repo visits and repo inspection.
+- Keep Codeberg as the primary repo target and GitHub as the mirror target in all public-facing conversion paths.
 
 ## Last Full Strategy Review
 2026-05-09 — Initial strategy built. Pipeline deployed. Outreach blocked.
@@ -249,5 +257,29 @@ The marketing agent runs and asks:
 
 ### Priority Actions (from SEO analysis)
 - Fix top on-page SEO issues (current score: 65/100)
+- Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent
+- Build backlinks: submit to directories, guest post, earn citations
+
+## Weekly Review — 2026-05-19
+
+### SEO Health
+**SEO Score:** 85/100 (B) | Ranked keywords: 0 | Backlinks: 0 | DR: None
+**Trends:** ranks 0.0
+
+### Content Performance
+- philosophy: 1 posts, 0 total views, 0.0 avg views/publish
+- technical: 1 posts, 0 total views, 0.0 avg views/publish
+- unknown: 5 posts, 0 total views, 0.0 avg views/publish
+- usecase: 1 posts, 0 total views, 0.0 avg views/publish
+
+### Weekly Decisions
+- **[HIGH]** MARK AS FAILING: Current content/distribution tactics are not driving repo adoption. — Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)
+- **[MEDIUM]** Keep publishing philosophy content. — Best avg views: 0.0 — lean into what's working.
+- **[HIGH]** Build backlinks — submit to directories and pursue guest post opportunities. — Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now.
+- **[MEDIUM]** Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent — Identified by daily SEO analysis as a top priority.
+- **[MEDIUM]** Build backlinks: submit to directories, guest post, earn citations — Identified by daily SEO analysis as a top priority.
+- **[ONGOING]** Continue write.as + Telegraph posting until blocked channels are unblocked. — Working distribution channel. Track ratio of views per post to gauge platform value.
+
+### Priority Actions (from SEO analysis)
 - Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent
 - Build backlinks: submit to directories, guest post, earn citations
