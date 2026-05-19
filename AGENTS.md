@@ -154,6 +154,54 @@ When creating new agents, cron jobs, or automations, preserve this bias unless t
 
 Skills provide your tools. When you need one, check its `SKILL.md`. Keep local notes (camera names, SSH details, voice preferences) in `TOOLS.md`.
 
+## README / Docs Governance
+
+Treat public documentation as a designed system, not a dumping ground.
+
+### Core split
+- **README.md** = short entry point: what it is, who it is for, quick proof, quick start, and where to go next
+- **START_HERE.md** = guided first-run path for high-intent evaluators
+- **docs/README.md** = documentation map / index
+- **Deep docs pages** = one page per specific question or objection
+
+### Hard rules
+- Keep the main repo `README.md` at a **reasonable length**. It should not turn into a manual or giant link directory.
+- Do not solve every discoverability problem by adding more text or more links to `README.md`.
+- If a new page is added, decide whether it should replace, shorten, or remove something from the top-level surfaces.
+- Prefer **fewer, better links** over exhaustive routing copy.
+- Any long "see X if you want Y" link farm belongs in docs or a docs index, not in the main README.
+- `DOCS_PROCESS.md` is the canonical operating procedure for public docs work. `AGENTS.md` and `MEMORY.md` summarize and enforce it.
+- Do not split a larger docs change into smaller edits to avoid holistic review.
+
+### Required review before shipping doc changes
+Full docs review is mandatory for:
+- any change to `README.md`, `START_HERE.md`, or `docs/README.md`
+- any docs change that adds, removes, renames, or substantially repurposes a page
+- any docs change that adds a top-level link, changes navigation, or changes the recommended user flow
+- any docs change that affects public positioning, comparison framing, trust/proof surfaces, or quick-start paths
+
+For those changes, explicitly review the user journey in order:
+1. `README.md`
+2. `START_HERE.md` (if present)
+3. `docs/README.md` or equivalent docs index
+
+This review is incomplete unless it produces a short written note covering:
+- what changed
+- why it belongs on this surface instead of another one
+- what was pruned / shortened / merged, or why nothing was
+- whether duplication was reduced
+- why the top-level experience is now better
+
+Ship-blocking checks:
+- Is the first screen clear in under 10 seconds?
+- Is the README still short enough to skim?
+- Are links curated instead of piled up?
+- Does each file have a clear job, without duplicating the others?
+- Did the latest additions simplify the experience, or just add more surface area?
+- Was the changed prose copy-edited for brevity, rhythm, headings, repetition, and scanability?
+
+If clutter, duplication, or navigation anxiety increased, do not ship the docs change until it is pruned or reorganized.
+
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 
 **📝 Platform Formatting:**

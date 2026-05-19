@@ -1,5 +1,12 @@
 # Outreach Log
 
+## 2026-05-19 (Tuesday) — Website refresh check (18:18 UTC)
+- **No directional change detected.** Core positioning, three-phase flow, overnight promise, and PR-review framing all intact and consistent with all prior learnings.
+- **Two refinements observed:** (1) OpenCode now explicitly named alongside Claude Code and Codex CLI — expands the "works with tools you already trust" frame; (2) the problem/pain block now leads with a visceral conversational failure sequence ("You write a task. The AI starts. You answer a prompt. Then another. It hallucinates. You correct it.") — slightly more conversational and failure-story in tone than the May 18 version.
+- **Site language stays ahead of REDDIT_LEARNINGS** in places; learnings will be updated to close the gap.
+
+---
+
 ## 2026-05-19 (Tuesday)
 
 ### RalphWorkflow AIToolsIndex backlink repair
@@ -2268,3 +2275,58 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Expected outcome:** more qualified Aider comparison readers should continue into the **Codeberg** repo, then convert into stars, watches, or first-run issues instead of ending at a private comparison read.
 - **Measurement window:** immediate for source-level conversion-path quality and live docs availability; next 7 days for Aider-page referral / engagement clues; next 14 days for **Codeberg** stars/watchers/issues delta.
 - **Replace if it fails:** if Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on more competitor-page CTA polish alone and replace this lane with a warmer external competitor-citation/distribution move or another stronger proof asset aimed at the same evaluator intent.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 20:12:19
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow high-intent docs conversion repair
+- **When:** 2026-05-19 20:20:00 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** published a four-page Codeberg-conversion repair on high-intent docs surfaces that were still leaking evaluator traffic or were repaired locally but not shipped. I committed and pushed explicit end-of-page **Codeberg-first** next-step blocks into `docs/sphinx/claude-code-approval-mode.md`, `docs/sphinx/claude-code-run-until-done.md`, `docs/sphinx/claude-code-codex-workflow.md`, and `docs/sphinx/first-task-prompt-templates.md`, each pointing evaluators to inspect/star-watch/report friction on **Codeberg**, keep GitHub framed only as the mirror, and hand off to `after-your-first-run` for the final public action.
+  - Commit: `38af646e` — `Tighten Codeberg CTA on high-intent docs`
+  - Status: ✅ pushed to Codeberg primary (`origin`) and GitHub mirror (`github`)
+- **Verification:** `grep -nE 'After Your First Ralph Workflow Run|Use GitHub only as the mirror|Star or watch on Codeberg|Inspect the primary repo on Codeberg' docs/sphinx/{claude-code-approval-mode.md,claude-code-run-until-done.md,claude-code-codex-workflow.md,first-task-prompt-templates.md}` confirmed the new CTA blocks; `make docs` passed (`uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going`); `git push origin main && git push github main` both succeeded.
+- **Why this action:** this is **REPAIRED / REPLACING** a failing tactic. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and two of these pages were already repaired locally but still unshipped while two other high-intent entry pages still ended without a public Codeberg next step. Shipping the pending fixes and covering the remaining leaky pages is higher leverage than producing another broad content piece because these are exactly the pages qualified evaluators hit closest to a repo decision.
+- **Expected outcome:** more readers on Claude Code approval/run-until-done, Claude+Codex split-workflow, and first-task prompt-template pages should continue into the **Codeberg** repo and convert into stars, watches, or first-run issues instead of ending as private evaluation reads.
+- **Measurement window:** immediate for live source-level conversion-path quality; next deploy/build pickup for hosted docs availability; next 7 days for high-intent page referral/engagement clues; next 14 days for **Codeberg** stars/watchers/issues delta.
+- **Replace if it fails:** if these pages are live and **Codeberg** adoption is still flat through `2026-06-02`, stop spending the next cycle on more docs CTA polish and replace this lane with a stronger external competitor-citation/backlink move or another proof asset tied to the same evaluator intents.
+
+### RalphWorkflow repo-root evaluator-doc conversion repair
+- **When:** 2026-05-19 20:42:00 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** repaired a still-leaky **primary-repo** conversion path by adding explicit end-of-page **Codeberg-first** next-step blocks to four high-intent repo-root docs that are linked directly from the main README and START_HERE path: `docs/claude-code-approval-mode.md`, `docs/claude-code-codex-workflow.md`, `docs/first-task-prompt-templates.md`, and `docs/which-agent-should-i-start-with.md`. Each page now tells evaluators to inspect the primary repo on Codeberg, star/watch there if the run earns it, report first-run friction on Codeberg, treat GitHub only as the mirror, and use `after-your-first-run` for the post-run scorecard.
+  - Commit: `77832e2a` — `Tighten Codeberg CTA on repo-root evaluator docs`
+  - Status: ✅ pushed to Codeberg primary (`origin`) and GitHub mirror (`github`)
+- **Verification:** `grep` confirmed the new `Star or watch on Codeberg`, `issues/new`, `Use GitHub only as the mirror`, and `After Your First Ralph Workflow Run` blocks in all four repo-root docs; `git push origin main` and `git push github main` both succeeded.
+- **Why this action:** this is **REPAIRED / REPLACING** a failing tactic. Hosted-docs versions of these pages had already been tightened, but the repo-root versions — the ones Codeberg and GitHub evaluators hit directly from README / START_HERE — still ended without a strong public next step. Fixing the primary-repo handoff is more direct to Codeberg conversion than another same-lane content draft or another low-context directory submission.
+- **Expected outcome:** more qualified repo-native evaluators coming from approval-mode, Claude+Codex workflow, first-task prompt, and agent-choice pages should continue into **Codeberg** inspection and convert into stars, watches, or first-run issues instead of stopping at a private read.
+- **Measurement window:** next 7 days for repo-root doc referral / engagement clues; next 14 days for **Codeberg** stars/watchers/issues delta.
+- **Replace if it fails:** if Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on repo-root CTA polish and replace this lane with a warmer external competitor-citation/backlink move or another stronger proof asset tied to the same evaluator intents.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 20:42:04
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow AI coding workflow automation landing-page repair
+- **When:** 2026-05-19 20:53:28 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** added and shipped a new exact-intent **Codeberg-first** landing page for the keyword/pain phrase `AI coding workflow automation`, then wired it into the main repo entry surfaces so that search/evaluator traffic can reach it without digging. I created both the repo-root page (`docs/ai-coding-workflow-automation.md`) and the hosted-docs/Sphinx page (`ralph-workflow/docs/sphinx/ai-coding-workflow-automation.md`), added the page to `README.md`, `docs/README.md`, and the hosted docs homepage/toctree, then committed and pushed the change to both Codeberg primary and the GitHub mirror.
+  - Commit: `ba026b17` — `Add AI coding workflow automation landing page`
+  - Status: ✅ pushed to Codeberg primary (`origin`) and GitHub mirror (`github`)
+- **Verification:** `grep -n "ai-coding-workflow-automation" README.md docs/README.md ralph-workflow/docs/sphinx/index.rst` confirmed the new entry points; `make docs` passed (`uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going`); `git push origin HEAD` and `git push github HEAD` both succeeded.
+- **Why this action:** this is **REPAIRED / REPLACING** a failing tactic. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, Codeberg adoption is still flat, and the active repair guidance explicitly prioritizes homepage/SEO tuning and repo-specific landing pages over repeating write.as-style publishing. `AI coding workflow automation` was still an uncovered high-intent evaluator phrase compared with the already-shipped pages for `AI agent orchestration CLI`, `unattended coding agent`, and `open-source AI coding orchestrator`, so closing that gap was a stronger same-run conversion repair than another generic distribution attempt.
+- **Docs review note:** reviewed the public evaluator journey in order across `README.md`, `START_HERE.md`, and `docs/README.md`. The new page belongs on those surfaces because it answers a distinct exact-intent search phrase near the repo decision point; nothing new was added to `START_HERE.md` because that page already has a clear first-run job. This reduced duplication risk by adding one precise link instead of expanding broad README copy or creating another catch-all section, and keeps the top-level experience sharper by routing a real search intent straight to a Codeberg-first answer.
+- **Expected outcome:** more qualified evaluators searching for **AI coding workflow automation** should land on a Codeberg-first page that explains the reviewable-handoff difference clearly and then continue into **Codeberg** inspection, stars, watches, or first-run issues instead of bouncing after a vague automation comparison.
+- **Measurement window:** next 7 days for crawl/discovery and entry-surface usage on that exact-intent page; next 14 days for **Codeberg** stars/watchers/issues delta.
+- **Replace if it fails:** if this page is live and Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on adding more adjacent keyword pages and replace this lane with either a stronger external backlink/distribution source that cites the new page or a proof/demo asset tied to the same evaluator intent.
+
+
+### RalphWorkflow repo-root evaluator-doc CTA repair
+- **Patched the highest-intent repo-root evaluator pages that still leaked after the hosted-docs CTA passes**: added explicit Codeberg-first inspect / star-watch / issue next steps to `docs/unattended-coding-agent.md`, `docs/when-unattended-coding-fits.md`, `docs/ralph-workflow-vs-claude-code.md`, `docs/ralph-workflow-vs-aider.md`, and `docs/free-open-source-proof.md`, then pushed commit `373dc1a4` (`Tighten Codeberg CTA on evaluator docs`) to Codeberg and the GitHub mirror.
+  - Verification: direct content check confirmed all changed pages now contain both `https://codeberg.org/RalphWorkflow/Ralph-Workflow` and `https://github.com/Ralph-Workflow/Ralph-Workflow`; push succeeded to both `origin` (Codeberg) and `github`.
+  - Why: this is **REPAIRED / REPLACING** a flat tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, and these are high-intent repo-root pages Codeberg evaluators can reach before or instead of hosted docs. The strongest same-run repair was to close that repo-root CTA leak rather than repeat another Telegraph page or another generic directory submission.
+  - Expected outcome: more qualified readers who land on these proof/comparison/fit pages should take a visible primary-repo action on Codeberg instead of ending the session as a private evaluation.
+  - Measurement window: next 7 days for Codeberg-facing page inspection / referral evidence; next 14 days (through `2026-06-02`) for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat on `2026-06-02`, stop spending cycles on more repo-root CTA tightening alone and shift the next replacement move to a fresh external distribution or backlink surface that sends traffic directly into these repaired pages.
+  - Type: **REPAIRED / REPLACING**

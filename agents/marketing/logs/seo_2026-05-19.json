@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-19T17:01:11.066516",
+  "timestamp": "2026-05-19T20:45:19.667450",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Ralph Workflow \u2014 free CLI for AI coding tasks \u2014 Ralph Workflow",
-      "meta_description": "Free CLI that runs your AI coding tool on real tasks while your computer stays awake. Plans, builds, tests, and fixes \u2014 review finished code by morning.",
+      "title": "Free Unattended AI Coding CLI for Developers \u2014 Ralph Workflow",
+      "meta_description": "Free CLI for unattended AI coding tasks. Runs Claude Code, Codex, and OpenCode on real work overnight \u2014 plans, builds, tests, and fixes while your computer stays awake.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Free CLI that runs your AI coding tool on real tasks while your computer stays awake. Plans, builds, tests, and fixes \u2014 review finished code by morning.",
-        "title": "Ralph Workflow \u2014 free CLI for AI coding tasks",
+        "description": "Free CLI for unattended AI coding tasks. Runs Claude Code, Codex, and OpenCode on real work overnight \u2014 plans, builds, tests, and fixes while your computer stays awake.",
+        "title": "Free Unattended AI Coding CLI for Developers",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 7795,
+      "word_count": 7814,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -56,16 +56,21 @@
     }
   },
   "onpage": {
-    "score": 80,
-    "grade": "B",
+    "score": 70,
+    "grade": "C",
     "issues": [
       {
         "severity": "error",
         "item": "Title too long"
+      },
+      {
+        "severity": "warning",
+        "item": "Meta description too long",
+        "detail": "Keep between 150-160 characters"
       }
     ],
     "recommendations": [
-      "Keep title under 60 characters (current: 62 chars)"
+      "Keep title under 60 characters (current: 61 chars)"
     ]
   },
   "ranks": {
@@ -175,6 +180,7 @@
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
+    "Fix top on-page SEO issues (current score: 70/100)",
     "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]

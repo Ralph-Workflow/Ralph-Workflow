@@ -232,7 +232,19 @@
       "error": null,
       "draft_hash": "be54a70d354a6fc578ea28bec31ce73cfd42fc14d43a7586d1a594d2bc798729",
       "experiment_id": null
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_run-claude-code-overnight-without-babysitting_telegraph.md",
+      "title": "Run Claude Code Overnight Without Babysitting",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Run-Claude-Code-Overnight-Without-Babysitting-05-19-3",
+      "error": null,
+      "draft_hash": "a1f0fee0a6c09f5162990824c0559b2c95f94a7428692328baaf91ee901521aa",
+      "experiment_id": null
     }
   ],
-  "last_run": "2026-05-19T17:01:20.810202"
+  "last_run": "2026-05-19T20:45:29.938774"
 }
