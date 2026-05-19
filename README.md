@@ -68,6 +68,7 @@ If you try a real first run and anything feels unclear, shaky, or harder than it
 - **I am not sure whether my task is a good fit for unattended execution.** Read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 - **I already use worktrees or multiple agent sessions. What does Ralph add?** Read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 - **I already use Claude Code and want to know why I would add Ralph at all.** Read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
+- **I already use Codex CLI and want to know when Ralph is the better fit.** Read [docs/ralph-workflow-vs-codex-cli.md](./docs/ralph-workflow-vs-codex-cli.md).
 - **I already use Claude Code + Codex together. What changes with Ralph?** Read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
 - **I run multiple agents already. What actually breaks first?** Read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
 - **I want a concrete merge-review path for AI output.** Read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).

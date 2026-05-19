@@ -24,6 +24,7 @@ Choose the first path that matches how you already work tonight:
 
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already using **Claude Code** and deciding whether you even need Ralph? Start with :doc:`ralph-workflow-vs-claude-code`.
+- Already using **Codex CLI** and deciding whether you need Ralph for the morning-after handoff? Start with :doc:`ralph-workflow-vs-codex-cli`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
 - Already using **worktrees** and still not trusting the morning-after result? Read :doc:`why-worktrees-are-not-enough`.
@@ -232,6 +233,12 @@ Then come back and ask one question:
 
       See when staying interactive in Claude Code is enough and when a reviewable unattended handoff is the better fit.
 
+   .. grid-item-card:: Already use Codex CLI?
+      :link: ralph-workflow-vs-codex-cli
+      :link-type: doc
+
+      See when staying interactive in Codex CLI is enough and when a reviewable unattended handoff is the better fit.
+
    .. grid-item-card:: Already split work across Claude Code and Codex?
       :link: claude-code-codex-workflow
       :link-type: doc
@@ -308,6 +315,7 @@ Then come back and ask one question:
    first-task-guide
    which-agent-should-i-start-with
    ralph-workflow-vs-claude-code
+   ralph-workflow-vs-codex-cli
    claude-code-codex-workflow
    what-breaks-first-with-multiple-coding-agents
    why-worktrees-are-not-enough
