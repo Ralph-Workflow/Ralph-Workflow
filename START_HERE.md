@@ -55,6 +55,8 @@ That is the standard to hold Ralph Workflow to: **a reviewable result, not a tra
 
 If you want the longer version of that artifact before you run anything, inspect the public [example review bundle](./docs/example-review-bundle.md).
 
+If your first run hits confusing setup, weak docs, or a handoff you would not trust yet, report it on **Codeberg** here: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. The new Codeberg-first issue forms are meant for exactly that feedback.
+
 
 A good first run should be easy to judge in five minutes the next morning:
 
@@ -118,8 +120,8 @@ Then review the result like normal engineering work and ask one question:
 
 > **Would I merge this?**
 
-If yes, give Ralph Workflow a harder task tomorrow night.
-If not, tighten the task or checks and run again.
+If yes, give Ralph Workflow a harder task tomorrow night — and star or watch Ralph Workflow on **Codeberg**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+If not, tighten the task or checks and run again — or report the friction on **Codeberg**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 
 ## Pick the right first task
 

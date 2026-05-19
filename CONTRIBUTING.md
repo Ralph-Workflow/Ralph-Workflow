@@ -6,6 +6,16 @@
 
 Ralph Workflow is now a **Python-first** project. The maintained CLI package lives in `ralph-workflow/`.
 
+## Fastest way to help after a real first run
+
+If you just tried Ralph Workflow, the highest-signal contribution is no longer a vague suggestion. It is one of these Codeberg-first actions:
+
+- **Star or watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Report a docs / proof gap:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+
+The new issue forms are designed to capture the exact adoption bottleneck: what blocked a real first run, what proof was missing, and what would have made the project easier to trust.
+
 ## Start here
 
 ```bash

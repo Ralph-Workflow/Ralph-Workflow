@@ -58,6 +58,8 @@ That is the real promise: not “the agent seemed smart,” but **a bounded diff
 
 If you want the fuller artifact shape before you install, inspect the public [example review bundle](./docs/example-review-bundle.md).
 
+If you try a real first run and anything feels unclear, shaky, or harder than it should, report it on **Codeberg** with the new first-run issue path: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. That is the fastest way to improve the real adoption path without splitting feedback across the mirror.
+
 ## Start here in the path that matches your question
 
 - **I want the fastest honest first run.** Read [START_HERE.md](./START_HERE.md).
@@ -99,6 +101,11 @@ A strong first run should feel concrete, not magical:
 6. **You review one clean diff and ask:** *would I merge this?*
 
 If that is the kind of finish line you want, start with [START_HERE.md](./START_HERE.md), inspect the public [example review bundle](./docs/example-review-bundle.md), or open the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first.
+
+Best next public actions after a real evaluation:
+- **Star or watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## Want the longer argument before you install?
 

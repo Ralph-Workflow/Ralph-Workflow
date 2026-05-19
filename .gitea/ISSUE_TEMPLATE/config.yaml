@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Start here first
+    url: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+    about: Fastest honest first run and task-picking guide.
+  - name: Example review bundle
+    url: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/example-review-bundle.md
+    about: See what a good morning-after handoff should look like before opening an issue.
+  - name: GitHub mirror
+    url: https://github.com/Ralph-Workflow/Ralph-Workflow
+    about: Mirror only. Please open issues on Codeberg when possible.

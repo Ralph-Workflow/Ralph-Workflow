@@ -1,0 +1,48 @@
+name: Docs / proof gap
+about: Report missing proof, unclear docs, or a trust gap that made you hesitate to try Ralph Workflow.
+title: "[Docs gap]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when the repo or docs did not answer one of the four questions clearly enough:
+        1. What is Ralph Workflow?
+        2. Who is it for?
+        3. Why is it different?
+        4. Why try it now?
+  - type: dropdown
+    id: gap_type
+    attributes:
+      label: What kind of gap did you hit?
+      options:
+        - Missing first-task example
+        - Missing review / proof example
+        - Unclear agent-choice guidance
+        - Unclear fit / bad-fit guidance
+        - Unclear install / setup step
+        - Unclear Codeberg-vs-GitHub guidance
+        - Unclear differentiation vs another tool
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: page
+    attributes:
+      label: Which page or file were you reading?
+      placeholder: README.md or docs/when-unattended-coding-fits.md
+    validations:
+      required: true
+  - type: textarea
+    id: missing
+    attributes:
+      label: What answer or proof was missing?
+      placeholder: I still could not tell...
+    validations:
+      required: true
+  - type: textarea
+    id: next_step
+    attributes:
+      label: What would have made you more likely to try or star/watch on Codeberg?
+      placeholder: A clearer example, a shorter checklist, a comparison, a screenshot, etc.
+    validations:
+      required: true

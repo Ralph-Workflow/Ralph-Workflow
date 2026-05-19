@@ -1,0 +1,76 @@
+name: First-run friction report
+about: Report what blocked, confused, or slowed down your first real Ralph Workflow run.
+title: "[First run]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying Ralph Workflow.
+
+        This form is for the highest-leverage feedback right now: what stopped a real first run from feeling easy to trust, easy to review, or easy to finish.
+
+        Before submitting, please skim:
+        - START_HERE.md
+        - docs/example-review-bundle.md
+  - type: input
+    id: task
+    attributes:
+      label: What real task were you trying to hand off?
+      description: One sentence is enough.
+      placeholder: Add empty-project-name validation to the CLI create flow
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where did the friction show up?
+      multiple: true
+      options:
+        - Install / environment setup
+        - Agent auth / provider setup
+        - Writing PROMPT.md
+        - Running diagnose
+        - Running the unattended job
+        - Reviewing the morning-after result
+        - Deciding whether to merge
+        - Understanding which docs to read
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: What blocked you, confused you, or made the first run feel shaky?
+      placeholder: I expected..., but instead...
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: What did you expect instead?
+      placeholder: I expected the first-run path to...
+    validations:
+      required: true
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt / spec snippet (optional)
+      description: Paste the relevant part of your PROMPT.md if it helps.
+      render: markdown
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output or artifact path (optional)
+      description: CLI output, failing check, or the artifact file that told you something was off.
+      render: shell
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Quick checks
+      options:
+        - label: I used a real repo or realistic test repo, not a toy hello-world case.
+          required: true
+        - label: I understand Codeberg is the primary repo and I'm reporting this here on purpose.
+          required: true
+        - label: I checked START_HERE.md or the example review bundle before filing.
+          required: false
