@@ -100,6 +100,7 @@ If the run goes well, do the public next step on **Codeberg** instead of leaving
 - **I already use Claude Code + Codex together. What changes with Ralph?** Read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
 - **I run multiple agents already. What actually breaks first?** Read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
 - **I want a concrete merge-review path for AI output.** Read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
+- **I want the sharpest owned answer to “how do I tell if the AI task is actually done?”** Read [docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md](./docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md).
 - **I want to know what a strong morning-after handoff should actually contain.** Read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
 - **I want unattended runs to fail closed instead of drifting all night.** Read [docs/bounded-autonomy-for-unattended-coding.md](./docs/bounded-autonomy-for-unattended-coding.md).
 - **I keep thinking I need remote supervision, but really I need a trustworthy finish state.** Read [docs/remote-supervision-of-coding-agents.md](./docs/remote-supervision-of-coding-agents.md).
@@ -145,9 +146,9 @@ Best next public actions after a real evaluation:
 
 If you are still deciding what Ralph Workflow is for, whether unattended coding is a good fit, or how to judge the result honestly, these are the best deeper reads right now:
 
-- [How to Tell if an AI Coding Task Is Actually Done](https://write.as/7pqpd2y0v0re2.md) — trust the finish line, not the model's confidence.
-- [Claude Code + Codex Workflow: Plan, Build, Review](https://write.as/vesqh0lzrm4en.md) — a practical phase-split workflow for people already using both tools.
-- [When Unattended AI Coding Actually Works](https://write.as/x5wil6pmtbvo1.md) — when to use an overnight run, and when not to.
+- [How to Tell if an AI Coding Task Is Actually Done](./docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md) — trust the finish line, not the model's confidence.
+- [Claude Code + Codex Workflow: Plan, Build, Review](./docs/claude-code-codex-workflow.md) — a practical phase-split workflow for people already using both tools.
+- [When Unattended AI Coding Actually Works](./docs/when-unattended-coding-fits.md) — when to use an overnight run, and when not to.
 
 They all point back to the same free/open-source evaluation path: use the agents you already have on your own machine, run one real backlog task tonight, and ask tomorrow whether you would merge the result.
 

@@ -92,9 +92,9 @@ If that handoff shape sounds right, inspect the public [example review bundle](.
 
 If you want a stronger answer to "what is this, who is it for, why is it different, and why should I try it now?" before you install, start with these:
 
-- [How to Tell if an AI Coding Task Is Actually Done](https://write.as/7pqpd2y0v0re2.md) — how to judge whether the morning-after result is actually trustworthy.
-- [Claude Code + Codex Workflow: Plan, Build, Review](https://write.as/vesqh0lzrm4en.md) — the cleanest long-form explanation of the plan/build/review split.
-- [When Unattended AI Coding Actually Works](https://write.as/x5wil6pmtbvo1.md) — the quickest fit check before you spend a night on the wrong task.
+- [How to Tell if an AI Coding Task Is Actually Done](./docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md) — how to judge whether the morning-after result is actually trustworthy.
+- [Claude Code + Codex Workflow: Plan, Build, Review](./docs/claude-code-codex-workflow.md) — the cleanest long-form explanation of the plan/build/review split.
+- [When Unattended AI Coding Actually Works](./docs/when-unattended-coding-fits.md) — the quickest fit check before you spend a night on the wrong task.
 
 They all lead back to the same honest test: install Ralph Workflow for free, run one real backlog task on your own machine, and decide tomorrow whether you would merge it.
 
@@ -178,6 +178,7 @@ If you already use worktrees or separate agent sessions and want to know what Ra
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
 If you already run multiple coding agents and the real pain is review/reconstruction, read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
 If the handoff still feels hard to judge at merge time, read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
+If the core trust question is still whether the task is actually done, read [docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md](./docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md).
 If you want the cleanest possible morning-after re-entry point, read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
 If the thing you keep calling "remote supervision" is really a finish-state trust problem, read [docs/remote-supervision-of-coding-agents.md](./docs/remote-supervision-of-coding-agents.md).
 If you are evaluating category fit first and want the clearest Codeberg-first positioning, read [docs/open-source-ai-coding-orchestrator.md](./docs/open-source-ai-coding-orchestrator.md).

@@ -46,6 +46,7 @@ The post-run branch should stay explicit:
 - `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
 - `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
 - `review-ai-coding-output-before-merge.md` — five-minute merge review path for the morning-after handoff
+- `how-to-tell-if-an-ai-coding-task-is-actually-done.md` — owned trust page for the core finish-line question: is this really done or just confidently stopped?
 - `bounded-autonomy-for-unattended-coding.md` — keep unattended runs fail-closed, cheap to miss, and easy to review the next morning
 - `remote-supervision-of-coding-agents.md` — for developers who think they need remote supervision but really need a cleaner finish-state trust path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first category page for developers searching for an open-source AI coding orchestrator they can inspect before install

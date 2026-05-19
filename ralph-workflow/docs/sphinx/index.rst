@@ -82,13 +82,16 @@ Want the deeper workflow argument before you install?
 If you want a longer answer to what Ralph Workflow is, who it is for, why it is different, and why
 it is worth trying now, these are the best supporting reads right now:
 
-- `How to Tell if an AI Coding Task Is Actually Done <https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2>`_
-- `Claude Code + Codex Workflow: Plan, Build, Review <https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-19>`_
+- :doc:`how-to-tell-if-an-ai-coding-task-is-actually-done`
+- :doc:`claude-code-codex-workflow`
 - :doc:`when-unattended-coding-fits`
 
 Those reads all drive back to the same practical free-use path: use the agents you already have on
 your own machine, run one real backlog task tonight, and ask tomorrow whether you would merge the
 result.
+
+If the main trust question is still "how do I tell whether the run is actually done?" read
+:doc:`how-to-tell-if-an-ai-coding-task-is-actually-done`.
 
 What Ralph Workflow is for
 ==========================
@@ -360,6 +363,7 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
    ralph-workflow-vs-aider
    reviewable-output
    review-ai-coding-output-before-merge
+   how-to-tell-if-an-ai-coding-task-is-actually-done
    what-a-good-ai-coding-finish-receipt-looks-like
    bounded-autonomy-for-unattended-coding
    remote-supervision-of-coding-agents
