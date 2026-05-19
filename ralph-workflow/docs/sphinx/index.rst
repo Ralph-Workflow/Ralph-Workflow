@@ -1,7 +1,7 @@
-.. title:: Free open-source unattended coding CLI
+.. title:: Unattended coding agent
 
 .. meta::
-   :description: Free CLI that orchestrates Claude Code, Codex, and OpenCode on your machine. Run overnight, wake up to tested code you can review and merge.
+   :description: Ralph Workflow is a free open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode on your machine.
 
 Ralph Workflow
 ==============
@@ -10,7 +10,7 @@ Ralph Workflow
 
    <section class="hero">
      <h1 class="hero-headline">Run bigger AI coding tasks without babysitting the terminal</h1>
-     <p class="hero-subtitle">Ralph Workflow is free and open source. It orchestrates the coding agents you already use on your own machine, runs planning + development + review as one unattended flow, and brings back a reviewable result instead of just a transcript and a done claim.</p>
+     <p class="hero-subtitle">Ralph Workflow is a free and open-source unattended coding agent and AI agent orchestration CLI. It gives Claude Code, Codex, and OpenCode a spec-driven workflow on your own machine so you wake up to reviewable code instead of another transcript and a done claim.</p>
      <div class="hero-actions">
        <a class="hero-cta" href="getting-started.html">Run your first real task →</a>
        <a class="hero-cta hero-cta-secondary" href="example-review-bundle.html">See a public review bundle first</a>
@@ -21,6 +21,8 @@ Ralph Workflow
    </section>
 
 Choose the first path that matches how you already work tonight:
+
+Ralph Workflow is built for developers with work too big to babysit and too risky to trust blindly: a spec-driven AI agent flow, Claude Code automation path, and morning-after review handoff in one place.
 
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already using **OpenCode** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-opencode`.
@@ -365,8 +367,6 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
    review-ai-coding-output-before-merge
    how-to-tell-if-an-ai-coding-task-is-actually-done
    what-a-good-ai-coding-finish-receipt-looks-like
-   bounded-autonomy-for-unattended-coding
-   remote-supervision-of-coding-agents
    example-review-bundle
    after-your-first-run
    quickstart
