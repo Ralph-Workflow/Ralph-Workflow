@@ -25,6 +25,7 @@ Choose the first path that matches how you already work tonight:
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
 - Already using **Claude Code** and specifically searching for a better automation / unattended path? Start with :doc:`claude-code-automation`.
+- Already searching for how to run **Claude Code overnight without babysitting**? Start with :doc:`run-claude-code-overnight-without-babysitting`.
 - Already using **Claude Code** but still stuck in approval mode or plan mode babysitting? Read :doc:`claude-code-approval-mode`.
 - Already using **Codex CLI** and deciding whether you need Ralph Workflow for the morning-after handoff? Start with :doc:`ralph-workflow-vs-codex-cli`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
@@ -346,6 +347,7 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
    first-task-guide
    which-agent-should-i-start-with
    claude-code-automation
+   run-claude-code-overnight-without-babysitting
    claude-code-approval-mode
    ralph-workflow-vs-claude-code
    ralph-workflow-vs-codex-cli
@@ -357,6 +359,8 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
    reviewable-output
    review-ai-coding-output-before-merge
    what-a-good-ai-coding-finish-receipt-looks-like
+   bounded-autonomy-for-unattended-coding
+   remote-supervision-of-coding-agents
    example-review-bundle
    after-your-first-run
    quickstart

@@ -168,6 +168,7 @@ Bad first tasks:
 
 If you are still hesitating over Claude Code vs Codex vs OpenCode, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
 If Claude Code is already your default and the real thing you want is a better automation / unattended path, read [docs/claude-code-automation.md](./docs/claude-code-automation.md).
+If your exact problem is "how do I run Claude Code overnight without babysitting the terminal?", read [docs/run-claude-code-overnight-without-babysitting.md](./docs/run-claude-code-overnight-without-babysitting.md).
 If Claude Code approval mode or plan mode still leaves you stuck near the terminal, read [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
@@ -251,6 +252,7 @@ A useful Ralph Workflow run should leave you with:
 - [docs/quick-reference.md](./docs/quick-reference.md)
 - [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md)
 - [docs/claude-code-automation.md](./docs/claude-code-automation.md)
+- [docs/run-claude-code-overnight-without-babysitting.md](./docs/run-claude-code-overnight-without-babysitting.md)
 - [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md)
 - [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
 - [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) — see the concrete artifact bundle and morning-after review path

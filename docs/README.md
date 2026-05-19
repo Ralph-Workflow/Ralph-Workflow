@@ -38,6 +38,7 @@ The post-run branch should stay explicit:
 - `first-task-guide.md` — choose a strong first backlog task and avoid vague demo runs
 - `which-agent-should-i-start-with.md` — quick decision guide for the first agent path: choose the one already working on your machine
 - `claude-code-automation.md` — Codeberg-first answer for developers searching specifically for Claude Code automation but who really need a reviewable unattended handoff
+- `run-claude-code-overnight-without-babysitting.md` — plain-language Codeberg-first page for developers searching exactly how to run Claude Code overnight without hovering over the terminal
 - `claude-code-approval-mode.md` — for developers whose Claude Code approval mode or plan mode still leaves them babysitting the run instead of reviewing a clean morning-after result
 - `ralph-workflow-vs-codex-cli.md` — comparison page for developers deciding whether staying interactive in Codex CLI is enough or whether they need a reviewable unattended handoff
 - `example-review-bundle.md` — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
@@ -122,6 +123,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `first-task-guide.md` — practical first-task chooser for the first real unattended run
 - `which-agent-should-i-start-with.md` — practical first-run agent-choice guide for Claude Code, Codex, and OpenCode users
 - `claude-code-automation.md` — practical guide for developers who already like Claude Code but need a trustworthy automation / overnight finish path
+- `run-claude-code-overnight-without-babysitting.md` — practical plain-language page for the exact "Claude Code overnight" / "without babysitting" search intent
 - `claude-code-approval-mode.md` — practical guide for developers whose approval or plan mode still leaves them doing approval babysitting instead of morning-after review
 - `first-task-prompt-templates.md` — copy-paste starter prompt shapes for feature work, validation, refactors, tests, and docs
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like

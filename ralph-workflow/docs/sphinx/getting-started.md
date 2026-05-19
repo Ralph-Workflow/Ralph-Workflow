@@ -44,6 +44,7 @@ Bad first tasks:
 If you want a sharper pass/fail filter before you install, read [Choose Your First Ralph Workflow Task](first-task-guide.md).
 If you are unsure whether to start with Claude Code, Codex, or OpenCode, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 If Claude Code is already your default and the real thing you want is a more trustworthy automation / unattended handoff, read [Claude Code Automation for Real Repo Work](claude-code-automation.md).
+If your exact search/problem shape is how to run Claude Code overnight without babysitting, read [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md).
 If Claude Code approval mode or plan mode still leaves you babysitting the terminal, read [Claude Code Approval Mode Is Not an Unattended Workflow](claude-code-approval-mode.md).
 If Claude Code is already your default and you want the clearest answer to “why add Ralph Workflow at all?”, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md).
 If Codex CLI is already your default and you want to know when an unattended reviewable handoff is the better fit, read [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md).
@@ -226,6 +227,7 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean merge/no-merge evaluation
 - [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — choose the first agent path with the least setup friction
 - [Claude Code Automation for Real Repo Work](claude-code-automation.md) — the clearest Codeberg-first path if your current search/problem is specifically Claude Code automation
+- [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md) — plain-language page for the exact overnight/no-babysitting Claude Code search intent
 - [Claude Code Approval Mode Is Not an Unattended Workflow](claude-code-approval-mode.md) — the clearest path if approval or plan mode still leaves you babysitting instead of reviewing a clean morning-after handoff
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste `PROMPT.md` shapes for strong first runs
 - [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md) — the clearest comparison if your baseline is a live Claude Code session and you want to know when an unattended handoff is better
