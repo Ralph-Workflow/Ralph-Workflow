@@ -1,10 +1,10 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-19 14:47 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-19 15:27 CEST
 
 Live posting is **not** the move right now.
 
-Latest watchdog state references report `reddit_monitor_2026-05-19_1221.md`.
+Latest watchdog state references report `reddit_monitor_2026-05-19_1520.md`.
 - `status: fresh_opportunity_rate_limited`
-- `detail: opportunity_state:fresh_rate_limited; opportunities:6`
+- `detail: opportunity_state:fresh_rate_limited; opportunities:7`
 
 So this packet is optimized for the **next safe window**, not for forcing a post now.
 
@@ -26,7 +26,7 @@ Messaging guardrails preserved in every draft:
 - Why this stays in the packet:
   - still usable as a workflow reply without forcing a product pitch
   - landing page keeps the CTA on a concrete first-use or proof path
-  - best RalphWorkflow angle from the monitor: run-until-done only helps if done is reviewable, bounded, and fail-closed
+  - best RalphWorkflow angle from the monitor: run-until-done only helps if done is bounded, fail-closed, and easy to review
 
 ### Draft body A
 The most useful constraint I added to my agent workflow was not more prompts. It was a finish-state definition.

@@ -2,6 +2,30 @@
 
 ## 2026-05-19 (Tuesday)
 
+### RalphWorkflow first-task evaluator-path repair
+- **Reordered the shortest evaluator path around Codeberg first → task choice second → first run third**: tightened the main public entry points so first-time evaluators are pushed into the highest-conversion sequence instead of a generic docs/install flow.
+  - Commit: `659eee44` — `Tighten first-task conversion path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `ralph-workflow/docs/sphinx/index.rst`
+  - Verification: `make docs` passed after the change, and the hosted-docs hero now builds with `Inspect on Codeberg first` plus `Pick your first real task` before deeper docs.
+  - Why: this is **REPAIRED / REPLACING** a flat tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, `aifindr` was blocked by Turnstile, and the next best viable move was to strengthen the repo-root / hosted-docs evaluator sequence we fully control. Earlier CTA work proved Codeberg-first routing matters; this repair focuses the next leak: evaluators reaching install/docs before they have picked a realistic first task.
+  - Expected outcome: more qualified Codeberg visitors should click into `first-task-guide` and `START_HERE` in the intended order, reducing bounce from vague evaluation and increasing primary-repo trust actions.
+  - Measurement window: next 7 days for path usage / referral evidence on `first-task-guide` and `START_HERE`; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending cycles on more owned-path ordering tweaks and shift the next replacement move to another verified external distribution surface or a real homepage deployment-path repair.
+  - Type: **REPAIRED / REPLACING**
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-19_1520.md`
+- **Scan summary:** 29 candidate Reddit threads/posts scanned, 7 shortlisted, 22 rejected.
+- **Current verdict:** Mixed — 7 credible discussion opportunities were found, but only 1–2 are decent RalphWorkflow mention fits and 0 are obvious high-confidence product mentions after prior-use, freshness, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code just shipped a \"run until done\" mode. Upgrade to v2.1.139 for /goal."
+  - `r/ClaudeCode` — "Claude Code stuck in \"approval loop\""
+  - `r/AI_Agents` — "Has anyone run an agent longer than a week? What broke first?"
+- **Repeated pains worth tracking:** approval drag / double-confirmation friction, morning-after review/reconstruction, cleanup noise on the human review surface, shared-boundary ownership, fail-closed / runaway-loop anxiety, and long-run memory/schema drift.
+- **Risk note:** repeat-pattern risk is still more about body logic than exact wording; short comments are converging on a mini-template of **handoff first -> readable diff/checks -> stale/sketchy note**.
+- **Posting note:** No posting attempted from this monitor pass.
+
 ### RalphWorkflow ToolShelf backlink repair
 - **Submitted Ralph Workflow to ToolShelf with Codeberg as the primary listing URL**: used the live public submit API at `https://toolshelf.dev/api/submit` to place Ralph Workflow on a fresh developer-tools directory surface that can send qualified evaluators to `https://codeberg.org/RalphWorkflow/Ralph-Workflow` first, with `https://github.com/Ralph-Workflow/Ralph-Workflow` supplied only as the mirror URL.
   - Verification: live API `POST` returned HTTP `200` with `{"success":true,"message":"Tool submitted successfully! We'll review it soon."}`.
@@ -1927,3 +1951,51 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Expected outcome:** a new third-party listing should send additional qualified evaluators to the **Codeberg** repo and improve the chance of a primary-repo star/watch/fork/issue delta if the audience matches workflow-tool evaluation intent.
 - **Measurement window:** next 3-7 days for listing persistence / visibility, then next 14 days for **Codeberg** stars/watchers/forks/issues delta.
 - **Replace if it fails:** if the listing disappears, never goes visible in browse/search, or Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on broad directory expansion and replace this lane with either (a) another verified executable backlink source with direct Codeberg routing or (b) the strongest remaining deployment/conversion repair on owned surfaces.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 15:12:44
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow AIToolsIndex backlink repair
+- **Submitted Ralph Workflow to AIToolsIndex with Codeberg as the primary listing URL**: used the live public submit API at `https://aitoolsindex.org/api/submit/enqueue-tool-submission` to place Ralph Workflow on a fresh AI-tools discovery surface that points directly to `https://codeberg.org/RalphWorkflow/Ralph-Workflow`, with the GitHub mirror mentioned only second inside the description.
+  - Verification: live `POST` returned HTTP `200` with `success: true`, submission key `ToolSubmission-1779196720342-94c2bd12-6196-4065-a758-9dea10b69922`, and status `pending`; immediate follow-up `GET https://aitoolsindex.org/api/submit/get-tool-submission?key=...` also returned HTTP `200` with the same pending record.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The current audit says Codeberg adoption is flat and explicitly prioritizes executable backlink building over more same-lane content churn. AIToolsIndex was not yet logged in `outreach-log.md`, exposes a real unauthenticated submit API from this environment, and lets the listing route qualified traffic straight to the primary Codeberg repo instead of the GitHub mirror.
+  - Expected outcome: a new reviewed directory listing should create another Codeberg-first discovery path for developers evaluating AI coding / developer workflow tools, increasing primary-repo inspection volume.
+  - Measurement window: next 7 days for listing approval or public listing evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if the listing goes live or becomes publicly discoverable and Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop prioritizing more general AI-directory submissions and shift the next replacement move to a warmer distribution surface or competitor-citation path that can send higher-intent traffic.
+  - Type: **REPAIRED / REPLACING**
+
+### RalphWorkflow Codeberg-first SEO landing-page repair
+- **Repaired three high-intent public docs pages to stop leaking evaluator intent away from the primary repo**: added explicit end-of-page Codeberg-first conversion CTAs to `docs/sphinx/which-agent-should-i-start-with.md`, `docs/sphinx/unattended-coding-agent.md`, and `docs/sphinx/ralph-workflow-vs-claude-code.md` so readers coming from agent-choice, unattended-coding, and Claude Code comparison searches are now told to inspect, star/watch, and file first-run issues on **Codeberg**, with GitHub positioned only as the mirror.
+  - Commit: `0323801b` — `Tighten Codeberg CTAs on SEO landing pages`
+  - Status: ✅ pushed to Codeberg and GitHub mirror
+  - Verification: `git diff` on the three pages showed the new CTA sections; `grep -nE 'Codeberg|GitHub only as the mirror|issues/new' docs/sphinx/{which-agent-should-i-start-with.md,unattended-coding-agent.md,ralph-workflow-vs-claude-code.md}` confirmed the new primary-repo routing copy.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. Distribution channels from this environment are mostly exhausted or blocked, while the audit still says Codeberg adoption is flat. These pages already target high-intent evaluator searches, so tightening the conversion path on them is a more direct Codeberg repair than repeating another weak owned-content loop or another blocked directory attempt.
+  - Expected outcome: more qualified docs/search visitors should click through to the **Codeberg** repo, producing a better chance of primary-repo stars/watchers/issues from traffic that is already evaluating unattended coding and Claude Code alternatives.
+  - Measurement window: next 7 days for docs/page traffic engagement changes, next 14 days for **Codeberg** stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on more CTA copy polish alone and replace this lane with either a fresh verified backlink/discovery surface or a stronger proof/demo asset wired directly into the same search-intent pages.
+  - Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 15:41:26
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1taty8a/claude_code_just_shipped_a_run_until_done_mode/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1taty8a/claude_code_just_shipped_a_run_until_done_mode/omo8q4d/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #1 Claude Code just shipped a "run until done" mode. Upgrade to v2.1.139 for /goal. (`r/ClaudeCode`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### RalphWorkflow repo-entry mirror-link regression repair
+- **When:** 2026-05-19 14:11:03
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** fixed a first-screen repo conversion bug on the two highest-traffic repo entry points by correcting the mislabeled GitHub-mirror URLs at the top of `README.md` and `START_HERE.md`, then pushed the repair to both Codeberg primary and the GitHub mirror.
+  - Commit: `91d935da` — `Fix GitHub mirror links on repo entry points`
+  - Files: `README.md`, `START_HERE.md`
+  - Status: ✅ pushed to Codeberg primary (`origin`) and GitHub mirror (`github`)
+  - Verification: `git diff -- README.md START_HERE.md` showed only the two URL corrections; `grep -n "GitHub mirror" README.md START_HERE.md` confirmed the top mirror lines now point to `https://github.com/Ralph-Workflow/Ralph-Workflow` instead of incorrectly looping back to Codeberg.
+- **Why this action:** this is **REPAIRED / REPLACING** a failing tactic. Recent distribution work is already sending new evaluators into the repo, so the stronger same-run repair was to remove a trust/confusion leak on the first repo surfaces they read instead of repeating another directory submission from the same lane.
+- **Expected outcome:** more qualified repo visitors should understand the project's two-surface structure immediately — Codeberg as the primary relationship, GitHub as the mirror — without hitting a contradictory top-of-page link, reducing bounce/confusion on the main Codeberg evaluation path.
+- **Measurement window:** next 7 days for repo-entry-path clarity and fewer mirror/primary-path mismatches in public surfaces; next 14 days for **Codeberg** stars/watchers/forks/issues delta.
+- **Replace if it fails:** if Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on small repo-entry copy repairs alone and replace this lane with either a stronger proof/distribution surface or the next verified owned-surface conversion leak.

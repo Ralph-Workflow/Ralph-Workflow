@@ -1,6 +1,9 @@
 {
-  "last_attempt_at": "2026-05-19T14:47:38.532608",
-  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-19_1221.md",
-  "last_attempt_status": "fresh_opportunity_rate_limited",
-  "last_detail": "opportunity_state:fresh_rate_limited; opportunities:6"
+  "last_attempt_at": "2026-05-19T16:01:56.311346",
+  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-19_1520.md",
+  "last_thread_url": "<https://www.reddit.com/r/ClaudeCode/comments/1taty8a/claude_code_just_shipped_a_run_until_done_mode/>",
+  "last_comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1taty8a/claude_code_just_shipped_a_run_until_done_mode/omo8q4d/",
+  "last_attempt_status": "posted",
+  "last_poster_status": "posted",
+  "last_detail": ""
 }

@@ -43,6 +43,97 @@ class Topic:
 
 TOPIC_ROTATION: list[Topic] = [
     Topic(
+        slug="orchestration",
+        content_type="comparison",
+        angle="What an AI agent orchestration CLI actually does that a prompt chain cannot",
+        keyword="ai agent orchestration CLI",
+        cta="install_ralphworkflow",
+        hypothesis="Comparison posts targeting the 'orchestration CLI' keyword attract developers who already tried basic AI coding tools and need something more structured.",
+        body="""# What an AI Agent Orchestration CLI Actually Does That a Prompt Chain Cannot
+
+You have a prompt chain. You have Claude Code. You have a bash script that strings them together. So why do you still need to babysit everything?
+
+The gap is orchestration — not generation. Prompt chains generate. Orchestration frameworks coordinate, verify, and loop.
+
+## The Difference in One Sentence
+
+A prompt chain says: do X, then do Y, then do Z.
+
+An orchestration CLI says: do X, check that X is correct, loop if not, then do Y, check that Y is correct, loop if not, then do Z — and give me a diff I can review.
+
+## Why This Matters for Real Engineering Work
+
+Unattended work only works when:
+- each step has an exit criterion
+- failures trigger revision, not propagation
+- the final output is reviewable without re-running anything
+
+Ralph Workflow is a composable loop framework for this. It is a CLI that orchestrates your existing AI coding agents through phases with explicit handoffs and automated checks.
+
+## What an Orchestration CLI Gives You
+
+- **Spec-first phases**: the agent works against a spec, not a vibe
+- **Automated verify step**: catches obvious mistakes before they compound
+- **Clean re-entry point**: if something fails, you know exactly where — and can resume
+- **Reviewable diff**: not "it ran" but "here's what changed and why"
+- **Looping structure**: planning loops, development loops, the whole thing loops
+
+## What It Doesn't Do
+
+It does not write your code for you. It runs the coding agents you already have, on your own machine, in a structure that survives unattended overnight runs.
+
+The difference between a prompt chain and an orchestration CLI is the difference between a todo list and a project manager. Both have your tasks. Only one checks the work.
+
+---
+
+**Try it on Codeberg:** [RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star, fork, and open issues there. GitHub mirror: [Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow).
+""",
+    ),
+    Topic(
+        slug="unattended_agent",
+        content_type="technical",
+        angle="What 'unattended coding agent' actually means and why most setups aren't",
+        keyword="unattended coding agent",
+        cta="install_ralphworkflow",
+        hypothesis="Directly targeting the 'unattended coding agent' keyword fills the clearest SEO gap and matches the strongest product differentiator.",
+        body="""# What 'Unattended Coding Agent' Actually Means — and Why Most Setups Aren't
+
+Unattended does not mean "set it and forget it." It means you can walk away from the session and come back to something reviewable.
+
+Most AI coding setups call themselves unattended because you can start a long task. They are not unattended in any meaningful sense — you still have to watch for failures, catch hallucinated tests, and manually verify the output.
+
+## The Three Requirements for a Genuinely Unattended Setup
+
+1. **Bounded scope** — the task has a spec, not just a prompt
+2. **Automated verification** — something checks the output before you see it
+3. **Clean re-entry** — if it fails, you know exactly where and can resume without starting over
+
+Without all three, "unattended" just means "the AI is failing without you watching."
+
+## What Ralph Workflow Adds
+
+Ralph Workflow is a composable loop framework that runs your existing AI coding agents through those three requirements automatically.
+
+```text
+spec-first → agent builds → verify catches mistakes → loop if broken → clean output
+```
+
+You write the spec. The orchestration loop handles the rest — including the verify step that catches what the agent would otherwise miss.
+
+## The Overnight Test
+
+The real test of an unattended setup: can you start it at 11pm, sleep 8 hours, and wake up to something you can actually review?
+
+If your current setup can't pass that test, it is not unattended — it just doesn't require constant input. There's a meaningful difference.
+
+Ralph Workflow is built to pass the overnight test. That's what the loop structure is for.
+
+---
+
+**Try it on Codeberg:** [RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star, fork, and open issues there. GitHub mirror: [Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow).
+""",
+    ),
+    Topic(
         slug="philosophy",
         content_type="philosophy",
         angle="Why AI agents need structure, not just prompts",
