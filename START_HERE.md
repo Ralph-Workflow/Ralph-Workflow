@@ -173,6 +173,7 @@ If Claude Code approval mode or plan mode still leaves you stuck near the termin
 If you want copy-paste starter specs instead of drafting from scratch, read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 If Claude Code is already your default and you want the clearest reason to add Ralph Workflow instead of just staying in one live session, read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
+If OpenCode is already your default and you want to know when an unattended reviewable handoff is the better fit, read [docs/ralph-workflow-vs-opencode.md](./docs/ralph-workflow-vs-opencode.md).
 If Codex CLI is already your default and you want to know when an unattended reviewable handoff is the better fit, read [docs/ralph-workflow-vs-codex-cli.md](./docs/ralph-workflow-vs-codex-cli.md).
 If you already use worktrees or separate agent sessions and want to know what Ralph Workflow adds beyond that, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
@@ -265,4 +266,5 @@ A useful Ralph Workflow run should leave you with:
 - [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md)
 - [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md)
 - [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md)
+- [docs/ralph-workflow-vs-opencode.md](./docs/ralph-workflow-vs-opencode.md)
 - [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md)

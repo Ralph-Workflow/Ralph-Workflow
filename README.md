@@ -96,6 +96,7 @@ If the run goes well, do the public next step on **Codeberg** instead of leaving
 - **I want to run Claude Code overnight without babysitting the terminal.** Read [docs/run-claude-code-overnight-without-babysitting.md](./docs/run-claude-code-overnight-without-babysitting.md).
 - **Claude Code approval mode or plan mode still leaves me babysitting the run.** Read [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md).
 - **I already use Claude Code and want to know why I would add Ralph at all.** Read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
+- **I already use OpenCode and want to know when Ralph is the better fit.** Read [docs/ralph-workflow-vs-opencode.md](./docs/ralph-workflow-vs-opencode.md).
 - **I already use Codex CLI and want to know when Ralph is the better fit.** Read [docs/ralph-workflow-vs-codex-cli.md](./docs/ralph-workflow-vs-codex-cli.md).
 - **I already use Claude Code + Codex together. What changes with Ralph?** Read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
 - **I run multiple agents already. What actually breaks first?** Read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
@@ -288,6 +289,7 @@ If you already use Claude Code and Codex together and want the cleanest role spl
 If you already run multiple agents and the review/reconstruction step is what hurts, read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
 If the part you do not trust yet is the morning-after merge decision itself, read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
 If you want the clearest picture of what a short trustworthy handoff should say before you merge, read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
+If OpenCode is already your default and you want to know when a reviewable unattended handoff is the better fit, read [docs/ralph-workflow-vs-opencode.md](./docs/ralph-workflow-vs-opencode.md).
 If you already like Aider for interactive work and want to know when Ralph is the better fit, read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
 
 ## What a good run feels like

@@ -40,6 +40,7 @@ The post-run branch should stay explicit:
 - `claude-code-automation.md` — Codeberg-first answer for developers searching specifically for Claude Code automation but who really need a reviewable unattended handoff
 - `run-claude-code-overnight-without-babysitting.md` — plain-language Codeberg-first page for developers searching exactly how to run Claude Code overnight without hovering over the terminal
 - `claude-code-approval-mode.md` — for developers whose Claude Code approval mode or plan mode still leaves them babysitting the run instead of reviewing a clean morning-after result
+- `ralph-workflow-vs-opencode.md` — comparison page for developers deciding whether staying interactive in OpenCode is enough or whether they need a reviewable unattended handoff
 - `ralph-workflow-vs-codex-cli.md` — comparison page for developers deciding whether staying interactive in Codex CLI is enough or whether they need a reviewable unattended handoff
 - `example-review-bundle.md` — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
 - `after-your-first-run.md` — use a two-minute scorecard to turn the first run into a Codeberg star/watch or a useful issue
@@ -56,6 +57,7 @@ The post-run branch should stay explicit:
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
 - `ralph-workflow-vs-claude-code.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing Claude Code habit
+- `ralph-workflow-vs-opencode.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing OpenCode habit
 - `ralph-workflow-vs-codex-cli.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing Codex CLI habit
 - `claude-code-codex-workflow.md` — practical guide for developers already pairing Claude Code and Codex who want a cleaner finish than manual glue
 - `what-breaks-first-with-multiple-coding-agents.md` — shared-boundary drift, merged-state checks, finish receipts, and the trust failures that show up before raw Git conflicts
@@ -127,6 +129,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `claude-code-automation.md` — practical guide for developers who already like Claude Code but need a trustworthy automation / overnight finish path
 - `run-claude-code-overnight-without-babysitting.md` — practical plain-language page for the exact "Claude Code overnight" / "without babysitting" search intent
 - `claude-code-approval-mode.md` — practical guide for developers whose approval or plan mode still leaves them doing approval babysitting instead of morning-after review
+- `ralph-workflow-vs-opencode.md` — practical comparison for developers deciding between staying interactive in OpenCode and handing off a reviewable unattended run
 - `first-task-prompt-templates.md` — copy-paste starter prompt shapes for feature work, validation, refactors, tests, and docs
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
 - `review-ai-coding-output-before-merge.md` — practical merge-review checklist for deciding whether the handoff is trustworthy
