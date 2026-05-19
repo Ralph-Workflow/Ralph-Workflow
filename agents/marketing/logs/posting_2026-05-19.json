@@ -1,12 +1,36 @@
 {
-  "timestamp": "2026-05-19T11:08:52.155848",
+  "timestamp": "2026-05-19T17:01:20.810202",
   "results": [
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_orchestration_draft.md",
+      "title": "What an AI Agent Orchestration CLI Actually Does That a Prompt Chain Cannot",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/What-an-AI-Agent-Orchestration-CLI-Actually-Does-That-a-Prompt-Chain-Cannot-05-19",
+      "error": null,
+      "draft_hash": "ba6927b5e59ac56e0408be665f467675a8f4da36c3ded807a7697d83c3c0d4e2",
+      "experiment_id": "2026-05-19-orchestration"
+    },
     {
       "draft": "2026-05-19_technical_draft.md",
       "ok": true,
       "status": "already_posted",
       "draft_hash": "cd44e4bcabc9baf1e924a6af2a7d9fb386b839f98a5fd4c46e13a3d7fc80210f",
       "experiment_id": "2026-05-19-technical"
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_ai-agent-orchestration-cli_telegraph.md",
+      "title": "AI Agent Orchestration CLI: A Practical Comparison for Developers",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-19-6",
+      "error": null,
+      "draft_hash": "2fe199186fe320e437ff90e933ef7ad9bac9af662157dadc0b36db7148865cc3",
+      "experiment_id": null
     },
     {
       "draft": "2026-05-19_claude-code-codex-workflow_telegraph.md",
@@ -24,37 +48,46 @@
     },
     {
       "date": "2026-05-19",
-      "draft": "2026-05-19_seo-page_ai-agent-orchestration-cli.md",
-      "title": "AI Agent Orchestration CLI: A Practical Comparison for Developers",
+      "draft": "2026-05-19_open-source-ai-coding-orchestrator_telegraph.md",
+      "title": "Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For",
       "platform": "telegraph",
       "ok": true,
       "status": "posted",
-      "url": "https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-19-2",
+      "url": "https://telegra.ph/Open-Source-AI-Coding-Orchestrator-What-Ralph-Workflow-Is-Actually-For-05-19-3",
       "error": null,
-      "draft_hash": "4237dbaef17345d729008794044919dd9c5f1bdf498db91ae2b1b947d1182461",
+      "draft_hash": "681194ffb103b127dbe31c367d09fe7d3d480e945c43a737fd3d461ddbf0c907",
       "experiment_id": null
     },
     {
       "date": "2026-05-19",
-      "draft": "2026-05-19_seo-page_spec-driven-ai-agent.md",
-      "title": "Spec-Driven AI Agent: Why the Spec Is the Most Important Part of the Loop",
-      "platform": "telegraph",
-      "ok": true,
-      "status": "posted",
-      "url": "https://telegra.ph/Spec-Driven-AI-Agent-Why-the-Spec-Is-the-Most-Important-Part-of-the-Loop-05-19",
-      "error": null,
-      "draft_hash": "516b775a9014d26c9a3bcdd7618da3267086a7e34e6c8485bb117d5e130be9d6",
-      "experiment_id": null
-    },
-    {
-      "date": "2026-05-19",
-      "draft": "2026-05-19_seo-page_unattended-coding-agent.md",
+      "draft": "2026-05-19_unattended-coding-agent_telegraph.md",
       "title": "Unattended Coding Agent: What It Actually Means and How to Run One Safely",
       "platform": "telegraph",
       "ok": true,
       "status": "posted",
-      "url": "https://telegra.ph/Unattended-Coding-Agent-What-It-Actually-Means-and-How-to-Run-One-Safely-05-19-2",
+      "url": "https://telegra.ph/Unattended-Coding-Agent-What-It-Actually-Means-and-How-to-Run-One-Safely-05-19-6",
       "error": null,
+      "draft_hash": "be54a70d354a6fc578ea28bec31ce73cfd42fc14d43a7586d1a594d2bc798729",
+      "experiment_id": null
+    },
+    {
+      "draft": "2026-05-19_seo-page_ai-agent-orchestration-cli.md",
+      "ok": true,
+      "status": "already_posted",
+      "draft_hash": "4237dbaef17345d729008794044919dd9c5f1bdf498db91ae2b1b947d1182461",
+      "experiment_id": null
+    },
+    {
+      "draft": "2026-05-19_seo-page_spec-driven-ai-agent.md",
+      "ok": true,
+      "status": "already_posted",
+      "draft_hash": "516b775a9014d26c9a3bcdd7618da3267086a7e34e6c8485bb117d5e130be9d6",
+      "experiment_id": null
+    },
+    {
+      "draft": "2026-05-19_seo-page_unattended-coding-agent.md",
+      "ok": true,
+      "status": "already_posted",
       "draft_hash": "10d6d158b6ba7958ac81329a608b2d794a7e68710a3599b1d260b2a8ecfa43b4",
       "experiment_id": null
     }

@@ -13,7 +13,6 @@
     "dev.to-gist",
     "slashdot",
     "newsbrew",
-    "toolhunt",
     "theresanaiforthat",
     "alternativeTo",
     "saashub",
@@ -25,10 +24,10 @@
     "dirwell",
     "smashingmagazine",
     "css-tricks",
-    "toolhunter",
-    "devpages",
     "toolshelf",
-    "agentdepot"
+    "agentdepot",
+    "toolwise",
+    "aitoolsindex"
   ],
   "results": [
     {
@@ -148,7 +147,7 @@
       "url": "https://slashdot.org/submission",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-19T15:36:54.116484",
+      "timestamp": "2026-05-19T16:31:29.041441",
       "http_code": "200",
       "final_url": "https://slashdot.org/submission",
       "status": "login_required",
@@ -162,17 +161,6 @@
       "timestamp": "2026-05-18T03:55:49.890293",
       "http_code": "000",
       "status": "http_000"
-    },
-    {
-      "name": "toolhunt",
-      "url": "https://toolhunt.ai",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-18T03:59:45.912399",
-      "http_code": "200",
-      "final_url": "https://toolhunt.ai",
-      "status": "parked",
-      "note": "domain is parked / for sale"
     },
     {
       "name": "theresanaiforthat",
@@ -200,7 +188,7 @@
       "url": "https://saashub.com",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-19T15:36:52.802001",
+      "timestamp": "2026-05-19T16:31:27.626346",
       "http_code": "200",
       "final_url": "https://www.saashub.com/",
       "status": "accessible"
@@ -286,114 +274,11 @@
       "status": "accessible"
     },
     {
-      "name": "toolhunter",
-      "url": "https://www.toolhunter.cc/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-19T15:36:55.717320",
-      "http_code": "200",
-      "final_url": "https://www.toolhunter.cc/submit",
-      "status": "broken_submit_surface",
-      "surface_probe": {
-        "probe_status": "ok",
-        "form_count": 0,
-        "input_count": 0,
-        "textarea_count": 0,
-        "select_count": 0,
-        "body_excerpt": "TOOLHUNTER\nBrowse\nTrending\nCategories\nBookmarks\nSubmit\nSubmit a Tool\n\nKnow a developer tool that should be featured? Fill out the form below and we'll review it within 48 hours.\n\nWe review every submission manually. Tools must be relevant to developers.\n\nTOOLHUNTER\n\nCurated directory of the best AI tools for developers, open-source CLI utilities, and AI coding assistants.\n\nNAVIGATION\n\nBrowse All Tools\nAll Categories\nTrending\nChangelog\nSubmit a Tool\nBookmarks\n\nLEGAL\n\nTerms of Use\nPrivacy Policy\n\nCATEGORIES\n\n3D Biology UI\n3D Reconstruction Models\n3D SVG Editors\nAI 3D Generation Tools\nAI API Gateway\nAI API Gateways\nAI API Guides\nAI API Proxies\n+790 more categories \u2192\n\u00a9 2026 ToolHunter. All rights reserved.\nTerms of Use\nPrivacy Policy\nMade with \u2764\ufe0f by ToolHunter\nDiscover more\nDictionaries & Ency",
-        "forms": []
-      },
-      "source_probe": {
-        "probe_status": "ok",
-        "script_count": 12,
-        "same_origin_script_count": 11,
-        "scripts_fetched": 11,
-        "has_network_submission_markers": true,
-        "has_prevent_default": true,
-        "has_success_markers": true,
-        "submit_handler_window_count": 0,
-        "submit_handler_has_network_markers": false,
-        "submit_handler_has_success_markers": false,
-        "has_auth_markers": false,
-        "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false
-      },
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://www.toolhunter.cc/api/submit",
-        "get_code": 404,
-        "post_code": 404,
-        "post_body": "<!DOCTYPE html><html lang=\"en\" class=\"dark inter_c15e96cb-module__0bjUvq__variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"preload",
-        "public_submit_detected": false
-      },
-      "note": "submission page loads marketing copy but no usable form controls"
-    },
-    {
-      "name": "devpages",
-      "url": "https://devpages.io/submit-a-tool",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-19T15:37:03.313299",
-      "http_code": "200",
-      "final_url": "https://devpages.io/submit-a-tool",
-      "status": "noop_submit_surface",
-      "surface_probe": {
-        "probe_status": "ok",
-        "form_count": 2,
-        "input_count": 285,
-        "textarea_count": 1,
-        "select_count": 2,
-        "body_excerpt": "D\nDevPagesbeta\nHome\nCategories\nTop 20\nBlog\nSubmit Tool\nCommunity\nLight mode\nSearch\nSign In\nBack to Home\nSubmit a Tool\n\nKnow a great developer tool that should be in our directory? Submit it below and help fellow developers discover it.\n\nTool Name *\nWebsite URL *\nDescription *\nCategory *\nSelect a category\nGenerative AI\nAI/ML Tools\nDevOps\nCloud Infrastructure\nObservability\nAPIs\nFrameworks\nDatabases\nSecurity\nFinance Tools\nLearning Platforms\nPricing Model\nFree\nFreemium\nPaid\nOpen Source\nGitHub URL (optional)\nYour Email *\n\nWe'll notify you when your submission is reviewed.\n\nSubmit Tool\nD\nDevPages.io\n\nDev Pages - The Developer Tools Directory. Discover, Compare & Master Software Development Tools. Your ultimate hub for builders.\n\nNavigation\nHome\nCategories\nTop 20\nSubmit Tool\nCommunity\nResources\nA",
-        "forms": [
-          {
-            "index": 0,
-            "action": null,
-            "method": null,
-            "text": "Tool Name *\nWebsite URL *\nDescription *\nCategory *\nSelect a category\nGenerative AI\nAI/ML Tools\nDevOps\nCloud Infrastructure\nObservability\nAPIs\nFrameworks\nDatabases\nSecurity\nFinance Tools\nLearning Platforms\nPricing Model\nFree\nFreemium\nPaid\nOpen Source\nGitHub URL (optional)\nYour Email *\n\nWe'll notify y",
-            "control_count": 7,
-            "named_control_count": 0
-          },
-          {
-            "index": 1,
-            "action": null,
-            "method": null,
-            "text": "Email address\nSubscribe",
-            "control_count": 1,
-            "named_control_count": 0
-          }
-        ]
-      },
-      "source_probe": {
-        "probe_status": "ok",
-        "script_count": 13,
-        "same_origin_script_count": 13,
-        "scripts_fetched": 12,
-        "has_network_submission_markers": true,
-        "has_prevent_default": true,
-        "has_success_markers": true,
-        "submit_handler_window_count": 1,
-        "submit_handler_has_network_markers": false,
-        "submit_handler_has_success_markers": true,
-        "has_auth_markers": false,
-        "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false
-      },
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://devpages.io/api/submit",
-        "get_code": 404,
-        "post_code": 404,
-        "post_body": "<!DOCTYPE html><!--mLPFhaTPR8k_TnS7xkfHu--><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/",
-        "public_submit_detected": false
-      },
-      "note": "submission UI appears client-side only: form has no action, controls have no names, success copy is embedded, and no network submission markers were found"
-    },
-    {
       "name": "toolshelf",
       "url": "https://toolshelf.dev/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-19T15:36:45.732011",
+      "timestamp": "2026-05-19T16:31:20.935501",
       "http_code": "200",
       "final_url": "https://toolshelf.dev/submit",
       "status": "accessible",
@@ -499,6 +384,116 @@
         "public_submit_detected": false
       },
       "note": "submission falls back to email or GitHub issue handoff, not autonomous API/form submission"
+    },
+    {
+      "name": "toolwise",
+      "url": "https://toolwise.ai/submit-tool",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-19T16:31:29.788779",
+      "http_code": "200",
+      "final_url": "https://toolwise.ai/submit-tool",
+      "status": "accessible",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 2,
+        "input_count": 5,
+        "textarea_count": 3,
+        "select_count": 2,
+        "body_excerpt": "TW\nToolWise\nTOOL REVIEWS\nCATEGORIES\nINDUSTRIES\nARTICLES\nAI NEWS\nLIST YOUR TOOL\nSubmit Your Tool\n\nAdd your AI tool to the ToolWise directory. Free listings are published within 48 hours with an AI-researched profile. Want a full editor review? See listing options.\n\nTool Name *\nWebsite URL *\nTagline (one sentence) *\nCategory *\nSelect a category\nWriting & Content\nCustomer Service\nSales & CRM\nMarketing Automation\nSocial Media\nAccounting & Finance\nDesign & Creative\nHR & Hiring\nScheduling & Admin\nSEO\nVideo & Media\nWorkflow Automation\nE-commerce\nAnalytics & Data\nLegal & Contracts\nPricing Model *\nSelect pricing\nFree\nFreemium (free plan + paid tiers)\nPaid only\nContact for pricing\nDescription (2-3 sentences)\nKey Features (one per line)\nBest For (one per line)\nYour contact email\nFree submissions get ",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "",
+            "control_count": 1,
+            "named_control_count": 0
+          },
+          {
+            "index": 1,
+            "action": null,
+            "method": null,
+            "text": "Tool Name *\nWebsite URL *\nTagline (one sentence) *\nCategory *\nSelect a category\nWriting & Content\nCustomer Service\nSales & CRM\nMarketing Automation\nSocial Media\nAccounting & Finance\nDesign & Creative\nHR & Hiring\nScheduling & Admin\nSEO\nVideo & Media\nWorkflow Automation\nE-commerce\nAnalytics & Data\nLeg",
+            "control_count": 9,
+            "named_control_count": 9
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 11,
+        "same_origin_script_count": 10,
+        "scripts_fetched": 10,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 1,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://toolwise.ai/api/submit",
+        "get_code": 404,
+        "post_code": 404,
+        "post_body": "<!DOCTYPE html><!--rD2Uwpbz8ftUKqupLjQeQ--><html lang=\"en\" class=\"playfair_display_6a7e392e-module__Clh72G__variable dm_sans_416a0c70-module__PV3JlW__variable jetbrains_mono_d4338c62-module__8xQeuG__v",
+        "public_submit_detected": false
+      }
+    },
+    {
+      "name": "aitoolsindex",
+      "url": "https://aitoolsindex.org/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-19T16:31:40.385758",
+      "http_code": "200",
+      "final_url": "https://aitoolsindex.org/submit",
+      "status": "accessible",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 1,
+        "input_count": 283,
+        "textarea_count": 1,
+        "select_count": 0,
+        "body_excerpt": "AIToolsIndex\nHome\nCategories\nSubmit\nEnglish\nShare Your Discovery\nSubmit Your AI Tool\n\nHelp others discover amazing AI tools by sharing your favorites with our community.\n\nTool Name*\nTool Website URL*\nTool Description(Optional)\n0/500\nYour Email(Optional)\n\nWe may notify you when your submission is reviewed\n\nSubmit Tool\nSubmission Guidelines\n1\nThe tool must be primarily AI-powered or AI-related\n2\nThe tool website URL must be a domain or subdomain\n3\nThe tool should be publicly accessible\n4\nAvoid duplicate submissions of tools already in our database\n5\nLow-quality or simple 'AI wrappers' will not be accepted\nAIToolsIndex\n\nProduct\nBrowse Categories\nAll Tools\nSubmit Tool\nCompany\nAbout Us\nContact\nLegal\nPrivacy Policy\nTerms of Service\n\n\u00a9 2025-2026 AIToolsIndex. All rights reserved.\n\nMade with \u2764\ufe0f fo",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "Tool Name*\nTool Website URL*\nTool Description(Optional)\n0/500\nYour Email(Optional)\n\nWe may notify you when your submission is reviewed\n\nSubmit Tool",
+            "control_count": 4,
+            "named_control_count": 0
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 14,
+        "same_origin_script_count": 13,
+        "scripts_fetched": 12,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 1,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://aitoolsindex.org/api/submit",
+        "get_code": 404,
+        "post_code": 405,
+        "post_body": "Method Not Allowed",
+        "public_submit_detected": false
+      }
     }
   ],
   "working": [
@@ -511,6 +506,18 @@
     {
       "name": "toolshelf",
       "url": "https://toolshelf.dev/submit",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "toolwise",
+      "url": "https://toolwise.ai/submit-tool",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "aitoolsindex",
+      "url": "https://aitoolsindex.org/submit",
       "method": "submit",
       "difficulty": "easy"
     }

@@ -105,6 +105,14 @@ class ChannelDiscoveryTests(unittest.TestCase):
         ])
         self.assertEqual([item["name"] for item in working], ["saashub"])
 
+    def test_retired_channels_are_removed_from_active_queue(self):
+        active = {name for name, *_ in channel_discovery.CHANNELS_TO_TRY}
+        self.assertNotIn("toolhunt", active)
+        self.assertNotIn("toolhunter", active)
+        self.assertNotIn("devpages", active)
+        self.assertIn("toolwise", active)
+        self.assertIn("aitoolsindex", active)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,6 @@
 {
-  "generated_at": "2026-05-19T09:38:25.407571",
+  "generated_at": "2026-05-19T17:01:20.741881",
   "priority_keywords": [
-    "Fix top on-page SEO issues (current score: 70/100)",
     "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
     "Build backlinks: submit to directories, guest post, earn citations"
   ],
@@ -14,15 +13,14 @@
     "Claude Code unattended",
     "AI agent workflow composer"
   ],
-  "onpage_score": "70/100 (C)",
+  "onpage_score": "80/100 (B)",
   "ranked_keywords": 0,
   "backlinks_approx": 0,
   "weekly_decisions": [
     "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
-    "Fix on-page SEO issues before investing in new content.",
     "Keep publishing philosophy content.",
     "Build backlinks \u2014 submit to directories and pursue guest post opportunities.",
-    "Fix top on-page SEO issues (current score: 70/100)",
-    "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent"
+    "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+    "Build backlinks: submit to directories, guest post, earn citations"
   ]
 }

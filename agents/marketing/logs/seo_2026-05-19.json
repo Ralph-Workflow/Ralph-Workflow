@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-19T09:38:16.446317",
+  "timestamp": "2026-05-19T17:01:11.066516",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Ralph Workflow: free CLI for substantial AI coding tasks \u2014 Ralph Workflow",
-      "meta_description": "Ralph Workflow runs your existing AI coding tool on substantial tasks while your computer stays awake. It plans the work, writes code, runs tests, and fixes failures so you can review real code by morning.",
+      "title": "Ralph Workflow \u2014 free CLI for AI coding tasks \u2014 Ralph Workflow",
+      "meta_description": "Free CLI that runs your AI coding tool on real tasks while your computer stays awake. Plans, builds, tests, and fixes \u2014 review finished code by morning.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Ralph Workflow runs your existing AI coding tool on substantial tasks while your computer stays awake. It plans the work, writes code, runs tests, and fixes failures so you can review real code by morning.",
-        "title": "Ralph Workflow: free CLI for substantial AI coding tasks",
+        "description": "Free CLI that runs your AI coding tool on real tasks while your computer stays awake. Plans, builds, tests, and fixes \u2014 review finished code by morning.",
+        "title": "Ralph Workflow \u2014 free CLI for AI coding tasks",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 7827,
+      "word_count": 7795,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -56,21 +56,16 @@
     }
   },
   "onpage": {
-    "score": 70,
-    "grade": "C",
+    "score": 80,
+    "grade": "B",
     "issues": [
       {
         "severity": "error",
         "item": "Title too long"
-      },
-      {
-        "severity": "warning",
-        "item": "Meta description too long",
-        "detail": "Keep between 150-160 characters"
       }
     ],
     "recommendations": [
-      "Keep title under 60 characters (current: 73 chars)"
+      "Keep title under 60 characters (current: 62 chars)"
     ]
   },
   "ranks": {
@@ -180,7 +175,6 @@
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
-    "Fix top on-page SEO issues (current score: 70/100)",
     "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]

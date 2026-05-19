@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-19T16:01:43.433262",
-  "count": 22,
+  "generated_at": "2026-05-19T16:59:25.506250",
+  "count": 23,
   "recent_window_count": 6,
   "by_account": {
     "Informal-Salt827": 6
@@ -13,63 +13,57 @@
   "top_title_words": [
     "claude",
     "code",
-    "runs",
     "agent",
-    "pattern",
-    "using",
-    "keep",
-    "productive",
-    "overnight",
-    "unattended",
+    "mode",
     "teams",
     "gemini",
     "codex",
     "checkpoint",
-    "commits"
+    "commits",
+    "polluting",
+    "history",
+    "handling",
+    "multi",
+    "supervision",
+    "becoming"
   ],
   "top_body_tokens": [
     "review",
     "ralph",
     "workflow",
-    "overnight",
     "diff",
-    "code",
-    "it's",
-    "clean",
-    "readable",
+    "checks",
+    "making",
+    "ends",
     "about",
-    "handoff",
-    "finish",
     "before",
+    "stale",
+    "assumptions",
+    "nobody",
     "like",
     "already",
     "open",
+    "real",
+    "short",
+    "finish",
     "surface",
-    "checks",
-    "making",
-    "ends"
+    "handoff"
   ],
   "phrase_hits": {
-    "diff": 4,
-    "overnight": 3,
-    "scope": 2,
-    "handoff": 4,
     "trust": 2,
+    "overnight": 2,
+    "handoff": 4,
     "reviewable": 1,
+    "diff": 4,
     "done criteria": 1,
+    "scope": 1,
     "small scoped": 1
   },
-  "repeated_openings": [],
+  "repeated_openings": [
+    "Honestly the part I'd optimize first is the handoff, not the model stack."
+  ],
   "account_switches": [],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-18T09:47:16.212568",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeCode",
-      "title": "Pattern I'm using to keep Claude Code productive on overnight unattended runs",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1svxcb7/pattern_im_using_to_keep_claude_code_productive/omg10z9/",
-      "opening_line": "The part that bites me overnight is rarely raw code quality first. It's scope creep, weak stop conditions, and no clean re-entry point in the morning."
-    },
     {
       "timestamp": "2026-05-18T15:59:46.593035",
       "account": "Informal-Salt827",
@@ -109,9 +103,18 @@
       "title": "Claude Code approval / plan mode questions",
       "comment_url": "https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/",
       "opening_line": "Honestly the part I'd optimize first is the handoff, not the model stack."
+    },
+    {
+      "timestamp": "2026-05-19T16:01:56.204431",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Claude Code just shipped a \"run until done\" mode. Upgrade to v2.1.139 for /goal.",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1taty8a/claude_code_just_shipped_a_run_until_done_mode/omo8q4d/",
+      "opening_line": "Honestly the part I'd optimize first is the handoff, not the model stack."
     }
   ],
   "recommendations": [
+    "Avoid reusing the same opening line; vary the first paragraph deliberately.",
     "ClaudeCode is the strongest current venue, but avoid stacking too many similar comments there without fresh thread-specific advice.",
     "Before each autopost, compare the candidate body against the last 3 logged bodies and rewrite if the opening, structure, or closing feel too similar.",
     "Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments."

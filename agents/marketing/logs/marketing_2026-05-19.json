@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-19T09:38:16.401732",
+  "timestamp": "2026-05-19T17:01:11.010688",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -19,7 +19,7 @@
     }
   },
   "totals": {
-    "posts_last_30d": 12,
+    "posts_last_30d": 15,
     "views_last_30d": 0
   },
   "content_summary": {
@@ -34,7 +34,7 @@
       "avg_views": 0.0
     },
     "unknown": {
-      "posts": 9,
+      "posts": 12,
       "views": 0,
       "avg_views": 0.0
     },
@@ -53,11 +53,6 @@
       "is_failing_signal": true
     },
     {
-      "priority": "high",
-      "action": "Fix on-page SEO issues before investing in new content.",
-      "reason": "SEO score is 70/100 \u2014 technical foundation needs attention."
-    },
-    {
       "priority": "medium",
       "action": "Keep publishing philosophy content.",
       "reason": "Best avg views: 0.0 \u2014 lean into what's working."
@@ -69,12 +64,12 @@
     },
     {
       "priority": "medium",
-      "action": "Fix top on-page SEO issues (current score: 70/100)",
+      "action": "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
       "reason": "Identified by daily SEO analysis as a top priority."
     },
     {
       "priority": "medium",
-      "action": "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+      "action": "Build backlinks: submit to directories, guest post, earn citations",
       "reason": "Identified by daily SEO analysis as a top priority."
     },
     {
@@ -92,7 +87,7 @@
     "producthunt": "Protected flow / manual launch required"
   },
   "seo": {
-    "score": "70/100 (C)",
+    "score": "80/100 (B)",
     "ranked_keywords": 0,
     "backlinks_approx": 0,
     "domain_rating": null,
@@ -104,7 +99,6 @@
       "prev_avg_bl": 0.0
     },
     "priority_actions": [
-      "Fix top on-page SEO issues (current score: 70/100)",
       "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
       "Build backlinks: submit to directories, guest post, earn citations"
     ],
@@ -114,7 +108,7 @@
     "competitor_analysis": null
   },
   "adoption": {
-    "timestamp": "2026-05-19T08:16:00.543637",
+    "timestamp": "2026-05-19T16:12:34.018304",
     "metrics": [
       {
         "platform": "GitHub",
@@ -179,12 +173,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "[ContentGen] Created: /home/mistlight/.openclaw/workspace/drafts/2026-05-19_technical_draft.md",
+    "stdout": "[generate_content.py] SEO match: using topic 'orchestration' for gap keyword 'AI agent orchestration CLI'\n[ContentGen] Created: /home/mistlight/.openclaw/workspace/drafts/2026-05-19_orchestration_draft.md",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "{\n  \"timestamp\": \"2026-05-19T09:38:25.484713\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-19_technical_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"cd44e4bcabc9baf1e924a6af2a7d9fb386b839f98a5fd4c46e13a3d7fc80210f\",\n      \"experiment_id\": \"2026-05-19-technical\"\n    },\n    {\n      \"draft\": \"2026-05-19_claude-code-codex-workflow_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"63d145b7e517d11439ac0b81f3ef3cbc6e55e549f15c77467c15d905b348160e\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"7df5d951fd36ab17618beac53ce8e324bd09686832d69fc4bbcb1949b57b1966\",\n      \"experiment_id\": null\n    }\n  ]\n}",
+    "stdout": "{\n  \"timestamp\": \"2026-05-19T17:01:20.810202\",\n  \"results\": [\n    {\n      \"date\": \"2026-05-19\",\n      \"draft\": \"2026-05-19_orchestration_draft.md\",\n      \"title\": \"What an AI Agent Orchestration CLI Actually Does That a Prompt Chain Cannot\",\n      \"platform\": \"telegraph\",\n      \"ok\": true,\n      \"status\": \"posted\",\n      \"url\": \"https://telegra.ph/What-an-AI-Agent-Orchestration-CLI-Actually-Does-That-a-Prompt-Chain-Cannot-05-19\",\n      \"error\": null,\n      \"draft_hash\": \"ba6927b5e59ac56e0408be665f467675a8f4da36c3ded807a7697d83c3c0d4e2\",\n      \"experiment_id\": \"2026-05-19-orchestration\"\n    },\n    {\n      \"draft\": \"2026-05-19_technical_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"cd44e4bcabc9baf1e924a6af2a7d9fb386b839f98a5fd4c46e13a3d7fc80210f\",\n      \"experiment_id\": \"2026-05-19-technical\"\n    },\n    {\n      \"date\": \"2026-05-19\",\n      \"draft\": \"2026-05-19_ai-agent-orchestration-cli_telegraph.md\",\n      \"title\": \"AI Agent Orchestration CLI: A Practical Comparison for Developers\",\n      \"platform\": \"telegraph\",\n      \"ok\": true,\n      \"status\": \"posted\",\n      \"url\": \"https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-19-6\",\n      \"error\": null,\n      \"draft_hash\": \"2fe199186fe320e437ff90e933ef7ad9bac9af662157dadc0b36db7148865cc3\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-19_claude-code-codex-workflow_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"63d145b7e517d11439ac0b81f3ef3cbc6e55e549f15c77467c15d905b348160e\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"7df5d951fd36ab17618beac53ce8e324bd09686832d69fc4bbcb1949b57b1966\",\n      \"experiment_id\": null\n    },\n    {\n      \"date\": \"2026-05-19\",\n      \"draft\": \"2026-05-19_open-source-ai-coding-orchestrator_telegraph.md\",\n      \"title\": \"Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For\",\n      \"platform\": \"telegraph\",\n      \"ok\": true,\n      \"status\": \"posted\",\n      \"url\": \"https://telegra.ph/Open-Source-AI-Coding-Orchestrator-What-Ralph-Workflow-Is-Actually-For-05-19-3\",\n      \"error\": null,\n      \"draft_hash\": \"681194ffb103b127dbe31c367d09fe7d3d480e945c43a737fd3d461ddbf0c907\",\n      \"experiment_id\": null\n    },\n    {\n      \"date\": \"2026-05-19\",\n      \"draft\": \"2026-05-19_unattended-coding-agent_telegraph.md\",\n      \"title\": \"Unattended Coding Agent: What It Actually Means and How to Run One Safely\",\n      \"platform\": \"telegraph\",\n      \"ok\": true,\n      \"status\": \"posted\",\n      \"url\": \"https://telegra.ph/Unattended-Coding-Agent-What-It-Actually-Means-and-How-to-Run-One-Safely-05-19-6\",\n      \"error\": null,\n      \"draft_hash\": \"be54a70d354a6fc578ea28bec31ce73cfd42fc14d43a7586d1a594d2bc798729\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-19_seo-page_ai-agent-orchestration-cli.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"4237dbaef17345d729008794044919dd9c5f1bdf498db91ae2b1b947d1182461\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-19_seo-page_spec-driven-ai-agent.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"516b775a9014d26c9a3bcdd7618da3267086a7e34e6c8485bb117d5e130be9d6\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-19_seo-page_unattended-coding-agent.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"10d6d158b6ba7958ac81329a608b2d794a7e68710a3599b1d260b2a8ecfa43b4\",\n      \"experiment_id\": null\n    }\n  ]\n}",
     "stderr": ""
   }
 }

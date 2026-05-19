@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-19T15:24:32.083324
+- Generated: 2026-05-19T16:50:09.667345
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -10,9 +10,11 @@
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
+- Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
 
 ## Observed risks
-- No exact repeated outreach opening detected in the latest audit inputs.
+- Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
+- Failing tactic detected: reddit_style_repetition
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
 
@@ -30,6 +32,9 @@
 - **mirror_repo_flat** → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
+- **repetitive_outreach** → REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.
+  - Kill condition: Same opening detected again in next audit
+  - Success metric: No repeated openings in next audit window
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.
