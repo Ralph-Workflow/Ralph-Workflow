@@ -34,7 +34,7 @@ class RedditAutopostTests(unittest.TestCase):
             "the weak point is not the model mix; it is the handoff contract and who owns the finish state",
         )
 
-    def test_build_comment_adds_github_link_for_high_fit_codex_thread(self):
+    def test_build_comment_adds_codeberg_link_for_high_fit_codex_thread(self):
         opp = reddit_autopost.Opportunity(
             rank=1,
             title="How many of you Trust Codex?",
@@ -45,7 +45,7 @@ class RedditAutopostTests(unittest.TestCase):
             mention_fit="**high**",
         )
         body = reddit_autopost.build_comment(opp, recent=[])
-        self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, body)
+        self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, body)
         self.assertIn("free/open-source", body)
         self.assertIn("your own machine", body)
 
@@ -60,7 +60,7 @@ class RedditAutopostTests(unittest.TestCase):
             mention_fit="**medium**",
         )
         body = reddit_autopost.build_comment(opp, recent=[])
-        self.assertNotIn(reddit_autopost.GITHUB_MIRROR_URL, body)
+        self.assertNotIn(reddit_autopost.CODEBERG_PRIMARY_URL, body)
 
     def test_concept_cadence_repeats_when_structure_is_semantically_the_same(self):
         previous = (
@@ -68,18 +68,18 @@ class RedditAutopostTests(unittest.TestCase):
             "The painful part is shared boundaries: config/schema/migrations and who owns them.\n\n"
             "So every run ends with a tiny finish receipt: touched areas, checks run, assumptions made, and unresolved risks.\n\n"
             "That is why I built RalphWorkflow.\n\n"
-            f"{reddit_autopost.GITHUB_MIRROR_URL}"
+            f"{reddit_autopost.CODEBERG_PRIMARY_URL}"
         )
         candidate = (
             "The biggest failure mode is trust in the merged state, not raw execution speed.\n\n"
             "Shared boundary drift is what hurts: config/schema/migrations and global checks.\n\n"
             "I want a short finish receipt with checks, assumptions, and open questions before I review anything.\n\n"
             "That is basically the Ralph Workflow problem space.\n\n"
-            f"{reddit_autopost.GITHUB_MIRROR_URL}"
+            f"{reddit_autopost.CODEBERG_PRIMARY_URL}"
         )
         self.assertTrue(reddit_autopost.concept_cadence_repeats(candidate, [previous]))
 
-    def test_build_comment_keeps_github_link_while_avoiding_recent_cadence(self):
+    def test_build_comment_keeps_codeberg_link_while_avoiding_recent_cadence(self):
         opp = reddit_autopost.Opportunity(
             rank=1,
             title="People running 2–5 coding agents: what actually breaks first for you?",
@@ -94,13 +94,13 @@ class RedditAutopostTests(unittest.TestCase):
             "The painful part the next morning is shared boundaries and merged-state checks.\n\n"
             "So every run ends with a tiny finish receipt instead of a heroic transcript.\n\n"
             "I built RalphWorkflow around that morning-after problem.\n\n"
-            f"{reddit_autopost.GITHUB_MIRROR_URL}",
+            f"{reddit_autopost.CODEBERG_PRIMARY_URL}",
         ]
         body = reddit_autopost.build_comment(opp, recent=recent)
-        self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, body)
+        self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, body)
         self.assertFalse(reddit_autopost.concept_cadence_repeats(body, recent))
 
-    def test_build_comment_avoids_reusing_identical_github_cta(self):
+    def test_build_comment_avoids_reusing_identical_product_cta(self):
         opp = reddit_autopost.Opportunity(
             rank=1,
             title="Claude -> Codex -> Claude",
@@ -113,14 +113,14 @@ class RedditAutopostTests(unittest.TestCase):
         repeated_cta = (
             "If the useful part here is \"one tool builds, one checks, then judge the result like a PR,\" RalphWorkflow is my free/open-source take on that loop. "
             "It keeps the agents on your own machine and pushes toward reviewable output rather than another long transcript.\n\n"
-            f"{reddit_autopost.GITHUB_MIRROR_URL}"
+            f"{reddit_autopost.CODEBERG_PRIMARY_URL}"
         )
         recent = [
             "Previous body.\n\n" + repeated_cta,
             "Another previous body.\n\n" + repeated_cta,
         ]
         body = reddit_autopost.build_comment(opp, recent=recent)
-        self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, body)
+        self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, body)
         self.assertNotIn("If the useful part here is \"one tool builds, one checks, then judge the result like a PR,\"", body)
         self.assertFalse(reddit_autopost.github_cta_repeats(body, recent))
 
@@ -231,8 +231,8 @@ class RedditAutopostTests(unittest.TestCase):
         handoff_body = reddit_autopost.build_comment(handoff, recent=[])
         mixed_team_body = reddit_autopost.build_comment(mixed_team, recent=[])
         self.assertNotEqual(handoff_body, mixed_team_body)
-        self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, handoff_body)
-        self.assertIn(reddit_autopost.GITHUB_MIRROR_URL, mixed_team_body)
+        self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, handoff_body)
+        self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, mixed_team_body)
         self.assertIn("free/open-source", handoff_body)
         self.assertIn("free/open-source", mixed_team_body)
 

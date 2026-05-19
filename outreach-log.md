@@ -2,6 +2,35 @@
 
 ## 2026-05-19 (Tuesday)
 
+### RalphWorkflow Codex CLI comparison conversion repair
+- **New Codex-first comparison surface shipped**: added a new public `Ralph Workflow vs Codex CLI` comparison page and surfaced it across the highest-intent repo/docs entry points so Codex-native evaluators now get a direct Codeberg-first answer to what Ralph Workflow is, who it is for, why it is different, and why to try it now instead of bouncing off the repo or defaulting to the GitHub mirror.
+  - Commit: `24c841f2` — `Add Codex CLI comparison conversion path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/ralph-workflow-vs-codex-cli.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/getting-started.md`, `ralph-workflow/docs/sphinx/quickstart.md`, `ralph-workflow/docs/sphinx/ralph-workflow-vs-codex-cli.md`
+  - Why: this is **NEW / REPLACING** a failed tactic. The audit said current distribution/content activity is flat at the primary repo and explicitly called for repo conversion surfaces plus SEO pages targeting repo-specific search terms. Codex CLI is already a recurring demand shape in Reddit/repo traffic, but there was no direct comparison page for Codex-native evaluators. This repair turns that missing search/evaluation intent into a Codeberg-first conversion path instead of producing another generic article.
+  - Expected outcome: more qualified Codeberg repo inspections from Codex-native evaluators, with a secondary increase in Codeberg stars/watchers/issues because the new page closes on primary-repo actions.
+  - Measurement window: next 7 days for page-path usage / repo-inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding agent-comparison pages and shift the next replacement move to a live external distribution action that sends traffic directly into the strongest Codeberg-first proof/comparison paths.
+
+### RalphWorkflow Reddit-to-Codeberg routing fix
+- **Reddit autopost and next-window packet now route to Codeberg primary**: the Reddit distribution pipeline was routing all product CTAs to the GitHub mirror (`github.com/Ralph-Workflow/Ralph-Workflow`) while Codeberg (`codeberg.org/RalphWorkflow/Ralph-Workflow`) is the primary adoption surface. All Reddit-linked posts, draft bodies, and the next-window seeding packet were sending warm thread traffic to the wrong repo, silently suppressing primary-repo conversion even while distribution activity looked healthy.
+  - Files patched: `agents/marketing/reddit_autopost.py` (all `github_link_snippets` CTA URLs → `CODEBERG_PRIMARY_URL`), `agents/marketing/reddit_next_window_packet.py` (`LANDING_PAGES` dict → Codeberg URLs), `agents/marketing/tests/test_reddit_autopost.py` (updated assertions from `GITHUB_MIRROR_URL` → `CODEBERG_PRIMARY_URL`)
+  - Verification: `python3 -m py_compile` clean; 18/18 unit tests pass; `reddit_next_window_packet.py` regenerated → `drafts/reddit_next_window_packets_latest.md` confirmed all 3 draft entries now use `codeberg.org` links
+  - Why this is **REPAIR replacing a critical distribution leak**: the May 18 repairs tightened the repo-side CTAs correctly, but the Reddit distribution layer — the actual traffic source — was still pointing at GitHub. Every Reddit post for the past measurement window was routing potential adopters to the mirror instead of the primary. This directly contradicts the `distribution_and_message_to_primary_repo_conversion` bottleneck and explains why Reddit activity did not produce Codeberg delta.
+  - Expected outcome: each future Reddit post now sends warm high-fit traffic directly to Codeberg, increasing the probability of primary-repo inspection, star, watch, and issue creation.
+  - Measurement window: next Reddit post(s) should produce measurable Codeberg referral evidence; 14-day Codeberg stars/watchers delta should break zero.
+  - Replace if it fails: if Codeberg is still flat after 2+ Reddit posts with Codeberg CTAs, the problem is upstream — Reddit reach is not converting — and effort should shift to non-Reddit distribution surfaces (HN submission, Lobsters, targeted blog posts) that route to Codeberg directly.
+
+### RalphWorkflow Codeberg-first proof-path repair
+- **Proof assets now close with primary-repo actions**: added or surfaced `first-task-guide` and patched the strongest proof/evaluation docs so high-intent readers now end on an explicit Codeberg-first inspect/star/watch/report path instead of stopping at the idea and leaking adoption to nowhere or to the GitHub mirror.
+  - Commit: `d1931aa2` — `Tighten Codeberg CTA on proof docs`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `docs/README.md`, `docs/first-task-guide.md`, `docs/review-ai-coding-output-before-merge.md`, `docs/why-worktrees-are-not-enough.md`, `ralph-workflow/docs/sphinx/first-task-guide.md`, `ralph-workflow/docs/sphinx/review-ai-coding-output-before-merge.md`, `ralph-workflow/docs/sphinx/why-worktrees-are-not-enough.md`, `ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md`
+  - Why: this is a **REPAIRED / REPLACING failed tactic**. The audit says repo/message-to-primary-repo conversion is the live bottleneck and that flat tactics must be replaced, not repeated. The strongest viable repair was tightening the ends of the highest-intent proof pages so readers who already understand the value now get a direct primary-repo action path on Codeberg instead of dead-ending on content.
+  - Expected outcome: more Codeberg repo inspections and more primary-repo trust actions from existing proof-page traffic, especially stars/watchers/issues from visitors already close to trying Ralph Workflow.
+  - Measurement window: next 7 days for proof-page path usage / issue movement; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending cycles on proof-page CTA tightening and shift the next replacement move to a new external distribution action that sends traffic directly into these repaired Codeberg-first proof paths.
+
 ### RalphWorkflow Codeberg conversion repair
 - **Codeberg-first first-run feedback path**: added Codeberg-native issue forms plus sharper repo CTAs in the public Ralph Workflow repo so high-intent visitors now have an explicit primary-repo path to star/watch and report first-run friction or docs/proof gaps instead of falling off or splitting feedback across the GitHub mirror.
   - Commit: `44cb4337` — `Add Codeberg first-run feedback path`
@@ -1331,3 +1360,30 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
 ### Marketing momentum watchdog
 - **When:** 2026-05-19 02:55:00
 - **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 03:14:22
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 03:39:16
+- **Note:** Momentum check found: reddit_monitor_stale, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow Claude Code automation conversion repair
+- **New Claude Code automation search/conversion surface shipped**: added a new public `Claude Code Automation for Real Repo Work` page and surfaced it across the highest-intent repo/docs entry points so developers searching specifically for Claude Code automation now get a direct Codeberg-first answer to what Ralph Workflow is, who it is for, why it is different, and why to try it now instead of defaulting to generic automation chatter or the GitHub mirror.
+  - Commit: `9f26b83a` — `Add Claude Code automation conversion page`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/claude-code-automation.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/getting-started.md`, `ralph-workflow/docs/sphinx/quickstart.md`, `ralph-workflow/docs/sphinx/claude-code-automation.md`
+  - Why: this is **NEW / REPLACING** a failed tactic. The audit said the live repair path is README/docs conversion plus SEO landing pages targeting repo-specific search terms, and current Codeberg adoption is still flat. `Claude Code automation` / unattended Claude intent already shows up in the keyword research and adjacent demand, but there was no dedicated Codeberg-first page for that search shape. This repair turns that missing evaluator intent into a primary-repo conversion path instead of producing another generic article.
+  - Expected outcome: more qualified Codeberg repo inspections from Claude Code users searching for automation/unattended workflow help, with a secondary increase in Codeberg stars/watchers/issues because the page closes on primary-repo actions.
+  - Measurement window: next 7 days for page-path usage / repo-inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding Claude-specific SEO/conversion pages and shift the next replacement move to a live external distribution action that sends traffic directly into the strongest existing Codeberg-first proof/comparison paths.
+
+### RalphWorkflow Codeberg-first docs/SEO repair landing cleanup
+- **Executed repair to make the Codeberg-first docs/SEO conversion path actually land cleanly**: finished the in-flight repo/docs conversion repair by restoring homepage structured-data support in the Sphinx theme, adding the missing public `agents.md` docs page, tightening brand naming and Codeberg-first wording across the hosted docs surfaces, and fixing the latent verification blockers that were preventing these conversion improvements from shipping cleanly.
+  - Status: ✅ Local repair completed and full `make verify` now passes cleanly in `repos/Ralph-Workflow/github-mirror/ralph-workflow`
+  - Files touched for the landing/verification repair included: `README.md`, `docs/sphinx/_themes/ralph-docs/page.html`, `docs/sphinx/agents.md`, `docs/sphinx/developer-internals.md`, `docs/sphinx/index.rst`, multiple Sphinx conversion/proof/comparison pages, `ralph/testing/pytest_timeout_plugin.py`, and `pyproject.toml`
+  - Why: this is **CONTINUED / REPAIRED** work on the highest-leverage bottleneck from the audit: `distribution_and_message_to_primary_repo_conversion`. Another external post would have repeated a flat tactic; the better move was to finish the owned-surface conversion repair so category/proof/comparison traffic can reach a trustworthy Codeberg-first path without broken docs, mixed branding, or failing verification.
+  - Expected outcome: stronger conversion from existing repo/docs traffic into Codeberg repo inspections first, then stars/watchers/issues, because the public docs path is now cleaner, more trustworthy, and explicitly primary-repo oriented.
+  - Measurement window: next 7 days for docs/repo inspection evidence on Codeberg-first entry paths; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending the next cycle on more internal docs polish and replace it with an external distribution move that sends traffic directly into the strongest repaired Codeberg-first proof/comparison pages.

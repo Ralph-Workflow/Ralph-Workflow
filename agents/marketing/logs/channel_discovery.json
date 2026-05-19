@@ -148,7 +148,7 @@
       "url": "https://slashdot.org/submission",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-19T02:12:14.705539",
+      "timestamp": "2026-05-19T03:18:07.423802",
       "http_code": "200",
       "final_url": "https://slashdot.org/submission",
       "status": "login_required",
@@ -291,7 +291,7 @@
       "url": "https://www.toolhunter.cc/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-19T02:12:16.002202",
+      "timestamp": "2026-05-19T03:18:08.687764",
       "http_code": "200",
       "final_url": "https://www.toolhunter.cc/submit",
       "status": "broken_submit_surface",
@@ -315,7 +315,9 @@
         "submit_handler_window_count": 0,
         "submit_handler_has_network_markers": false,
         "submit_handler_has_success_markers": false,
-        "has_auth_markers": false
+        "has_auth_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false
       },
       "api_probe": {
         "probe_status": "ok",
@@ -332,7 +334,7 @@
       "url": "https://devpages.io/submit-a-tool",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-19T02:12:22.515766",
+      "timestamp": "2026-05-19T03:18:16.294266",
       "http_code": "200",
       "final_url": "https://devpages.io/submit-a-tool",
       "status": "noop_submit_surface",
@@ -373,7 +375,9 @@
         "submit_handler_window_count": 1,
         "submit_handler_has_network_markers": false,
         "submit_handler_has_success_markers": true,
-        "has_auth_markers": false
+        "has_auth_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false
       },
       "api_probe": {
         "probe_status": "ok",
@@ -390,7 +394,7 @@
       "url": "https://toolshelf.dev/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-19T02:12:36.571648",
+      "timestamp": "2026-05-19T03:17:47.171155",
       "http_code": "200",
       "final_url": "https://toolshelf.dev/submit",
       "status": "accessible",
@@ -400,7 +404,7 @@
         "input_count": 2,
         "textarea_count": 0,
         "select_count": 0,
-        "body_excerpt": "T\nToolShelf\nEnter\nBrowse\nCollections\nBlog\nAPI\nSubmit\nSign In\nHome/Submit a Tool\nSubmit a Tool\n\nKnow a great developer tool that should be on ToolShelf? Let us know! We review every submission and enrich it with quality scores.\n\nSign in required\n\nSign in to submit a developer tool to ToolShelf. We review every submission and enrich it with quality scores.\n\nSign In\nSign Up\nCategories\nCLI Tools\nAI Coding\nMCP Servers\nSelf-Hosted\nProductivity\nResources\nSearch\nCollections\nSubmit a Tool\nBlog\nDevelopers\nAPI Access\nllms.txt\nMCP Server\nStay in the loop\n\nGet the best new developer tools delivered to your inbox. No spam, unsubscribe anytime.\n\nGet Weekly Picks\n\nJoin 1 developers\n\nToolShelf.dev \u2014 Built for developers who care about their tools.\n\nGitHub",
+        "body_excerpt": "T\nToolShelf\nEnter\nBrowse\nCollections\nBlog\nAPI\nSubmit\nSign In\nHome/Submit a Tool\nSubmit a Tool\n\nKnow a great developer tool that should be on ToolShelf? Let us know! We review every submission and enrich it with quality scores.\n\nSign in required\n\nSign in to submit a developer tool to ToolShelf. We review every submission and enrich it with quality scores.\n\nSign In\nSign Up\nCategories\nCLI Tools\nAI Coding\nMCP Servers\nSelf-Hosted\nProductivity\nResources\nSearch\nCollections\nSubmit a Tool\nBlog\nDevelopers\nAPI Access\nllms.txt\nMCP Server\nStay in the loop\n\nGet the best new developer tools delivered to your inbox. No spam, unsubscribe anytime.\n\nGet Weekly Picks\n\nJoin 2 developers\n\nToolShelf.dev \u2014 Built for developers who care about their tools.\n\nGitHub",
         "forms": [
           {
             "index": 0,
@@ -431,7 +435,9 @@
         "submit_handler_window_count": 1,
         "submit_handler_has_network_markers": true,
         "submit_handler_has_success_markers": false,
-        "has_auth_markers": true
+        "has_auth_markers": true,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false
       },
       "api_probe": {
         "probe_status": "ok",
@@ -448,10 +454,10 @@
       "url": "https://agentdepot.dev/submit",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-19T02:12:42.068284",
+      "timestamp": "2026-05-19T03:17:53.141788",
       "http_code": "200",
       "final_url": "https://agentdepot.dev/submit",
-      "status": "accessible",
+      "status": "manual_handoff_required",
       "surface_probe": {
         "probe_status": "ok",
         "form_count": 1,
@@ -481,7 +487,9 @@
         "submit_handler_window_count": 0,
         "submit_handler_has_network_markers": false,
         "submit_handler_has_success_markers": false,
-        "has_auth_markers": true
+        "has_auth_markers": true,
+        "has_mailto_submission_markers": true,
+        "has_issue_handoff_markers": true
       },
       "api_probe": {
         "probe_status": "ok",
@@ -490,7 +498,8 @@
         "post_code": 404,
         "post_body": "<!DOCTYPE html><!--cvwCQkFZfmM2PUPUxC7JE--><html lang=\"en\" class=\"dark\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/",
         "public_submit_detected": false
-      }
+      },
+      "note": "submission falls back to email or GitHub issue handoff, not autonomous API/form submission"
     }
   ],
   "working": [
@@ -499,12 +508,6 @@
       "url": "https://toolshelf.dev/submit",
       "method": "submit",
       "difficulty": "easy"
-    },
-    {
-      "name": "agentdepot",
-      "url": "https://agentdepot.dev/submit",
-      "method": "submit",
-      "difficulty": "medium"
     }
   ]
 }
