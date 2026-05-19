@@ -55,14 +55,28 @@ Bad fit:
 1. Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 2. Use [START_HERE.md](../START_HERE.md) to run one real task
 3. Use [first-task-guide.md](./first-task-guide.md) and [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) to judge the result honestly
+4. Turn that result into one public next step with [after-your-first-run.md](./after-your-first-run.md)
 
 If you already track projects on GitHub, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+## Best next step on Codeberg if you want a spec-first overnight workflow
+
+Do not leave the evaluation private.
+
+Use **Codeberg** as the main public home:
+
+- **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg if the workflow earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or spec/proof gaps on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+That keeps the trust signal and the feedback loop on the primary repo instead of splitting them across surfaces.
 
 ## Why try it now
 
 Because Ralph Workflow is free and open source, runs with the agents you already use on your own machine, and lets you test a spec-driven overnight workflow on one real backlog task tonight.
 
-Start with Codeberg first:
+Run one real task, judge the result honestly, and then take exactly one public action on Codeberg:
 
-- **Primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **promising run:** star or watch the repo
+- **shaky run:** open the right issue on Codeberg

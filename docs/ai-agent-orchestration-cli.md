@@ -49,14 +49,28 @@ Ralph Workflow is **not** a hosted black box. It runs on your own machine with t
 1. Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 2. Use [START_HERE.md](../START_HERE.md) for one real first run
 3. Open [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) and judge the morning-after handoff honestly
+4. Turn that result into one public next step with [after-your-first-run.md](./after-your-first-run.md)
 
 If GitHub is where you already track projects, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+## Best next step on Codeberg if this matches what you need
+
+Do not leave the evaluation private.
+
+Use **Codeberg** as the main public home:
+
+- **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg if the workflow earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or proof gaps on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+That keeps the trust signal and the feedback loop on the primary repo instead of splitting them across surfaces.
 
 ## Why try it now
 
 Because Ralph Workflow is free and open source, works with the agents you already use on your own machine, and gives you a practical way to test whether unattended coding can handle one real backlog task tonight.
 
-Start with Codeberg first:
+Run one real task, judge the morning-after handoff honestly, and then take exactly one public action on Codeberg:
 
-- **Primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **promising run:** star or watch the repo
+- **shaky run:** open the right issue on Codeberg
