@@ -57,6 +57,13 @@ If you want the longer version of that artifact before you run anything, inspect
 
 If your first run hits confusing setup, weak docs, or a handoff you would not trust yet, report it on **Codeberg** here: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. The new Codeberg-first issue forms are meant for exactly that feedback.
 
+## The only three steps that matter on a first evaluation
+
+1. **Inspect the primary repo on Codeberg first** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+2. **Run one bounded real task tonight** — use the exact quickstart below instead of reading every doc first
+3. **Judge the morning-after handoff with one question** — *would I merge this?*
+
+If those three steps are clear, stop there and run it. The rest of this page is only for the one blocker that still makes the first run feel risky.
 
 A good first run should be easy to judge in five minutes the next morning:
 
@@ -69,7 +76,7 @@ A good first run should be easy to judge in five minutes the next morning:
 
 If that handoff shape sounds right, inspect the public [example review bundle](./docs/example-review-bundle.md) before you install or continue below for the fastest honest first run.
 
-## Want the deeper workflow argument first?
+## Only read deeper if you still have one blocker
 
 If you want a stronger answer to "what is this, who is it for, why is it different, and why should I try it now?" before you install, start with these:
 
@@ -122,6 +129,8 @@ Then review the result like normal engineering work and ask one question:
 
 If yes, give Ralph Workflow a harder task tomorrow night — and star or watch Ralph Workflow on **Codeberg**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 If not, tighten the task or checks and run again — or report the friction on **Codeberg**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+
+## Only use these extra guides if the main path still leaves one question
 
 ## Pick the right first task
 

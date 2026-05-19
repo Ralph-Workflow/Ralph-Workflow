@@ -34,6 +34,16 @@ That keeps adoption, issues, and review traffic pointed at the primary repo inst
 - **Why is it different?** It is repo-native and built to hand back a reviewable result — diff, checks, artifacts, and traceable reasoning — not just a transcript and a claim that the task is done.
 - **Why use it now?** You can install it for free, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
+## The three links most evaluators actually need
+
+If you only want the shortest honest path before you decide whether Ralph Workflow is worth your time, use these in order:
+
+1. **Inspect the primary repo on Codeberg first** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+2. **Run one real first task with the shortest setup path** — [START_HERE.md](./START_HERE.md)
+3. **Check the public proof asset before or after that run** — [docs/example-review-bundle.md](./docs/example-review-bundle.md)
+
+Everything else in this README is there to answer a specific objection. The main evaluation path is still simple: inspect the Codeberg repo, run one bounded backlog task, and ask whether you would merge the result.
+
 ## What you should get back tomorrow morning
 
 If Ralph Workflow is doing its job, the morning-after handoff should look reviewable before you read a single long log:
@@ -60,7 +70,7 @@ If you want the fuller artifact shape before you install, inspect the public [ex
 
 If you try a real first run and anything feels unclear, shaky, or harder than it should, report it on **Codeberg** with the new first-run issue path: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. That is the fastest way to improve the real adoption path without splitting feedback across the mirror.
 
-## Start here in the path that matches your question
+## Deeper paths only if one specific objection is blocking you
 
 - **I want the fastest honest first run.** Read [START_HERE.md](./START_HERE.md).
 - **I want help choosing the first agent path.** Read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).

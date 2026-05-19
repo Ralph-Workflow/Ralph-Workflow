@@ -15,6 +15,16 @@ If you are evaluating Ralph Workflow rather than maintaining it, start with thes
 
 Important expectation for evaluators: Ralph Workflow is free and open source, but it orchestrates coding agents you already have on your own machine. For the cleanest first impression, have at least one supported agent CLI already installed and already authenticated before you start the first-run docs.
 
+## The three docs most evaluators actually need
+
+If you are here to decide whether Ralph Workflow is worth a real try, start with these and ignore the rest until one specific question blocks you:
+
+1. `../START_HERE.md` — shortest honest first-run path
+2. `example-review-bundle.md` — public proof of the morning-after handoff shape
+3. `review-ai-coding-output-before-merge.md` — the five-minute merge test for judging whether the result really holds up
+
+Everything else in this docs map is secondary until after that first Codeberg-first evaluation.
+
 ## Best first docs for evaluators
 
 - `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
