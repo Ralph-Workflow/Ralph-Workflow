@@ -17,8 +17,10 @@ pre-validation for plan and development_result drains.
 from __future__ import annotations
 
 import json
+import re
 from contextlib import suppress
 from datetime import datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -341,24 +343,75 @@ def _work_unit_proof_errors(required_refs: frozenset[str], submitted_list: list[
     return errors
 
 
+def _normalize_analysis_proof_ref(value: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^\w]+", " ", value.casefold())).strip()
+
+
+
+def _match_analysis_proof_ref(required_refs: frozenset[str], submitted_ref: str) -> str | None:
+    normalized_submitted = _normalize_analysis_proof_ref(submitted_ref)
+    if not normalized_submitted:
+        return None
+
+    exact_matches = [
+        ref for ref in required_refs if _normalize_analysis_proof_ref(ref) == normalized_submitted
+    ]
+    if len(exact_matches) == 1:
+        return exact_matches[0]
+    if len(exact_matches) > 1:
+        return None
+
+    scored_matches = sorted(
+        (
+            (
+                SequenceMatcher(
+                    None,
+                    normalized_submitted,
+                    _normalize_analysis_proof_ref(required_ref),
+                ).ratio(),
+                required_ref,
+            )
+            for required_ref in required_refs
+        ),
+        reverse=True,
+    )
+    if not scored_matches:
+        return None
+
+    best_score, best_match = scored_matches[0]
+    second_best_score = scored_matches[1][0] if len(scored_matches) > 1 else 0.0
+    if best_score < 0.88 or best_score - second_best_score < 0.03:
+        return None
+    return best_match
+
+
+
 def _analysis_proof_errors(required_refs: frozenset[str], submitted_list: list[str]) -> list[str]:
     errors: list[str] = []
-    submitted_set = frozenset(submitted_list)
-    if len(submitted_set) < len(submitted_list):
+    matched_refs: list[str] = []
+    unmatched_refs: list[str] = []
+
+    for submitted_ref in submitted_list:
+        matched_ref = _match_analysis_proof_ref(required_refs, submitted_ref)
+        if matched_ref is None:
+            unmatched_refs.append(submitted_ref)
+            continue
+        matched_refs.append(matched_ref)
+
+    if len(set(matched_refs)) < len(matched_refs):
         errors.append(
             "PROOF INVALID: Duplicate how_to_fix_item entries found in analysis_items_addressed."
         )
-    missing = required_refs - submitted_set
-    extra = submitted_set - required_refs
+    missing = required_refs - frozenset(matched_refs)
     if missing:
         errors.append(
             "PROOF INCOMPLETE: The following how_to_fix item(s) have no proof entry: "
             f"{sorted(missing)}. Each how_to_fix_item must exactly match the prior analysis text."
         )
-    if extra:
+    if unmatched_refs:
         errors.append(
             "PROOF INVALID: Unknown how_to_fix_item reference(s) not matching any prior "
-            f"analysis item: {sorted(extra)}."
+            f"analysis item: {sorted(frozenset(unmatched_refs))}."
         )
     return errors
 
