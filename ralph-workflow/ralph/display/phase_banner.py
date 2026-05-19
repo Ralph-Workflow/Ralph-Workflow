@@ -63,6 +63,8 @@ def phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> st
     if pipeline_policy is not None:
         phase_def = pipeline_policy.phases.get(phase)
         if phase_def is not None:
+            if phase_def.display_style is not None:
+                return phase_def.display_style
             role = phase_def.role or ""
             terminal_outcome = phase_def.terminal_outcome
             if role == "terminal" and terminal_outcome == "failure":

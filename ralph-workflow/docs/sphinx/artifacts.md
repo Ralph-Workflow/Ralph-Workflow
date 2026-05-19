@@ -166,6 +166,31 @@ This applies to both planning prompts (`planning.jinja`, `planning_edit.jinja`, 
 
 Archival is handled by `ralph.mcp.artifacts.history`. The `archive_artifact_before_overwrite` function copies the current `.agent/artifacts/<type>.json` and `.agent/<TYPE>.md` to the history directory and rebuilds `index.md`. This runs as the first `_SubmitOp` inside the artifact submission transaction so that a submission failure triggers rollback and removes the orphaned archive files.
 
+## Fresh-entry drain clearing
+
+In addition to the artifact history archive, Ralph Workflow can delete the primary artifact files (JSON + Markdown handoff) for one or more drains at the start of a fresh phase entry. This is controlled by the `clear_drains_on_fresh_entry` field on a phase definition in `pipeline.toml`:
+
+```toml
+[phases.planning]
+clear_drains_on_fresh_entry = ["planning", "planning_analysis"]
+
+[phases.development]
+clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_analysis"]
+
+[phases.development_commit]
+clear_drains_on_fresh_entry = ["development", "development_analysis"]
+```
+
+Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes the primary artifact JSON and its Markdown handoff for each listed drain, preventing stale context from a previous cycle from leaking into the current one.
+
+**Difference from `artifact_history.clear_on_fresh_entry`:** That field clears only the history archive (`.agent/artifacts/history/<type>/`), leaving the canonical artifact files in place. `clear_drains_on_fresh_entry` removes the primary files themselves (`.agent/artifacts/<type>.json` and `.agent/<TYPE>.md`).
+
+**When clearing fires:** On program start, cross-phase transition (including last-commit → planning re-entry after a successful commit), and any entry where the incoming previous phase is not an analysis loopback back into this phase.
+
+**When clearing is suppressed:** Analysis loopbacks (planning_analysis → planning), same-phase retries, and resume (checkpoint restore).
+
+**Default pipeline behavior:** Fresh planning entry clears `planning` and `planning_analysis` drain artifacts. Fresh development entry clears `planning_analysis`, `development`, and `development_analysis` drain artifacts. Fresh development_commit entry clears `development` and `development_analysis` drain artifacts.
+
 ## Audit adapter
 
 `ralph.mcp.artifacts.audit_adapter` wraps the store and records every artifact submission to the pipeline transcript so operators can trace exactly what each agent produced.

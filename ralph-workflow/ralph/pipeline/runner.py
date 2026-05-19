@@ -113,6 +113,7 @@ from ralph.pipeline.legacy_console_display import (
 from ralph.pipeline.phase_agent_handler import (
     phase_event_after_agent_run,
 )
+from ralph.pipeline.phase_entry_cleaner import clear_phase_entry_drains
 from ralph.pipeline.phase_transition import (
     PENDING_PHASE_TRANSITION_METADATA_ATTR,
     PendingPhaseTransitionMetadata,
@@ -635,6 +636,24 @@ def _handle_inline_effect(
 
     if isinstance(effect, PreparePromptEffect):
         if not effect.skip_materialization:
+            # Phase-agnostic resume guard: suppress clearing when restoring a checkpoint
+            is_resume = (
+                state is not None
+                and str(state.phase) == str(effect.phase)
+                and state.previous_phase is None
+                and state.checkpoint_saved_count > 0
+            )
+            if not is_resume:
+                _entry_ws = FsWorkspace(
+                    workspace_scope.root, allowed_roots=workspace_scope.allowed_roots
+                )
+                clear_phase_entry_drains(
+                    _entry_ws,
+                    str(effect.phase),
+                    effect.previous_phase,
+                    pipeline_policy,
+                    artifacts_policy,
+                )
             try:
                 materialize_prepared_prompt(
                     effect,

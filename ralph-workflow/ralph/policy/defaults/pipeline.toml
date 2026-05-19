@@ -94,6 +94,8 @@ drain = "planning"
 role = "execution"
 prompt_template = "planning.jinja"
 loopback_prompt_template = "planning_edit.jinja"
+display_style = "theme.phase.planning"
+clear_drains_on_fresh_entry = ["planning", "planning_analysis"]
 [phases.planning.transitions]
 on_success = "planning_analysis"
 [phases.planning.artifact_history]
@@ -127,6 +129,7 @@ drain = "development"
 role = "execution"
 prompt_template = "developer_iteration.jinja"
 continuation_template = "developer_iteration_continuation.jinja"
+clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_analysis"]
 [phases.development.transitions]
 on_success = "development_analysis"
 on_loopback = "development"
@@ -168,6 +171,7 @@ reset_loop = false
 drain = "development_commit"
 role = "commit"
 prompt_template = "commit_message.jinja"
+clear_drains_on_fresh_entry = ["development", "development_analysis"]
 [phases.development_commit.transitions]
 on_success = "complete"
 on_failure = "failed_terminal"

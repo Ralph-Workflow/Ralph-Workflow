@@ -24,7 +24,6 @@ from ralph.mcp.artifacts.history import (
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_ARTIFACT_TYPE, PLAN_DRAFT_PATH
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import (
-    build_required_artifacts,
     resolve_required_artifact,
     retry_hint_path,
 )
@@ -566,12 +565,30 @@ def _prepare_planning_prompt_context(
     # planning passes must preserve the current plan + history so the
     # planner can revise instead of restart.
     if not preserve_planning_context:
-        _clear_fresh_planning_context(
-            workspace,
-            phase=phase,
-            pipeline_policy=pipeline_policy,
-            artifacts_policy=artifacts_policy,
+        # Clear drain artifacts for fresh planning entry.
+        # This handles the direct materialization path where runner-level clearing
+        # via clear_phase_entry_drains does not fire.
+        # Use the phase-agnostic is_fresh_phase_entry to determine if this is
+        # a genuine fresh entry before clearing.
+        from ralph.pipeline.phase_entry_cleaner import (
+            clear_phase_entry_drains as _clear_phase_entry_drains,
         )
+        from ralph.pipeline.phase_entry_cleaner import (
+            is_fresh_phase_entry,
+        )
+
+        if (
+            is_fresh_phase_entry(phase, previous_phase, pipeline_policy)
+            and artifacts_policy is not None
+        ):
+            _clear_phase_entry_drains(
+                workspace,
+                phase,
+                previous_phase,
+                pipeline_policy,
+                artifacts_policy,
+            )
+        _clear_fresh_planning_context(workspace)
     elif phase_def is not None and phase_def.loopback_prompt_template:
         template_name = phase_def.loopback_prompt_template
     analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
@@ -676,38 +693,18 @@ def _resolve_and_clear_dev_artifact_history(
     return _resolve_artifact_history_path(workspace_root, drain_artifact_type)
 
 
-def _clear_fresh_planning_context(
-    workspace: Workspace,
-    *,
-    phase: str,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None,
-) -> None:
-    """Delete prior planning state before rendering a fresh planning-creation prompt."""
-    for path in (PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH):
-        if workspace.exists(path):
-            workspace.remove(path)
-    handoff_path = handoff_path_for_artifact("plan")
-    if handoff_path and workspace.exists(handoff_path):
-        workspace.remove(handoff_path)
+def _clear_fresh_planning_context(workspace: Workspace) -> None:
+    """Delete prior planning state before rendering a fresh planning-creation prompt.
 
+    Clears the plan draft (.plan_draft.json) and artifact history archive.
+    Drain artifact clearing is handled by phase_entry_cleaner.clear_phase_entry_drains
+    at PreparePromptEffect time in the runner flow, and by the direct call in
+    _prepare_planning_prompt_context for the direct materialization path.
+    """
+    if workspace.exists(PLAN_DRAFT_PATH):
+        workspace.remove(PLAN_DRAFT_PATH)
     workspace_root = Path(workspace.absolute_path("."))
     _clear_all_artifact_history(workspace_root)
-
-    if artifacts_policy is None:
-        return
-    required_artifacts = build_required_artifacts(artifacts_policy)
-    for p in pipeline_policy.phases.values():
-        if p.role != "analysis" or p.transitions.on_loopback != phase:
-            continue
-        required_artifact = required_artifacts.get(p.drain)
-        if required_artifact is None:
-            continue
-        if workspace.exists(required_artifact.json_path):
-            workspace.remove(required_artifact.json_path)
-        analysis_handoff = handoff_path_for_artifact(required_artifact.artifact_type)
-        if analysis_handoff and workspace.exists(analysis_handoff):
-            workspace.remove(analysis_handoff)
 
 
 def _is_analysis_loopback_into_phase(

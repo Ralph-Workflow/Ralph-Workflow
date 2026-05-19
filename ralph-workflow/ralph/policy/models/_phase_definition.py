@@ -131,6 +131,27 @@ class PhaseDefinition(_FrozenPolicyModel):
             "Takes precedence over recovery.failed_route on chain exhaustion."
         ),
     )
+    clear_drains_on_fresh_entry: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Drain names to clear on every genuine fresh phase entry. "
+            "On fresh entry (program start, cross-phase transition, or last-commit re-entry), "
+            "Ralph Workflow deletes the primary artifact JSON and Markdown handoff for each "
+            "listed drain. Empty list means no drain-based clearing on entry. "
+            "Contrast with artifact_history.clear_on_fresh_entry which clears only the history."
+        ),
+    )
+    display_style: str | None = Field(
+        default=None,
+        description=(
+            "Per-phase rich style override for phase banners. "
+            "When set, this style string is used instead of the role-based default in "
+            "phase_banner.phase_style. For example, set to 'theme.phase.planning' to give "
+            "the planning phase a distinct color from other execution-role phases. "
+            "Available theme keys include theme.phase.planning, theme.phase.development, "
+            "theme.phase.development_analysis, theme.phase.commit, and theme.phase.failed."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
