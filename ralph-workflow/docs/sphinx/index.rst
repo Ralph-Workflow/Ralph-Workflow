@@ -25,6 +25,7 @@ Choose the first path that matches how you already work tonight:
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
 - Already using **Claude Code** and specifically searching for a better automation / unattended path? Start with :doc:`claude-code-automation`.
+- Already using **Claude Code** but still stuck in approval mode or plan mode babysitting? Read :doc:`claude-code-approval-mode`.
 - Already using **Codex CLI** and deciding whether you need Ralph Workflow for the morning-after handoff? Start with :doc:`ralph-workflow-vs-codex-cli`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
@@ -325,6 +326,7 @@ Then come back and ask one question:
    first-task-guide
    which-agent-should-i-start-with
    claude-code-automation
+   claude-code-approval-mode
    ralph-workflow-vs-claude-code
    ralph-workflow-vs-codex-cli
    claude-code-codex-workflow

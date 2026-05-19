@@ -81,6 +81,7 @@ If the run goes well, do the public next step on **Codeberg** instead of leaving
 - **I am not sure whether my task is a good fit for unattended execution.** Read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 - **I already use worktrees or multiple agent sessions. What does Ralph add?** Read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 - **I use Claude Code and I am specifically looking for a stronger automation / unattended path.** Read [docs/claude-code-automation.md](./docs/claude-code-automation.md).
+- **Claude Code approval mode or plan mode still leaves me babysitting the run.** Read [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md).
 - **I already use Claude Code and want to know why I would add Ralph at all.** Read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
 - **I already use Codex CLI and want to know when Ralph is the better fit.** Read [docs/ralph-workflow-vs-codex-cli.md](./docs/ralph-workflow-vs-codex-cli.md).
 - **I already use Claude Code + Codex together. What changes with Ralph?** Read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
