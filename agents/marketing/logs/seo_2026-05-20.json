@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-20T00:17:28.129941",
+  "timestamp": "2026-05-20T00:47:01.977979",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Free Unattended AI Coding CLI for Developers \u2014 Ralph Workflow",
-      "meta_description": "Free open-source AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Inspect the primary Codeberg repo first, then run one overnight task and wake up to reviewable code.",
+      "title": "AI agent orchestration CLI \u2014 Ralph Workflow",
+      "meta_description": "Free open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Inspect Codeberg first. Review code by morning.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Free open-source AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Inspect the primary Codeberg repo first, then run one overnight task and wake up to reviewable code.",
-        "title": "Free Unattended AI Coding CLI for Developers",
+        "description": "Free open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Inspect Codeberg first. Review code by morning.",
+        "title": "AI agent orchestration CLI",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 7838,
+      "word_count": 7812,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -56,22 +56,10 @@
     }
   },
   "onpage": {
-    "score": 70,
-    "grade": "C",
-    "issues": [
-      {
-        "severity": "error",
-        "item": "Title too long"
-      },
-      {
-        "severity": "warning",
-        "item": "Meta description too long",
-        "detail": "Keep between 150-160 characters"
-      }
-    ],
-    "recommendations": [
-      "Keep title under 60 characters (current: 61 chars)"
-    ]
+    "score": 100,
+    "grade": "A",
+    "issues": [],
+    "recommendations": []
   },
   "ranks": {
     "unattended coding agent": {
@@ -160,7 +148,6 @@
   },
   "content_gap": {
     "gaps": [
-      "unattended coding agent",
       "spec-driven AI agent",
       "AI coding workflow automation",
       "Claude Code automation",
@@ -168,10 +155,11 @@
       "AI agent workflow composer"
     ],
     "covered": [
+      "unattended coding agent",
       "AI agent orchestration CLI",
       "Ralph Workflow"
     ],
-    "coverage_pct": 25.0
+    "coverage_pct": 37.5
   },
   "serp": {
     "position": null,
@@ -180,8 +168,7 @@
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
-    "Fix top on-page SEO issues (current score: 70/100)",
-    "Create content targeting: unattended coding agent, spec-driven AI agent, AI coding workflow automation",
+    "Create content targeting: spec-driven AI agent, AI coding workflow automation, Claude Code automation",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]
 }
