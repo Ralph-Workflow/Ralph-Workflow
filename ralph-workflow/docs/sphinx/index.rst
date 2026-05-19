@@ -12,9 +12,9 @@ Ralph Workflow
      <h1 class="hero-headline">Run bigger AI coding tasks without babysitting the terminal</h1>
      <p class="hero-subtitle">Ralph Workflow is a free and open-source unattended coding agent and AI agent orchestration CLI. It gives Claude Code, Codex, and OpenCode a spec-driven workflow on your own machine so you wake up to reviewable code instead of another transcript and a done claim.</p>
      <div class="hero-actions">
-       <a class="hero-cta" href="getting-started.html">Run your first real task →</a>
+       <a class="hero-cta" href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Inspect on Codeberg first</a>
+       <a class="hero-cta hero-cta-secondary" href="first-task-guide.html">Pick your first real task</a>
        <a class="hero-cta hero-cta-secondary" href="example-review-bundle.html">See a public review bundle first</a>
-       <a class="hero-cta hero-cta-secondary" href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Inspect on Codeberg</a>
      </div>
      <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
      <p class="hero-proof-note">Before you install, <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">inspect the primary Codeberg repo first</a>. After your first run, use <a href="after-your-first-run.html">the short Codeberg-first scorecard</a> to decide whether the right public next step is a star/watch or a useful issue.</p>
@@ -51,10 +51,11 @@ Keep the post-run branch simple:
 
 .. note::
 
-   New here? Read :doc:`getting-started` first — it gets you from install to first run quickly,
-   without making you learn the internals first. If you are still deciding whether Ralph Workflow
-   fits your work, start with :doc:`when-unattended-coding-fits`, :doc:`first-task-guide`,
-   :doc:`first-task-prompt-templates`, and :doc:`reviewable-output`.
+   New here? Inspect the `primary Codeberg repo <https://codeberg.org/RalphWorkflow/Ralph-Workflow>`_ first,
+   then use :doc:`first-task-guide` to choose one bounded backlog task before setup. When the task is clear,
+   read :doc:`getting-started` for the fastest install-to-first-run path. If you still need a fit check,
+   continue with :doc:`when-unattended-coding-fits`, :doc:`first-task-prompt-templates`,
+   and :doc:`reviewable-output`.
 
 .. toctree::
    :hidden:

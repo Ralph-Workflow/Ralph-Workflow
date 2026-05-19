@@ -18,6 +18,8 @@ If you want to know whether Ralph Workflow is useful, do not start with a vague 
 
 Start with **one real backlog task** you already care about.
 
+If you are still deciding whether your task is a good first fit, read [docs/first-task-guide.md](./docs/first-task-guide.md) before you install anything.
+
 If the only thing you are stuck on right now is agent choice, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md) and pick the agent that is already working on your machine.
 
 If you want to inspect the project before you install anything, open the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first, or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
@@ -69,11 +71,12 @@ If your first run hits confusing setup, weak docs, or a handoff you would not tr
 
 If the run is promising, use [After Your First Ralph Workflow Run](./docs/after-your-first-run.md) to turn that private first run into the right public Codeberg action.
 
-## The only three steps that matter on a first evaluation
+## The only steps that matter on a first evaluation
 
 1. **Inspect the primary repo on Codeberg first** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-2. **Run one bounded real task tonight** — use the exact quickstart below instead of reading every doc first
-3. **Judge the morning-after handoff with one question** — *would I merge this?*
+2. **Choose one bounded real task tonight** — use [docs/first-task-guide.md](./docs/first-task-guide.md) if you need a fast good-fit filter before setup
+3. **Run that task with the exact quickstart below** — do not read every doc first
+4. **Judge the morning-after handoff with one question** — *would I merge this?*
 
 If those three steps are clear, stop there and run it. The rest of this page is only for the one blocker that still makes the first run feel risky.
 

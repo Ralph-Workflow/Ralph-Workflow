@@ -46,17 +46,18 @@ That keeps adoption, issues, and review traffic pointed at the primary repo inst
 - **Why is it different?** It is repo-native and built to hand back a reviewable result — diff, checks, artifacts, and traceable reasoning — not just a transcript and a claim that the task is done.
 - **Why use it now?** You can install it for free, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
-## The three links most evaluators actually need
+## The shortest evaluator path most people actually need
 
 If you only want the shortest honest path before you decide whether Ralph Workflow is worth your time, use these in order:
 
 1. **Inspect the primary repo on Codeberg first** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-2. **Run one real first task with the shortest setup path** — [START_HERE.md](./START_HERE.md)
-3. **Check what a good morning-after handoff should look like** — [docs/reviewable-output.md](./docs/reviewable-output.md)
-4. **Inspect the public proof asset before or after that run** — [docs/example-review-bundle.md](./docs/example-review-bundle.md)
-5. **Use the first-run scorecard and turn the result into a Codeberg action** — [docs/after-your-first-run.md](./docs/after-your-first-run.md)
+2. **Pick a real first task before you install or run anything** — [docs/first-task-guide.md](./docs/first-task-guide.md)
+3. **Run one real first task with the shortest setup path** — [START_HERE.md](./START_HERE.md)
+4. **Check what a good morning-after handoff should look like** — [docs/reviewable-output.md](./docs/reviewable-output.md)
+5. **Inspect the public proof asset before or after that run** — [docs/example-review-bundle.md](./docs/example-review-bundle.md)
+6. **Use the first-run scorecard and turn the result into a Codeberg action** — [docs/after-your-first-run.md](./docs/after-your-first-run.md)
 
-Everything else in this README is there to answer a specific objection. The main evaluation path is still simple: inspect the Codeberg repo, run one bounded backlog task, and ask whether you would merge the result.
+Everything else in this README is there to answer a specific objection. The main evaluation path is still simple: inspect the Codeberg repo, choose one bounded backlog task, run it, and ask whether you would merge the result.
 
 ## What you should get back tomorrow morning
 
@@ -88,6 +89,7 @@ If the run goes well, do the public next step on **Codeberg** instead of leaving
 
 ## Deeper paths only if one specific objection is blocking you
 
+- **I want help choosing a good first task before I install.** Read [docs/first-task-guide.md](./docs/first-task-guide.md).
 - **I want the fastest honest first run.** Read [START_HERE.md](./START_HERE.md).
 - **I want help choosing the first agent path.** Read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
 - **I want copy-paste prompt shapes for a real first task.** Read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
