@@ -53,6 +53,16 @@ Why these fail:
 - `done` is unclear
 - live steering matters more than unattended execution
 
+## Skip the blank page: three copy-paste first-task starters
+
+If your real blocker is not task choice but writing the first `PROMPT.md`, start with the closest template instead of improvising from scratch:
+
+- **Validation / guardrail** — [reject bad input before it causes damage](./first-task-prompt-templates.md#template-2-validation-or-guardrail)
+- **Small feature slice** — [add one focused behavior without changing the rest](./first-task-prompt-templates.md#template-1-small-feature-slice)
+- **Test coverage pass** — [strengthen confidence around code that already exists](./first-task-prompt-templates.md#template-4-test-coverage-pass)
+
+Those three starter shapes cover a large share of honest first runs.
+
 ## Write the task like a one-paragraph spec
 
 Before the run starts, write down:
@@ -107,6 +117,7 @@ That is the real product test.
 - Read [First-Task Prompt Templates](./first-task-prompt-templates.md) if you want copy-paste starter specs
 - Read [What Good Output Looks Like](./free-open-source-proof.md) to see the handoff you should expect
 - Read [Example Review Bundle](./example-review-bundle.md) for a public sample before your first run
+- After the run, use [After Your First Ralph Workflow Run](./after-your-first-run.md) to turn the result into one public Codeberg action
 
 If this first-task filter matches how you want to evaluate Ralph Workflow, inspect the **primary Codeberg repo**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 

@@ -55,10 +55,11 @@ Keep the post-run branch simple:
 .. note::
 
    New here? Inspect the `primary Codeberg repo <https://codeberg.org/RalphWorkflow/Ralph-Workflow>`_ first,
-   then use :doc:`first-task-guide` to choose one bounded backlog task before setup. When the task is clear,
-   read :doc:`getting-started` for the fastest install-to-first-run path. If you still need a fit check,
-   continue with :doc:`when-unattended-coding-fits`, :doc:`first-task-prompt-templates`,
-   and :doc:`reviewable-output`.
+   then use :doc:`first-task-guide` to choose one bounded backlog task before setup. If the blank page in
+   ``PROMPT.md`` is the blocker, jump straight to :doc:`first-task-prompt-templates` and steal the closest
+   starter spec. When the task is clear, read :doc:`getting-started` for the fastest install-to-first-run path.
+   If you still need a fit check, continue with :doc:`when-unattended-coding-fits`,
+   :doc:`first-task-prompt-templates`, and :doc:`reviewable-output`.
 
 .. toctree::
    :hidden:
