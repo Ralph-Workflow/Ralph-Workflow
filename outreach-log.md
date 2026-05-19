@@ -111,6 +111,17 @@
   - Measurement window: next 7 days for referral/inspection evidence on the new page path; next 14 days for Codeberg stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding category/SEO conversion pages and shift the next replacement move to external distribution that sends traffic into the strengthened Codeberg-first docs path.
 
+### RalphWorkflow hosted-docs homepage SEO/conversion repair
+- **Hosted docs homepage SEO/message repair shipped**: tightened the Sphinx homepage title, meta description, hero copy, and schema language around the exact gap terms `unattended coding agent`, `AI agent orchestration CLI`, `spec-driven AI agent`, and `Claude Code automation`, while keeping Codeberg as the first repo CTA.
+  - Commit: `1c9160a3` — `Tighten homepage SEO messaging for Codeberg conversion`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/_themes/ralph-docs/page.html`
+  - Verification: `uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going` passed after removing two duplicate toctree entries uncovered during the rebuild; resulting built homepage title is `Unattended coding agent — Ralph Workflow` (40 chars) and meta description is 145 chars.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The May 19 audit explicitly said the live repair path was homepage title/description SEO tuning while Codeberg adoption remains flat. The strongest viable move in this run was to tighten the owned docs/homepage search surface around the missing evaluator phrases and preserve a Codeberg-first action path instead of making another generic post.
+  - Expected outcome: more qualified docs/homepage search impressions and clicks for unattended-coding / orchestration-intent queries, plus more Codeberg repo inspections from visitors who now hit a clearer Codeberg-first CTA.
+  - Measurement window: next 7 days for search-surface and page-path evidence; next 14 days (through **2026-06-02**) for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat on **2026-06-02**, stop spending cycles on hosted-docs SEO tightening alone and shift the next replacement move to a new external distribution action or backlink submission that sends traffic directly into the strongest Codeberg-first proof/comparison pages.
+
 ### Reddit monitoring
 - **Report:** `seo-reports/reddit_monitor_2026-05-19_0942.md`
 - **Scan summary:** 28 candidate Reddit threads/posts scanned, 7 shortlisted, 21 rejected.
@@ -1683,3 +1694,22 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Expected outcome: more Codeberg repo inspections and Codeberg stars/watchers/issues from evaluators whose main question is whether the morning-after handoff is actually reviewable.
   - Measurement window: next 7 days for traffic through the finish-receipt trust path / next 14 days for Codeberg stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending the next cycle on proof-surface routing polish and replace it with a fresh external distribution move that sends traffic directly into the strongest existing Codeberg-first proof pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 10:13:18
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow owned trust-page replacement
+- **External trust-asset dependency replaced with owned Codeberg-first landing page**: created and pushed a new repo-native/public docs page, `how-to-tell-if-an-ai-coding-task-is-actually-done`, then rewired the highest-intent trust paths in `README.md`, `START_HERE.md`, the docs map, and the hosted Sphinx index to point at owned RalphWorkflow pages instead of external write.as/Telegraph-style articles.
+  - Commit: `4b4905f2` — `Replace external trust asset with owned docs landing page`
+  - Status: ✅ Pushed to Codeberg primary (`origin`) and GitHub mirror (`github`)
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/how-to-tell-if-an-ai-coding-task-is-actually-done.md`
+  - Verification: confirmed touched entry points no longer contain `write.as` or `telegra.ph` links for this trust path; verified files exist; pushed both remotes successfully.
+  - Why: this is **REPLACING / REPAIRED**. The audit says the active bottleneck is `distribution_and_message_to_primary_repo_conversion`, and the directive is to stop defaulting to write.as-only publishing. The strongest viable same-run repair was to turn one of the core evaluator questions — “is the AI task actually done?” — into an owned SEO/conversion surface with a direct Codeberg CTA, instead of sending high-intent visitors out to third-party article hosts before the primary repo action.
+  - Expected outcome: more qualified evaluators who already reach RalphWorkflow’s public surfaces should stay on owned pages longer, inspect Codeberg first, and convert into Codeberg stars, watches, or issues instead of leaking off-site during the trust-evaluation step.
+  - Measurement window: next 7 days for owned-surface trust-path usage and referral clues; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending the next cycle on owned trust-surface rewiring and replace it with a fresh external distribution move that sends new traffic directly into the strongest Codeberg-first proof/comparison page.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 10:45:35
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.

@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-19T09:52:38.723728
+- Generated: 2026-05-19T10:51:55.849459
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -24,7 +24,7 @@
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
 
 ## Repair actions (execute in this run)
-- **primary_repo_flat** → REPLACE current content distribution approach. Stop defaulting to write.as-only publishing. Redirect effort to: (a) README/CONTRIBUTING improvements with stronger repo conversion surfaces, (b) SEO landing pages targeting repo-specific search terms, (c) cross-post already-strong content to any unblocked platform with explicit Codeberg CTA.
+- **primary_repo_flat** → REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
 - **mirror_repo_flat** → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
