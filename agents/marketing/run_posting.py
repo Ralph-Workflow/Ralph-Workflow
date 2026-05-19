@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Post scheduled RalphWorkflow drafts to write.as and Telegraph, with Codeberg CTAs.
+"""Post scheduled RalphWorkflow drafts to Telegraph, with Codeberg CTAs.
 
-Distribution (2026-05-19): Dual-posts to write.as + Telegraph via post_to_web.py.
+Distribution (2026-05-19): Telegraph is the primary publishing platform.
+write.as is DEAD (content blocked) — no longer used.
+Dev.to is a secondary option when API key is available.
 Both platforms get the same body with Codeberg primary + GitHub mirror CTA footer.
-Blocked channels: Dev.to (auth blocked), HN (needs account), Lobsters (needs invite).
 
 Rules:
 - only publish markdown drafts for today
 - never generate filler posts automatically
-- skip a draft if the same content hash already posted successfully to all platforms
+- skip a draft if the same content hash already posted successfully to Telegraph
 - always include Codeberg primary + GitHub mirror CTA footer in every post
-- dual-post to write.as and Telegraph simultaneously
+- primary posting target: Telegraph
 """
 
 from __future__ import annotations
@@ -88,9 +89,9 @@ def digest_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def already_posted_successfully(posted: dict, draft_hash: str, platform: str = "write.as") -> bool:
+def already_posted_successfully(posted: dict, draft_hash: str, platform: str = None) -> bool:
     for item in posted.get("posts", []):
-        if item.get("platform") == platform and item.get("ok") and item.get("draft_hash") == draft_hash:
+        if (platform is None or item.get("platform") == platform) and item.get("ok") and item.get("draft_hash") == draft_hash:
             return True
     return False
 
@@ -227,7 +228,7 @@ def main() -> int:
             continue
 
         draft_hash = digest_text(body)
-        if already_posted_successfully(posted, draft_hash, "write.as"):
+        if already_posted_successfully(posted, draft_hash, "telegraph"):
             results.append({
                 "draft": draft.name,
                 "ok": True,
@@ -240,28 +241,8 @@ def main() -> int:
         # Append CTA footer — every post drives Codeberg primary adoption
         body_with_cta = body + CTA_FOOTER
 
-        # Post to write.as
-        ok_was, url_was = post_writeas(title, body_with_cta)
-        record_was = {
-            "date": today,
-            "draft": draft.name,
-            "title": title,
-            "platform": "write.as",
-            "ok": ok_was,
-            "status": "posted" if ok_was else "failed",
-            "url": url_was if ok_was else None,
-            "error": None if ok_was else url_was,
-            "draft_hash": draft_hash,
-            "experiment_id": metadata.get("experiment_id"),
-            "content_type": metadata.get("content_type"),
-            "keyword": metadata.get("keyword"),
-            "cta": metadata.get("cta"),
-            "hypothesis": metadata.get("hypothesis"),
-        }
-        results.append(record_was)
-        posted.setdefault("posts", []).append(record_was)
-
-        # Dual posting: write.as + Telegraph (2026-05-19 — Telegraph API fixed with correct node format)
+        # Telegraph is the primary platform (write.as is permanently blocked)
+        # Dual posting: Telegraph + Dev.to when Dev.to API key is available
         ok_tg, url_tg = post_telegraph(title, body_with_cta)
         record_tg = {
             "date": today,

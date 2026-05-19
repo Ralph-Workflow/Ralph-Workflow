@@ -1,38 +1,34 @@
 {
-  "timestamp": "2026-05-19T06:04:57.036230",
+  "timestamp": "2026-05-19T08:13:24.558022",
   "results": [
     {
+      "date": "2026-05-19",
       "draft": "2026-05-19_technical_draft.md",
+      "title": "How Nested Analysis Loops Catch Bugs Before They Commit",
+      "platform": "telegraph",
       "ok": true,
-      "status": "already_posted",
-      "draft_hash": "05715b7714d064adb44a13c8df7be58766dc70adfa623e373e042d9308841b03",
+      "status": "posted",
+      "url": "https://telegra.ph/How-Nested-Analysis-Loops-Catch-Bugs-Before-They-Commit-05-19-3",
+      "error": null,
+      "draft_hash": "cd44e4bcabc9baf1e924a6af2a7d9fb386b839f98a5fd4c46e13a3d7fc80210f",
       "experiment_id": "2026-05-19-technical"
     },
     {
       "date": "2026-05-19",
-      "draft": "2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md",
-      "title": "How to Tell if an AI Coding Task Is Actually Done",
-      "platform": "write.as",
-      "ok": true,
-      "status": "posted",
-      "url": "https://write.as/contentisblocked",
-      "error": null,
-      "draft_hash": "7df5d951fd36ab17618beac53ce8e324bd09686832d69fc4bbcb1949b57b1966",
-      "experiment_id": null,
-      "content_type": null,
-      "keyword": null,
-      "cta": null,
-      "hypothesis": null
-    },
-    {
-      "date": "2026-05-19",
-      "draft": "2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md",
-      "title": "How to Tell if an AI Coding Task Is Actually Done",
+      "draft": "2026-05-19_claude-code-codex-workflow_telegraph.md",
+      "title": "Claude Code + Codex Workflow: Plan, Build, Review",
       "platform": "telegraph",
       "ok": true,
       "status": "posted",
-      "url": "https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2",
+      "url": "https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-19-3",
       "error": null,
+      "draft_hash": "63d145b7e517d11439ac0b81f3ef3cbc6e55e549f15c77467c15d905b348160e",
+      "experiment_id": null
+    },
+    {
+      "draft": "2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md",
+      "ok": true,
+      "status": "already_posted",
       "draft_hash": "7df5d951fd36ab17618beac53ce8e324bd09686832d69fc4bbcb1949b57b1966",
       "experiment_id": null
     }

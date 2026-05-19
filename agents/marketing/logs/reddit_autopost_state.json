@@ -1,9 +1,9 @@
 {
-  "last_attempt_at": "2026-05-19T04:24:28.017357",
-  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-18_2115.md",
-  "last_thread_url": "<https://www.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/>",
+  "last_attempt_at": "2026-05-19T07:53:52.707026",
+  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-19_0717.md",
+  "last_thread_url": "<https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/>",
   "last_comment_url": null,
-  "last_attempt_status": "already_logged",
-  "last_poster_status": "already_logged",
-  "last_detail": "Thread already exists in outreach-log.md"
+  "last_attempt_status": "textarea_not_found",
+  "last_poster_status": "textarea_not_found",
+  "last_detail": "No comment textarea found among [\"form.usertext.cloneable textarea[name='text']\", \"textarea[name='text']\", \"div[name='text']\", 'textarea.comment-textarea', \"textarea[id^='comment-submit']\"]"
 }

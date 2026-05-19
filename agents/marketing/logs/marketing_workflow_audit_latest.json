@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-19T06:20:05.577054",
+  "generated_at": "2026-05-19T07:33:41.433087",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -65,7 +65,7 @@
     {
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
-      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving.",
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
       "kill_condition": "N/A (mirror, not primary)",
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3
@@ -89,15 +89,5 @@
     "who_is_it_for": "developers/teams with engineering work too big to babysit and too risky to trust blindly",
     "why_different": "repo-native unattended orchestration that aims to leave substantial, reviewable output instead of just a transcript",
     "why_now": "free to use now and useful for overnight project-scale work while you sleep"
-  },
-  "post_repair_status": {
-    "conversion_infrastructure": "solid - all May 18-19 repair actions completed",
-    "write_as_status": "dead - https://write.as/contentisblocked - do not use",
-    "telegraph_status": "working - 2 URLs for same article, -2 version is canonical",
-    "new_bottleneck": "distribution_execution_hn_lobsters_blocked",
-    "hn_submission": "rate_limited_from_host - packets fixed to Telegraph URL",
-    "lobsters_submission": "requires_login - packets fixed to Telegraph URL",
-    "reddit_pipeline": "working correctly with Codeberg-first routing",
-    "next_window_packet": "ready with 3 fresh Codeberg-linked drafts"
   }
 }

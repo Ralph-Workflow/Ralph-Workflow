@@ -1566,3 +1566,29 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Expected outcome: cleaner docs/sitemap surfaces should improve search traffic quality and reduce trust leaks, so a higher share of organic/docs visitors reaches the Codeberg-first evaluation path instead of low-intent generated pages or dead article links.
   - Measurement window: next 7 days for sitemap/organic-path quality checks; next 14 days for Codeberg stars/watchers/forks delta.
   - Replace if it fails: if Codeberg stars/watchers/forks are still flat through 2026-06-02 after the cleaned docs surface is live, stop spending cycles on docs-index hygiene and shift the next replacement move to a higher-reach distribution surface that can send traffic directly into the strongest Codeberg-first proof/comparison pages.
+
+### RalphWorkflow spec-driven conversion repair
+- **New spec-driven SEO/conversion page shipped**: added `content/guides/spec_driven_ai_agent.md` and surfaced it on the main README, `START_HERE_RALPHWORKFLOW.md`, and `CONTRIBUTING.md` so evaluators who already care about agent reliability now get a direct Codeberg-first explanation of why the spec is the trust surface and how to run an honest first task.
+  - Files: `content/guides/spec_driven_ai_agent.md`, `README.md`, `START_HERE_RALPHWORKFLOW.md`, `CONTRIBUTING.md`
+  - Why: this is **NEW / REPLACING** a flat tactic. The audit says Codeberg adoption is flat and explicitly prioritizes README/CONTRIBUTING improvements plus SEO landing pages over more write.as-style publishing. "Spec-driven AI agent" is a high-fit search/evaluation frame that ties directly to Ralph Workflow's real differentiator and routes readers to Codeberg first.
+  - Expected outcome: more qualified Codeberg repo inspections from spec-first evaluators, plus better first-run issue quality because CONTRIBUTING now asks people to bring the sharper spec/result gap.
+  - Measurement window: next 7 days for repo-inspection evidence / page reuse in distribution; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding spec/SEO conversion pages and shift the next replacement move to an executable external distribution surface that sends traffic directly into the strongest Codeberg-first proof pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 07:33:21
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 07:44:48
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow post-run Codeberg conversion repair
+- **Post-first-run conversion path surfaced across the highest-intent owned entry points**: added explicit `After Your First Ralph Workflow Run` routing plus direct Codeberg next-step language to the public `README.md`, `START_HERE.md`, hosted docs homepage, and `getting-started.md` so evaluators who already ran Ralph Workflow now get a sharper primary-repo action instead of stopping at a private merge/no-merge opinion.
+  - Commit: `360327cd` — `Add post-run Codeberg conversion path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/sphinx/index.rst`, `docs/sphinx/getting-started.md`
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The live audit says Codeberg adoption is flat and explicitly prioritizes stronger repo/docs conversion surfaces over more generic publishing. The first-run and proof surfaces already told people how to evaluate Ralph Workflow, but they were still too weak on the immediate post-run public action. This patch closes that gap with a Codeberg-first "what to do next" path.
+  - Expected outcome: more evaluators who complete or seriously inspect a first run should convert into primary-repo stars/watches or first-run friction/issues on Codeberg instead of leaving with only a private impression.
+  - Measurement window: next 7 days for issue movement / post-run path usage; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending cycles on post-run CTA tightening and shift the next replacement move to an external distribution action that sends traffic directly into the strongest Codeberg-first proof and post-run pages.

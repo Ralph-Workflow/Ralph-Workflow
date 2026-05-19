@@ -306,7 +306,7 @@ def build_weekly_decisions(
             "priority": "high",
             "action": "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
             "reason": reason,
-            "repair": "Replace current content format/distribution approach. Stop write.as-only publishing. Try: (a) direct repo README/CONTRIBUTING improvement, (b) SEO landing pages targeting repo-specific terms, (c) cross-post strategy with explicit Codeberg CTAs.",
+            "repair": "Replace current content format/distribution approach. write.as is dead — use only Telegraph. Try: (a) direct repo README/CONTRIBUTING improvement, (b) SEO landing pages targeting repo-specific terms, (c) cross-post to Dev.to when API key is available, all with explicit Codeberg CTAs.",
             "is_failing_signal": True,
         })
 
@@ -377,7 +377,7 @@ def build_weekly_decisions(
     # Distribution channel decisions
     decisions.append({
         "priority": "ongoing",
-        "action": "Continue write.as + Telegraph posting until blocked channels are unblocked.",
+        "action": "Continue Telegraph posting. write.as is permanently blocked — do not use. Seek Dev.to API key for second platform.",
         "reason": "Working distribution channel. Track ratio of views per post to gauge platform value.",
     })
 
