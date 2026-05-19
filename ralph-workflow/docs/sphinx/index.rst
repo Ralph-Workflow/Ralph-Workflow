@@ -23,6 +23,7 @@ Ralph Workflow
 Choose the first path that matches how you already work tonight:
 
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
+- Already using **OpenCode** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-opencode`.
 - Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
 - Already using **Claude Code** and specifically searching for a better automation / unattended path? Start with :doc:`claude-code-automation`.
 - Already searching for how to run **Claude Code overnight without babysitting**? Start with :doc:`run-claude-code-overnight-without-babysitting`.
@@ -346,6 +347,7 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
    spec-driven-ai-agent
    first-task-guide
    which-agent-should-i-start-with
+   ralph-workflow-vs-opencode
    claude-code-automation
    run-claude-code-overnight-without-babysitting
    claude-code-approval-mode

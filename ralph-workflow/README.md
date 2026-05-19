@@ -18,6 +18,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 
 - [Start Here: try Ralph Workflow on one real backlog task](START_HERE.md)
 - [Already using Claude Code and wondering why you would add Ralph Workflow? Read the direct comparison](docs/sphinx/ralph-workflow-vs-claude-code.md)
+- [Already using OpenCode and wondering why you would add Ralph Workflow? Read the direct comparison](docs/sphinx/ralph-workflow-vs-opencode.md)
 - [Already using Claude Code or Codex? Pick the lowest-friction first agent path](docs/sphinx/which-agent-should-i-start-with.md)
 - [Already splitting work across Claude Code + Codex? Use the cleaner handoff workflow](docs/sphinx/claude-code-codex-workflow.md)
 - [Inspect a public example review bundle first](docs/sphinx/example-review-bundle.md)
@@ -53,6 +54,7 @@ If you already ran Ralph Workflow once and want the shortest path from private e
 If your real question is "which setup should I start with tonight?", use one of these paths instead of reading generic docs first:
 
 - [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md) — choose the agent already installed and authenticated on your machine.
+- [Ralph Workflow vs OpenCode](docs/sphinx/ralph-workflow-vs-opencode.md) — decide when direct provider flexibility is enough and when a reviewable unattended handoff is better.
 - [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better.
 - [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md) — keep the role split, but come back to a cleaner reviewable handoff.
 
