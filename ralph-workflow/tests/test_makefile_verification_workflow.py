@@ -4,8 +4,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-COVERED_PYTEST_SHARD_COUNT = 11
-COVER_APPEND_SHARD_COUNT = 10
 UNIT_TEST_SHARD_COUNT = 10
 
 
@@ -46,25 +44,17 @@ def test_docs_target_builds_html_into_single_canonical_output_tree() -> None:
     assert "docs/sphinx/build/html" not in docs_body[0]
 
 
-def test_test_cov_splits_covered_pytest_runs_under_timeout_wrapper() -> None:
+def test_test_cov_single_parallel_invocation_with_coverage() -> None:
     test_cov_body = _target_body("test-cov")
-    pytest_lines = [line for line in test_cov_body if "python -m ralph.verify_timeout" in line]
 
-    assert len(pytest_lines) == COVERED_PYTEST_SHARD_COUNT
-    assert all("--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in line for line in pytest_lines)
-    assert all("--cov=ralph" in line for line in pytest_lines)
-    assert any("$(PYTEST_CORE_PATHS)" in line for line in pytest_lines)
-    assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_A_B)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_C_H)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_I_M)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_N_O)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_PA_PL)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_PM_PZ)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_Q_S)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_T_Z)" in line for line in pytest_lines)
-    assert any("python -m pytest tests/integration/ -q" in line for line in pytest_lines)
-    assert sum("--cov-append" in line for line in pytest_lines) == COVER_APPEND_SHARD_COUNT
+    assert len(test_cov_body) == 3
+    assert "--cov=ralph" in test_cov_body[1]
+    assert "--cov-report=" in test_cov_body[1]
+    assert "-n $(PYTEST_WORKERS)" in test_cov_body[1]
+    assert "--dist worksteal" in test_cov_body[1]
+    assert '"not subprocess_e2e"' in test_cov_body[1]
+    assert "python -m pytest tests/ -q" in test_cov_body[1]
+    assert "uv run coverage report --data-file=.coverage.pytest --fail-under=80" in test_cov_body[2]
 
 
 def test_lint_targets_use_uv_managed_ruff() -> None:

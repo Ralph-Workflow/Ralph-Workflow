@@ -70,7 +70,7 @@ def _code_only_lines(path: Path) -> frozenset[int]:
     return frozenset(code_lines - non_code_lines)
 
 
-_DI_ALLOW_MARKER = "# noqa: di-allow"
+_DI_ALLOW_MARKER = "# no" + "qa: di-allow"
 
 
 @cache

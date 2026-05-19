@@ -28,7 +28,7 @@ from ralph.runtime import (
     timeout_seconds_from_env,
 )
 from ralph.workspace.memory import MemoryWorkspace
-from tests.integration.test_pipeline_happy_path_pipeline_happy_path import MockAgentInvoker
+from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
 

@@ -26,12 +26,19 @@ from ralph.pipeline.events import AnalysisDecisionEvent, PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
-from tests.integration.test_pipeline_happy_path_pipeline_happy_path import MockAgentInvoker
+from tests.integration._development_analysis_always_loopback_invoker import (
+    DevelopmentAnalysisAlwaysLoopbackInvoker,
+)
+from tests.integration._loopback_once_invoker import LoopbackOnceInvoker
+from tests.integration._planning_analysis_request_changes_once_invoker import (
+    PlanningAnalysisRequestChangesOnceInvoker,
+)
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
     from ralph.workspace.memory import MemoryWorkspace
+    from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 DEVELOPMENT_CYCLES_TWO = 2
@@ -43,64 +50,6 @@ def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
     console = Console(record=True, force_terminal=False, width=120, color_system=None)
     ctx = make_display_context(console=console, force_width=120, force_mode="wide")
     monkeypatch.setattr(runner, "make_display_context", lambda **_kwargs: ctx)
-
-
-class LoopbackOnceInvoker(MockAgentInvoker):
-    """Return a single development-analysis loopback before succeeding."""
-
-    def __init__(self, workspace: MemoryWorkspace) -> None:
-        super().__init__(workspace)
-        self._development_analysis_calls = 0
-        self.last_phase: str | None = None
-
-    def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
-        self.last_phase = phase
-        return super().invoke(agent_name, phase)
-
-    def analysis_event_for(self, phase: str) -> PipelineEvent:
-        if phase == "development_analysis":
-            self._development_analysis_calls += 1
-            if self._development_analysis_calls == 1:
-                return PipelineEvent.ANALYSIS_LOOPBACK
-        return PipelineEvent.ANALYSIS_SUCCESS
-
-
-class PlanningAnalysisRequestChangesOnceInvoker(MockAgentInvoker):
-    """Request planning changes once, then approve if planning_analysis is re-entered."""
-
-    def __init__(self, workspace: MemoryWorkspace) -> None:
-        super().__init__(workspace)
-        self.last_phase: str | None = None
-        self._planning_analysis_calls = 0
-
-    def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
-        self.last_phase = phase
-        return super().invoke(agent_name, phase)
-
-    def analysis_event_for(self, phase: str) -> AnalysisDecisionEvent | PipelineEvent:
-        if phase == "planning_analysis":
-            self._planning_analysis_calls += 1
-            if self._planning_analysis_calls == 1:
-                return AnalysisDecisionEvent(phase="planning_analysis", decision="request_changes")
-            return AnalysisDecisionEvent(phase="planning_analysis", decision="completed")
-        return PipelineEvent.ANALYSIS_SUCCESS
-
-
-class DevelopmentAnalysisAlwaysLoopbackInvoker(MockAgentInvoker):
-    """Force every development analysis run to request changes."""
-
-    def __init__(self, workspace: MemoryWorkspace) -> None:
-        super().__init__(workspace)
-        self.last_phase: str | None = None
-
-    def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
-        self.last_phase = phase
-        return super().invoke(agent_name, phase)
-
-    def analysis_event_for(self, phase: str) -> PipelineEvent:
-        if phase == "development_analysis":
-            return PipelineEvent.ANALYSIS_LOOPBACK
-        return PipelineEvent.ANALYSIS_SUCCESS
 
 
 @lru_cache(maxsize=1)

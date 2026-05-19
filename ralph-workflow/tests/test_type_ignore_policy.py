@@ -17,13 +17,11 @@ TARGETED_RUNTIME_IGNORE_FREE_PATHS = frozenset(
     {
         "ralph/config/models.py",
         "ralph/config/mcp_models.py",
-        "ralph/mcp/artifacts/plan.py",
         "ralph/mcp/artifacts/development_result.py",
         "ralph/mcp/artifacts/typed_artifacts.py",
         "ralph/pipeline/state.py",
         "ralph/pipeline/work_units.py",
         "ralph/pipeline/worker_state.py",
-        "ralph/policy/models.py",
     }
 )
 

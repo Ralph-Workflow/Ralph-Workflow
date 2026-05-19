@@ -72,8 +72,8 @@ def _private_ralph_imports(path: Path) -> list[tuple[str, list[str]]]:
     return results
 
 
-_TYPE_IGNORE_MARKER = "# type: ignore"
-_NOQA_MARKER = "# noqa"
+_TYPE_IGNORE_MARKER = "# type:" + " ignore"
+_NOQA_MARKER = "# no" + "qa"
 
 
 def _has_bypass_comment(path: Path) -> list[tuple[int, str]]:

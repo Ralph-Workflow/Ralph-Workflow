@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.memory import MemoryWorkspace
-from tests.integration.test_pipeline_happy_path_pipeline_happy_path import MockAgentInvoker
+from tests.integration._mock_agent_invoker import MockAgentInvoker
 
 CALL_HISTORY_ENTRY_COUNT = 2
 
