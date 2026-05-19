@@ -27,6 +27,7 @@ Important expectation for evaluators: Ralph Workflow is free and open source, bu
 - `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
 - `review-ai-coding-output-before-merge.md` — five-minute merge review path for the morning-after handoff
 - `bounded-autonomy-for-unattended-coding.md` — keep unattended runs fail-closed, cheap to miss, and easy to review the next morning
+- `remote-supervision-of-coding-agents.md` — for developers who think they need remote supervision but really need a cleaner finish-state trust path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first category page for developers searching for an open-source AI coding orchestrator they can inspect before install
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
@@ -103,6 +104,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
 - `review-ai-coding-output-before-merge.md` — practical merge-review checklist for deciding whether the handoff is trustworthy
 - `bounded-autonomy-for-unattended-coding.md` — practical guide for keeping unattended runs bounded, fail-closed, and reviewable
+- `remote-supervision-of-coding-agents.md` — practical guide for converting live-supervision pain into a cleaner morning-after review path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first explanation of what Ralph Workflow adds if you are comparing open-source AI coding orchestrators
 - `what-a-good-ai-coding-finish-receipt-looks-like.md` — what a short trustworthy morning-after handoff should contain so review does not start with transcript archaeology
 - `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task
