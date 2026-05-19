@@ -108,7 +108,7 @@ installed and already authenticated on your own machine.
 Third-party places to inspect Ralph Workflow
 ============================================
 
-- `GitDB project page <https://gitdb.net/ralph-workflow/ralph-workflow>`_ — inspect the GitHub mirror from a GitHub-native discovery surface.
+- `ToolWise review page <https://toolwise.ai/tools/ralph-workflow>`_ — inspect a live AI-tool review surface that was submitted with Codeberg as the primary destination.
 - `SaaSHub product page <https://www.saashub.com/ralph-workflow>`_ — review the product card with the current positioning.
 - `SaaSHub alternatives <https://www.saashub.com/ralph-workflow-alternatives>`_ — compare Ralph Workflow against adjacent tools in the same browse flow.
 - `TechTools Launchpad listing <https://techtools.cz/tools/launchpad/?tool=71>`_ — a live developer-tools directory entry.

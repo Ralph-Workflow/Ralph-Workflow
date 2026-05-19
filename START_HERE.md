@@ -41,7 +41,7 @@ Once you have a real result, do not stop at a private impression.
 
 That one branch point is the intended finish: either Ralph Workflow earned a public trust signal on Codeberg, or it earned a useful primary-repo issue.
 
-If you want a little more outside proof before you install, you can also inspect Ralph Workflow on [GitDB](https://gitdb.net/Ralph-Workflow/Ralph-Workflow), [SaaSHub](https://www.saashub.com/ralph-workflow), or [TechTools Launchpad](https://techtools.cz/tools/launchpad/?tool=71). Those are not substitutes for your own judgment, but they do give you independent discovery/comparison surfaces before your first run.
+If you want a little more outside proof before you install, you can also inspect Ralph Workflow on [ToolWise](https://toolwise.ai/tools/ralph-workflow), [SaaSHub](https://www.saashub.com/ralph-workflow), or [TechTools Launchpad](https://techtools.cz/tools/launchpad/?tool=71). Those are not substitutes for your own judgment, but they do give you independent discovery/comparison surfaces before your first run.
 
 ## What a good first handoff looks like
 
