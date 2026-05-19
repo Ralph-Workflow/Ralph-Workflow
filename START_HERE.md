@@ -1,5 +1,9 @@
 # Start Here: Use Ralph Workflow on One Real Task
 
+> **GitHub is the mirror. Codeberg is the primary repo.**
+> Inspect, star, watch, and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> Use the GitHub mirror if GitHub is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.

@@ -1,5 +1,8 @@
 # Contributing to Ralph Workflow
 
+> **Primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> Use Codeberg for stars, watches, issues, and contribution tracking. GitHub stays in sync as a mirror for GitHub-native readers: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 Ralph Workflow is now a **Python-first** project. The maintained CLI package lives in `ralph-workflow/`.
 
 ## Start here

@@ -1,5 +1,9 @@
 # Documentation Map
 
+> **Codeberg is the primary repo for Ralph Workflow.**
+> Inspect, star, watch, and open issues there first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> The GitHub mirror stays in sync here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 This repository contains both **current Python documentation** and **legacy Rust-era reference material**.
 
 If you are evaluating Ralph Workflow rather than maintaining it, start with these four questions first:

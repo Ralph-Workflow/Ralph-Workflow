@@ -1,5 +1,9 @@
 # Start Here: Try Ralph Workflow on One Real Backlog Task
 
+> **GitHub is the mirror. Codeberg is the primary repo.**
+> Inspect, star, watch, and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> Use the GitHub mirror if GitHub is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 If you want to know whether Ralph Workflow is worth keeping, do not start with a vague demo.
 
 Start with one real task you already want done, run it unattended, and judge the result like a normal code review.

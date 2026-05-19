@@ -1,6 +1,10 @@
 # Ralph Workflow (Python)
 
 > **Write the spec. Wake up to reviewable output.**
+>
+> **GitHub is the mirror. Codeberg is the primary repo.**
+> Inspect, star, watch, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> Use the GitHub mirror if GitHub is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Ralph Workflow is a **free and open-source** Python 3.12+ CLI that orchestrates the coding agents you already use **on your own machine** for substantial unattended work.
 
