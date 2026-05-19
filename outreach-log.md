@@ -26,6 +26,18 @@
   - Type: **REPAIRED / REPLACING**
 
 ### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-19_1815.md`
+- **Scan summary:** 27 candidate Reddit threads/posts scanned, 6 shortlisted, 21 rejected.
+- **Current verdict:** Mixed — 6 credible discussion opportunities were found, but only 1-2 are decent RalphWorkflow mention fits and 0 are obvious high-confidence product mentions after prior-use, freshness, bounded-autonomy, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code just shipped a \"run until done\" mode. Upgrade to v2.1.139 for /goal."
+  - `r/ClaudeCode` — "Claude Code stuck in \"approval loop\""
+  - `r/ClaudeCode` — "A practical way to run Claude Code tasks in parallel without turning your repo into chaos"
+- **Repeated pains worth tracking:** approval drag / double-confirmation friction, morning-after review/reconstruction, cleanup noise on the human review surface, shared-boundary ownership, fail-closed / runaway-loop anxiety, and long-run memory/schema drift.
+- **Risk note:** repeat-pattern risk is now both literal and structural — two `u/Informal-Salt827` comments on **2026-05-19 09:37 CEST** and **2026-05-19 16:01 CEST** reused the exact same body, and the broader cadence is still converging on **contrast opener -> handoff/reviewer framing -> proof bundle -> product/link close**.
+- **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit monitoring
 - **Report:** `seo-reports/reddit_monitor_2026-05-19_1520.md`
 - **Scan summary:** 29 candidate Reddit threads/posts scanned, 7 shortlisted, 22 rejected.
 - **Current verdict:** Mixed — 7 credible discussion opportunities were found, but only 1–2 are decent RalphWorkflow mention fits and 0 are obvious high-confidence product mentions after prior-use, freshness, and no-product-value filtering.
@@ -2106,3 +2118,52 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Measurement window: next 3 Reddit posting windows for opening-family diversity in generated bodies; next audit window for `repeated_openings` clearing and no new `repetitive_outreach` finding; next 14 days for any Codeberg stars/watchers/issues delta from fresher Reddit traffic.
   - Replace if it fails: if the next audit still flags repetitive openings/cadence or Reddit-driven Codeberg movement stays flat through `2026-06-02`, stop investing in Reddit-body optimization and shift the next replacement move to a new external distribution surface or competitor-citation path that can send warmer traffic directly to Codeberg.
   - Type: **REPAIRED / REWRITTEN**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 18:10:51
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+### RalphWorkflow homepage SEO deploy repair
+- **When:** 2026-05-19 18:19:27 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** restarted the live `ralph_site_puma_production.service` so the already-deployed homepage template changes finally reached `https://ralphworkflow.com/`.
+  - Command path: `systemctl --user restart ralph_site_puma_production.service`
+- **Verification:** before restart, a fresh live fetch still returned the stale homepage metadata (`<title>Ralph Workflow — free CLI for AI coding tasks — Ralph Workflow</title>` with matching stale `og:title` / `twitter:title`). After restart at `2026-05-19 18:19 CEST`, a fresh live fetch returned `<title>Free Unattended AI Coding CLI for Developers — Ralph Workflow</title>` with matching `og:title` and `twitter:title`.
+- **Why this action:** this was the strongest direct Codeberg-conversion repair still locally executable. The audit explicitly prioritized homepage title/description tuning, and the current release already contained stronger homepage copy, but the live app was still serving stale metadata. Shipping a new post while the main public entrypoint leaked the old title would have repeated a weaker tactic instead of repairing the broken funnel.
+- **Expected outcome:** search snippets and social unfurls for the homepage should better match unattended-AI-coding intent, improving qualified clicks into the site and then into the Codeberg-first source path.
+- **Measurement window:** immediate validation on live fetch (done), then 7-14 days for homepage search impressions/click-through and the next 9 adoption samples for Codeberg stars/watchers/issues.
+- **Replace if it fails:** if the live homepage title stays corrected but Codeberg adoption is still flat by `2026-06-02`, stop spending more cycles on homepage metadata alone and replace this lane with the next external distribution/backlink move that can create net-new qualified Codeberg visits.
+### RalphWorkflow Reddit stale-cadence repair follow-up
+- **When:** 2026-05-19 18:37:28 CEST
+- **Type:** CONTINUED / REPAIRED / REPLACING
+- **What I executed:** strengthened the Reddit autopost repair so the `approval` and `run until done` paths stop drifting back toward the stale handoff/diff/checks cadence that the latest audit still flagged. I replaced those category variants with fresher thread-native openings built around landing-state clarity (`finished code`, `tested code`, `what changed`, `what passed`, `would you merge it?`), expanded the recent-body comparison window from `5` to `8`, and added regression coverage for both thread types.
+  - Files: `agents/marketing/reddit_autopost.py`, `agents/marketing/tests/test_reddit_autopost.py`
+- **Verification:** `python3 -m unittest /home/mistlight/.openclaw/workspace/agents/marketing/tests/test_reddit_autopost.py` ✅ (`21` tests passed). I also rendered a sample `run until done` reply and confirmed it no longer uses the banned opener or the old `readable diff / sketchy note` body.
+- **Why this action:** this is **CONTINUED / REPAIRED / REPLACING** a failing tactic. The freshest audit still shows `repetitive_outreach` and a repeated opener on live Reddit comments, which means the earlier repair was not strong enough for the exact thread shapes now appearing. Tightening the generator again was the highest-leverage viable local fix still pending in this run.
+- **Expected outcome:** the next safe Reddit replies should read less templated, stop triggering repeated-opening audits, and preserve warmer trust for Codeberg-first product mentions when a thread is a real fit.
+- **Measurement window:** immediate for generated body quality; next audit window for `repeated_openings` dropping to none; next 1-3 safe Reddit posts and next 7-14 days for whether fresher replies help produce any **Codeberg** star/watch/fork/issue movement.
+- **Replace if it fails:** if the next audit still detects repeated openings or the next safe post batch collapses back into the same cadence, stop relying on on-the-fly variant scoring alone and replace this lane with a stricter per-thread opening bank plus pre-post duplicate blocking before autopost resumes.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 18:38:10
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow AIToolsIndex Codeberg-first backlink refresh
+- **Submitted Ralph Workflow to AIToolsIndex with Codeberg as the primary listing URL**: used the live public submission API at `https://aitoolsindex.org/api/submit/enqueue-tool-submission` to place Ralph Workflow on another searchable AI-tools directory surface that can send evaluators straight to `https://codeberg.org/RalphWorkflow/Ralph-Workflow` instead of the GitHub mirror.
+  - Verification: live `POST` returned HTTP `200` with submission key `ToolSubmission-1779209227001-126e9044-13f6-4b2d-94ec-760a095193da`; follow-up status check at `https://aitoolsindex.org/api/submit/get-tool-submission?key=ToolSubmission-1779209227001-126e9044-13f6-4b2d-94ec-760a095193da` returned HTTP `200` with status `success`.
+  - Why: this is **CONTINUED / REPAIRED / REPLACING**. The audit still says `primary_repo_flat` is the live failure and explicitly prioritizes backlink building via executable directory submissions over more same-surface content churn. AIToolsIndex exposes a real unauthenticated submit backend from this environment, and the listing URL can point directly at Codeberg, which is a cleaner repo-conversion path than another generic post.
+  - Expected outcome: a fresh or refreshed AIToolsIndex listing should create an additional indexed backlink and send more qualified AI-tool evaluators to Codeberg first, improving primary-repo inspections and second-order trust actions.
+  - Measurement window: next 7 days for listing visibility/indexing evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending more cycles on low-context directory submissions alone and shift the next replacement move to a warmer external discussion/citation surface or another direct repo-conversion repair.
+  - Type: **CONTINUED / REPAIRED / REPLACING**
+
+### RalphWorkflow Claude Code `/goal` conversion repair
+- **Shipped and pushed a new Codeberg-first landing path for the live Claude Code `run until done` / `/goal` intent**: added `Claude Code "Run Until Done" Still Needs a Reviewable Finish` and linked it from the public README, docs map, hosted-docs homepage, quickstart, and START_HERE path so evaluators of Claude Code’s new longer-running mode now get a direct answer that routes them to Codeberg first and GitHub second.
+  - Commit: `43b2a573` — `Add Claude Code run-until-done conversion path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/claude-code-run-until-done.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/quickstart.md`, `ralph-workflow/docs/sphinx/claude-code-run-until-done.md`
+  - Verification: pushed successfully to `origin/main` (Codeberg) and `github/main`; Sphinx HTML build passed clean in the isolated marketing worktree after adding the new page to the hidden toctree. The main worktree still has a pre-existing untracked `ralph-workflow/docs/sphinx/agents.md`, so that checkout warns unless that orphan page is handled separately.
+  - Why: this is **NEW / REPAIRED / REPLACING** a failed tactic. The current bottleneck is still `distribution_and_message_to_primary_repo_conversion`, Codeberg adoption is flat, and the audit/watchdog both say to prefer repo/docs conversion repairs over more generic posting. Existing Ralph Workflow surfaces already covered approval mode and overnight runs, but there was no page for the exact live evaluator phrase now surfacing in monitoring: Claude Code `run until done` / `/goal`.
+  - Expected outcome: more qualified Claude Code evaluators should reach a Codeberg-first repo/docs path from this exact intent, improving primary-repo inspections and second-order trust actions.
+  - Measurement window: next 7 days for path/referral evidence on the new page surfaces; next 14 days for **Codeberg** stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop expanding Claude Code landing-page variants alone and replace this lane with a warmer external distribution/citation move that sends traffic directly into the strongest Codeberg-first proof/comparison paths.
+  - Type: **NEW / REPAIRED / REPLACING**

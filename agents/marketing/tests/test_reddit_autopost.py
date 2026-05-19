@@ -173,6 +173,34 @@ class RedditAutopostTests(unittest.TestCase):
         body = reddit_autopost.build_comment(opp, recent=recent)
         self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, body)
         self.assertNotEqual(reddit_autopost.opening_family(body), "approval_drag")
+        self.assertTrue(
+            "what changed, what passed" in body.lower()
+            or "finished code, tested code" in body.lower()
+        )
+
+    def test_build_comment_rewrites_run_until_done_threads_away_from_stale_cadence(self):
+        opp = reddit_autopost.Opportunity(
+            rank=1,
+            title='Claude Code just shipped a "run until done" mode. Upgrade to v2.1.139 for /goal.',
+            url="https://www.reddit.com/r/ClaudeCode/comments/example/",
+            community="r/ClaudeCode",
+            angle="run-until-done only helps if done is bounded, fail-closed, and easy to review",
+            freshness="today",
+            mention_fit="**high**",
+        )
+        recent = [
+            "Honestly the part I'd optimize first is the handoff, not the model stack.\n\n"
+            "If the run ends with one readable diff, real checks, and a short note about what still looks sketchy, you can move fast without lying to yourself about the result.\n\n"
+            "Most of the pain is not raw generation. It's stale assumptions, fuzzy ownership, and nobody making the finish easy to review."
+        ]
+        body = reddit_autopost.build_comment(opp, recent=recent)
+        self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, body)
+        self.assertTrue(
+            "finished code, tested code" in body.lower()
+            or "whether you'd actually merge it" in body.lower()
+        )
+        self.assertNotIn("If the run ends with one readable diff, real checks", body)
+        self.assertFalse(reddit_autopost.body_needs_regeneration(body, recent))
 
     def test_detect_category_separates_handoff_and_mixed_team_threads(self):
         self.assertEqual(reddit_autopost.detect_category("Claude -> Codex -> Claude"), "handoff")

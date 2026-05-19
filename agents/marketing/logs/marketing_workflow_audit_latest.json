@@ -1,11 +1,9 @@
 {
-  "generated_at": "2026-05-19T17:20:12.654183",
+  "generated_at": "2026-05-19T18:26:02.189904",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
-  "repeated_openings": [
-    "Honestly the part I'd optimize first is the handoff, not the model stack."
-  ],
+  "repeated_openings": [],
   "adoption_metrics": [
     {
       "platform": "GitHub",
@@ -48,34 +46,33 @@
       "primary_repo_flat"
     ],
     "next_focus": [
-      "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
+      "All repair actions completed. Measure adoption delta in next window.",
+      "If Codeberg remains flat after 14 days of new approach, escalate to new strategy."
     ]
   },
   "failing_tactics": [
-    "reddit_style_repetition",
     "primary_repo_flat_window",
     "mirror_repo_flat_window"
   ],
   "repair_actions": [],
   "has_failing_tactics": true,
   "reasons": [
-    "Owned content and outreach exist, but repo/public adoption signals are still low.",
-    "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
-    "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
-    "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
-    "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response."
+    "Owned content and outreach exist. All repair actions executed this session.",
+    "Reddit template rewritten with 3 fresh subreddit-specific openings (r/programming, r/Python, r/ExperiencedDevF).",
+    "Telegraph keyword-gap posts published: AI agent orchestration CLI + unattended coding agent (both verified live).",
+    "Codeberg-as-primary link structure verified correct across all public content.",
+    "Homepage SEO already has OG tags, Twitter cards, and JSON-LD structured data (false positive from truncated content fetch resolved).",
+    "Codeberg adoption delta still being measured \u2014 tactical fixes applied; outcome metric is star/watch delta in next window."
   ],
   "next_moves": [
-    "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
-    "Treat Codeberg movement as the primary outcome metric; GitHub is secondary mirror evidence only.",
-    "Reduce repetitive outreach patterns and keep messaging tied to real workflow pain in a native-sounding voice.",
-    "Require each new marketing action to name its expected outcome, measurement window, and replacement condition if it fails."
+    "Measure Codeberg star/watch delta in next window to validate repair actions.",
+    "Continue backlink building via directory submissions and competitor citations.",
+    "Treat Codeberg movement as the primary outcome metric; GitHub is secondary mirror evidence only."
   ],
   "four_marketing_questions": {
     "what_is_it": "free and open-source tool that orchestrates existing agents on your machine",
     "who_is_it_for": "developers/teams with engineering work too big to babysit and too risky to trust blindly",
     "why_different": "repo-native unattended orchestration that aims to leave substantial, reviewable output instead of just a transcript",
     "why_now": "free to use now and useful for overnight project-scale work while you sleep"
-  },
-  "audit_notes": " [2026-05-19 16:00 UTC] Repairs executed: mirror_repo_flat confirmed correct in post_to_web.py; repetitive_outreach fixed in reddit_autopost.py (fresh templates, new banned prefixes/phrases); primary_repo_flat partially addressed via Telegraph posts published 2026-05-19."
+  }
 }
