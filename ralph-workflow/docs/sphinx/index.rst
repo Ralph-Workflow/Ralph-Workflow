@@ -40,6 +40,7 @@ Choose the first path that matches how you already work tonight:
 - Keep reaching for **remote supervision** when the real problem is trusting the finish state? Read :doc:`remote-supervision-of-coding-agents`.
 - Searching for an **open-source AI coding orchestrator** you can inspect on Codeberg first? Read :doc:`open-source-ai-coding-orchestrator`.
 - Evaluating an **AI agent orchestration CLI** and want the practical difference? Read :doc:`ai-agent-orchestration-cli`.
+- Searching for **AI coding workflow automation** and need the morning-after handoff to be reviewable? Read :doc:`ai-coding-workflow-automation`.
 - Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
 - Want a **spec-driven AI agent** instead of a prompt-first loop? Read :doc:`spec-driven-ai-agent`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
@@ -327,6 +328,7 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
    remote-supervision-of-coding-agents
    open-source-ai-coding-orchestrator
    ai-agent-orchestration-cli
+   ai-coding-workflow-automation
    unattended-coding-agent
    spec-driven-ai-agent
    first-task-guide

@@ -111,6 +111,7 @@ If the run goes well, do the public next step on **Codeberg** instead of leaving
 - **I keep thinking I need remote supervision, but really I need a trustworthy finish state.** Read [docs/remote-supervision-of-coding-agents.md](./docs/remote-supervision-of-coding-agents.md).
 - **I am looking for an open-source AI coding orchestrator I can inspect before I install.** Read [docs/open-source-ai-coding-orchestrator.md](./docs/open-source-ai-coding-orchestrator.md).
 - **I am evaluating AI agent orchestration CLIs and want the practical difference.** Read [docs/ai-agent-orchestration-cli.md](./docs/ai-agent-orchestration-cli.md).
+- **I am searching for AI coding workflow automation that ends in a reviewable handoff.** Read [docs/ai-coding-workflow-automation.md](./docs/ai-coding-workflow-automation.md).
 - **I am searching for an unattended coding agent I can actually trust overnight.** Read [docs/unattended-coding-agent.md](./docs/unattended-coding-agent.md).
 - **I want a spec-driven AI agent, not just a bigger prompt loop.** Read [docs/spec-driven-ai-agent.md](./docs/spec-driven-ai-agent.md).
 - **I already use Aider. Why would I use Ralph instead?** Read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
@@ -323,6 +324,7 @@ See [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-outpu
 See [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md) if the main trust gap is still "what changed, what passed, and what still needs my judgment?"
 See [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md) if the only thing blocking you is choosing the first agent path.
 See [docs/claude-code-automation.md](./docs/claude-code-automation.md) if your current search/problem shape is specifically Claude Code automation and you want a Codeberg-first path to a reviewable unattended run.
+See [docs/ai-coding-workflow-automation.md](./docs/ai-coding-workflow-automation.md) if your current search/problem shape is broader AI coding workflow automation and the real question is whether the morning-after result is actually reviewable.
 See [docs/run-claude-code-overnight-without-babysitting.md](./docs/run-claude-code-overnight-without-babysitting.md) if your exact problem is getting Claude Code to run overnight without terminal babysitting.
 See [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md) if Claude Code is already your default and you want the sharpest contrast before trying Ralph.
 See [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md) for copy-paste starter specs you can adapt tonight.
