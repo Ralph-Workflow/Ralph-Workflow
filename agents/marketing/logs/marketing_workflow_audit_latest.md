@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-19T05:22:57.415556
+- Generated: 2026-05-19T06:20:05.577054
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -31,11 +31,28 @@
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
 
+## Post-repair status (May 19 morning cycle)
+**Conversion infrastructure is now solid.** The May 18-19 repair actions completed the conversion-side work:
+- Reddit routing → Codeberg primary ✅
+- Telegraph cross-posts with Codeberg CTAs ✅ (write.as is dead: `https://write.as/contentisblocked`)
+- Proof doc CTAs tightened ✅
+- 3 new conversion pages shipped ✅
+- Codeberg issue forms added ✅
+- Next-window Reddit packet ready with 3 fresh Codeberg-linked drafts ✅
+
+**The bottleneck has narrowed.** New bottleneck: `distribution_execution_hn_lobsters_blocked`
+- HN submission: HTTP 429 from this host (rate-limited). Submission packets updated to use live Telegraph URLs but cannot be auto-executed.
+- Lobsters: requires login. Packets updated but cannot be auto-executed.
+- write.as: completely non-deliverable — do not attempt future write.as posts.
+- Telegraph: working, 2 URLs for same article (`...05-19` and `...05-19-2`), using `-2` as canonical.
+
 ## Next highest-leverage moves
-- Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.
-- Treat Codeberg movement as the primary outcome metric; GitHub is secondary mirror evidence only.
-- Reduce repetitive outreach patterns and keep messaging tied to real workflow pain in a native-sounding voice.
-- Require each new marketing action to name its expected outcome, measurement window, and replacement condition if it fails.
+1. **Execute HN submission** (manual; rate-limited from this host — may need browser/human action)
+2. **Execute Lobsters submission** (manual; requires login)
+3. **Stop all write.as posting attempts** — platform is non-deliverable from this environment
+4. **Audit in-flight directory submissions** — confirm which are live, approved, and pointing to Codeberg
+5. **If HN/Lobsters blocked for >7 more days:** pursue dev.to or Hashnode cross-post from Telegraph content
+6. **14-day Codeberg delta gate:** if still flat after 2026-06-02, the problem is channel quality/fit and the next move is platform-reach analysis rather than more conversion work
 
 ## Four marketing questions that messaging must answer
 - what_is_it: free and open-source tool that orchestrates existing agents on your machine
@@ -46,5 +63,3 @@
 ## Principle reference
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md`
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/FOUR_MARKETING_QUESTIONS.md`
-Audit timestamp: 2026-05-19T03:24:03Z
-Next checkpoint: 2026-05-26 (7-day mid-point) / 2026-06-02 (14-day kill condition)

@@ -7,7 +7,7 @@ Story: === LOBSTERS SUBMISSION PACKET ===
 
 Primary asset:
 - Article: How to Tell if an AI Coding Task Is Actually Done
-- Article URL: https://write.as/7pqpd2y0v0re2.md
+- Article URL: https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
 - Primary Codeberg repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 - GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 - Main site: https://ralphworkflow.com
@@ -22,7 +22,7 @@ Tags:
 ai, programming, tools
 
 URL:
-https://write.as/7pqpd2y0v0re2.md
+https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
 
 Why this asset:
 - technical enough for Lobsters if kept workflow-first and non-promotional

@@ -2,6 +2,18 @@
 
 ## 2026-05-19 (Tuesday)
 
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-19_0717.md`
+- **Scan summary:** 28 candidate Reddit threads/posts scanned, 7 shortlisted, 21 rejected.
+- **Current verdict:** Mixed — 7 credible discussion opportunities were found, but only 2–3 are arguable RalphWorkflow mention fits and none are obvious high-confidence product mentions after prior-use, freshness, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code approval / plan mode questions"
+  - `r/ClaudeCode` — "Remote supervision of coding agents"
+  - `r/ClaudeCode` — "Impressions two weeks after moving from Claude Code to Codex"
+- **Repeated pains worth tracking:** approval drag, visible finish-state trust, handoff ownership, cleanup noise, worktree/setup friction that does not solve the merge question, and remote-supervision requests that are really morning-after review problems.
+- **Risk note:** prior-use saturation is now severe enough that the same strong search hits keep resurfacing after they have already been used, and prior-body repetition is still as much about **contrast opener -> builder/reviewer split -> finish proof -> link** as about exact wording.
+- **Posting note:** No posting attempted from this monitor pass.
+
 ### RalphWorkflow Telegraph distribution repair
 - **Cross-posted the strongest trust article to Telegraph with Codeberg-first CTA**: published `How to Tell if an AI Coding Task Is Actually Done` on Telegraph so the best existing trust/distribution asset is no longer trapped in a write.as-only lane and now sends readers to Codeberg first, GitHub second.
   - Live URL: `https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19`
@@ -11,6 +23,16 @@
   - Expected outcome: more qualified top/mid-funnel readers should reach the Codeberg repo from a practical trust-oriented article instead of a product pitch, with a secondary chance of more Codeberg stars/watchers/issues if the article matches search/discovery intent.
   - Measurement window: next 7 days for Telegraph views / referral evidence; next 14 days for Codeberg stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending cycles on owned cross-posting alone and shift the next replacement move to a higher-distribution external surface that can directly send traffic into the strongest Codeberg-first proof/comparison pages.
+
+### RalphWorkflow workflow-article Telegraph distribution repair
+- **Cross-posted the Claude Code + Codex workflow asset to Telegraph with Codeberg-first CTA**: published `Claude Code + Codex Workflow: Plan, Build, Review` on Telegraph so one of the strongest existing workflow/distribution assets is no longer stranded in write.as-only distribution and now sends readers to Codeberg first, GitHub second.
+  - Live URL: `https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-19`
+  - Verification: live fetch returned HTTP 200 and the published title/body plus Codeberg/GitHub CTA block are readable.
+  - Source draft: `drafts/2026-05-19_claude-code-codex-workflow_telegraph.md`
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The current audit says the bottleneck is `distribution_and_message_to_primary_repo_conversion` and explicitly says to stop defaulting to write.as-only publishing. README/START_HERE/CONTRIBUTING already have strong Codeberg-first conversion surfaces, so the highest-leverage executable move right now was to reuse the strongest workflow article on an unblocked second public surface with an explicit Codeberg-primary close.
+  - Expected outcome: more qualified workflow-search and tool-comparison readers should reach the Codeberg repo from a practical plan/build/review article, with secondary upside on Codeberg stars/watchers/issues if the asset matches current evaluator intent.
+  - Measurement window: next 7 days for Telegraph views / referral evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending cycles on owned cross-posting alone and shift the next replacement move to a higher-distribution external surface or direct distribution into existing Codeberg-first proof/comparison pages.
 
 ### RalphWorkflow example-review-bundle conversion repair
 - **Strongest proof asset now closes on Codeberg**: patched the public `example-review-bundle` proof page and its hosted-docs mirror so visitors who already trust the morning-after handoff now get an explicit Codeberg-first next step instead of a content dead-end.
@@ -1473,3 +1495,74 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Expected outcome: more qualified Codeberg repo inspections from Claude Code users searching for approval-mode / plan-mode answers, with a secondary increase in Codeberg stars/watchers/issues because the new page closes on primary-repo actions.
   - Measurement window: next 7 days for page-path / repo-inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding approval/supervision trust pages and shift the next replacement move to a live external distribution action that sends traffic directly into the strongest Codeberg-first proof/comparison pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 06:13:35
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages.
+
+### Apollo monitor
+- **When:** 2026-05-19 06:19:49
+- **Note:** Apollo status changed from `script_failure` to `ato_email_verification_required`.
+
+## 2026-05-19 (Tuesday) — Morning Audit Cycle
+
+### Critical finding: write.as is dead, Telegraph is live
+- `write.as` returns `https://write.as/contentisblocked` — completely non-deliverable.
+- All 8 posts in the past 30 days on write.as have 0 views confirmed by `marketing_momentum_watchdog.json`.
+- Telegraph cross-posts are live and working.
+- **Action taken:** Fixed all HN/Lobsters submission packets to use live Telegraph URL (`https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2`) instead of dead write.as URL. Updated `drafts/2026-05-18_hackernews_post.txt`, `drafts/2026-05-18_lobsters_post.txt`, `drafts/checklist_2026-05-18_hackernews_post.txt`, `drafts/checklist_2026-05-18_lobsters_post.txt`.
+
+### Bottleneck diagnosis: conversion infrastructure is now solid
+The May 18-19 repairs completed the conversion side:
+- Reddit routing → Codeberg ✅
+- Telegraph cross-posts with Codeberg CTAs ✅
+- Proof doc CTAs tightened ✅
+- 3 new conversion pages (remote-supervision, Codex comparison, SEO landing) ✅
+- Codeberg issue forms ✅
+
+**The bottleneck has shifted from conversion infrastructure to distribution execution.**
+
+### HN/Lobsters status
+- HN submission: HTTP 429 from this host (rate-limited). Packets are fixed and ready.
+- Lobsters: requires login. Packets are fixed and ready.
+- Both require manual execution. The workflow cannot automate past these blocks.
+
+### Telegraph duplicate: no action needed
+- Two live URLs for the same trust article: `...05-19` and `...05-19-2` (Telegraph auto-dedup suffix)
+- Both contain identical content. Using `-2` version as canonical in submission packets.
+- Not worth cleaning up; two URLs increase surface area slightly.
+
+### What the 14-day window will test
+If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
+1. Telegraph articles are live with Codeberg CTAs
+2. Reddit posts route to Codeberg
+3. All directory submissions are in-flight
+→ The problem is not conversion surfaces and not content. It is distribution channel quality/fit, and the next move must be higher-distribution platform hunting (HN, Lobsters manual execution, or direct audience-outreach via Apollo when unblocked).
+
+
+### RalphWorkflow orchestration/spec-driven conversion repair
+- **Shipped two new Codeberg-first SEO/comparison pages for live evaluator intents**: added public `AI Agent Orchestration CLI` and `Spec-Driven AI Agent` pages plus surfaced them across the highest-intent repo/docs entry points so developers arriving with orchestration-cli or spec-first search intent now get a direct path into Codeberg instead of bouncing or defaulting to generic category copy.
+  - Commit: `7baf4c78` — `Add orchestration and spec-driven conversion pages`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `docs/ai-agent-orchestration-cli.md`, `docs/spec-driven-ai-agent.md`, `README.md`, `docs/README.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/getting-started.md`, `ralph-workflow/docs/sphinx/quickstart.md`, `ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md`, `ralph-workflow/docs/sphinx/spec-driven-ai-agent.md`
+  - Verification: file existence + entry-point reference checks passed; commit pushed to both remotes. Full Sphinx build gate could not run here because `python3 -m sphinx` is unavailable in this environment.
+  - Why: this is **NEW / REPLACING** a failed tactic. The audit says flat content/distribution should be replaced with stronger repo conversion surfaces and SEO landing pages targeting repo-specific search terms. `AI agent orchestration CLI` and `spec-driven AI agent` were still uncovered evaluator intents even after the earlier category/trust repairs.
+  - Expected outcome: more qualified Codeberg repo inspections from search/comparison evaluators who already know roughly what they want, with secondary upside on Codeberg stars/watchers/issues because the new pages close on Codeberg-first actions.
+  - Measurement window: next 7 days for page-path usage / repo-inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding new repo-intent landing pages and shift the next replacement move to a higher-distribution external surface that sends traffic directly into the strongest Codeberg-first proof/comparison paths.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 06:48:07
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow hosted-docs stale-index repair
+- **Repaired the hosted-docs build/output path so stale low-intent docs pages stop surviving into public SEO surfaces, and removed dead write.as links from the docs homepage source**: patched `ralph-workflow/Makefile` so `make docs` and `make docs-linkcheck` now delete their prior build directories before rebuilding, then updated `ralph-workflow/docs/sphinx/index.rst` so the public "deeper workflow argument" block no longer points at dead `write.as` URLs and instead routes to live Telegraph/internal docs paths.
+  - Files: `ralph-workflow/Makefile`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/tests/test_sphinx_documentation_setup.py`
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The current bottleneck is still `distribution_and_message_to_primary_repo_conversion`, and the live SEO audit showed low-intent `/docs/_modules/*` pages leaking into the public sitemap while the hosted docs homepage still carried dead write.as links. That quietly burns crawl budget, trust, and qualified repo-routing quality even when conversion content is otherwise stronger.
+  - Verification:
+    - `uv run python -m pytest tests/test_sphinx_documentation_setup.py -q` → **16 passed**
+    - Seeded fake stale files in `docs/sphinx/_build/html/_modules/` and `docs/sphinx/_build/html/genindex.html`, then ran `make docs`; those stale files were removed and no `_modules`, `genindex.html`, or `py-modindex.html` remained in the rebuilt output tree.
+    - `make docs` still exits non-zero because of pre-existing Sphinx warnings treated as errors: `bounded-autonomy-for-unattended-coding.md` and `remote-supervision-of-coding-agents.md` are not included in any toctree.
+  - Expected outcome: cleaner docs/sitemap surfaces should improve search traffic quality and reduce trust leaks, so a higher share of organic/docs visitors reaches the Codeberg-first evaluation path instead of low-intent generated pages or dead article links.
+  - Measurement window: next 7 days for sitemap/organic-path quality checks; next 14 days for Codeberg stars/watchers/forks delta.
+  - Replace if it fails: if Codeberg stars/watchers/forks are still flat through 2026-06-02 after the cleaned docs surface is live, stop spending cycles on docs-index hygiene and shift the next replacement move to a higher-reach distribution surface that can send traffic directly into the strongest Codeberg-first proof/comparison pages.

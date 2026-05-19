@@ -62,9 +62,10 @@ Add whatever helps you do your job. This is your cheat sheet.
   - Note: keep only for historical recovery context; do not post from this account.
 
 ### Apollo.io
-- **Username:** `ken@ralphworkflow.com`
+- **Login username:** `ken@hireaegis.com`
 - **Password:** `ngzcz!tS*jWo4dY1QjlZ@cxAd2r2c$Tf`
-  - Note: `ken@hireaegis.com` was outdated; use `ken@ralphworkflow.com` as the Apollo source of truth.
+- **Verification mailbox:** `ken@ralphworkflow.com`
+  - Rule: Apollo login uses `ken@hireaegis.com`, but device/email verification codes are expected in `ken@ralphworkflow.com`.
 
 ## Git Hosting
 

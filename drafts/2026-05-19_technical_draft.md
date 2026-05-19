@@ -52,3 +52,7 @@ If any check fails, the loop goes back with specific feedback.
 Without this, unattended runs are just unattended bug creation. With it, the loop acts as an automated senior developer review on every commit.
 
 This is the difference between "it ran" and "it's correct."
+
+---
+
+**Try it on Codeberg:** [RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star, fork, and open issues there. The GitHub mirror is at [Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow) if you prefer it.

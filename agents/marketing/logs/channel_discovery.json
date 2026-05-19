@@ -148,7 +148,7 @@
       "url": "https://slashdot.org/submission",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-19T03:18:07.423802",
+      "timestamp": "2026-05-19T07:10:22.717667",
       "http_code": "200",
       "final_url": "https://slashdot.org/submission",
       "status": "login_required",
@@ -200,11 +200,10 @@
       "url": "https://saashub.com",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-19T01:58:47.202843",
+      "timestamp": "2026-05-19T07:10:21.536708",
       "http_code": "200",
       "final_url": "https://www.saashub.com/",
-      "status": "login_required",
-      "note": "submission leaderboard is public, but executable submission is blocked in practice by account creation/auth requirements and hCaptcha"
+      "status": "accessible"
     },
     {
       "name": "productpapa",
@@ -291,7 +290,7 @@
       "url": "https://www.toolhunter.cc/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-19T03:18:08.687764",
+      "timestamp": "2026-05-19T07:10:24.001258",
       "http_code": "200",
       "final_url": "https://www.toolhunter.cc/submit",
       "status": "broken_submit_surface",
@@ -301,7 +300,7 @@
         "input_count": 0,
         "textarea_count": 0,
         "select_count": 0,
-        "body_excerpt": "TOOLHUNTER\nBrowse\nTrending\nCategories\nBookmarks\nSubmit\nSubmit a Tool\n\nKnow a developer tool that should be featured? Fill out the form below and we'll review it within 48 hours.\n\nWe review every submission manually. Tools must be relevant to developers.\n\nTOOLHUNTER\n\nCurated directory of the best AI tools for developers, open-source CLI utilities, and AI coding assistants.\n\nNAVIGATION\n\nBrowse All Tools\nAll Categories\nTrending\nChangelog\nSubmit a Tool\nBookmarks\n\nLEGAL\n\nTerms of Use\nPrivacy Policy\n\nCATEGORIES\n\n3D Biology UI\n3D Reconstruction Models\n3D SVG Editors\nAI 3D Generation Tools\nAI API Gateways\nAI API Guides\nAI API Proxies\nAI Account Automation\n+752 more categories \u2192\n\u00a9 2026 ToolHunter. All rights reserved.\nTerms of Use\nPrivacy Policy\nMade with \u2764\ufe0f by ToolHunter\nDiscover more\nMachine Lear",
+        "body_excerpt": "TOOLHUNTER\nBrowse\nTrending\nCategories\nBookmarks\nSubmit\nSubmit a Tool\n\nKnow a developer tool that should be featured? Fill out the form below and we'll review it within 48 hours.\n\nWe review every submission manually. Tools must be relevant to developers.\n\nTOOLHUNTER\n\nCurated directory of the best AI tools for developers, open-source CLI utilities, and AI coding assistants.\n\nNAVIGATION\n\nBrowse All Tools\nAll Categories\nTrending\nChangelog\nSubmit a Tool\nBookmarks\n\nLEGAL\n\nTerms of Use\nPrivacy Policy\n\nCATEGORIES\n\n3D Biology UI\n3D Reconstruction Models\n3D SVG Editors\nAI 3D Generation Tools\nAI API Gateway\nAI API Gateways\nAI API Guides\nAI API Proxies\n+786 more categories \u2192\n\u00a9 2026 ToolHunter. All rights reserved.\nTerms of Use\nPrivacy Policy\nMade with \u2764\ufe0f by ToolHunter\nDiscover more\nMachine Learning & ",
         "forms": []
       },
       "source_probe": {
@@ -334,7 +333,7 @@
       "url": "https://devpages.io/submit-a-tool",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-19T03:18:16.294266",
+      "timestamp": "2026-05-19T07:10:29.863697",
       "http_code": "200",
       "final_url": "https://devpages.io/submit-a-tool",
       "status": "noop_submit_surface",
@@ -394,7 +393,7 @@
       "url": "https://toolshelf.dev/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-19T03:17:47.171155",
+      "timestamp": "2026-05-19T07:10:15.281509",
       "http_code": "200",
       "final_url": "https://toolshelf.dev/submit",
       "status": "accessible",
@@ -503,6 +502,12 @@
     }
   ],
   "working": [
+    {
+      "name": "saashub",
+      "url": "https://saashub.com",
+      "method": "submit",
+      "difficulty": "easy"
+    },
     {
       "name": "toolshelf",
       "url": "https://toolshelf.dev/submit",
