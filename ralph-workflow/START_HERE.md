@@ -41,6 +41,9 @@ That is a better evaluation than reading more marketing copy.
 
 If you already know your first question is really about tool fit, do not dig through the full docs first:
 
+- Comparing orchestration CLIs? Read [AI Agent Orchestration CLI](docs/ai-agent-orchestration-cli.md)
+- Want a spec-first evaluation path? Read [Spec-Driven AI Agent](docs/spec-driven-ai-agent.md)
+- Specifically evaluating Claude Code automation? Read [Claude Code Automation](docs/claude-code-automation.md)
 - Already using one agent and want the lowest-friction setup? Read [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md)
 - Already using OpenCode and wondering whether you still need Ralph Workflow? Read [Ralph Workflow vs OpenCode](docs/ralph-workflow-vs-opencode.md)
 - Already splitting work across Claude Code and Codex? Read [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md)
@@ -122,12 +125,12 @@ Do not let the first run end as a private opinion.
 
 - If the result looked genuinely useful, put the adoption signal on the **primary Codeberg repo**: star it, watch it, and keep the repo handy for the next real task.
 - If the run exposed friction, file it on **Codeberg** so the fix lands on the primary repo instead of disappearing into a private note.
-- Use [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md) for the short scorecard and the exact Codeberg-first next step before you bother with the GitHub mirror.
+- Use [After Your First Ralph Workflow Run](docs/after-your-first-run.md) for the short scorecard and the exact Codeberg-first next step before you bother with the GitHub mirror.
 
 ## Next links
 
 - [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts before your own first run
-- [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md) — turn a promising run or a rough run into the right Codeberg-first action
+- [After Your First Ralph Workflow Run](docs/after-your-first-run.md) — turn a promising run or a rough run into the right Codeberg-first action
 - [Getting Started](docs/sphinx/getting-started.md)
 - [Quickstart](docs/sphinx/quickstart.md)
 - [Docs site](https://ralphworkflow.com/docs)
