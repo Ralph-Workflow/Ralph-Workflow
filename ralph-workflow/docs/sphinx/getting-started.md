@@ -174,6 +174,8 @@ That is the real product test.
 
 If you want to see what a trustworthy handoff looks like before your first run, read [What Good Ralph Workflow Output Looks Like](reviewable-output.md).
 
+If the run is promising or exposes useful friction, use [After Your First Ralph Workflow Run](after-your-first-run.md) to turn that private result into the right public Codeberg action.
+
 ## What happens during a run
 
 You do not need the full internal model to operate Ralph Workflow. The short version is:
@@ -223,6 +225,7 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 - [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, merged-state checks, finish receipts, and the trust failures that show up before raw merge conflicts
 - [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — practical five-minute merge checklist for the morning-after handoff
 - [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md) — exact shape of the short handoff that should save you from transcript archaeology
+- [After Your First Ralph Workflow Run](after-your-first-run.md) — quick post-run scorecard plus the right Codeberg-first next step
 - [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md) — the clearest comparison if your current baseline is interactive AI pair programming
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — shorter proof overview and the merge test
 - [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts

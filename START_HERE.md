@@ -57,6 +57,8 @@ If you want the longer version of that artifact before you run anything, inspect
 
 If your first run hits confusing setup, weak docs, or a handoff you would not trust yet, report it on **Codeberg** here: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. The new Codeberg-first issue forms are meant for exactly that feedback.
 
+If the run is promising, use [After Your First Ralph Workflow Run](./docs/after-your-first-run.md) to turn that private first run into the right public Codeberg action.
+
 ## The only three steps that matter on a first evaluation
 
 1. **Inspect the primary repo on Codeberg first** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
@@ -129,6 +131,8 @@ Then review the result like normal engineering work and ask one question:
 
 If yes, give Ralph Workflow a harder task tomorrow night — and star or watch Ralph Workflow on **Codeberg**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 If not, tighten the task or checks and run again — or report the friction on **Codeberg**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+
+Need the shortest post-run scorecard? Use [After Your First Ralph Workflow Run](./docs/after-your-first-run.md).
 
 ## Only use these extra guides if the main path still leaves one question
 

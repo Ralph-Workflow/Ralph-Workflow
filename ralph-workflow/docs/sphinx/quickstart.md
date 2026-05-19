@@ -113,6 +113,8 @@ Ask:
 
 That is the real first-run test.
 
+If you want the shortest post-run scorecard plus the right public next step, use [After Your First Ralph Workflow Run](after-your-first-run.md).
+
 ## Where to go next
 
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean pass/fail evaluation
@@ -125,6 +127,7 @@ That is the real first-run test.
 - [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — practical guide for the trust/reconstruction failures that show up before raw Git conflicts
 - [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — practical five-minute merge checklist for the morning-after handoff
 - [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md) — the exact short handoff that should tell you what changed, what passed, and what still needs judgment
+- [After Your First Ralph Workflow Run](after-your-first-run.md) — quick post-run scorecard plus the right Codeberg-first next step
 - [Bounded Autonomy for Unattended Coding](bounded-autonomy-for-unattended-coding.md) — keep unattended runs fail-closed, cheap to miss, and easy to inspect the next morning
 - [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md) — the clearest comparison if your current baseline is interactive AI pair programming
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see the shorter proof overview and the merge test

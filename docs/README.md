@@ -22,6 +22,7 @@ If you are here to decide whether Ralph Workflow is worth a real try, start with
 1. `../START_HERE.md` — shortest honest first-run path
 2. `example-review-bundle.md` — public proof of the morning-after handoff shape
 3. `review-ai-coding-output-before-merge.md` — the five-minute merge test for judging whether the result really holds up
+4. `after-your-first-run.md` — the shortest path from a private first run to a Codeberg star/watch or a useful issue
 
 Everything else in this docs map is secondary until after that first Codeberg-first evaluation.
 
@@ -33,6 +34,7 @@ Everything else in this docs map is secondary until after that first Codeberg-fi
 - `claude-code-automation.md` — Codeberg-first answer for developers searching specifically for Claude Code automation but who really need a reviewable unattended handoff
 - `ralph-workflow-vs-codex-cli.md` — comparison page for developers deciding whether staying interactive in Codex CLI is enough or whether they need a reviewable unattended handoff
 - `example-review-bundle.md` — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
+- `after-your-first-run.md` — use a two-minute scorecard to turn the first run into a Codeberg star/watch or a useful issue
 - `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
 - `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
 - `review-ai-coding-output-before-merge.md` — five-minute merge review path for the morning-after handoff
@@ -107,6 +109,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `template-guide.md` — template usage
 - `git-workflow.md` — Git workflow with Ralph
 - `example-review-bundle.md` — public sample of a morning-after handoff: prompt, development result, review/fix notes, and machine-readable artifacts
+- `after-your-first-run.md` — quick post-run scorecard and Codeberg-first next-step guide
 - `first-task-guide.md` — practical first-task chooser for the first real unattended run
 - `which-agent-should-i-start-with.md` — practical first-run agent-choice guide for Claude Code, Codex, and OpenCode users
 - `claude-code-automation.md` — practical guide for developers who already like Claude Code but need a trustworthy automation / overnight finish path

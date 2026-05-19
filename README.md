@@ -41,6 +41,7 @@ If you only want the shortest honest path before you decide whether Ralph Workfl
 1. **Inspect the primary repo on Codeberg first** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 2. **Run one real first task with the shortest setup path** — [START_HERE.md](./START_HERE.md)
 3. **Check the public proof asset before or after that run** — [docs/example-review-bundle.md](./docs/example-review-bundle.md)
+4. **Use the first-run scorecard and turn the result into a Codeberg action** — [docs/after-your-first-run.md](./docs/after-your-first-run.md)
 
 Everything else in this README is there to answer a specific objection. The main evaluation path is still simple: inspect the Codeberg repo, run one bounded backlog task, and ask whether you would merge the result.
 
@@ -69,6 +70,8 @@ That is the real promise: not “the agent seemed smart,” but **a bounded diff
 If you want the fuller artifact shape before you install, inspect the public [example review bundle](./docs/example-review-bundle.md).
 
 If you try a real first run and anything feels unclear, shaky, or harder than it should, report it on **Codeberg** with the new first-run issue path: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. That is the fastest way to improve the real adoption path without splitting feedback across the mirror.
+
+If the run goes well, do the public next step on **Codeberg** instead of leaving the evaluation private: [docs/after-your-first-run.md](./docs/after-your-first-run.md).
 
 ## Deeper paths only if one specific objection is blocking you
 

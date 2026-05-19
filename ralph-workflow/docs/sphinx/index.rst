@@ -36,6 +36,7 @@ Choose the first path that matches how you already work tonight:
 - Searching for an **open-source AI coding orchestrator** you can inspect on Codeberg first? Read :doc:`open-source-ai-coding-orchestrator`.
 - Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
+- Already finished a first run and want the right public next step? Read :doc:`after-your-first-run`.
 
 .. note::
 
@@ -335,6 +336,7 @@ Then come back and ask one question:
    review-ai-coding-output-before-merge
    what-a-good-ai-coding-finish-receipt-looks-like
    example-review-bundle
+   after-your-first-run
    quickstart
    concepts
 
