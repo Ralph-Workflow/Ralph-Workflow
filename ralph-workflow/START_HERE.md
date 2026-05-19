@@ -2,7 +2,7 @@
 
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect, star, watch, and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> Use the GitHub mirror if GitHub is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+> Use the GitHub mirror only as a secondary follow/read surface if GitHub is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 If you want to know whether Ralph Workflow is worth keeping, do not start with a vague demo.
 
@@ -46,7 +46,7 @@ If you already know your first question is really about tool fit, do not dig thr
 - Already splitting work across Claude Code and Codex? Read [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md)
 - Want proof before setup? Open the [Example Review Bundle](docs/sphinx/example-review-bundle.md)
 
-If you want to inspect the project where you already follow open-source work, Ralph Workflow is published on Codeberg and mirrored on GitHub:
+If you want to inspect the project before you run anything, start on Codeberg and keep GitHub in reserve as the mirror:
 
 - Primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - GitHub mirror: <https://github.com/Ralph-Workflow/Ralph-Workflow>
@@ -121,7 +121,7 @@ Do not let the first run end as a private opinion.
 
 - If the result looked genuinely useful, put the adoption signal on the **primary Codeberg repo**: star it, watch it, and keep the repo handy for the next real task.
 - If the run exposed friction, file it on **Codeberg** so the fix lands on the primary repo instead of disappearing into a private note.
-- Use [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md) for the short scorecard and the exact Codeberg-first next step.
+- Use [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md) for the short scorecard and the exact Codeberg-first next step before you bother with the GitHub mirror.
 
 ## Next links
 

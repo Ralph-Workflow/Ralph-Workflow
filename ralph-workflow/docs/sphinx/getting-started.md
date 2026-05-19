@@ -59,7 +59,7 @@ If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fi
 If you are comparing category options first, read [Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For](open-source-ai-coding-orchestrator.md).
 If you are comparing orchestration tools directly, read [AI Agent Orchestration CLI: A Practical Comparison for Developers](ai-agent-orchestration-cli.md).
 If the missing piece is a spec-first mental model instead of a bigger prompt, read [Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt](spec-driven-ai-agent.md).
-Use the primary repo on Codeberg for inspection, stars, watches, and issues: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The GitHub mirror is here if you already track projects there: <https://github.com/Ralph-Workflow/Ralph-Workflow>.
+Use the primary repo on Codeberg for inspection, stars, watches, and issues: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>. Once you finish a first run, use [After Your First Ralph Workflow Run](after-your-first-run.md) to turn that result into the right Codeberg action. The GitHub mirror is still here if you already track projects there: <https://github.com/Ralph-Workflow/Ralph-Workflow>.
 
 ## Before you start
 

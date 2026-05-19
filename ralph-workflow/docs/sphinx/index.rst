@@ -17,7 +17,7 @@ Ralph Workflow
        <a class="hero-cta hero-cta-secondary" href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Inspect on Codeberg</a>
      </div>
      <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
-     <p class="hero-proof-note">Prefer to inspect the code before installing or follow the project where you already evaluate open source? <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Review, star, watch, or fork the primary Codeberg repo</a>. If GitHub is where you already track projects, the <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">mirror is there too</a>.</p>
+     <p class="hero-proof-note">Before you install, <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">inspect the primary Codeberg repo first</a>. After your first run, use <a href="after-your-first-run.html">the short Codeberg-first scorecard</a> to decide whether the right public next step is a star/watch or a useful issue.</p>
    </section>
 
 Choose the first path that matches how you already work tonight:
@@ -104,9 +104,9 @@ Why try it now? Because you can use the agents you already trust on your own mac
 backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
 If you prefer to inspect or follow open-source projects on GitHub, Ralph Workflow also has a synced
-public mirror there. The primary repo lives on Codeberg, and that is where stars, watches, forks,
-issues, and contribution history should accumulate. Use GitHub when it helps discovery; use
-Codeberg for the main project relationship.
+public mirror there. But keep the first real project relationship on Codeberg: that is where stars,
+watches, forks, issues, and contribution history should accumulate. Use GitHub when it helps
+discovery; use Codeberg for the main project relationship.
 
 Important first-run expectation: Ralph Workflow is free and open source, but it does not replace
 the coding agents you already use. Before you start, have at least one supported agent CLI already
