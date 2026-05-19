@@ -1,7 +1,7 @@
-.. title:: Unattended coding agent
+.. title:: Free AI Agent Orchestration CLI — Ralph Workflow
 
 .. meta::
-   :description: Ralph Workflow is a free open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode on your machine.
+   :description: Free AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Run unattended coding tasks on your own machine with spec-driven workflow and reviewable output.
 
 Ralph Workflow
 ==============
