@@ -44,7 +44,7 @@ Bad first tasks:
 If you want a sharper pass/fail filter before you install, read [Choose Your First Ralph Workflow Task](first-task-guide.md).
 If you are unsure whether to start with Claude Code, Codex, or OpenCode, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 If Claude Code is already your default and the real thing you want is a more trustworthy automation / unattended handoff, read [Claude Code Automation for Real Repo Work](claude-code-automation.md).
-If Claude Code is already your default and you want the clearest answer to “why add Ralph at all?”, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md).
+If Claude Code is already your default and you want the clearest answer to “why add Ralph Workflow at all?”, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md).
 If Codex CLI is already your default and you want to know when an unattended reviewable handoff is the better fit, read [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md).
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md).
 If you already run multiple agents and the real pain is review/reconstruction rather than branch collisions, read [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md).
@@ -52,7 +52,7 @@ If the part you still do not trust is the morning-after merge decision, read [Ho
 If you want the cleanest possible short handoff before you trust the run, read [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [First-Task Prompt Templates](first-task-prompt-templates.md).
 If you already use Aider for interactive work and want the clearest contrast, read [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md).
-If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fix artifacts before you run Ralph yourself, read [Example Review Bundle](example-review-bundle.md).
+If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fix artifacts before you run Ralph Workflow yourself, read [Example Review Bundle](example-review-bundle.md).
 If you are comparing category options first, read [Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For](open-source-ai-coding-orchestrator.md).
 Use the primary repo on Codeberg for inspection, stars, watches, and issues: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The GitHub mirror is here if you already track projects there: <https://github.com/Ralph-Workflow/Ralph-Workflow>.
 

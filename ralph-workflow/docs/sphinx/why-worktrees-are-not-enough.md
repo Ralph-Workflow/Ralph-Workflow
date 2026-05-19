@@ -94,7 +94,7 @@ If yes, that is the product value.
 - See [When Unattended Coding Fits](when-unattended-coding-fits.md) to choose a good first task
 - See [Example Review Bundle](example-review-bundle.md) if you want a public proof asset before your first run
 
-If worktree isolation is already familiar but you still need a trustworthy unattended finish, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+If parallel repo work is already familiar but you still need a trustworthy unattended finish, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
 Best next public actions:
 - **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>

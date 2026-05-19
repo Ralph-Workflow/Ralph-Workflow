@@ -17,7 +17,7 @@ Ralph Workflow
        <a class="hero-cta hero-cta-secondary" href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Inspect on Codeberg</a>
      </div>
      <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
-     <p class="hero-proof-note">Prefer to inspect the code before installing or follow the project where you already evaluate open source? <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Review, star, watch, or fork the primary Codeberg repo</a>. If GitHub is where you already track projects, the <a href="https://github.com/ralph-workflow/ralph-workflow">mirror is there too</a>.</p>
+     <p class="hero-proof-note">Prefer to inspect the code before installing or follow the project where you already evaluate open source? <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Review, star, watch, or fork the primary Codeberg repo</a>. If GitHub is where you already track projects, the <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">mirror is there too</a>.</p>
    </section>
 
 Choose the first path that matches how you already work tonight:
@@ -371,6 +371,6 @@ Related Links
 
 - `Ralph Workflow website <https://ralphworkflow.com>`_
 - `Source code on Codeberg <https://codeberg.org/RalphWorkflow/Ralph-Workflow.git>`_
-- `GitHub mirror <https://github.com/ralph-workflow/ralph-workflow>`_
+- `GitHub mirror <https://github.com/Ralph-Workflow/Ralph-Workflow>`_
 - `Issue tracker <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>`_
 - `License (AGPL-3.0) <https://www.gnu.org/licenses/agpl-3.0.html>`_

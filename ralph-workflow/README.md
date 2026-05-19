@@ -17,7 +17,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 **Start here:**
 
 - [Start Here: try Ralph Workflow on one real backlog task](START_HERE.md)
-- [Already using Claude Code and wondering why you would add Ralph? Read the direct comparison](docs/sphinx/ralph-workflow-vs-claude-code.md)
+- [Already using Claude Code and wondering why you would add Ralph Workflow? Read the direct comparison](docs/sphinx/ralph-workflow-vs-claude-code.md)
 - [Already using Claude Code or Codex? Pick the lowest-friction first agent path](docs/sphinx/which-agent-should-i-start-with.md)
 - [Already splitting work across Claude Code + Codex? Use the cleaner handoff workflow](docs/sphinx/claude-code-codex-workflow.md)
 - [Inspect a public example review bundle first](docs/sphinx/example-review-bundle.md)
@@ -44,7 +44,7 @@ If no, tighten the spec, checks, or task choice and run again.
 ## Proof before you install
 
 If you want the fastest trust check before a first run, open the public [Example Review Bundle](docs/sphinx/example-review-bundle.md).
-It shows the exact kind of morning-after handoff Ralph Workflow is trying to produce: a real `PROMPT.md`, result notes, review feedback, fix notes, and artifact files you can inspect before deciding whether to try Ralph on your own backlog.
+It shows the exact kind of morning-after handoff Ralph Workflow is trying to produce: a real `PROMPT.md`, result notes, review feedback, fix notes, and artifact files you can inspect before deciding whether to try Ralph Workflow on your own backlog.
 
 If your real question is "which setup should I start with tonight?", use one of these paths instead of reading generic docs first:
 
@@ -52,7 +52,7 @@ If your real question is "which setup should I start with tonight?", use one of 
 - [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better.
 - [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md) — keep the role split, but come back to a cleaner reviewable handoff.
 
-If you prefer to inspect, star, or watch open-source projects on GitHub, the synced mirror lives at <https://github.com/Ralph-Workflow/Ralph-Workflow>. The primary source of truth remains Codeberg, but you can follow Ralph Workflow from either place.
+If you prefer to inspect, star, or watch open-source projects on GitHub, the synced mirror lives at <https://github.com/Ralph-Workflow/Ralph-Workflow>. The primary source of truth remains Codeberg, but you can follow the project from either place.
 
 ## What you get
 
