@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-19T01:50:23.103458",
+  "timestamp": "2026-05-19T09:38:16.446317",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
-      "title": "Hands-off AI coding for substantial tasks \u2014 Ralph Workflow",
-      "meta_description": "Ralph Workflow runs your existing AI coding tool on substantial tasks while your computer stays awake. It plans, builds, tests, and fixes failures so you can review real code in the morning.",
+      "title": "Ralph Workflow: free CLI for substantial AI coding tasks \u2014 Ralph Workflow",
+      "meta_description": "Ralph Workflow runs your existing AI coding tool on substantial tasks while your computer stays awake. It plans the work, writes code, runs tests, and fixes failures so you can review real code by morning.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Ralph Workflow runs your existing AI coding tool on substantial tasks while your computer stays awake. It plans, builds, tests, and fixes failures so you can review real code in the morning.",
-        "title": "Hands-off AI coding for substantial tasks",
+        "description": "Ralph Workflow runs your existing AI coding tool on substantial tasks while your computer stays awake. It plans the work, writes code, runs tests, and fixes failures so you can review real code by morning.",
+        "title": "Ralph Workflow: free CLI for substantial AI coding tasks",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,10 +18,10 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 7830,
+      "word_count": 7827,
       "has_nav": true,
       "has_main": true,
-      "lang_attr": ""
+      "lang_attr": "en"
     },
     "robots": {
       "status": 200,
@@ -30,7 +30,7 @@
     },
     "sitemap": {
       "status": 200,
-      "url_count": 253,
+      "url_count": 619,
       "urls": [
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/privacy",
@@ -42,35 +42,36 @@
         "https://ralphworkflow.com/docs/",
         "https://ralphworkflow.com/contact",
         "https://ralphworkflow.com/docs/_modules/",
+        "https://ralphworkflow.com/docs/_modules/ralph/_logging_config",
+        "https://ralphworkflow.com/docs/_modules/ralph/_logging_paths",
+        "https://ralphworkflow.com/docs/_modules/ralph/_rich_group_proto",
+        "https://ralphworkflow.com/docs/_modules/ralph/_rich_panel_proto",
         "https://ralphworkflow.com/docs/_modules/ralph/agents/activity",
+        "https://ralphworkflow.com/docs/_modules/ralph/agents/agent_activity_kind",
+        "https://ralphworkflow.com/docs/_modules/ralph/agents/agent_chain",
+        "https://ralphworkflow.com/docs/_modules/ralph/agents/agent_entry",
         "https://ralphworkflow.com/docs/_modules/ralph/agents/availability",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/chain",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/completion_signals",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/execution_state",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/executor",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/idle_watchdog",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/invoke",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/base",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/parsers/claude"
+        "https://ralphworkflow.com/docs/_modules/ralph/agents/chain"
       ]
     }
   },
   "onpage": {
-    "score": 85,
-    "grade": "B",
+    "score": 70,
+    "grade": "C",
     "issues": [
+      {
+        "severity": "error",
+        "item": "Title too long"
+      },
       {
         "severity": "warning",
         "item": "Meta description too long",
         "detail": "Keep between 150-160 characters"
-      },
-      {
-        "severity": "warning",
-        "item": "Missing lang attribute on <html>",
-        "detail": "Add lang='en' to <html> tag for clarity"
       }
     ],
-    "recommendations": []
+    "recommendations": [
+      "Keep title under 60 characters (current: 73 chars)"
+    ]
   },
   "ranks": {
     "unattended coding agent": {
@@ -179,6 +180,7 @@
     "keyword": "unattended coding agent"
   },
   "priority_actions": [
+    "Fix top on-page SEO issues (current score: 70/100)",
     "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]

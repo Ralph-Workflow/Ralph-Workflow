@@ -67,6 +67,11 @@ Add whatever helps you do your job. This is your cheat sheet.
 - **Verification mailbox:** `ken@ralphworkflow.com`
   - Rule: Apollo login uses `ken@hireaegis.com`, but device/email verification codes are expected in `ken@ralphworkflow.com`.
 
+### IONOS Webmail
+- **Login username:** `ken@hireaegis.com`
+- **Password:** `GV%@iwClD4vetq`
+  - Note: user provided on 2026-05-19 as a possible path to recover Apollo verification access.
+
 ## Git Hosting
 
 - **Codeberg SSH:** `git@codeberg.org:RalphWorkflow/Ralph-Workflow.git`

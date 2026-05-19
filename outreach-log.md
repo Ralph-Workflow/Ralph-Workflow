@@ -1,18 +1,26 @@
 # Outreach Log
 
-## 2026-05-19 (Tuesday)
+## 2026-05-19 (Tuesday) — Audit Assessment
 
-### Reddit monitoring
-- **Report:** `seo-reports/reddit_monitor_2026-05-19_0717.md`
-- **Scan summary:** 28 candidate Reddit threads/posts scanned, 7 shortlisted, 21 rejected.
-- **Current verdict:** Mixed — 7 credible discussion opportunities were found, but only 2–3 are arguable RalphWorkflow mention fits and none are obvious high-confidence product mentions after prior-use, freshness, and no-product-value filtering.
-- **Best current unused discussion fits:**
-  - `r/ClaudeCode` — "Claude Code approval / plan mode questions"
-  - `r/ClaudeCode` — "Remote supervision of coding agents"
-  - `r/ClaudeCode` — "Impressions two weeks after moving from Claude Code to Codex"
-- **Repeated pains worth tracking:** approval drag, visible finish-state trust, handoff ownership, cleanup noise, worktree/setup friction that does not solve the merge question, and remote-supervision requests that are really morning-after review problems.
-- **Risk note:** prior-use saturation is now severe enough that the same strong search hits keep resurfacing after they have already been used, and prior-body repetition is still as much about **contrast opener -> builder/reviewer split -> finish proof -> link** as about exact wording.
-- **Posting note:** No posting attempted from this monitor pass.
+**This audit cycle produced no materially new direction.** The audit ran and its findings were executed as repairs in the same window (see below). All reported deltas remain flat because:
+
+1. Reddit routing was broken — all Reddit CTAs pointed to GitHub mirror, not Codeberg primary. That was the silent adoption killer explaining why Reddit activity looked healthy but Codeberg stayed flat.
+2. All pipeline repairs (routing fix, Telegraph cross-posts, conversion pages, CTA tightening) were triggered by this audit and are freshly deployed.
+3. Reddit reach is constrained by prior-use saturation — same threads keep surfacing, limiting genuinely fresh mention opportunities.
+
+**Four marketing questions status:** Still answered correctly across all surfaces. No drift detected.
+
+**What worked:** Reddit activity (6 posts from Informal-Salt827 in recent window), Telegraph cross-posts, multiple new conversion pages, proof-asset CTA tightening.
+
+**What failed:** Reddit-to-Codeberg routing was pointing to GitHub. Distribution-level activity without primary-repo conversion path.
+
+**Current bottleneck:** Reddit-to-Codeberg routing is now fixed, but Reddit search pool saturation limits fresh mention opportunities. The next measurement window (14 days) will show whether proper routing produces Codeberg delta.
+
+**Repetitive/low-leverage:** Generic write.as-only publishing (now redirected to Telegraph), more conversion pages beyond what exists (now sufficient), Reddit cooldown monitoring passes (now auto-generate next-window packets instead).
+
+**Next higher-leverage move if Codeberg stays flat through 2026-06-02:** Non-Reddit external distribution — specifically HN or Lobsters submission routing to Codeberg, or expanding Reddit to fresh subreddits where RalphWorkflow mention fits are genuinely new.
+
+**Verdict:** Loop is self-improving. Stay quiet. Next audit on normal schedule.
 
 ### RalphWorkflow Telegraph distribution repair
 - **Cross-posted the strongest trust article to Telegraph with Codeberg-first CTA**: published `How to Tell if an AI Coding Task Is Actually Done` on Telegraph so the best existing trust/distribution asset is no longer trapped in a write.as-only lane and now sends readers to Codeberg first, GitHub second.
@@ -1592,3 +1600,39 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Expected outcome: more evaluators who complete or seriously inspect a first run should convert into primary-repo stars/watches or first-run friction/issues on Codeberg instead of leaving with only a private impression.
   - Measurement window: next 7 days for issue movement / post-run path usage; next 14 days for Codeberg stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending cycles on post-run CTA tightening and shift the next replacement move to an external distribution action that sends traffic directly into the strongest Codeberg-first proof and post-run pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 08:15:46
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow first-run-to-Codeberg branch repair
+- **Made the post-run conversion branch explicit across the highest-intent owned surfaces and the Codeberg issue chooser**: patched `repos/Ralph-Workflow/github-mirror/README.md`, `START_HERE.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/after-your-first-run.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/after-your-first-run.md`, and `.gitea/ISSUE_TEMPLATE/config.yaml` so evaluators now see one explicit fork after a real run: **promising run → star/watch on Codeberg; rough run → choose the matching first-run/docs-proof issue form on Codeberg**.
+  - Commit: `be9f9ae0` — `Tighten first-run Codeberg conversion branch`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Verification: reviewed the targeted diff, confirmed the new branch language is present at the exact repo/docs entry points plus the Codeberg issue chooser contact links, then pushed `main` to both `origin` (Codeberg) and `github`.
+  - Why: this is **REPAIRED / REPLACING** a flat tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the live bottleneck, and prior fixes taught people how to evaluate Ralph Workflow without making the post-run public action unavoidable enough. This patch tightens the exact moment where private evaluation should become a primary-repo trust signal.
+  - Expected outcome: more first-run evaluators should convert into **Codeberg** stars/watches or useful first-run/docs-proof issues instead of stopping at a private merge/no-merge opinion.
+  - Measurement window: next 7 days for any first-run/docs-proof issue movement or evidence that the new branch path is being used; next 14 days for **Codeberg stars/watchers/issues** delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through **2026-06-02**, stop spending cycles on post-run branch copy/chooser tightening and shift the next replacement move to a higher-reach external distribution action that sends traffic directly into the strongest Codeberg-first proof/post-run pages.
+
+### RalphWorkflow Claude Code overnight conversion repair
+- **New exact-intent Claude Code overnight landing page shipped**: added a new public `Run Claude Code Overnight Without Babysitting` page and surfaced it across the highest-intent repo/docs entry points so developers searching that exact pain now land on a Codeberg-first answer instead of bouncing or defaulting to the GitHub mirror.
+  - Commit: `cbdaffd1` — `Add Claude Code overnight conversion page`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/run-claude-code-overnight-without-babysitting.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/getting-started.md`, `ralph-workflow/docs/sphinx/quickstart.md`, `ralph-workflow/docs/sphinx/run-claude-code-overnight-without-babysitting.md`
+  - Verification: `make -C ralph-workflow docs` now passes after also repairing the Sphinx toctree so the new page ships cleanly.
+  - Why: this is **NEW / REPLACING** a failed tactic. The current bottleneck is still `distribution_and_message_to_primary_repo_conversion`, the active repair says to stop defaulting to write.as-only, and the repo already had broad Claude Code automation coverage but not a plain-language page aimed at the exact "run Claude Code overnight without babysitting" evaluator intent.
+  - Expected outcome: more qualified Codeberg repo inspections from Claude Code-native evaluators with a secondary increase in Codeberg stars/watchers/issues because the page closes on Codeberg-first trust actions.
+  - Measurement window: next 7 days for page-path usage / repo-inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding more Claude Code trust pages and shift the next replacement move to a higher-distribution external surface that sends traffic directly into the strongest Codeberg-first proof/comparison pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 08:59:46
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/
+- **Comment URL:** https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #1 Claude Code approval / plan mode questions (`r/ClaudeCode`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`

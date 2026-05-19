@@ -1,27 +1,17 @@
 {
-  "timestamp": "2026-05-19T08:13:24.558022",
+  "timestamp": "2026-05-19T09:38:25.484713",
   "results": [
     {
-      "date": "2026-05-19",
       "draft": "2026-05-19_technical_draft.md",
-      "title": "How Nested Analysis Loops Catch Bugs Before They Commit",
-      "platform": "telegraph",
       "ok": true,
-      "status": "posted",
-      "url": "https://telegra.ph/How-Nested-Analysis-Loops-Catch-Bugs-Before-They-Commit-05-19-3",
-      "error": null,
+      "status": "already_posted",
       "draft_hash": "cd44e4bcabc9baf1e924a6af2a7d9fb386b839f98a5fd4c46e13a3d7fc80210f",
       "experiment_id": "2026-05-19-technical"
     },
     {
-      "date": "2026-05-19",
       "draft": "2026-05-19_claude-code-codex-workflow_telegraph.md",
-      "title": "Claude Code + Codex Workflow: Plan, Build, Review",
-      "platform": "telegraph",
       "ok": true,
-      "status": "posted",
-      "url": "https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-19-3",
-      "error": null,
+      "status": "already_posted",
       "draft_hash": "63d145b7e517d11439ac0b81f3ef3cbc6e55e549f15c77467c15d905b348160e",
       "experiment_id": null
     },

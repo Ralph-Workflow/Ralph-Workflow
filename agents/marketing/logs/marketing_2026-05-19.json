@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-19T01:50:23.056578",
+  "timestamp": "2026-05-19T09:38:16.401732",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -19,7 +19,7 @@
     }
   },
   "totals": {
-    "posts_last_30d": 8,
+    "posts_last_30d": 12,
     "views_last_30d": 0
   },
   "content_summary": {
@@ -34,7 +34,7 @@
       "avg_views": 0.0
     },
     "unknown": {
-      "posts": 5,
+      "posts": 9,
       "views": 0,
       "avg_views": 0.0
     },
@@ -49,8 +49,13 @@
       "priority": "high",
       "action": "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption.",
       "reason": "Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)",
-      "repair": "Replace current content format/distribution approach. Stop write.as-only publishing. Try: (a) direct repo README/CONTRIBUTING improvement, (b) SEO landing pages targeting repo-specific terms, (c) cross-post strategy with explicit Codeberg CTAs.",
+      "repair": "Replace current content format/distribution approach. write.as is dead \u2014 use only Telegraph. Try: (a) direct repo README/CONTRIBUTING improvement, (b) SEO landing pages targeting repo-specific terms, (c) cross-post to Dev.to when API key is available, all with explicit Codeberg CTAs.",
       "is_failing_signal": true
+    },
+    {
+      "priority": "high",
+      "action": "Fix on-page SEO issues before investing in new content.",
+      "reason": "SEO score is 70/100 \u2014 technical foundation needs attention."
     },
     {
       "priority": "medium",
@@ -64,30 +69,30 @@
     },
     {
       "priority": "medium",
-      "action": "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+      "action": "Fix top on-page SEO issues (current score: 70/100)",
       "reason": "Identified by daily SEO analysis as a top priority."
     },
     {
       "priority": "medium",
-      "action": "Build backlinks: submit to directories, guest post, earn citations",
+      "action": "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
       "reason": "Identified by daily SEO analysis as a top priority."
     },
     {
       "priority": "ongoing",
-      "action": "Continue write.as + Telegraph posting until blocked channels are unblocked.",
+      "action": "Continue Telegraph posting. write.as is permanently blocked \u2014 do not use. Seek Dev.to API key for second platform.",
       "reason": "Working distribution channel. Track ratio of views per post to gauge platform value."
     }
   ],
   "blocked_channels": {
     "dev.to": "Needs API key or OAuth",
     "twitter": "Login/session blocked",
-    "reddit": "Posting blocked until the intended main Reddit account is verified live",
+    "reddit": "Account u/Informal-Salt827 verified and active (21 posts published May 16-18). Manual follow-up replies needed to avoid thread necromancy flags.",
     "hackernews": "Needs account",
     "lobsters": "Needs invite/account",
     "producthunt": "Protected flow / manual launch required"
   },
   "seo": {
-    "score": "85/100 (B)",
+    "score": "70/100 (C)",
     "ranked_keywords": 0,
     "backlinks_approx": 0,
     "domain_rating": null,
@@ -99,6 +104,7 @@
       "prev_avg_bl": 0.0
     },
     "priority_actions": [
+      "Fix top on-page SEO issues (current score: 70/100)",
       "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
       "Build backlinks: submit to directories, guest post, earn citations"
     ],
@@ -108,7 +114,7 @@
     "competitor_analysis": null
   },
   "adoption": {
-    "timestamp": "2026-05-19T01:35:18.400975",
+    "timestamp": "2026-05-19T08:16:00.543637",
     "metrics": [
       {
         "platform": "GitHub",
@@ -178,7 +184,7 @@
   },
   "posting": {
     "returncode": 0,
-    "stdout": "{\n  \"timestamp\": \"2026-05-19T01:50:30.182020\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-19_technical_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"05715b7714d064adb44a13c8df7be58766dc70adfa623e373e042d9308841b03\",\n      \"experiment_id\": \"2026-05-19-technical\"\n    }\n  ]\n}",
+    "stdout": "{\n  \"timestamp\": \"2026-05-19T09:38:25.484713\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-19_technical_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"cd44e4bcabc9baf1e924a6af2a7d9fb386b839f98a5fd4c46e13a3d7fc80210f\",\n      \"experiment_id\": \"2026-05-19-technical\"\n    },\n    {\n      \"draft\": \"2026-05-19_claude-code-codex-workflow_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"63d145b7e517d11439ac0b81f3ef3cbc6e55e549f15c77467c15d905b348160e\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"7df5d951fd36ab17618beac53ce8e324bd09686832d69fc4bbcb1949b57b1966\",\n      \"experiment_id\": null\n    }\n  ]\n}",
     "stderr": ""
   }
 }

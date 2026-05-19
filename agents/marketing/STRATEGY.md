@@ -276,23 +276,25 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 ## Weekly Review — 2026-05-19
 
 ### SEO Health
-**SEO Score:** 85/100 (B) | Ranked keywords: 0 | Backlinks: 0 | DR: None
+**SEO Score:** 70/100 (C) | Ranked keywords: 0 | Backlinks: 0 | DR: None
 **Trends:** ranks 0.0
 
 ### Content Performance
 - philosophy: 1 posts, 0 total views, 0.0 avg views/publish
 - technical: 1 posts, 0 total views, 0.0 avg views/publish
-- unknown: 5 posts, 0 total views, 0.0 avg views/publish
+- unknown: 9 posts, 0 total views, 0.0 avg views/publish
 - usecase: 1 posts, 0 total views, 0.0 avg views/publish
 
 ### Weekly Decisions
 - **[HIGH]** MARK AS FAILING: Current content/distribution tactics are not driving repo adoption. — Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)
+- **[HIGH]** Fix on-page SEO issues before investing in new content. — SEO score is 70/100 — technical foundation needs attention.
 - **[MEDIUM]** Keep publishing philosophy content. — Best avg views: 0.0 — lean into what's working.
 - **[HIGH]** Build backlinks — submit to directories and pursue guest post opportunities. — Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now.
+- **[MEDIUM]** Fix top on-page SEO issues (current score: 70/100) — Identified by daily SEO analysis as a top priority.
 - **[MEDIUM]** Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent — Identified by daily SEO analysis as a top priority.
-- **[MEDIUM]** Build backlinks: submit to directories, guest post, earn citations — Identified by daily SEO analysis as a top priority.
-- **[ONGOING]** Continue write.as + Telegraph posting until blocked channels are unblocked. — Working distribution channel. Track ratio of views per post to gauge platform value.
+- **[ONGOING]** Continue Telegraph posting. write.as is permanently blocked — do not use. Seek Dev.to API key for second platform. — Working distribution channel. Track ratio of views per post to gauge platform value.
 
 ### Priority Actions (from SEO analysis)
+- Fix top on-page SEO issues (current score: 70/100)
 - Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent
 - Build backlinks: submit to directories, guest post, earn citations
