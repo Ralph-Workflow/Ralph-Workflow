@@ -21,7 +21,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 - [Quickstart reference](docs/sphinx/quickstart.md)
 - [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md) — choose the agent already installed and authenticated on your machine
 - [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better
-- [Ralph Workflow vs OpenCode](docs/sphinx/ralph-workflow-vs-opencode.md) — decide when direct provider flexibility is enough and when a reviewable unattended handoff is better
+- [Ralph Workflow vs OpenCode](docs/ralph-workflow-vs-opencode.md) — decide when direct provider flexibility is enough and when a reviewable unattended handoff is better
 - [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md) — keep the role split, but come back to a cleaner reviewable handoff
 - [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md) — the short morning-after handoff that should tell you what changed, what passed, and what still needs judgment
 - [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
@@ -46,7 +46,7 @@ If the first run teaches you something real either way, turn that result into th
 If you want the fastest trust check before a first run, open the public [Example Review Bundle](docs/sphinx/example-review-bundle.md).
 It shows the exact kind of morning-after handoff Ralph Workflow is trying to produce: a real `PROMPT.md`, result notes, review feedback, fix notes, and artifact files you can inspect before deciding whether to try Ralph Workflow on your own backlog.
 
-If your real question is "what should the morning-after handoff actually look like?", read [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md) before you install.
+If your real question is "what should the morning-after handoff actually look like?", read [What Good Ralph Workflow Output Looks Like](docs/reviewable-output.md) before you install.
 
 ## What you get
 
@@ -180,7 +180,7 @@ This README intentionally leaves out deeper implementation details and defers to
 - **Troubleshooting:** [`docs/sphinx/troubleshooting.md`](docs/sphinx/troubleshooting.md) — common failure modes and shortest fixes
 - **Developer Reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — internal architecture and extension points
 - **Python API Reference:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — package documentation
-- **Documentation map:** [`../docs/README.md`](../docs/README.md) — full doc index with Rust-era separation
+- **Documentation map:** [`docs/README.md`](docs/README.md) — repo-native evaluator doc map and package doc index
 - **Website and full docs:** <https://ralphworkflow.com/docs>
 
 ## Links
