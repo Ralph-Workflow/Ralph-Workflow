@@ -9,6 +9,14 @@ That means Ralph Workflow is for developers and technical teams with work that i
 
 Why try Ralph Workflow now? You do not need to abandon Claude Code to use it. Keep Claude in the loop, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
+Before you install anything, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+
+If Ralph Workflow earns trust after a real overnight run, keep the public next step on Codeberg:
+
+- **Star or watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 ## The core difference
 
 Claude Code is strongest when you want to stay in the loop.
@@ -91,3 +99,8 @@ Use one real backlog task, not a vague demo.
 If you want help picking that first task, read [when unattended coding fits](./when-unattended-coding-fits.md), [the first-task guide](./first-task-guide.md), and [first-task prompt templates](./first-task-prompt-templates.md).
 
 If you want to see the kind of morning-after handoff Ralph is aiming for before you install, inspect [what good output looks like](./free-open-source-proof.md) and the [example review bundle](../examples/first-review-bundle/README.md).
+
+After that first real run, take exactly one public next step on Codeberg:
+
+- **promising run:** star or watch the repo
+- **shaky run:** open the right issue on Codeberg
