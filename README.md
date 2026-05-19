@@ -16,6 +16,18 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 
 **Important first-run expectation:** Ralph Workflow is free and open source, but it does **not** replace the coding agents you already use. Before your first run, have at least one supported agent CLI already installed and already authenticated on your own machine. Ralph orchestrates that agent and hands back a reviewable result.
 
+## The shortest Codeberg conversion path after a real first run
+
+Do not leave the evaluation private.
+
+After one real run, convert the outcome into exactly one public action on **Codeberg**:
+
+- **Promising run?** Star or watch the primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Shaky run or missing proof?** Open the right issue form on Codeberg: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Need the two-minute scorecard first?** Use [docs/after-your-first-run.md](./docs/after-your-first-run.md)
+
+That is the clearest path from “this might be useful” to a real primary-repo trust signal.
+
 ## Start on Codeberg first
 
 If Ralph Workflow looks like a fit, use the primary repo as the real next step:
@@ -69,7 +81,7 @@ That is the real promise: not “the agent seemed smart,” but **a bounded diff
 
 If you want the fuller artifact shape before you install, inspect the public [example review bundle](./docs/example-review-bundle.md).
 
-If you try a real first run and anything feels unclear, shaky, or harder than it should, report it on **Codeberg** with the new first-run issue path: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. That is the fastest way to improve the real adoption path without splitting feedback across the mirror.
+If you try a real first run and anything feels unclear, shaky, or harder than it should, report it on **Codeberg** with the matching first-run or docs/proof form: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. That is the fastest way to improve the real adoption path without splitting feedback across the mirror.
 
 If the run goes well, do the public next step on **Codeberg** instead of leaving the evaluation private: [docs/after-your-first-run.md](./docs/after-your-first-run.md).
 
@@ -81,6 +93,7 @@ If the run goes well, do the public next step on **Codeberg** instead of leaving
 - **I am not sure whether my task is a good fit for unattended execution.** Read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 - **I already use worktrees or multiple agent sessions. What does Ralph add?** Read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 - **I use Claude Code and I am specifically looking for a stronger automation / unattended path.** Read [docs/claude-code-automation.md](./docs/claude-code-automation.md).
+- **Claude Code approval mode or plan mode still leaves me babysitting the run.** Read [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md).
 - **I already use Claude Code and want to know why I would add Ralph at all.** Read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
 - **I already use Codex CLI and want to know when Ralph is the better fit.** Read [docs/ralph-workflow-vs-codex-cli.md](./docs/ralph-workflow-vs-codex-cli.md).
 - **I already use Claude Code + Codex together. What changes with Ralph?** Read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
@@ -90,6 +103,8 @@ If the run goes well, do the public next step on **Codeberg** instead of leaving
 - **I want unattended runs to fail closed instead of drifting all night.** Read [docs/bounded-autonomy-for-unattended-coding.md](./docs/bounded-autonomy-for-unattended-coding.md).
 - **I keep thinking I need remote supervision, but really I need a trustworthy finish state.** Read [docs/remote-supervision-of-coding-agents.md](./docs/remote-supervision-of-coding-agents.md).
 - **I am looking for an open-source AI coding orchestrator I can inspect before I install.** Read [docs/open-source-ai-coding-orchestrator.md](./docs/open-source-ai-coding-orchestrator.md).
+- **I am evaluating AI agent orchestration CLIs and want the practical difference.** Read [docs/ai-agent-orchestration-cli.md](./docs/ai-agent-orchestration-cli.md).
+- **I want a spec-driven AI agent, not just a bigger prompt loop.** Read [docs/spec-driven-ai-agent.md](./docs/spec-driven-ai-agent.md).
 - **I already use Aider. Why would I use Ralph instead?** Read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
 - **I want to inspect the project where I already follow open-source tools.** Start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow), or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
 - **I want to see what a good result looks like before I try it.** Read [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete morning-after review path.

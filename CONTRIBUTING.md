@@ -18,6 +18,13 @@ The new issue forms are designed to capture the exact adoption bottleneck: what 
 
 If you are not sure whether your first run earned a star, a watch, or a bug report, use [docs/after-your-first-run.md](./docs/after-your-first-run.md) first.
 
+The intended post-run branch is simple:
+
+- **Useful run:** star or watch the primary repo on Codeberg
+- **Blocked run:** open the matching first-run or docs/proof issue form on Codeberg
+
+That keeps first-run trust signals and first-run friction on the same primary surface.
+
 ## Start here
 
 ```bash

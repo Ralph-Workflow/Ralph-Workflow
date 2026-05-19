@@ -1,0 +1,62 @@
+# AI Agent Orchestration CLI: A Practical Comparison for Developers
+
+Ralph Workflow is a **free and open-source** AI agent orchestration CLI for developers who want work that is **too big to babysit and too risky to trust blindly** to come back as a reviewable result instead of a transcript.
+
+If you are searching for an AI agent orchestration CLI, the real question is not whether a tool can call an agent. It is whether the tool can turn longer coding work into something you would actually inspect, test, and maybe merge.
+
+## What an AI agent orchestration CLI should actually do
+
+An orchestration CLI should do more than wrap one prompt:
+
+- require a written task or spec before the run starts
+- let you use the agents you already have on your own machine
+- move through plan, build, verify, and review instead of stopping at a draft
+- preserve checkpoints and artifacts for long runs
+- hand back a reviewable diff with checks and notes
+
+If it cannot do those things, it is closer to prompt automation than orchestration.
+
+## Why developers look for one
+
+The usual pain is familiar:
+
+- the agent says it is done, but the job does not hold up
+- long runs fail and leave no clean re-entry point
+- review means replaying terminal scrollback instead of opening a diff
+- glue scripts become their own maintenance burden
+
+That is the gap an orchestration CLI is supposed to close.
+
+## Where Ralph Workflow fits
+
+[Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) is built for that gap.
+
+It is for developers and technical teams who want to hand off substantial work overnight, come back to changed files plus checks and artifacts, and ask one honest question:
+
+**Would I merge this?**
+
+What makes it different is the finish line:
+
+- spec-first instead of prompt-first
+- phase-gated instead of draft-and-stop
+- agent-agnostic instead of tied to one coding tool
+- reviewable output instead of a done claim
+
+Ralph Workflow is **not** a hosted black box. It runs on your own machine with the coding agents you already use.
+
+## Best first evaluation path
+
+1. Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+2. Use [START_HERE.md](../START_HERE.md) for one real first run
+3. Open [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) and judge the morning-after handoff honestly
+
+If GitHub is where you already track projects, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+## Why try it now
+
+Because Ralph Workflow is free and open source, works with the agents you already use on your own machine, and gives you a practical way to test whether unattended coding can handle one real backlog task tonight.
+
+Start with Codeberg first:
+
+- **Primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

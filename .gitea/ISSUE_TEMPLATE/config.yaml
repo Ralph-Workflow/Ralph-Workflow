@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: After your first run
+    url: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/after-your-first-run.md
+    about: Two-minute scorecard for turning a private first run into the right Codeberg action.
   - name: Start here first
     url: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
     about: Fastest honest first run and task-picking guide.

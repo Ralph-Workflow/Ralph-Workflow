@@ -44,6 +44,7 @@ Bad first tasks:
 If you want a sharper pass/fail filter before you install, read [Choose Your First Ralph Workflow Task](first-task-guide.md).
 If you are unsure whether to start with Claude Code, Codex, or OpenCode, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 If Claude Code is already your default and the real thing you want is a more trustworthy automation / unattended handoff, read [Claude Code Automation for Real Repo Work](claude-code-automation.md).
+If Claude Code approval mode or plan mode still leaves you babysitting the terminal, read [Claude Code Approval Mode Is Not an Unattended Workflow](claude-code-approval-mode.md).
 If Claude Code is already your default and you want the clearest answer to “why add Ralph Workflow at all?”, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md).
 If Codex CLI is already your default and you want to know when an unattended reviewable handoff is the better fit, read [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md).
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md).
@@ -54,6 +55,8 @@ If you want copy-paste starter specs instead of drafting from scratch, read [Fir
 If you already use Aider for interactive work and want the clearest contrast, read [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md).
 If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fix artifacts before you run Ralph Workflow yourself, read [Example Review Bundle](example-review-bundle.md).
 If you are comparing category options first, read [Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For](open-source-ai-coding-orchestrator.md).
+If you are comparing orchestration tools directly, read [AI Agent Orchestration CLI: A Practical Comparison for Developers](ai-agent-orchestration-cli.md).
+If the missing piece is a spec-first mental model instead of a bigger prompt, read [Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt](spec-driven-ai-agent.md).
 Use the primary repo on Codeberg for inspection, stars, watches, and issues: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The GitHub mirror is here if you already track projects there: <https://github.com/Ralph-Workflow/Ralph-Workflow>.
 
 ## Before you start
@@ -176,6 +179,11 @@ If you want to see what a trustworthy handoff looks like before your first run, 
 
 If the run is promising or exposes useful friction, use [After Your First Ralph Workflow Run](after-your-first-run.md) to turn that private result into the right public Codeberg action.
 
+In plain terms:
+
+- if the run earned trust, put the signal on the **primary Codeberg repo** first
+- if the run missed, file the exact first-run friction on **Codeberg** so the next run is easier to judge
+
 ## What happens during a run
 
 You do not need the full internal model to operate Ralph Workflow. The short version is:
@@ -218,6 +226,7 @@ This rewrites config files from the bundled defaults and keeps backups with a `.
 - [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean merge/no-merge evaluation
 - [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — choose the first agent path with the least setup friction
 - [Claude Code Automation for Real Repo Work](claude-code-automation.md) — the clearest Codeberg-first path if your current search/problem is specifically Claude Code automation
+- [Claude Code Approval Mode Is Not an Unattended Workflow](claude-code-approval-mode.md) — the clearest path if approval or plan mode still leaves you babysitting instead of reviewing a clean morning-after handoff
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste `PROMPT.md` shapes for strong first runs
 - [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md) — the clearest comparison if your baseline is a live Claude Code session and you want to know when an unattended handoff is better
 - [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md) — the clearest comparison if your baseline is an interactive Codex CLI session and you want to know when an unattended handoff is better

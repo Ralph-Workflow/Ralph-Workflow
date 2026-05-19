@@ -25,6 +25,7 @@ Choose the first path that matches how you already work tonight:
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
 - Already using **Claude Code** and specifically searching for a better automation / unattended path? Start with :doc:`claude-code-automation`.
+- Already using **Claude Code** but still stuck in approval mode or plan mode babysitting? Read :doc:`claude-code-approval-mode`.
 - Already using **Codex CLI** and deciding whether you need Ralph Workflow for the morning-after handoff? Start with :doc:`ralph-workflow-vs-codex-cli`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
@@ -34,9 +35,17 @@ Choose the first path that matches how you already work tonight:
 - Want unattended runs to stay **bounded and fail-closed** instead of drifting all night? Read :doc:`bounded-autonomy-for-unattended-coding`.
 - Keep reaching for **remote supervision** when the real problem is trusting the finish state? Read :doc:`remote-supervision-of-coding-agents`.
 - Searching for an **open-source AI coding orchestrator** you can inspect on Codeberg first? Read :doc:`open-source-ai-coding-orchestrator`.
+- Evaluating an **AI agent orchestration CLI** and want the practical difference? Read :doc:`ai-agent-orchestration-cli`.
 - Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
+- Want a **spec-driven AI agent** instead of a prompt-first loop? Read :doc:`spec-driven-ai-agent`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
 - Already finished a first run and want the right public next step? Read :doc:`after-your-first-run`.
+
+Keep the post-run branch simple:
+
+- **Promising first run** → put the public trust signal on Codeberg by starring or watching the primary repo.
+- **Rough first run** → open the matching first-run or docs/proof issue form on Codeberg.
+- **Need the two-minute scorecard first** → use :doc:`after-your-first-run`.
 
 .. note::
 
@@ -71,11 +80,11 @@ Want the deeper workflow argument before you install?
 If you want a longer answer to what Ralph Workflow is, who it is for, why it is different, and why
 it is worth trying now, these are the best supporting reads right now:
 
-- `How to Tell if an AI Coding Task Is Actually Done <https://write.as/7pqpd2y0v0re2.md>`_
-- `Claude Code + Codex Workflow: Plan, Build, Review <https://write.as/vesqh0lzrm4en.md>`_
-- `When Unattended AI Coding Actually Works <https://write.as/x5wil6pmtbvo1.md>`_
+- `How to Tell if an AI Coding Task Is Actually Done <https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2>`_
+- `Claude Code + Codex Workflow: Plan, Build, Review <https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-19>`_
+- :doc:`when-unattended-coding-fits`
 
-Those essays all drive back to the same practical free-use path: use the agents you already have on
+Those reads all drive back to the same practical free-use path: use the agents you already have on
 your own machine, run one real backlog task tonight, and ask tomorrow whether you would merge the
 result.
 
@@ -203,6 +212,8 @@ Then come back and ask one question:
 
    **Would I merge this?**
 
+If yes, put the public trust signal on the **primary Codeberg repo**. If no, report the exact first-run friction on **Codeberg** so the next evaluator has a cleaner path. The shortest route for either outcome is :doc:`after-your-first-run`.
+
 .. grid:: 1 2 2 2
    :gutter: 3
 
@@ -296,6 +307,12 @@ Then come back and ask one question:
 
       Open a public sample prompt, result notes, review feedback, and artifact files before your own first run.
 
+   .. grid-item-card:: What should I do after the first run?
+      :link: after-your-first-run
+      :link-type: doc
+
+      Convert a promising run into a Codeberg star/watch or convert rough edges into a useful primary-repo issue.
+
    .. grid-item-card:: Learn the concepts
       :link: concepts
       :link-type: doc
@@ -323,10 +340,13 @@ Then come back and ask one question:
    bounded-autonomy-for-unattended-coding
    remote-supervision-of-coding-agents
    open-source-ai-coding-orchestrator
+   ai-agent-orchestration-cli
    unattended-coding-agent
+   spec-driven-ai-agent
    first-task-guide
    which-agent-should-i-start-with
    claude-code-automation
+   claude-code-approval-mode
    ralph-workflow-vs-claude-code
    ralph-workflow-vs-codex-cli
    claude-code-codex-workflow

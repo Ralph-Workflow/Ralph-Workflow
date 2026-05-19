@@ -29,6 +29,16 @@ Use Codeberg for the real project actions:
 - **Issues / feedback:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues>
 - **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
+## Convert the first run into one Codeberg action
+
+Once you have a real result, do not stop at a private impression.
+
+- **If the run looks promising:** star or watch the primary repo on Codeberg — <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **If the run exposed friction or missing proof:** open the matching issue form on Codeberg — <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **If you want a two-minute post-run scorecard first:** use [After Your First Ralph Workflow Run](./docs/after-your-first-run.md)
+
+That one branch point is the intended finish: either Ralph Workflow earned a public trust signal on Codeberg, or it earned a useful primary-repo issue.
+
 If you want a little more outside proof before you install, you can also inspect Ralph Workflow on [GitDB](https://gitdb.net/Ralph-Workflow/Ralph-Workflow), [SaaSHub](https://www.saashub.com/ralph-workflow), or [TechTools Launchpad](https://techtools.cz/tools/launchpad/?tool=71). Those are not substitutes for your own judgment, but they do give you independent discovery/comparison surfaces before your first run.
 
 ## What a good first handoff looks like
@@ -55,7 +65,7 @@ That is the standard to hold Ralph Workflow to: **a reviewable result, not a tra
 
 If you want the longer version of that artifact before you run anything, inspect the public [example review bundle](./docs/example-review-bundle.md).
 
-If your first run hits confusing setup, weak docs, or a handoff you would not trust yet, report it on **Codeberg** here: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. The new Codeberg-first issue forms are meant for exactly that feedback.
+If your first run hits confusing setup, weak docs, or a handoff you would not trust yet, report it on **Codeberg** here: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. Choose the matching first-run or docs/proof form there. The Codeberg-first issue forms are meant for exactly that feedback.
 
 If the run is promising, use [After Your First Ralph Workflow Run](./docs/after-your-first-run.md) to turn that private first run into the right public Codeberg action.
 
@@ -158,6 +168,7 @@ Bad first tasks:
 
 If you are still hesitating over Claude Code vs Codex vs OpenCode, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
 If Claude Code is already your default and the real thing you want is a better automation / unattended path, read [docs/claude-code-automation.md](./docs/claude-code-automation.md).
+If Claude Code approval mode or plan mode still leaves you stuck near the terminal, read [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 If Claude Code is already your default and you want the clearest reason to add Ralph Workflow instead of just staying in one live session, read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
@@ -240,6 +251,7 @@ A useful Ralph Workflow run should leave you with:
 - [docs/quick-reference.md](./docs/quick-reference.md)
 - [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md)
 - [docs/claude-code-automation.md](./docs/claude-code-automation.md)
+- [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md)
 - [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
 - [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) — see the concrete artifact bundle and morning-after review path
 - [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md) — use the five-minute merge check on the morning-after handoff
