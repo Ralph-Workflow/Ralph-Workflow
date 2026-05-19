@@ -11,6 +11,7 @@ _TURN_BOUNDARY_MARKER = "[claude turn boundary]"
 _SESSION_ID_PATTERNS = (
     re.compile(r"session\s+id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
     re.compile(r"--resume\s+([A-Za-z0-9._:-]+)"),
+    re.compile(r"--session\s+([A-Za-z0-9._:-]+)"),
 )
 
 

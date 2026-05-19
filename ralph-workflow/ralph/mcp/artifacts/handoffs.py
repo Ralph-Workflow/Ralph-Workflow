@@ -75,9 +75,19 @@ def render_markdown_handoff(artifact_type: str, content: Mapping[str, object]) -
 
 
 _RESULT_ARTIFACT_SPECS: dict[str, tuple[str, list[str]]] = {
-    "development_result": ("# Development Result", ["status", "files_changed", "next_steps"]),
+    "development_result": (
+        "# Development Result",
+        [
+            "status",
+            "files_changed",
+            "next_steps",
+        ],
+    ),
     "fix_result": ("# Fix Result", ["files_changed", "next_steps"]),
 }
+
+# Proof fields that require list rendering, not _string_value
+_RESULT_PROOF_FIELDS = ("plan_items_proven", "analysis_items_addressed")
 
 
 def _render_by_artifact_type(artifact_type: str, content: Mapping[str, object]) -> str:
@@ -89,13 +99,25 @@ def _render_by_artifact_type(artifact_type: str, content: Mapping[str, object]) 
         return _render_parallel_summary_markdown(content)
     if artifact_type in _RESULT_ARTIFACT_SPECS:
         title, field_names = _RESULT_ARTIFACT_SPECS[artifact_type]
+        # Build sections: proof fields need special list rendering
+        sections: list[tuple[str, str | None]] = []
+        for field in field_names:
+            if field in _RESULT_PROOF_FIELDS:
+                rendered = _render_proof_list(content.get(field))
+                if rendered:
+                    sections.append((field.replace("_", " ").title(), rendered))
+            else:
+                sections.append(
+                    (field.replace("_", " ").title(), _string_value(content.get(field)))
+                )
+        # Add proof sections for development_result
+        if artifact_type == "development_result":
+            proof_sections = _build_development_result_proof_sections(content)
+            sections.extend(proof_sections)
         return _render_key_value_markdown(
             title=title,
             summary=_string_value(content.get("summary")),
-            sections=[
-                (field.replace("_", " ").title(), _string_value(content.get(field)))
-                for field in field_names
-            ],
+            sections=sections,
         )
     if artifact_type.endswith("_analysis_decision"):
         title = f"# {artifact_type.replace('_', ' ').title()}"
@@ -248,6 +270,45 @@ def _render_key_value_markdown(
             continue
         lines.extend(["", f"## {heading}", "", value])
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_proof_list(value: object) -> str | None:
+    """Render a proof list (plan_items_proven or analysis_items_addressed) as Markdown.
+
+    Each item is expected to be a dict with 'plan_item'/'how_to_fix_item' and 'proof' keys.
+    """
+    if not isinstance(value, list) or not value:
+        return None
+    lines: list[str] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        # Get the item identifier (plan_item or how_to_fix_item)
+        item_key = item.get("plan_item") or item.get("how_to_fix_item")
+        proof = item.get("proof")
+        if item_key and proof:
+            lines.append(f"- **{item_key}**: {proof}")
+        elif isinstance(item_key, str) and item_key.strip():
+            lines.append(f"- {item_key.strip()}")
+    return "\n".join(lines) if lines else None
+
+
+def _build_development_result_proof_sections(
+    content: Mapping[str, object],
+) -> list[tuple[str, str | None]]:
+    """Build proof sections for development_result artifact."""
+    sections: list[tuple[str, str | None]] = []
+    plan_proofs = content.get("plan_items_proven")
+    if isinstance(plan_proofs, list) and plan_proofs:
+        rendered = _render_proof_list(plan_proofs)
+        if rendered:
+            sections.append(("Plan Items Proven", rendered))
+    analysis_proofs = content.get("analysis_items_addressed")
+    if isinstance(analysis_proofs, list) and analysis_proofs:
+        rendered = _render_proof_list(analysis_proofs)
+        if rendered:
+            sections.append(("Analysis Items Addressed", rendered))
+    return sections
 
 
 def _join_string_list(value: object) -> str | None:

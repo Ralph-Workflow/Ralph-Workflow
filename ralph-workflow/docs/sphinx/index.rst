@@ -320,6 +320,8 @@ Then come back and ask one question:
 
    getting-started
    when-unattended-coding-fits
+   bounded-autonomy-for-unattended-coding
+   remote-supervision-of-coding-agents
    open-source-ai-coding-orchestrator
    unattended-coding-agent
    first-task-guide

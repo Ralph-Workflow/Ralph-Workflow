@@ -103,3 +103,39 @@ class TestBuildAgentRecoveryPlanResumableSession:
         )
 
         assert plan is None
+
+    def test_opencode_textual_session_flag_extracted_via_extracted_session_id(
+        self, tmp_path: Path
+    ) -> None:
+        """OpenCode textual --session flag value is recognized when passed as extracted_session_id.
+
+        This regression test verifies that when OpenCode emits raw output containing
+        '--session <id>' and that id is extracted by extract_session_id() in the caller
+        (effect_executor.py), the recovered session id is properly threaded into
+        the AgentRecoveryInput and used in the recovery plan.
+        """
+        exc = OpenCodeResumableExitError("opencode", session_id=None)
+        effect = _make_effect()
+        # Raw output contains OpenCode textual --session flag
+        raw_output = ["Some output", "  --session sess-from-opencode-text", "Another line"]
+
+        plan = build_agent_recovery_plan(
+            AgentRecoveryInput(
+                exc=exc,
+                attempt_index=0,
+                max_recovery_attempts=3,
+                effect=effect,
+                workspace_root=tmp_path,
+                raw_output=raw_output,
+                rendered_output=[],
+                # Simulate what effect_executor.py does: extract_session_id(tuple(raw_output))
+                extracted_session_id="sess-from-opencode-text",
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
+        )
+
+        assert plan is not None, "Expected a recovery plan, got None"
+        assert plan.session_id == "sess-from-opencode-text"
+        assert plan.prompt_file != "PROMPT.md"
+
+

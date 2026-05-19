@@ -685,6 +685,52 @@ def test_handle_submit_artifact_accepts_structured_development_result(tmp_path: 
     )
 
 
+def test_handle_submit_artifact_renders_proof_sections_in_markdown_handoff(tmp_path: Path) -> None:
+    """Proof-bearing development_result renders plan_items_proven and analysis_items_addressed."""
+    result = handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "development_result",
+            "content": _content(
+                {
+                    "status": "completed",
+                    "summary": "Implemented the feature.",
+                    "files_changed": "- src/main.py",
+                    "plan_items_proven": [
+                        {
+                            "plan_item": "Step 1: Add validation",
+                            "proof": "Updated src/main.py and tests.",
+                        },
+                        {
+                            "plan_item": "Step 2: Fix tests",
+                            "proof": "Fixed the failing test.",
+                        },
+                    ],
+                    "analysis_items_addressed": [
+                        {
+                            "how_to_fix_item": "Add test for edge case",
+                            "proof": "Added the regression test and verified it passes.",
+                        },
+                    ],
+                }
+            ),
+        },
+    )
+
+    assert result.is_error is False
+    md_content = (tmp_path / ".agent" / "DEVELOPMENT_RESULT.md").read_text(encoding="utf-8")
+    # Must contain proof sections
+    assert "## Plan Items Proven" in md_content
+    assert "Step 1: Add validation" in md_content
+    assert "Updated src/main.py and tests." in md_content
+    assert "Step 2: Fix tests" in md_content
+    assert "Fixed the failing test." in md_content
+    assert "## Analysis Items Addressed" in md_content
+    assert "Add test for edge case" in md_content
+    assert "Added the regression test and verified it passes." in md_content
+
+
 def test_handle_submit_artifact_mirrors_issues_to_markdown_handoff(tmp_path: Path) -> None:
     result = handle_submit_artifact(
         MockSession(drain="review"),

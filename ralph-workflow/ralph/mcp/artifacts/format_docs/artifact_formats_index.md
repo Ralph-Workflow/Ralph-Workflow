@@ -26,7 +26,7 @@ Submit a development result:
 ```json
 {
   "artifact_type": "development_result",
-  "content": "{\"status\": \"completed\", \"summary\": \"Implemented the feature.\", \"files_changed\": \"- src/main.py\"}"
+  "content": "{\"status\": \"completed\", \"summary\": \"Implemented the feature.\", \"files_changed\": \"- src/main.py\", \"plan_items_proven\": [{\"plan_item\": \"Step 1: Add feature\", \"proof\": \"Added the feature and tests.\"}], \"analysis_items_addressed\": [{\"how_to_fix_item\": \"Add validation\", \"proof\": \"Added input validation.\"}]}"
 }
 ```
 

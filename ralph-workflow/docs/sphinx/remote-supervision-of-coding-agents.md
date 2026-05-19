@@ -59,7 +59,7 @@ That means:
 The point is not maximum autonomy.
 The point is getting back a result that is **cheap to inspect and boring to review**.
 
-## When to prefer Ralph over pure remote supervision
+## When to prefer Ralph Workflow over pure remote supervision
 
 Ralph Workflow is the better fit when:
 
