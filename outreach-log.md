@@ -2,6 +2,17 @@
 
 ## 2026-05-19 (Tuesday)
 
+### RalphWorkflow Claude Code overnight Telegraph distribution repair
+- **Published a Codeberg-first Telegraph post for the exact pain phrase `run Claude Code overnight without babysitting`**: shipped `Run Claude Code Overnight Without Babysitting` to Telegraph so the newest high-intent Claude Code evaluator page now has a live external surface that routes readers to Codeberg first and GitHub second.
+  - Live URL: `https://telegra.ph/Run-Claude-Code-Overnight-Without-Babysitting-05-19`
+  - Source draft: `drafts/2026-05-19_run-claude-code-overnight-without-babysitting_telegraph.md`
+  - Verification: live fetch returned HTTP 200 and the published page body contains the Codeberg primary repo URL, Codeberg issues URL, and the GitHub mirror URL with Codeberg presented first.
+  - Why: this is **NEW / REPLACING** a failed tactic. Codeberg adoption is still flat, the active repair explicitly prefers SEO landing pages plus cross-posting already-strong assets over more generic content churn, and the repo already had the exact-intent owned page for this Claude Code pain. The highest-leverage executable move right now was to distribute that proven angle on an unblocked external surface instead of drafting another broad article or repeating a weak channel loop.
+  - Expected outcome: more qualified Claude Code evaluators searching or sharing around overnight unattended use should reach a Codeberg-first explanation and click through to inspect the primary repo.
+  - Measurement window: next 7 days for Telegraph indexing / referral evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop expanding Telegraph pain-term distribution alone and shift the next replacement move to a fresh third-party backlink/distribution surface or a warmer competitor-citation path that can send higher-intent traffic.
+  - Type: **NEW / REPLACING**
+
 ### RalphWorkflow first-task evaluator-path repair
 - **Reordered the shortest evaluator path around Codeberg first → task choice second → first run third**: tightened the main public entry points so first-time evaluators are pushed into the highest-conversion sequence instead of a generic docs/install flow.
   - Commit: `659eee44` — `Tighten first-task conversion path`
@@ -2056,3 +2067,42 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Measurement window: next 7 days for listing approval / discoverability evidence; next 14 days for Codeberg stars/watchers/issues delta.
   - Replace if it fails: if this listing goes live and Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop prioritizing one-off directory submissions and shift the next replacement move to either a warmer external discussion surface or a verified live-site deployment-path repair.
   - Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 17:14:22
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow Reddit opening-repetition repair
+- **What I executed:** repaired `agents/marketing/reddit_autopost.py` so the anti-repetition fallback path now actually uses recent post context and no longer falls back to the audit-flagged opener `Honestly the part I'd optimize first is the handoff, not the model stack.` when regeneration fires.
+  - Files: `agents/marketing/reddit_autopost.py`, `agents/marketing/tests/test_reddit_autopost.py`
+  - Verification: `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v` ✅ (18/18 passing). Also directly regenerated the problematic `run until done` thread shape and confirmed the new opening is `New autonomy features are interesting, but I mostly care about what the run looks like when it lands.`
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The current audit and momentum watchdog both still list `repetitive_outreach` as a pending repair, and the bug was real: `build_comment()` regenerated through `emergency_rewrite()` **without passing recent bodies**, which let the banned opening survive exactly where the repetition guard should have been strongest.
+  - Expected outcome: the next Reddit posts should stop reusing the flagged opening/body shape, which should improve authenticity and preserve room for future thread-specific Codeberg-first mentions.
+  - Measurement window: next 1-3 Reddit posting opportunities for opening/body variation; next audit window for `repeated_openings` to drop to zero.
+  - Replace if it fails: if the next audit still detects repeated openings or the same concept cadence by `2026-05-26`, replace this lane with a stricter per-category opener rotation/history gate instead of trusting fallback rewriting alone.
+  - Type: **REPAIRED / REPLACING**
+
+### RalphWorkflow ToolShelf directory submission repair
+- **When:** 2026-05-19 17:36:14 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** submitted Ralph Workflow to ToolShelf's live public submission API as a new developer-tool discovery surface, using **Codeberg as the primary listing URL** and GitHub only as the mirror.
+  - Submission path: `POST https://toolshelf.dev/api/submit`
+  - Payload used: `name: Ralph Workflow`, `website_url: https://codeberg.org/RalphWorkflow/Ralph-Workflow`, `github_url: https://github.com/Ralph-Workflow/Ralph-Workflow`, `category: ai-coding`
+- **Verification:** live API returned HTTP `200` with `{"success":true,"message":"Tool submitted successfully! We'll review it soon."}`.
+- **Why this action:** this was the highest-leverage viable pending repair for `distribution_and_message_to_primary_repo_conversion`. Codeberg adoption is still flat, write.as-only distribution is explicitly failing, and ToolShelf is a real executable developer directory with a working submit backend from this environment. That makes it a stronger immediate replacement move than repeating stale content loops.
+- **Expected outcome:** ToolShelf review approval should create a fresh qualified discovery path that sends developers to inspect the **primary Codeberg repo** first, with GitHub preserved as the mirror for secondary follow/read behavior.
+- **Measurement window:** next 7 days for listing approval / live discoverability; next 14 days for Codeberg star/watch/issue delta.
+- **Replace if it fails:** if the listing is approved and Codeberg stars/watches/issues are still flat by `2026-06-02`, stop prioritizing one-off directory submissions and replace this lane with the next stronger conversion repair (homepage/deep-doc CTA tightening or a warmer discussion surface with explicit Codeberg-first framing).
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 17:36:56
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow Reddit opening-family repair
+- **Rewrote the Reddit autopost generator to avoid repeating the same pain-opening family across threads**: patched `agents/marketing/reddit_autopost.py` so the selector now classifies opening families (approval drag, stop condition, remote supervision, overnight scope, handoff contract, etc.), penalizes repeats of the same family across recent posts, broadens high-fit Codeberg CTA eligibility to `approval` / `announcement` threads, and adds fresher category variants that do not default back to the same handoff-first cadence.
+  - Verification: `python3 -m py_compile agents/marketing/reddit_autopost.py`; `python3 -m unittest agents.marketing.tests.test_reddit_autopost -v` → **20/20 tests passed**.
+  - Why: this is **REPAIRED / REWRITTEN**. The current audit still lists `repetitive_outreach` as a live failing tactic, and the external directory lane is already heavily consumed/duplicated from this environment today. The highest-leverage viable repair left in this run was to fix the distribution system itself so the next Reddit posting windows stop sounding like the same handoff-first answer with cosmetic wording changes.
+  - Expected outcome: the next Reddit replies should vary by underlying pain shape instead of recycling the same opening logic, reducing repetition risk while preserving Codeberg-first CTA quality on high-fit threads.
+  - Measurement window: next 3 Reddit posting windows for opening-family diversity in generated bodies; next audit window for `repeated_openings` clearing and no new `repetitive_outreach` finding; next 14 days for any Codeberg stars/watchers/issues delta from fresher Reddit traffic.
+  - Replace if it fails: if the next audit still flags repetitive openings/cadence or Reddit-driven Codeberg movement stays flat through `2026-06-02`, stop investing in Reddit-body optimization and shift the next replacement move to a new external distribution surface or competitor-citation path that can send warmer traffic directly to Codeberg.
+  - Type: **REPAIRED / REWRITTEN**

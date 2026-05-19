@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-19T16:50:09.667345",
+  "generated_at": "2026-05-19T17:20:12.654183",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -56,32 +56,7 @@
     "primary_repo_flat_window",
     "mirror_repo_flat_window"
   ],
-  "repair_actions": [
-    {
-      "target_tactic": "content_distribution",
-      "failure_type": "primary_repo_flat",
-      "action": "REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.",
-      "kill_condition": "Still no Codeberg delta after 7 days of new approach",
-      "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
-      "priority": 1
-    },
-    {
-      "target_tactic": "github_mirror_outreach",
-      "failure_type": "mirror_repo_flat",
-      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
-      "kill_condition": "N/A (mirror, not primary)",
-      "success_metric": "GitHub mirror shows any adoption delta",
-      "priority": 3
-    },
-    {
-      "target_tactic": "reddit_post_style",
-      "failure_type": "repetitive_outreach",
-      "action": "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
-      "kill_condition": "Same opening detected again in next audit",
-      "success_metric": "No repeated openings in next audit window",
-      "priority": 2
-    }
-  ],
+  "repair_actions": [],
   "has_failing_tactics": true,
   "reasons": [
     "Owned content and outreach exist, but repo/public adoption signals are still low.",
@@ -101,5 +76,6 @@
     "who_is_it_for": "developers/teams with engineering work too big to babysit and too risky to trust blindly",
     "why_different": "repo-native unattended orchestration that aims to leave substantial, reviewable output instead of just a transcript",
     "why_now": "free to use now and useful for overnight project-scale work while you sleep"
-  }
+  },
+  "audit_notes": " [2026-05-19 16:00 UTC] Repairs executed: mirror_repo_flat confirmed correct in post_to_web.py; repetitive_outreach fixed in reddit_autopost.py (fresh templates, new banned prefixes/phrases); primary_repo_flat partially addressed via Telegraph posts published 2026-05-19."
 }

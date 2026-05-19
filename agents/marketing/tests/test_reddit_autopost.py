@@ -124,6 +124,56 @@ class RedditAutopostTests(unittest.TestCase):
         self.assertNotIn("If the useful part here is \"one tool builds, one checks, then judge the result like a PR,\"", body)
         self.assertFalse(reddit_autopost.github_cta_repeats(body, recent))
 
+    def test_emergency_rewrite_uses_recent_context_and_avoids_banned_opening(self):
+        opp = reddit_autopost.Opportunity(
+            rank=1,
+            title='Claude Code just shipped a "run until done" mode. Upgrade to v2.1.139 for /goal.',
+            url="https://www.reddit.com/r/ClaudeCode/comments/example/",
+            community="r/ClaudeCode",
+            angle="run-until-done only helps if done is bounded, fail-closed, and easy to review",
+            freshness="today",
+            mention_fit="**medium-low**",
+        )
+        recent = [
+            "Honestly the part I'd optimize first is the handoff, not the model stack.\n\n"
+            "If the run ends with one readable diff, real checks, and a short note about what still looks sketchy, you can move fast without lying to yourself about the result.\n\n"
+            "Most of the pain is not raw generation. It's stale assumptions, fuzzy ownership, and nobody making the finish easy to review."
+        ]
+        body = reddit_autopost.build_comment(opp, recent=recent)
+        self.assertFalse(reddit_autopost.opening_is_repetitive(body, recent))
+        self.assertNotIn("Honestly the part I'd optimize first is the handoff", body)
+
+    def test_opening_family_detects_and_blocks_same_pain_shape(self):
+        recent = [
+            "Approval drag usually means the workflow has no trustworthy stop point, so the human gets turned into a live safety system.\n\n"
+            "A bounded task plus checks and explicit unresolved calls helps more than another toggle."
+        ]
+        candidate = (
+            "Approval mode only feels better when the finish state is easy to judge.\n\n"
+            "If the run still ends in fuzzy output, the human is still acting like a safety system."
+        )
+        self.assertEqual(reddit_autopost.opening_family(recent[0]), "approval_drag")
+        self.assertEqual(reddit_autopost.opening_family(candidate), "approval_drag")
+        self.assertTrue(reddit_autopost.opening_family_repeats(candidate, recent))
+
+    def test_build_comment_prefers_fresh_opening_family_for_approval_threads(self):
+        opp = reddit_autopost.Opportunity(
+            rank=1,
+            title="Claude Code stuck in approval loop",
+            url="https://www.reddit.com/r/ClaudeCode/comments/example/",
+            community="r/ClaudeCode",
+            angle="approval drag is really a weak stop-condition problem",
+            freshness="today",
+            mention_fit="**high**",
+        )
+        recent = [
+            "Approval drag usually means the workflow has no trustworthy stop point, so the human gets turned into a live safety system.\n\n"
+            "What helps more than another toggle is a bounded task, checks attached at the end, and explicit unresolved calls when the run stops."
+        ]
+        body = reddit_autopost.build_comment(opp, recent=recent)
+        self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, body)
+        self.assertNotEqual(reddit_autopost.opening_family(body), "approval_drag")
+
     def test_detect_category_separates_handoff_and_mixed_team_threads(self):
         self.assertEqual(reddit_autopost.detect_category("Claude -> Codex -> Claude"), "handoff")
         self.assertEqual(
