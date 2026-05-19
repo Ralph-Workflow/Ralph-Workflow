@@ -8,7 +8,7 @@
 
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> Use this GitHub mirror if GitHub is where you already track open-source tools, but treat Codeberg as the main home: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> Use this GitHub mirror if GitHub is where you already track open-source tools, but treat Codeberg as the main home: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Ralph Workflow is an agent-agnostic orchestration CLI for spec-driven planning, analysis, coding, and review. You write the task in `PROMPT.md`, Ralph routes each phase through the agents you choose, and you come back to a real codebase: changes in git, logs, artifacts, and review output you can inspect in your normal engineering process.
 

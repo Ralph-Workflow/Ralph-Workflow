@@ -2,7 +2,7 @@
 
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect, star, watch, fork, and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> Use the GitHub mirror if GitHub is where you already track projects, but treat Codeberg as the main home: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> Use the GitHub mirror if GitHub is where you already track projects, but treat Codeberg as the main home: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
