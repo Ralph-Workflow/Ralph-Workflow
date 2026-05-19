@@ -24,7 +24,6 @@ from ralph.mcp.artifacts.history import (
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_ARTIFACT_TYPE, PLAN_DRAFT_PATH
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import (
-    build_required_artifacts,
     resolve_required_artifact,
     retry_hint_path,
 )
@@ -254,11 +253,12 @@ def _render_prompt_for_phase(
     tmpl_ctx = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
     prompt_content = _read_optional(workspace, "PROMPT.md")
-    _clear_completed_planning_history_if_needed(
+    _clear_accepted_analysis_history_if_needed(
         workspace_root=workspace_root,
         pipeline_policy=pipeline_policy,
         phase=phase,
         previous_phase=previous_phase,
+        artifacts_policy=artifacts_policy,
     )
     current_prompt_path = _persist_current_prompt(workspace_root, prompt_content)
 
@@ -566,12 +566,30 @@ def _prepare_planning_prompt_context(
     # planning passes must preserve the current plan + history so the
     # planner can revise instead of restart.
     if not preserve_planning_context:
-        _clear_fresh_planning_context(
-            workspace,
-            phase=phase,
-            pipeline_policy=pipeline_policy,
-            artifacts_policy=artifacts_policy,
+        # Clear drain artifacts for fresh planning entry.
+        # This handles the direct materialization path where runner-level clearing
+        # via clear_phase_entry_drains does not fire.
+        # Use the phase-agnostic is_fresh_phase_entry to determine if this is
+        # a genuine fresh entry before clearing.
+        from ralph.pipeline.phase_entry_cleaner import (
+            clear_phase_entry_drains as _clear_phase_entry_drains,
         )
+        from ralph.pipeline.phase_entry_cleaner import (
+            is_fresh_phase_entry,
+        )
+
+        if (
+            is_fresh_phase_entry(phase, previous_phase, pipeline_policy)
+            and artifacts_policy is not None
+        ):
+            _clear_phase_entry_drains(
+                workspace,
+                phase,
+                previous_phase,
+                pipeline_policy,
+                artifacts_policy,
+            )
+        _clear_fresh_planning_context(workspace, pipeline_policy, artifacts_policy)
     elif phase_def is not None and phase_def.loopback_prompt_template:
         template_name = phase_def.loopback_prompt_template
     analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
@@ -617,19 +635,20 @@ def resolve_planning_history_path(
     return _resolve_artifact_history_path(workspace_root, PLAN_ARTIFACT_TYPE)
 
 
-def _clear_completed_planning_history_if_needed(
+def _clear_accepted_analysis_history_if_needed(
     *,
     workspace_root: Path,
     pipeline_policy: PipelinePolicy,
     phase: str,
     previous_phase: str | None,
+    artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
-    """Clear all artifact history when the planning cycle finishes and development begins.
+    """Clear artifact history per policy when an analysis phase accepts and advances.
 
-    The history remains available throughout planning and replanning. Once the
-    planning-analysis phase succeeds and the workflow advances to its on_success
-    target (the developer-facing phase), all artifact history should be cleared so
-    downstream execution starts from a clean slate.
+    Handles both planning_analysis→development and development_analysis→development_commit
+    transitions. The history remains available throughout analysis iterations. Once an
+    analysis phase succeeds and the workflow advances to its on_success target,
+    artifact history is cleared per the per-phase clear_on_fresh_entry policy.
     """
     if previous_phase is None:
         return
@@ -646,18 +665,31 @@ def _clear_completed_planning_history_if_needed(
         return
     if loopback_phase_def.role != "execution":
         return
-    _clear_all_artifact_history(workspace_root)
+    _clear_artifact_history_per_policy(workspace_root, pipeline_policy, artifacts_policy)
 
 
-def _clear_all_artifact_history(workspace_root: Path) -> None:
-    """Remove every artifact history archive under .agent/artifacts/history/."""
-    artifact_dir = workspace_root / ".agent" / "artifacts"
-    history_root = artifact_dir / "history"
-    if not history_root.exists():
+def _clear_artifact_history_per_policy(
+    workspace_root: Path,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> None:
+    """Clear artifact history per-phase policy declarations.
+
+    Iterates over pipeline phases and clears artifact history only for phases
+    with artifact_history.clear_on_fresh_entry=True. When artifacts_policy is None,
+    returns immediately without clearing (safe conservative fallback).
+    """
+    if artifacts_policy is None:
         return
-    for path in history_root.iterdir():
-        if path.is_dir():
-            clear_artifact_history(artifact_dir, path.name, backend=DEFAULT_FILE_BACKEND)
+    artifact_dir = workspace_root / ".agent" / "artifacts"
+    for phase_def in pipeline_policy.phases.values():
+        if phase_def.artifact_history is None:
+            continue
+        if not phase_def.artifact_history.clear_on_fresh_entry:
+            continue
+        drain_type = _drain_artifact_type(phase_def.drain, artifacts_policy)
+        if drain_type is not None:
+            clear_artifact_history(artifact_dir, drain_type, backend=DEFAULT_FILE_BACKEND)
 
 
 def _resolve_and_clear_dev_artifact_history(
@@ -678,36 +710,20 @@ def _resolve_and_clear_dev_artifact_history(
 
 def _clear_fresh_planning_context(
     workspace: Workspace,
-    *,
-    phase: str,
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
 ) -> None:
-    """Delete prior planning state before rendering a fresh planning-creation prompt."""
-    for path in (PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH):
-        if workspace.exists(path):
-            workspace.remove(path)
-    handoff_path = handoff_path_for_artifact("plan")
-    if handoff_path and workspace.exists(handoff_path):
-        workspace.remove(handoff_path)
+    """Delete prior planning state before rendering a fresh planning-creation prompt.
 
+    Clears the plan draft (.plan_draft.json) and artifact history per policy.
+    Drain artifact clearing is handled by phase_entry_cleaner.clear_phase_entry_drains
+    at PreparePromptEffect time in the runner flow, and by the direct call in
+    _prepare_planning_prompt_context for the direct materialization path.
+    """
+    if workspace.exists(PLAN_DRAFT_PATH):
+        workspace.remove(PLAN_DRAFT_PATH)
     workspace_root = Path(workspace.absolute_path("."))
-    _clear_all_artifact_history(workspace_root)
-
-    if artifacts_policy is None:
-        return
-    required_artifacts = build_required_artifacts(artifacts_policy)
-    for p in pipeline_policy.phases.values():
-        if p.role != "analysis" or p.transitions.on_loopback != phase:
-            continue
-        required_artifact = required_artifacts.get(p.drain)
-        if required_artifact is None:
-            continue
-        if workspace.exists(required_artifact.json_path):
-            workspace.remove(required_artifact.json_path)
-        analysis_handoff = handoff_path_for_artifact(required_artifact.artifact_type)
-        if analysis_handoff and workspace.exists(analysis_handoff):
-            workspace.remove(analysis_handoff)
+    _clear_artifact_history_per_policy(workspace_root, pipeline_policy, artifacts_policy)
 
 
 def _is_analysis_loopback_into_phase(

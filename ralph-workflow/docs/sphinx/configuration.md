@@ -124,6 +124,17 @@ require_analysis_proof = true
 
 Omitting this block inherits the bundled defaults. To disable proof enforcement in a project-local `.agent/pipeline.toml`, set both fields to `false` explicitly. The proof policy is phase-owned, so it lives under `[phases.development]` alongside the other phase settings.
 
+### Per-phase display style (`display_style`)
+
+Each phase can declare a `display_style` override in `pipeline.toml` to control the color of its phase banner:
+
+```toml
+[phases.planning]
+display_style = "theme.phase.planning"
+```
+
+When set, this style string is used instead of the role-based default. Without `display_style`, phases inherit a color from their role — for example both `planning` and `development` share `role='execution'` and would otherwise render identically. Set `display_style` to give each phase a visually distinct banner. Available theme keys include `theme.phase.planning`, `theme.phase.development`, `theme.phase.development_analysis`, `theme.phase.commit`, and others defined in `ralph.display.theme`.
+
 ## Advanced sections you may not need right away
 
 The main config also supports deeper transport-specific and workflow-authoring sections such as:
