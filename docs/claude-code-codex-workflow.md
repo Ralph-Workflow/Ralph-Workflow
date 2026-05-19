@@ -99,3 +99,13 @@ Claude Code + Codex is already a good instinct.
 The bigger question is whether the workflow gives you a **clean, reviewable finish** instead of more supervision work.
 
 That is the job Ralph Workflow is trying to do.
+
+## Turn this evaluation into one public Codeberg action
+
+If this split-workflow page fits the pain you are already dealing with, the next step should be public and primary-repo-first.
+
+- **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg** if Ralph Workflow looks like the cleaner Claude Code + Codex handoff path: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **Need the post-run scorecard first?** Read [After Your First Ralph Workflow Run](./after-your-first-run.md)

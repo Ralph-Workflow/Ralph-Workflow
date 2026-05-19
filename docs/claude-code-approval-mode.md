@@ -77,3 +77,13 @@ Use this rule before you pick the workflow:
 - Read [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) if the merge decision is still fuzzy
 - Inspect the **primary Codeberg repo**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **GitHub mirror**: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+## Turn this evaluation into one public Codeberg action
+
+If this page matches the problem you are actually trying to solve, do not stop at a private "seems useful."
+
+- **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg** if Ralph Workflow looks like the stronger overnight path: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **Need the post-run scorecard first?** Read [After Your First Ralph Workflow Run](./after-your-first-run.md)
