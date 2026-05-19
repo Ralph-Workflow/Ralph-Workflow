@@ -44,6 +44,7 @@ If you already know your first question is really about tool fit, do not dig thr
 - Already using one agent and want the lowest-friction setup? Read [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md)
 - Already using OpenCode and wondering whether you still need Ralph Workflow? Read [Ralph Workflow vs OpenCode](docs/sphinx/ralph-workflow-vs-opencode.md)
 - Already splitting work across Claude Code and Codex? Read [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md)
+- Want the shortest morning-after trust check before setup? Read [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md)
 - Want proof before setup? Open the [Example Review Bundle](docs/sphinx/example-review-bundle.md)
 
 If you want to inspect the project before you run anything, start on Codeberg and keep GitHub in reserve as the mirror:

@@ -87,10 +87,23 @@ Tomorrow morning, open the diff and the finish receipt and ask:
 If the answer comes quickly, the handoff is doing its job.
 If you still need to reconstruct the whole night, tighten the scope or the review path and run again.
 
+## Turn a good finish receipt into the right public next step
+
+If this is the kind of morning-after handoff you want, keep the real project relationship on **Codeberg**:
+
+- **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+A clean finish receipt should lead to one honest public action:
+
+- if the run earned trust, put the signal on **Codeberg**
+- if the run exposed a gap, report that exact gap on **Codeberg**
+
 ## Next reading
 
 - [Getting Started](getting-started.md) — shortest path to a real first run
 - [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — five-minute merge check for the morning-after handoff
 - [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — why review/reconstruction pain usually breaks trust before Git does
 - [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts
-- [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — inspect, star, or watch Ralph Workflow where you already follow open-source tools
+- [After Your First Ralph Workflow Run](after-your-first-run.md) — short Codeberg-first scorecard for what to do after a promising or rough first run

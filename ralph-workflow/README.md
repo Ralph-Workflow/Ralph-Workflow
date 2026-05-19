@@ -21,6 +21,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 - [Already using OpenCode and wondering why you would add Ralph Workflow? Read the direct comparison](docs/sphinx/ralph-workflow-vs-opencode.md)
 - [Already using Claude Code or Codex? Pick the lowest-friction first agent path](docs/sphinx/which-agent-should-i-start-with.md)
 - [Already splitting work across Claude Code + Codex? Use the cleaner handoff workflow](docs/sphinx/claude-code-codex-workflow.md)
+- [Want the cleanest morning-after re-entry summary? See what a good finish receipt looks like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md)
 - [Inspect a public example review bundle first](docs/sphinx/example-review-bundle.md)
 - [Docs: Getting Started](docs/sphinx/getting-started.md)
 - [Docs site](https://ralphworkflow.com/docs)
@@ -50,6 +51,8 @@ If you want the fastest trust check before a first run, open the public [Example
 It shows the exact kind of morning-after handoff Ralph Workflow is trying to produce: a real `PROMPT.md`, result notes, review feedback, fix notes, and artifact files you can inspect before deciding whether to try Ralph Workflow on your own backlog.
 
 If you already ran Ralph Workflow once and want the shortest path from private evaluation to a real public next step, use [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md).
+
+If your real question is "what should the morning-after handoff actually look like?", read [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md) before you install.
 
 If your real question is "which setup should I start with tonight?", use one of these paths instead of reading generic docs first:
 
