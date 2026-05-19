@@ -38,21 +38,26 @@ The post-run branch should stay explicit:
 - `first-task-guide.md` — choose a strong first backlog task and avoid vague demo runs
 - `which-agent-should-i-start-with.md` — quick decision guide for the first agent path: choose the one already working on your machine
 - `claude-code-automation.md` — Codeberg-first answer for developers searching specifically for Claude Code automation but who really need a reviewable unattended handoff
+- `run-claude-code-overnight-without-babysitting.md` — plain-language Codeberg-first page for developers searching exactly how to run Claude Code overnight without hovering over the terminal
 - `claude-code-approval-mode.md` — for developers whose Claude Code approval mode or plan mode still leaves them babysitting the run instead of reviewing a clean morning-after result
+- `ralph-workflow-vs-opencode.md` — comparison page for developers deciding whether staying interactive in OpenCode is enough or whether they need a reviewable unattended handoff
 - `ralph-workflow-vs-codex-cli.md` — comparison page for developers deciding whether staying interactive in Codex CLI is enough or whether they need a reviewable unattended handoff
 - `example-review-bundle.md` — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
 - `after-your-first-run.md` — use a two-minute scorecard to turn the first run into a Codeberg star/watch or a useful issue
 - `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
 - `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
 - `review-ai-coding-output-before-merge.md` — five-minute merge review path for the morning-after handoff
+- `how-to-tell-if-an-ai-coding-task-is-actually-done.md` — owned trust page for the core finish-line question: is this really done or just confidently stopped?
 - `bounded-autonomy-for-unattended-coding.md` — keep unattended runs fail-closed, cheap to miss, and easy to review the next morning
 - `remote-supervision-of-coding-agents.md` — for developers who think they need remote supervision but really need a cleaner finish-state trust path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first category page for developers searching for an open-source AI coding orchestrator they can inspect before install
 - `ai-agent-orchestration-cli.md` — practical comparison page for developers evaluating orchestration CLIs and looking for a Codeberg-first reviewable-output path
+- `unattended-coding-agent.md` — practical page for developers searching for an unattended coding agent and trying to judge whether the morning-after handoff will actually be reviewable
 - `spec-driven-ai-agent.md` — category/positioning page for developers who want a spec-first workflow instead of a prompt-first loop
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
 - `ralph-workflow-vs-claude-code.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing Claude Code habit
+- `ralph-workflow-vs-opencode.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing OpenCode habit
 - `ralph-workflow-vs-codex-cli.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing Codex CLI habit
 - `claude-code-codex-workflow.md` — practical guide for developers already pairing Claude Code and Codex who want a cleaner finish than manual glue
 - `what-breaks-first-with-multiple-coding-agents.md` — shared-boundary drift, merged-state checks, finish receipts, and the trust failures that show up before raw Git conflicts
@@ -122,7 +127,9 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `first-task-guide.md` — practical first-task chooser for the first real unattended run
 - `which-agent-should-i-start-with.md` — practical first-run agent-choice guide for Claude Code, Codex, and OpenCode users
 - `claude-code-automation.md` — practical guide for developers who already like Claude Code but need a trustworthy automation / overnight finish path
+- `run-claude-code-overnight-without-babysitting.md` — practical plain-language page for the exact "Claude Code overnight" / "without babysitting" search intent
 - `claude-code-approval-mode.md` — practical guide for developers whose approval or plan mode still leaves them doing approval babysitting instead of morning-after review
+- `ralph-workflow-vs-opencode.md` — practical comparison for developers deciding between staying interactive in OpenCode and handing off a reviewable unattended run
 - `first-task-prompt-templates.md` — copy-paste starter prompt shapes for feature work, validation, refactors, tests, and docs
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
 - `review-ai-coding-output-before-merge.md` — practical merge-review checklist for deciding whether the handoff is trustworthy
@@ -130,6 +137,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `remote-supervision-of-coding-agents.md` — practical guide for converting live-supervision pain into a cleaner morning-after review path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first explanation of what Ralph Workflow adds if you are comparing open-source AI coding orchestrators
 - `ai-agent-orchestration-cli.md` — practical comparison page for developers evaluating orchestration CLIs by the quality of the reviewable handoff
+- `unattended-coding-agent.md` — practical page for developers searching for an unattended coding agent they can trust to produce a morning-after handoff instead of a transcript
 - `spec-driven-ai-agent.md` — explanation of why Ralph Workflow is built around a spec-first finish line instead of a prompt-first loop
 - `what-a-good-ai-coding-finish-receipt-looks-like.md` — what a short trustworthy morning-after handoff should contain so review does not start with transcript archaeology
 - `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task

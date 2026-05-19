@@ -4,7 +4,7 @@
 >
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect, star, watch, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> Use the GitHub mirror if GitHub is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+> Use the GitHub mirror only as a secondary follow/read surface if GitHub is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Ralph Workflow is a **free and open-source** Python 3.12+ CLI that orchestrates the coding agents you already use **on your own machine** for substantial unattended work.
 
@@ -18,12 +18,14 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 
 - [Start Here: try Ralph Workflow on one real backlog task](START_HERE.md)
 - [Already using Claude Code and wondering why you would add Ralph Workflow? Read the direct comparison](docs/sphinx/ralph-workflow-vs-claude-code.md)
+- [Already using OpenCode and wondering why you would add Ralph Workflow? Read the direct comparison](docs/sphinx/ralph-workflow-vs-opencode.md)
 - [Already using Claude Code or Codex? Pick the lowest-friction first agent path](docs/sphinx/which-agent-should-i-start-with.md)
 - [Already splitting work across Claude Code + Codex? Use the cleaner handoff workflow](docs/sphinx/claude-code-codex-workflow.md)
+- [Want the cleanest morning-after re-entry summary? See what a good finish receipt looks like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md)
 - [Inspect a public example review bundle first](docs/sphinx/example-review-bundle.md)
 - [Docs: Getting Started](docs/sphinx/getting-started.md)
 - [Docs site](https://ralphworkflow.com/docs)
-- Prefer GitHub? The public mirror stays in sync here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- [After your first run, turn it into the right Codeberg action](docs/sphinx/after-your-first-run.md)
 
 Ralph Workflow supports mixed-agent runs across planning, analysis, development, review, and commit phases. You might plan with Claude, route analysis through an OpenCode-backed GPT model, hand development to Codex or another OpenCode provider, and keep review on a different agent chain — all inside the same repo-native workflow.
 
@@ -50,13 +52,16 @@ It shows the exact kind of morning-after handoff Ralph Workflow is trying to pro
 
 If you already ran Ralph Workflow once and want the shortest path from private evaluation to a real public next step, use [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md).
 
+If your real question is "what should the morning-after handoff actually look like?", read [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md) before you install.
+
 If your real question is "which setup should I start with tonight?", use one of these paths instead of reading generic docs first:
 
 - [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md) — choose the agent already installed and authenticated on your machine.
+- [Ralph Workflow vs OpenCode](docs/sphinx/ralph-workflow-vs-opencode.md) — decide when direct provider flexibility is enough and when a reviewable unattended handoff is better.
 - [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better.
 - [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md) — keep the role split, but come back to a cleaner reviewable handoff.
 
-If you prefer to inspect, star, or watch open-source projects on GitHub, the synced mirror lives at <https://github.com/Ralph-Workflow/Ralph-Workflow>. The primary source of truth remains Codeberg, but you can follow the project from either place.
+If you prefer to inspect or follow open-source projects on GitHub, the synced mirror lives at <https://github.com/Ralph-Workflow/Ralph-Workflow>. But treat GitHub as the read-only mirror: the primary source of truth, first-run issues, and the main public trust signals all belong on Codeberg.
 
 ## What you get
 

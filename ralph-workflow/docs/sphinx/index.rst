@@ -1,7 +1,7 @@
-.. title:: Free open-source unattended coding CLI
+.. title:: Unattended coding agent
 
 .. meta::
-   :description: Ralph Workflow is a free open-source CLI that orchestrates Claude Code, Codex CLI, and OpenCode on your own machine for reviewable overnight coding work.
+   :description: Ralph Workflow is a free open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode on your machine.
 
 Ralph Workflow
 ==============
@@ -10,21 +10,25 @@ Ralph Workflow
 
    <section class="hero">
      <h1 class="hero-headline">Run bigger AI coding tasks without babysitting the terminal</h1>
-     <p class="hero-subtitle">Ralph Workflow is free and open source. It orchestrates the coding agents you already use on your own machine, runs planning + development + review as one unattended flow, and brings back a reviewable result instead of just a transcript and a done claim.</p>
+     <p class="hero-subtitle">Ralph Workflow is a free and open-source unattended coding agent and AI agent orchestration CLI. It gives Claude Code, Codex, and OpenCode a spec-driven workflow on your own machine so you wake up to reviewable code instead of another transcript and a done claim.</p>
      <div class="hero-actions">
        <a class="hero-cta" href="getting-started.html">Run your first real task →</a>
        <a class="hero-cta hero-cta-secondary" href="example-review-bundle.html">See a public review bundle first</a>
        <a class="hero-cta hero-cta-secondary" href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Inspect on Codeberg</a>
      </div>
      <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
-     <p class="hero-proof-note">Prefer to inspect the code before installing or follow the project where you already evaluate open source? <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Review, star, watch, or fork the primary Codeberg repo</a>. If GitHub is where you already track projects, the <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">mirror is there too</a>.</p>
+     <p class="hero-proof-note">Before you install, <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">inspect the primary Codeberg repo first</a>. After your first run, use <a href="after-your-first-run.html">the short Codeberg-first scorecard</a> to decide whether the right public next step is a star/watch or a useful issue.</p>
    </section>
 
 Choose the first path that matches how you already work tonight:
 
+Ralph Workflow is built for developers with work too big to babysit and too risky to trust blindly: a spec-driven AI agent flow, Claude Code automation path, and morning-after review handoff in one place.
+
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
+- Already using **OpenCode** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-opencode`.
 - Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
 - Already using **Claude Code** and specifically searching for a better automation / unattended path? Start with :doc:`claude-code-automation`.
+- Already searching for how to run **Claude Code overnight without babysitting**? Start with :doc:`run-claude-code-overnight-without-babysitting`.
 - Already using **Claude Code** but still stuck in approval mode or plan mode babysitting? Read :doc:`claude-code-approval-mode`.
 - Already using **Codex CLI** and deciding whether you need Ralph Workflow for the morning-after handoff? Start with :doc:`ralph-workflow-vs-codex-cli`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
@@ -80,13 +84,16 @@ Want the deeper workflow argument before you install?
 If you want a longer answer to what Ralph Workflow is, who it is for, why it is different, and why
 it is worth trying now, these are the best supporting reads right now:
 
-- `How to Tell if an AI Coding Task Is Actually Done <https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2>`_
-- `Claude Code + Codex Workflow: Plan, Build, Review <https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-19>`_
+- :doc:`how-to-tell-if-an-ai-coding-task-is-actually-done`
+- :doc:`claude-code-codex-workflow`
 - :doc:`when-unattended-coding-fits`
 
 Those reads all drive back to the same practical free-use path: use the agents you already have on
 your own machine, run one real backlog task tonight, and ask tomorrow whether you would merge the
 result.
+
+If the main trust question is still "how do I tell whether the run is actually done?" read
+:doc:`how-to-tell-if-an-ai-coding-task-is-actually-done`.
 
 What Ralph Workflow is for
 ==========================
@@ -102,9 +109,9 @@ Why try it now? Because you can use the agents you already trust on your own mac
 backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
 If you prefer to inspect or follow open-source projects on GitHub, Ralph Workflow also has a synced
-public mirror there. The primary repo lives on Codeberg, and that is where stars, watches, forks,
-issues, and contribution history should accumulate. Use GitHub when it helps discovery; use
-Codeberg for the main project relationship.
+public mirror there. But keep the first real project relationship on Codeberg: that is where stars,
+watches, forks, issues, and contribution history should accumulate. Use GitHub when it helps
+discovery; use Codeberg for the main project relationship.
 
 Important first-run expectation: Ralph Workflow is free and open source, but it does not replace
 the coding agents you already use. Before you start, have at least one supported agent CLI already
@@ -345,7 +352,9 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
    spec-driven-ai-agent
    first-task-guide
    which-agent-should-i-start-with
+   ralph-workflow-vs-opencode
    claude-code-automation
+   run-claude-code-overnight-without-babysitting
    claude-code-approval-mode
    ralph-workflow-vs-claude-code
    ralph-workflow-vs-codex-cli
@@ -356,6 +365,7 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
    ralph-workflow-vs-aider
    reviewable-output
    review-ai-coding-output-before-merge
+   how-to-tell-if-an-ai-coding-task-is-actually-done
    what-a-good-ai-coding-finish-receipt-looks-like
    example-review-bundle
    after-your-first-run

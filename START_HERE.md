@@ -92,9 +92,9 @@ If that handoff shape sounds right, inspect the public [example review bundle](.
 
 If you want a stronger answer to "what is this, who is it for, why is it different, and why should I try it now?" before you install, start with these:
 
-- [How to Tell if an AI Coding Task Is Actually Done](https://write.as/7pqpd2y0v0re2.md) — how to judge whether the morning-after result is actually trustworthy.
-- [Claude Code + Codex Workflow: Plan, Build, Review](https://write.as/vesqh0lzrm4en.md) — the cleanest long-form explanation of the plan/build/review split.
-- [When Unattended AI Coding Actually Works](https://write.as/x5wil6pmtbvo1.md) — the quickest fit check before you spend a night on the wrong task.
+- [How to Tell if an AI Coding Task Is Actually Done](./docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md) — how to judge whether the morning-after result is actually trustworthy.
+- [Claude Code + Codex Workflow: Plan, Build, Review](./docs/claude-code-codex-workflow.md) — the cleanest long-form explanation of the plan/build/review split.
+- [When Unattended AI Coding Actually Works](./docs/when-unattended-coding-fits.md) — the quickest fit check before you spend a night on the wrong task.
 
 They all lead back to the same honest test: install Ralph Workflow for free, run one real backlog task on your own machine, and decide tomorrow whether you would merge it.
 
@@ -168,18 +168,22 @@ Bad first tasks:
 
 If you are still hesitating over Claude Code vs Codex vs OpenCode, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
 If Claude Code is already your default and the real thing you want is a better automation / unattended path, read [docs/claude-code-automation.md](./docs/claude-code-automation.md).
+If your exact problem is "how do I run Claude Code overnight without babysitting the terminal?", read [docs/run-claude-code-overnight-without-babysitting.md](./docs/run-claude-code-overnight-without-babysitting.md).
 If Claude Code approval mode or plan mode still leaves you stuck near the terminal, read [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md).
 If you want copy-paste starter specs instead of drafting from scratch, read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
 If you are unsure whether your task belongs in the good or bad bucket, read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
 If Claude Code is already your default and you want the clearest reason to add Ralph Workflow instead of just staying in one live session, read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
+If OpenCode is already your default and you want to know when an unattended reviewable handoff is the better fit, read [docs/ralph-workflow-vs-opencode.md](./docs/ralph-workflow-vs-opencode.md).
 If Codex CLI is already your default and you want to know when an unattended reviewable handoff is the better fit, read [docs/ralph-workflow-vs-codex-cli.md](./docs/ralph-workflow-vs-codex-cli.md).
 If you already use worktrees or separate agent sessions and want to know what Ralph Workflow adds beyond that, read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
 If you already use Claude Code and Codex together and want a cleaner split between implementation and review, read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
 If you already run multiple coding agents and the real pain is review/reconstruction, read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
 If the handoff still feels hard to judge at merge time, read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
+If the core trust question is still whether the task is actually done, read [docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md](./docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md).
 If you want the cleanest possible morning-after re-entry point, read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
 If the thing you keep calling "remote supervision" is really a finish-state trust problem, read [docs/remote-supervision-of-coding-agents.md](./docs/remote-supervision-of-coding-agents.md).
 If you are evaluating category fit first and want the clearest Codeberg-first positioning, read [docs/open-source-ai-coding-orchestrator.md](./docs/open-source-ai-coding-orchestrator.md).
+If your exact search is "unattended coding agent" and you want the shortest trust-first answer before setup, read [docs/unattended-coding-agent.md](./docs/unattended-coding-agent.md).
 If you already use Aider and want to know when Ralph Workflow is the better fit, read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
 
 ## Run the fastest honest first test
@@ -251,6 +255,7 @@ A useful Ralph Workflow run should leave you with:
 - [docs/quick-reference.md](./docs/quick-reference.md)
 - [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md)
 - [docs/claude-code-automation.md](./docs/claude-code-automation.md)
+- [docs/run-claude-code-overnight-without-babysitting.md](./docs/run-claude-code-overnight-without-babysitting.md)
 - [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md)
 - [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
 - [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) — see the concrete artifact bundle and morning-after review path
@@ -261,4 +266,5 @@ A useful Ralph Workflow run should leave you with:
 - [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md)
 - [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md)
 - [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md)
+- [docs/ralph-workflow-vs-opencode.md](./docs/ralph-workflow-vs-opencode.md)
 - [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md)
