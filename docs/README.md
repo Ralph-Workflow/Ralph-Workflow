@@ -20,6 +20,7 @@ Important expectation for evaluators: Ralph Workflow is free and open source, bu
 - `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
 - `first-task-guide.md` — choose a strong first backlog task and avoid vague demo runs
 - `which-agent-should-i-start-with.md` — quick decision guide for the first agent path: choose the one already working on your machine
+- `claude-code-automation.md` — Codeberg-first answer for developers searching specifically for Claude Code automation but who really need a reviewable unattended handoff
 - `ralph-workflow-vs-codex-cli.md` — comparison page for developers deciding whether staying interactive in Codex CLI is enough or whether they need a reviewable unattended handoff
 - `example-review-bundle.md` — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
 - `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
@@ -96,6 +97,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `example-review-bundle.md` — public sample of a morning-after handoff: prompt, development result, review/fix notes, and machine-readable artifacts
 - `first-task-guide.md` — practical first-task chooser for the first real unattended run
 - `which-agent-should-i-start-with.md` — practical first-run agent-choice guide for Claude Code, Codex, and OpenCode users
+- `claude-code-automation.md` — practical guide for developers who already like Claude Code but need a trustworthy automation / overnight finish path
 - `first-task-prompt-templates.md` — copy-paste starter prompt shapes for feature work, validation, refactors, tests, and docs
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
 - `review-ai-coding-output-before-merge.md` — practical merge-review checklist for deciding whether the handoff is trustworthy
