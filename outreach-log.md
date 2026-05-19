@@ -2,6 +2,17 @@
 
 ## 2026-05-19 (Tuesday)
 
+### RalphWorkflow open-source-orchestrator keyword distribution repair
+- **Published a Codeberg-first Telegraph post for the exact search term `open-source AI coding orchestrator`**: shipped `Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For` to Telegraph so another evaluator-intent keyword now has a live external surface that routes readers to Codeberg first and GitHub second.
+  - Live URL: `https://telegra.ph/Open-Source-AI-Coding-Orchestrator-What-Ralph-Workflow-Is-Actually-For-05-19`
+  - Source draft: `drafts/2026-05-19_open-source-ai-coding-orchestrator_telegraph.md`
+  - Verification: live fetch returned HTTP 200 and the published page HTML contains both `https://codeberg.org/RalphWorkflow/Ralph-Workflow` and `https://github.com/Ralph-Workflow/Ralph-Workflow`, with Codeberg presented first in the CTA block.
+  - Why: this is **NEW / REPLACING** a failed tactic. Codeberg adoption is still flat, duplicate directory submissions are low leverage or blocked, and the audit explicitly says to keep replacing stale distribution with stronger repo-specific external surfaces that point qualified evaluators to Codeberg first. This exact-intent owned page already existed, so the highest-leverage executable move right now was to distribute that proven angle on Telegraph instead of producing another generic article.
+  - Expected outcome: more qualified evaluators searching or sharing around `open-source AI coding orchestrator` should reach a Codeberg-first explanation and click through to inspect the primary repo.
+  - Measurement window: next 7 days for Telegraph indexing/referral evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop expanding Telegraph keyword surfaces alone and shift the next replacement move to a fresh executable backlink/distribution surface or another repo-root conversion repair with a live evaluator intent.
+  - Type: **NEW / REPLACING**
+
 ### RalphWorkflow spec-driven keyword distribution repair
 - **Published a Codeberg-first Telegraph post for the exact search term `spec-driven AI agent`**: shipped `Spec-Driven AI Agent: Why the Spec Matters More Than the Model` to Telegraph so the third live keyword-gap repair now has an unblocked external surface that links Codeberg first and GitHub second.
   - Live URL: `https://telegra.ph/Spec-Driven-AI-Agent-Why-the-Spec-Matters-More-Than-the-Model-05-19`
@@ -1832,3 +1843,33 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Expected outcome: once the docs deploy refreshes, search/snippet traffic and homepage visitors should see a much tighter exact-intent title (`unattended coding agent`, `AI agent orchestration CLI`) plus an above-the-fold Codeberg-first CTA, increasing qualified primary-repo inspections.
   - Measurement window: first check on the next live homepage refresh; then next 7 days for search/snippet alignment and next 14 days for **Codeberg** stars/watchers/forks/issues delta.
   - Replace if it fails: if the live homepage updates and Codeberg adoption is still flat through `2026-06-02`, stop spending cycles on homepage metadata/CTA tweaks and replace this lane with a fresh executable external distribution or backlink move that sends net-new qualified traffic straight to the strongest Codeberg-first proof path.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 13:06:26
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow repo-root reviewable-output conversion repair
+- **REPAIRED / REPLACING** a repo-surface trust leak by adding a root `docs/reviewable-output.md` page and wiring it into the main evaluator entry points so Codeberg visitors can inspect the morning-after handoff standard without leaving the primary repo surface.
+  - Commit: `da6fa476` — `Add repo-root reviewable-output trust page`
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/reviewable-output.md`
+  - Verification: confirmed the new root doc exists, checked the updated links in `README.md`, `START_HERE.md`, and `docs/README.md`, and pushed successfully to both Codeberg primary (`origin`) and GitHub mirror (`github`).
+  - Why: this is **REPAIRED / REPLACING**. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and the highest-priority viable local repair was to close another owned-surface trust leak: the hosted docs already explained what good reviewable output should look like, but the repo-root `docs/` surface that Codeberg evaluators actually open first still lacked a short dedicated trust page for that question.
+  - Expected outcome: more qualified evaluators should stay on Codeberg-root surfaces longer, understand the handoff standard faster, and convert into Codeberg stars, watches, forks, or issues instead of bouncing before the trust question is answered.
+  - Measurement window: next 7 days for repo-entry-path inspection/referral clues; next 14 days for **Codeberg** stars/watchers/forks/issues delta.
+  - Replace if it fails: if Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on repo-root trust-surface rewiring and replace this lane with a fresh external distribution or backlink move that sends net-new qualified traffic straight to the strongest Codeberg-first proof/comparison page.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 13:53:05
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow repo-root evaluator-docs regression repair
+- **When:** 2026-05-19 14:08:00
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** restored the missing repo-root evaluator docs surfaces on the primary repo and rewired the main conversion links back to those repo-native pages instead of weaker/broken paths. Specifically, I added `docs/README.md`, `docs/reviewable-output.md`, `docs/ralph-workflow-vs-opencode.md`, and `docs/unattended-coding-agent.md`, fixed the broken `README.md` docs-map link (`../docs/README.md` → `docs/README.md`), changed the OpenCode comparison links in `README.md` and `START_HERE.md` to the repo-root page, and changed the morning-after trust link in `README.md` to the new repo-root `docs/reviewable-output.md` page.
+  - Commit: `bc38432d` — `Restore repo-root evaluator docs surfaces`
+  - Status: ✅ Pushed to Codeberg primary (`origin`) and GitHub mirror (`github`)
+  - Verification: ran a targeted local markdown-link existence check across the touched repo-root pages (`link-check-ok`), confirmed the new files exist, and pushed successfully to both remotes.
+- **Why this action:** this is **REPAIRED / REPLACING** a failing tactic. The live-homepage SEO fix was already shipped in source, so the stronger same-run repair was the newly discovered primary-repo regression: the current `main` branch had lost several repo-root evaluator pages and even carried a broken docs-map link in `README.md`. That leak hurts Codeberg-first conversion more directly than another article or another minor CTA wording pass.
+- **Expected outcome:** more Codeberg visitors should stay on repo-native evaluator paths, resolve the OpenCode and trust objections faster, and convert into Codeberg stars, watches, forks, or issues instead of bouncing into nested docs confusion or a broken docs-map path.
+- **Measurement window:** next 7 days for repo-entry-path/referral clues and whether the restored root docs get visited/shared; next 14 days for **Codeberg** stars/watchers/forks/issues delta.
+- **Replace if it fails:** if Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on repo-root evaluator-doc rewiring and replace this lane with a fresh external distribution/backlink move that can send net-new qualified traffic directly into the strongest Codeberg-first proof/comparison page.
