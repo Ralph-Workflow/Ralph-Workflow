@@ -52,7 +52,7 @@ html_theme_options = {
     "sidebar_hide_name": False,
     "navigation_with_keys": True,
 }
-html_title = "Ralph Workflow"
+html_title = ""
 language = "en"
 html_show_sourcelink = True
 html_show_sphinx = False

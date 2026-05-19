@@ -1,4 +1,4 @@
-.. title:: Free AI Agent Orchestration CLI — Ralph Workflow
+.. title:: Free AI Agent Orchestration CLI | Ralph Workflow
 
 .. meta::
    :description: Free AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Run unattended coding tasks on your own machine with spec-driven workflow and reviewable output.
