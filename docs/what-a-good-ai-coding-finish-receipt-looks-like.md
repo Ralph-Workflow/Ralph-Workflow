@@ -1,12 +1,12 @@
 # What a Good AI Coding Finish Receipt Looks Like
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
 What makes it different is the handoff: Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a short finish receipt — instead of a transcript plus a confident done claim.
 
-Why read this now? Because a lot of unattended AI coding pain is not in starting the run. It is in the morning-after question: **what changed, what passed, and what still needs my judgment?**
+Why read this now? A lot of unattended AI coding pain is not in starting the run. It is in the morning-after question: **what changed, what passed, and what still needs my judgment?**
 
 ## A finish receipt should save you from reconstructing the whole night
 
@@ -85,6 +85,7 @@ Tomorrow morning, open the diff and the finish receipt and ask:
 > **Would I merge this?**
 
 If the answer comes quickly, the handoff is doing its job.
+
 If you still need to reconstruct the whole night, tighten the scope or the review path and run again.
 
 ## Next reading

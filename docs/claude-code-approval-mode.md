@@ -1,12 +1,12 @@
 # Claude Code Approval Mode Is Not an Unattended Workflow
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already run **on your own machine**.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish state: Ralph Workflow is built to hand back a **reviewable result** — a real diff, checks that ran, artifacts, and clear open questions — instead of a session that still depends on you hovering nearby.
+What makes it different is the finish state: Ralph Workflow hands back a **reviewable result** — a real diff, checks that ran, artifacts, and clear open questions — instead of a session that still depends on you hovering nearby.
 
-Why use it now? Because if your current Claude Code setup still keeps you stuck in approval mode, plan mode, or transcript watching, Ralph Workflow gives you a sharper test: run one real task tonight and decide tomorrow whether the result actually earned a merge.
+Why use it now? If your current Claude Code setup still keeps you stuck in approval mode, plan mode, or transcript watching, Ralph Workflow gives you a sharper test: run one real task tonight and decide tomorrow whether the result actually earned a merge.
 
 ## Approval mode solves one problem, not the whole one
 
@@ -37,8 +37,7 @@ When people say they need approval mode, they often really mean one of these ins
 - "I need the run to prove what happened without replaying everything."
 - "I want a better morning-after merge decision than 'it seemed fine while I watched it.'"
 
-That is not just an approval problem.
-That is a finish-state trust problem.
+That is not just an approval problem. That is a finish-state trust problem.
 
 ## What a stronger unattended path looks like
 
@@ -50,8 +49,7 @@ A trustworthy overnight run should give you:
 - a fail-closed handoff if the result is weak or incomplete
 - repo-local artifacts you can inspect the next morning
 
-The point is not maximum autonomy for its own sake.
-The point is getting back something **cheap to inspect and boring to review**.
+The point is not maximum autonomy for its own sake. The point is getting back something **cheap to inspect and boring to review**.
 
 ## Where Ralph Workflow fits
 
@@ -62,8 +60,7 @@ Ralph Workflow is the better fit when:
 - the real evaluation happens the next morning in the diff, not mid-run in the terminal
 - you want the run to end in a reviewable finish state instead of another decision queue
 
-If you need live intervention on a fragile exploratory session, approval mode may still be the right tool.
-If you want a bounded overnight handoff you can judge honestly in the morning, Ralph Workflow is the stronger path.
+If you need live intervention on a fragile exploratory session, approval mode may still be the right tool. If you want a bounded overnight handoff you can judge honestly in the morning, Ralph Workflow is the stronger path.
 
 ## Simple decision rule
 
@@ -78,5 +75,5 @@ Use this rule before you pick the workflow:
 - Read [bounded-autonomy-for-unattended-coding.md](./bounded-autonomy-for-unattended-coding.md) if the real fear is drift
 - Read [remote-supervision-of-coding-agents.md](./remote-supervision-of-coding-agents.md) if the habit is late-night transcript watching
 - Read [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) if the merge decision is still fuzzy
-- Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- Use the synced **GitHub mirror** second: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- Inspect the **primary Codeberg repo**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **GitHub mirror**: <https://github.com/Ralph-Workflow/Ralph-Workflow>

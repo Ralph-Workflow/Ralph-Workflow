@@ -15,9 +15,9 @@ If you are evaluating Ralph Workflow rather than maintaining it, start with thes
 
 Important expectation for evaluators: Ralph Workflow is free and open source, but it orchestrates coding agents you already have on your own machine. For the cleanest first impression, have at least one supported agent CLI already installed and already authenticated before you start the first-run docs.
 
-## The three docs most evaluators actually need
+## The four docs most evaluators actually need
 
-If you are here to decide whether Ralph Workflow is worth a real try, start with these and ignore the rest until one specific question blocks you:
+If you are here to decide whether Ralph Workflow is worth a real try, start with these:
 
 1. `../START_HERE.md` — shortest honest first-run path
 2. `example-review-bundle.md` — public proof of the morning-after handoff shape
@@ -25,43 +25,6 @@ If you are here to decide whether Ralph Workflow is worth a real try, start with
 4. `after-your-first-run.md` — the shortest path from a private first run to a Codeberg star/watch or a useful issue
 
 Everything else in this docs map is secondary until after that first Codeberg-first evaluation.
-
-The post-run branch should stay explicit:
-
-- **Promising first run** → star or watch Ralph Workflow on Codeberg
-- **Rough first run** → open the matching first-run or docs/proof issue form on Codeberg
-- **Need the scorecard first** → `after-your-first-run.md`
-
-## Best first docs for evaluators
-
-- `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
-- `first-task-guide.md` — choose a strong first backlog task and avoid vague demo runs
-- `which-agent-should-i-start-with.md` — quick decision guide for the first agent path: choose the one already working on your machine
-- `claude-code-automation.md` — Codeberg-first answer for developers searching specifically for Claude Code automation but who really need a reviewable unattended handoff
-- `run-claude-code-overnight-without-babysitting.md` — plain-language Codeberg-first page for developers searching exactly how to run Claude Code overnight without hovering over the terminal
-- `claude-code-approval-mode.md` — for developers whose Claude Code approval mode or plan mode still leaves them babysitting the run instead of reviewing a clean morning-after result
-- `ralph-workflow-vs-opencode.md` — comparison page for developers deciding whether staying interactive in OpenCode is enough or whether they need a reviewable unattended handoff
-- `ralph-workflow-vs-codex-cli.md` — comparison page for developers deciding whether staying interactive in Codex CLI is enough or whether they need a reviewable unattended handoff
-- `example-review-bundle.md` — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
-- `after-your-first-run.md` — use a two-minute scorecard to turn the first run into a Codeberg star/watch or a useful issue
-- `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
-- `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
-- `review-ai-coding-output-before-merge.md` — five-minute merge review path for the morning-after handoff
-- `how-to-tell-if-an-ai-coding-task-is-actually-done.md` — owned trust page for the core finish-line question: is this really done or just confidently stopped?
-- `bounded-autonomy-for-unattended-coding.md` — keep unattended runs fail-closed, cheap to miss, and easy to review the next morning
-- `remote-supervision-of-coding-agents.md` — for developers who think they need remote supervision but really need a cleaner finish-state trust path
-- `open-source-ai-coding-orchestrator.md` — Codeberg-first category page for developers searching for an open-source AI coding orchestrator they can inspect before install
-- `ai-agent-orchestration-cli.md` — practical comparison page for developers evaluating orchestration CLIs and looking for a Codeberg-first reviewable-output path
-- `unattended-coding-agent.md` — practical page for developers searching for an unattended coding agent and trying to judge whether the morning-after handoff will actually be reviewable
-- `spec-driven-ai-agent.md` — category/positioning page for developers who want a spec-first workflow instead of a prompt-first loop
-- `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
-- `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
-- `ralph-workflow-vs-claude-code.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing Claude Code habit
-- `ralph-workflow-vs-opencode.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing OpenCode habit
-- `ralph-workflow-vs-codex-cli.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing Codex CLI habit
-- `claude-code-codex-workflow.md` — practical guide for developers already pairing Claude Code and Codex who want a cleaner finish than manual glue
-- `what-breaks-first-with-multiple-coding-agents.md` — shared-boundary drift, merged-state checks, finish receipts, and the trust failures that show up before raw Git conflicts
-- `ralph-workflow-vs-aider.md` — clearest comparison if your current baseline is interactive AI pair programming
 
 ## Current Python docs
 

@@ -1,12 +1,12 @@
 # Parallel Fan-Out Architecture
 
-This document describes Ralph's parallel development fan-out system: how a single development phase is executed across N parallel workers using structured concurrency in same-workspace mode.
+This document describes Ralph's parallel development fan-out system: how a single development phase executes across N parallel workers using structured concurrency in same-workspace mode.
 
-For the end-to-end pipeline lifecycle (Planning -> Development -> result verification -> Commit -> Review/Fix loops), see `pipeline-lifecycle.md`. For the event loop and reducer architecture that drives the pipeline, see `event-loop-and-reducers.md`.
+For the end-to-end pipeline lifecycle, see `pipeline-lifecycle.md`. For the event loop and reducer architecture, see `event-loop-and-reducers.md`.
 
 ## Data Flow
 
-The parallel fan-out executes a wave-based DAG across N workers, where each wave respects dependency ordering and a configurable concurrency cap. Workers run against the shared checkout. Each worker is isolated by path restrictions and per-worker artifact namespaces only — same-workspace v1 uses a single shared checkout with state aggregation as the only post-development coordination.
+The parallel fan-out executes a wave-based DAG across N workers. Each wave respects dependency ordering and a configurable concurrency cap. Workers run against the shared checkout, isolated by path restrictions and per-worker artifact namespaces only — same-workspace v1 uses a single shared checkout with state aggregation as the only post-development coordination.
 
 ```
 Planning phase
@@ -47,9 +47,9 @@ phase advances  (no merge step)
 
 Before fan-out starts, `validate_for_same_workspace()` rejects any plan that would allow workers to corrupt each other's state:
 
-- Every unit must declare at least one `allowed_directory`.
-- No unit may declare a reserved path (`.agent`, `.git`, `.worktrees`, `.`).
-- No two units may have overlapping edit areas (segment-aware prefix check).
+- Every unit must declare at least one `allowed_directory`
+- No unit may declare a reserved path (`.agent`, `.git`, `.worktrees`, `.`)
+- No two units may have overlapping edit areas (segment-aware prefix check)
 
 ### Wave Scheduling
 

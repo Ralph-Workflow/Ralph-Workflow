@@ -14,15 +14,24 @@ Important first-run expectation: Ralph Workflow does **not** replace the coding 
 
 ## The fastest honest first run
 
-Use this flow in a real repo you already care about:
+Use this flow in a real repo you already care about.
 
-Checklist before you start:
+**Before you start, confirm:**
 
 - Python 3.12+
 - a git repo you can safely test in
 - at least one supported agent CLI already working on your machine
 
-If you are unsure which agent to start with, use the one already installed and read [Which Agent Should I Start With?](which-agent-should-i-start-with.md). If OpenCode is already your default and you want to know when a reviewable unattended handoff is the better fit, read [Ralph Workflow vs OpenCode](ralph-workflow-vs-opencode.md). If Claude Code is already your default and the real thing you want is a more trustworthy automation / unattended handoff, read [Claude Code Automation for Real Repo Work](claude-code-automation.md). If your exact problem is how to run Claude Code overnight without babysitting, read [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md). If Claude Code approval mode or plan mode still leaves you babysitting the run, read [Claude Code Approval Mode Is Not an Unattended Workflow](claude-code-approval-mode.md). If Claude Code is already your default and you want the clearest reason to add Ralph Workflow, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md). If Codex CLI is already your default and you want to know when a reviewable unattended handoff is the better fit, read [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md). If you already split work between Claude Code and Codex, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md). If you already run multiple agents and the trust gap is in the morning-after handoff, read [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md). If the merge decision itself still feels fuzzy, read [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md). If the missing piece is a short trustworthy re-entry summary, read [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md). If the missing piece is keeping unattended runs bounded instead of letting them drift, read [Bounded Autonomy for Unattended Coding](bounded-autonomy-for-unattended-coding.md). If the thing you keep calling remote supervision is really a finish-state trust problem, read [Remote Supervision of Coding Agents](remote-supervision-of-coding-agents.md). If you want the Codeberg-first category explanation before you install, read [Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For](open-source-ai-coding-orchestrator.md). If you are evaluating orchestration tools directly, read [AI Agent Orchestration CLI: A Practical Comparison for Developers](ai-agent-orchestration-cli.md). If you want the spec-first framing before the first run, read [Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt](spec-driven-ai-agent.md).
+**If you are unsure which agent to start with**, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md) first — it maps agent setup friction to the right first path.
+
+**For the clearest fit判断 before installing:**
+
+- OpenCode already your default? → [Ralph Workflow vs OpenCode](ralph-workflow-vs-opencode.md)
+- Claude Code already your default? → [Claude Code Automation for Real Repo Work](claude-code-automation.md)
+- Running Claude Code overnight without babysitting? → [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md)
+- Approval mode still leaves you babysitting? → [Claude Code Approval Mode Is Not an Unattended Workflow](claude-code-approval-mode.md)
+- Evaluating orchestration tools directly? → [AI Agent Orchestration CLI: A Practical Comparison](ai-agent-orchestration-cli.md)
+- Want the spec-first framing? → [Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt](spec-driven-ai-agent.md)
 
 ## Install
 
@@ -117,26 +126,39 @@ If you want the shortest post-run scorecard plus the right public next step, use
 
 ## Where to go next
 
-- [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a real first task with a clean pass/fail evaluation
-- [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — pick the first agent path with the least setup friction
-- [Ralph Workflow vs OpenCode](ralph-workflow-vs-opencode.md) — the clearest comparison if your baseline is an interactive OpenCode setup
-- [Claude Code Automation for Real Repo Work](claude-code-automation.md) — the clearest Codeberg-first path if your current problem is specifically Claude Code automation
-- [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md) — plain-language page for the exact overnight/no-babysitting Claude Code search intent
-- [Claude Code Approval Mode Is Not an Unattended Workflow](claude-code-approval-mode.md) — the clearest path if approval or plan mode still leaves you babysitting instead of reviewing a clean morning-after handoff
+**Pick your first real task:**
+
+- [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a bounded backlog item with a clean pass/fail evaluation
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste starter specs for common good-fit tasks
-- [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md) — the clearest comparison if your baseline is an interactive Claude Code session
-- [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md) — the clearest comparison if your baseline is an interactive Codex CLI session
-- [Claude Code + Codex Workflow](claude-code-codex-workflow.md) — practical guide for reducing manual handoff glue between implementation and review
-- [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — practical guide for the trust/reconstruction failures that show up before raw Git conflicts
-- [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — practical five-minute merge checklist for the morning-after handoff
-- [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md) — the exact short handoff that should tell you what changed, what passed, and what still needs judgment
-- [After Your First Ralph Workflow Run](after-your-first-run.md) — quick post-run scorecard plus the right Codeberg-first next step
-- [Bounded Autonomy for Unattended Coding](bounded-autonomy-for-unattended-coding.md) — keep unattended runs fail-closed, cheap to miss, and easy to inspect the next morning
-- [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md) — the clearest comparison if your current baseline is interactive AI pair programming
-- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see the shorter proof overview and the merge test
-- [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
+
+**Find the right agent:**
+
+- [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — pick the path with the least setup friction for your machine
+
+**Understand the tradeoffs before you commit:**
+
+- [Ralph Workflow vs OpenCode](ralph-workflow-vs-opencode.md) — baseline: interactive OpenCode setup
+- [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md) — baseline: interactive Claude Code session
+- [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md) — baseline: interactive Codex CLI session
+- [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md) — baseline: interactive AI pair programming
+- [Claude Code + Codex Workflow](claude-code-codex-workflow.md) — split work between both
+
+**Run it overnight:**
+
+- [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md)
+- [Bounded Autonomy for Unattended Coding](bounded-autonomy-for-unattended-coding.md)
+- [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md)
+
+**Judge the result:**
+
+- [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — five-minute morning-after checklist
+- [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md) — the short handoff that tells you what changed, what passed, what still needs judgment
+- [After Your First Ralph Workflow Run](after-your-first-run.md) — post-run scorecard
+- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — proof overview and merge test
+- [Example Review Bundle](example-review-bundle.md) — public sample prompt, result, review, and artifacts
+
+**Day-one reference:**
+
 - [Getting Started](getting-started.md) — fuller first-run walkthrough
-- [Concepts](concepts.md) — terminology and mental model
-- [CLI Reference](cli.md) — all flags and sub-commands
+- [CLI Reference](cli.md) — all flags and subcommands
 - [Configuration Reference](configuration.md) — config files and precedence
-- [Python API Reference](modules.rst) — package documentation

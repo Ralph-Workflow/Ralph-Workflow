@@ -5,7 +5,7 @@ Schema-validated JSON artifacts submitted via MCP. It defines the current
 state, transition conditions, removal criteria, rollback procedure, and
 monitoring checklist.
 
-No hard removal dates are set. Removal is gated on measurable conditions only.
+No hard removal dates are set. Removal is gated on measurable conditions only — see Section 3.
 
 ---
 

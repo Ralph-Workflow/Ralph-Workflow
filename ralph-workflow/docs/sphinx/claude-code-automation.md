@@ -8,9 +8,9 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish line: Ralph Workflow is built to hand back a **reviewable result** — diff, checks, artifacts, and enough context to decide whether the run actually earned a merge.
+What makes it different is the finish line: Ralph Workflow hands back a **reviewable result** — diff, checks, artifacts, and enough context to decide whether the run actually earned a merge.
 
-Why use it now? Because you can keep Claude Code in the loop, inspect the source on **Codeberg** first, run one real backlog task tonight, and judge the result tomorrow with one question: **would I merge this?**
+Why use it now? Keep Claude Code in the loop, inspect the source on **Codeberg** first, run one real backlog task tonight, and judge the result tomorrow with one question: **would I merge this?**
 
 ## What useful Claude Code automation should actually solve
 

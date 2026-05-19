@@ -55,7 +55,7 @@ Report it on **Codeberg** so the fix lands on the primary repo:
 - **First-run friction form** — choose that form at <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Docs / proof gap form** — choose that form at <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 
-Best bug/feedback reports say:
+Best bug reports say:
 
 - what real task you tried to hand off
 - where the friction showed up

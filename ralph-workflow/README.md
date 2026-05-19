@@ -16,22 +16,18 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 
 **Start here:**
 
-- [Start Here: try Ralph Workflow on one real backlog task](START_HERE.md)
-- [Already using Claude Code and wondering why you would add Ralph Workflow? Read the direct comparison](docs/sphinx/ralph-workflow-vs-claude-code.md)
-- [Already using OpenCode and wondering why you would add Ralph Workflow? Read the direct comparison](docs/sphinx/ralph-workflow-vs-opencode.md)
-- [Already using Claude Code or Codex? Pick the lowest-friction first agent path](docs/sphinx/which-agent-should-i-start-with.md)
-- [Already splitting work across Claude Code + Codex? Use the cleaner handoff workflow](docs/sphinx/claude-code-codex-workflow.md)
-- [Want the cleanest morning-after re-entry summary? See what a good finish receipt looks like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md)
-- [Inspect a public example review bundle first](docs/sphinx/example-review-bundle.md)
-- [Docs: Getting Started](docs/sphinx/getting-started.md)
-- [Docs site](https://ralphworkflow.com/docs)
-- [After your first run, turn it into the right Codeberg action](docs/sphinx/after-your-first-run.md)
+- [Try Ralph Workflow on one real backlog task](START_HERE.md)
+- [Getting Started with Ralph Workflow](docs/sphinx/getting-started.md)
+- [Quickstart reference](docs/sphinx/quickstart.md)
+- [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md) — choose the agent already installed and authenticated on your machine
+- [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better
+- [Ralph Workflow vs OpenCode](docs/sphinx/ralph-workflow-vs-opencode.md) — decide when direct provider flexibility is enough and when a reviewable unattended handoff is better
+- [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md) — keep the role split, but come back to a cleaner reviewable handoff
+- [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md) — the short morning-after handoff that should tell you what changed, what passed, and what still needs judgment
+- [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
+- [After Your First Run](docs/sphinx/after-your-first-run.md) — turn a private evaluation into the right public Codeberg action
 
 Ralph Workflow supports mixed-agent runs across planning, analysis, development, review, and commit phases. You might plan with Claude, route analysis through an OpenCode-backed GPT model, hand development to Codex or another OpenCode provider, and keep review on a different agent chain — all inside the same repo-native workflow.
-
-The deeper transport and configuration details live in the reference docs; this README stays focused on how to get a real unattended workflow running quickly.
-
-This package is a good fit when you want more than a demo. Ralph Workflow is designed for the kind of bounded engineering work that should leave you with a working feature, a verified refactor, a serious production-bound draft, or a reviewable implementation foundation.
 
 ## A fast way to tell whether Ralph Workflow fits
 
@@ -43,25 +39,14 @@ This package is a good fit when you want more than a demo. Ralph Workflow is des
 If yes, give it a harder task next.
 If no, tighten the spec, checks, or task choice and run again.
 
-If the first run teaches you something real either way, turn that result into the right public Codeberg action with [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md): star/watch the primary repo if it earned trust, or report the exact first-run friction on Codeberg if it did not.
+If the first run teaches you something real either way, turn that result into the right public Codeberg action with [After Your First Run](docs/sphinx/after-your-first-run.md): star/watch the primary repo if it earned trust, or report the exact first-run friction on Codeberg if it did not.
 
 ## Proof before you install
 
 If you want the fastest trust check before a first run, open the public [Example Review Bundle](docs/sphinx/example-review-bundle.md).
 It shows the exact kind of morning-after handoff Ralph Workflow is trying to produce: a real `PROMPT.md`, result notes, review feedback, fix notes, and artifact files you can inspect before deciding whether to try Ralph Workflow on your own backlog.
 
-If you already ran Ralph Workflow once and want the shortest path from private evaluation to a real public next step, use [After Your First Ralph Workflow Run](docs/sphinx/after-your-first-run.md).
-
 If your real question is "what should the morning-after handoff actually look like?", read [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md) before you install.
-
-If your real question is "which setup should I start with tonight?", use one of these paths instead of reading generic docs first:
-
-- [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md) — choose the agent already installed and authenticated on your machine.
-- [Ralph Workflow vs OpenCode](docs/sphinx/ralph-workflow-vs-opencode.md) — decide when direct provider flexibility is enough and when a reviewable unattended handoff is better.
-- [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better.
-- [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md) — keep the role split, but come back to a cleaner reviewable handoff.
-
-If you prefer to inspect or follow open-source projects on GitHub, the synced mirror lives at <https://github.com/Ralph-Workflow/Ralph-Workflow>. But treat GitHub as the read-only mirror: the primary source of truth, first-run issues, and the main public trust signals all belong on Codeberg.
 
 ## What you get
 
@@ -185,18 +170,27 @@ make verify
 
 ## Documentation
 
-Use the website and docs for the deeper material this README intentionally leaves out:
+This README intentionally leaves out deeper implementation details and defers to the `docs/sphinx/` pages for those.
+
+- **Quickstart:** [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md) — shorter repeat-use reference with commands and flags
+- **Getting Started:** [`docs/sphinx/getting-started.md`](docs/sphinx/getting-started.md) — fuller first-run walkthrough with task guidance
+- **Concepts:** [`docs/sphinx/concepts.md`](docs/sphinx/concepts.md) — terminology and mental model
+- **CLI Reference:** [`docs/sphinx/cli.md`](docs/sphinx/cli.md) — all flags and sub-commands
+- **Configuration:** [`docs/sphinx/configuration.md`](docs/sphinx/configuration.md) — config files and precedence
+- **Troubleshooting:** [`docs/sphinx/troubleshooting.md`](docs/sphinx/troubleshooting.md) — common failure modes and shortest fixes
+- **Developer Reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — internal architecture and extension points
+- **Python API Reference:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — package documentation
+- **Documentation map:** [`../docs/README.md`](../docs/README.md) — full doc index with Rust-era separation
+- **Website and full docs:** <https://ralphworkflow.com/docs>
+
+## Links
 
 - **Homepage:** <https://ralphworkflow.com>
 - **Docs:** <https://ralphworkflow.com/docs>
-- **Documentation map:** [`../docs/README.md`](../docs/README.md)
-- **Maintained Sphinx docs:** [`docs/sphinx/`](docs/sphinx/)
-- **Quickstart:** [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md)
-- **Developer reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md)
-- **Python API reference:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst)
 - **Source repository (primary):** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 - **Issue tracker:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **PyPI package:** <https://pypi.org/project/ralph-workflow/>
 
 ## License
 

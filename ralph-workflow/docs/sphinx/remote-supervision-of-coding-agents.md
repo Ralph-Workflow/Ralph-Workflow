@@ -6,7 +6,7 @@ It is for developers and technical teams with work that is **too big to babysit 
 
 What makes it different is not that it gives you another dashboard to stare at. Ralph Workflow is built so you can step away and still come back to a **reviewable result**: a real diff, checks that ran, artifacts, and clear open questions.
 
-Why use it now? Because if your current workaround is remote supervision, approval babysitting, or late-night transcript watching, Ralph Workflow gives you a cleaner test: run one real task tonight and decide tomorrow whether the result actually earned a merge.
+Why use it now? If your current workaround is remote supervision, approval babysitting, or late-night transcript watching, Ralph Workflow gives you a cleaner test: run one real task tonight and decide tomorrow whether the result actually earned a merge.
 
 ## The real problem is usually not lack of visibility
 
@@ -28,8 +28,7 @@ Remote supervision helps when you need to:
 - inspect live behavior during exploration or debugging
 - keep an eye on approval-heavy work
 
-That is useful.
-But it still leaves a second question unresolved:
+That is useful. But it still leaves a second question unresolved:
 
 > When the run ends, do you have something reviewable — or just something observed?
 
@@ -56,8 +55,7 @@ That means:
 - a fail-closed handoff when the task is incomplete
 - repo-local artifacts you can inspect the next morning
 
-The point is not maximum autonomy.
-The point is getting back a result that is **cheap to inspect and boring to review**.
+The point is not maximum autonomy. The point is getting back a result that is **cheap to inspect and boring to review**.
 
 ## When to prefer Ralph Workflow over pure remote supervision
 
@@ -68,8 +66,7 @@ Ralph Workflow is the better fit when:
 - you want the run to fail closed instead of drifting silently
 - you need a stronger merge decision than "I watched it for a while and it seemed okay"
 
-If you mainly need live observation for an exploratory or fragile session, remote supervision can still be the right tool.
-If you need a bounded overnight handoff you can judge in the morning, Ralph Workflow is the stronger path.
+If you mainly need live observation for an exploratory or fragile session, remote supervision can still be the right tool. If you need a bounded overnight handoff you can judge in the morning, Ralph Workflow is the stronger path.
 
 ## A simple decision rule
 

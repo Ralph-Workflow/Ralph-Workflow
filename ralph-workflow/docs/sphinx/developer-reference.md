@@ -2,7 +2,7 @@
 
 This section is for contributors, maintainers, and integrators who need the internals behind Ralph Workflow's runtime, pipeline, prompts, or Python package surface.
 
-If your job is simply to install, configure, and run Ralph Workflow, start with [Getting Started](getting-started.md), [CLI Reference](cli.md), and [Configuration](configuration.md) instead.
+If your job is simply to install, configure, and run Ralph Workflow, start with [Getting Started](getting-started.md), [CLI Reference](cli.md), and [Configuration](configuration.md) instead of this section.
 
 ## What lives here
 

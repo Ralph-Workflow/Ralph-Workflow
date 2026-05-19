@@ -1,7 +1,7 @@
 # Weak-Model-Compatible JSON Schema Conventions
 
-> Reference for designing JSON Schemas that weak executor models can reliably follow.
-> These conventions apply to all artifact schemas used in the MCP artifact submission flow.
+> Design guide for JSON Schemas that weak executor models can reliably follow.
+> Applies to all artifact schemas used in the MCP artifact submission flow.
 
 ---
 

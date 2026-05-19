@@ -6,7 +6,7 @@ It is for developers and technical teams with engineering work that is **too big
 
 What makes it different from a normal AI coding session is the handoff: Ralph Workflow is built to return a **reviewable result** in your repo instead of a long transcript and a claim that the task is done.
 
-Why try it now? Because you can pick one real backlog task tonight, run it with the tools you already trust, and decide tomorrow whether the result is something you would actually merge.
+Why try it now? Because you can pick one real backlog task tonight, run it with the tools you already trust, and decide tomorrow whether the result is something you would actually merge — with one honest question: **would I merge this?**
 
 ## Do not start with a vague demo
 

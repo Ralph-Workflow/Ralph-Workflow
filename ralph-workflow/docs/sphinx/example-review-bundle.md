@@ -6,7 +6,7 @@ It is for developers and technical teams with work that is **too big to babysit 
 
 What makes it different is the handoff: not just a transcript and a claim that the task is done, but a **reviewable result** with scoped files, checks, and artifact notes.
 
-Why look at this now? Because before you install anything, you can inspect the exact shape of a small first-run handoff and decide whether it looks like something you would actually trust yourself to review.
+Why look at this now? Before you install anything, you can inspect the exact shape of a small first-run handoff and decide whether it looks like something you would actually trust yourself to review.
 
 ## The live example in this repo
 

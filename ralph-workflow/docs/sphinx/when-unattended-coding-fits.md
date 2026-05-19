@@ -6,7 +6,7 @@ It is for developers and technical teams who want to hand off engineering work t
 
 What makes it different is not just that it can run overnight. It is built to hand back **reviewable output** — a real diff, checks, artifacts, and enough context to decide whether you would merge the result.
 
-Why use it now? Because you can try it for free on one real backlog task tonight and decide tomorrow whether the output actually holds up.
+Why use it now? You can try it for free on one real backlog task tonight and decide tomorrow whether the output actually holds up.
 
 ## The simple rule
 

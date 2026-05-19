@@ -3,11 +3,11 @@
 If you already know Aider, the simplest difference is this:
 
 - **Aider** is an interactive AI pair-programming tool you steer in the terminal.
-- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine** and hands back a **reviewable result** after an unattended run.
+- **Ralph Workflow** is an **open-source** orchestration CLI that runs the coding agents you already use **on your own machine** and hands back a **reviewable result** after an unattended run.
 
 That means Ralph Workflow is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-Why try Ralph Workflow now? Because you can keep the agents you already use, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+Why try Ralph Workflow now? You can keep the agents you already use, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
 ## The core difference
 
@@ -54,7 +54,7 @@ A practical split is:
 - use **Aider** for fast interactive editing during the day
 - use **Ralph Workflow** for unattended overnight runs on tasks that are too big to keep nudging manually
 
-If your current pain is not “how do I edit with AI faster?” but “how do I come back to something reviewable tomorrow morning?”, Ralph Workflow is the sharper fit.
+If your current pain is not "how do I edit with AI faster?" but "how do I come back to something reviewable tomorrow morning?", Ralph Workflow is the sharper fit.
 
 ## What makes Ralph Workflow different
 
@@ -72,7 +72,7 @@ That is the real product test.
 
 ## Fastest honest first test
 
-Before you start, have at least one supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is free and open source, but it does not replace the coding agent itself.
+Before you start, have at least one supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is open source, but it does not replace the coding agent itself.
 
 Then run:
 

@@ -1,6 +1,6 @@
 # Python Tooling Guide
 
-This document covers the Python tooling used in the Ralph Workflow project.
+This document covers the Python tooling used in the Ralph Workflow project. All tooling commands run from the `ralph-workflow/` directory unless otherwise noted.
 
 ## Overview
 

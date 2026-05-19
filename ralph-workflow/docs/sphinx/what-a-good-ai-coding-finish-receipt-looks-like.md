@@ -6,7 +6,7 @@ It is for developers and technical teams with work that is **too big to babysit 
 
 What makes it different is the handoff: Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a short finish receipt — instead of a transcript plus a confident done claim.
 
-Why read this now? Because a lot of unattended AI coding pain is not in starting the run. It is in the morning-after question: **what changed, what passed, and what still needs my judgment?**
+Why read this now? A lot of unattended AI coding pain is not in starting the run. It is in the morning-after question: **what changed, what passed, and what still needs my judgment?**
 
 ## A finish receipt should save you from reconstructing the whole night
 

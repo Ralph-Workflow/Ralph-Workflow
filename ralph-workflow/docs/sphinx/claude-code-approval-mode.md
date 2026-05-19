@@ -4,7 +4,7 @@ Ralph Workflow is a **free and open-source** tool that orchestrates the coding a
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish state: Ralph Workflow is built to hand back a **reviewable result** — a real diff, checks that ran, artifacts, and clear open questions — instead of a session that still depends on you hovering nearby.
+What makes it different is the finish state: Ralph Workflow hands back a **reviewable result** — a real diff, checks that ran, artifacts, and clear open questions — instead of a session that still depends on you hovering nearby.
 
 Why use it now? Because if your current Claude Code setup still keeps you stuck in approval mode, plan mode, or transcript watching, Ralph Workflow gives you a sharper test: run one real task tonight and decide tomorrow whether the result actually earned a merge.
 

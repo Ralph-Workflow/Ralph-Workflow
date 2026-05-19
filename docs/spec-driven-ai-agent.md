@@ -4,7 +4,7 @@ Ralph Workflow is a **free and open-source** spec-driven AI agent workflow for d
 
 If an agent keeps saying it is done before the work actually holds up, the problem is often not raw model capability. The problem is the absence of a real spec.
 
-## What “spec-driven” actually means
+## What "spec-driven" actually means
 
 A spec-driven AI agent does not start from vague intent alone. It starts from a written task that makes four things explicit:
 
@@ -20,7 +20,7 @@ That is the difference between hoping the agent converges and giving the run a f
 Prompts tell the agent what to do.
 Specs tell the agent what success looks like.
 
-That matters most when the task is too big to babysit and too risky to trust blindly. Without a spec, “done” becomes the agent's opinion. With a spec, “done” becomes something you can verify.
+That matters most when the task is too big to babysit and too risky to trust blindly. Without a spec, "done" becomes the agent's opinion. With a spec, "done" becomes something you can verify.
 
 ## The workflow Ralph Workflow is built for
 

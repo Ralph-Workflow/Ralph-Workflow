@@ -4,7 +4,7 @@ Ralph Workflow is a **free and open-source** tool that orchestrates the coding a
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is not raw autonomy. Ralph Workflow is built to make unattended runs end in a **reviewable finish state**: a real diff, checks that ran, artifacts, and clear open questions.
+What makes it different is not raw autonomy. Ralph Workflow is built to make unattended runs end in a **reviewable result**: a real diff, checks that ran, artifacts, and clear open questions.
 
 Why use it now? Because you can try it tonight on one real backlog task, keep the run bounded, and decide tomorrow whether the result actually earned a merge.
 

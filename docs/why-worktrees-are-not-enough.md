@@ -4,13 +4,13 @@ If you already use Claude Code, Codex CLI, or similar tools with git worktrees, 
 
 You have **not** solved the whole one.
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams doing engineering work that is **too big to babysit and too risky to trust blindly**.
 
 What makes Ralph Workflow different is not that it creates more branches or more sessions. It is that it is built to take an unattended task all the way to a **reviewable result**: a scoped diff, checks that actually ran, artifacts, and enough context to decide whether you would merge it.
 
-Why use it now? Because you can keep the agents and local setup you already trust, run one real backlog task tonight, and decide tomorrow whether the result actually holds up.
+Why use it now? You can keep the agents and local setup you already trust, run one real backlog task tonight, and decide tomorrow whether the result actually holds up.
 
 ## What worktrees are good at
 
@@ -96,6 +96,7 @@ If yes, that is the product value.
 If worktree isolation is already familiar but you still need a trustworthy unattended finish, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
 Best next public actions:
+
 - **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

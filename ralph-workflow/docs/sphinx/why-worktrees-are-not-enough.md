@@ -10,7 +10,7 @@ It is for developers and technical teams doing engineering work that is **too bi
 
 What makes Ralph Workflow different is not that it creates more branches or more sessions. It is that it is built to take an unattended task all the way to a **reviewable result**: a scoped diff, checks that actually ran, artifacts, and enough context to decide whether you would merge it.
 
-Why use it now? Because you can keep the agents and local setup you already trust, run one real backlog task tonight, and decide tomorrow whether the result actually holds up.
+Why use it now? You can keep the agents and local setup you already trust, run one real backlog task tonight, and decide tomorrow whether the result actually holds up.
 
 ## What worktrees are good at
 

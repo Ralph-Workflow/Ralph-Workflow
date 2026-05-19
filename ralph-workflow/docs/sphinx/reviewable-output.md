@@ -6,7 +6,7 @@ It is for developers and technical teams with work that is **too big to babysit 
 
 What makes it different is not that it can generate code. It is that it is built to hand back a **reviewable result** in your repo: changed files, checks, logs, and enough context to decide whether the work actually holds up.
 
-Why use it now? Because you can test it on one real backlog task tonight and answer the only question that matters tomorrow morning: **would you merge this?**
+Why use it now? Test it on one real backlog task tonight and answer the only question that matters tomorrow morning: **would you merge this?**
 
 ## The wrong evaluation question
 
@@ -109,8 +109,7 @@ Add empty-project-name validation to the CLI create flow.
 4. Run the relevant tests yourself.
 5. Ask one question: **would I merge this?**
 
-If that path feels fast and honest, Ralph Workflow did its job.
-If it feels murky, the handoff is still too weak.
+If that path feels fast and honest, Ralph Workflow did its job. If it feels murky, the handoff is still too weak.
 
 If you want to inspect a public sample bundle instead of only reading the summary on this page, open [Example Review Bundle](example-review-bundle.md).
 
@@ -122,7 +121,7 @@ The real handoff question is still simple:
 
 If the answer is not obvious, tighten the task, the checks, or the workflow before trusting it with bigger work.
 
-## Next step
+## Next steps
 
 - Read [Choose Your First Ralph Workflow Task](first-task-guide.md)
 - Continue to [Getting Started](getting-started.md) for the install and first-run path

@@ -8,28 +8,24 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish line: Ralph Workflow is built to hand back a **reviewable result** — diff, checks, artifacts, and enough context to decide whether the run actually earned a merge.
+What makes it different is the finish line: Ralph Workflow hands back a **reviewable result** — diff, checks, artifacts, and enough context to decide whether the run actually earned a merge.
 
-Why use it now? Because you can keep Claude Code in the loop, inspect the source on **Codeberg** first, run one real backlog task tonight, and judge the result tomorrow with one question: **would I merge this?**
+Why use it now? Keep Claude Code in the loop, inspect the source on **Codeberg** first, run one real backlog task tonight, and judge the result tomorrow with one question: **would I merge this?**
 
 ## What useful Claude Code automation should actually solve
 
-If you already like Claude Code, raw automation still leaves a few hard problems:
+If you already like Claude Code, raw automation still leaves hard problems:
 
 - the task can drift while you are away
 - the handoff can be a transcript instead of a clean diff
 - tests can be claimed without an obvious review path
 - morning-after re-entry can be slower than the actual coding
 
-Useful Claude Code automation should make the **finish state** clearer, not just the runtime longer.
-
-That is the gap Ralph Workflow is meant to close.
+Useful Claude Code automation should make the **finish state** clearer, not just the runtime longer. That is the gap Ralph Workflow is meant to close.
 
 ## What Ralph Workflow adds on top of Claude Code
 
-Ralph Workflow does **not** replace Claude Code.
-
-It wraps the agent you already use in a repo-native unattended flow so the result is easier to judge in normal engineering terms:
+Ralph Workflow does **not** replace Claude Code. It wraps the agent you already use in a repo-native unattended flow so the result is easier to judge in normal engineering terms:
 
 - what changed
 - what checks ran
@@ -69,7 +65,7 @@ Use **Codeberg** as the main public home:
 - **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Star / watch / fork on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Keeping the main trust signals on Codeberg makes the primary repo a clearer evaluation surface.
 
@@ -82,5 +78,7 @@ Keeping the main trust signals on Codeberg makes the primary repo a clearer eval
 5. Ask: **would I merge this?**
 
 If you want the shortest path, start with [../START_HERE.md](../START_HERE.md).
+
 If you want the clearest contrast first, read [ralph-workflow-vs-claude-code.md](./ralph-workflow-vs-claude-code.md).
+
 If you want the best task filter before you run anything, read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md).

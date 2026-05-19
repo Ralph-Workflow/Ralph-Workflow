@@ -1,7 +1,7 @@
 Python API Reference
 ====================
 
-This section documents every public Ralph Workflow subpackage.
+This section documents every public Ralph Workflow subpackage. All modules listed below are part of the maintained Python package under `ralph-workflow/ralph/`.
 
 ----
 

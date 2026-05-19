@@ -10,7 +10,7 @@ It is for developers and technical teams with work that is **too big to babysit 
 
 What makes it different is the finish line: Ralph Workflow is built to hand back a **reviewable result** — a diff, checks, artifacts, and enough context to decide whether the work actually holds up.
 
-Why use it now? Because you can inspect the source on **Codeberg**, install it for free, run one real task tonight, and judge the result tomorrow with one question: **would I merge this?**
+Why use it now? Because you can inspect the source on **Codeberg**, install it for free, run one real task tonight, and judge the result tomorrow with one honest question: **would I merge this?**
 
 ## What an AI coding orchestrator should actually do
 

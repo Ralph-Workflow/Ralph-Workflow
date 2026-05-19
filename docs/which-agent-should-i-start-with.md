@@ -4,17 +4,16 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow is built to bring back a **reviewable result** in your repo instead of just a transcript and a claim that the task is done.
+What makes it different is the handoff: Ralph Workflow brings back a **reviewable result** in your repo — diff, checks, artifacts — instead of a transcript and a claim that the task is done.
 
-Why use it now? Because you do **not** need to switch your whole toolchain first. Pick one agent you already trust, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+Why use it now? You do **not** need to switch your whole toolchain first. Pick one agent you already trust, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
 ## The short answer
 
 For a first Ralph Workflow run, start with the agent that is **already installed, already authenticated, and already familiar** on your machine.
 
-Do **not** optimize this choice too hard.
+Do **not** optimize this choice too hard. The main first-run question is not "which model is theoretically best?"
 
-The main first-run question is not "which model is theoretically best?"
 It is:
 
 > **Can I get one real unattended run to finish with a reviewable result?**
@@ -30,7 +29,7 @@ If one agent is already working for you today, that is usually the right first c
 - you care most about planning quality and clean review handoff
 
 Why this is a good first fit:
-- strong default choice for end-to-end unattended work
+- strong default for end-to-end unattended work
 - commonly the clearest first-run path for Ralph Workflow users
 - good when you want to judge the workflow, not compare providers yet
 
@@ -49,7 +48,7 @@ Why this is a good first fit:
 
 - `opencode` already works on your machine
 - you want multi-provider flexibility from the start
-- you already have an OpenCode setup you like and do not want to reconfigure everything just to try Ralph Workflow
+- you already have an OpenCode setup you like
 
 Why this is a good first fit:
 - preserves your existing gateway setup
@@ -58,9 +57,8 @@ Why this is a good first fit:
 
 ## Best first-run rule
 
-Pick the path with the **least setup friction**.
+Pick the path with the **least setup friction**:
 
-That usually means:
 1. the agent is already installed
 2. the agent is already authenticated
 3. you have already used it manually in the same environment
@@ -89,18 +87,15 @@ Avoid these first-run traps:
 
 ## If you do not have any agent set up yet
 
-Ralph Workflow does not replace the coding agent itself.
+Ralph Workflow does not replace the coding agent itself. Install and authenticate **one** supported agent CLI first, then come back and use Ralph Workflow to orchestrate it.
 
-Before your first run, install and authenticate **one** supported agent CLI first.
-Then come back and use Ralph Workflow to orchestrate it.
-
-If you want the shortest honest path after that, continue with:
+If you want the shortest honest path after that:
 
 - [../START_HERE.md](../START_HERE.md)
 - [first-task-prompt-templates.md](./first-task-prompt-templates.md)
 - [when-unattended-coding-fits.md](./when-unattended-coding-fits.md)
 
-If you want to inspect the project before you install it, start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) and **star or watch it there** if it matches the kind of overnight handoff you want. If GitHub is where you already track projects, the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) is there too.
+If you want to inspect the project before you install it, start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) and **star or watch it there** if it matches the kind of overnight handoff you want. The [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) is there too.
 
 ## Recommended first-run sequence
 

@@ -6,7 +6,7 @@ It is for developers and technical teams with work that is **too big to babysit 
 
 What makes it different is the handoff: Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a short finish receipt — instead of just a transcript and a confident done claim.
 
-Why read this now? Because the real question is not whether an agent looked smart. It is whether the morning-after result is something you would actually trust enough to review and merge.
+Why read this now? The real question is not whether an agent looked smart. It is whether the morning-after result is something you would actually trust enough to review and merge.
 
 ## The five-minute merge check
 
@@ -33,8 +33,7 @@ Open the result in this order:
 5. **Ask one question**
    - **Would I merge this?**
 
-If that answer is quick and boring, the handoff is strong.
-If you still need to reconstruct the whole night from logs, it is not.
+If that answer is quick and boring, the handoff is strong. If you still need to reconstruct the whole night from logs, it is not.
 
 ## What a trustworthy handoff should contain
 
@@ -80,6 +79,7 @@ If the morning-after result gives you a clean diff, real checks, and a merge dec
 If that is the evaluation path you want, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
 Best next public actions:
+
 - **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

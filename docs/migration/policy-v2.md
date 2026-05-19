@@ -10,8 +10,7 @@ See also: [docs/migration/parallel-mode.md](parallel-mode.md) for parallel execu
 ## What changed conceptually
 
 Before this overhaul, Ralph Workflow had a real policy layer for phase declarations,
-transitions, drain bindings, and artifact contracts — but the runtime still privately owned
-several workflow-level behaviors:
+transitions, drain bindings, and artifact contracts — but the runtime still privately owned several workflow-level behaviors:
 
 - The reducer recognized specific decision-key literals (`completed`, `request_changes`,
   `review_clean`) and used them for routing, independent of what policy declared.

@@ -55,7 +55,7 @@ A practical split is:
 - use **Claude Code** for live exploration, shaping, and interactive edits during the day
 - use **Ralph Workflow** for unattended evening or overnight runs where the handoff quality matters as much as the model quality
 
-If your current pain is not “how do I get Claude to edit faster?” but “how do I come back to something reviewable tomorrow morning?”, Ralph Workflow is the sharper fit.
+If your current pain is not "how do I get Claude to edit faster?" but "how do I come back to something reviewable tomorrow morning?", Ralph Workflow is the sharper fit.
 
 ## What makes Ralph Workflow different from just running Claude longer
 
@@ -88,6 +88,6 @@ ralph
 
 Use one real backlog task, not a vague demo.
 
-If you want help picking that first task, read [when unattended coding fits](when-unattended-coding-fits.md), [the first-task guide](first-task-guide.md), and [first-task prompt templates](first-task-prompt-templates.md).
+If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
 
-If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [what good output looks like](reviewable-output.md) and the [example review bundle](example-review-bundle.md).
+If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).

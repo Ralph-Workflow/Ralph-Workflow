@@ -4,9 +4,9 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with engineering work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different from a normal AI coding session is the handoff: Ralph Workflow is built to return a **reviewable result** in your repo instead of a long transcript and a claim that the task is done.
+What makes it different from a normal AI coding session is the handoff: Ralph Workflow returns a **reviewable result** in your repo — diff, checks, artifacts — instead of a long transcript and a confident done claim.
 
-Why try it now? Because you can pick one real backlog task tonight, run it with the tools you already trust, and decide tomorrow whether the result is something you would actually merge.
+Why try it now? Pick one real backlog task tonight, run it with the tools you already trust, and decide tomorrow whether the result is something you would actually merge.
 
 ## Do not start with a vague demo
 
@@ -104,13 +104,13 @@ That is the real product test.
 ## Next step
 
 - Continue with [../START_HERE.md](../START_HERE.md) for the install and first-run flow
-- Read [First-Task Prompt Templates](./first-task-prompt-templates.md) if you want copy-paste starter specs instead of drafting from scratch
-- Read [What Good Output Looks Like](./free-open-source-proof.md) to see the kind of handoff you should expect
-- Read [Example Review Bundle](./example-review-bundle.md) if you want a public sample `PROMPT.md`, result notes, and artifacts before your first run
+- Read [First-Task Prompt Templates](./first-task-prompt-templates.md) if you want copy-paste starter specs
+- Read [What Good Output Looks Like](./free-open-source-proof.md) to see the handoff you should expect
+- Read [Example Review Bundle](./example-review-bundle.md) for a public sample before your first run
 
-If this first-task filter matches how you want to evaluate Ralph Workflow, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+If this first-task filter matches how you want to evaluate Ralph Workflow, inspect the **primary Codeberg repo**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
-Best next public actions:
-- **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+Best public actions:
+- **Star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

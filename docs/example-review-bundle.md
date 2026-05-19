@@ -1,12 +1,12 @@
 # Example Review Bundle: What a Morning-After Ralph Workflow Handoff Looks Like
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
 What makes it different is the handoff: not just a transcript and a claim that the task is done, but a **reviewable result** with scoped files, checks, and artifact notes.
 
-Why look at this now? Because before you install anything, you can inspect the exact shape of a small first-run handoff and decide whether it looks like something you would actually trust yourself to review.
+Why look at this now? Before you install anything, you can inspect the exact shape of a small first-run handoff and decide whether it looks like something you would actually trust yourself to review.
 
 ## The live example in this repo
 
@@ -24,13 +24,11 @@ If that bundle looks like the kind of morning-after handoff you would actually t
 - **Inspect the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Star / watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## What this example proves
 
-This bundle is intentionally small.
-
-It shows a first task that is:
+This bundle is intentionally small. It shows a first task that is:
 
 - real enough to matter
 - narrow enough to review quickly
@@ -49,8 +47,7 @@ That lets you judge the thing that matters most: not whether the agent looked cl
 4. Glance at the JSON artifacts to see the machine-readable trail.
 5. Ask one question: **would I merge this?**
 
-If that review path feels boring and fast, the workflow is doing its job.
-If it feels vague, the handoff is still too weak.
+If that review path feels boring and fast, the workflow is doing its job. If it feels vague, the handoff is still too weak.
 
 ## Next steps
 

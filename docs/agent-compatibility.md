@@ -1,15 +1,15 @@
 # Agent Compatibility Guide
 
-This guide documents compatibility between Ralph Workflow and various AI coding agents in its configurable review orchestration. Ralph's review phase is designed to be agent-agnostic in its prompts, but different agents may have varying levels of success due to differences in JSON output format, tool execution behavior, and other agent-specific quirks.
+This guide documents compatibility between Ralph Workflow and various AI coding agents in its configurable review orchestration. Ralph's review phase is designed to be agent-agnostic in its prompts, but different agents may have varying levels of success due to differences in JSON output format, tool execution behavior, and agent-specific quirks.
 
-> **⚠️ Important Compatibility Note**: GLM, ZhipuAI, Qwen, and DeepSeek agents have known compatibility issues with review tasks. While Ralph automatically applies workarounds (universal prompt), success rates may vary. **For best results, consider using Claude Code or Codex as the reviewer.** You can override the reviewer agent with `--reviewer-agent claude` or `--reviewer-agent codex`.
-
-> **Note**: Ralph now includes a **Universal Review Prompt** that automatically activates for agents with known compatibility issues (GLM, ZhipuAI, Qwen, DeepSeek). This simplified prompt improves success rates with these agents.
+> **⚠️ Compatibility Note**: GLM, ZhipuAI, Qwen, and DeepSeek agents have known compatibility issues with review tasks. Ralph automatically applies workarounds (Universal Review Prompt), but success rates may vary. **For best results, use Claude Code or Codex as the reviewer.** Override with `--reviewer-agent claude` or `--reviewer-agent codex`.
 
 ## Table of Contents
 
+- [Compatibility Matrix](#compatibility-matrix)
 - [Known Working Agents](#known-working-agents)
 - [Agents with Known Issues](#agents-with-known-issues)
+- [Agent Chain and Fallback Behavior](#agent-chain-and-fallback-behavior)
 - [Configuration Recommendations](#configuration-recommendations)
 - [Universal Review Prompt](#universal-review-prompt)
 - [Troubleshooting Guide](#troubleshooting-guide)
@@ -29,6 +29,7 @@ This guide documents compatibility between Ralph Workflow and various AI coding 
 | **Gemini CLI** | ✅ Good | ⚠️ Experimental | Parser support less mature |
 
 ### Legend
+
 - ✅ **Excellent** - Works perfectly, recommended
 - ✅ **Good** - Works well with minor caveats
 - ⚠️ **Partial** - Works with automatic workarounds, may have reduced capability
@@ -36,8 +37,6 @@ This guide documents compatibility between Ralph Workflow and various AI coding 
 - ⚠️ **Experimental** - Not thoroughly tested
 
 ## Known Working Agents
-
-These agents have been tested and work well with Ralph's review process:
 
 ### Claude Code (Recommended)
 
@@ -112,8 +111,6 @@ json_parser = "opencode"
 
 ## Agents with Known Issues
 
-These agents have known compatibility issues with Ralph's review process:
-
 ### CCS/GLM
 
 **Status**: ⚠️ Partial Compatibility - Automatic Workarounds Applied
@@ -148,7 +145,7 @@ glm = "ccs glm"
 ```
 
 **Note**: As of Ralph v0.2.7+, when using **CCS alias resolution** (agents referenced as
-`ccs/<alias>` or plain `ccs` via the unified config), Ralph will ensure there is a
+`ccs/<alias>` or plain `ccs` via the unified config), Ralph ensures there is a
 non-empty print flag. If the unified-config CCS default `ccs.print_flag` is empty,
 Ralph falls back to `--print` as a safety net.
 
@@ -351,15 +348,13 @@ fix = "reviewer"
 | **Review / Fix** | `agent_drains.* -> agent_chains.<name>` | Fix should usually share the review chain unless you want a dedicated fix chain |
 | **Commit** | `agent_drains.commit -> agent_chains.<name>` | Inherits the resolved review/fix binding |
 
-### Commit Agent Fallback (Important)
+### Commit Agent Fallback
 
 When generating commit messages (`--generate-commit-msg`), Ralph uses this fallback order:
 
 1. **First**: Check `agent_drains.commit` for a configured commit drain binding
 2. **Second**: If omitted, inherit the resolved `review` / `fix` chain binding
 3. **Third**: If both empty, use the context's reviewer agent
-
-This design reflects that commit message generation is semantically similar to review tasks, so reviewer agents are natural fallbacks.
 
 **Example**: With no commit agents configured:
 ```toml
@@ -375,7 +370,6 @@ review = "reviewer"
 fix = "reviewer"
 # commit omitted: inherits reviewer chain
 ```
-
 Running `ralph --generate-commit-msg` will use: codex -> aider (from reviewer chain).
 
 ### XSD Retry Logic
@@ -385,11 +379,6 @@ When an agent produces invalid XML output, Ralph uses XSD retry logic:
 1. **Within same session**: Re-prompts the same agent with the XSD error and last output
 2. **After MAX_PLAN_INVALID_OUTPUT_RERUNS (2)**: Switches to next agent in chain
 3. **After MAX_VALIDATION_RETRY_ATTEMPTS (10)**: Escalates to agent switch
-
-The XSD retry prompt includes:
-- The XSD schema for reference
-- The previous invalid output
-- The specific validation error
 
 ### Backoff Policy
 
@@ -405,33 +394,11 @@ max_cycles = 3              # Maximum retry cycles
 
 ## Configuration Recommendations
 
-### Per-Agent Configuration
-
-For agents that have known compatibility issues, Ralph provides several configuration options to improve success rates:
-
-#### Option 1: Force Universal Prompt
-
-Set the `RALPH_REVIEWER_UNIVERSAL_PROMPT` environment variable to force the simplified review prompt for any agent:
-
-```bash
-# Force universal prompt for all agents
-RALPH_REVIEWER_UNIVERSAL_PROMPT=1 ralph
-
-# Force universal prompt for a specific reviewer
-RALPH_REVIEWER_UNIVERSAL_PROMPT=1 ralph --reviewer-agent ccs/glm
-```
-
-Or add to `~/.config/ralph-workflow.toml`:
-```toml
-[general]
-force_universal_prompt = true
-```
-
-#### Option 2: Override JSON Parser
+### Override JSON Parser
 
 > **Note**: For CCS agents (ccs/glm, ccs/gemini, etc.), the Claude parser should always be used since CCS outputs Claude's stream-json format. If a CCS agent is not using the Claude parser, **this is a bug**.
 
-The parser override option is primarily for non-CCS agents that have compatibility issues:
+The parser override option is primarily for non-CCS agents with compatibility issues:
 
 ```bash
 # Use generic parser with agents that don't output stream-json
@@ -441,29 +408,7 @@ ralph --reviewer-agent aider --reviewer-json-parser generic
 RALPH_REVIEWER_JSON_PARSER=generic ralph --reviewer-agent aider
 ```
 
-#### Option 3: Use a Different Reviewer
-
-The most reliable option is to use Claude Code or Codex as the reviewer while keeping GLM/CCS as the developer:
-
-```bash
-# Use GLM for development, Claude for review
-ralph --developer-agent ccs/glm --reviewer-agent claude
-```
-
-#### Option 4: Skip Review Entirely
-
-If the review process is not critical for your use case:
-
-```bash
-# Skip review phase
-RALPH_REVIEWER_REVIEWS=0 ralph
-```
-
-### Context Level Recommendations
-
 ### JSON Parser Selection
-
-The `json_parser` setting controls how Ralph interprets the agent's output:
 
 | Parser | Best For | Notes |
 |--------|----------|-------|
@@ -482,13 +427,29 @@ The `json_parser` setting controls how Ralph interprets the agent's output:
 | `security` | Security-focused review | Codex, security audits |
 | `incremental` | Review only changed files | Fast feedback cycles |
 
-### Context Level Recommendations
+### Context Level Settings
 
 | Setting | Description | When to Use |
 |---------|-------------|-------------|
 | `minimal` | Only changed files | Large codebases, slow agents |
 | `normal` | Changed files + dependencies | Default setting |
 | `full` | Entire codebase | Small projects, thorough reviews |
+
+### Use a Different Reviewer
+
+The most reliable option is to use Claude Code or Codex as the reviewer while keeping GLM/CCS as the developer:
+
+```bash
+# Use GLM for development, Claude for review
+ralph --developer-agent ccs/glm --reviewer-agent claude
+```
+
+### Skip Review Entirely
+
+```bash
+# Skip review phase
+RALPH_REVIEWER_REVIEWS=0 ralph
+```
 
 ## Universal Review Prompt
 
@@ -541,23 +502,25 @@ The Universal Prompt includes this explicit example:
 
 And specifies: "If no issues found, write exactly: `No issues found.`"
 
-### Customization
+### Force Universal Prompt
 
-If you want to force the Universal Prompt for a different agent, you can:
+Set the `RALPH_REVIEWER_UNIVERSAL_PROMPT` environment variable to force the simplified review prompt for any agent:
 
-1. **Environment variable**: Set `RALPH_REVIEWER_UNIVERSAL_PROMPT=1` to force universal prompt for all agents
-2. **Config file**: Add `force_universal_prompt = true` to the `[general.execution]` section in `~/.config/ralph-workflow.toml` or `.agent/ralph-workflow.toml`
-3. **Source code**: Modify the universal-review selection logic in the Python package under `ralph-workflow/ralph/`
-
-Example:
 ```bash
-# Force universal prompt for any agent
-RALPH_REVIEWER_UNIVERSAL_PROMPT=1 ralph --reviewer-agent claude
+# Force universal prompt for all agents
+RALPH_REVIEWER_UNIVERSAL_PROMPT=1 ralph
+
+# Force universal prompt for a specific reviewer
+RALPH_REVIEWER_UNIVERSAL_PROMPT=1 ralph --reviewer-agent ccs/glm
+```
+
+Or add to `~/.config/ralph-workflow.toml`:
+```toml
+[general]
+force_universal_prompt = true
 ```
 
 ## Why Do Some Agents Fail?
-
-Understanding why certain AI agents struggle with the review process can help you choose the right agent for your needs.
 
 ### Technical Causes
 
@@ -568,7 +531,7 @@ Understanding why certain AI agents struggle with the review process can help yo
 
 2. **Tool Execution Behavior**
    - Review agents need to reliably produce the expected outputs (issues/fixes) in the configured format
-   - The orchestrator may write workflow files on the agent’s behalf, but agents still need compatible tool/IO behavior
+   - The orchestrator may write workflow files on the agent's behalf, but agents still need compatible tool/IO behavior
    - Some agents have permission issues or different tool semantics (notably some GLM/CCS setups)
 
 3. **Prompt Complexity Handling**
@@ -582,8 +545,6 @@ Understanding why certain AI agents struggle with the review process can help yo
    - The `reviewer_context` setting can help manage this
 
 ### How Ralph Handles These Issues
-
-Ralph includes several automatic mitigations:
 
 1. **Universal Review Prompt**: Automatically activates for GLM, ZhipuAI, Qwen, and DeepSeek
 2. **Fast Fallback**: Known-problematic agents trigger quick fallback instead of retries
@@ -602,23 +563,22 @@ Ralph includes several automatic mitigations:
 
 ## Troubleshooting Guide
 
-> **Note on Log Paths**: As of recent versions, Ralph uses per-run log directories at `.agent/logs-<run_id>/agents/`. 
-> When checking agent logs, use `ls .agent/logs-*/agents/` to find the most recent run directory, then access logs like:
+> **Note on Log Paths**: Ralph uses per-run log directories at `.agent/logs-<run_id>/agents/`.
+> Find the most recent run with `ls .agent/logs-*/agents/`, then access logs like:
 > `.agent/logs-2026-02-06_14-03-27.123Z/agents/reviewer_1.log`
 
 ### GLM/CCS Agent Fails with "When using --print, --output-format=stream-json requires --verbose"
 
 **Symptoms**: Agent fails with error message about `--verbose` being required when using `--print` with `--output-format=stream-json`.
 
-**Root Cause**: When the Claude CLI is invoked with `-p` (print flag) and `--output-format=stream-json`, it also requires `--verbose`. This was a bug in Ralph v0.2.7 and earlier where the `--verbose` flag was not automatically added when using a full path to the claude binary (e.g., `/usr/local/bin/claude`).
+**Root Cause**: When the Claude CLI is invoked with `-p` (print flag) and `--output-format=stream-json`, it also requires `--verbose`. This was a bug in Ralph v0.2.7 and earlier where the `--verbose` flag was not automatically added when using a full path to the claude binary.
 
 **Fixed in**: Ralph v0.2.8+
 
 **Workarounds** (if using older version):
 
-1. **Upgrade Ralph**: The fix has been applied - `requires_verbose_for_json` now correctly checks the file name portion of the path, not just the full path string.
-
-2. **Use "claude" directly in PATH** (temporary workaround): Ensure `claude` is in PATH as just "claude" rather than using a full path.
+1. **Upgrade Ralph**: The fix has been applied - `requires_verbose_for_json` now correctly checks the file name portion of the path.
+2. **Use "claude" directly in PATH**: Ensure `claude` is in PATH as just "claude" rather than using a full path.
 
 **Verification**:
 ```bash
@@ -642,10 +602,7 @@ ralph --reviewer-agent ccs/glm --verbosity debug 2>&1 | grep -i "verbose"
 **Solutions**:
 
 1. **Check if universal prompt is activated**:
-   Look for this log message:
-   ```
-   ℹ Using universal/simplified review prompt for agent 'ccs/glm' (better compatibility)
-   ```
+   Look for: `ℹ Using universal/simplified review prompt for agent 'ccs/glm' (better compatibility)`
 
 2. **Check agent logs**:
    ```bash
@@ -678,10 +635,6 @@ ralph --reviewer-agent ccs/glm --verbosity debug 2>&1 | grep -i "verbose"
    ```bash
    RALPH_CCS_DEBUG=1 ralph --reviewer-agent ccs/glm --verbosity debug
    ```
-   This will show detailed information about:
-   - Claude binary detection
-   - Environment variable loading
-   - Command construction and bypass logic
 
 **Note**: As of Ralph v0.2.5, GLM and similar agents with exit code 1 errors now trigger immediate fallback to the next agent instead of retrying indefinitely.
 
@@ -696,7 +649,7 @@ ralph --reviewer-agent ccs/glm --verbosity debug 2>&1 | grep -i "verbose"
 
 **Solutions**:
 
-1. **Check pre-flight validation output** - Ralph now warns you before running review with problematic agents:
+1. **Check pre-flight validation output** - Ralph warns you before running review with problematic agents:
    ```
    ⚠ Note: Agent 'ccs/glm' may have compatibility issues with review tasks.
    ℹ If review fails, consider these workarounds:
@@ -707,7 +660,7 @@ ralph --reviewer-agent ccs/glm --verbosity debug 2>&1 | grep -i "verbose"
    ⚠ Post-flight check: ISSUES.md not found after review.
    ```
 
-3. **Review agent logs** for errors:
+3. **Review agent logs for errors**:
    ```bash
    cat .agent/logs/reviewer_review_1_<agent>.log
    ```
@@ -772,7 +725,3 @@ If you test Ralph with an agent not listed here, please contribute your findings
 - **Main README**: [../README.md](../README.md)
 - **Configuration Guide**: See `ralph --help` for CLI options
 - **Issue Tracker**: Report compatibility issues on GitHub
-
----
-
-Last updated: 2026-01-28

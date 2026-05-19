@@ -108,8 +108,6 @@ When working on `ralph/pipeline/runner.py`, `ralph/phases/`, or Claude/CCS agent
 3. The runner clears stale per-phase artifacts before invoking the agent so interrupted runs cannot satisfy later checks accidentally or leak old summaries into later phases.
 4. Claude/CCS MCP invocations must avoid half-configured tool restriction flags. If the live MCP allowlist cannot be discovered, prefer the safer strict-MCP path over emitting brittle `--tools ""` combinations.
 
-This logic is more complex than a naive "agent exited 0" flow, but it exists to prevent silent no-op runs in unattended mode without forcing side-effect-driven phases to produce busywork artifacts. If you change it, update tests and docs together.
-
 ## Agent timeout contract
 
 All wall-clock timeout decisions in the agent invocation system are consolidated behind two
@@ -140,21 +138,7 @@ a missing watchdog seam.
 through one function: `classify_child_snapshot()` in `ralph/process/child_liveness.py`.
 Both the in-stream idle-timeout path (`classify_quiet` in `execution_state.py`) and the
 post-exit path (`classify_exit` / `_evidence_precedence`) must call this function rather
-than reimplementing the precedence rules independently. The function returns a
-`ChildEvidenceVerdict` with an `alive_by` label that encodes why child work appears alive:
-
-- `fresh_progress` — child produced a scoped progress signal within `progress_ttl`.
-- `fresh_heartbeat_only` — child sent a heartbeat but no progress within `progress_ttl`.
-- `stale_label_only` — child is registered but both heartbeat and progress have expired.
-- `os_descendant_only_stale_progress` — no scoped Ralph Workflow evidence; raw OS descendants exist.
-
-The `alive_by` label drives the `CHILDREN_PERSIST_TOO_LONG` ceiling selection in
-`IdleWatchdog._effective_waiting_ceiling()`: `fresh_progress` uses the full
-`max_waiting_on_child_seconds` ceiling; all other values use the shorter
-`max_waiting_on_child_no_progress_seconds` ceiling (default 600s) to ensure a stuck or
-heartbeat-only child does not defer the timeout for the full 1800s hard ceiling. When
-scoped Ralph Workflow evidence is stale, raw OS-descendant presence alone is insufficient to keep
-WAITING_ON_CHILD open; the watchdog transitions to ACTIVE and fires `NO_OUTPUT_DEADLINE`.
+than reimplementing the precedence rules independently.
 
 See `ralph/agents/post_exit_watchdog.py` for the full post-exit transition matrix and
 verdict semantics.
@@ -172,41 +156,7 @@ these conditions is true:
 
 A clean process exit (exit code 0) alone is **not** sufficient for success. If neither signal is
 present, Ralph Workflow raises `OpenCodeResumableExitError` and the runner retries the same OpenCode session
-(preserving `session_id`) rather than restarting from scratch. This prevents silent no-op runs where
-the agent exits early without producing the required output.
-
-**Optional artifacts:** Some phases declare their artifact as optional via `artifact_required = false`
-in `pipeline.toml`. By default, `development_result` is required — the development phase must submit
-a `development_result` artifact with proof entries before completion. For phases configured with
-`artifact_required = false`, a clean exit (exit code 0) is sufficient for terminal-complete — no
-explicit `declare_complete` call and no artifact file are required. When an optional artifact is
-absent, `artifact_optional=True` is set on the `CompletionSignals`, which is treated as a terminal
-signal. A present optional artifact is still fully validated against its schema. Whether
-`development_result` is required is controlled by the phase definition in `pipeline.toml`; the
-bundled default sets `artifact_required = true` and also requires proof via
-`[phases.development.artifact_proof_policy]`. When proof validation fails, the orchestrator writes
-a retry hint to `.agent/tmp/last_retry_error_development.txt` and re-invokes the development phase
-in a loopback so the agent can address the missing proof items.
-
-Phases with no registered required artifact (not in `REQUIRED_ARTIFACTS`) also return
-`required_artifact_present=False`, so OpenCode agents on such phases must call `declare_complete`
-explicitly. This prevents implicit success from being granted just because a phase has no artifact
-requirement.
-
-**Multi-agent tree liveness:** Both the idle-timeout path (`classify_quiet`) AND the foreground-exit path
-(`classify_exit`) consult the `LivenessProbe` and `handle.has_live_descendants()` before declaring an
-OpenCode run terminal. Ralph Workflow-tracked child-agent labels are only consulted when a concrete
-workflow label scope is known (currently propagated via `RALPH_AGENT_LABEL_SCOPE`); otherwise OpenCode falls back
-to OS-level descendant detection so unrelated `agent:*` workers cannot suppress the timeout for an
-unscoped run. Scoped worker labels use the segment-delimited shape `agent:<scope>:<unit_id>:root`, so
-teardown targets the prefix `agent:<scope>:<unit_id>:` rather than a bare unit id. If any scoped child
-agent is still active or any OS-level descendant is alive when the parent exits, `_check_process_result` waits up to
-`descendant_wait_timeout_seconds` (default 30s) for the tree to quiesce, re-running
-`evaluate_completion` so artifacts written by background subagents are recognised. Only when the full
-agent tree is quiet AND no completion signals are present is `OpenCodeResumableExitError` raised. This
-prevents both false-positive retries and false-negative liveness caused by unrelated workers.
-
-**Parent-exit grace window:** Even when no child agents are visible at the exact moment the OpenCode parent exits with rc=0 and no completion signals are present, `_check_process_result` waits up to `parent_exit_grace_seconds` (default 5s) polling `evaluate_completion` and the liveness probe. This covers the race where MCP-driven background subagents have been launched but have not yet registered with the ProcessManager, and where the agent emits a Waiting for... content message but the OpenCode runtime ends the turn before any child becomes visible. If completion signals appear during the grace window the run is declared `TERMINAL_COMPLETE`; if children appear, control escalates to the existing `descendant_wait_timeout_seconds` window; only when both windows expire with no signals is `OpenCodeResumableExitError` raised. The grace window has zero cost on the fast path (when completion signals are present at exit time, `classify_exit` returns `TERMINAL_COMPLETE` before the grace logic runs).
+(preserving `session_id`) rather than restarting from scratch.
 
 **Session continuation:** `OpenCodeResumableExitError.resumable_session_id` carries the session ID
 extracted from the NDJSON output. The runner threads this ID into the next invocation via
@@ -241,18 +191,12 @@ The `read_media` tool (primary) and `read_image` tool (compatibility alias) and 
 
 When a client sends `initialize` without declaring multimodal support (`capabilities.image`, `capabilities.media`, or `capabilities.multimodal`), multimodal-only tools must not appear in `tools/list`.
 
-This is enforced by:
-1. Capturing client capabilities from the `initialize` params at connection time
-2. Filtering tools marked `is_multimodal=True` when building `tools/list` for text-only clients
-
 ### Upstream multimodal boundary
 
 When an upstream MCP server returns a non-text content block, Ralph Workflow normalizes it rather than rejecting it:
 
 - **URI-backed content**: the external URI is preserved as-is in a `resource_reference` block
 - **Embedded-data content**: the bytes are stored in the session `MediaManifest` and a `resource_reference` block with a `ralph://media/...` URI is returned
-
-This preserves multimodal meaning across upstream tool boundaries and makes the content retrievable via `resources/read`.
 
 ### Dead code policy
 
@@ -274,13 +218,11 @@ When working on `ralph/mcp/server/` or `ralph/pipeline/runner.py`, preserve thes
 5. **`check_mcp_bridge_health` is called per retry attempt.** In `runner.py`, the health check must execute at the top of every retry loop iteration so crashed or hung servers are detected before the agent is invoked, not after.
 6. **`ProcessManager` owns all process spawning.** Every subprocess — MCP server or AI agent — must be registered with `ProcessManager`. Do not call `subprocess.Popen` or similar outside `ProcessManager`.
 
-If you change any of these, update tests and docs together.
-
 ## Recovery architecture contract
 
 Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
 
-## Release & Versioning
+## Release and versioning
 
 For the complete release process — version bumping, building, validating, and publishing
 to PyPI — see [docs/sphinx/versioning.md](docs/sphinx/versioning.md).

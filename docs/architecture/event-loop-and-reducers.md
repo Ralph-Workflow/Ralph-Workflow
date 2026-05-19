@@ -1,25 +1,18 @@
 # Event Loop and Reducer Architecture
 
-This document describes Ralph Workflow's pipeline event loop and reducer architecture: how
-`PipelineState`, events, and effects work together, and how the reducer dispatches routing
-decisions through policy rather than hardcoded match arms.
+This document describes the pipeline event loop and reducer architecture: how `PipelineState`, events, and effects work together, and how the reducer dispatches routing decisions through policy rather than hardcoded match arms.
 
-The maintained implementation is the Python package in `ralph-workflow/ralph/`. All module
-references point to that package.
+The implementation lives in `ralph-workflow/ralph/`. All module references point to that package.
 
-If you are looking for the end-to-end lifecycle (planning → development → commit → review →
-fix), see `pipeline-lifecycle.md`.
-If you are looking for per-run logging and observability, see `logging-and-observability.md`.
+Related docs:
+- `pipeline-lifecycle.md` — end-to-end lifecycle (planning → development → commit → review → fix)
+- `logging-and-observability.md` — per-run logging and observability
 
 ## Policy-Defined Orchestration
 
-Ralph Workflow is a **policy-defined orchestration framework**. The reducer is
-decision-key-agnostic: it dispatches routing through `resolve_next_phase()` and
-`phase_def.decisions` / `phase_def.bypass_routes` declared in `pipeline.toml`, never through
-hardcoded outcome strings. Adding or renaming a decision key in policy is sufficient to change
-routing; no code change is required.
+Ralph Workflow is a **policy-defined orchestration framework**. The reducer is decision-key-agnostic: it dispatches routing through `resolve_next_phase()` and `phase_def.decisions` / `phase_def.bypass_routes` declared in `pipeline.toml`, never through hardcoded outcome strings. Adding or renaming a decision key in policy is sufficient to change routing; no code change is required.
 
-Every routing decision made by the reducer traces back to a policy field:
+Every routing decision traces back to a policy field:
 
 - `transitions.on_success`, `on_loopback`, `on_failure` — phase advancement
 - `bypass_routes[phase.clean_outcome]` — review bypass routing
@@ -29,21 +22,14 @@ Every routing decision made by the reducer traces back to a policy field:
 
 ## Core Contract
 
-The pipeline is driven by an explicit event loop with a strict separation of concerns:
+The pipeline is driven by an explicit event loop with strict separation of concerns:
 
-- **`PipelineState`** (`ralph/pipeline/state.py`): immutable snapshot of pipeline progress.
-  The checkpoint payload. State transitions happen only by applying reducer events.
-- **`Effect`** (`ralph/pipeline/effects.py`): an intention to perform I/O (invoke an agent,
-  write a checkpoint, run git, etc.). Effects carry no side effects themselves.
-- **`Event`** (`ralph/pipeline/events.py`): a fact about something that happened. The reducer
-  consumes events to produce the next state.
-- **`reduce()`** (`ralph/pipeline/reducer.py`): pure function
-  `(state, event, pipeline_policy, recovery) → (new_state, effects)`. No I/O; no logging;
-  fully deterministic. All routing dispatches through `pipeline_policy`.
-- **`Orchestrator`** (`ralph/pipeline/orchestrator.py`): pure function that derives the next
-  effect from the current state.
-- **`EffectHandler`** (`ralph/phases/` and `ralph/agents/`): impure executor that performs
-  the effect and reports the outcome as an event.
+- **`PipelineState`** (`ralph/pipeline/state.py`): immutable snapshot of pipeline progress. The checkpoint payload. State transitions happen only by applying reducer events.
+- **`Effect`** (`ralph/pipeline/effects.py`): an intention to perform I/O (invoke an agent, write a checkpoint, run git, etc.). Effects carry no side effects themselves.
+- **`Event`** (`ralph/pipeline/events.py`): a fact about something that happened. The reducer consumes events to produce the next state.
+- **`reduce()`** (`ralph/pipeline/reducer.py`): pure function `(state, event, pipeline_policy, recovery) → (new_state, effects)`. No I/O; no logging; fully deterministic. All routing dispatches through `pipeline_policy`.
+- **`Orchestrator`** (`ralph/pipeline/orchestrator.py`): pure function that derives the next effect from the current state.
+- **`EffectHandler`** (`ralph/phases/` and `ralph/agents/`): impure executor that performs the effect and reports the outcome as an event.
 
 The loop in `ralph/pipeline/runner.py` cycles:
 
@@ -51,61 +37,46 @@ The loop in `ralph/pipeline/runner.py` cycles:
 state --orchestrate--> effect --handle--> event --reduce--> next_state
 ```
 
-### Why this is non-negotiable
-
-- **Predictable execution**: the same state + event sequence produces the same result.
-- **Testability**: reducers and orchestrators test without filesystem, network, or agents.
-- **Debuggability**: the event log explains what happened without reverse-engineering control flow.
-- **Resume/checkpoint**: state is the checkpoint; resume is load state + continue.
+This separation enables:
+- **Predictable execution**: same state + event sequence produces the same result
+- **Testability**: reducers and orchestrators test without filesystem, network, or agents
+- **Debuggability**: the event log explains what happened without reverse-engineering control flow
+- **Resume/checkpoint**: state is the checkpoint; resume is load state + continue
 
 ## The Event Loop
 
-1. **Orchestrate**: inspect `PipelineState` and choose the next `Effect`.
-2. **Handle**: execute the effect in the handler (I/O happens here).
-3. **Emit**: return an `Event` (primary) and optional additional events.
-4. **Reduce**: compute next state by applying the event via `reduce()`.
-5. **Repeat** until `state.phase` reaches the configured terminal phase.
+1. **Orchestrate**: inspect `PipelineState` and choose the next `Effect`
+2. **Handle**: execute the effect in the handler (I/O happens here)
+3. **Emit**: return an `Event` (primary) and optional additional events
+4. **Reduce**: compute next state by applying the event via `reduce()`
+5. **Repeat** until `state.phase` reaches the configured terminal phase
 
 ## PipelineState
 
-`PipelineState` is the canonical application state.
+`PipelineState` is the canonical application state:
 
-- Single source of truth for pipeline progress.
-- Checkpoint payload: serialize to JSON to resume later.
-- Reducer-owned: transitions happen only by applying reducer events.
+- Single source of truth for pipeline progress
+- Checkpoint payload: serialize to JSON to resume later
+- Reducer-owned: transitions happen only by applying reducer events
 
-State includes the minimum information needed to:
+State includes the minimum information needed to deterministically derive the next `Effect`, explain why the pipeline is in its current phase, and safely resume after interruption.
 
-- deterministically derive the next `Effect`
-- explain why the pipeline is in its current phase
-- safely resume after interruption
-
-State must not include mutable caches of external reality (filesystem, git status, network)
-or hidden control flags not driven by events.
+State must not include mutable caches of external reality (filesystem, git status, network) or hidden control flags not driven by events.
 
 ## Reducer: Decision-Key-Agnostic Routing
 
-The reducer in `ralph/pipeline/reducer.py` dispatches all phase routing through policy. Key
-routing helpers:
+The reducer in `ralph/pipeline/reducer.py` dispatches all phase routing through policy. Key routing helpers:
 
-- `resolve_next_phase(phase, signal, policy)` (`ralph/pipeline/handoffs.py`): looks up
-  `transitions.on_success`, `on_loopback`, or `on_failure` from policy for the given phase.
-- `resolve_post_commit_phase(state, policy)`: selects the post-commit target using
-  `post_commit_routes` and budget counter state.
+- `resolve_next_phase(phase, signal, policy)` (`ralph/pipeline/handoffs.py`): looks up `transitions.on_success`, `on_loopback`, or `on_failure` from policy.
+- `resolve_post_commit_phase(state, policy)`: selects the post-commit target using `post_commit_routes` and budget counter state.
 
-**Analysis routing** (`_handle_analysis_success`, `_handle_capped_analysis_loopback_policy_driven`):
-routes exclusively via `transitions.on_success` / `on_loopback`. The `decisions` map in policy
-is a vocabulary contract used by artifact validation — it is not inspected for routing.
+**Analysis routing** (`_handle_analysis_success`, `_handle_capped_analysis_loopback_policy_driven`): routes exclusively via `transitions.on_success` / `on_loopback`. The `decisions` map in policy is a vocabulary contract used by artifact validation — it is not inspected for routing.
 
 **Review routing** (`_handle_review_clean`, `_handle_review_issues_found`):
-- `REVIEW_CLEAN`: reads `phase_def.clean_outcome` from policy, looks up the bypass target in
-  `phase_def.bypass_routes[clean_outcome]`. Falls back to `on_success` when no bypass is set.
-- `REVIEW_ISSUES_FOUND`: reads `phase_def.issues_outcome` from policy as the `review_outcome`
-  label. `issues_outcome` is required for any `role='review'` phase — missing it causes
-  startup rejection via `validate_policy_completeness`.
+- `REVIEW_CLEAN`: reads `phase_def.clean_outcome` from policy, looks up the bypass target in `phase_def.bypass_routes[clean_outcome]`. Falls back to `on_success` when no bypass is set.
+- `REVIEW_ISSUES_FOUND`: reads `phase_def.issues_outcome` from policy as the `review_outcome` label. `issues_outcome` is required for any `role='review'` phase — missing it causes startup rejection via `validate_policy_completeness`.
 
-**Terminal routing**: uses `policy.recovery.failed_route` for the failure path and
-`policy.terminal_phase` for the success path — never hardcoded strings.
+**Terminal routing**: uses `policy.recovery.failed_route` for the failure path and `policy.terminal_phase` for the success path — never hardcoded strings.
 
 ## Events
 
@@ -135,13 +106,9 @@ Current events handled by the reducer (see `ralph/pipeline/events.py`):
 | `FAN_OUT_STARTED` | Parallel fan-out started |
 | `ALL_WORKERS_COMPLETE` | All parallel workers finished |
 
-`PhaseFailureEvent` and `WorkerFailedEvent` are handled before the main dispatch and may be
-delegated to `RecoveryController` for classification-aware retry/fallback decisions.
+`PhaseFailureEvent` and `WorkerFailedEvent` are handled before the main dispatch and may be delegated to `RecoveryController` for classification-aware retry/fallback decisions.
 
-### Event design rules
-
-Events must answer "what happened", not "what should we do next":
-
+Event design rules:
 - Good: `SomethingSucceeded`, `SomethingFailed { reason }`, `SomethingCompleted`
 - Bad: `TryNextAgent`, `ShouldRetry`, `AdvanceToReview`
 
@@ -149,29 +116,19 @@ Routing decisions belong in the reducer, not in event shapes.
 
 ## Effects
 
-Effects are granular intentions to perform one type of I/O. Each effect does one thing
-and reports an outcome event. The orchestrator derives the next effect from state only —
-it never performs I/O itself.
+Effects are granular intentions to perform one type of I/O. Each effect does one thing and reports an outcome event. The orchestrator derives the next effect from state only — it never performs I/O itself.
 
 ## Recovery
 
-When a phase exhausts its agent chain, the reducer calls `_enter_failed_recovery()`, which
-transitions state to `policy.recovery.failed_route`. This is the policy-declared terminal
-failure path.
+When a phase exhausts its agent chain, the reducer calls `_enter_failed_recovery()`, which transitions state to `policy.recovery.failed_route`. This is the policy-declared terminal failure path.
 
-The `RecoveryController` in `ralph/recovery/controller.py` manages retry/fallback decisions
-within a single phase's agent chain. It is passed to the reducer as an optional collaborator;
-when present, `PhaseFailureEvent` is delegated to it for classification-aware handling.
+The `RecoveryController` in `ralph/recovery/controller.py` manages retry/fallback decisions within a single phase's agent chain. It is passed to the reducer as an optional collaborator; when present, `PhaseFailureEvent` is delegated to it for classification-aware handling.
 
 ## Parallel Execution
 
-When the planning artifact declares multiple work units, the orchestrator dispatches parallel
-workers (see `ralph/pipeline/parallel/`). Worker events (`WorkerStartedEvent`,
-`WorkerCompletedEvent`, `WorkerFailedEvent`) are handled by the reducer and tracked in
-`state.worker_states`.
+When the planning artifact declares multiple work units, the orchestrator dispatches parallel workers (see `ralph/pipeline/parallel/`). Worker events (`WorkerStartedEvent`, `WorkerCompletedEvent`, `WorkerFailedEvent`) are handled by the reducer and tracked in `state.worker_states`.
 
-`ALL_WORKERS_COMPLETE` triggers routing via `resolve_next_phase(state.phase, 'success', policy)`
-— parallel fan-out routing comes from policy, not hardcoded control flow.
+`ALL_WORKERS_COMPLETE` triggers routing via `resolve_next_phase(state.phase, 'success', policy)` — parallel fan-out routing comes from policy, not hardcoded control flow.
 
 ## Best Practices: Reducers
 
@@ -182,11 +139,10 @@ Reducers must be deterministic and side-effect free:
 - No hidden coupling to config: decisions driven by values in `PipelineState` or events
 
 When adding or changing reducer behavior:
-
-1. Write a unit test for `reduce(state, event) → new_state` capturing the decision.
-2. Confirm it fails for the right reason.
-3. Implement the minimal state transition.
-4. Add follow-up tests for edge cases (limits, phase boundaries, retries).
+1. Write a unit test for `reduce(state, event) → new_state` capturing the decision
+2. Confirm it fails for the right reason
+3. Implement the minimal state transition
+4. Add follow-up tests for edge cases (limits, phase boundaries, retries)
 
 ## Where to Look in Code
 

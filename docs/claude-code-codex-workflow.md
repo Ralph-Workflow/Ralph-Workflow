@@ -1,12 +1,12 @@
 # Claude Code + Codex Workflow: Split the Work, Not the Review
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams using tools like **Claude Code** and **Codex** for work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: instead of a transcript and a claim that the task is done, Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a clean morning-after re-entry point.
+What makes it different is the handoff: instead of a transcript and a confident "done" claim, Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a clean morning-after re-entry point.
 
-Why use it now? Because you can keep Claude Code and Codex in your workflow, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+Why use it now? You can keep Claude Code and Codex in your workflow, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
 ## Why developers pair Claude Code with Codex
 
@@ -85,8 +85,11 @@ Then:
 5. decide whether you would merge it
 
 If you want the shortest first-run path, start with [../START_HERE.md](../START_HERE.md).
+
 If you want help choosing the first agent path, read [which-agent-should-i-start-with.md](./which-agent-should-i-start-with.md).
+
 If you want to inspect a public proof asset before your own run, open [example-review-bundle.md](./example-review-bundle.md).
+
 If this Claude Code + Codex handoff problem is exactly the one you want solved, inspect Ralph Workflow on the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) and **star or watch it there**. If GitHub is where you already track tooling, the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) is there too.
 
 ## The practical takeaway

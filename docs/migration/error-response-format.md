@@ -8,9 +8,8 @@
 ## Error Response Structure
 
 When artifact validation fails, the MCP server returns a structured error response
-inside the JSON-RPC `error.data` field. The response contains one or more
-`ValidationError` objects, each pinpointing a single field-level problem and
-telling the agent exactly what to do next.
+inside the JSON-RPC `error.data` field. Each `ValidationError` pinpoints a single
+field-level problem and tells the agent exactly what to do next.
 
 ```json
 {

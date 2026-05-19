@@ -6,7 +6,7 @@ If you are searching for an AI agent orchestration CLI, the real question is not
 
 ## What an AI agent orchestration CLI should actually do
 
-An orchestration CLI should do more than wrap one prompt:
+An AI agent orchestration CLI should do more than wrap one prompt:
 
 - require a written task or spec before the run starts
 - let you use the agents you already have on your own machine

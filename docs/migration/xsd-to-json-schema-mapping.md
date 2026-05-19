@@ -243,9 +243,9 @@ Root contains a fixed sequence: summary, skills-mcp (opt), parallel-plan (opt), 
 
 1. **All mixed content -> string**: InlineTextType, ParagraphType, TextWithCodeType, CellType, ListItemType all become plain strings.
 2. **RichContentType -> string**: The entire rich content hierarchy (paragraphs, code blocks, tables, lists, headings) collapses to a markdown string.
-3. **Remove `ralph-` prefixes**: All JSON property names use clean names.
+3. **Remove `ralph-` prefixes**: All JSON property names use clean names without namespace prefixes.
 4. **Attributes -> properties**: XSD attributes become regular JSON properties on the same object.
 5. **SkillsMcpType -> two arrays**: `{"skills": [string], "mcps": [string]}` everywhere.
-6. **Continuation merged**: No separate continuation schema; use `development_result` with optional `continuation` object.
+6. **Continuation merged**: No separate continuation schema; use `development_result` with an optional `continuation` discriminator.
 7. **xs:choice -> anyOf**: Issues (found/not-found) and commit (commit/skip) use discriminated anyOf.
 8. **Hyphen to underscore**: Property names normalize `kebab-case` to `snake_case`.

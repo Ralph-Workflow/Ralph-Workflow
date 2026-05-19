@@ -6,7 +6,7 @@ It is for developers and technical teams with work that is **too big to babysit 
 
 What makes it different is the handoff: Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a short finish receipt — instead of just a transcript and a confident done claim.
 
-Why read this now? Because an AI coding task is not done when the model sounds done. It is done when the result comes back in a shape you can review, verify, and decide whether you would merge.
+Why read this now? An AI coding task is not done when the model sounds done. It is done when the result comes back in a shape you can review, verify, and decide whether you would merge.
 
 ## The fast test: done means mergeable or honestly blocked
 

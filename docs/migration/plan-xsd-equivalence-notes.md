@@ -81,15 +81,15 @@ When T9 implements the Rust deserializer for this JSON Schema, verify:
 
 2. **Mixed content eliminated**: `InlineTextType`, `ParagraphType`, `CellType`, `ListItemType`, `SkillsMcpType` all had `mixed="true"`. JSON has no mixed content; all flattened to strings.
 
-3. **`ralph-` prefixes removed**: All 7 prefixed element names (`ralph-plan`, `ralph-summary`, `ralph-implementation-steps`, `ralph-critical-files`, `ralph-risks-mitigations`, `ralph-verification-strategy`, `ralph-parallel-plan`) use clean names.
+3. **`ralph-` prefixes removed**: All 7 prefixed element names (`ralph-plan`, `ralph-summary`, `ralph-implementation-steps`, `ralph-critical-files`, `ralph-risks-mitigations`, `ralph-verification-strategy`, `ralph-parallel-plan`) use clean names without the `ralph-` namespace prefix.
 
-4. **XML attributes inlined as properties**: 12 XSD attributes (`@number`, `@type`, `@priority`, `@path`, `@action`, `@estimated-changes`, `@severity`, `@id`, `@unit-id`, `@count`, `@category`, `@step`) become regular JSON properties.
+4. **XML attributes inlined as properties**: 12 XSD attributes (`@number`, `@type`, `@priority`, `@path`, `@action`, `@estimated-changes`, `@severity`, `@id`, `@unit-id`, `@count`, `@category`, `@step`) become regular JSON properties on their parent objects.
 
 5. **Container elements removed**: `ScopeItemsType`, `TargetFilesType`, `PrimaryFilesType`, `ReferenceFilesType`, `ImplementationStepsType`, `DependenciesType` wrapper elements eliminated; their children appear directly as array items.
 
 6. **Kebab-case normalized to snake_case**: `file-change` -> `file_change`, `estimated-changes` -> `estimated_changes`, `expected-outcome` -> `expected_outcome`, etc.
 
-7. **`skills_mcp` simplified**: `SkillsMcpType` with mixed content, `<skill>` and `<mcp>` children each having `@reason` attributes, simplified to two flat string arrays. The `reason` attribute is dropped (not consumed by downstream executor logic).
+7. **`skills_mcp` simplified**: `SkillsMcpType` with mixed content, `<skill>` and `<mcp>` children each having `@reason` attributes, simplified to two flat string arrays. The `reason` attribute is dropped — it is not consumed by downstream executor logic.
 
 8. **`step.type` renamed to `step_type`**: Avoids collision with the JSON Schema keyword `type`.
 

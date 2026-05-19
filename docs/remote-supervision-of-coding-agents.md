@@ -4,7 +4,7 @@ Ralph Workflow is a **free and open-source** tool that orchestrates the coding a
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is not that it gives you another dashboard to stare at. Ralph Workflow is built so you can step away and still come back to a **reviewable result**: a real diff, checks that ran, artifacts, and clear open questions.
+What makes it different is not that it gives you another dashboard to stare at. Ralph Workflow is built so you can step away and still come back to a **reviewable result**: a real diff, checks that ran, artifacts, and enough context to decide whether the work earned a merge.
 
 Why use it now? Because if your current workaround is remote supervision, approval babysitting, or late-night transcript watching, Ralph Workflow gives you a cleaner test: run one real task tonight and decide tomorrow whether the result actually earned a merge.
 

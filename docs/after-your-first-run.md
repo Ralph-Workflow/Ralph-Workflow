@@ -17,8 +17,8 @@ Use Codeberg for the real project relationship: stars, watches, issues, and cont
 
 Treat the first run as a fork with only two healthy outcomes:
 
-1. **It earned trust** → star or watch Ralph Workflow on Codeberg.
-2. **It exposed friction** → open the matching first-run or docs/proof issue form on Codeberg.
+1. **It earned trust** — star or watch Ralph Workflow on Codeberg.
+2. **It exposed friction** — open the matching first-run or docs/proof issue form on Codeberg.
 
 If you do neither, the adoption signal stays private and the project learns nothing.
 
@@ -83,9 +83,7 @@ Move to a bigger second task only if the first run gave you:
 - a clean re-entry point the next morning
 - enough trust that you would review another result
 
-If not, do **not** jump to a bigger task yet.
-
-Instead:
+If not, do **not** jump to a bigger task yet. Instead:
 
 1. tighten the spec
 2. choose a more bounded task
@@ -96,7 +94,7 @@ Instead:
 Use these in order:
 
 1. [Example review bundle](./example-review-bundle.md)
-2. [How to review AI coding output before you merge](./review-ai-coding-output-before-merge.md)
+2. [What Good Output Looks Like](./free-open-source-proof.md)
 3. [Contributing](../CONTRIBUTING.md)
 
 The goal is simple: convert your first run into one honest public action on **Codeberg** — either a **star/watch** because it worked, or a **useful issue** because it did not.

@@ -4,7 +4,7 @@
 
 When the planning phase produces two or more work units, Ralph Workflow can fan development out across multiple workers in parallel. In v1, those workers all operate against the same git checkout and are isolated from each other with path restrictions and per-worker artifact namespaces.
 
-v1 supports only this same-workspace parallel mode. Other execution models are out of scope.
+v1 supports only same-workspace parallel mode — there are no per-worker git branches and no post-development merge step.
 
 ## Configuration
 

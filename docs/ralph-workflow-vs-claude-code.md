@@ -3,11 +3,11 @@
 If you already know Claude Code, the simplest difference is this:
 
 - **Claude Code** is an interactive coding agent you drive directly.
-- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine** and hands back a **reviewable result** after an unattended run.
+- **Ralph Workflow** is an **open-source** orchestration CLI that runs the coding agents you already use **on your own machine** and hands back a **reviewable result** after an unattended run.
 
 That means Ralph Workflow is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-Why try Ralph Workflow now? Because you do not need to abandon Claude Code to use it. You can keep Claude in the loop, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+Why try Ralph Workflow now? You do not need to abandon Claude Code to use it. Keep Claude in the loop, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
 ## The core difference
 
@@ -55,7 +55,7 @@ A practical split is:
 - use **Claude Code** for live exploration, shaping, and interactive edits during the day
 - use **Ralph Workflow** for unattended evening or overnight runs where the handoff quality matters as much as the model quality
 
-If your current pain is not “how do I get Claude to edit faster?” but “how do I come back to something reviewable tomorrow morning?”, Ralph Workflow is the sharper fit.
+If your current pain is not "how do I get Claude to edit faster?" but "how do I come back to something reviewable tomorrow morning?", Ralph Workflow is the sharper fit.
 
 ## What makes Ralph Workflow different from just running Claude longer
 
@@ -73,7 +73,7 @@ That is the real product test.
 
 ## Fastest honest first test
 
-Before you start, have Claude Code or another supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is free and open source, but it does not replace the coding agent itself.
+Before you start, have Claude Code or another supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is open source, but it does not replace the coding agent itself.
 
 Then run:
 

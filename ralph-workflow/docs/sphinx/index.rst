@@ -22,8 +22,6 @@ Ralph Workflow
 
 Choose the first path that matches how you already work tonight:
 
-Ralph Workflow is built for developers with work too big to babysit and too risky to trust blindly: a spec-driven AI agent flow, Claude Code automation path, and morning-after review handoff in one place.
-
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already using **OpenCode** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-opencode`.
 - Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
@@ -64,7 +62,7 @@ Keep the post-run branch simple:
    agents
 
 What a good first handoff looks like
-====================================
+======================================
 
 A strong first run should be easy to judge the next morning:
 
@@ -78,25 +76,8 @@ A strong first run should be easy to judge the next morning:
 If that finish line is what you want, open the public :doc:`example-review-bundle`, follow
 :doc:`getting-started`, or inspect Ralph Workflow on the `primary Codeberg repo <https://codeberg.org/RalphWorkflow/Ralph-Workflow>`_.
 
-Want the deeper workflow argument before you install?
-=====================================================
-
-If you want a longer answer to what Ralph Workflow is, who it is for, why it is different, and why
-it is worth trying now, these are the best supporting reads right now:
-
-- :doc:`how-to-tell-if-an-ai-coding-task-is-actually-done`
-- :doc:`claude-code-codex-workflow`
-- :doc:`when-unattended-coding-fits`
-
-Those reads all drive back to the same practical free-use path: use the agents you already have on
-your own machine, run one real backlog task tonight, and ask tomorrow whether you would merge the
-result.
-
-If the main trust question is still "how do I tell whether the run is actually done?" read
-:doc:`how-to-tell-if-an-ai-coding-task-is-actually-done`.
-
 What Ralph Workflow is for
-==========================
+===========================
 
 Ralph Workflow is a **free and open-source** orchestration CLI for developers and technical teams
 who want to hand off coding work that is **too big to babysit and too risky to trust blindly**.
@@ -120,21 +101,13 @@ installed and already authenticated on your own machine.
 Third-party places to inspect Ralph Workflow
 ============================================
 
-If you want outside discovery or comparison surfaces before you install, Ralph Workflow is also
-showing up on a few developer-facing directories now:
-
 - `GitDB project page <https://gitdb.net/ralph-workflow/ralph-workflow>`_ — inspect the GitHub mirror from a GitHub-native discovery surface.
 - `SaaSHub product page <https://www.saashub.com/ralph-workflow>`_ — review the product card with the current positioning.
 - `SaaSHub alternatives <https://www.saashub.com/ralph-workflow-alternatives>`_ — compare Ralph Workflow against adjacent tools in the same browse flow.
 - `TechTools Launchpad listing <https://techtools.cz/tools/launchpad/?tool=71>`_ — a live developer-tools directory entry.
 
-Those pages still drive back to the same four practical questions: Ralph Workflow is a free and
-open-source tool, built for developers with work too big to babysit and too risky to trust
-blindly, different because it aims to hand back reviewable output instead of a transcript, and
-worth trying now because you can run one real backlog task tonight on your own machine.
-
 Your best first test
-====================
+=====================
 
 Do not start with a vague demo.
 
@@ -143,20 +116,20 @@ Start with one real backlog task that is:
 - small enough to judge in one sitting
 - clear enough that success is easy to define
 - cheap to roll back if the run misses
-- real enough that you would care if it worked
+- real enough that you already wanted done
 
 The evaluation question is simple:
 
    **Would you merge this result?**
 
-If yes, Ralph Workflow earned a bigger task. If not, tighten the spec, checks, or task choice and
+If yes, Ralph Workflow earned a bigger task. If no, tighten the spec, checks, or task choice and
 run again.
 
 If you want proof before your own first run, inspect the public :doc:`example-review-bundle` and
 judge whether that handoff looks like something you would actually trust yourself to review.
 
 Know whether your task is a good fit
-====================================
+=====================================
 
 Ralph Workflow is strongest when the job is substantial enough to hand off but still bounded enough
 to review honestly in the morning.

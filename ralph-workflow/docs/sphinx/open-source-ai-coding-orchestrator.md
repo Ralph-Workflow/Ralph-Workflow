@@ -1,6 +1,6 @@
 # Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For
 
-If you are searching for an **open-source AI coding orchestrator**, the useful question is not just whether it can call multiple agents.
+If you are searching for an **open-source AI coding orchestrator**, the real question is not just whether it can call multiple agents.
 
 The real question is: **can it take one real backlog task, run on your own machine, and bring back something you would actually review and maybe merge?**
 
@@ -8,9 +8,9 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish line: Ralph Workflow is built to hand back a **reviewable result** — a diff, checks, artifacts, and enough context to decide whether the work actually holds up.
+What makes it different is the finish line: Ralph Workflow hands back a **reviewable result** — a diff, checks, artifacts, and enough context to decide whether the work actually holds up.
 
-Why use it now? Because you can inspect the source on **Codeberg**, install it for free, run one real task tonight, and judge the result tomorrow with one question: **would I merge this?**
+Why use it now? Because you can inspect the source on **Codeberg**, install it for free, run one real task tonight, and judge the result tomorrow with one honest question: **would I merge this?**
 
 ## What an AI coding orchestrator should actually do
 

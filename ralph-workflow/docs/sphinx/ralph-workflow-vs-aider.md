@@ -54,7 +54,7 @@ A practical split is:
 - use **Aider** for fast interactive editing during the day
 - use **Ralph Workflow** for unattended overnight runs on tasks that are too big to keep nudging manually
 
-If your current pain is not “how do I edit with AI faster?” but “how do I come back to something reviewable tomorrow morning?”, Ralph Workflow is the sharper fit.
+If your current pain is not "how do I edit with AI faster?" but "how do I come back to something reviewable tomorrow morning?", Ralph Workflow is the sharper fit.
 
 ## What makes Ralph Workflow different
 

@@ -6,13 +6,13 @@ The real question is this:
 
 > **Can you come back to code you can actually review and decide to merge?**
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks that ran, artifacts you can inspect, and a clear morning-after merge question.
+What makes it different is the handoff: Ralph Workflow leaves you with a **reviewable result** — a real diff, checks that ran, artifacts you can inspect, and a clear morning-after merge question.
 
-Why use it now? Because you can keep Claude Code in your workflow, run one real backlog task tonight, and judge the result tomorrow instead of hovering over an unattended session and hoping it stayed on track.
+Why use it now? Run one real backlog task tonight and judge the result tomorrow instead of hovering over an unattended session and hoping it stayed on track.
 
 ## What "without babysitting" should actually mean
 
@@ -34,9 +34,7 @@ That is the gap Ralph Workflow is meant to close.
 
 ## What Ralph Workflow adds on top of Claude Code
 
-Ralph Workflow does **not** replace Claude Code.
-
-It wraps the agent you already use in a repo-native overnight workflow so the finish state is easier to trust:
+Ralph Workflow does **not** replace Claude Code. It wraps the agent you already use in a repo-native overnight workflow so the finish state is easier to trust:
 
 - what changed
 - what checks ran
@@ -76,7 +74,7 @@ Use **Codeberg** as the main public home:
 - **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Star / watch / fork on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Keeping the trust signals on Codeberg makes the primary repo a clearer evaluation surface.
 
@@ -89,6 +87,9 @@ Keeping the trust signals on Codeberg makes the primary repo a clearer evaluatio
 5. Ask: **would I merge this?**
 
 If you want the shortest path, start with [../START_HERE.md](../START_HERE.md).
+
 If the blocker is still Claude Code approval babysitting, read [claude-code-approval-mode.md](./claude-code-approval-mode.md).
+
 If you want the broader automation framing first, read [claude-code-automation.md](./claude-code-automation.md).
+
 If you want the sharper product comparison, read [ralph-workflow-vs-claude-code.md](./ralph-workflow-vs-claude-code.md).

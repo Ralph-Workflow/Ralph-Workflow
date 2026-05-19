@@ -86,6 +86,7 @@ If you are deciding whether Ralph Workflow is worth trying, use this sequence:
    - rough run → **open a Codeberg issue with the missing proof or friction**
 
 Best next public actions:
+
 - **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

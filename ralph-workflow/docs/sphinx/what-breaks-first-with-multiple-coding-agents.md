@@ -6,7 +6,7 @@ It is for developers and technical teams who already know how to run Claude Code
 
 What makes Ralph Workflow different is the finish line: it is built to hand back a **reviewable result** — a real diff, checks, artifacts, and a short handoff trail — instead of a transcript plus a confident claim that the task is done.
 
-Why use it now? Because multi-agent coding is getting easier to start and harder to review. You can try Ralph Workflow for free on one real backlog task tonight and decide tomorrow whether the handoff is something you would actually merge.
+Why use it now? Multi-agent coding is getting easier to start and harder to review. You can try Ralph Workflow for free on one real backlog task tonight and decide tomorrow whether the handoff is something you would actually merge.
 
 ## The first thing that breaks is usually not Git
 

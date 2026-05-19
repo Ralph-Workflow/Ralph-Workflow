@@ -1,6 +1,6 @@
 # Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt
 
-Ralph Workflow is a **free and open-source** spec-driven AI agent workflow for developers who want results they can review instead of transcripts they have to decode.
+Ralph Workflow is a **free and open-source** spec-driven AI agent workflow for developers who want results they can actually review instead of transcripts they have to decode.
 
 If an agent keeps saying it is done before the work actually holds up, the problem is often not raw model capability. The problem is the absence of a real spec.
 

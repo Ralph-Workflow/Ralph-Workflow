@@ -20,24 +20,24 @@ When a user runs the project creation flow, reject empty or whitespace-only proj
 
 ## Example review bundle
 
-A useful unattended result should not just say “done.”
+A useful unattended result should not just say "done." It should leave behind a small review surface you can inspect in a few minutes:
 
-It should leave behind a small review surface you can inspect in a few minutes:
-
-```text
+```
 .
-├── cli/create.py
-├── tests/test_create.py
-└── .agent/
-    ├── PLAN.md
-    ├── DEVELOPMENT_RESULT.md
-    ├── ISSUES.md              # only if review found problems
-    ├── FIX_RESULT.md          # only if a fix pass ran
-    └── artifacts/
-        ├── plan.json
-        ├── development_result.json
-        ├── issues.json
-        └── fix_result.json
+└── cli/
+    └── create.py
+    └── tests/
+        └── test_create.py
+    └── .agent/
+        └── PLAN.md
+        └── DEVELOPMENT_RESULT.md
+        └── ISSUES.md              # only if review found problems
+        └── FIX_RESULT.md          # only if a fix pass ran
+        └── artifacts/
+            └── plan.json
+            └── development_result.json
+            └── issues.json
+            └── fix_result.json
 ```
 
 ### What you should be able to review quickly
@@ -70,8 +70,7 @@ Add empty-project-name validation to the CLI create flow.
 4. Run the relevant tests yourself.
 5. Ask one question: **would I merge this?**
 
-If that path feels fast and honest, Ralph Workflow did its job.
-If it feels murky, the handoff is still too weak.
+If that path feels fast and honest, Ralph Workflow did its job. If it feels murky, the handoff is still too weak.
 
 ## Final review question
 
