@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-05-19T02:06:28.297515+02:00",
+  "generated_at": "2026-05-19T02:55:00.461561+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-18_2115.md",
-  "report_age_hours": 4.73,
-  "latest_post_age_hours": 4.09,
+  "report_age_hours": 5.54,
+  "latest_post_age_hours": 4.9,
   "adoption_flat": true,
   "pending_repairs": [
     "primary_repo_flat",
@@ -12,11 +12,15 @@
     "slashdot",
     "saashub",
     "toolhunter",
-    "devpages",
-    "toolshelf",
-    "agentdepot"
+    "devpages"
   ],
+  "apollo": {
+    "status": "ato_email_verification_required",
+    "age_hours": 0.0,
+    "cloudflare_blocked": false
+  },
   "actions": [
+    "apollo_channel_blocked",
     "primary_repo_adoption_flat",
     "pending_repairs_detected",
     "channel_access_mismatch"

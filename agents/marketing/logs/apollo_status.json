@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-05-19T02:54:48.092504+02:00",
+  "status": "ato_email_verification_required",
+  "final_url": "https://app.apollo.io/#/ato/verify-email",
+  "login_attempted": true,
+  "cloudflare_blocked": false,
+  "notes": "Cloudflare is cleared on the real-browser path, but Apollo still requires mailbox/email-code verification for this device.",
+  "auth_endpoint_status_codes": [
+    200
+  ]
+}

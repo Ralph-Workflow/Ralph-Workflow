@@ -8,6 +8,7 @@ The active automation path is now intentionally small:
 2. `run_posting.py` publishes scheduled markdown drafts to write.as only.
 3. `run.py` measures site health and post performance, then makes weekly content-mix decisions.
 4. Blocked channels stay blocked until credentials/access change.
+5. Apollo.io is a managed account-based outbound channel, but its automation state is currently monitored as blocked until login protection is unblocked.
 
 ### Paused from the active loop
 - speculative channel discovery
@@ -39,6 +40,7 @@ This strategy file remains the long-term record, but the current system should f
 | dev.to | 🔒 Needs GitHub OAuth | PAT is read-only |
 | Twitter/X | 🔒 Login blocked | x.com shows errors |
 | Reddit | 🔒 Needs account | Karma requirements |
+| Apollo.io | 🔒 Cloudflare/auth blocked | Login automation is currently blocked from this environment |
 | Lobsters | 🔒 Needs invite | No access |
 | HN | 🔒 Needs invite | No access |
 | YouTube | 🔒 Needs Google + phone | Phone verification |
@@ -129,6 +131,17 @@ Priority order:
 2. GitHub mirror repo
 
 That means the loop should prefer actions that increase repo visits, repo inspection, repo stars/watchers/forks, and real first-run interest over generic awareness work.
+
+## Apollo.io channel guidance
+
+Apollo.io is a managed account-based outbound and distribution channel for Ralph Workflow when it is safely usable.
+
+- Keep the product framing intact in Apollo outreach: Ralph Workflow is free and open source, runs existing coding agents on your own machine, is built for ambitious unattended overnight work, and should direct serious evaluators to the Codeberg primary repo first and the GitHub mirror second.
+- Use Apollo saved searches and search alerts to monitor newly matching people and companies instead of doing vanity list churn.
+- Treat Apollo sequence and report views as measurement surfaces, not vanity dashboards. A sequence is only healthy if it plausibly drives qualified repo visits, replies, or inspection behavior.
+- Protect deliverability before scaling any Apollo sending motion: domain authentication, warmup and ramp-up, conservative sending limits, and caution around open/click tracking unless the tracking setup is known to be safe and correctly configured.
+- Use Apollo tasks, workflows, and sequences only when the motion is measurable and safe for sender reputation.
+- Current blocker truth: from this environment, Apollo login automation is currently blocked by Cloudflare/auth protection and must be treated as a monitored blocker until unblocked.
 
 ## Open Questions
 - Improve measurement of which tactics plausibly increase repo visits and repo inspection.

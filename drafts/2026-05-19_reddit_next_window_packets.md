@@ -1,4 +1,4 @@
-# RalphWorkflow Reddit next-window packet — 2026-05-19 01:47 CEST
+# RalphWorkflow Reddit next-window packet — 2026-05-19 03:00 CEST
 
 Live posting is **not** the move right now.
 

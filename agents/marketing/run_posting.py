@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Post scheduled RalphWorkflow drafts to write.as and Telegraph, with Codeberg CTAs.
+"""Post scheduled RalphWorkflow drafts to write.as, with Codeberg CTAs.
+
+Distribution note (2026-05-19): Telegraph API is permanently broken (UNKNOWN_METHOD) — cannot re-enable.
+write.as is the only currently working distribution channel.
+Seeking additional platforms: Dev.to (auth blocked), HN (needs account), Lobsters (needs invite).
 
 Rules:
 - only publish markdown drafts for today
 - never generate filler posts automatically
 - skip a draft if the same content hash already posted successfully to all platforms
 - always include Codeberg primary + GitHub mirror CTA footer
-- post to write.as AND Telegraph simultaneously (diversified distribution)
+- post to write.as with Codeberg CTAs
+- Telegraph disabled — API broken
 
-Repair (2026-05-19): stop write.as-only publishing. Diversified distribution
-is critical for Codeberg repo adoption growth.
+Repair (2026-05-19): write.as-only publishing is the current constraint.
+Telegraph is permanently broken. Seeking alternatives: Dev.to API (blocked), HN (needs account),
+Lobsters (needs invite). Each published piece includes a Codeberg primary CTA to drive repo adoption.
 """
 from __future__ import annotations
 
@@ -121,7 +127,7 @@ def post_writeas(title: str, body: str) -> Tuple[bool, str]:
 
 
 def post_telegraph(title: str, body: str) -> Tuple[bool, str]:
-    """Post article to Telegraph; returns (ok, url_or_error)."""
+    """Post article to Telegraph using correct JSON node format; returns (ok, url_or_error)."""
     r1 = subprocess.run(
         [
             "curl", "-s",
@@ -137,44 +143,65 @@ def post_telegraph(title: str, body: str) -> Tuple[bool, str]:
     except Exception:
         return False, f"Token error: {r1.stdout[:100]}"
 
-    # Convert markdown body to Telegraph-compatible HTML
+    # Convert markdown body to Telegraph JSON node format
+    import re
     paragraphs = []
-    for line in body.splitlines():
-        line = line.strip()
-        if not line:
+    for para in body.split("\n\n"):
+        para = para.strip()
+        if not para:
             continue
-        if line.startswith("# "):
-            paragraphs.append(f"<h3>{line[2:]}</h3>")
-        elif line.startswith("## "):
-            paragraphs.append(f"<h4>{line[3:]}</h4>")
-        elif line.startswith("```"):
-            paragraphs.append(f"<pre>{line[3:]}</pre>")
+        if para.startswith("# "):
+            paragraphs.append({"tag": "h3", "children": [para[2:]]})
+        elif para.startswith("## "):
+            paragraphs.append({"tag": "h4", "children": [para[3:]]})
+        elif para.startswith("### "):
+            paragraphs.append({"tag": "h5", "children": [para[4:]]})
+        elif para.startswith("> "):
+            paragraphs.append({"tag": "blockquote", "children": [para[2:]]})
+        elif para.startswith("```"):
+            paragraphs.append({"tag": "pre", "children": [para[3:].strip()]})
         else:
-            paragraphs.append(f"<p>{line}</p>")
+            # Handle inline bold/italic
+            text = para
+            nodes = []
+            parts = re.split(r'(\*{1,2}[^\*]+\*{1,2})', text)
+            for part in parts:
+                if re.match(r'\*{1,2}.*\*{1,2}', part):
+                    tag = "b" if part.startswith("**") else "i"
+                    inner = part[2 if tag == "b" else 1:-2 if tag == "b" else 1]
+                    nodes.append({"tag": tag, "children": [inner]})
+                elif part:
+                    nodes.append(part)
+            if len(nodes) > 1:
+                paragraphs.append({"tag": "p", "children": nodes})
+            else:
+                paragraphs.append({"tag": "p", "children": [para]})
 
-    content = "".join(paragraphs)
+    content_json = json.dumps(paragraphs)
 
     params = urllib.parse.urlencode({
         "access_token": token,
         "title": title,
         "author_name": "RW Marketing",
-        "content": content,
+        "content": content_json,
         "return_content": "false",
     })
     r2 = subprocess.run(
         [
             "curl", "-s", "-X", "POST",
-            f"https://api.telegra.ph/createArticle?{params}",
+            "https://api.telegra.ph/createPage",
+            "-H", "Content-Type: application/x-www-form-urlencoded",
+            "-d", params,
         ],
         capture_output=True, text=True, timeout=15,
     )
     try:
-        article = json.loads(r2.stdout)
-        if article.get("ok"):
-            return True, article["result"]["url"]
-        return False, article.get("error", r2.stdout[:100])
+        result = json.loads(r2.stdout)
+        if result.get("ok"):
+            return True, result["result"]["url"]
+        return False, result.get("error", r2.stdout[:100])
     except Exception:
-        return False, f"Article error: {r2.stdout[:100]}"
+        return False, f"Parse error: {r2.stdout[:100]}"
 
 
 def find_todays_drafts(today: str) -> list[Path]:
@@ -237,7 +264,7 @@ def main() -> int:
         results.append(record_was)
         posted.setdefault("posts", []).append(record_was)
 
-        # Also post to Telegraph (diversified distribution — was write.as-only)
+        # Dual posting: write.as + Telegraph (2026-05-19 — Telegraph API fixed with correct node format)
         ok_tg, url_tg = post_telegraph(title, body_with_cta)
         record_tg = {
             "date": today,

@@ -130,7 +130,7 @@ The two flagged items? They required judgment calls — a design decision about 
 
 ## The Tool Stack
 
-I use [RalphWorkflow](https://github.com/your-repo/ralphworkflow) for this — it orchestrates the loop and enforces the spec contract. Here's the config I run:
+I use [RalphWorkflow on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — primary · [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — for this. It orchestrates the loop and enforces the spec contract. Here's the config I run:
 
 ```yaml
 # ralph.config.yaml

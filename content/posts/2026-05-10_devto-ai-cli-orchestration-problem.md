@@ -58,7 +58,7 @@ I ran this against a real feature — a job application tracker. Twelve spec ite
 - Two logic issues caught by the verify step that would have otherwise made it to code review
 - Zero hands on keyboard after the initial spec
 
-The orchestrator I use for this is [RalphWorkflow](https://github.com/your-repo/ralphworkflow) — it's open source and free. But the principle matters more than the specific tool. Any workflow that enforces SPEC.md → plan → implement → verify → commit will get you there.
+The orchestrator I use for this is [RalphWorkflow on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — primary · [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — it's open source and free. But the principle matters more than the specific tool. Any workflow that enforces SPEC.md → plan → implement → verify → commit will get you there.
 
 ## The Point
 

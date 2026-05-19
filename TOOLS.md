@@ -61,6 +61,10 @@ Add whatever helps you do your job. This is your cheat sheet.
 - **Historical password:** `V9%)/A@=sXX-ebn`
   - Note: keep only for historical recovery context; do not post from this account.
 
+### Apollo.io
+- **Username:** `ken@hireaegis.com`
+- **Password:** `ngzcz!tS*jWo4dY1QjlZ@cxAd2r2c$Tf`
+
 ## Git Hosting
 
 - **Codeberg SSH:** `git@codeberg.org:RalphWorkflow/Ralph-Workflow.git`
