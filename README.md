@@ -89,34 +89,16 @@ If the run goes well, do the public next step on **Codeberg** instead of leaving
 
 ## Deeper paths only if one specific objection is blocking you
 
-- **I want help choosing a good first task before I install.** Read [docs/first-task-guide.md](./docs/first-task-guide.md).
-- **I want the fastest honest first run.** Read [START_HERE.md](./START_HERE.md).
-- **I want help choosing the first agent path.** Read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
-- **I want copy-paste prompt shapes for a real first task.** Read [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
-- **I am not sure whether my task is a good fit for unattended execution.** Read [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md).
-- **I already use worktrees or multiple agent sessions. What does Ralph add?** Read [docs/why-worktrees-are-not-enough.md](./docs/why-worktrees-are-not-enough.md).
-- **I use Claude Code and I am specifically looking for a stronger automation / unattended path.** Read [docs/claude-code-automation.md](./docs/claude-code-automation.md).
-- **I want to run Claude Code overnight without babysitting the terminal.** Read [docs/run-claude-code-overnight-without-babysitting.md](./docs/run-claude-code-overnight-without-babysitting.md).
-- **Claude Code approval mode or plan mode still leaves me babysitting the run.** Read [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md).
-- **Claude Code `run until done` or `/goal` sounds better, but I still care about the morning-after merge decision.** Read [docs/claude-code-run-until-done.md](./docs/claude-code-run-until-done.md).
-- **I already use Claude Code and want to know why I would add Ralph at all.** Read [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md).
-- **I already use OpenCode and want to know when Ralph is the better fit.** Read [docs/ralph-workflow-vs-opencode.md](./docs/ralph-workflow-vs-opencode.md).
-- **I already use Codex CLI and want to know when Ralph is the better fit.** Read [docs/ralph-workflow-vs-codex-cli.md](./docs/ralph-workflow-vs-codex-cli.md).
-- **I already use Claude Code + Codex together. What changes with Ralph?** Read [docs/claude-code-codex-workflow.md](./docs/claude-code-codex-workflow.md).
-- **I run multiple agents already. What actually breaks first?** Read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
-- **I want a concrete merge-review path for AI output.** Read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
-- **I want the sharpest owned answer to “how do I tell if the AI task is actually done?”** Read [docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md](./docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md).
-- **I want to know what a strong morning-after handoff should actually contain.** Read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
-- **I want unattended runs to fail closed instead of drifting all night.** Read [docs/bounded-autonomy-for-unattended-coding.md](./docs/bounded-autonomy-for-unattended-coding.md).
-- **I keep thinking I need remote supervision, but really I need a trustworthy finish state.** Read [docs/remote-supervision-of-coding-agents.md](./docs/remote-supervision-of-coding-agents.md).
-- **I am looking for an open-source AI coding orchestrator I can inspect before I install.** Read [docs/open-source-ai-coding-orchestrator.md](./docs/open-source-ai-coding-orchestrator.md).
-- **I am evaluating AI agent orchestration CLIs and want the practical difference.** Read [docs/ai-agent-orchestration-cli.md](./docs/ai-agent-orchestration-cli.md).
-- **I am searching for AI coding workflow automation that ends in a reviewable handoff.** Read [docs/ai-coding-workflow-automation.md](./docs/ai-coding-workflow-automation.md).
-- **I am searching for an unattended coding agent I can actually trust overnight.** Read [docs/unattended-coding-agent.md](./docs/unattended-coding-agent.md).
-- **I want a spec-driven AI agent, not just a bigger prompt loop.** Read [docs/spec-driven-ai-agent.md](./docs/spec-driven-ai-agent.md).
-- **I already use Aider. Why would I use Ralph instead?** Read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
-- **I want to inspect the project where I already follow open-source tools.** Start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow), or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
-- **I want to see what a good result looks like before I try it.** Read [docs/reviewable-output.md](./docs/reviewable-output.md) for the clean handoff shape, then [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a fuller morning-after review path.
+If the main evaluation path already makes sense, stop here and run it.
+
+If one blocker still stands between you and a real first run, use the smallest matching guide:
+
+- **Task choice / fit:** [docs/first-task-guide.md](./docs/first-task-guide.md), [docs/when-unattended-coding-fits.md](./docs/when-unattended-coding-fits.md)
+- **Fastest first run / proof standard:** [START_HERE.md](./START_HERE.md), [docs/reviewable-output.md](./docs/reviewable-output.md), [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md)
+- **Agent choice:** [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md), [docs/claude-code-automation.md](./docs/claude-code-automation.md)
+- **Claude Code-specific blockers:** [docs/run-claude-code-overnight-without-babysitting.md](./docs/run-claude-code-overnight-without-babysitting.md), [docs/claude-code-approval-mode.md](./docs/claude-code-approval-mode.md), [docs/claude-code-run-until-done.md](./docs/claude-code-run-until-done.md)
+- **Comparison pages:** [docs/ralph-workflow-vs-claude-code.md](./docs/ralph-workflow-vs-claude-code.md), [docs/ralph-workflow-vs-codex-cli.md](./docs/ralph-workflow-vs-codex-cli.md), [docs/ralph-workflow-vs-opencode.md](./docs/ralph-workflow-vs-opencode.md), [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md)
+- **Longer docs index:** [docs/README.md](./docs/README.md)
 
 Codeberg is the primary repo and the main adoption surface. If Ralph looks like a fit for your workflow, **inspect it on Codeberg first, then star, watch, or fork it there before your first run**. If you mainly follow projects on GitHub, the mirror is there too.
 
