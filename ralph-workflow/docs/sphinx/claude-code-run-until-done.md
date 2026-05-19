@@ -99,16 +99,18 @@ Ralph Workflow is the stronger path when:
 
 If you need live exploration on a fragile task, stay interactive. If you want a bounded overnight handoff you can judge honestly in the morning, Ralph Workflow is the better fit.
 
-## Best next step
+## Best next step if "run until done" still leaves a fuzzy morning-after handoff
+
+Do not stop at a longer session.
 
 Use **Codeberg** as the main public home:
 
 - **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star / watch / fork on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **Star or watch on Codeberg if the finish state earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report finish-receipt or first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
-Keeping the trust signals on Codeberg makes the primary repo a clearer evaluation surface.
+Then use [After Your First Ralph Workflow Run](after-your-first-run.md) so a promising trial becomes a visible primary-repo trust signal and a rough one becomes a useful issue.
 
 ## Fastest honest first run
 
@@ -118,7 +120,7 @@ Keeping the trust signals on Codeberg makes the primary repo a clearer evaluatio
 4. Review the diff, checks, and artifacts in the morning
 5. Ask: **would I merge this?**
 
-If you want the shortest path, start with [../START_HERE.md](../START_HERE.md).
+If you want the shortest path, start with [Getting Started](getting-started.md).
 
 If the blocker is still approval babysitting, read [claude-code-approval-mode.md](./claude-code-approval-mode.md).
 

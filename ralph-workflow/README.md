@@ -17,15 +17,20 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 **Start here:**
 
 - [Try Ralph Workflow on one real backlog task](START_HERE.md)
+- [After Your First Run](docs/after-your-first-run.md) — shortest Codeberg-first scorecard after a real evaluation
 - [Getting Started with Ralph Workflow](docs/sphinx/getting-started.md)
 - [Quickstart reference](docs/sphinx/quickstart.md)
+- [AI Agent Orchestration CLI](docs/ai-agent-orchestration-cli.md) — practical repo-native path if you are comparing orchestration CLIs
+- [Spec-Driven AI Agent](docs/spec-driven-ai-agent.md) — practical repo-native path if your real question is spec-first execution
+- [Claude Code Automation](docs/claude-code-automation.md) — practical repo-native path if your real question is Claude Code automation
+- [Claude Code Approval Mode](docs/claude-code-approval-mode.md) — practical repo-native path if approval mode still turns "autonomous" work into transcript babysitting
 - [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md) — choose the agent already installed and authenticated on your machine
 - [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better
+- [Ralph Workflow vs Aider](docs/sphinx/ralph-workflow-vs-aider.md) — decide when interactive pair-programming is enough and when an unattended morning-after handoff is better
 - [Ralph Workflow vs OpenCode](docs/ralph-workflow-vs-opencode.md) — decide when direct provider flexibility is enough and when a reviewable unattended handoff is better
 - [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md) — keep the role split, but come back to a cleaner reviewable handoff
 - [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md) — the short morning-after handoff that should tell you what changed, what passed, and what still needs judgment
 - [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
-- [After Your First Run](docs/sphinx/after-your-first-run.md) — turn a private evaluation into the right public Codeberg action
 
 Ralph Workflow supports mixed-agent runs across planning, analysis, development, review, and commit phases. You might plan with Claude, route analysis through an OpenCode-backed GPT model, hand development to Codex or another OpenCode provider, and keep review on a different agent chain — all inside the same repo-native workflow.
 

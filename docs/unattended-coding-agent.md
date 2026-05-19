@@ -12,6 +12,14 @@ What makes it different from a normal agent session is the handoff: Ralph Workfl
 
 Why use it now? Because you can try it tonight with the agents you already have, on one real task, for free.
 
+Before you install anything, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+
+If the workflow earns trust after a real run, keep the public signal on Codeberg:
+
+- **Star or watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 ## What an unattended coding agent should actually do
 
 A useful unattended coding agent should help you:
@@ -88,3 +96,8 @@ Use one real backlog task tonight.
 If you want proof before setup, inspect the public [Example Review Bundle](example-review-bundle.md).
 
 If you want the shortest install path, go to [Start Here](../START_HERE.md).
+
+If the morning-after handoff looks promising, do not leave that evaluation private:
+
+- **promising run:** star or watch Ralph Workflow on Codeberg
+- **shaky run:** open the right issue on Codeberg

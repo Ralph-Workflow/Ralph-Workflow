@@ -152,3 +152,13 @@ A weak first task is:
 - Read [../START_HERE.md](../START_HERE.md) for the fastest first-run path
 - Read [free-open-source-proof.md](./free-open-source-proof.md) to see what good output should look like
 - Read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) if you still need a task fit check
+
+## Turn the first run into one public Codeberg action
+
+These templates are only useful if they end in a real evaluation and a visible next step.
+
+- **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg** if the first run earns it: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction, weak docs, or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **Need the post-run scorecard first?** Read [After Your First Ralph Workflow Run](./after-your-first-run.md)

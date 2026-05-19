@@ -8,6 +8,14 @@ What makes it different is not just that it can run overnight. It is built to ha
 
 Why use it now? You can try it for free on one real backlog task tonight and decide tomorrow whether the output actually holds up.
 
+Before you do that, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+
+If the first run earns trust, keep the public next step on Codeberg:
+
+- **Star or watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 ## The simple rule
 
 Use Ralph Workflow for work that should leave behind a **reviewable implementation chunk**, not just an interesting transcript.
@@ -77,3 +85,8 @@ That is the real product test.
 - Read [Choose Your First Ralph Workflow Task](first-task-guide.md)
 - See [Example Review Bundle](example-review-bundle.md) for a public sample prompt, handoff notes, and artifacts
 - Use [First-Task Prompt Templates](first-task-prompt-templates.md) if you want a copy-paste `PROMPT.md` shape before your first run
+
+After one real run, convert the result into exactly one Codeberg action:
+
+- **promising run:** star or watch the repo
+- **shaky run:** open the right issue with the missing proof or friction

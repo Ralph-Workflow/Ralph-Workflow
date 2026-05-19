@@ -4,6 +4,14 @@ The fastest honest way to evaluate Ralph Workflow is not to ask whether it gener
 
 Ask whether it gave you something you would actually review and merge.
 
+Before you install anything, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+
+If the first real run earns trust, keep the public next step on Codeberg:
+
+- **Star or watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
 ## Example first task
 
 **Task:** Add validation so the CLI rejects empty project names before creating files.
@@ -77,3 +85,7 @@ If that path feels fast and honest, Ralph Workflow did its job. If it feels murk
 **Would you merge this?**
 
 If the answer is not obvious, the handoff is not clean enough yet.
+
+If the answer is yes, do not leave the evaluation private — star or watch Ralph Workflow on Codeberg.
+
+If the answer is no, open the missing-proof or first-run-friction issue on Codeberg.

@@ -106,3 +106,13 @@ If you want to inspect the project before you install it, start with the [primar
 5. Review the result tomorrow and ask: **would I merge this?**
 
 That is enough to tell you whether Ralph Workflow is useful in your real environment.
+
+## Turn the result into one public Codeberg action
+
+If this page helped you pick the first agent path, the next step should keep the trust signal on the primary repo.
+
+- **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg** if the first run looks worth repeating: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **Need the post-run scorecard first?** Read [After Your First Ralph Workflow Run](./after-your-first-run.md)

@@ -25,6 +25,7 @@ Choose the first path that matches how you already work tonight:
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
 - Already using **OpenCode** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-opencode`.
 - Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
+- Already using **Aider** and deciding whether interactive pair-programming is enough? Start with :doc:`ralph-workflow-vs-aider`.
 - Already using **Claude Code** and specifically searching for a better automation / unattended path? Start with :doc:`claude-code-automation`.
 - Already searching for how to run **Claude Code overnight without babysitting**? Start with :doc:`run-claude-code-overnight-without-babysitting`.
 - Already using **Claude Code** but still stuck in approval mode or plan mode babysitting? Read :doc:`claude-code-approval-mode`.
@@ -39,6 +40,7 @@ Choose the first path that matches how you already work tonight:
 - Keep reaching for **remote supervision** when the real problem is trusting the finish state? Read :doc:`remote-supervision-of-coding-agents`.
 - Searching for an **open-source AI coding orchestrator** you can inspect on Codeberg first? Read :doc:`open-source-ai-coding-orchestrator`.
 - Evaluating an **AI agent orchestration CLI** and want the practical difference? Read :doc:`ai-agent-orchestration-cli`.
+- Searching for **AI coding workflow automation** and need the morning-after handoff to be reviewable? Read :doc:`ai-coding-workflow-automation`.
 - Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
 - Want a **spec-driven AI agent** instead of a prompt-first loop? Read :doc:`spec-driven-ai-agent`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
@@ -64,6 +66,7 @@ Keep the post-run branch simple:
    getting-started
    developer-reference
    claude-code-run-until-done
+   agents
 
 What a good first handoff looks like
 ======================================
@@ -325,6 +328,7 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
    remote-supervision-of-coding-agents
    open-source-ai-coding-orchestrator
    ai-agent-orchestration-cli
+   ai-coding-workflow-automation
    unattended-coding-agent
    spec-driven-ai-agent
    first-task-guide

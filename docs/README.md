@@ -102,6 +102,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `remote-supervision-of-coding-agents.md` — practical guide for converting live-supervision pain into a cleaner morning-after review path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first explanation of what Ralph Workflow adds if you are comparing open-source AI coding orchestrators
 - `ai-agent-orchestration-cli.md` — practical comparison page for developers evaluating orchestration CLIs by the quality of the reviewable handoff
+- `ai-coding-workflow-automation.md` — practical page for developers searching for AI coding workflow automation that ends in a reviewable morning-after handoff
 - `unattended-coding-agent.md` — practical page for developers searching for an unattended coding agent they can trust to produce a morning-after handoff instead of a transcript
 - `spec-driven-ai-agent.md` — explanation of why Ralph Workflow is built around a spec-first finish line instead of a prompt-first loop
 - `what-a-good-ai-coding-finish-receipt-looks-like.md` — what a short trustworthy morning-after handoff should contain so review does not start with transcript archaeology
