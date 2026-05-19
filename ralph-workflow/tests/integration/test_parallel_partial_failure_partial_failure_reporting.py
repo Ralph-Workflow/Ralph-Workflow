@@ -7,11 +7,8 @@ per-unit status is reported correctly for all workers.
 from __future__ import annotations
 
 import asyncio
-import io
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
-
-from rich.console import Console
 
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
@@ -30,6 +27,7 @@ from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 
 if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
+from tests.integration._fake_display_reporting import _FakeDisplay
 
 
 def _make_work_unit(uid: str, deps: list[str] | None = None) -> WorkUnit:
@@ -56,16 +54,6 @@ def _make_policy_bundle() -> MagicMock:
     bundle.pipeline.recovery.failed_route = "failed_terminal"
     return bundle
 
-
-class _FakeDisplay:
-    def __init__(self) -> None:
-        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
-
-    def emit(self, unit_id: str | None, line: str) -> None:
-        del unit_id, line
-
-    def set_status(self, unit_id: str, status: object) -> None:
-        del unit_id, status
 
 
 class TestPartialFailureReporting:

@@ -12,13 +12,10 @@ All workers use FakeAgentExecutor (no subprocess, no real MCP).
 
 from __future__ import annotations
 
-import io
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
-
-from rich.console import Console
 
 if TYPE_CHECKING:
     import pytest
@@ -35,6 +32,7 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
+from tests.integration._fake_display_fanout import _FakeDisplay
 
 _DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
@@ -79,15 +77,6 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     return bundle
 
 
-class _FakeDisplay:
-    def __init__(self) -> None:
-        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
-
-    def emit(self, unit_id: str | None, line: str) -> None:
-        del unit_id, line
-
-    def set_status(self, unit_id: str, status: object) -> None:
-        del unit_id, status
 
 
 class TestRunnerAnalysisHandoffIntegration:
@@ -206,3 +195,4 @@ class TestRunnerAnalysisHandoffIntegration:
         content = handoff_path.read_text()
         assert "any_failed: true" in content
         assert "all_succeeded: false" in content
+

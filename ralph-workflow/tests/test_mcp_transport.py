@@ -6,10 +6,7 @@ import contextlib
 import itertools
 import sys
 from io import BytesIO
-from typing import IO, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from typing import IO
 
 import pytest
 
@@ -29,12 +26,14 @@ from ralph.testing.fake_process import (
     make_async_process_factory,
     make_sync_process_factory,
 )
+from tests.test_mcp_transport_helper__fakethread import _FakeThread
 
 PYTHON = sys.executable
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
 )
+
 
 
 class _FakeProcess:
@@ -53,13 +52,6 @@ class _FakeProcess:
         pass
 
 
-class _FakeThread:
-    def __init__(self, label: str, on_start: Callable[[], None]) -> None:
-        self._label = label
-        self._on_start = on_start
-
-    def start(self) -> None:
-        self._on_start()
 
 
 def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:

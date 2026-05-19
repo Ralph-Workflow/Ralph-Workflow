@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
+from tests.recovery.test_classifier_session_helper__agentinactivitytimeouterror import (
+    _AgentInactivityTimeoutError,
+)
 
 
 class _AgentInvocationError(Exception):
     """Simulates AgentInvocationError via class name."""
 
 
-class _AgentInactivityTimeoutError(Exception):
-    """Simulates AgentInactivityTimeoutError via class name."""
 
 
 _AgentInvocationError.__name__ = "AgentInvocationError"

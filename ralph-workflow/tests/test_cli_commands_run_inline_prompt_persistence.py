@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-from io import StringIO
 from typing import TYPE_CHECKING
-
-from rich.console import Console
-from rich.text import Text
 
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
-from ralph.display.theme import RALPH_THEME
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -81,41 +76,9 @@ def _policy_bundle_for_testing() -> PolicyBundle:
     )
 
 
-class _CaptureConsole(Console):
-    """A Rich Console that also captures output in .lines."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            file=StringIO(),
-            color_system=None,
-            force_terminal=False,
-            theme=RALPH_THEME,
-        )
-        self._string_io = self.file
-        self.lines: list[str] = []
-
-    def print(self, *args: object, **kwargs: object) -> None:
-        for arg in args:
-            if isinstance(arg, Text):
-                self.lines.append(arg.plain)
-            else:
-                self.lines.append(str(arg))
-        super().print(*args, **kwargs)
-
-    def getvalue(self) -> str:
-        return self._string_io.getvalue()
 
 
-class _RegistryWithFromConfigOnly:
-    called_with: object | None = None
 
-    @classmethod
-    def from_config(cls, config: object) -> _RegistryWithFromConfigOnly:
-        cls.called_with = config
-        return cls()
-
-    def get(self, _name: str) -> object:
-        return object()
 
 
 class TestInlinePromptPersistence:

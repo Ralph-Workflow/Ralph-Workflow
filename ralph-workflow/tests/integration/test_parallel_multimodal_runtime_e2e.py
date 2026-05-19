@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -46,12 +46,20 @@ from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.agents.executor import AgentExecutor, WorkerResult
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.pipeline.parallel.coordinator import WorkerContext
+from tests.integration import (
+    test_parallel_multimodal_runtime_e2e_helper__capturedcontext as capturedcontext_helper,
+)
+from tests.integration import (
+    test_parallel_multimodal_runtime_e2e_helper__fakeagentexecutorwithartifacts as artifacts_helper,
+)
+from tests.integration import (
+    test_parallel_multimodal_runtime_e2e_helper__sessioncontract as sessioncontract_helper,
+)
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -107,6 +115,7 @@ def _setup_patches(
     )
 
 
+
 class _FakeDisplay:
     def emit(self, unit_id: str | None, line: str) -> None:
         del unit_id, line
@@ -121,74 +130,18 @@ class _FakeDisplay:
         return None
 
 
-class _SessionContract(NamedTuple):
-    """Session contract parameters for parallel worker testing."""
-
-    drain: str
-    capabilities: frozenset[str]
-    model_identity: MultimodalModelIdentity
 
 
-class _CapturedContext:
-    """Holds captured session contract values from the coordinator's run_fan_out call."""
-
-    def __init__(self) -> None:
-        self.session_drain: str | None = None
-        self.session_capabilities: frozenset[str] | None = None
-        self.session_model_identity: MultimodalModelIdentity | None = None
-        self.session_capability_profile: object | None = None
 
 
-class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
-    """FakeAgentExecutor that creates artifacts in the worker namespace.
-
-    This simulates what a real agent would do when it completes - create
-    output artifacts in the worker's artifacts/ and handoffs/ directories.
-    """
-
-    def __init__(self, runs: dict[str, FakeRun], tmp_path: Path) -> None:
-        super().__init__(runs)
-        self._tmp_path = tmp_path
-
-    async def run(
-        self,
-        unit: WorkUnit,
-        *,
-        on_output: Callable[[str], None],
-        on_status: Callable[[WorkerStatus], None],
-    ) -> WorkerResult:
-        worker_ns = self._tmp_path / ".agent" / "workers" / unit.unit_id
-
-        artifacts_dir = worker_ns / "artifacts"
-        artifacts_dir.mkdir(parents=True, exist_ok=True)
-        (artifacts_dir / "plan.json").write_text(
-            json.dumps(
-                {
-                    "name": "plan",
-                    "type": "plan",
-                    "content": {"summary": f"done-{unit.unit_id}"},
-                    "created_at": "2024-01-01T00:00:00+00:00",
-                    "updated_at": "2024-01-01T00:00:00+00:00",
-                    "metadata": {},
-                }
-            )
-        )
-
-        handoffs_dir = worker_ns / "handoffs"
-        handoffs_dir.mkdir(parents=True, exist_ok=True)
-        (handoffs_dir / "DEVELOPMENT_RESULT.md").write_text(
-            f"# Development Result for {unit.unit_id}\n\nCompleted successfully.\n"
-        )
-
-        return await super().run(unit, on_output=on_output, on_status=on_status)
 
 
 def _run_fan_out_sync(
     effect: FanOutEffect,
     tmp_path: Path,
-    contract: _SessionContract,
+    contract: sessioncontract_helper._SessionContract,
     monkeypatch: pytest.MonkeyPatch,
-) -> tuple[PipelineState, _CapturedContext]:
+) -> tuple[PipelineState, capturedcontext_helper._CapturedContext]:
     """Run fan-out via the public _execute_fan_out_sync seam.
 
     This exercises the same path that the real runner uses, including the
@@ -198,14 +151,14 @@ def _run_fan_out_sync(
         A tuple of (final_state, captured_context). The captured_context
         holds the session contract values that the coordinator received.
     """
-    captured = _CapturedContext()
+    captured = capturedcontext_helper._CapturedContext()
     units = effect.work_units
 
     runs = {
         unit.unit_id: FakeRun(outputs=[f"done-{unit.unit_id}"], exit_code=0, duration_ms=10)
         for unit in units
     }
-    fake_executor = _FakeAgentExecutorWithArtifacts(runs, tmp_path)
+    fake_executor = artifacts_helper._FakeAgentExecutorWithArtifacts(runs, tmp_path)
 
     _setup_patches(
         monkeypatch,
@@ -309,7 +262,7 @@ def test_workers_complete_successfully_with_multimodal_session_contract(
     effect = FanOutEffect(work_units=units, max_workers=2)
 
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
-    contract = _SessionContract(
+    contract = sessioncontract_helper._SessionContract(
         drain="development",
         capabilities=frozenset({"media.read", "workspace.edit"}),
         model_identity=identity,
@@ -349,7 +302,7 @@ def test_worker_namespaces_created_with_correct_structure(
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
     identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
-    contract = _SessionContract(
+    contract = sessioncontract_helper._SessionContract(
         drain="development_analysis",
         capabilities=frozenset({"media.read"}),
         model_identity=identity,
@@ -383,7 +336,7 @@ def test_multiple_workers_each_get_unique_session_ids(
     effect = FanOutEffect(work_units=units, max_workers=3)
 
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-sonnet-4")
-    contract = _SessionContract(
+    contract = sessioncontract_helper._SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
         model_identity=identity,
@@ -423,7 +376,7 @@ def test_claude_worker_completes_with_inline_image_capability(
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
-    contract = _SessionContract(
+    contract = sessioncontract_helper._SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
         model_identity=identity,
@@ -457,7 +410,7 @@ def test_gemini_worker_completes_with_typed_block_capability(
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
     identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
-    contract = _SessionContract(
+    contract = sessioncontract_helper._SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
         model_identity=identity,
@@ -490,7 +443,7 @@ def test_unknown_provider_worker_completes_with_replay_fallback(
     unit = _make_work_unit("unit-unknown")
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
-    contract = _SessionContract(
+    contract = sessioncontract_helper._SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
         model_identity=UNKNOWN_IDENTITY,
@@ -524,7 +477,7 @@ def test_worker_handoff_contains_multimodal_artifacts(
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
-    contract = _SessionContract(
+    contract = sessioncontract_helper._SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
         model_identity=identity,
@@ -558,7 +511,7 @@ def test_worker_artifacts_contain_plan_json(
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
     identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
-    contract = _SessionContract(
+    contract = sessioncontract_helper._SessionContract(
         drain="development",
         capabilities=frozenset({"media.read"}),
         model_identity=identity,

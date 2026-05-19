@@ -14,8 +14,11 @@ from ralph.mcp.webvisit.fetcher import FetchOutcome
 
 if TYPE_CHECKING:
     import pytest
+from tests.mcp.test_tool_webvisit_helper__deniedsession import _DeniedSession
+from tests.mcp.test_tool_webvisit_helper__stubworkspace import _StubWorkspace
 
 _HTTP_404 = 404
+
 
 
 class _AllowedSession:
@@ -25,16 +28,8 @@ class _AllowedSession:
         return "approved"
 
 
-class _DeniedSession:
-    session_id = "denied-session"
-
-    def check_capability(self, capability: str) -> object:
-        return "denied"
 
 
-class _StubWorkspace:
-    def absolute_path(self, path: str) -> str:
-        return path
 
 
 _GOOD_OUTCOME = FetchOutcome(

@@ -9,11 +9,13 @@ from ralph.mcp.tools.artifact import handle_submit_artifact
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import render_worker_prompt
+from tests.test_prompt_template_files_helper__workspace import _Workspace
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROMPTS_ROOT = REPO_ROOT / "ralph" / "prompts"
 TEMPLATES_ROOT = PROMPTS_ROOT / "templates"
 SHARED_ROOT = TEMPLATES_ROOT / "shared"
+
 
 
 class _ApprovedSession:
@@ -27,12 +29,6 @@ class _ApprovedSession:
         return "approved"
 
 
-class _Workspace:
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
-    def absolute_path(self, path: str) -> str:
-        return str((self._root / path).resolve())
 
 
 def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:

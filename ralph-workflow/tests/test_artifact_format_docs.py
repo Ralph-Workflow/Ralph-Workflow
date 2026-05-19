@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -12,7 +12,6 @@ import pytest
 
 from ralph.mcp.artifacts.commit_message import normalize_commit_message_content
 from ralph.mcp.artifacts.development_result import normalize_development_result_content
-from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.mcp.artifacts.format_docs import (
     FORMAT_DOC_ARTIFACT_TYPES,
     format_doc_workspace_path,
@@ -26,71 +25,18 @@ from ralph.mcp.artifacts.format_docs import (
 from ralph.mcp.artifacts.smoke_test_result import normalize_smoke_test_result_content
 from ralph.mcp.tools.artifact import handle_submit_artifact
 from ralph.mcp.tools.coordination import InvalidParamsError
+from tests.test_artifact_format_docs_memory_backend import MemoryBackend
+from tests.test_artifact_format_docs_mock_session import MockSession
+from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
 MIN_CHECKLIST_BULLETS = 3
 
 
-class MemoryBackend(FileBackend):
-    def __init__(self) -> None:
-        self._files: dict[Path, str] = {}
-        self._directories: set[Path] = set()
-
-    def exists(self, path: Path) -> bool:
-        return path in self._files or path in self._directories
-
-    def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
-        del exist_ok
-        self._directories.add(path)
-        if parents:
-            self._directories.update(path.parents)
-
-    def read_text(self, path: Path, *, encoding: str = "utf-8") -> str:
-        del encoding
-        return self._files[path]
-
-    def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
-        del encoding
-        self._directories.add(path.parent)
-        self._directories.update(path.parent.parents)
-        self._files[path] = content
-
-    def replace(self, source: Path, destination: Path) -> None:
-        self._directories.add(destination.parent)
-        self._directories.update(destination.parent.parents)
-        self._files[destination] = self._files.pop(source)
-
-    def unlink(self, path: Path, *, missing_ok: bool = False) -> None:
-        if missing_ok:
-            self._files.pop(path, None)
-            return
-        del self._files[path]
-
-    def glob(self, path: Path, pattern: str) -> list[Path]:
-        if pattern != "*.json":
-            return []
-        prefix = f"{path}/"
-        return [
-            candidate
-            for candidate in self._files
-            if str(candidate).startswith(prefix) and candidate.suffix == ".json"
-        ]
-
-
-@dataclass
-class MockSession:
-    session_id: str = "test-session"
-    drain: str = "development"
-
-    def check_capability(self, capability: str) -> object:
-        return capability == "artifact.submit"
-
-
-class MockWorkspace:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-
-    def absolute_path(self, path: str) -> str:
-        return str(self.root / path)
+def test_module_contains_no_class_definitions() -> None:
+    module = Path(__file__)
+    syntax_tree = ast.parse(module.read_text(encoding="utf-8"))
+    class_nodes = [node for node in syntax_tree.body if isinstance(node, ast.ClassDef)]
+    assert class_nodes == []
 
 
 def _extract_complete_example_inner_payload(doc: str) -> dict[str, object]:

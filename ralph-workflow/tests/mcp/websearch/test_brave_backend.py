@@ -8,6 +8,8 @@ from types import ModuleType
 import pytest
 from _pytest.mark import Mark, MarkDecorator
 
+from tests.mcp.websearch.test_brave_backend_helper__explodingresponse import _ExplodingResponse
+
 NETWORK_MARK = MarkDecorator(Mark("network", (), {}))
 
 API_KEY = "brave-secret-key"
@@ -23,6 +25,7 @@ def _import_brave_module() -> object:
         raise AssertionError("ralph.mcp.websearch.backends.brave should exist") from exc
 
 
+
 class _FakeResponse:
     def __init__(self, payload: object) -> None:
         self._payload = payload
@@ -34,12 +37,6 @@ class _FakeResponse:
         return self._payload
 
 
-class _ExplodingResponse:
-    def __init__(self, detail: str) -> None:
-        self.detail = detail
-
-    def raise_for_status(self) -> None:
-        raise RuntimeError(self.detail)
 
 
 def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:

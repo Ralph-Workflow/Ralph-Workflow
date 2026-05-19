@@ -9,7 +9,6 @@ from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
     resolve_capability_profile,
 )
-from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.parallel.coordinator import (
     prepare_executor,
 )
@@ -20,6 +19,8 @@ from ralph.pipeline.work_units import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+from tests._prepare_executor_fake_mcp_server_factory import _FakeMcpServerFactory
+from tests._prepare_session_contract import _SessionContract
 
 
 def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> WorkUnit:
@@ -31,30 +32,8 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
     )
 
 
-class _FakeMcpServerFactory:
-    def __init__(self) -> None:
-        self.build = MagicMock(
-            side_effect=lambda session: McpServerHandle(
-                endpoint="http://127.0.0.1:9999/mcp",
-                pid=99999,
-                shutdown=lambda: None,
-            )
-        )
 
 
-class _SessionContract:
-    def __init__(
-        self,
-        *,
-        drain: str,
-        capabilities: frozenset[str],
-        model_identity: object,
-        capability_profile: object,
-    ) -> None:
-        self.drain = drain
-        self.capabilities = capabilities
-        self.model_identity = model_identity
-        self.capability_profile = capability_profile
 
 
 class TestPrepareExecutorSameWorkspace:
@@ -140,6 +119,7 @@ class TestPrepareExecutorSameWorkspace:
 
         assert bundle is not None
         assert bundle.session.model_identity.provider == "unknown"
+
 
 
 def _make_same_workspace_context(

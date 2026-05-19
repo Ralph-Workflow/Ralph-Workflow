@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 from ralph.agents.execution_state import (
-    AgentExecutionState,
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
 )
@@ -39,6 +38,8 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.liveness import FakeLivenessProbe
+from tests.agents.test_invoke_timeout_integration_helper__raisingstrategy import _RaisingStrategy
+from tests.agents.test_invoke_timeout_integration_helper__waitingstrategy import _WaitingStrategy
 
 
 class _FakeManagedHandle:
@@ -91,26 +92,8 @@ class _FakeManagedHandle:
         pass
 
 
-class _RaisingStrategy(GenericExecutionStrategy):
-    """Strategy whose classify_quiet always raises to simulate a transient probe failure."""
-
-    def classify_quiet(
-        self,
-        handle: object,
-        liveness_probe: object,
-    ) -> AgentExecutionState:
-        raise RuntimeError("boom")
 
 
-class _WaitingStrategy(GenericExecutionStrategy):
-    """Strategy whose classify_quiet always returns WAITING_ON_CHILD."""
-
-    def classify_quiet(
-        self,
-        handle: object,
-        liveness_probe: object,
-    ) -> AgentExecutionState:
-        return AgentExecutionState.WAITING_ON_CHILD
 
 
 _MAX_SESSION_SECONDS = 5.0

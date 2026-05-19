@@ -72,6 +72,7 @@ def test_suite_timeout_error_message_cites_policy() -> None:
     assert "ralph/verify_timeout.py" in message
 
 
+@pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(10)
 def test_raw_pytest_run_is_hard_capped_by_suite_timeout(tmp_path: Path) -> None:
     # Write the slow test to the tests directory so conftest.py (which loads

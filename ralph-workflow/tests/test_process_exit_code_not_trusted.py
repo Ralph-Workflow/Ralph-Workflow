@@ -9,7 +9,6 @@ import sys
 
 import pytest
 
-from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import PipelineEvent, WorkerFailedEvent
 from ralph.pipeline.parallel.mode import SameWorkspaceContext
@@ -23,6 +22,9 @@ from ralph.process.manager import (
     reset_process_manager,
 )
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+from tests.test_process_exit_code_not_trusted_helper__recordingmcpfactory import (
+    _RecordingMcpFactory,
+)
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
@@ -39,6 +41,7 @@ def _reset_pm() -> object:
     with contextlib.suppress(Exception):
         get_process_manager().shutdown_all(grace_period_s=0)
     reset_process_manager()
+
 
 
 @pytest.mark.asyncio
@@ -94,13 +97,6 @@ class _RecordingDisplay:
         self.statuses.setdefault(unit_id, []).append(status)
 
 
-class _RecordingMcpFactory:
-    def build(self, session: object) -> McpServerHandle:
-        return McpServerHandle(
-            endpoint="http://127.0.0.1:19999/mcp",
-            pid=9999,
-            shutdown=lambda: None,
-        )
 
 
 def _make_ctx(module: object, same_workspace: object) -> object:

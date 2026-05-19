@@ -114,13 +114,14 @@ def test_no_file_over_1000_lines() -> None:
 
 
 def test_one_class_per_file() -> None:
-    """Each maintained source file in ralph/ must have at most one top-level class."""
+    """Each maintained source file in ralph/ and tests/ must have at most one top-level class."""
     violations = []
-    for path in _all_py_files(RALPH_DIR):
-        classes = _top_level_classes(path)
-        if len(classes) > 1:
-            rel = str(path.relative_to(REPO_ROOT))
-            violations.append(f"{len(classes)} classes in {rel}: {classes[:5]}")
+    for base in (RALPH_DIR, TESTS_DIR):
+        for path in _all_py_files(base):
+            classes = _top_level_classes(path)
+            if len(classes) > 1:
+                rel = str(path.relative_to(REPO_ROOT))
+                violations.append(f"{len(classes)} classes in {rel}: {classes[:5]}")
 
     assert not violations, (
         f"Files with multiple top-level classes ({len(violations)} violations):\n"

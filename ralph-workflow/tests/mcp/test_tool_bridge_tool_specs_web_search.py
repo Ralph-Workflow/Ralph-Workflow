@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
-from unittest.mock import MagicMock
-
 from ralph.config.mcp_models import McpConfig, WebSearchConfig
 from ralph.mcp.artifacts.plan import PLAN_SECTION_NAMES
 from ralph.mcp.tools.bridge import tool_specs
@@ -13,44 +10,6 @@ from ralph.mcp.tools.names import (
     SUBMIT_PLAN_SECTION_TOOL,
     WEB_SEARCH_TOOL,
 )
-from ralph.mcp.upstream.models import UpstreamTool
-
-if TYPE_CHECKING:
-    from ralph.mcp.upstream.config import (
-        UpstreamMcpServer,
-    )
-
-
-class _FakeUpstreamClientFactory:
-    _tools: list[UpstreamTool]
-
-    def __init__(self, tools: list[dict[str, object]]) -> None:
-        result: list[UpstreamTool] = []
-        for t in tools:
-            name = cast("str", t["name"])
-            desc_raw = t.get("description", "")
-            desc = str(desc_raw) if desc_raw else ""
-            input_schema_raw = t.get("inputSchema", {})
-            input_schema = cast("dict[str, object]", input_schema_raw)
-            result.append(UpstreamTool(name=name, description=desc, input_schema=input_schema))
-        self._tools = result
-
-    def __call__(self, server: UpstreamMcpServer) -> MagicMock:
-        mock = MagicMock()
-        object.__setattr__(mock.list_tools, "return_value", self._tools)
-        return mock
-
-
-class _AllowedSession:
-    session_id = "test-session"
-
-    def check_capability(self, capability: str) -> object:
-        return "approved"
-
-
-class _FakeWorkspace:
-    def absolute_path(self, path: str) -> str:
-        return path
 
 
 class TestToolSpecsWebSearch:

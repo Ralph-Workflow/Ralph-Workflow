@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import (
         PolicyBundle,
     )
-
+from tests.test_pipeline_runner_execute_agent_effect_2_b_helper_agenterror import AgentError
 
 DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
@@ -159,16 +159,8 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     )
 
 
-class AgentError(Exception):
-    pass
 
 
-class _FakeBridge:
-    def shutdown(self) -> None:
-        return
-
-    def agent_endpoint_uri(self) -> str:
-        return "http://127.0.0.1:12345/mcp"
 
 
 class TestExecuteAgentEffectB:
@@ -423,3 +415,4 @@ class TestExecuteAgentEffectB:
         retry_prompt = Path(seen_prompt_files[1]).read_text(encoding="utf-8")
         assert "inactivity timeout" in retry_prompt
         assert "drafted the fix" in retry_prompt
+

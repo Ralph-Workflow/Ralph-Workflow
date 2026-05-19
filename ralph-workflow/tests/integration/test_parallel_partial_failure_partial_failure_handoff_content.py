@@ -6,7 +6,6 @@ per-unit status is reported correctly for all workers.
 
 from __future__ import annotations
 
-import io
 import json
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
 
     from ralph.display.parallel_display import ParallelDisplay
 
-from rich.console import Console
 
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import runner as runner_module
@@ -32,6 +30,7 @@ from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.workspace.scope import WorkspaceScope
+from tests.integration._fake_display_partial_failure import _FakeDisplay
 
 
 def _seed_artifact(tmp_path: Path, unit_id: str) -> None:
@@ -69,15 +68,6 @@ def _make_work_unit(uid: str, deps: list[str] | None = None) -> WorkUnit:
     )
 
 
-class _FakeDisplay:
-    def __init__(self) -> None:
-        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
-
-    def emit(self, unit_id: str | None, line: str) -> None:
-        del unit_id, line
-
-    def set_status(self, unit_id: str, status: object) -> None:
-        del unit_id, status
 
 
 class TestPartialFailureHandoffContent:
@@ -235,3 +225,4 @@ class TestPartialFailureHandoffContent:
         assert workers_by_id["unit-b"]["status"] != "succeeded", (
             f"unit-b must not be succeeded, got: {workers_by_id['unit-b']!r}"
         )
+

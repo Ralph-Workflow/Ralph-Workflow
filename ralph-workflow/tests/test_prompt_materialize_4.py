@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
 
 from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
@@ -22,12 +21,6 @@ class _ArtifactSubmitSession:
         return capability == "artifact.submit"
 
 
-class _ArtifactWorkspace:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-
-    def absolute_path(self, path: str) -> str:
-        return str(self.root / path)
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (
@@ -108,8 +101,6 @@ PLANNING_ANALYSIS_SECTION_RESUBMIT_TEXT = (
     "Exact plan sections to resubmit via the MCP plan-edit tools."
 )
 
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 MINIMAL_PLAN_HANDOFF = (

@@ -26,8 +26,10 @@ from ralph.prompts.materialize import (
 from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
+from tests.test_prompt_materialize_1_helper__artifactworkspace import _ArtifactWorkspace
 
 _TextContent = ToolContent
+
 
 
 class _ArtifactSubmitSession:
@@ -38,12 +40,6 @@ class _ArtifactSubmitSession:
         return capability == "artifact.submit"
 
 
-class _ArtifactWorkspace:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-
-    def absolute_path(self, path: str) -> str:
-        return str(self.root / path)
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (

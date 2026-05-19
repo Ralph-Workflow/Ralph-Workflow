@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.parallel.coordinator import (
     prepare_executor,
 )
@@ -16,6 +15,7 @@ from ralph.pipeline.work_units import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+from tests._worker_artifact_fake_mcp_server_factory import _FakeMcpServerFactory
 
 
 def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> WorkUnit:
@@ -26,14 +26,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
         allowed_directories=dirs,
     )
 
-
-class _FakeMcpServerFactory:
-    def build(self, session: object) -> McpServerHandle:
-        return McpServerHandle(
-            endpoint="http://127.0.0.1:9999/mcp",
-            pid=99999,
-            shutdown=lambda: None,
-        )
 
 
 class TestWorkerArtifactIsolation:

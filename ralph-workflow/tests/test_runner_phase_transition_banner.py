@@ -4,14 +4,10 @@ from __future__ import annotations
 
 import tempfile
 import types
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 from unittest.mock import patch
 
-from rich.console import Console
-
-from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.state import PipelineState
@@ -25,9 +21,7 @@ from ralph.policy.models import (
     PipelinePolicy,
     RecoveryPolicy,
 )
-
-if TYPE_CHECKING:
-    from ralph.display.phase_lifecycle import PhaseExitModel
+from tests.test_runner_phase_transition_banner_helper__stubdisplay import _StubDisplay
 
 _DEFAULT_POLICY = load_policy(Path(__file__).parent.parent / "ralph" / "policy" / "defaults")
 _EXPECTED_ELAPSED_SECONDS = 12.5
@@ -37,49 +31,6 @@ _STUB_TOOL_CALLS = 7
 _STUB_ERRORS = 1
 
 
-@dataclass
-class _StubPhaseCounters:
-    content_blocks: int = 0
-    thinking_blocks: int = 0
-    tool_calls: int = 0
-    errors: int = 0
-
-
-class _StubSubscriber:
-    """Minimal subscriber stub — only waiting_status_line is needed."""
-
-    @property
-    def waiting_status_line(self) -> str | None:
-        return None
-
-
-class _StubDisplay:
-    def __init__(self) -> None:
-        console = Console(record=True, force_terminal=False, width=120, color_system=None)
-        self._ctx = make_display_context(console=console, env={})
-        self.last_phase_elapsed_seconds = _EXPECTED_ELAPSED_SECONDS
-        self.last_phase_counters = _StubPhaseCounters(
-            content_blocks=_STUB_CONTENT_BLOCKS,
-            thinking_blocks=_STUB_THINKING_BLOCKS,
-            tool_calls=_STUB_TOOL_CALLS,
-            errors=_STUB_ERRORS,
-        )
-        self.subscriber = _StubSubscriber()
-        self._phase_close_emitted = False
-        self._last_exit_model: PhaseExitModel | None = None
-        self._last_phase_artifact_outcome: str | None = None
-
-    @property
-    def phase_close_emitted(self) -> bool:
-        return self._phase_close_emitted
-
-    @property
-    def last_phase_artifact_outcome(self) -> str | None:
-        return self._last_phase_artifact_outcome
-
-    def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
-        self._phase_close_emitted = True
-        self._last_exit_model = exit_model
 
 
 def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:

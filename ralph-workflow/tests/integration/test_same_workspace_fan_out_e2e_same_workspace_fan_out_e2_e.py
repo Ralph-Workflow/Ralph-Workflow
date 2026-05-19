@@ -13,10 +13,7 @@ All workers use FakeAgentExecutor (no subprocess, no real MCP).
 from __future__ import annotations
 
 import asyncio
-import io
 import json
-from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
@@ -24,10 +21,7 @@ from unittest.mock import MagicMock
 if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
 
-from rich.console import Console
-
 from ralph.config.models import UnifiedConfig
-from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent, WorkerCompletedEvent, WorkerFailedEvent
@@ -42,6 +36,11 @@ from ralph.policy.models import PhaseParallelization
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+from tests.integration.test_same_workspace_fan_out_e2e_fake_display import _FakeDisplay
+from tests.integration.test_same_workspace_fan_out_e2e_recording_display import RecordingDisplay
+from tests.integration.test_same_workspace_fan_out_e2e_recording_mcp_factory import (
+    _RecordingMcpFactory,
+)
 
 _DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
@@ -84,61 +83,6 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
         "developer": MagicMock(agents=["developer"]),
     }
     return bundle
-
-
-class _FakeDisplay:
-    def __init__(self) -> None:
-        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
-
-    def emit(self, unit_id: str | None, line: str) -> None:
-        del unit_id, line
-
-    def set_status(self, unit_id: str, status: object) -> None:
-        del unit_id, status
-
-
-@dataclass
-class _RecordedHandle:
-    handle: McpServerHandle
-    shutdown_calls: int = 0
-
-
-class _RecordingMcpFactory:
-    def __init__(self) -> None:
-        self.sessions: list[object] = []
-        self.handles: list[_RecordedHandle] = []
-
-    def build(self, session: object) -> McpServerHandle:
-        self.sessions.append(session)
-        recorded = _RecordedHandle(
-            handle=McpServerHandle(
-                endpoint=f"http://127.0.0.1:{10_000 + len(self.handles)}/mcp",
-                pid=1000 + len(self.handles),
-                shutdown=lambda: None,
-            )
-        )
-
-        def _shutdown(record: _RecordedHandle = recorded) -> None:
-            record.shutdown_calls += 1
-
-        recorded.handle = McpServerHandle(
-            endpoint=recorded.handle.endpoint,
-            pid=recorded.handle.pid,
-            shutdown=_shutdown,
-        )
-        self.handles.append(recorded)
-        return recorded.handle
-
-
-class RecordingDisplay:
-    def __init__(self) -> None:
-        self.statuses: dict[str, list[WorkerStatus]] = defaultdict(list)
-
-    def emit(self, unit_id: str | None, line: str) -> None:
-        del unit_id, line
-
-    def set_status(self, unit_id: str, status: WorkerStatus) -> None:
-        self.statuses[unit_id].append(status)
 
 
 class TestSameWorkspaceFanOutE2E:

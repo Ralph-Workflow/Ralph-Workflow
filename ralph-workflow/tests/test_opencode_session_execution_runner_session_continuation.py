@@ -30,7 +30,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
-
+from tests._session_fake_mcp_bridge import _FakeMcpBridge
+from tests._session_registry_factory import _RegistryFactory
 
 # Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
 _DESCENDANT_WAIT_POLL_SECONDS = 0.5
@@ -41,30 +42,10 @@ _check_process_result = check_process_result
 _CompletionCheckOptions = CompletionCheckOptions
 
 
-class _FakeMcpBridge:
-    def agent_endpoint_uri(self) -> str:
-        return "http://127.0.0.1:12345/mcp"
-
-    def shutdown(self) -> None:
-        pass
 
 
-class _RegistryInstance:
-    def __init__(self, agent_config: AgentConfig) -> None:
-        self._agent_config = agent_config
-
-    def get(self, name: str) -> AgentConfig | None:
-        del name
-        return self._agent_config
 
 
-class _RegistryFactory:
-    _agent_config: AgentConfig
-
-    @classmethod
-    def from_config(cls, config: UnifiedConfig) -> _RegistryInstance:
-        del config
-        return _RegistryInstance(cls._agent_config)
 
 
 class TestRunnerSessionContinuation:
@@ -84,7 +65,11 @@ class TestRunnerSessionContinuation:
         )
         agent_config = _opencode_agent_config()
         registry = _registry_factory_for(agent_config)
-        monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge())
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server",
+            lambda *_a, **_kw: _FakeMcpBridge(),
+        )
 
         seen_session_ids: list[str | None] = []
 
@@ -136,7 +121,11 @@ class TestRunnerSessionContinuation:
         )
         agent_config = _opencode_agent_config()
         registry = _registry_factory_for(agent_config)
-        monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge())
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server",
+            lambda *_a, **_kw: _FakeMcpBridge(),
+        )
 
         def fake_invoke_agent(
             config: AgentConfig,
@@ -167,11 +156,14 @@ class TestRunnerSessionContinuation:
         assert result == PipelineEvent.AGENT_FAILURE
 
 
+
 def _opencode_agent_config() -> AgentConfig:
     return AgentConfig(cmd="opencode", output_flag="--json-stream")
 
 
-def _registry_factory_for(agent_config: AgentConfig) -> type[_RegistryFactory]:
+def _registry_factory_for(
+    agent_config: AgentConfig,
+) -> type[_RegistryFactory]:
     _RegistryFactory._agent_config = agent_config
     return _RegistryFactory
 

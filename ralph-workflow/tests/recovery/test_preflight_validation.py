@@ -28,6 +28,8 @@ from ralph.policy.validation import (
     validate_recovery_config,
 )
 from ralph.workspace.scope import WorkspaceScope
+from tests.recovery.test_preflight_validation_helper__fakebundle import _FakeBundle
+from tests.recovery.test_preflight_validation_helper__fakechainconfig import _FakeChainConfig
 
 
 class _FakeAgentRegistry:
@@ -40,21 +42,8 @@ class _FakeAgentRegistry:
         return object() if name in self._known else None
 
 
-class _FakeChainConfig:
-    def __init__(self, agents: list[str], max_retries: int = 3) -> None:
-        self.agents = agents
-        self.max_retries = max_retries
 
 
-class _FakeBundle:
-    def __init__(
-        self,
-        chains: dict[str, _FakeChainConfig],
-        drains: dict[str, object],
-        phases: dict[str, object],
-    ) -> None:
-        self.agents = type("_Agents", (), {"agent_chains": chains, "agent_drains": drains})()
-        self.pipeline = type("_Pipeline", (), {"phases": phases})()
 
 
 def test_validate_agent_chains_satisfiable_passes_with_known_agents() -> None:

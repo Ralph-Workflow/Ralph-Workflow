@@ -10,7 +10,6 @@ import pytest
 
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.mcp.artifacts.store import list_artifacts
-from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.parallel import coordinator
@@ -26,6 +25,9 @@ from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 
 if TYPE_CHECKING:
     from pathlib import Path
+from tests.test_same_workspace_parallel_no_git_status_fallback_helper__fakemcpserverfactory import (
+    _FakeMcpServerFactory,
+)
 
 
 def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> WorkUnit:
@@ -36,12 +38,6 @@ def _make_unit(unit_id: str, allowed_directories: list[str] | None = None) -> Wo
         allowed_directories=dirs,
     )
 
-
-class _FakeMcpServerFactory:
-    def build(self, session: object) -> McpServerHandle:
-        return McpServerHandle(
-            endpoint="http://127.0.0.1:9999/mcp", pid=99999, shutdown=lambda: None
-        )
 
 
 class TestNoGitStatusFallback:

@@ -12,29 +12,7 @@ if TYPE_CHECKING:
 
     from ralph.mcp.server import lifecycle
 
-
-class FakeProcess:
-    def __init__(self, pid: int) -> None:
-        self.pid = pid
-
-
-class FakeBridge:
-    def __init__(self, endpoint: str, pid: int) -> None:
-        self._endpoint = endpoint
-        self.process = FakeProcess(pid)
-        self.shutdown_calls = 0
-
-    def start(self) -> None:
-        return None
-
-    def agent_endpoint_uri(self) -> str:
-        return self._endpoint
-
-    def endpoint_uri(self) -> str:
-        return self._endpoint
-
-    def shutdown(self) -> None:
-        self.shutdown_calls += 1
+from tests.test_mcp_factory_impl_helper_fakebridge import FakeBridge
 
 
 def test_factory_is_runtime_checkable_protocol(tmp_path: Path) -> None:

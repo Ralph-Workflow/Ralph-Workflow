@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, cast
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING
 
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.tools.names import (
@@ -15,43 +14,15 @@ from ralph.mcp.upstream.config import (
     load_upstream_mcp_servers,
     serialize_upstream_mcp_servers,
 )
-from ralph.mcp.upstream.models import UpstreamTool
 from ralph.mcp.upstream.registry import UpstreamRegistry
 
 if TYPE_CHECKING:
     import pytest
-
-
-class _FakeUpstreamClientFactory:
-    _tools: list[UpstreamTool]
-
-    def __init__(self, tools: list[dict[str, object]]) -> None:
-        result: list[UpstreamTool] = []
-        for t in tools:
-            name = cast("str", t["name"])
-            desc_raw = t.get("description", "")
-            desc = str(desc_raw) if desc_raw else ""
-            input_schema_raw = t.get("inputSchema", {})
-            input_schema = cast("dict[str, object]", input_schema_raw)
-            result.append(UpstreamTool(name=name, description=desc, input_schema=input_schema))
-        self._tools = result
-
-    def __call__(self, server: UpstreamMcpServer) -> MagicMock:
-        mock = MagicMock()
-        object.__setattr__(mock.list_tools, "return_value", self._tools)
-        return mock
-
-
-class _AllowedSession:
-    session_id = "test-session"
-
-    def check_capability(self, capability: str) -> object:
-        return "approved"
-
-
-class _FakeWorkspace:
-    def absolute_path(self, path: str) -> str:
-        return path
+from tests.mcp.test_tool_bridge_upstream_env_var_helper__allowedsession import _AllowedSession
+from tests.mcp.test_tool_bridge_upstream_env_var_helper__fakeupstreamclientfactory import (
+    _FakeUpstreamClientFactory,
+)
+from tests.mcp.test_tool_bridge_upstream_env_var_helper__fakeworkspace import _FakeWorkspace
 
 
 class TestUpstreamEnvVar:
@@ -124,3 +95,4 @@ class TestUpstreamEnvVar:
 
         assert result == ()
         assert any("invalid JSON" in record.message for record in caplog.records)
+

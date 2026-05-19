@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
-
 from ralph.agents import invoke as invoke_module
 from ralph.agents.invoke import InvokeOptions
 from ralph.agents.registry import builtin_agents
@@ -12,41 +10,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+    import pytest
 
-class _FakePtyHandle:
-    def __init__(self) -> None:
-        self.record = type("Record", (), {"pid": 321, "status": None})()
-        self.returncode = 0
-        self.master_fd = 77
-
-    def __enter__(self) -> _FakePtyHandle:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        del exc_type, exc, tb
-
-    def poll(self) -> int:
-        return 0
-
-    def wait(self, timeout: float | None = None) -> int:
-        del timeout
-        return 0
-
-
-class _FakePtyManager:
-    def __init__(self) -> None:
-        self.spawn_called = False
-        self.spawn_pty_called = False
-
-    def spawn(self, *args: object, **kwargs: object) -> _FakePtyHandle:
-        del args, kwargs
-        self.spawn_called = True
-        pytest.fail("interactive Claude must not use pipe-based spawn()")
-
-    def spawn_pty(self, *args: object, **kwargs: object) -> _FakePtyHandle:
-        del args, kwargs
-        self.spawn_pty_called = True
-        return _FakePtyHandle()
+from tests.test_claude_interactive_pty_helper__fakeptymanager import _FakePtyManager
 
 
 def test_pending_vt_snapshot_line_surfaces_semantic_activity_without_newline() -> None:

@@ -1,7 +1,9 @@
+"""Unit tests for ralph/display/progress.py."""
+
 from __future__ import annotations
 
 import sys
-from io import StringIO, TextIOBase
+from io import StringIO
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -10,6 +12,11 @@ from rich.console import Console
 from ralph.display import progress
 from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
+from tests.test_display_progress_helpers_dummy_progress_proto import _DummyProgressProto
+from tests.test_display_progress_helpers_dummy_rich_progress import _DummyRichProgress
+from tests.test_display_progress_helpers_dummy_tqdm import _DummyTqdm
+from tests.test_display_progress_helpers_dummy_tqdm_bar import _DummyTqdmBar
+from tests.test_display_progress_helpers_dummy_tty import _DummyTTY
 
 VALUE_SENTINEL = 123
 EXPECTED_COLUMN_COUNT = 7
@@ -21,105 +28,6 @@ COMPLETED_VALUE = 20
 
 def _ipython_object() -> object:
     return object()
-
-
-class _DummyProgressProto:
-    def __init__(self) -> None:
-        self.add_calls: list[dict[str, object | None]] = []
-        self.update_calls: list[dict[str, object | None]] = []
-
-    def add_task(
-        self,
-        description: str,
-        *,
-        parent: int | None = None,
-        total: int | None = None,
-        completed: int = 0,
-    ) -> int:
-        self.add_calls.append(
-            {
-                "description": description,
-                "parent": parent,
-                "total": total,
-                "completed": completed,
-            }
-        )
-        return 88
-
-    def __enter__(self) -> _DummyProgressProto:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, _tb: object) -> bool | None:
-        return None
-
-    def update(
-        self,
-        *,
-        task_id: progress.TaskID,
-        completed: int | None = None,
-        advance: int | None = None,
-        description: str | None = None,
-    ) -> None:
-        self.update_calls.append(
-            {
-                "task_id": task_id,
-                "completed": completed,
-                "advance": advance,
-                "description": description,
-            }
-        )
-
-
-class _DummyTqdm:
-    def __init__(self) -> None:
-        self.n = 0
-        self.updated: list[int] = []
-        self.refresh_calls = 0
-
-    def update(self, n: int = 1) -> None:
-        self.updated.append(n)
-        self.n += n
-
-    def close(self) -> None:
-        return None
-
-    def refresh(self) -> None:
-        self.refresh_calls += 1
-
-
-class _DummyRichProgress:
-    def __init__(self) -> None:
-        self.entered = False
-        self.exited = False
-
-    def __enter__(self) -> _DummyRichProgress:
-        self.entered = True
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, _tb: object) -> bool | None:
-        self.exited = True
-        return None
-
-
-class _DummyTqdmBar:
-    def __init__(self) -> None:
-        self.closed_calls = 0
-        self.closed = False
-
-    def update(self, n: int = 1) -> None:
-        return None
-
-    def close(self) -> None:
-        self.closed_calls += 1
-        self.closed = True
-
-    def refresh(self) -> None:
-        return None
-
-
-class _DummyTTY(TextIOBase):
-    def isatty(self) -> bool:
-        return True
 
 
 def test_module_attr_returns_attribute_and_none() -> None:
@@ -238,6 +146,7 @@ def test_ralph_progress_check_jupyter(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_ralph_progress_is_tty_considers_rich_and_stderr(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(progress, "RICH_AVAILABLE", True)
     monkeypatch.setattr(progress, "RICH_AVAILABLE", True)
     monkeypatch.setattr(sys, "stderr", _DummyTTY())
     ctx = make_display_context()

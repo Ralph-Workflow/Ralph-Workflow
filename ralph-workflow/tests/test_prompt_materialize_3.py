@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     import pytest
 
 
+
 class _ArtifactSubmitSession:
     session_id = "test-session"
     drain = "planning_analysis"
@@ -37,12 +38,6 @@ class _ArtifactSubmitSession:
         return capability == "artifact.submit"
 
 
-class _ArtifactWorkspace:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-
-    def absolute_path(self, path: str) -> str:
-        return str(self.root / path)
 
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (

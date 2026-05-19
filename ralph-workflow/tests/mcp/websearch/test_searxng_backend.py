@@ -5,12 +5,15 @@ from importlib import import_module
 
 import pytest
 
+from tests.mcp.websearch.test_searxng_backend_helper__explodingresponse import _ExplodingResponse
+
 
 def _import_searxng_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.searxng")
     except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase
         raise AssertionError("ralph.mcp.websearch.backends.searxng should exist") from exc
+
 
 
 class _FakeResponse:
@@ -24,12 +27,6 @@ class _FakeResponse:
         return self._payload
 
 
-class _ExplodingResponse:
-    def __init__(self, detail: str) -> None:
-        self.detail = detail
-
-    def raise_for_status(self) -> None:
-        raise RuntimeError(self.detail)
 
 
 def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:

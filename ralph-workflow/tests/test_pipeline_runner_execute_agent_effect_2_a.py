@@ -27,6 +27,8 @@ from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+from tests.test_pipeline_runner_execute_agent_effect_2_a_agent_error import AgentError
+from tests.test_pipeline_runner_execute_agent_effect_2_a_fake_bridge import _FakeBridge
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -155,18 +157,6 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     monkeypatch.setattr(
         runner_module, "load_policy_or_die", lambda _path: _load_default_policy_bundle()
     )
-
-
-class AgentError(Exception):
-    pass
-
-
-class _FakeBridge:
-    def shutdown(self) -> None:
-        return
-
-    def agent_endpoint_uri(self) -> str:
-        return "http://127.0.0.1:12345/mcp"
 
 
 class TestExecuteAgentEffectA:

@@ -13,6 +13,11 @@ from ralph.mcp.tools.artifact import (
     handle_submit_artifact,
     submit_ops_for_artifact,
 )
+from tests.test_mcp_tool_artifact_rollback_history_integration_in_submit_ops_helpers import (
+    _DrainSession,
+    _Session,
+    _Workspace,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -76,33 +81,6 @@ _INVALID_CONTENT: dict[str, str] = {
 _ALL_ARTIFACT_TYPES = list(_VALID_CONTENT.keys())
 
 
-class _Session:
-    session_id = "sess-1"
-
-    def check_capability(self, cap: str) -> object:
-        assert cap == "artifact.submit"
-        return "approved"
-
-
-class _DrainSession:
-    session_id = "sess-1"
-
-    def __init__(self, drain: str) -> None:
-        self.drain = drain
-
-    def check_capability(self, cap: str) -> object:
-        assert cap == "artifact.submit"
-        return "approved"
-
-
-class _Workspace:
-    def __init__(self, root: Path) -> None:
-        self._root = root
-
-    def absolute_path(self, path: str) -> str:
-        return str((self._root / path).resolve())
-
-
 class TestHistoryIntegrationInSubmitOps:
     """Tests for artifact history archival integrated into submit_ops_for_artifact."""
 
@@ -114,6 +92,8 @@ class TestHistoryIntegrationInSubmitOps:
         artifact_dir.mkdir(parents=True)
         workspace = _Workspace(tmp_path)
         session = _DrainSession("planning")
+
+        assert isinstance(session, _Session)
 
         handle_submit_artifact(
             session,

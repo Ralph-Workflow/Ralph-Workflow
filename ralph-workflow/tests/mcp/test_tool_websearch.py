@@ -14,6 +14,9 @@ from ralph.mcp.websearch.backends.base import SearchResult, WebSearchError
 if TYPE_CHECKING:
     import pytest
 
+from tests.mcp.test_tool_websearch_helper__deniedsession import _DeniedSession
+from tests.mcp.test_tool_websearch_helper__stubworkspace import _StubWorkspace
+
 
 class _AllowedSession:
     session_id = "test-session"
@@ -22,16 +25,8 @@ class _AllowedSession:
         return "approved"
 
 
-class _DeniedSession:
-    session_id = "denied-session"
-
-    def check_capability(self, capability: str) -> object:
-        return "denied"
 
 
-class _StubWorkspace:
-    def absolute_path(self, path: str) -> str:
-        return path
 
 
 _GOOD_RESULTS = [

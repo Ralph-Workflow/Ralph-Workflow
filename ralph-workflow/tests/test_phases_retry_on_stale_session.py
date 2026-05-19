@@ -32,6 +32,9 @@ from ralph.recovery.controller import FailureContext, RecoveryController, Recove
 
 if TYPE_CHECKING:
     import pytest
+from tests.test_phases_retry_on_stale_session_helper__fakeregistryinstance import (
+    _FakeRegistryInstance,
+)
 
 _EXPECTED_INVOCATION_COUNT = 2
 
@@ -61,6 +64,7 @@ def _make_config(agent_idle_timeout_seconds: float = 300.0) -> UnifiedConfig:
     )
 
 
+
 class FakeBridge:
     """Minimal MCP bridge stub for runner tests."""
 
@@ -71,15 +75,6 @@ class FakeBridge:
         return "http://127.0.0.1:19999/mcp"
 
 
-class _FakeRegistryInstance:
-    """Minimal AgentRegistry instance stub that always returns a fixed config."""
-
-    def __init__(self, agent_config: AgentConfig) -> None:
-        self._agent_config = agent_config
-
-    def get(self, name: str) -> AgentConfig | None:
-        del name
-        return self._agent_config
 
 
 def _registry_factory(agent_config: AgentConfig) -> type:

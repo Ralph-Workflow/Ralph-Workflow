@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
-
+from tests.integration.test_parallel_resume_helper__fakedisplay import _FakeDisplay
 
 RESUMED_WORKER_COUNT = 3
 
@@ -86,18 +86,6 @@ def _make_mock_policy_bundle() -> MagicMock:
     return bundle
 
 
-class _FakeDisplay:
-    def emit(self, unit_id: str | None, line: str) -> None:
-        pass
-
-    def set_status(self, unit_id: str, status: object) -> None:
-        pass
-
-    def __enter__(self) -> _FakeDisplay:
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        pass
 
 
 class TestParallelResume:
@@ -236,3 +224,4 @@ class TestParallelResume:
             ws = final_state.worker_states.get(uid)
             assert ws is not None, f"{uid} missing from final worker_states"
             assert ws.status == WorkerStatus.SUCCEEDED, f"{uid} expected SUCCEEDED, got {ws.status}"
+

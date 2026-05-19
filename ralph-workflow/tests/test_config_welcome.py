@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     import pytest
 
     from ralph.display.context import DisplayContext
+from tests.test_config_welcome_helper__fakeregistry import _FakeRegistry
 
 _MIN_PRINT_CALLS = 2
 
@@ -38,6 +39,7 @@ _RAW_MARKUP_TOKENS = (
 )
 
 
+
 class _FakeAgent:
     """Fake agent config for registry testing."""
 
@@ -46,21 +48,6 @@ class _FakeAgent:
         self.display_name = display_name
 
 
-class _FakeRegistry:
-    """Fake agent registry for testing availability checks.
-
-    Implements list_agents() -> list[str] and get(name) -> _FakeAgent | None
-    to match the _HasListAgents protocol used by emit_first_run_welcome.
-    """
-
-    def __init__(self, agents: dict[str, _FakeAgent]) -> None:
-        self._agents = agents
-
-    def list_agents(self) -> list[str]:
-        return list(self._agents.keys())
-
-    def get(self, name: str) -> _FakeAgent | None:
-        return self._agents.get(name)
 
 
 def _make_console() -> tuple[StringIO, Console]:
