@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ralph.pipeline.parallel.parallel_coordinator import (
     ParallelCoordinator,
+    _run_worker,
     prepare_executor,
     run_fan_out,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "WorkerContext",
     "WorkerFailureError",
     "WorkerLog",
+    "_run_worker",
     "prepare_executor",
     "run_fan_out",
 ]

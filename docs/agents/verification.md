@@ -12,9 +12,14 @@ Verification passes only when all checks complete successfully with **no ERROR/W
 `make verify` runs:
 1. `make lint` (`ruff check`)
 2. `make typecheck` (`mypy --strict`)
-3. `make docs` (`sphinx-build -W --keep-going` into `docs/sphinx/_build/html`)
-4. `make test-cov` (`pytest` with coverage gate)
-5. `make test-subprocess-e2e` (real subprocess / socket-marked tests)
+3. pytest (direct invocation, parallel, excludes `subprocess_e2e`)
+
+For full verification (including docs build and subprocess E2E tests), run:
+```bash
+cd ralph-workflow
+make docs
+make test-subprocess-e2e
+```
 
 If any step fails, fix the issue immediately and rerun verification.
 `make verify` now emits a high-visibility failure banner that explicitly cross-references `AGENTS.md` and `CLAUDE.md` so AI agents cannot plausibly treat a failed verification run as optional.
@@ -48,7 +53,7 @@ python -m ralph --help
 python -m ralph --version
 ```
 
-`make test` runs the full non-`subprocess_e2e` suite in multiple timeout-guarded slices so every pytest invocation fails fast after 30 seconds: grouped package directories first, then alphabetical root-level test shards, then `tests/integration/`. `make test-unit` uses the same sharded root/unit slices and excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` is the single authoritative covered suite used by `make verify`; it applies the same 30-second suite timeout to each shard separately, then merges coverage output. `make test-subprocess-e2e` also runs under the same 30-second suite timeout wrapper. In addition, repo-local raw `pytest` runs now auto-load `ralph.testing.pytest_timeout_plugin` from `tests/conftest.py`, which pins the local checkout to the front of `sys.path` before registering the plugin so direct invocations inherit the same hard 30-second suite cap even when another Ralph checkout is present on the interpreter path. Use `uv run ruff ...` for direct Ruff repro commands so manual lint/format checks match the same uv-managed Ruff toolchain that `make verify` uses. `make docs` builds the Sphinx HTML docs into `docs/sphinx/_build/html` with warnings treated as errors.
+`make test` runs the full non-`subprocess_e2e` suite in multiple timeout-guarded slices so every pytest invocation fails fast after 30 seconds: grouped package directories first, then alphabetical root-level test shards, then `tests/integration/`. `make test-unit` uses the same sharded root/unit slices and excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` is the authoritative covered suite; it runs all pytest shards with coverage and enforces an 80% coverage gate. It is not part of the fast `make verify` chain due to the 30-second hard budget, but is required before any PR submission. `make test-subprocess-e2e` also runs under the same 30-second suite timeout wrapper. In addition, repo-local raw `pytest` runs now auto-load `ralph.testing.pytest_timeout_plugin` from `tests/conftest.py`, which pins the local checkout to the front of `sys.path` before registering the plugin so direct invocations inherit the same hard 30-second suite cap even when another Ralph checkout is present on the interpreter path. Use `uv run ruff ...` for direct Ruff repro commands so manual lint/format checks match the same uv-managed Ruff toolchain that `make verify` uses. `make docs` builds the Sphinx HTML docs into `docs/sphinx/_build/html` with warnings treated as errors.
 
 ---
 

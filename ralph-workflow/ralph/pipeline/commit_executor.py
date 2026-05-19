@@ -11,7 +11,7 @@ from loguru import logger
 
 from ralph.config.enums import Verbosity
 from ralph.display.artifact_renderer import render_commit_message
-from ralph.git.operations import create_commit, stage_all, stage_files
+from ralph.git.operations import create_commit, stage_all
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
@@ -120,7 +120,11 @@ def _stage_commit_scope(
     if include_paths is None:
         stage_all_fn(str(repo_root))
         return
-    stage_files(str(repo_root), include_paths)
+    # Import effect_executor lazily to avoid circular import, then call stage_files
+    # through its namespace so that test monkeypatching of effect_executor.stage_files
+    # is respected.
+    import ralph.pipeline.effect_executor as _effect_executor
+    _effect_executor.stage_files(str(repo_root), include_paths)
 
 
 def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[str] | None:

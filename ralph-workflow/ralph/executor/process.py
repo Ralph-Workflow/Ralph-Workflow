@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
+# Standard unix timeout exit code
+TIMEOUT_EXIT_CODE = 124
 
 class ProcessExecutionError(RuntimeError):
     """Raised when a process cannot be started or exceeds its timeout."""
@@ -102,9 +104,11 @@ async def run_process_async(
     if communicate_task not in done:
         await handle.terminate(grace_period_s=0)
         stdout_bytes, stderr_bytes = await communicate_task
-        raise ProcessExecutionError.from_timeout(
-            cmd,
-            timeout=timeout,
+        # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)
+        # instead of raising an exception, so callers can handle it gracefully
+        return ProcessResult(
+            command=cmd,
+            returncode=TIMEOUT_EXIT_CODE,
             stdout=_decode_output(stdout_bytes),
             stderr=_decode_output(stderr_bytes),
         )
@@ -156,12 +160,14 @@ def run_process(
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
         stdout_bytes, stderr_bytes = handle.communicate()
-        raise ProcessExecutionError.from_timeout(
-            cmd,
-            timeout=effective_options.timeout,
+        # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)
+        # instead of raising an exception, so callers can handle it gracefully
+        return ProcessResult(
+            command=cmd,
+            returncode=TIMEOUT_EXIT_CODE,
             stdout=_decode_output(stdout_bytes),
             stderr=_decode_output(stderr_bytes),
-        ) from None
+        )
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(

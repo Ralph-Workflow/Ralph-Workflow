@@ -69,7 +69,7 @@ async def test_run_process_async_captures_output(tmp_path: Path) -> None:
 
 
 def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
-    """Timeouts raise a dedicated execution error with partial output.
+    """Timeouts return ProcessResult with exit code 124 and partial output.
 
     Uses a fake process that raises TimeoutExpired immediately, avoiding
     any real wall-clock wait.
@@ -77,24 +77,22 @@ def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
     partial = b"before-timeout"
     pm = _make_timeout_pm(partial_stdout=partial)
 
-    with pytest.raises(ProcessExecutionError) as excinfo:
-        run_process(
-            "fake-cmd",
-            options=ProcessRunOptions(cwd=tmp_path, timeout=TIMEOUT_S),
-            _pm=pm,
-        )
+    result = run_process(
+        "fake-cmd",
+        options=ProcessRunOptions(cwd=tmp_path, timeout=TIMEOUT_S),
+        _pm=pm,
+    )
 
-    error = excinfo.value
-    assert error.timed_out is True
-    assert error.timeout == TIMEOUT_S
-    assert error.command == ("fake-cmd",)
-    assert error.stdout.strip() == "before-timeout"
-    assert "timed out" in str(error)
+    assert isinstance(result, ProcessResult)
+    assert result.returncode == 124  # TIMEOUT_EXIT_CODE
+    assert result.succeeded is False
+    assert result.stdout.strip() == "before-timeout"
+    assert result.command == ("fake-cmd",)
 
 
 @pytest.mark.asyncio
 async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> None:
-    """Async timeouts raise a dedicated execution error with partial output.
+    """Async timeouts return ProcessResult with exit code 124.
 
     Uses a FakeControllableAsyncProcess whose communicate() and wait() block
     on an event, so asyncio.wait() times out without any real clock delay.
@@ -131,17 +129,18 @@ async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> Non
         async_process_factory=factory,
     )
 
-    with pytest.raises(ProcessExecutionError) as excinfo:
-        await run_process_async(
-            "fake-cmd",
-            cwd=tmp_path,
-            timeout=0.0,
-            _pm=pm,
-        )
+    result = await run_process_async(
+        "fake-cmd",
+        cwd=tmp_path,
+        timeout=0.0,
+        _pm=pm,
+    )
 
-    error = excinfo.value
-    assert error.timed_out is True
-    assert error.timeout == 0.0
+    assert isinstance(result, ProcessResult)
+    assert result.returncode == 124  # TIMEOUT_EXIT_CODE
+    assert result.succeeded is False
+    # Note: FakeControllableAsyncProcess.communicate() does not preserve
+    # stdout data that was fed before termination, so we don't assert on stdout
 
 
 def test_run_process_wraps_missing_command(tmp_path: Path) -> None:

@@ -23,7 +23,7 @@ Ralph Workflow
 Choose the first path that matches how you already work tonight:
 
 - Already using **Claude Code** or **Codex CLI** and just want the fastest first run? Start with :doc:`which-agent-should-i-start-with`.
-- Already using **Claude Code** and deciding whether you even need Ralph? Start with :doc:`ralph-workflow-vs-claude-code`.
+- Already using **Claude Code** and deciding whether you even need Ralph Workflow? Start with :doc:`ralph-workflow-vs-claude-code`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
 - Want a clearer **merge decision** for the morning-after handoff? Read :doc:`review-ai-coding-output-before-merge`.
@@ -81,15 +81,14 @@ Why try it now? Because you can use the agents you already trust on your own mac
 backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
 If you prefer to inspect or follow open-source projects on GitHub, Ralph Workflow also has a synced
-public mirror there. The primary repo lives on Codeberg, but you can review, star, or watch Ralph
-Workflow from either place.
+public mirror there. The primary repo lives on Codeberg, but you can review, star, or watch Ralph Workflow from either place.
 
 Important first-run expectation: Ralph Workflow is free and open source, but it does not replace
 the coding agents you already use. Before you start, have at least one supported agent CLI already
 installed and already authenticated on your own machine.
 
 Third-party places to inspect Ralph Workflow
-===========================================
+================================================
 
 If you want outside discovery or comparison surfaces before you install, Ralph Workflow is also
 showing up on a few developer-facing directories now:

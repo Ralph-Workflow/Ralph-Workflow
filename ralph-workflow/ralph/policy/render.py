@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING
 
-from ralph.policy._render_text import render_explanation_text
+from ralph.policy._render_text import render_explanation_sentences, render_explanation_text
 
 if TYPE_CHECKING:
     from ralph.policy.explain import ParallelExplanation, PhaseExplanation, PolicyExplanation
@@ -334,4 +334,4 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["render_explanation_ascii", "render_explanation_text"]
+__all__ = ["render_explanation_ascii", "render_explanation_sentences", "render_explanation_text"]

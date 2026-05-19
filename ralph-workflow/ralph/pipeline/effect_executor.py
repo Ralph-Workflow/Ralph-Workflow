@@ -17,6 +17,7 @@ from ralph.agents.invoke import (
     extract_session_id,
 )
 from ralph.config.enums import Verbosity
+from ralph.git.operations import stage_files
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
@@ -531,3 +532,5 @@ retryable_agent_failure_reason = _retryable_agent_failure_reason
 resolve_recovery_session_id = _resolve_recovery_session_id
 recovery_context_lines = _recovery_context_lines
 retry_prompt_file_for_context = _retry_prompt_file_for_context
+
+__all__ = ["stage_files"]

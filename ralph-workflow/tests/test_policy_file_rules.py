@@ -8,6 +8,7 @@ from __future__ import annotations
 import ast
 import io
 import tokenize
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,11 @@ pytestmark = pytest.mark.timeout_seconds(5)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RALPH_DIR = REPO_ROOT / "ralph"
 TESTS_DIR = REPO_ROOT / "tests"
+MYPY_INI_PATH = REPO_ROOT / "mypy.ini"
+PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 
 _SKIP_DIRS = frozenset({"__pycache__", ".venv", "tmp"})
+_MAX_FILE_LINES = 1_000
 
 
 def _all_py_files(base: Path) -> list[Path]:
@@ -99,7 +103,7 @@ def test_no_file_over_1000_lines() -> None:
     for base in (RALPH_DIR, TESTS_DIR):
         for path in _all_py_files(base):
             n = _count_lines(path)
-            if n > 1000:
+            if n > _MAX_FILE_LINES:
                 rel = str(path.relative_to(REPO_ROOT))
                 violations.append(f"{n} lines: {rel}")
 
@@ -184,3 +188,56 @@ def test_no_nested_classes_in_class_body() -> None:
         + "\n".join(sorted(violations))
     )
 
+
+def test_mypy_ini_has_no_ignore_missing_imports() -> None:
+    """mypy.ini must not contain ignore_missing_imports = true."""
+    text = MYPY_INI_PATH.read_text(encoding="utf-8")
+
+    violations = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if "ignore_missing_imports" in line and "= true" in line.lower():
+            violations.append(f"line {lineno}: {line.strip()}")
+
+    assert not violations, (
+        "mypy.ini contains ignore_missing_imports = true suppressions. "
+        "All third-party imports must be properly typed or stubbed. "
+        "Violations:\n" + "\n".join(violations)
+    )
+
+
+def test_mypy_ini_has_no_follow_imports_silent() -> None:
+    """mypy.ini must not contain follow_imports = silent."""
+    text = MYPY_INI_PATH.read_text(encoding="utf-8")
+
+    violations = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if "follow_imports" in line and "= silent" in line.lower():
+            violations.append(f"line {lineno}: {line.strip()}")
+
+    assert not violations, (
+        "mypy.ini contains follow_imports = silent suppressions. "
+        "All third-party imports must be properly typed or stubbed. "
+        "Silently skipping type checking bypasses the type system. "
+        "Violations:\n" + "\n".join(violations)
+    )
+
+
+def test_pyproject_has_no_per_file_ignores() -> None:
+    """pyproject.toml must not contain [tool.ruff.lint.per-file-ignores]."""
+    pyproject = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+
+    violations = []
+    tool = pyproject.get("tool", {})
+    ruff = tool.get("ruff", {})
+    lint = ruff.get("lint", {})
+    per_file_ignores = lint.get("per-file-ignores", {})
+
+    if per_file_ignores:
+        for file_pattern, codes in per_file_ignores.items():
+            violations.append(f"[tool.ruff.lint.per-file-ignores]['{file_pattern}'] = {codes}")
+
+    assert not violations, (
+        "pyproject.toml contains [tool.ruff.lint.per-file-ignores] suppressions. "
+        "All lint violations must be fixed, not suppressed per-file. "
+        "Violations:\n" + "\n".join(violations)
+    )
