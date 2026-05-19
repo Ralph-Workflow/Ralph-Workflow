@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-19T09:38:25.484713",
+  "timestamp": "2026-05-19T11:08:52.155848",
   "results": [
     {
       "draft": "2026-05-19_technical_draft.md",
@@ -20,6 +20,42 @@
       "ok": true,
       "status": "already_posted",
       "draft_hash": "7df5d951fd36ab17618beac53ce8e324bd09686832d69fc4bbcb1949b57b1966",
+      "experiment_id": null
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_seo-page_ai-agent-orchestration-cli.md",
+      "title": "AI Agent Orchestration CLI: A Practical Comparison for Developers",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-19-2",
+      "error": null,
+      "draft_hash": "4237dbaef17345d729008794044919dd9c5f1bdf498db91ae2b1b947d1182461",
+      "experiment_id": null
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_seo-page_spec-driven-ai-agent.md",
+      "title": "Spec-Driven AI Agent: Why the Spec Is the Most Important Part of the Loop",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Spec-Driven-AI-Agent-Why-the-Spec-Is-the-Most-Important-Part-of-the-Loop-05-19",
+      "error": null,
+      "draft_hash": "516b775a9014d26c9a3bcdd7618da3267086a7e34e6c8485bb117d5e130be9d6",
+      "experiment_id": null
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_seo-page_unattended-coding-agent.md",
+      "title": "Unattended Coding Agent: What It Actually Means and How to Run One Safely",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Unattended-Coding-Agent-What-It-Actually-Means-and-How-to-Run-One-Safely-05-19-2",
+      "error": null,
+      "draft_hash": "10d6d158b6ba7958ac81329a608b2d794a7e68710a3599b1d260b2a8ecfa43b4",
       "experiment_id": null
     }
   ]

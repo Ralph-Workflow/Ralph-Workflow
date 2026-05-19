@@ -1,4 +1,4 @@
-# RalphWorkflow Reddit next-window packet — 2026-05-19 10:59 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-19 11:54 CEST
 
 Live posting is **not** the move right now.
 
@@ -18,7 +18,7 @@ Messaging guardrails preserved in every draft:
 
 ---
 
-## 1) `r/ClaudeCode` — Autonomous Claude Code runs in the new reality.
+## 1) `r/ClaudeCode` - Autonomous Claude Code runs in the new reality.
 - URL: <https://www.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/>
 - Mention fit: medium
 - Best landing page to seed:
@@ -29,18 +29,17 @@ Messaging guardrails preserved in every draft:
   - best RalphWorkflow angle from the monitor: autonomy only matters if the run stays bounded and ends in something you can review quickly the next morning
 
 ### Draft body A
-What matters to me is not whether the run *looks* autonomous. It is whether the task was shaped tightly enough that I can judge the result fast the next morning.
+The overnight-run failures that waste the most time are not tool failures. They are task-fit failures: vague scope, no stop condition, or a job that needed live judgment all along.
 
-A lot of overnight failures are really task-fit failures: vague scope, no real stop condition, or a job that needed live judgment all along. When the task is bounded and the checks are obvious, unattended runs get much more boring in a good way.
+When the task is genuinely bounded and the checks are obvious, unattended runs get much more boring — in a good way. Here is the filter I apply before starting one:
 
-I wrote down the filter I use here:
 https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/when-unattended-coding-fits.md
 
-That page lives in Ralph Workflow’s repo because Ralph is the free/open-source workflow I wanted for this: keep the agents you already run on your own machine, hand them real work overnight, and come back to something reviewable instead of another transcript that only sounds done.
+That lives in the Ralph Workflow repo. Ralph is free and open-source: orchestrate the agents you already run on your own machine, give them real work overnight, and come back to something reviewable instead of a transcript that only sounds done.
 
 ---
 
-## 2) `r/ClaudeCode` — A practical way to run Claude Code tasks in parallel without turning your repo into chaos
+## 2) `r/ClaudeCode` - A practical way to run Claude Code tasks in parallel without turning your repo into chaos
 - URL: <https://www.reddit.com/r/ClaudeCode/comments/1taepox/a_practical_way_to_run_claude_code_tasks_in/>
 - Mention fit: medium-low
 - Best landing page to seed:
@@ -51,18 +50,18 @@ That page lives in Ralph Workflow’s repo because Ralph is the free/open-source
   - best RalphWorkflow angle from the monitor: parallel work only helps if the final review surface stays boring and legible
 
 ### Draft body B
-The useful shift for me was optimizing for a cleaner morning-after review, not more agent activity.
+The most useful constraint I added to my agent workflow was not more prompts. It was a finish-state definition.
 
-If the run ends with one bounded diff, real checks, and a short note on what still needs judgment, I can use the tools aggressively without pretending the transcript itself is proof.
+Agents are not good at knowing when to stop. Humans are not good at reviewing a transcript. The gap closes when the run produces a bounded diff, real checks, and a short summary of open questions — not just a claim that the job is done.
 
-Closest write-up I have for that is here:
+What that looks like in practice:
 https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
 
-Ralph Workflow exists for that exact problem: free and open source, runs the agent CLIs you already use on your own machine, and aims to turn larger unattended tasks into something you can actually review.
+Ralph Workflow is free and open-source: uses the agent tools you already run on your own machine, and tries to make the output something you can actually evaluate instead of another transcript.
 
 ---
 
-## 3) `r/ClaudeCode` — Impressions two weeks after moving from Claude Code to Codex
+## 3) `r/ClaudeCode` - Impressions two weeks after moving from Claude Code to Codex
 - URL: <https://www.reddit.com/r/ClaudeCode/comments/1tbcfmi/impressions_two_weeks_after_moving_from_claude/>
 - Mention fit: medium-low
 - Best landing page to seed:
@@ -73,14 +72,13 @@ Ralph Workflow exists for that exact problem: free and open source, runs the age
   - best RalphWorkflow angle from the monitor: tool choice matters less than whether the finish state is easy to inspect, recover, and merge
 
 ### Draft body C
-What usually changes for me when I mix Claude Code, Codex, or another agent is not “which one won.” It is where I place the phase boundaries.
+Mixing Claude Code and Codex does not automatically solve anything. The actual question is who owns the diff at 2am and what you reopen at your desk.
 
-One tool can be better for pushing the implementation forward and another can be better for challenging the result, but the annoying part is still the glue: who owns the diff, who owns the checks, and what I reopen in the morning so I do not have to reconstruct the whole night.
+The workflow glue is the hard part: what gets checked, who reviews it, and what the morning handoff looks like when you did not watch the whole run. Here is how I handle that:
 
-I ended up writing that workflow down here:
 https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/claude-code-codex-workflow.md
 
-That page is part of Ralph Workflow because Ralph is the free/open-source way I handle that on my own machine now: keep the agents I already use, let them work overnight, and come back to something substantial I can inspect instead of another “done” claim.
+That is from Ralph Workflow — free and open-source, runs the agent tools you already have, and tries to make the morning after as boring as possible.
 
 ---
 
@@ -89,6 +87,6 @@ That page is part of Ralph Workflow because Ralph is the free/open-source way I 
 2. Re-run `python3 agents/marketing/reddit_watchdog.py` before posting; do not trust this file alone on timing.
 3. If the thread shifted, rewrite the opener instead of forcing the draft.
 4. If the reply is useful without Ralph, keep Ralph secondary.
-5. Use one seeded proof/comparison link only — no link pile.
+5. Use one seeded proof/comparison link only - no link pile.
 6. Prefer only one post in the next safe window unless a second thread is clearly exceptional.
 7. Reject any draft that falls back into the same cadence as the last three bodies.

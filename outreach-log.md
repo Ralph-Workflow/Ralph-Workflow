@@ -1657,6 +1657,17 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/
 - **Comment URL:** https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/
 - **Status:** ✅ Published
+
+### RalphWorkflow unattended-coding-agent conversion repair
+- **New exact-intent Codeberg-first landing page shipped**: added public `docs/unattended-coding-agent.md` and surfaced it from the primary repo `README.md`, `docs/README.md`, and `START_HERE.md` so developers arriving with the exact "unattended coding agent" intent now get a direct trust-first path into Codeberg instead of bouncing to broader Claude Code or generic orchestration pages.
+  - Commit: `55f5be8d` — `Add unattended coding agent conversion page`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/unattended-coding-agent.md`
+  - Verification: ran a markdown-link existence check across the four touched files (`bad 0`) and confirmed the new page/path references are present at the highest-intent repo entry points before pushing.
+  - Why: this is **NEW / REPLACING** a flat tactic. The audit says `distribution_and_message_to_primary_repo_conversion` is still the live bottleneck and explicitly prioritizes README/docs conversion surfaces plus SEO landing pages targeting repo-specific search terms. `unattended coding agent` was still a viable exact-intent gap on the primary repo surface even after the Claude Code and orchestration/spec pages.
+  - Expected outcome: more qualified **Codeberg** repo inspections from evaluators searching for a trustworthy unattended coding path, with secondary upside on Codeberg stars/watchers/issues because the page routes readers into the primary repo and first-run trust flow.
+  - Measurement window: next 7 days for path reuse / repo-inspection evidence; next 14 days for **Codeberg stars/watchers/issues** delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through **2026-06-02**, stop adding more repo-intent landing pages and shift the next replacement move to a higher-distribution external surface that sends traffic directly into the strongest Codeberg-first proof/comparison pages.
 - **Notes:** Autoposted from reddit-monitor shortlist: #1 Claude Code approval / plan mode questions (`r/ClaudeCode`).
 - **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
 
@@ -1713,3 +1724,52 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-19 10:45:35
 - **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Homepage SERP + first-click conversion repair
+- **When:** 2026-05-19 11:04:00
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** tightened the hosted docs homepage source so the browser title now targets both `unattended coding agent` and `AI agent orchestration CLI`, the meta description now explicitly promises reviewable output on the user's own machine, the hero copy now says `Codex CLI` instead of the looser `Codex`, and the first above-the-fold CTA now sends visitors straight to the **primary Codeberg repo** before install/proof links.
+  - Files changed: `repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst`, `repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/_themes/ralph-docs/page.html`
+  - Verification: `uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going`; confirmed generated `docs/sphinx/_build/html/index.html` contains the new `<title>`, meta description, and Codeberg-first CTA.
+- **Why this action:** audit priority still says homepage SEO tuning is a live repair, and the keyword pages / Telegraph posts were already shipped. The remaining local leverage was the first SERP impression and first click path on the owned homepage, which still underused the exact keyword pairing and did not put Codeberg first in the hero CTA order.
+- **Expected outcome:** better click qualification from homepage/search traffic and a higher share of owned-surface visitors choosing Codeberg before the GitHub mirror or generic docs wandering.
+- **Measurement window:** next 7 days for homepage/referral behavior clues; next 14 days for Codeberg stars/watchers/issues delta.
+- **Replace if it fails:** if Codeberg adoption is still flat by 2026-06-02, stop spending the next cycle on homepage wording/order tweaks and replace this with a fresh external distribution move or human-auth-assisted submission that can inject net-new qualified traffic.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 11:14:41
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+
+### RalphWorkflow 4agent directory distribution
+- **4agent submission shipped**: submitted Ralph Workflow to 4agent, an AI-agent-tool directory, using a Codeberg-primary listing URL and four-question positioning tuned for unattended coding / orchestration evaluators.
+  - Submission path: `https://4agent.dev/submit`
+  - Verification: live Playwright form submission returned `303` and landed on `https://4agent.dev/submit?success=1&tool=ralph-workflow-2`; success banner confirms `Submission received. Draft ID: ralph-workflow-2. We will review it in the admin panel before publishing.`
+  - Why: this is **NEW / REPLACING** a flat tactic. The audit says Codeberg adoption is still flat and existing owned-content + repo-surface work has not yet produced primary-repo delta. 4agent was an untried, actually writable directory with an audience already looking for agent-ready developer tools, so it beat another internal CTA tweak.
+  - Expected outcome: more qualified evaluator traffic should reach the Codeberg repo from a tool directory that matches AI-agent / coding-tool intent, with secondary upside on Codeberg stars/watchers/issues if the listing gets published and indexed.
+  - Measurement window: next 7 days for listing publication / indexing evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if the 4agent listing is not published or Codeberg is still flat through `2026-06-02`, stop spending cycles on more similar directory adds and shift the next replacement move to a higher-distribution external surface or backlink source that can send traffic directly into the strongest Codeberg-first proof/comparison pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 11:39:00
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow OpenCode repo-root conversion repair
+- **OpenCode comparison path repaired on the primary repo-root docs surface**: added and pushed a new root `docs/ralph-workflow-vs-opencode.md` page, then wired `README.md`, `START_HERE.md`, and `docs/README.md` to surface it wherever evaluator-first agent comparisons live.
+  - Commit: `93c05f63` — `Add OpenCode repo-root conversion page`
+  - Status: ✅ Pushed to Codeberg primary (`origin`) and GitHub mirror (`github`)
+  - Verification: confirmed the new root docs page exists and the main repo entry points now link to `docs/ralph-workflow-vs-opencode.md`
+  - Why: this is **REPAIRED / REPLACING** a failing tactic. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and I found a concrete leak: the OpenCode comparison page already existed in hosted Sphinx docs but was still missing from the repo-root `docs/` surface that Codeberg evaluators actually open first. That left OpenCode-native visitors with weaker repo-first conversion than Claude Code and Codex visitors.
+  - Expected outcome: more qualified OpenCode-native evaluators should reach a Codeberg-first comparison path directly from the repo, with secondary upside on Codeberg stars/watchers/issues because the page closes on primary-repo actions.
+  - Measurement window: next 7 days for repo-entry-path inspection/referral clues; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending the next cycle on repo-surface agent-path completeness and shift the next replacement move to a fresh external distribution/backlink source that can send net-new qualified traffic into the strongest Codeberg-first proof/comparison pages.
+
+### RalphWorkflow keyword-gap Telegraph distribution repair
+- **Published a Codeberg-first Telegraph post for the exact search term `AI agent orchestration CLI`**: shipped `AI Agent Orchestration CLI: A Practical Comparison for Developers` to Telegraph so one of the highest-priority keyword gaps now has an unblocked public distribution surface that links Codeberg first and GitHub second.
+  - Live URL: `https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-19-4`
+  - Verification: live fetch returned HTTP 200 and the published page shows the expected title/body plus Codeberg-primary CTA and GitHub mirror link.
+  - Source draft: `drafts/2026-05-19_ai-agent-orchestration-cli_telegraph.md`
+  - Why: this is **NEW / REPLACING** a failed tactic. The audit's highest-priority repair says stale content distribution must be replaced with keyword-targeted Telegraph posts and Codeberg-first conversion paths while Codeberg delta is still flat. This exact-intent keyword already had owned docs coverage, so the highest-leverage executable move right now was distribution of that proven angle onto an unblocked public surface instead of another internal doc tweak.
+  - Expected outcome: more qualified evaluators searching or sharing around `AI agent orchestration CLI` should reach a Codeberg-first explanation and click through to inspect the primary repo.
+  - Measurement window: next 7 days for Telegraph views / referral evidence; next 14 days for **Codeberg** stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending cycles on Telegraph keyword-gap publishing alone and shift the next replacement move to a new executable backlink/directory surface or a fresh external discussion channel that routes directly to Codeberg.
