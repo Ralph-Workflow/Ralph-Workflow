@@ -42,4 +42,4 @@ def _normalize_optional_string(value: str | None) -> str | None:
     return normalized or None
 
 
-__all__ = ["WebSearchError", "resolve_secret"]
+__all__ = ["resolve_secret"]

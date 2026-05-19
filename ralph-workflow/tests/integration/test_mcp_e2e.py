@@ -126,7 +126,7 @@ def _initialize(server: McpServer) -> ServerState:
     return state
 
 
-def _list_tools(server: McpServer, state: ServerState) -> list[dict[str, Any]]:
+def _list_tools(server: McpServer, state: ServerState) -> list[dict[str, object]]:
     """Call tools/list and return the tools array."""
     req = JsonRpcRequest(jsonrpc="2.0", method="tools/list", params={}, msg_id=2)
     resp, _ = server.handle_request(req, state)
@@ -138,10 +138,10 @@ def _call_tool(
     server: McpServer,
     state: ServerState,
     name: str,
-    arguments: dict[str, Any],
+    arguments: dict[str, object],
     *,
     msg_id: int = 3,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Call tools/call and return the result payload."""
     req = JsonRpcRequest(
         jsonrpc="2.0",
@@ -245,7 +245,6 @@ _MEDIA_CAPABILITIES = _REQUIRED_CAPABILITIES | {"media.read"}
 
 def _build_multimodal_server(session_id: str = "test-multimodal") -> McpServer:
     """Build a McpServer with media.read session capability."""
-    from ralph.mcp.protocol.session import AgentSession
 
     session = AgentSession(
         session_id=session_id,

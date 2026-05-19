@@ -10,6 +10,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NoReturn, cast
 
+from ralph.mcp.artifacts._artifact_persistence import (
+    DEFAULT_ARTIFACT_PERSISTENCE,
+    ArtifactPersistence,
+)
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_TYPE,
     delete_commit_message_artifacts,
@@ -50,8 +54,6 @@ from ralph.mcp.artifacts.smoke_test_result import (
     normalize_smoke_test_result_content,
 )
 from ralph.mcp.artifacts.store import (
-    DEFAULT_ARTIFACT_PERSISTENCE,
-    ArtifactPersistence,
     ArtifactSubmitOptions,
     delete_artifact,
     submit_artifact,
@@ -62,6 +64,7 @@ from ralph.mcp.artifacts.typed_artifacts import (
     normalize_fix_result_content,
     normalize_issues_content,
 )
+from ralph.mcp.tools._submit_op import SubmitOp
 from ralph.mcp.tools.coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
     CoordinationSessionLike,
@@ -95,17 +98,9 @@ _KNOWN_ARTIFACT_TYPES = frozenset(
 )
 
 
-@dataclass(frozen=True)
-class _SubmitOp:
-    """An ordered submit step paired with its rollback action."""
-
-    run: Callable[[], object]
-    undo: Callable[[], None]
-
-
-def _execute_ops_with_rollback(ops: list[_SubmitOp]) -> None:
+def execute_ops_with_rollback(ops: list[SubmitOp]) -> None:
     """Execute a sequence of ops; on failure roll back all completed ops in reverse."""
-    completed: list[_SubmitOp] = []
+    completed: list[SubmitOp] = []
     try:
         for op in ops:
             op.run()
@@ -191,7 +186,7 @@ def handle_submit_artifact(
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
     drain = _session_drain(session)
     workspace_root = _workspace_root(workspace)
-    artifact_type, parsed_content = _prepare_artifact_submission(
+    artifact_type, parsed_content = prepare_artifact_submission(
         params,
         session_drain=drain,
         base_path=workspace_root,
@@ -205,8 +200,8 @@ def handle_submit_artifact(
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
     )
-    _execute_ops_with_rollback(
-        _submit_ops_for_artifact(
+    execute_ops_with_rollback(
+        submit_ops_for_artifact(
             artifact_type,
             workspace_root,
             artifact_dir,
@@ -311,8 +306,8 @@ def handle_finalize_plan(
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
     )
-    _execute_ops_with_rollback(
-        _submit_ops_for_artifact(
+    execute_ops_with_rollback(
+        submit_ops_for_artifact(
             PLAN_ARTIFACT_TYPE,
             workspace_root,
             artifact_dir,
@@ -494,13 +489,14 @@ def _raise_index_format_error(
     ) from None
 
 
-def _prepare_artifact_submission(
+def prepare_artifact_submission(
     params: dict[str, object],
     *,
     session_drain: str | None = None,
     base_path: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[str, dict[str, object]]:
+    """Validate and canonicalize artifact submission params, returning (artifact_type, params)."""
     # Handle missing artifact_type
     try:
         raw_artifact_type = _required_string(params, "artifact_type")
@@ -859,21 +855,21 @@ def _raise_format_doc_error(
     raise InvalidParamsError(msg) from original_exc
 
 
-def _submit_ops_for_artifact(
+def submit_ops_for_artifact(
     artifact_type: str,
     workspace_root: Path,
     artifact_dir: Path,
     parsed_content: dict[str, object],
     *,
     deps: ArtifactHandlerDeps,
-) -> list[_SubmitOp]:
+) -> list[SubmitOp]:
     """Return the ordered (op, undo) pairs for a complete artifact submit."""
-    ops: list[_SubmitOp] = []
+    ops: list[SubmitOp] = []
 
     if artifact_type == COMMIT_MESSAGE_TYPE:
         _content = parsed_content
         ops.append(
-            _SubmitOp(
+            SubmitOp(
                 run=lambda: write_commit_message_artifact(
                     workspace_root, _content, backend=deps.backend, now_iso=deps.now_iso
                 ),
@@ -885,7 +881,7 @@ def _submit_ops_for_artifact(
     _at = artifact_type
     _content2 = parsed_content
     ops.append(
-        _SubmitOp(
+        SubmitOp(
             run=lambda: submit_artifact(
                 artifact_dir,
                 name=_at,
@@ -899,7 +895,7 @@ def _submit_ops_for_artifact(
 
     _content3 = parsed_content
     ops.append(
-        _SubmitOp(
+        SubmitOp(
             run=lambda: sync_markdown_handoff(workspace_root, _at, _content3, backend=deps.backend),
             undo=lambda: delete_markdown_handoff(workspace_root, _at, backend=deps.backend),
         )
@@ -926,11 +922,11 @@ def _submit_ops_for_artifact(
                 deps.backend.unlink(path, missing_ok=True)
             rebuild_history_index(_ad, _at_hist, backend=deps.backend)
 
-        ops.append(_SubmitOp(run=_run_history_snapshot, undo=_undo_history_snapshot))
+        ops.append(SubmitOp(run=_run_history_snapshot, undo=_undo_history_snapshot))
 
     if artifact_type == PLAN_ARTIFACT_TYPE:
         ops.append(
-            _SubmitOp(
+            SubmitOp(
                 run=lambda: delete_plan_draft(artifact_dir, backend=deps.backend),
                 undo=lambda: None,
             )
@@ -941,14 +937,14 @@ def _submit_ops_for_artifact(
 
 __all__ = [
     "ArtifactHandlerDeps",
-    "_SubmitOp",
-    "_execute_ops_with_rollback",
-    "_prepare_artifact_submission",
+    "SubmitOp",
     "_resolve_history_enabled",
-    "_submit_ops_for_artifact",
+    "execute_ops_with_rollback",
     "handle_discard_plan_draft",
     "handle_finalize_plan",
     "handle_get_plan_draft",
     "handle_submit_artifact",
     "handle_submit_plan_section",
+    "prepare_artifact_submission",
+    "submit_ops_for_artifact",
 ]

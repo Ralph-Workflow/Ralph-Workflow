@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 import ralph.process.manager as _mgr
-from ralph.git.subprocess_runner import run_git
+from ralph.git.subprocess_runner import GitRunOptions, run_git
 from ralph.process import process_phase_scope  # validates public package export
 from ralph.process.manager import (
     ProcessManager,
     ProcessManagerPolicy,
     ProcessStatus,
+    SpawnOptions,
     get_process_manager,
     reset_process_manager,
 )
@@ -30,7 +31,7 @@ _FAST_POLICY = ProcessManagerPolicy(
 
 
 @pytest.fixture(autouse=True)
-def _reset_pm():
+def _reset_pm() -> object:
     reset_process_manager()
     yield
     with contextlib.suppress(Exception):
@@ -45,18 +46,18 @@ def test_phase_scope_kills_labeled_processes() -> None:
     handles = [
         pm.spawn(
             [sys.executable, "-c", "pass"],
-            label="phase:review",
+            SpawnOptions(label="phase:review"),
         )
         for _ in range(3)
     ]
 
-    original_singleton = _mgr._singleton
-    _mgr._singleton = pm
+    original_singleton = _mgr._pm_state.instance
+    _mgr._pm_state.instance = pm
     try:
         with process_phase_scope("review"):
             pass
     finally:
-        _mgr._singleton = original_singleton
+        _mgr._pm_state.instance = original_singleton
 
     for handle in handles:
         assert handle.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
@@ -68,20 +69,20 @@ def test_phase_scope_does_not_kill_other_labels() -> None:
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     target = pm.spawn(
         [sys.executable, "-c", "pass"],
-        label="phase:review",
+        SpawnOptions(label="phase:review"),
     )
     bystander = pm.spawn(
         [sys.executable, "-c", "pass"],
-        label="other:process",
+        SpawnOptions(label="other:process"),
     )
 
-    original_singleton = _mgr._singleton
-    _mgr._singleton = pm
+    original_singleton = _mgr._pm_state.instance
+    _mgr._pm_state.instance = pm
     try:
         with process_phase_scope("review"):
             pass
     finally:
-        _mgr._singleton = original_singleton
+        _mgr._pm_state.instance = original_singleton
 
     assert target.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
     assert bystander.record.status == ProcessStatus.RUNNING
@@ -93,17 +94,17 @@ def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Pat
     """run_git with phase= creates a 'phase:<phase>:git:<label>' record label."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
-    original_singleton = _mgr._singleton
-    _mgr._singleton = pm
+    original_singleton = _mgr._pm_state.instance
+    _mgr._pm_state.instance = pm
     try:
         run_git(
             ["rev-parse", "HEAD"],
             cwd=tmp_git_repo,
             label="rev-parse",
-            phase="development",
+            options=GitRunOptions(phase="development"),
         )
     finally:
-        _mgr._singleton = original_singleton
+        _mgr._pm_state.instance = original_singleton
 
     labels = [r.label for r in pm.list_records(include_terminal=True)]
     assert "phase:development:git:rev-parse" in labels, (
@@ -115,8 +116,8 @@ def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
     """run_git without phase= uses the label as-is."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
-    original_singleton = _mgr._singleton
-    _mgr._singleton = pm
+    original_singleton = _mgr._pm_state.instance
+    _mgr._pm_state.instance = pm
     try:
         run_git(
             ["rev-parse", "HEAD"],
@@ -124,7 +125,7 @@ def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
             label="git:rev-parse",
         )
     finally:
-        _mgr._singleton = original_singleton
+        _mgr._pm_state.instance = original_singleton
 
     labels = [r.label for r in pm.list_records(include_terminal=True)]
     assert "git:rev-parse" in labels, f"Expected 'git:rev-parse' in labels, got: {labels}"

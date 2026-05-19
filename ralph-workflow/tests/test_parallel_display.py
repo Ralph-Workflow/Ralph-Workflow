@@ -14,8 +14,9 @@ from ralph.display.context import make_display_context
 from ralph.display.mode import MEDIUM_THRESHOLD, NARROW_THRESHOLD
 from ralph.display.parallel_display import (
     ParallelDisplay,
-    _strip_markup,
+    strip_markup,
 )
+from ralph.display.phase_lifecycle import PhaseExitModel
 from ralph.display.ring_buffer import RingBuffer
 from ralph.pipeline.worker_state import WorkerStatus
 
@@ -190,8 +191,8 @@ def test_parallel_display_default_mode_streams_copy_pasteable_lines() -> None:
 
 
 def test_strip_markup_removes_rich_tags() -> None:
-    assert _strip_markup("[green]ok[/green]") == "ok"
-    assert _strip_markup("plain text") == "plain text"
+    assert strip_markup("[green]ok[/green]") == "ok"
+    assert strip_markup("plain text") == "plain text"
 
 
 # --- Raw overflow tests ---
@@ -261,7 +262,6 @@ def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
 
 
 def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
-    from ralph.display.phase_lifecycle import PhaseExitModel
 
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)

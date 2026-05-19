@@ -9,7 +9,7 @@ from __future__ import annotations
 import shutil
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from rich.text import Text
 
@@ -33,28 +33,28 @@ from ralph.onboarding import (
 
 if TYPE_CHECKING:
     from types import ModuleType
+    from typing import Protocol
 
     from ralph.agents.registry import AgentRegistry
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
 
+    class _LoadConfigFn(Protocol):
+        def __call__(
+            self,
+            config_path: Path | None = None,
+            cli_overrides: dict[str, object] | None = None,
+        ) -> UnifiedConfig: ...
+
+    class _AgentRegistryFactory(Protocol):
+        @classmethod
+        def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
+
+
 from ralph.display.context import make_display_context
 from ralph.workspace.scope import resolve_workspace_scope
 
 STARTER_PROMPT_SENTINEL = _STARTER_PROMPT_SENTINEL
-
-
-class _LoadConfigFn(Protocol):
-    def __call__(
-        self,
-        config_path: Path | None = None,
-        cli_overrides: dict[str, object] | None = None,
-    ) -> UnifiedConfig: ...
-
-
-class _AgentRegistryFactory(Protocol):
-    @classmethod
-    def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:

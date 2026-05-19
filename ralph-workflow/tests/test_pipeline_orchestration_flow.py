@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 from rich.console import Console
 
 from ralph.display.context import make_display_context
+
+if TYPE_CHECKING:
+    import pytest
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -25,14 +28,14 @@ from ralph.policy.loader import load_policy
 _EXPECTED_RECOVERY_DETERMINE_CALLS = 2
 
 
-def _install_runner_display_context(monkeypatch) -> Console:
+def _install_runner_display_context(monkeypatch: pytest.MonkeyPatch) -> Console:
     console = Console(record=True, force_terminal=False, width=120, color_system=None)
     ctx = make_display_context(console=console, force_width=120, force_mode="wide")
     monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
     return console
 
 
-def _load_default_bundle():
+def _load_default_bundle() -> object:
     defaults_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)
 
@@ -111,7 +114,7 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
 
 
 def test_run_recovers_when_planner_does_not_submit_plan_artifact(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     monkeypatch.chdir(tmp_path)
@@ -141,7 +144,7 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
 
     call_count = 0
 
-    def stub_determine_effect(*_args, **_kwargs):
+    def stub_determine_effect(*_args: object, **_kwargs: object) -> object:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -158,32 +161,32 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
     monkeypatch.setattr(runner_module, "FsWorkspace", MagicMock())
     monkeypatch.setattr(
         runner_module,
-        "_materialize_agent_prompt_if_needed",
+        "materialize_agent_prompt_if_needed",
         lambda *a, **kw: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_materialize_prepared_prompt",
+        "materialize_prepared_prompt",
         lambda *a, **kw: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_emit_phase_transition_if_changed",
+        "emit_phase_transition_if_changed",
         lambda *args, **kwargs: args[1],
     )
     monkeypatch.setattr(
         runner_module,
-        "_call_determine_effect_from_policy",
+        "call_determine_effect_from_policy",
         stub_determine_effect,
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_FAILURE,
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_effect",
+        "execute_effect",
         lambda _effect, _config, _workspace_scope: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())

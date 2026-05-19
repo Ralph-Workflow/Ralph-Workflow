@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
 WEB_SEARCH_CAPABILITY = "WebSearch"
 _DEFAULT_LIMIT = 10
-_MIN_LIMIT = 1
-_MAX_LIMIT = 25
+MIN_LIMIT = 1
+MAX_LIMIT = 25
 
 
 def _build_backend(name: str, config: WebSearchConfig) -> WebSearchBackend:
@@ -72,7 +72,7 @@ def _deduplicated(names: list[str]) -> list[str]:
 
 def _clamp_limit(value: object) -> int:
     if isinstance(value, int):
-        return max(_MIN_LIMIT, min(_MAX_LIMIT, value))
+        return max(MIN_LIMIT, min(MAX_LIMIT, value))
     return _DEFAULT_LIMIT
 
 
@@ -103,7 +103,7 @@ def handle_web_search(
 
     for name in dispatch_order:
         try:
-            backend = _build_backend(name, config)
+            backend = build_backend(name, config)
             results = backend.search(query, limit=limit)
             return ToolResult(
                 content=[ToolContent.text_content(_format_results(results))],
@@ -118,4 +118,6 @@ def handle_web_search(
     )
 
 
-__all__ = ["WEB_SEARCH_CAPABILITY", "_build_backend", "handle_web_search"]
+build_backend = _build_backend
+
+__all__ = ["MAX_LIMIT", "MIN_LIMIT", "WEB_SEARCH_CAPABILITY", "handle_web_search"]

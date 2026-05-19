@@ -53,7 +53,7 @@ def test_validate_sse_server_healthy_returns_zero(
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
-    def passing_validate(servers, *, strict):
+    def passing_validate(servers: object, *, strict: object) -> object:
         return validate_upstream_mcp_servers(
             servers,
             strict=strict,
@@ -64,10 +64,10 @@ def test_validate_sse_server_healthy_returns_zero(
         "ralph.mcp.upstream.validation.make_upstream_client",
         lambda server, **kw: StubUpstreamClient([FAKE_TOOL]),
     )
-    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", passing_validate)
-    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())
+    monkeypatch.setattr(runner_module, "VALIDATE_MCP", passing_validate)
+    monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())
 
-    rc = runner_module._validate_custom_mcp_servers(tmp_path)
+    rc = runner_module.validate_custom_mcp_servers(tmp_path)
 
     assert rc == 0
 
@@ -80,7 +80,7 @@ def test_validate_sse_server_healthy_logs_no_errors(
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
-    def passing_validate(servers, *, strict):
+    def passing_validate(servers: object, *, strict: object) -> object:
         return validate_upstream_mcp_servers(
             servers,
             strict=strict,
@@ -91,13 +91,13 @@ def test_validate_sse_server_healthy_logs_no_errors(
         "ralph.mcp.upstream.validation.make_upstream_client",
         lambda server, **kw: StubUpstreamClient([FAKE_TOOL]),
     )
-    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", passing_validate)
-    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())
+    monkeypatch.setattr(runner_module, "VALIDATE_MCP", passing_validate)
+    monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())
 
     error_stream = StringIO()
     sink_id = logger.add(error_stream, level="ERROR")
     try:
-        rc = runner_module._validate_custom_mcp_servers(tmp_path)
+        rc = runner_module.validate_custom_mcp_servers(tmp_path)
     finally:
         logger.remove(sink_id)
 

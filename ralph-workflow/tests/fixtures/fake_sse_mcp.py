@@ -46,9 +46,6 @@ class _SessionRegistry:
             return self._sessions.get(session_id)
 
 
-_SESSIONS = _SessionRegistry()
-
-
 class _McpHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -166,6 +163,9 @@ class _McpHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.ACCEPTED.value)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+
+_SESSIONS = _SessionRegistry()
 
 
 def _message_event(payload: Mapping[str, object]) -> bytes:

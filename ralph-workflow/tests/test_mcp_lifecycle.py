@@ -13,7 +13,7 @@ from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.mcp.server.lifecycle import _session_payload_json
+from ralph.mcp.server.lifecycle import session_payload_json
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
@@ -151,9 +151,11 @@ def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> No
         session,
         workspace,
         deps=deps,
-        extra_env={
-            "RALPH_UPSTREAM_MCP_CONFIG": '[{"name":"docs","transport":"http","url":"http://docs"}]'
-        },
+        extras=lifecycle.McpServerExtras(
+            extra_env={
+                "RALPH_UPSTREAM_MCP_CONFIG": '[{"name":"docs","transport":"http","url":"http://docs"}]'
+            }
+        ),
     )
 
     env = cast("dict[str, str]", seen["env"])
@@ -243,7 +245,7 @@ def _make_standalone(
 
 def test_mcp_restart_policy_default_is_1000() -> None:
     policy = lifecycle.McpRestartPolicy()
-    assert policy.max_restarts == 1000  # noqa: PLR2004
+    assert policy.max_restarts == 1000
 
 
 def test_restart_aware_bridge_returns_false_when_process_alive() -> None:
@@ -284,7 +286,7 @@ def test_restart_aware_bridge_raises_when_budget_exhausted() -> None:
     bridge.check_health_and_restart_if_needed()  # restart 2
     with pytest.raises(lifecycle.McpServerError) as exc_info:
         bridge.check_health_and_restart_if_needed()  # budget exhausted
-    assert exc_info.value.restart_count == 2  # noqa: PLR2004
+    assert exc_info.value.restart_count == 2
 
 
 def test_restart_aware_bridge_calls_restart_fn_on_each_restart() -> None:
@@ -390,8 +392,8 @@ def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
 
     # Trigger a restart: process is dead (poll_result=1), so health check restarts
     bridge.check_health_and_restart_if_needed()
-    assert len(preflight_calls) == 2, "preflight runs again after restart"  # noqa: PLR2004
-    assert spawn_call_count[0] == 2, "spawn called twice (initial + restart)"  # noqa: PLR2004
+    assert len(preflight_calls) == 2, "preflight runs again after restart"
+    assert spawn_call_count[0] == 2, "spawn called twice (initial + restart)"
 
 
 def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Path) -> None:
@@ -623,7 +625,7 @@ def test_session_payload_json_includes_model_identity_when_known() -> None:
             provider="anthropic", model_id="claude-3-5-sonnet", transport="cli"
         ),
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     assert "model_identity" in payload
     assert payload["model_identity"]["provider"] == "anthropic"
     assert payload["model_identity"]["model_id"] == "claude-3-5-sonnet"
@@ -631,19 +633,19 @@ def test_session_payload_json_includes_model_identity_when_known() -> None:
 
 
 def test_session_payload_json_omits_model_identity_when_unknown() -> None:
-    """_session_payload_json omits model_identity for UNKNOWN_IDENTITY sessions."""
+    """session_payload_json omits model_identity for UNKNOWN_IDENTITY sessions."""
     session = AgentSession(
         session_id="sid-unknown",
         run_id="run-unknown",
         drain="development",
         capabilities={"WorkspaceRead"},
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     assert "model_identity" not in payload
 
 
 def test_session_payload_json_omits_model_identity_for_sessions_without_attribute() -> None:
-    """_session_payload_json is safe when session lacks model_identity attribute."""
+    """session_payload_json is safe when session lacks model_identity attribute."""
 
     class _MinimalSession:
         session_id = "sid-min"
@@ -654,7 +656,7 @@ def test_session_payload_json_omits_model_identity_for_sessions_without_attribut
         def __init__(self) -> None:
             self.capabilities = set()
 
-    payload = json.loads(_session_payload_json(_MinimalSession()))
+    payload = json.loads(session_payload_json(_MinimalSession()))
     assert "model_identity" not in payload
 
 
@@ -674,7 +676,7 @@ def test_session_payload_json_includes_capability_profile_for_known_provider() -
             provider="claude", model_id="claude-opus-4-7", transport="claude"
         ),
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     assert "capability_profile" in payload
     profile = payload["capability_profile"]
     assert profile["provider"] == "claude"
@@ -701,7 +703,7 @@ def test_session_payload_json_includes_profile_for_unknown_provider_with_rr_deli
         drain="development",
         capabilities={"WorkspaceRead"},
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     assert "capability_profile" in payload
     profile = payload["capability_profile"]
     assert profile["provider"] == "unknown"
@@ -721,7 +723,7 @@ def test_session_payload_json_capability_profile_verdicts_cover_all_modalities()
         capabilities={"WorkspaceRead"},
         model_identity=MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash"),
     )
-    payload = json.loads(_session_payload_json(session))
+    payload = json.loads(session_payload_json(session))
     verdicts = payload["capability_profile"]["verdicts"]
     for modality in SUPPORTED_MODALITIES:
         assert modality in verdicts, f"modality {modality!r} missing from serialized profile"

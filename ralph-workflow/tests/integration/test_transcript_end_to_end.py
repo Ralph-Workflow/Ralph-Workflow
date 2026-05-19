@@ -43,15 +43,19 @@ def _config() -> UnifiedConfig:
 
 def _install_runner_stubs(
     monkeypatch: MonkeyPatch,
-    policy_bundle,
+    policy_bundle: object,
     tmp_path: Path,
-) -> tuple[list[str], Console, list]:
+) -> tuple[list[str], Console, list[object]]:
     """Set up stubs for runner.run(); return (invoked_phases, console, displays)."""
     invoked_phases: list[str] = []
     # Use a list to capture display instances (list is mutable, survives monkeypatch)
-    captured_displays: list = []
+    captured_displays: list[object] = []
 
-    def fake_execute_effect(effect, _config, _workspace_scope):
+    def fake_execute_effect(
+        effect: object,
+        _config: object,
+        _workspace_scope: object,
+    ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             invoked_phases.append(effect.phase)
             # Emit sample streaming content through the display so transcript has content markers
@@ -89,7 +93,12 @@ def _install_runner_stubs(
         msg = f"Unexpected effect: {type(effect)!r}"
         raise AssertionError(msg)
 
-    def fake_phase_event_after_agent_run(*, effect, display=None, **_kwargs):
+    def fake_phase_event_after_agent_run(
+        *,
+        effect: InvokeAgentEffect,
+        display: object | None = None,
+        **_kwargs: object,
+    ) -> PipelineEvent:
         if effect.phase == "development_analysis":
             return PipelineEvent.ANALYSIS_SUCCESS
         if display is not None and hasattr(display, "emit_phase_close"):
@@ -107,11 +116,11 @@ def _install_runner_stubs(
     )
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
-    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
-        runner_module, "_phase_event_after_agent_run", fake_phase_event_after_agent_run
+        runner_module, "phase_event_after_agent_run", fake_phase_event_after_agent_run
     )
 
     # Spy on ParallelDisplay construction to capture the display instance

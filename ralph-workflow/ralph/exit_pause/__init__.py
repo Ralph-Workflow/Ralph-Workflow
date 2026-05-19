@@ -8,29 +8,15 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 import psutil
 
+from ralph.exit_pause.exit_outcome import ExitOutcome
+from ralph.exit_pause.pause_on_exit_mode import PauseOnExitMode
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-
-class ExitOutcome(StrEnum):
-    """Possible outcomes that affect pause behavior."""
-
-    SUCCESS = "success"
-    FAILURE = "failure"
-    INTERRUPTED = "interrupted"
-
-
-class PauseOnExitMode(StrEnum):
-    """When to pause before exiting."""
-
-    NEVER = "never"
-    ALWAYS = "always"
-    AUTO = "auto"
 
 
 @dataclass(frozen=True)

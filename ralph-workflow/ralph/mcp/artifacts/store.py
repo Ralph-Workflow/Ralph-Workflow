@@ -8,67 +8,17 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from loguru import logger
 
+from ralph.mcp.artifacts._artifact_exists_error import ArtifactExistsError
+from ralph.mcp.artifacts._artifact_not_found_error import ArtifactNotFoundError
+from ralph.mcp.artifacts._artifact_persistence import ArtifactPersistence, _utc_now_iso
+from ralph.mcp.artifacts._artifact_submit_options import ArtifactSubmitOptions
+from ralph.mcp.artifacts._artifact_update_options import ArtifactUpdateOptions
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(tz=UTC).isoformat()
-
-
-@dataclass(frozen=True)
-class ArtifactPersistence:
-    """Backend and clock dependencies for artifact persistence operations."""
-
-    backend: FileBackend = DEFAULT_FILE_BACKEND
-    now_iso: Callable[[], str] = _utc_now_iso
-
-
-DEFAULT_ARTIFACT_PERSISTENCE = ArtifactPersistence()
-
-
-@dataclass(frozen=True)
-class ArtifactSubmitOptions:
-    """Options for artifact submission."""
-
-    metadata: dict[str, object] | None = None
-    overwrite: bool = False
-    persistence: ArtifactPersistence = DEFAULT_ARTIFACT_PERSISTENCE
-
-
-@dataclass(frozen=True)
-class ArtifactUpdateOptions:
-    """Options for updating an existing artifact."""
-
-    content: dict[str, object] | None = None
-    metadata: dict[str, object] | None = None
-    persistence: ArtifactPersistence = DEFAULT_ARTIFACT_PERSISTENCE
-
-
-class ArtifactError(Exception):
-    """Base exception for artifact errors."""
-
-    pass
-
-
-class ArtifactNotFoundError(ArtifactError):
-    """Raised when an artifact is not found."""
-
-    pass
-
-
-class ArtifactExistsError(ArtifactError):
-    """Raised when attempting to create an artifact that already exists."""
-
-    pass
 
 
 @dataclass
@@ -266,3 +216,18 @@ def delete_artifact(
         raise ArtifactNotFoundError(f"Artifact '{name}' not found")
     backend.unlink(artifact_path)
     logger.debug("Deleted artifact: {}", name)
+
+
+__all__ = [
+    "Artifact",
+    "ArtifactExistsError",
+    "ArtifactNotFoundError",
+    "ArtifactPersistence",
+    "ArtifactSubmitOptions",
+    "ArtifactUpdateOptions",
+    "delete_artifact",
+    "get_artifact",
+    "list_artifacts",
+    "submit_artifact",
+    "update_artifact",
+]

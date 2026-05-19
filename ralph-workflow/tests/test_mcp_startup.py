@@ -306,7 +306,7 @@ def test_preflight_tcp_attempt_accepts_injected_connector() -> None:
         def close(self) -> None:
             seen["closed"] = True
 
-        def makefile(self, _mode: str):
+        def makefile(self, _mode: str) -> None:
             raise AssertionError("should not use real makefile")
 
     def fake_connect(

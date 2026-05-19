@@ -6,7 +6,7 @@ from importlib import import_module
 from typing import Any
 
 
-def _import_base_module():
+def _import_base_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.base")
     except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase

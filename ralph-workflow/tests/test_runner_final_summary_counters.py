@@ -67,17 +67,19 @@ def test_final_summary_passes_plain_renderer_counters_to_emit(tmp_path: Path) ->
         "ralph.display.completion_summary.emit_completion_summary",
         side_effect=_capture,
     ):
-        runner_module._emit_final_summary(
+        runner_module.emit_final_summary(
             state,
             tmp_path,
             display=display,
             display_context=ctx,
         )
 
-    assert captured_kwargs.get("content_block_count") == _CONTENT_BLOCKS
-    assert captured_kwargs.get("thinking_block_count") == _THINKING_BLOCKS
-    assert captured_kwargs.get("tool_call_count") == _TOOL_CALLS
-    assert captured_kwargs.get("error_count") == _ERRORS
+    opts = captured_kwargs.get("options")
+    assert opts is not None
+    assert opts.content_block_count == _CONTENT_BLOCKS
+    assert opts.thinking_block_count == _THINKING_BLOCKS
+    assert opts.tool_call_count == _TOOL_CALLS
+    assert opts.error_count == _ERRORS
 
 
 def test_final_summary_defaults_counters_to_zero_when_no_display(tmp_path: Path) -> None:
@@ -95,14 +97,16 @@ def test_final_summary_defaults_counters_to_zero_when_no_display(tmp_path: Path)
         "ralph.display.completion_summary.emit_completion_summary",
         side_effect=_capture,
     ):
-        runner_module._emit_final_summary(
+        runner_module.emit_final_summary(
             state,
             tmp_path,
             display=None,
             display_context=ctx,
         )
 
-    assert captured_kwargs.get("content_block_count") == 0
-    assert captured_kwargs.get("thinking_block_count") == 0
-    assert captured_kwargs.get("tool_call_count") == 0
-    assert captured_kwargs.get("error_count") == 0
+    opts = captured_kwargs.get("options")
+    assert opts is not None
+    assert opts.content_block_count == 0
+    assert opts.thinking_block_count == 0
+    assert opts.tool_call_count == 0
+    assert opts.error_count == 0

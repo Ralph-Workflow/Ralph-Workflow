@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-
-import pytest  # noqa: TC002
+from typing import TYPE_CHECKING
 
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.testing import FakeConnectivityMonitor
+
+if TYPE_CHECKING:
+    import pytest
 
 _EXPECTED_EVENT_COUNT = 2
 
@@ -135,7 +137,7 @@ def test_second_sigint_calls_os_exit(monkeypatch: pytest.MonkeyPatch) -> None:
         try:
             os._exit(130)
         except SystemExit as e:
-            assert e.code == 130  # noqa: PLR2004
+            assert e.code == 130
 
         # Assert os._exit was called with 130
         assert exit_calls == [(130,)]
@@ -184,7 +186,7 @@ def test_signal_bridge_interrupt_count() -> None:
 
     # Increment again
     bridge._interrupt_count += 1
-    assert bridge._interrupt_count == 2  # noqa: PLR2004
+    assert bridge._interrupt_count == 2
 
 
 def test_signal_bridge_pid_tracking() -> None:
@@ -194,12 +196,12 @@ def test_signal_bridge_pid_tracking() -> None:
     bridge.register_pid(123)
     bridge.register_pid(456)
 
-    assert 123 in bridge.pids  # noqa: PLR2004
-    assert 456 in bridge.pids  # noqa: PLR2004
+    assert 123 in bridge.pids
+    assert 456 in bridge.pids
 
     bridge.deregister_pid(123)
-    assert 123 not in bridge.pids  # noqa: PLR2004
-    assert 456 in bridge.pids  # noqa: PLR2004
+    assert 123 not in bridge.pids
+    assert 456 in bridge.pids
 
 
 def test_fake_monitor_default_state_online() -> None:

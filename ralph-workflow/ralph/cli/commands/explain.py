@@ -5,54 +5,50 @@ from __future__ import annotations
 import sys
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from types import ModuleType
+    from typing import Protocol
 
     from ralph.config.models import UnifiedConfig
     from ralph.policy.explain import PolicyExplanation
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
+    class _LoadConfigFn(Protocol):
+        def __call__(
+            self,
+            config_path: Path | None = None,
+            cli_overrides: dict[str, object] | None = None,
+            workspace_scope: WorkspaceScope | None = None,
+        ) -> UnifiedConfig: ...
+
+    class _ResolveWorkspaceScopeFn(Protocol):
+        def __call__(self, start: Path | str | None = None) -> WorkspaceScope: ...
+
+    class _LoadPolicyFn(Protocol):
+        def __call__(
+            self,
+            config_dir: Path,
+            config: UnifiedConfig | None = None,
+        ) -> PolicyBundle: ...
+
+    class _LoadPolicyForWorkspaceScopeFn(Protocol):
+        def __call__(
+            self,
+            workspace_scope: WorkspaceScope,
+            config: UnifiedConfig | None = None,
+        ) -> PolicyBundle: ...
+
+    class _ExplainPolicyFn(Protocol):
+        def __call__(self, bundle: PolicyBundle) -> PolicyExplanation: ...
+
+    class _RenderExplanationFn(Protocol):
+        def __call__(self, explanation: PolicyExplanation) -> str: ...
+
+
 _BUNDLED_DEFAULTS_DIR: Path = Path(__file__).parent.parent.parent / "policy" / "defaults"
-
-
-class _LoadConfigFn(Protocol):
-    def __call__(
-        self,
-        config_path: Path | None = None,
-        cli_overrides: dict[str, object] | None = None,
-        workspace_scope: WorkspaceScope | None = None,
-    ) -> UnifiedConfig: ...
-
-
-class _ResolveWorkspaceScopeFn(Protocol):
-    def __call__(self, start: Path | str | None = None) -> WorkspaceScope: ...
-
-
-class _LoadPolicyFn(Protocol):
-    def __call__(
-        self,
-        config_dir: Path,
-        config: UnifiedConfig | None = None,
-    ) -> PolicyBundle: ...
-
-
-class _LoadPolicyForWorkspaceScopeFn(Protocol):
-    def __call__(
-        self,
-        workspace_scope: WorkspaceScope,
-        config: UnifiedConfig | None = None,
-    ) -> PolicyBundle: ...
-
-
-class _ExplainPolicyFn(Protocol):
-    def __call__(self, bundle: PolicyBundle) -> PolicyExplanation: ...
-
-
-class _RenderExplanationFn(Protocol):
-    def __call__(self, explanation: PolicyExplanation) -> str: ...
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:

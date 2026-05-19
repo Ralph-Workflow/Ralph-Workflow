@@ -20,7 +20,7 @@ from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-_DEFAULT_INTERVAL = timedelta(seconds=2)
+DEFAULT_INTERVAL = timedelta(seconds=2)
 
 
 class McpSupervisor:
@@ -43,7 +43,7 @@ class McpSupervisor:
         self,
         bridge: RestartAwareMcpBridge,
         *,
-        check_interval: timedelta = _DEFAULT_INTERVAL,
+        check_interval: timedelta = DEFAULT_INTERVAL,
         on_restart: Callable[[int], None] | None = None,
         on_error: Callable[[McpServerError], None] | None = None,
     ) -> None:
@@ -102,4 +102,4 @@ class McpSupervisor:
                 return
 
 
-__all__ = ["McpSupervisor"]
+__all__ = ["DEFAULT_INTERVAL", "McpSupervisor"]

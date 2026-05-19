@@ -4,49 +4,16 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from loguru import logger
 
+from ralph.recovery.failure_event import FailureEvent
+from ralph.recovery.fallover_event import FalloverEvent
 
-@dataclass(frozen=True)
-class FailureEvent:
-    """Structured failure event emitted for every classified failure."""
-
-    timestamp: datetime
-    phase: str
-    agent: str | None
-    category: str
-    reason: str
-    counted_against_budget: bool
-    chain_capacity_remaining: int
-    recovery_cycle: int
-    retry_delay_ms: int = 0
-
-
-@dataclass(frozen=True)
-class FalloverEvent:
-    """Emitted when an agent is exhausted and the chain falls over to the next."""
-
-    timestamp: datetime
-    phase: str
-    from_agent: str
-    to_agent: str
-    reason: str
-
-    @classmethod
-    def now(cls, *, phase: str, from_agent: str, to_agent: str, reason: str) -> FalloverEvent:
-        return cls(
-            timestamp=datetime.now(UTC),
-            phase=phase,
-            from_agent=from_agent,
-            to_agent=to_agent,
-            reason=reason,
-        )
-
+__all__ = ["FailureEvent", "FailureEventBus", "FalloverEvent", "UnsubscribeFn"]
 
 UnsubscribeFn = Callable[[], None]
+
 _AnyListener = Callable[[FailureEvent | FalloverEvent], None]
 
 

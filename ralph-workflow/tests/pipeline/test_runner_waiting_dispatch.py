@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 from ralph.display.subscriber import PipelineSubscriber
-from ralph.pipeline.runner import _dispatch_waiting_event
+from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
     from ralph.display.snapshot import PipelineSnapshot
 
@@ -39,17 +41,21 @@ def _make_subscriber(tmp_path: Path) -> PipelineSubscriber:
     return PipelineSubscriber(queue=q, workspace_root=tmp_path, run_id="test-run")
 
 
-def test_dispatch_calls_subscriber_for_all_kinds(tmp_path: Path, monkeypatch) -> None:
+def test_dispatch_calls_subscriber_for_all_kinds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     calls: list[WaitingStatusEvent] = []
     sub = _make_subscriber(tmp_path)
 
-    def _record(event: WaitingStatusEvent, *, unit_id=None, agent_name=None) -> None:
+    def _record(
+        event: WaitingStatusEvent, *, unit_id: object = None, agent_name: object = None
+    ) -> None:
         calls.append(event)
 
     monkeypatch.setattr(sub, "record_waiting_status", _record)
 
     for kind in WaitingStatusKind:
-        _dispatch_waiting_event(
+        dispatch_waiting_event(
             _event(kind),
             subscriber=sub,
             unit_id="test-agent",
@@ -61,7 +67,7 @@ def test_dispatch_calls_subscriber_for_all_kinds(tmp_path: Path, monkeypatch) ->
 
 def test_dispatch_with_none_subscriber_does_not_raise() -> None:
     for kind in WaitingStatusKind:
-        _dispatch_waiting_event(
+        dispatch_waiting_event(
             _event(kind),
             subscriber=None,
             unit_id="test-agent",
@@ -77,7 +83,7 @@ def test_subscriber_exception_does_not_propagate(tmp_path: Path) -> None:
 
     sub.record_waiting_status = _boom
 
-    _dispatch_waiting_event(
+    dispatch_waiting_event(
         _event(WaitingStatusKind.SUSPECTED_FROZEN),
         subscriber=sub,
         unit_id="test-agent",

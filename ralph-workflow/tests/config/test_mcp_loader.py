@@ -14,16 +14,17 @@ import pytest
 from loguru import logger
 
 from ralph.config.mcp_loader import (
-    _bundled_default_mcp_config_path,
-    _global_mcp_config_path,
-    _local_mcp_config_path,
+    bundled_default_mcp_config_path,
+    global_mcp_config_path,
     load_mcp_config,
+    local_mcp_config_path,
 )
 from ralph.config.mcp_models import McpConfig
-from ralph.workspace.scope import WorkspaceScope  # noqa: TC001
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.workspace.scope import WorkspaceScope
 
 
 DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
@@ -47,13 +48,13 @@ class _FakeScope:
 
 
 def test_bundled_default_path_resolves_to_existing_file() -> None:
-    path = _bundled_default_mcp_config_path()
+    path = bundled_default_mcp_config_path()
     assert path.exists(), f"Bundled default mcp.toml not found at {path}"
     assert path.name == "mcp.toml"
 
 
 def test_bundled_default_parses_as_empty_dict() -> None:
-    path = _bundled_default_mcp_config_path()
+    path = bundled_default_mcp_config_path()
     with path.open("rb") as fh:
         data = tomllib.load(fh)
     assert data == {}, "Bundled default must be all comments; no active TOML keys"
@@ -61,7 +62,7 @@ def test_bundled_default_parses_as_empty_dict() -> None:
 
 def test_global_mcp_config_path_default_location(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    path = _global_mcp_config_path()
+    path = global_mcp_config_path()
     assert path.name == "ralph-workflow-mcp.toml"
     assert ".config" in str(path)
 
@@ -70,13 +71,13 @@ def test_global_mcp_config_path_respects_xdg(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    path = _global_mcp_config_path()
+    path = global_mcp_config_path()
     assert path == tmp_path / "ralph-workflow-mcp.toml"
 
 
 def test_local_mcp_config_path(tmp_path: Path) -> None:
     scope = _FakeScope(tmp_path)
-    path = _local_mcp_config_path(cast("WorkspaceScope", scope))
+    path = local_mcp_config_path(cast("WorkspaceScope", scope))
     assert path == tmp_path / ".agent" / "mcp.toml"
 
 

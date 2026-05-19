@@ -6,8 +6,8 @@ from pathlib import Path
 
 from ralph.prompts.payload_refs import (
     MAX_INLINE_PROMPT_BYTES,
-    _sanitize_surrogates,
     build_prompt_payload_variables,
+    sanitize_surrogates,
     write_payload_to_directory,
 )
 
@@ -15,14 +15,14 @@ SURROGATE = "\udca4"  # PEP 383 representation of raw byte 0xA4
 
 
 def test_sanitize_surrogates_removes_lone_surrogate() -> None:
-    sanitized = _sanitize_surrogates(f"prefix {SURROGATE} suffix")
+    sanitized = sanitize_surrogates(f"prefix {SURROGATE} suffix")
     assert SURROGATE not in sanitized
     sanitized.encode("utf-8")  # must not raise
 
 
 def test_sanitize_surrogates_preserves_normal_text() -> None:
     text = "diff --git a/x.py b/x.py\n+hello\n"
-    assert _sanitize_surrogates(text) == text
+    assert sanitize_surrogates(text) == text
 
 
 def test_build_prompt_payload_variables_inlines_surrogate_text(tmp_path: Path) -> None:

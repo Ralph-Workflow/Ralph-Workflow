@@ -15,4 +15,5 @@ Useful pydoc entry points:
 """
 
 __version__ = "0.8.6"
-__all__ = ["__version__"]
+version = __version__
+__all__ = ["__version__", "version"]

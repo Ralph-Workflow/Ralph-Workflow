@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
@@ -13,7 +12,7 @@ EXPECTED_MICRO = 7
 
 
 @pytest.fixture
-def runtime_environment_module() -> Any:
+def runtime_environment_module() -> object:
     try:
         return importlib.import_module("ralph.runtime.environment")
     except ModuleNotFoundError as exc:  # pragma: no cover - red phase only
@@ -21,14 +20,14 @@ def runtime_environment_module() -> Any:
 
 
 @pytest.fixture
-def runtime_module() -> Any:
+def runtime_module() -> object:
     try:
         return importlib.import_module("ralph.runtime")
     except ModuleNotFoundError as exc:  # pragma: no cover - red phase only
         pytest.fail(f"runtime package missing: {exc}")
 
 
-def make_sys(*, prefix: str, base_prefix: str, executable: str = "/usr/bin/python3") -> Any:
+def make_sys(*, prefix: str, base_prefix: str, executable: str = "/usr/bin/python3") -> object:
     return SimpleNamespace(
         version_info=SimpleNamespace(
             major=EXPECTED_MAJOR,
@@ -48,7 +47,7 @@ def make_sys(*, prefix: str, base_prefix: str, executable: str = "/usr/bin/pytho
 
 
 def test_detect_runtime_environment_captures_python_metadata(
-    runtime_environment_module: Any,
+    runtime_environment_module: object,
 ) -> None:
     runtime = runtime_environment_module.detect_runtime_environment(
         env={"HOME": "/tmp/home"},
@@ -63,7 +62,7 @@ def test_detect_runtime_environment_captures_python_metadata(
 
 
 def test_detect_runtime_environment_marks_virtualenv_from_prefixes(
-    runtime_environment_module: Any,
+    runtime_environment_module: object,
 ) -> None:
     runtime = runtime_environment_module.detect_runtime_environment(
         env={},
@@ -75,7 +74,7 @@ def test_detect_runtime_environment_marks_virtualenv_from_prefixes(
 
 
 def test_detect_runtime_environment_prefers_virtual_env_variable(
-    runtime_environment_module: Any,
+    runtime_environment_module: object,
 ) -> None:
     runtime = runtime_environment_module.detect_runtime_environment(
         env={"VIRTUAL_ENV": "/workspace/.venv"},
@@ -87,7 +86,7 @@ def test_detect_runtime_environment_prefers_virtual_env_variable(
 
 
 def test_detect_runtime_environment_reports_non_virtualenv(
-    runtime_environment_module: Any,
+    runtime_environment_module: object,
 ) -> None:
     runtime = runtime_environment_module.detect_runtime_environment(
         env={},
@@ -98,7 +97,7 @@ def test_detect_runtime_environment_reports_non_virtualenv(
     assert runtime.virtualenv_path is None
 
 
-def test_runtime_package_re_exports_environment_api(runtime_module: Any) -> None:
+def test_runtime_package_re_exports_environment_api(runtime_module: object) -> None:
     assert "RuntimeEnvironment" in runtime_module.__all__
     assert "PythonVersionInfo" in runtime_module.__all__
     assert hasattr(runtime_module, "detect_runtime_environment")

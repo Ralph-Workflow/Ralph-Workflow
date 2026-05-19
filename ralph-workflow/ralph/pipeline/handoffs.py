@@ -8,10 +8,11 @@ policy data loaded at the composition root.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.pipeline import progress
+from ralph.pipeline.exhausted_analysis_bypass_result import ExhaustedAnalysisBypassResult
+from ralph.pipeline.exhausted_analysis_skip import ExhaustedAnalysisSkip
 from ralph.policy.models import PhaseLoopPolicy
 
 if TYPE_CHECKING:
@@ -20,24 +21,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
 
-@dataclass(frozen=True)
-class ExhaustedAnalysisSkip:
-    """Details for a single exhausted analysis phase that was bypassed."""
-
-    phase: PipelinePhase
-    target_phase: PipelinePhase
-    iteration_field: str
-    iteration_value: int
-    max_iterations: int
-
-
-@dataclass(frozen=True)
-class ExhaustedAnalysisBypassResult:
-    """Resolved exhausted-analysis bypass outcome for a phase handoff."""
-
-    state: PipelineState
-    target_phase: PipelinePhase
-    skipped: tuple[ExhaustedAnalysisSkip, ...] = ()
+Handoff = ExhaustedAnalysisBypassResult
 
 
 def resolve_phase_drain(
@@ -212,3 +196,14 @@ def _compute_budget_state(state: PipelineState, pipeline_policy: PipelinePolicy)
             return "exhausted"
 
     return "no_review"
+
+
+__all__ = [
+    "ExhaustedAnalysisBypassResult",
+    "ExhaustedAnalysisSkip",
+    "Handoff",
+    "resolve_exhausted_analysis_bypass",
+    "resolve_next_phase",
+    "resolve_phase_drain",
+    "resolve_post_commit_phase",
+]

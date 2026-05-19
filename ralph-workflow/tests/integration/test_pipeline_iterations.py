@@ -26,7 +26,7 @@ from ralph.pipeline.events import AnalysisDecisionEvent, PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
-from tests.integration.test_pipeline_happy_path import MockAgentInvoker
+from tests.integration.test_pipeline_happy_path_pipeline_happy_path import MockAgentInvoker
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -104,7 +104,7 @@ class DevelopmentAnalysisAlwaysLoopbackInvoker(MockAgentInvoker):
 
 
 @lru_cache(maxsize=1)
-def _default_policy_bundle():
+def _default_policy_bundle() -> object:
     return load_policy(DEFAULT_POLICY_DIR)
 
 
@@ -112,7 +112,7 @@ def _config() -> UnifiedConfig:
     return UnifiedConfig()
 
 
-def _run_pipeline(  # noqa: PLR0913
+def _run_pipeline(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     mock_agent_invoker: MockAgentInvoker,
@@ -123,7 +123,11 @@ def _run_pipeline(  # noqa: PLR0913
     saved_states: list[PipelineState] = []
     policy_bundle = _default_policy_bundle()
 
-    def fake_execute_effect(effect, _config, _workspace_scope):
+    def fake_execute_effect(
+        effect: object,
+        _config: object,
+        _workspace_scope: object,
+    ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             mock_agent_invoker.invoke(effect.agent_name, effect.phase)
             return PipelineEvent.AGENT_SUCCESS
@@ -135,7 +139,11 @@ def _run_pipeline(  # noqa: PLR0913
         msg = f"Unexpected effect type: {type(effect)!r}"
         raise AssertionError(msg)
 
-    def fake_phase_event_after_agent_run(*, effect, **_kwargs):
+    def fake_phase_event_after_agent_run(
+        *,
+        effect: InvokeAgentEffect,
+        **_kwargs: object,
+    ) -> AnalysisDecisionEvent | PipelineEvent:
         analysis_event_for = getattr(mock_agent_invoker, "analysis_event_for", None)
         analysis_phases = {"planning_analysis", "development_analysis"}
         if callable(analysis_event_for) and effect.phase in analysis_phases:
@@ -147,9 +155,9 @@ def _run_pipeline(  # noqa: PLR0913
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "_materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_execute_effect", fake_execute_effect)
-    monkeypatch.setattr(runner, "_phase_event_after_agent_run", fake_phase_event_after_agent_run)
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner, "phase_event_after_agent_run", fake_phase_event_after_agent_run)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)
 
@@ -304,9 +312,14 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
     (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted planning analysis.")
 
     planning_analysis_calls = 0
-    original_determine = runner._call_determine_effect_from_policy
+    original_determine = runner.call_determine_effect_from_policy
 
-    def stop_at_development(state, bundle, workspace_scope, config):
+    def stop_at_development(
+        state: PipelineState,
+        bundle: object,
+        workspace_scope: object,
+        config: UnifiedConfig,
+    ) -> object:
         if state.phase == "development":
             return ExitSuccessEffect()
         return original_determine(state, bundle, workspace_scope, config)
@@ -316,7 +329,12 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload))
 
-    def fake_execute_effect(effect, _config, _workspace_scope, **_kwargs):
+    def fake_execute_effect(
+        effect: object,
+        _config: object,
+        _workspace_scope: object,
+        **_kwargs: object,
+    ) -> PipelineEvent:
         nonlocal planning_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "planning":
@@ -378,10 +396,10 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "_materialize_prepared_prompt", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_execute_effect", fake_execute_effect)
-    monkeypatch.setattr(runner, "_call_determine_effect_from_policy", stop_at_development)
+    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner, "call_determine_effect_from_policy", stop_at_development)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)
 
@@ -524,9 +542,14 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
     )
 
     development_analysis_calls = 0
-    original_determine = runner._call_determine_effect_from_policy
+    original_determine = runner.call_determine_effect_from_policy
 
-    def stop_at_development_commit(state, bundle, workspace_scope, config):
+    def stop_at_development_commit(
+        state: PipelineState,
+        bundle: object,
+        workspace_scope: object,
+        config: UnifiedConfig,
+    ) -> object:
         if state.phase == "development_commit":
             return ExitSuccessEffect()
         return original_determine(state, bundle, workspace_scope, config)
@@ -536,7 +559,12 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload))
 
-    def fake_execute_effect(effect, _config, _workspace_scope, **_kwargs):
+    def fake_execute_effect(
+        effect: object,
+        _config: object,
+        _workspace_scope: object,
+        **_kwargs: object,
+    ) -> PipelineEvent:
         nonlocal development_analysis_calls
         if isinstance(effect, InvokeAgentEffect):
             if effect.phase == "development":
@@ -582,10 +610,10 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
 
     monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner, "_materialize_prepared_prompt", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
-    monkeypatch.setattr(runner, "_execute_effect", fake_execute_effect)
-    monkeypatch.setattr(runner, "_call_determine_effect_from_policy", stop_at_development_commit)
+    monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner, "call_determine_effect_from_policy", stop_at_development_commit)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)
 

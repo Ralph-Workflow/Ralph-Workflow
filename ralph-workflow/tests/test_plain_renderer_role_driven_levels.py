@@ -9,7 +9,7 @@ from typing import Any
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.plain_renderer import PlainLogRenderer
+from ralph.display.plain_renderer import PhaseCloseOptions, PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import UNICODE_GLYPHS
 
@@ -20,7 +20,7 @@ def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
-def _make_snapshot(**kwargs: Any) -> PipelineSnapshot:
+def _make_snapshot(**kwargs: object) -> PipelineSnapshot:
     defaults: dict[str, Any] = {
         "phase": "design",
         "previous_phase": None,
@@ -122,7 +122,9 @@ def test_warn_level_when_interrupted_by_user() -> None:
 def test_phase_close_milestone_glyph_for_review_role_renamed() -> None:
     """emit_phase_close with phase_role='review' produces a milestone glyph prefix."""
     renderer, buf = _make_renderer()
-    renderer.emit_phase_close("audit", "audit: done", phase_role="review")
+    renderer.emit_phase_close(
+        "audit", "audit: done", options=PhaseCloseOptions(phase_role="review")
+    )
     out = buf.getvalue()
     milestone_glyph = UNICODE_GLYPHS["milestone"]
     assert milestone_glyph in out
@@ -132,7 +134,9 @@ def test_phase_close_milestone_glyph_for_review_role_renamed() -> None:
 def test_phase_close_no_milestone_glyph_for_analysis_role() -> None:
     """emit_phase_close with phase_role='analysis' produces no milestone glyph."""
     renderer, buf = _make_renderer()
-    renderer.emit_phase_close("audit", "audit: done", phase_role="analysis")
+    renderer.emit_phase_close(
+        "audit", "audit: done", options=PhaseCloseOptions(phase_role="analysis")
+    )
     out = buf.getvalue()
     milestone_glyph = UNICODE_GLYPHS["milestone"]
     assert milestone_glyph not in out

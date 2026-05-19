@@ -1,432 +1,100 @@
-"""Pydantic v2 models for ralph configuration.
-
-This module contains all configuration models that mirror the UnifiedConfig
-structure from the Rust implementation.
-"""
+"""Pydantic v2 models for Ralph configuration."""
 
 from __future__ import annotations
 
-import pathlib
-
 from pydantic import ConfigDict, Field, model_validator
 
-from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.pydantic_compat import RalphBaseModel
-from ralph.timeout_defaults import (
-    CHILD_EXIT_RECONCILE_SECONDS,
-    CHILD_HEARTBEAT_TTL_SECONDS,
-    CHILD_PROGRESS_TTL_SECONDS,
-    CHILD_STALE_LABEL_TTL_SECONDS,
-    DESCENDANT_WAIT_POLL_SECONDS,
-    DESCENDANT_WAIT_TIMEOUT_SECONDS,
-    DRAIN_WINDOW_SECONDS,
-    IDLE_POLL_INTERVAL_SECONDS,
-    IDLE_TIMEOUT_SECONDS,
-    MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
-    MAX_WAITING_ON_CHILD_SECONDS,
-    PARENT_EXIT_GRACE_SECONDS,
-    PROCESS_EXIT_WAIT_SECONDS,
-    SUSPECT_WAITING_ON_CHILD_SECONDS,
-    WAITING_STATUS_INTERVAL_SECONDS,
-)
 
-PATH_RUNTIME_CLASS = pathlib.Path
+from .agent_config import AgentConfig
+from .ccs_config import CcsAliasConfig, CcsConfig
+from .general_config import GeneralConfig
 
 
-class _FrozenConfigModel(RalphBaseModel):
-    """Private base for frozen configuration models.
+def _normalize_chain_value(value: object) -> AgentChainConfig:
+    if isinstance(value, AgentChainConfig):
+        return value
+    if isinstance(value, list):
+        return AgentChainConfig(agents=value)
+    if isinstance(value, dict):
+        return AgentChainConfig(
+            agents=value.get("agents", []),
+            max_retries=value.get("max_retries", 3),
+            retry_delay_ms=value.get("retry_delay_ms", 1000),
+        )
+    return AgentChainConfig(agents=[str(value)])
 
-    Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
-    repeat it. Pydantic v2 inherits ``model_config`` when descendants do not
-    declare one of their own.
-    """
+
+def _normalize_drain_value(value: object) -> AgentDrainConfig:
+    if isinstance(value, str):
+        return AgentDrainConfig(chain=value)
+    if isinstance(value, dict):
+        return AgentDrainConfig(
+            chain=value.get("chain", ""),
+            drain_class=value.get("drain_class"),
+            capability_class=value.get("capability_class"),
+        )
+    return AgentDrainConfig(chain=str(value))
+
+
+class UnifiedConfig(RalphBaseModel):
+    """Top-level merged configuration (global + local + CLI overrides)."""
 
     model_config = ConfigDict(frozen=True)
-
-
-class AgentConfig(_FrozenConfigModel):
-    """Configuration for a single AI agent.
-
-    Attributes:
-        cmd: Base command to run the agent.
-        output_flag: Optional output format flag for streaming JSON.
-        yolo_flag: Optional autonomous/non-interactive flag string.
-        verbose_flag: Flag for verbose output.
-        can_commit: Whether the agent can run git commit.
-        json_parser: Which JSON parser to use for agent output.
-        model_flag: Optional model/provider flag.
-        print_flag: Optional print flag for non-interactive output mode.
-        streaming_flag: Optional streaming flag for partial JSON messages.
-        session_flag: Optional session continuation flag template.
-        display_name: Human-readable display name for UI/UX.
-        transport: Invocation/MCP transport type for the agent runtime.
-    """
-
-    cmd: str
-    output_flag: str | None = None
-    yolo_flag: str | None = None
-    verbose_flag: str | None = None
-    can_commit: bool = False
-    json_parser: JsonParserType = JsonParserType.GENERIC
-    model_flag: str | None = None
-    print_flag: str | None = None
-    streaming_flag: str | None = None
-    session_flag: str | None = None
-    display_name: str | None = None
-    transport: AgentTransport | None = None
-
-    def model_post_init(self, _context: object) -> None:
-        if self.transport is not None:
-            return
-
-        parser_to_transport = {
-            JsonParserType.CLAUDE: AgentTransport.CLAUDE,
-            JsonParserType.CODEX: AgentTransport.CODEX,
-            JsonParserType.OPENCODE: AgentTransport.OPENCODE,
-        }
-        command_to_transport = {
-            "claude": AgentTransport.CLAUDE_INTERACTIVE,
-            "codex": AgentTransport.CODEX,
-            "opencode": AgentTransport.OPENCODE,
-        }
-        command_name = self.cmd.split()[0] if self.cmd else ""
-        inferred_transport = parser_to_transport.get(
-            self.json_parser,
-            command_to_transport.get(command_name, AgentTransport.GENERIC),
-        )
-        object.__setattr__(self, "transport", inferred_transport)
-
-
-class GeneralWorkflowFlags(_FrozenConfigModel):
-    """General configuration workflow automation flags.
-
-    Attributes:
-        checkpoint_enabled: Enable checkpoint/resume functionality.
-    """
-
-    checkpoint_enabled: bool = True
-
-
-class GeneralConfig(_FrozenConfigModel):
-    """[general] section of ralph-workflow.toml.
-
-    Attributes:
-        verbosity: Verbosity level (0-4).
-        workflow: Workflow automation flags (checkpoint).
-        developer_iters: Number of developer iterations.
-        developer_context: Developer context level.
-        prompt_path: Path to save last prompt.
-        templates_dir: User templates directory for custom template overrides.
-        git_user_name: Git user name for commits.
-        git_user_email: Git user email for commits.
-        provider_fallback: Provider/model fallbacks keyed by agent name.
-        max_same_agent_retries: Maximum same-agent retry attempts.
-        max_commit_residual_retries: Maximum additional residual commit retries.
-        max_retries: Maximum retries per agent.
-        retry_delay_ms: Base delay between agent retries in milliseconds.
-        backoff_multiplier: Multiplier for exponential retry backoff.
-        max_backoff_ms: Maximum retry backoff delay in milliseconds.
-        max_cycles: Maximum number of full fallback cycles through a drain.
-        execution_history_limit: Maximum execution history entries to keep in memory.
-        agent_idle_timeout_seconds: Maximum idle seconds before killing a stalled agent process.
-        agent_idle_drain_window_seconds: Drain window duration after idle deadline before firing.
-        agent_idle_max_waiting_on_child_seconds: Hard ceiling on cumulative
-            WAITING_ON_CHILD deferral time.
-        agent_idle_poll_interval_seconds: How often the read loop polls for new
-            output lines from the agent subprocess.
-        agent_parent_exit_grace_seconds: Grace window after parent exits normally
-            during which late completion signals or children are awaited.
-        agent_descendant_wait_timeout_seconds: Maximum time to wait for descendant
-            processes to finish after the parent exits.
-        agent_process_exit_wait_seconds: Maximum time to wait for the subprocess to
-            exit after its stdout closes. Prevents hangs on subprocesses that close
-            stdout but never call exit().
-        agent_max_session_seconds: Absolute wall-clock ceiling for the entire agent
-            session. Activity cannot reset this ceiling. When set, must be greater
-            than agent_idle_timeout_seconds.
-        agent_waiting_status_interval_seconds: How often a periodic status update is
-            emitted while WAITING_ON_CHILD deferral is active. Controls only emission
-            cadence; does NOT affect timeout safety or ceiling math.
-        agent_suspect_waiting_on_child_seconds: Cumulative WAITING_ON_CHILD time after
-            which a 'suspected frozen' warning is emitted. Purely informational; does
-            NOT shorten the hard-stop ceiling. Must be less than
-            agent_idle_max_waiting_on_child_seconds when set. None disables suspicion.
-    """
-
-    verbosity: int = 2
-    workflow: GeneralWorkflowFlags = Field(default_factory=GeneralWorkflowFlags)
-    developer_iters: int = Field(default=5, ge=1)
-    developer_context: int = Field(default=1, ge=1)
-    prompt_path: pathlib.Path | None = None
-    templates_dir: pathlib.Path | None = None
-    git_user_name: str | None = None
-    git_user_email: str | None = None
-    provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
-    max_same_agent_retries: int = Field(default=2, ge=0)
-    max_commit_residual_retries: int = Field(default=10, ge=0)
-    max_retries: int = Field(default=3, ge=0)
-    retry_delay_ms: int = Field(default=1000, ge=0)
-    backoff_multiplier: float = Field(default=2.0, ge=1.0)
-    max_backoff_ms: int = Field(default=60000, ge=0)
-    max_cycles: int = Field(default=3, ge=1)
-    execution_history_limit: int = Field(default=1000, ge=1)
-    agent_idle_timeout_seconds: float = Field(
-        default=IDLE_TIMEOUT_SECONDS,
-        gt=0.0,
-        description=(
-            "Maximum seconds of no-output idle time allowed during an agent"
-            " invocation before the process is killed."
-        ),
-    )
-    agent_idle_drain_window_seconds: float = Field(
-        default=DRAIN_WINDOW_SECONDS,
-        ge=0.0,
-        description=(
-            "Drain window duration in seconds after idle deadline before firing."
-            " Allows late output to flush before the timeout is declared."
-        ),
-    )
-    agent_idle_max_waiting_on_child_seconds: float = Field(
-        default=MAX_WAITING_ON_CHILD_SECONDS,
-        gt=0.0,
-        description=(
-            "Hard ceiling on cumulative WAITING_ON_CHILD deferral time in seconds."
-            " Prevents indefinite deferral when children oscillate with active state."
-        ),
-    )
-    agent_idle_poll_interval_seconds: float = Field(
-        default=IDLE_POLL_INTERVAL_SECONDS,
-        gt=0.0,
-        description="How often the read loop polls for new output lines in seconds.",
-    )
-    agent_parent_exit_grace_seconds: float = Field(
-        default=PARENT_EXIT_GRACE_SECONDS,
-        ge=0.0,
-        description=(
-            "Grace window in seconds after parent process exits normally,"
-            " during which late completion signals or appearing children are awaited."
-        ),
-    )
-    agent_descendant_wait_timeout_seconds: float = Field(
-        default=DESCENDANT_WAIT_TIMEOUT_SECONDS,
-        ge=0.0,
-        description=(
-            "Maximum time in seconds to wait for descendant processes to finish"
-            " after the parent process exits."
-        ),
-    )
-    agent_descendant_wait_poll_seconds: float = Field(
-        default=DESCENDANT_WAIT_POLL_SECONDS,
-        gt=0.0,
-        description=(
-            "Poll interval in seconds for descendant-wait and process-exit-wait loops."
-            " Values < 0.01s are intended for tests only."
-        ),
-    )
-    agent_process_exit_wait_seconds: float = Field(
-        default=PROCESS_EXIT_WAIT_SECONDS,
-        ge=0.0,
-        description=(
-            "Maximum time in seconds to wait for the subprocess to exit after its"
-            " stdout closes. Prevents hangs on subprocesses that close stdout but"
-            " never call exit()."
-        ),
-    )
-    agent_max_session_seconds: float | None = Field(
-        default=None,
-        gt=0.0,
-        description=(
-            "Absolute wall-clock ceiling in seconds for the entire agent session."
-            " Activity cannot reset this ceiling. Must be >= agent_idle_timeout_seconds"
-            " when set."
-        ),
-    )
-    agent_waiting_status_interval_seconds: float = Field(
-        default=WAITING_STATUS_INTERVAL_SECONDS,
-        gt=0.0,
-        description=(
-            "How often in seconds a periodic PROGRESS status update is emitted while"
-            " WAITING_ON_CHILD deferral is active. Controls only emission cadence;"
-            " does NOT affect timeout safety or ceiling math."
-        ),
-    )
-    agent_suspect_waiting_on_child_seconds: float | None = Field(
-        default=SUSPECT_WAITING_ON_CHILD_SECONDS,
-        gt=0.0,
-        description=(
-            "Cumulative WAITING_ON_CHILD time in seconds after which a 'suspected"
-            " frozen' warning is emitted. Purely informational; does NOT shorten the"
-            " hard-stop ceiling. Must be strictly less than"
-            " agent_idle_max_waiting_on_child_seconds when set."
-        ),
-    )
-    agent_idle_no_progress_waiting_on_child_seconds: float | None = Field(
-        default=MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
-        gt=0.0,
-        description=(
-            "Hard ceiling on cumulative WAITING_ON_CHILD time when corroboration shows"
-            " the child is alive but not making progress (heartbeat-only, stale-label,"
-            " or OS-descendant-only evidence). Must be <= agent_idle_max_waiting_on_child_seconds."
-            " When None, the no-progress ceiling is disabled."
-        ),
-    )
-    agent_child_progress_ttl_seconds: float = Field(
-        default=CHILD_PROGRESS_TTL_SECONDS,
-        gt=0.0,
-        description=(
-            "Maximum seconds since last child progress signal"
-            " before the child is treated as not-progressing."
-        ),
-    )
-    agent_child_heartbeat_ttl_seconds: float = Field(
-        default=CHILD_HEARTBEAT_TTL_SECONDS,
-        gt=0.0,
-        description="Maximum seconds since last child heartbeat before heartbeat is stale.",
-    )
-    agent_child_stale_label_ttl_seconds: float = Field(
-        default=CHILD_STALE_LABEL_TTL_SECONDS,
-        gt=0.0,
-        description=(
-            "Grace period during which a child label may persist"
-            " after the underlying child evidence has gone stale."
-        ),
-    )
-    agent_child_exit_reconcile_seconds: float = Field(
-        default=CHILD_EXIT_RECONCILE_SECONDS,
-        ge=0.0,
-        description=(
-            "Reconciliation window after stdout EOF during which"
-            " late terminal acks are still accepted."
-        ),
-    )
-
-    @model_validator(mode="after")
-    def _validate_session_ceiling(self) -> GeneralConfig:
-        if (
-            self.agent_max_session_seconds is not None
-            and self.agent_max_session_seconds < self.agent_idle_timeout_seconds
-        ):
-            msg = (
-                "agent_max_session_seconds must be >= agent_idle_timeout_seconds"
-                f" (got {self.agent_max_session_seconds} < {self.agent_idle_timeout_seconds})"
-            )
-            raise ValueError(msg)
-        if (
-            self.agent_suspect_waiting_on_child_seconds is not None
-            and self.agent_suspect_waiting_on_child_seconds
-            >= self.agent_idle_max_waiting_on_child_seconds
-        ):
-            msg = (
-                "agent_suspect_waiting_on_child_seconds must be strictly less than"
-                " agent_idle_max_waiting_on_child_seconds"
-                f" (got {self.agent_suspect_waiting_on_child_seconds}"
-                f" >= {self.agent_idle_max_waiting_on_child_seconds})"
-            )
-            raise ValueError(msg)
-        if self.agent_child_heartbeat_ttl_seconds > self.agent_child_progress_ttl_seconds:
-            msg = (
-                "agent_child_heartbeat_ttl_seconds must be <= agent_child_progress_ttl_seconds"
-                f" (got {self.agent_child_heartbeat_ttl_seconds}"
-                f" > {self.agent_child_progress_ttl_seconds})"
-            )
-            raise ValueError(msg)
-        if self.agent_child_stale_label_ttl_seconds > self.agent_child_progress_ttl_seconds:
-            msg = (
-                "agent_child_stale_label_ttl_seconds must be <= agent_child_progress_ttl_seconds"
-                f" (got {self.agent_child_stale_label_ttl_seconds}"
-                f" > {self.agent_child_progress_ttl_seconds})"
-            )
-            raise ValueError(msg)
-        if (
-            self.agent_idle_no_progress_waiting_on_child_seconds is not None
-            and self.agent_idle_no_progress_waiting_on_child_seconds
-            > self.agent_idle_max_waiting_on_child_seconds
-        ):
-            msg = (
-                "agent_idle_no_progress_waiting_on_child_seconds must be <="
-                " agent_idle_max_waiting_on_child_seconds"
-                f" (got {self.agent_idle_no_progress_waiting_on_child_seconds}"
-                f" > {self.agent_idle_max_waiting_on_child_seconds})"
-            )
-            raise ValueError(msg)
-        return self
-
-
-class CcsConfig(_FrozenConfigModel):
-    """Headless-by-design Claude Code Switch (CCS) defaults.
-
-    CCS aliases explicitly run Claude in non-interactive streaming mode
-    (``--print --output-format=stream-json``). That is the intended explicit
-    headless Claude path for users who configure ``[ccs_aliases]``. The built-in
-    ``claude`` agent runs in interactive mode by default.
-
-    Attributes:
-        output_flag: Output-format flag for CCS aliases.
-        yolo_flag: Default autonomous/non-interactive flag for CCS aliases.
-        verbose_flag: Flag for verbose output.
-        print_flag: Print flag for non-interactive mode.
-        streaming_flag: Streaming flag for JSON output with -p.
-        json_parser: Which JSON parser to use for CCS output.
-        session_flag: Session continuation flag template.
-        can_commit: Whether CCS can run workflow tools.
-    """
-
-    output_flag: str = "--output-format=stream-json"
-    yolo_flag: str = "--permission-mode auto"
-    verbose_flag: str = "--verbose"
-    print_flag: str = "--print"
-    streaming_flag: str = "--include-partial-messages"
-    json_parser: str = "claude"
-    session_flag: str = "--resume {}"
-    can_commit: bool = True
-
-
-class CcsAliasConfig(_FrozenConfigModel):
-    """Per-alias CCS configuration (table form).
-
-    Attributes:
-        cmd: Base CCS command to run.
-        output_flag: Optional output flag override.
-        yolo_flag: Optional yolo flag override.
-        verbose_flag: Optional verbose flag override.
-        print_flag: Optional print flag override.
-        streaming_flag: Optional streaming flag override.
-        json_parser: Optional JSON parser override.
-        can_commit: Optional can_commit override.
-        model_flag: Optional model flag appended to the command.
-        session_flag: Optional session continuation flag.
-    """
-
-    cmd: str
-    output_flag: str | None = None
-    yolo_flag: str | None = None
-    verbose_flag: str | None = None
-    print_flag: str | None = None
-    streaming_flag: str | None = None
-    json_parser: str | None = None
-    can_commit: bool | None = None
-    model_flag: str | None = None
-    session_flag: str | None = None
-
-
-class UnifiedConfig(_FrozenConfigModel):
-    """Top-level merged configuration (global + local + CLI overrides).
-
-    This is the sole source of truth for Ralph configuration,
-    located at `~/.config/ralph-workflow.toml` or `.agent/ralph-workflow.toml`.
-
-    Attributes:
-        general: General settings.
-        ccs: CCS defaults for aliases.
-        agents: Agent definitions.
-        ccs_aliases: CCS alias mappings.
-        agent_chains: Named reusable chain definitions.
-        agent_drains: Drain-to-chain bindings for built-in drains.
-    """
 
     general: GeneralConfig = Field(default_factory=GeneralConfig)
     ccs: CcsConfig = Field(default_factory=CcsConfig)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
-    agent_chains: dict[str, list[str]] = Field(default_factory=dict)
-    agent_drains: dict[str, str] = Field(default_factory=dict)
+    agent_chains: dict[str, AgentChainConfig] = Field(default_factory=dict)
+    agent_drains: dict[str, AgentDrainConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_agent_chains_and_drains(cls, data: object) -> object:
+        """Accept both flat format (list[str]/str) and rich format for backward compat."""
+        if not isinstance(data, dict):
+            return data
+
+        normalized_data: dict[str, object] = {
+            name: value for name, value in data.items() if isinstance(name, str)
+        }
+
+        chains = normalized_data.get("agent_chains")
+        if isinstance(chains, dict):
+            normalized_chains: dict[str, object] = {}
+            for name, value in chains.items():
+                if not isinstance(name, str):
+                    continue
+                normalized_chains[name] = _normalize_chain_value(value)
+            normalized_data["agent_chains"] = normalized_chains
+
+        drains = normalized_data.get("agent_drains")
+        if isinstance(drains, dict):
+            normalized_drains: dict[str, object] = {}
+            for name, value in drains.items():
+                if not isinstance(name, str):
+                    continue
+                normalized_drains[name] = _normalize_drain_value(value)
+            normalized_data["agent_drains"] = normalized_drains
+
+        return normalized_data
+
+    @model_validator(mode="after")
+    def _validate_drain_references(self) -> UnifiedConfig:
+        """Ensure every drain references an existing chain."""
+        for drain_name, drain_cfg in self.agent_drains.items():
+            if drain_cfg.chain not in self.agent_chains:
+                raise ValueError(
+                    f"Drain '{drain_name}' references unknown chain '{drain_cfg.chain}'"
+                )
+        return self
+
+
+__all__ = [
+    "AgentConfig",
+    "CcsConfig",
+    "GeneralConfig",
+    "UnifiedConfig",
+]

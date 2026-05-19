@@ -9,10 +9,10 @@ from pathlib import Path
 from ralph.pipeline.state import AgentChainState, FalloverRecord, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 
-def _minimal_policy_bundle():
+def _minimal_policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
 
@@ -63,7 +63,7 @@ def test_fallover_history_preserved_in_state() -> None:
 def test_recovery_cycle_count_preserved() -> None:
     """Recovery cycle count is preserved in state."""
     state = _make_state_with_recovery_context(recovery_cycle_count=3)
-    assert state.recovery_cycle_count == 3  # noqa: PLR2004
+    assert state.recovery_cycle_count == 3
 
 
 def test_last_failure_category_preserved() -> None:
@@ -128,14 +128,16 @@ def test_controller_budget_registry_seed_from_checkpoint() -> None:
         type("FakeFailure", (), {"counts_against_budget": True})(),
     )
 
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     _make_state_with_recovery_context(recovery_cycle_count=1)
 
     # Verify budget state reflects checkpoint
     budget = controller.budget_registry.get("development", "claude")
     assert budget is not None
     assert budget.consumed == 1
-    assert budget.remaining == 2  # noqa: PLR2004
+    assert budget.remaining == 2
 
 
 def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
@@ -148,7 +150,9 @@ def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
     """
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
-        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        options=RecoveryControllerOptions(
+            cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        )
     )
     state = _make_state(["claude"])  # Single agent chain
 
@@ -161,8 +165,7 @@ def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Chain exhausted with no next agent -> enters "failed"
@@ -181,7 +184,9 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
     recovery_cycle_count does NOT increment yet (chain not fully exhausted).
     """
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(["claude", "opencode"])  # Two-agent chain
 
     class _AgentTimeoutError(Exception):
@@ -193,8 +198,7 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Phase still DEVELOPMENT (not failed) - fallover happened
@@ -212,7 +216,9 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
 def test_checkpoint_round_trip_after_partial_recovery() -> None:
     """Mid-recovery checkpoint round-trip preserves fallover_history and cycle count."""
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(["claude", "opencode"])
 
     class _AgentTimeoutError(Exception):
@@ -224,8 +230,7 @@ def test_checkpoint_round_trip_after_partial_recovery() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Simulate saving checkpoint mid-recovery
@@ -251,7 +256,7 @@ def test_last_failure_category_round_trip() -> None:
     restored = PipelineState.model_validate_json(json_data)
 
     assert restored.last_failure_category == "ambiguous"
-    assert restored.recovery_cycle_count == 2  # noqa: PLR2004
+    assert restored.recovery_cycle_count == 2
 
 
 def test_checkpoint_round_trip_normalizes_over_cap_recovery_context() -> None:
@@ -285,7 +290,7 @@ def test_checkpoint_round_trip_normalizes_over_cap_recovery_context() -> None:
 
     restored = PipelineState.model_validate_json(state.model_dump_json())
 
-    assert restored.recovery_cycle_count == 3  # noqa: PLR2004
+    assert restored.recovery_cycle_count == 3
     assert [record.from_agent for record in restored.fallover_history] == ["a2", "a3"]
     assert restored.last_failure_category == "agent"
 
@@ -321,5 +326,5 @@ def test_mid_recovery_copy_with_normalizes_when_cycle_cap_shrinks() -> None:
 
     restored = state.copy_with(recovery_cycle_cap=2)
 
-    assert restored.recovery_cycle_count == 2  # noqa: PLR2004
+    assert restored.recovery_cycle_count == 2
     assert [record.from_agent for record in restored.fallover_history] == ["a2", "a3"]

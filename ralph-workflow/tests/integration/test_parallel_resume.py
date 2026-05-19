@@ -2,19 +2,22 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+from ralph.pipeline import checkpoint as ckpt
+from ralph.pipeline import fan_out as _fan_out_module
 from ralph.pipeline.effects import FanOutEffect
-from ralph.pipeline.runner import _execute_fan_out_sync
+from ralph.pipeline.fan_out import execute_fan_out_sync
+from ralph.pipeline.parallel.coordinator import WorkerContext
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
-from ralph.policy.models import AgentChainConfig, AgentDrainConfig, PhaseParallelization
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pytest
 
 
@@ -55,6 +58,34 @@ def _seed_worker_artifact(worker_namespace_root: Path, unit_id: str) -> None:
     )
 
 
+def _setup_patches(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fake_executor: FakeAgentExecutor,
+    artifact_unit_ids: set[str],
+) -> None:
+    workers_root = tmp_path / ".agent" / "workers"
+    for uid in artifact_unit_ids:
+        _seed_worker_artifact(workers_root, uid)
+    monkeypatch.setattr(
+        _fan_out_module,
+        "_build_session_mcp_plan_for_phase",
+        lambda **kwargs: (MagicMock(), "development"),
+    )
+
+    def _fake_worker_context(**kwargs: object) -> tuple[object, object]:
+        return fake_executor, WorkerContext(same_workspace=None)
+
+    monkeypatch.setattr(_fan_out_module, "_fan_out_worker_context", _fake_worker_context)
+    monkeypatch.setattr(ckpt, "save", lambda state: None)
+
+
+def _make_mock_policy_bundle() -> MagicMock:
+    bundle = MagicMock()
+    bundle.pipeline.recovery.failed_route = "failed_terminal"
+    return bundle
+
+
 class _FakeDisplay:
     def emit(self, unit_id: str | None, line: str) -> None:
         pass
@@ -69,63 +100,11 @@ class _FakeDisplay:
         pass
 
 
-def _make_mock_policy_bundle() -> MagicMock:
-    bundle = MagicMock()
-    para = PhaseParallelization(max_parallel_workers=8, post_fanout_verification=False)
-    dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
-    dev_phase.parallelization = para
-    bundle.pipeline.phases = {"development": dev_phase}
-    bundle.agents.agent_drains = {
-        "development": AgentDrainConfig(chain="default", drain_class="development"),
-    }
-    bundle.agents.agent_chains = {
-        "default": AgentChainConfig(agents=["default"]),
-    }
-    return bundle
-
-
-def _setup_patches(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Any,
-    fake_executor: FakeAgentExecutor,
-    *,
-    artifact_unit_ids: set[str] | None = None,
-) -> None:
-    monkeypatch.setattr(
-        "ralph.agents.subprocess_executor.SubprocessAgentExecutor",
-        lambda *args, **kwargs: fake_executor,
-    )
-    monkeypatch.setattr(
-        "ralph.display.parallel_display.ParallelDisplay",
-        _FakeDisplay,
-    )
-    monkeypatch.setattr(
-        "ralph.pipeline.checkpoint.save",
-        lambda _state: None,
-    )
-    monkeypatch.setattr(
-        "ralph.git.executor.GitExecutor",
-        MagicMock,
-    )
-    monkeypatch.setattr(
-        "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory",
-        lambda *args, **kwargs: MagicMock(),
-    )
-
-    # Pre-seed worker-local artifacts for units that should succeed.
-    # The coordinator checks for artifacts in .agent/workers/<unit_id>/artifacts/
-    # after each worker run. Pre-seeding ensures the check passes.
-    worker_namespace_root = Path(tmp_path) / ".agent" / "workers"
-    if artifact_unit_ids is not None:
-        for uid in artifact_unit_ids:
-            _seed_worker_artifact(worker_namespace_root, uid)
-
-
 class TestParallelResume:
     def test_resume_skips_succeeded_workers(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Any,
+        tmp_path: Path,
     ) -> None:
         units = tuple(_make_work_unit(f"unit-{i}") for i in range(5))
         worker_states = {
@@ -152,7 +131,7 @@ class TestParallelResume:
             artifact_unit_ids={"unit-2", "unit-3", "unit-4"},
         )
 
-        _execute_fan_out_sync(
+        execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_FakeDisplay(),
@@ -173,7 +152,7 @@ class TestParallelResume:
     def test_resume_resets_running_to_pending(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Any,
+        tmp_path: Path,
     ) -> None:
         units = tuple(_make_work_unit(f"unit-{i}") for i in range(3))
         worker_states = {
@@ -198,7 +177,7 @@ class TestParallelResume:
             artifact_unit_ids={"unit-0", "unit-1", "unit-2"},
         )
 
-        _execute_fan_out_sync(
+        execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_FakeDisplay(),
@@ -213,7 +192,7 @@ class TestParallelResume:
     def test_resume_completes_all_units(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Any,
+        tmp_path: Path,
     ) -> None:
         units = tuple(_make_work_unit(f"unit-{i}") for i in range(5))
         worker_states = {
@@ -240,7 +219,7 @@ class TestParallelResume:
             artifact_unit_ids={"unit-2", "unit-3", "unit-4"},
         )
 
-        final_state = _execute_fan_out_sync(
+        final_state = execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_FakeDisplay(),

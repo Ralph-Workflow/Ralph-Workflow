@@ -1,0 +1,37 @@
+"""McpCapability — typed MCP capability vocabulary."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class McpCapability(StrEnum):
+    """Typed MCP capability vocabulary."""
+
+    FILE_READ = "FileRead"
+    FILE_WRITE = "FileWrite"
+    GIT_READ = "GitRead"
+    PROCESS_EXEC = "ProcessExec"
+    ARTIFACT_SUBMIT = "ArtifactSubmit"
+    WORKSPACE_COORDINATION = "WorkspaceCoordination"
+    WORKSPACE_READ = "WorkspaceRead"
+    WORKSPACE_WRITE_EPHEMERAL = "WorkspaceWriteEphemeral"
+    WORKSPACE_WRITE_TRACKED = "WorkspaceWriteTracked"
+    WORKSPACE_WRITE_ANY = "WorkspaceWriteAny"
+    WORKSPACE_METADATA_READ = "WorkspaceMetadataRead"
+    WORKSPACE_EDIT = "WorkspaceEdit"
+    WORKSPACE_DELETE = "WorkspaceDelete"
+    GIT_STATUS_READ = "GitStatusRead"
+    GIT_WRITE = "GitWrite"
+    ENV_READ = "EnvRead"
+    ENV_WRITE = "EnvWrite"
+    PROCESS_EXEC_BOUNDED = "ProcessExecBounded"
+    PROCESS_EXEC_UNBOUNDED = "ProcessExecUnbounded"
+    RUN_REPORT_PROGRESS = "RunReportProgress"
+    UPSTREAM_TOOL_USE = "UpstreamToolUse"
+    WEB_SEARCH = "WebSearch"
+    WEB_VISIT = "WebVisit"
+    MEDIA_READ = "MediaRead"
+
+
+__all__ = ["McpCapability"]

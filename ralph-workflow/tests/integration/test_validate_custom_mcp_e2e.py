@@ -76,7 +76,7 @@ def test_validate_with_real_stdio_fixture_returns_zero(
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
-    rc = runner_module._validate_custom_mcp_servers(tmp_path)
+    rc = runner_module.validate_custom_mcp_servers(tmp_path)
 
     assert rc == 0
 
@@ -119,7 +119,7 @@ def test_validate_with_broken_stdio_command_returns_one_in_strict_mode(
     error_stream = StringIO()
     sink_id = logger.add(error_stream, level="ERROR")
     try:
-        rc = runner_module._validate_custom_mcp_servers(tmp_path)
+        rc = runner_module.validate_custom_mcp_servers(tmp_path)
     finally:
         logger.remove(sink_id)
 
@@ -137,7 +137,7 @@ def test_validate_with_broken_stdio_command_returns_zero_in_soft_mode(
     warning_stream = StringIO()
     sink_id = logger.add(warning_stream, level="WARNING")
     try:
-        rc = runner_module._validate_custom_mcp_servers(tmp_path)
+        rc = runner_module.validate_custom_mcp_servers(tmp_path)
     finally:
         logger.remove(sink_id)
 

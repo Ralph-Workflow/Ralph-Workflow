@@ -28,75 +28,26 @@ import sys
 from contextlib import contextmanager
 from importlib import import_module
 from io import TextIOBase
-from typing import TYPE_CHECKING, ClassVar, Protocol, cast
+from typing import TYPE_CHECKING, cast
+
+from ralph.display._progress_singleton import ProgressSingleton
+from ralph.display.progress_protocols import TaskID
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from types import ModuleType
 
-    from rich.theme import Theme
-
     from ralph.display.context import DisplayContext
-
-TaskID = int
-
-
-class _ConsoleProto(Protocol):
-    def print(self, *_objects: object, **kwargs: object) -> None: ...
-
-
-class _ProgressProto(Protocol):
-    def __enter__(self) -> _ProgressProto: ...
-
-    def __exit__(self, exc_type: object, exc: object, _tb: object) -> bool | None: ...
-
-    def add_task(
-        self,
-        description: str,
-        *,
-        total: int | None = ...,
-        completed: int = ...,
-        parent: TaskID | None = ...,
-    ) -> TaskID: ...
-
-    def update(
-        self,
-        *,
-        task_id: TaskID,
-        completed: int | None = ...,
-        advance: int | None = ...,
-        description: str | None = ...,
-    ) -> None: ...
-
-
-class _TqdmProto(Protocol):
-    n: int
-
-    def update(self, n: int = ...) -> object: ...
-
-    def close(self) -> None: ...
-
-    def refresh(self) -> None: ...
-
-
-class _ConsoleFactory(Protocol):
-    def __call__(self, *, stderr: bool, theme: Theme | None = ...) -> _ConsoleProto: ...
-
-
-class _ColumnFactory(Protocol):
-    def __call__(self, *args: object, **kwargs: object) -> object: ...
-
-
-class _ProgressFactory(Protocol):
-    def __call__(self, *columns: object, **kwargs: object) -> _ProgressProto: ...
-
-
-class _TqdmFactory(Protocol):
-    def __call__(self, **kwargs: object) -> _TqdmProto: ...
-
-
-class _GetIPython(Protocol):
-    def __call__(self) -> object | None: ...
+    from ralph.display.progress_protocols import (
+        _ColumnFactory,
+        _ConsoleFactory,
+        _ConsoleProto,
+        _GetIPython,
+        _ProgressFactory,
+        _ProgressProto,
+        _TqdmFactory,
+        _TqdmProto,
+    )
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object | None:
@@ -104,7 +55,7 @@ def _module_attr(module: ModuleType, attribute: str) -> object | None:
     return namespace.get(attribute)
 
 
-def _load_rich_components() -> (
+def load_rich_components() -> (
     tuple[
         _ConsoleFactory,
         _ProgressFactory,
@@ -120,6 +71,7 @@ def _load_rich_components() -> (
     ]
     | None
 ):
+    """Lazily import Rich display factories; returns None when Rich is not installed."""
     try:
         console_module = import_module("rich.console")
         progress_module = import_module("rich.progress")
@@ -140,7 +92,8 @@ def _load_rich_components() -> (
     return console_factory, progress_factory, columns
 
 
-def _load_tqdm_factory() -> _TqdmFactory | None:
+def load_tqdm_factory() -> _TqdmFactory | None:
+    """Lazily import the tqdm progress-bar factory; returns None when tqdm is not installed."""
     try:
         tqdm_module = import_module("tqdm")
     except ImportError:
@@ -148,7 +101,8 @@ def _load_tqdm_factory() -> _TqdmFactory | None:
     return cast("_TqdmFactory", _module_attr(tqdm_module, "tqdm"))
 
 
-def _load_get_ipython() -> _GetIPython | None:
+def load_get_ipython() -> _GetIPython | None:
+    """Lazily import IPython's get_ipython; returns None when IPython is not installed."""
     try:
         ipython_module = import_module("IPython")
     except ImportError:
@@ -159,10 +113,15 @@ def _load_get_ipython() -> _GetIPython | None:
     return cast("_GetIPython", candidate)
 
 
-_RICH_AVAILABLE = _load_rich_components() is not None
-_TQDM_AVAILABLE = _load_tqdm_factory() is not None
-_GET_IPYTHON = _load_get_ipython()
-_IPYTHON_AVAILABLE = _GET_IPYTHON is not None
+RICH_AVAILABLE = load_rich_components() is not None
+GET_IPYTHON = load_get_ipython()
+IPYTHON_AVAILABLE = GET_IPYTHON is not None
+
+__all__ = [
+    "RalphProgress",
+    "TaskID",
+    "get_progress",
+]
 
 
 class RalphProgress:
@@ -201,10 +160,10 @@ class RalphProgress:
         Returns:
             True if in Jupyter, False otherwise.
         """
-        if not _IPYTHON_AVAILABLE:
+        if not IPYTHON_AVAILABLE:
             return False
         try:
-            return _GET_IPYTHON is not None and _GET_IPYTHON() is not None
+            return GET_IPYTHON is not None and GET_IPYTHON() is not None
         except Exception:
             return False
 
@@ -214,7 +173,7 @@ class RalphProgress:
         Returns:
             True if stderr is a TTY and rich is available.
         """
-        if not _RICH_AVAILABLE:
+        if not RICH_AVAILABLE:
             return False
         stderr = sys.stderr
         return isinstance(stderr, TextIOBase) and stderr.isatty()
@@ -226,7 +185,7 @@ class RalphProgress:
         Yields:
             Configured rich Progress instance.
         """
-        rich_components = _load_rich_components()
+        rich_components = load_rich_components()
         if rich_components is None:
             raise RuntimeError("rich is unavailable")
 
@@ -271,7 +230,7 @@ class RalphProgress:
         Yields:
             Configured tqdm instance.
         """
-        tqdm_factory = _load_tqdm_factory()
+        tqdm_factory = load_tqdm_factory()
         if tqdm_factory is None:
             raise RuntimeError("tqdm is unavailable")
 
@@ -300,7 +259,6 @@ class RalphProgress:
 
     def __exit__(self, *args: object) -> None:
         """Exit the progress context."""
-        # Cleanup handled by context managers
         pass
 
     @contextmanager
@@ -323,7 +281,7 @@ class RalphProgress:
             try:
                 yield self._progress
             finally:
-                pass  # Let parent manage lifecycle
+                pass
         else:
             yield None
 
@@ -353,7 +311,6 @@ class RalphProgress:
                 parent=parent,
             )
         else:
-            # Return dummy ID for non-rich mode
             return TaskID(0)
 
     def update(
@@ -386,34 +343,6 @@ class RalphProgress:
                 self._tqdm.refresh()
 
 
-class _ProgressSingleton:
-    """Singleton wrapper for RalphProgress, keyed by context console id.
-
-    Note:
-        Callers must NOT re-create DisplayContext per phase; they must use
-        refreshed() or pass the same context. Different contexts (identified
-        by console identity) yield separate RalphProgress instances.
-    """
-
-    _instances: ClassVar[dict[int, RalphProgress]] = {}
-
-    @classmethod
-    def get(cls, context: DisplayContext) -> RalphProgress:
-        """Get the RalphProgress singleton for the given context.
-
-        Args:
-            context: DisplayContext whose console identity key the instance.
-                Must not be None.
-
-        Returns:
-            RalphProgress instance for the given context.
-        """
-        key = id(context.console)
-        if key not in cls._instances:
-            cls._instances[key] = RalphProgress(context=context)
-        return cls._instances[key]
-
-
 def get_progress(context: DisplayContext) -> RalphProgress:
     """Get the default RalphProgress instance for the given context.
 
@@ -425,4 +354,7 @@ def get_progress(context: DisplayContext) -> RalphProgress:
     Returns:
         RalphProgress instance for the given context.
     """
-    return _ProgressSingleton.get(context)
+    return ProgressSingleton.get(context)
+
+
+ProgressSingleton._factory = RalphProgress

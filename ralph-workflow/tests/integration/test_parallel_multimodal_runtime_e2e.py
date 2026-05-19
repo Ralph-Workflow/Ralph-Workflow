@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.executor import AgentExecutor, WorkerResult
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.parallel.coordinator import _WorkerContext
+    from ralph.pipeline.parallel.coordinator import WorkerContext
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -62,20 +62,6 @@ def _make_work_unit(uid: str) -> WorkUnit:
         description=f"Work unit {uid}",
         allowed_directories=[f"src/{uid}"],
     )
-
-
-class _FakeDisplay:
-    def emit(self, unit_id: str | None, line: str) -> None:
-        del unit_id, line
-
-    def set_status(self, unit_id: str, status: object) -> None:
-        del unit_id, status
-
-    def __enter__(self) -> _FakeDisplay:
-        return self
-
-    def __exit__(self, *args: object) -> None:
-        return None
 
 
 def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
@@ -91,24 +77,6 @@ def _make_mock_policy_bundle(max_workers: int = 4) -> MagicMock:
         "default": AgentChainConfig(agents=["default"]),
     }
     return bundle
-
-
-class _SessionContract(NamedTuple):
-    """Session contract parameters for parallel worker testing."""
-
-    drain: str
-    capabilities: frozenset[str]
-    model_identity: MultimodalModelIdentity
-
-
-class _CapturedContext:
-    """Holds captured session contract values from the coordinator's run_fan_out call."""
-
-    def __init__(self) -> None:
-        self.session_drain: str | None = None
-        self.session_capabilities: frozenset[str] | None = None
-        self.session_model_identity: MultimodalModelIdentity | None = None
-        self.session_capability_profile: object | None = None
 
 
 def _setup_patches(
@@ -137,6 +105,38 @@ def _setup_patches(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory",
         lambda *args, **kwargs: MagicMock(),
     )
+
+
+class _FakeDisplay:
+    def emit(self, unit_id: str | None, line: str) -> None:
+        del unit_id, line
+
+    def set_status(self, unit_id: str, status: object) -> None:
+        del unit_id, status
+
+    def __enter__(self) -> _FakeDisplay:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+
+class _SessionContract(NamedTuple):
+    """Session contract parameters for parallel worker testing."""
+
+    drain: str
+    capabilities: frozenset[str]
+    model_identity: MultimodalModelIdentity
+
+
+class _CapturedContext:
+    """Holds captured session contract values from the coordinator's run_fan_out call."""
+
+    def __init__(self) -> None:
+        self.session_drain: str | None = None
+        self.session_capabilities: frozenset[str] | None = None
+        self.session_model_identity: MultimodalModelIdentity | None = None
+        self.session_capability_profile: object | None = None
 
 
 class _FakeAgentExecutorWithArtifacts(FakeAgentExecutor):
@@ -235,12 +235,12 @@ def _run_fan_out_sync(
         )
 
     monkeypatch.setattr(
-        "ralph.pipeline.runner.build_session_mcp_plan",
+        "ralph.pipeline.fan_out.build_session_mcp_plan",
         _fake_build_session_mcp_plan,
     )
 
     async def _fake_run_fan_out(**kwargs: object) -> list[Event]:
-        ctx = cast("_WorkerContext | None", kwargs.get("ctx"))
+        ctx = cast("WorkerContext | None", kwargs.get("ctx"))
         if ctx is not None and ctx.same_workspace is not None:
             captured.session_drain = ctx.same_workspace.session_drain
             captured.session_capabilities = ctx.same_workspace.session_capabilities
@@ -279,7 +279,7 @@ def _run_fan_out_sync(
         _fake_run_fan_out,
     )
 
-    final_state = runner_module._execute_fan_out_sync(
+    final_state = runner_module.execute_fan_out_sync(
         effect=effect,
         state=state,
         display=cast("ParallelDisplay", _FakeDisplay()),

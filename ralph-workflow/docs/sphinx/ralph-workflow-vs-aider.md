@@ -17,7 +17,7 @@ You ask, inspect, redirect, ask again, and co-edit with the model in real time.
 
 Ralph Workflow is strongest when you want to get out of the loop for a while.
 
-You write a bounded spec in `PROMPT.md`, Ralph runs planning, development, and review as one unattended flow, and you come back to a diff, checks, logs, and artifacts you can inspect like normal engineering work.
+You write a bounded spec in `PROMPT.md`, Ralph Workflow runs planning, development, and review as one unattended flow, and you come back to a diff, checks, logs, and artifacts you can inspect like normal engineering work.
 
 ## Choose Ralph Workflow when
 
@@ -29,7 +29,7 @@ Ralph Workflow is usually the better fit when you want to:
 - keep the workflow repo-native and inspectable on your own machine
 - judge the result with a simple merge / no-merge decision
 
-Typical good Ralph tasks:
+Typical good Ralph Workflow tasks:
 
 - a bounded feature slice
 - a narrow refactor with tests
@@ -89,4 +89,4 @@ Use one real backlog task, not a vague demo.
 
 If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
 
-If you want to see the kind of morning-after handoff Ralph is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).
+If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).

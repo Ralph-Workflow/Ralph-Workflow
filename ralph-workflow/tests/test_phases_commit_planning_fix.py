@@ -33,12 +33,12 @@ from ralph.workspace.fs import FsWorkspace
 
 
 @lru_cache(maxsize=1)
-def _default_policy():
+def _default_policy() -> object:
     with tempfile.TemporaryDirectory() as tmp:
         return load_policy(Path(tmp) / ".agent")
 
 
-def _mk_policy_context(workspace=None) -> PhaseContext:
+def _mk_policy_context(workspace: object = None) -> PhaseContext:
     """Context with real policy and mocked (nothing-exists) workspace."""
     policy = _default_policy()
     ws = workspace if workspace is not None else MagicMock()

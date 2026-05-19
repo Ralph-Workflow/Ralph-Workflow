@@ -4,52 +4,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, cast
+
+from ralph.guidelines._detected_stack import DetectedStack
+from ralph.guidelines._detected_stack_like import _DetectedStackLike
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
     from types import ModuleType
+    from typing import Protocol
 
+    from ralph.guidelines._guideline_source import GuidelineSource
     from ralph.workspace.protocol import Workspace
 
+    class _HandlerCallable(Protocol):
+        """Protocol for language handler callables."""
 
-class _HandlerCallable(Protocol):
-    """Protocol for language handler callables."""
+        def __call__(self, *args: object, **kwargs: object) -> GuidelineSource: ...
 
-    def __call__(self, *args: object, **kwargs: object) -> GuidelineSource: ...
+    class _StackDetector(Protocol):
+        """Protocol for detect_stack_with_workspace callables."""
 
-
-@runtime_checkable
-class GuidelineSource(Protocol):
-    """Structural protocol for guideline objects produced by handlers."""
-
-    quality_checks: Sequence[str]
-    security_checks: Sequence[str]
-    performance_checks: Sequence[str]
-    testing_checks: Sequence[str]
-    documentation_checks: Sequence[str]
-    idioms: Sequence[str]
-    anti_patterns: Sequence[str]
-    concurrency_checks: Sequence[str]
-    resource_checks: Sequence[str]
-    observability_checks: Sequence[str]
-    secrets_checks: Sequence[str]
-    api_design_checks: Sequence[str]
-
-
-@runtime_checkable
-class _DetectedStackLike(Protocol):
-    """Structural protocol for language detector results."""
-
-    primary_language: str
-    secondary_languages: Sequence[str]
-    frameworks: Sequence[str]
-
-
-class _StackDetector(Protocol):
-    """Protocol for detect_stack_with_workspace callables."""
-
-    def __call__(self, workspace: Workspace, root: str) -> object: ...
+        def __call__(self, workspace: Workspace, root: str) -> object: ...
 
 
 CATEGORY_FIELDS = (
@@ -148,15 +124,6 @@ SIGNATURE_LANGUAGE_MAP: dict[str, str] = {
     "Gemfile": "Ruby",
     "composer.json": "PHP",
 }
-
-
-@dataclass
-class DetectedStack:
-    """Language and framework composition detected from workspace signature files."""
-
-    primary_language: str = "Unknown"
-    secondary_languages: list[str] = field(default_factory=list)
-    frameworks: list[str] = field(default_factory=list)
 
 
 def _load_guideline_class(module_name: str, class_name: str) -> _HandlerCallable:

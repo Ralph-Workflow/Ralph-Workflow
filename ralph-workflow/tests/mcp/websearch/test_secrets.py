@@ -10,7 +10,7 @@ ENV_SECRET = "env-secret-value"
 ENV_NAME = "RALPH_TEST_WEBSEARCH_API_KEY"
 
 
-def _import_secrets_module():
+def _import_secrets_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.secrets")
     except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase

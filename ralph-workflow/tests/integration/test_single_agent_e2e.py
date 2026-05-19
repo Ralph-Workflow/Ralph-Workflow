@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.config.enums import Verbosity
@@ -23,7 +24,14 @@ from ralph.policy.models import (
     PipelinePolicy,
 )
 from ralph.prompts.debug_dump import media_session_path
+from ralph.prompts.materialize import collect_media_entries_for_phase
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 
 def _policy_bundle() -> SimpleNamespace:
@@ -55,8 +63,8 @@ def _policy_bundle() -> SimpleNamespace:
 
 
 def test_run_completes_in_serial_mode_without_fan_out(
-    tmp_git_repo,
-    monkeypatch,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     prompt = tmp_git_repo / "PROMPT.md"
     prompt.write_text("# Test Prompt\n\nRun the serial path.")
@@ -86,12 +94,12 @@ def test_run_completes_in_serial_mode_without_fan_out(
     )
     monkeypatch.setattr(
         runner_module,
-        "_materialize_agent_prompt_if_needed",
+        "materialize_agent_prompt_if_needed",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
@@ -100,7 +108,12 @@ def test_run_completes_in_serial_mode_without_fan_out(
 
     monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
 
-    def _fake_execute_effect(effect, config, workspace_scope, **kwargs: object) -> PipelineEvent:
+    def _fake_execute_effect(
+        effect: object,
+        config: object,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
         del config, workspace_scope, kwargs
         handled_phases.append(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
@@ -112,7 +125,7 @@ def test_run_completes_in_serial_mode_without_fan_out(
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_fan_out_sync",
+        "execute_fan_out_sync",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("fan-out should not run")),
     )
 
@@ -128,8 +141,8 @@ def test_run_completes_in_serial_mode_without_fan_out(
 
 
 def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_output(
-    tmp_git_repo,
-    monkeypatch,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Serial unattended run reaches 'complete' even when the development phase produces
     multimodal placeholder output (e.g. '[image: image/png]') from the parser.
@@ -165,12 +178,12 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
     )
     monkeypatch.setattr(
         runner_module,
-        "_materialize_agent_prompt_if_needed",
+        "materialize_agent_prompt_if_needed",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
@@ -179,7 +192,12 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
 
     monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
 
-    def _fake_execute_effect(effect, config, workspace_scope, **kwargs: object) -> PipelineEvent:
+    def _fake_execute_effect(
+        effect: object,
+        config: object,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
         del config, workspace_scope, kwargs
         handled_phases.append(effect.phase)
         # Simulate successful completion even when the development phase encountered
@@ -193,7 +211,7 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_fan_out_sync",
+        "execute_fan_out_sync",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("fan-out must not run")),
     )
 
@@ -209,8 +227,8 @@ def test_serial_run_completes_when_development_phase_encounters_multimodal_tool_
 
 
 def test_development_phase_receives_multimodal_handoff_metadata(
-    tmp_git_repo,
-    monkeypatch,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Runner-owned prompt seam carries delivery/block_type/URI metadata to dev phase.
 
@@ -262,10 +280,8 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(index_payload), encoding="utf-8")
 
-    # Spy on _materialize_agent_prompt_if_needed to capture what collect_media_entries_for_phase
+    # Spy on materialize_agent_prompt_if_needed to capture what collect_media_entries_for_phase
     # returns for the development phase — without actually rendering templates.
-    from ralph.prompts.materialize import collect_media_entries_for_phase
-    from ralph.workspace.fs import FsWorkspace
 
     captured_entries: list[object] = []
 
@@ -278,7 +294,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
             entries = collect_media_entries_for_phase(fs_ws, str(phase))
             captured_entries.extend(entries)
 
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", _spy_materialize)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", _spy_materialize)
 
     initial_state = PipelineState(
         phase="planning",
@@ -303,7 +319,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
@@ -314,7 +330,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_fan_out_sync",
+        "execute_fan_out_sync",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("fan-out must not run")),
     )
 
@@ -329,7 +345,7 @@ def test_development_phase_receives_multimodal_handoff_metadata(
 
     # (a) development phase received multimodal entries via the runner-owned seam.
     dev_entries = [e for e in captured_entries if hasattr(e, "uri")]
-    assert len(dev_entries) >= 2, (  # noqa: PLR2004
+    assert len(dev_entries) >= 2, (
         f"Expected at least 2 multimodal entries for development phase, got {len(dev_entries)}: "
         f"{dev_entries}"
     )
@@ -361,8 +377,8 @@ def test_development_phase_receives_multimodal_handoff_metadata(
 
 
 def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
-    tmp_git_repo,
-    monkeypatch,
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unsupported provider/modality combinations are carried through the runner handoff seam.
 
@@ -404,9 +420,6 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(index_payload), encoding="utf-8")
 
-    from ralph.prompts.materialize import collect_media_entries_for_phase
-    from ralph.workspace.fs import FsWorkspace
-
     captured_entries: list[object] = []
 
     def _spy_materialize(
@@ -418,7 +431,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
             entries = collect_media_entries_for_phase(fs_ws, str(phase))
             captured_entries.extend(entries)
 
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", _spy_materialize)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", _spy_materialize)
 
     initial_state = PipelineState(
         phase="planning",
@@ -443,7 +456,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     )
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
@@ -454,7 +467,7 @@ def test_unsupported_modality_surfaces_explicit_rejection_through_runner_path(
     )
     monkeypatch.setattr(
         runner_module,
-        "_execute_fan_out_sync",
+        "execute_fan_out_sync",
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("fan-out must not run")),
     )
 

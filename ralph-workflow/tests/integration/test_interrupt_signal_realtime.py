@@ -47,7 +47,12 @@ def test_live_sigint_gracefully_terminates_runner_and_tracked_child(tmp_path: Pa
 
         import ralph.process.manager as _mgr
         from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
-        from ralph.process.manager import ProcessManager, ProcessManagerPolicy, get_process_manager
+        from ralph.process.manager import (
+            ProcessManager,
+            ProcessManagerPolicy,
+            SpawnOptions,
+            get_process_manager,
+        )
 
         workspace = Path(sys.argv[1])
         result_path = Path(sys.argv[2])
@@ -71,7 +76,7 @@ def test_live_sigint_gracefully_terminates_runner_and_tracked_child(tmp_path: Pa
 
             handle = get_process_manager().spawn(
                 [sys.executable, "-c", "import signal; signal.pause()"],
-                label="invoke:fake-agent",
+                SpawnOptions(label="invoke:fake-agent"),
             )
             child_pid = handle.record.pid
             threading.Timer(0.01, lambda: os.kill(os.getpid(), signal.SIGINT)).start()
@@ -86,12 +91,12 @@ def test_live_sigint_gracefully_terminates_runner_and_tracked_child(tmp_path: Pa
                 encoding="utf-8",
             )
 
-        original_singleton = _mgr._singleton
-        _mgr._singleton = pm
+        original_singleton = _mgr._pm_state.instance
+        _mgr._pm_state.instance = pm
         try:
             asyncio.run(main())
         finally:
-            _mgr._singleton = original_singleton
+            _mgr._pm_state.instance = original_singleton
         """
     )
 
@@ -127,7 +132,12 @@ def test_second_live_sigint_force_kills_stubborn_child(tmp_path: Path) -> None:
 
         import ralph.process.manager as _mgr
         from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
-        from ralph.process.manager import ProcessManager, ProcessManagerPolicy, get_process_manager
+        from ralph.process.manager import (
+            ProcessManager,
+            ProcessManagerPolicy,
+            SpawnOptions,
+            get_process_manager,
+        )
 
         workspace = Path(sys.argv[1])
         workspace.mkdir(parents=True, exist_ok=True)
@@ -151,7 +161,7 @@ def test_second_live_sigint_force_kills_stubborn_child(tmp_path: Path) -> None:
 
             handle = get_process_manager().spawn(
                 [sys.executable, "-c", stubborn_child],
-                label="invoke:fake-agent",
+                SpawnOptions(label="invoke:fake-agent"),
             )
             print(f"CHILD_PID={{handle.record.pid}}", flush=True)
             threading.Timer(0.05, lambda: os.kill(os.getpid(), signal.SIGINT)).start()
@@ -163,12 +173,12 @@ def test_second_live_sigint_force_kills_stubborn_child(tmp_path: Path) -> None:
                 except asyncio.CancelledError:
                     pass
 
-        original_singleton = _mgr._singleton
-        _mgr._singleton = pm
+        original_singleton = _mgr._pm_state.instance
+        _mgr._pm_state.instance = pm
         try:
             asyncio.run(main())
         finally:
-            _mgr._singleton = original_singleton
+            _mgr._pm_state.instance = original_singleton
         """
     )
 

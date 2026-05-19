@@ -1,0 +1,66 @@
+"""Agent configuration model definitions."""
+
+from __future__ import annotations
+
+from pydantic import ConfigDict
+
+from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.pydantic_compat import RalphBaseModel
+
+
+class AgentConfig(RalphBaseModel):
+    """Configuration for a single AI agent.
+
+    Attributes:
+        cmd: Base command to run the agent.
+        output_flag: Optional output format flag for streaming JSON.
+        yolo_flag: Optional autonomous/non-interactive flag string.
+        verbose_flag: Flag for verbose output.
+        can_commit: Whether the agent can run git commit.
+        json_parser: Which JSON parser to use for agent output.
+        model_flag: Optional model/provider flag.
+        print_flag: Optional print flag for non-interactive output mode.
+        streaming_flag: Optional streaming flag for partial JSON messages.
+        session_flag: Optional session continuation flag template.
+        display_name: Human-readable display name for UI/UX.
+        transport: Invocation/MCP transport type for the agent runtime.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    cmd: str
+    output_flag: str | None = None
+    yolo_flag: str | None = None
+    verbose_flag: str | None = None
+    can_commit: bool = False
+    json_parser: JsonParserType = JsonParserType.GENERIC
+    model_flag: str | None = None
+    print_flag: str | None = None
+    streaming_flag: str | None = None
+    session_flag: str | None = None
+    display_name: str | None = None
+    transport: AgentTransport | None = None
+
+    def model_post_init(self, _context: object) -> None:
+        if self.transport is not None:
+            return
+
+        parser_to_transport = {
+            JsonParserType.CLAUDE: AgentTransport.CLAUDE,
+            JsonParserType.CODEX: AgentTransport.CODEX,
+            JsonParserType.OPENCODE: AgentTransport.OPENCODE,
+        }
+        command_to_transport = {
+            "claude": AgentTransport.CLAUDE_INTERACTIVE,
+            "codex": AgentTransport.CODEX,
+            "opencode": AgentTransport.OPENCODE,
+        }
+        command_name = self.cmd.split()[0] if self.cmd else ""
+        inferred_transport = parser_to_transport.get(
+            self.json_parser,
+            command_to_transport.get(command_name, AgentTransport.GENERIC),
+        )
+        object.__setattr__(self, "transport", inferred_transport)
+
+
+__all__ = ["AgentConfig"]

@@ -6,7 +6,7 @@ import gc
 import json
 import tracemalloc
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -42,7 +42,7 @@ class _SessionWithDrain:
         return True
 
 
-def _read_media(session: _SessionWithDrain, workspace: FsWorkspace) -> Any:
+def _read_media(session: _SessionWithDrain, workspace: FsWorkspace) -> object:
     return handle_read_media(session, workspace, {"path": "report.pdf"})
 
 

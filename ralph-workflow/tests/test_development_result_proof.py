@@ -15,16 +15,16 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.classifier import FailureCategory
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.memory import MemoryWorkspace
 
 
 @lru_cache(maxsize=1)
-def _default_policy_bundle() -> Any:
+def _default_policy_bundle() -> object:
     return load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
 
 
-def _make_context(workspace: MemoryWorkspace, policy=None) -> PhaseContext:
+def _make_context(workspace: MemoryWorkspace, policy: object = None) -> PhaseContext:
     if policy is None:
         policy = _default_policy_bundle()
     registry: Any = object()
@@ -119,7 +119,9 @@ def _write_noop_plan(workspace: MemoryWorkspace) -> None:
     )
 
 
-def _write_dev_result(workspace: MemoryWorkspace, *, plan_items=None, analysis_items=None) -> None:
+def _write_dev_result(
+    workspace: MemoryWorkspace, *, plan_items: object = None, analysis_items: object = None
+) -> None:
     workspace.write(
         ".agent/artifacts/development_result.json",
         json.dumps(
@@ -196,7 +198,6 @@ def test_steps_plan_fails_when_no_proof_is_submitted() -> None:
     )
 
 
-
 def test_proof_failure_preserves_same_session_via_recovery_controller() -> None:
     workspace = MemoryWorkspace()
     _write_plan_steps(workspace)
@@ -208,12 +209,10 @@ def test_proof_failure_preserves_same_session_via_recovery_controller() -> None:
 
     state = PipelineState(
         phase="development",
-        phase_chains={
-            "development": AgentChainState(agents=["dev"], current_index=0, retries=0)
-        },
+        phase_chains={"development": AgentChainState(agents=["dev"], current_index=0, retries=0)},
         last_agent_session_id="sess-proof-123",
     )
-    controller = RecoveryController(cycle_cap=10)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
 
     new_state, _ = reducer_reduce(state, failure_event, recovery=controller)
 

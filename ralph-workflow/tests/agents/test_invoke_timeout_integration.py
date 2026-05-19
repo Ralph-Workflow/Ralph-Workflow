@@ -1,4 +1,4 @@
-"""Black-box integration tests for _read_lines_from_process timeout behavior.
+"""Black-box integration tests for read_lines_from_process timeout behavior.
 
 These tests drive the read loop with a fake stdout pipe and FakeClock to prove:
   (a) SESSION_CEILING_EXCEEDED fires under continuous output (false-negative fix).
@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import threading
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -29,15 +29,20 @@ from ralph.agents.idle_watchdog import (
     TimeoutPolicy,
     WaitingStatusEvent,
     WaitingStatusKind,
+    WaitingStatusListener,
     WatchdogFireReason,
 )
-from ralph.agents.invoke import _IdleStreamTimeoutError, _read_lines_from_process
+from ralph.agents.invoke import (
+    IdleStreamTimeoutError,
+    ProcessReaderCtx,
+    read_lines_from_process,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.liveness import FakeLivenessProbe
 
 
 class _FakeManagedHandle:
-    """Minimal test double for ManagedProcess used by _read_lines_from_process."""
+    """Minimal test double for ManagedProcess used by read_lines_from_process."""
 
     def __init__(
         self,
@@ -115,9 +120,23 @@ _TOTAL_LINES_IN_STDOUT = 10
 
 def _read_lines(
     handle: _FakeManagedHandle,
-    **kwargs: Any,
-):
-    return _read_lines_from_process(cast("Any", handle), **kwargs)
+    *,
+    policy: TimeoutPolicy,
+    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
+    liveness_probe: FakeLivenessProbe | None = None,
+    waiting_listener: WaitingStatusListener | None = None,
+    _clock: FakeClock | None = None,
+) -> Iterator[str]:
+    return read_lines_from_process(
+        cast("object", handle),
+        ctx=ProcessReaderCtx(
+            policy=policy,
+            execution_strategy=execution_strategy,
+            liveness_probe=liveness_probe,
+            waiting_listener=waiting_listener,
+        ),
+        _clock=_clock,
+    )
 
 
 def test_session_ceiling_fires_under_continuous_output() -> None:
@@ -146,7 +165,7 @@ def test_session_ceiling_fires_under_continuous_output() -> None:
 
     handle = _FakeManagedHandle(_stdout_gen())
 
-    with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+    with pytest.raises(IdleStreamTimeoutError) as exc_info:
         for _ in _read_lines(handle, policy=policy, _clock=clock):
             pass
 
@@ -190,7 +209,7 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
     handle = _FakeManagedHandle(_blocking_stdout())
 
     try:
-        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+        with pytest.raises(IdleStreamTimeoutError) as exc_info:
             for _ in _read_lines(
                 handle,
                 policy=policy,
@@ -233,7 +252,7 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
     handle = _FakeManagedHandle(_blocking_stdout())
 
     try:
-        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+        with pytest.raises(IdleStreamTimeoutError) as exc_info:
             for _ in _read_lines(
                 handle,
                 policy=policy,
@@ -274,7 +293,7 @@ def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
 
     handle = _FakeManagedHandle(_stdout_gen())
 
-    # Should NOT raise _IdleStreamTimeoutError: _WaitingStrategy.classify_quiet
+    # Should NOT raise IdleStreamTimeoutError: _WaitingStrategy.classify_quiet
     # returns WAITING_ON_CHILD so the post-yield evaluate defers, and the reader
     # exits cleanly before the cumulative ceiling is reached.
     lines = list(
@@ -338,7 +357,7 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
     handle = _FakeManagedHandle(_oscillating_stdout())
 
     try:
-        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+        with pytest.raises(IdleStreamTimeoutError) as exc_info:
             for _ in _read_lines(
                 handle,
                 policy=policy,
@@ -361,7 +380,7 @@ _MAX_TOTAL_EVENTS = 6
 
 
 def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
-    """_read_lines_from_process emits structured listener events, not per-tick debug spam.
+    """read_lines_from_process emits structured listener events, not per-tick debug spam.
 
     Asserts:
     - Exactly 1 ENTERED event.
@@ -400,7 +419,7 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
         captured_events.append(event)
 
     try:
-        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+        with pytest.raises(IdleStreamTimeoutError) as exc_info:
             for _ in _read_lines(
                 handle,
                 policy=policy,
@@ -435,10 +454,10 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
 
 
 def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
-    """HARD_STOP event and _IdleStreamTimeoutError message contain corroboration fields.
+    """HARD_STOP event and IdleStreamTimeoutError message contain corroboration fields.
 
     Asserts:
-    - _IdleStreamTimeoutError message contains 'cumulative=' and 'scoped_child_active='.
+    - IdleStreamTimeoutError message contains 'cumulative=' and 'scoped_child_active='.
     - Captured HARD_STOP WaitingStatusEvent.diagnostic includes 'evidence' and 'cumulative'.
     """
     idle_timeout = 0.05
@@ -470,7 +489,7 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
         captured_events.append(event)
 
     try:
-        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+        with pytest.raises(IdleStreamTimeoutError) as exc_info:
             for _ in _read_lines(
                 handle,
                 policy=policy,
@@ -551,7 +570,7 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
         captured_events.append(event)
 
     try:
-        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+        with pytest.raises(IdleStreamTimeoutError) as exc_info:
             for _ in _read_lines(
                 handle,
                 policy=policy,
@@ -647,7 +666,7 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() 
         captured_events.append(event)
 
     try:
-        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+        with pytest.raises(IdleStreamTimeoutError) as exc_info:
             for _ in _read_lines(
                 handle,
                 policy=policy,

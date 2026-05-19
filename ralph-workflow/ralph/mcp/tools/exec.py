@@ -8,27 +8,28 @@ from __future__ import annotations
 
 import shlex
 import subprocess
-from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
+from ralph.mcp.tools._exec_completed_process import _CompletedProcessAdapter
+from ralph.mcp.tools._exec_execution_error import ExecutionError
+from ralph.mcp.tools._exec_params import ExecParams
+from ralph.mcp.tools._exec_run_deps import CwdProvider, ExecRunDeps
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
-    ToolError,
     ToolResult,
     require_capability,
 )
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
-_DEFAULT_TIMEOUT_MS = 30_000
+DEFAULT_TIMEOUT_MS = 30_000
 _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2
 _ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")
@@ -58,41 +59,6 @@ _REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
 _CONTAINER_COMMANDS = {"docker", "podman", "chroot", "nsenter", "unshare"}
 _PACKAGE_MANAGERS = {"apt", "yum", "dnf", "pacman", "brew"}
 
-type CwdProvider = Callable[[], Path]
-
-
-@dataclass(frozen=True)
-class _CompletedProcessAdapter:
-    """Adapter exposing stdout/stderr/returncode like subprocess.CompletedProcess."""
-
-    stdout: bytes
-    stderr: bytes
-    returncode: int
-
-
-type CommandRunner = Callable[[list[str], Path, float | None], _CompletedProcessAdapter]
-
-
-class ExecutionError(ToolError):
-    """Raised when the exec subprocess cannot be started or times out."""
-
-
-@dataclass(frozen=True)
-class ExecParams:
-    """Parsed parameters for the MCP exec tool."""
-
-    command: str
-    args: list[str]
-    timeout_ms: int
-
-
-@dataclass(frozen=True)
-class ExecRunDeps:
-    """Injectable dependencies for exec tool command execution."""
-
-    runner: CommandRunner | None = None
-    cwd_provider: CwdProvider | None = None
-
 
 @runtime_checkable
 class WorkspaceWithRoot(Protocol):
@@ -111,11 +77,11 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     command = command_tokens[0] if command_tokens else ""
     merged_args = [*command_tokens[1:], *args]
 
-    timeout_value = params.get("timeout_ms", _DEFAULT_TIMEOUT_MS)
+    timeout_value = params.get("timeout_ms", DEFAULT_TIMEOUT_MS)
     timeout_ms = (
         timeout_value
         if isinstance(timeout_value, int) and timeout_value >= 0
-        else _DEFAULT_TIMEOUT_MS
+        else DEFAULT_TIMEOUT_MS
     )
 
     return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)
@@ -497,10 +463,12 @@ def _run_subprocess(
 ) -> _CompletedProcessAdapter:
     handle = get_process_manager().spawn(
         command,
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        label=f"mcp-exec:{command[0]}",
+        SpawnOptions(
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            label=f"mcp-exec:{command[0]}",
+        ),
     )
     try:
         stdout, stderr = handle.communicate(timeout=timeout_seconds)
@@ -556,8 +524,10 @@ def handle_exec_command(
 
 
 __all__ = [
+    "DEFAULT_TIMEOUT_MS",
     "PROCESS_EXEC_BOUNDED_CAPABILITY",
     "ExecParams",
+    "ExecRunDeps",
     "ExecutionError",
     "WorkspaceWithRoot",
     "apply_exec_policy",

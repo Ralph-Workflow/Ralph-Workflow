@@ -5,27 +5,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import StrEnum
 
+from ralph.recovery.connectivity_event import ConnectivityEvent
+from ralph.recovery.connectivity_state import ConnectivityState
 
-class ConnectivityState(StrEnum):
-    """Enumeration of observed network connectivity states."""
-
-    ONLINE = "online"
-    OFFLINE = "offline"
-    UNKNOWN = "unknown"
-
-
-@dataclass
-class ConnectivityEvent:
-    """A snapshot of a connectivity state transition."""
-
-    state: ConnectivityState
-    since: datetime
-    reason: str
-
+__all__ = ["ConnectivityEvent", "ConnectivityMonitor", "ConnectivityState"]
 
 # Default probe targets: DNS resolvers over TCP
 _DEFAULT_PROBE_TARGETS: list[tuple[str, int]] = [

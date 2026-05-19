@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.protocol.capability_mapping import (
-    Capability as RalphCapability,
-)
-from ralph.mcp.protocol.capability_mapping import SessionDrain
+from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
 from ralph.mcp.tools.names import (
     ARTIFACT_TOOLS,
     COORDINATE_TOOL,
@@ -43,231 +39,18 @@ from ralph.mcp.tools.names import (
     prefix_tool_name,
     prefix_tool_names,
 )
+from ralph.prompts._capability_set import DEFAULT_CAPABILITIES, CapabilitySet
+from ralph.prompts._policy_flag import PolicyFlag
+from ralph.prompts._policy_flag_set import PolicyFlagSet
 
 if TYPE_CHECKING:
+    from ralph.mcp.protocol.capability_mapping import SessionDrain
     from ralph.mcp.protocol.session import AgentSession
-
-DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
-    SessionDrain.PLANNING: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.WEB_SEARCH,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
-    ),
-    SessionDrain.DEVELOPMENT_ANALYSIS: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.PROCESS_EXEC_BOUNDED,
-        RalphCapability.RUN_REPORT_PROGRESS,
-        RalphCapability.WEB_SEARCH,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
-    ),
-    SessionDrain.DEVELOPMENT_COMMIT: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.RUN_REPORT_PROGRESS,
-    ),
-    SessionDrain.ANALYSIS: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.PROCESS_EXEC_BOUNDED,
-        RalphCapability.RUN_REPORT_PROGRESS,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
-    ),
-    SessionDrain.REVIEW: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.WEB_SEARCH,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
-    ),
-    SessionDrain.REVIEW_ANALYSIS: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.PROCESS_EXEC_BOUNDED,
-        RalphCapability.RUN_REPORT_PROGRESS,
-        RalphCapability.WEB_SEARCH,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
-    ),
-    SessionDrain.DEVELOPMENT: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
-        RalphCapability.WORKSPACE_WRITE_TRACKED,
-        RalphCapability.WORKSPACE_EDIT,
-        RalphCapability.WORKSPACE_DELETE,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.PROCESS_EXEC_BOUNDED,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.RUN_REPORT_PROGRESS,
-        RalphCapability.ENV_READ,
-        RalphCapability.WEB_SEARCH,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
-    ),
-    SessionDrain.FIX: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.WORKSPACE_WRITE_TRACKED,
-        RalphCapability.WORKSPACE_EDIT,
-        RalphCapability.WORKSPACE_DELETE,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.PROCESS_EXEC_BOUNDED,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.RUN_REPORT_PROGRESS,
-        RalphCapability.ENV_READ,
-        RalphCapability.WEB_SEARCH,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
-    ),
-    SessionDrain.REVIEW_COMMIT: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.RUN_REPORT_PROGRESS,
-    ),
-    SessionDrain.COMMIT: (
-        RalphCapability.WORKSPACE_READ,
-        RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.GIT_STATUS_READ,
-        RalphCapability.GIT_DIFF_READ,
-        RalphCapability.ARTIFACT_SUBMIT,
-        RalphCapability.RUN_REPORT_PROGRESS,
-    ),
-}
-
-
-class PolicyFlag(StrEnum):
-    """Policy flags that may modify prompt rendering."""
-
-    NO_EDIT = "no_edit"
-    ALLOW_SHELL = "allow_shell"
-    ALLOW_GIT_READ = "allow_git_read"
-    ALLOW_GIT_WRITE = "allow_git_write"
-    ALLOW_PARALLEL_WORKERS = "allow_parallel_workers"
-    ALLOW_NETWORK = "allow_network"
-    ALLOW_ENV_READ = "allow_env_read"
-
-
-DEFAULT_POLICY_FLAGS: dict[SessionDrain, tuple[PolicyFlag, ...]] = {
-    SessionDrain.PLANNING: (PolicyFlag.NO_EDIT,),
-    SessionDrain.ANALYSIS: (PolicyFlag.NO_EDIT,),
-    SessionDrain.DEVELOPMENT_ANALYSIS: (PolicyFlag.NO_EDIT,),
-    SessionDrain.REVIEW_ANALYSIS: (PolicyFlag.NO_EDIT,),
-    SessionDrain.REVIEW: (PolicyFlag.NO_EDIT,),
-    SessionDrain.DEVELOPMENT: (PolicyFlag.ALLOW_SHELL,),
-    SessionDrain.FIX: (PolicyFlag.ALLOW_SHELL,),
-    SessionDrain.COMMIT: (PolicyFlag.ALLOW_GIT_WRITE,),
-}
 
 
 def default_capability_identifiers_for_drain(drain: SessionDrain) -> set[str]:
     """Return the canonical default capability identifiers for a drain."""
-    return {cap.value for cap in DEFAULT_CAPABILITIES.get(_default_drain_key(drain), ())}
-
-
-class CapabilitySet:
-    """Lightweight set of Ralph capabilities."""
-
-    def __init__(self, values: Iterable[RalphCapability] | None = None) -> None:
-        self._values = frozenset(values or ())
-
-    def contains(self, capability: RalphCapability) -> bool:
-        return capability in self._values
-
-    def insert(self, capability: RalphCapability) -> None:
-        self._values = frozenset((*self._values, capability))
-
-    def __iter__(self) -> Iterator[RalphCapability]:
-        return iter(self._values)
-
-    def iter(self) -> Iterable[RalphCapability]:
-        return iter(self._values)
-
-    def to_vec(self) -> tuple[RalphCapability, ...]:
-        return tuple(self._values)
-
-    @classmethod
-    def defaults_for_drain(cls, drain: SessionDrain) -> CapabilitySet:
-        return cls(DEFAULT_CAPABILITIES.get(_default_drain_key(drain), ()))
-
-    @classmethod
-    def from_identifiers(cls, identifiers: Iterable[str] | None) -> CapabilitySet:
-        if not identifiers:
-            return cls()
-        values: list[RalphCapability] = []
-        for identifier in identifiers:
-            try:
-                values.append(RalphCapability(identifier))
-            except ValueError:
-                continue
-        return cls(values)
-
-
-class PolicyFlagSet:
-    """Set of Ralph policy flags."""
-
-    def __init__(self, values: Iterable[PolicyFlag] | None = None) -> None:
-        self._values = frozenset(values or ())
-
-    def contains(self, flag: PolicyFlag) -> bool:
-        return flag in self._values
-
-    def insert(self, flag: PolicyFlag) -> None:
-        self._values = frozenset((*self._values, flag))
-
-    def __iter__(self) -> Iterator[PolicyFlag]:
-        return iter(self._values)
-
-    def iter(self) -> Iterable[PolicyFlag]:
-        return iter(self._values)
-
-    def to_vec(self) -> tuple[PolicyFlag, ...]:
-        return tuple(self._values)
-
-    @classmethod
-    def defaults_for_drain(cls, drain: SessionDrain) -> PolicyFlagSet:
-        return cls(DEFAULT_POLICY_FLAGS.get(_default_drain_key(drain), ()))
-
-    @classmethod
-    def from_identifiers(cls, identifiers: Iterable[str] | None) -> PolicyFlagSet:
-        if not identifiers:
-            return cls()
-        values: list[PolicyFlag] = []
-        for identifier in identifiers:
-            try:
-                values.append(PolicyFlag(identifier))
-            except ValueError:
-                continue
-        return cls(values)
+    return {cap.value for cap in DEFAULT_CAPABILITIES.get(drain, ())}
 
 
 @dataclass(frozen=True)
@@ -321,10 +104,6 @@ class SessionCapabilities:
 
 def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet, PolicyFlagSet]:
     return (CapabilitySet.defaults_for_drain(drain), PolicyFlagSet.defaults_for_drain(drain))
-
-
-def _default_drain_key(drain: SessionDrain) -> SessionDrain:
-    return drain
 
 
 def capability_template_variables(
@@ -690,10 +469,14 @@ def _resolve_session_iterable(session: object, attribute: str) -> Sequence[str] 
 
 __all__ = [
     "CapabilitySet",
+    "PolicyFlag",
     "PolicyFlagSet",
     "SessionCapabilities",
+    "bool_to_string",
     "capability_template_variables",
     "capability_template_variables_from_session",
     "default_capability_identifiers_for_drain",
     "default_caps_and_flags_for_drain",
+    "format_capability_summary",
+    "format_mcp_tools_list",
 ]

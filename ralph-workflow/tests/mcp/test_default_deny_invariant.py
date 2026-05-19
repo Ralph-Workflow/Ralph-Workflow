@@ -12,7 +12,7 @@ from __future__ import annotations
 from importlib import import_module
 
 from ralph.config.mcp_models import McpConfig
-from ralph.mcp.tools.bridge import ToolSpec, _tool_specs
+from ralph.mcp.tools.bridge import ToolSpec, tool_specs
 from ralph.mcp.tools.coordination import ToolResult
 from ralph.mcp.tools.names import ALL_RALPH_TOOLS
 
@@ -38,7 +38,7 @@ class _FakeWorkspace:
 
 def _get_ralph_tool_specs() -> dict[str, ToolSpec]:
     """Return a name→ToolSpec mapping for all tools in ALL_RALPH_TOOLS."""
-    all_specs = _tool_specs(McpConfig())
+    all_specs = tool_specs(McpConfig())
     by_name: dict[str, ToolSpec] = {spec.metadata.definition.name: spec for spec in all_specs}
     return {name: by_name[name] for name in ALL_RALPH_TOOLS if name in by_name}
 
@@ -51,7 +51,7 @@ def test_every_native_tool_declares_required_capability() -> None:
     for name in ALL_RALPH_TOOLS:
         spec = ralph_specs.get(name)
         if spec is None:
-            violations.append(f"{name}: no ToolSpec found in _tool_specs(McpConfig())")
+            violations.append(f"{name}: no ToolSpec found in tool_specs(McpConfig())")
             continue
         cap = getattr(spec.metadata, "required_capability", None)
         if not cap:

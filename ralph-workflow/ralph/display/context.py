@@ -14,6 +14,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal
 
+from ralph.display._mode_adaptive_limits import _ModeAdaptiveLimits
+from ralph.display._resolved_env import _ResolvedEnv
 from ralph.display.mode import MEDIUM_THRESHOLD, NARROW_THRESHOLD
 from ralph.display.theme import (
     ASCII_GLYPHS,
@@ -29,58 +31,34 @@ if TYPE_CHECKING:
     from rich.console import Console
     from rich.theme import Theme
 
-_COMPACT_HEADLINE_MAX_CHARS: Final[int] = 80
+COMPACT_HEADLINE_MAX_CHARS: Final[int] = 80
 _MEDIUM_HEADLINE_MAX_CHARS: Final[int] = 100
-_WIDE_HEADLINE_MAX_CHARS: Final[int] = 120
+WIDE_HEADLINE_MAX_CHARS: Final[int] = 120
 
-_COMPACT_CONDENSER_SOFT_LIMIT: Final[int] = 240
+COMPACT_CONDENSER_SOFT_LIMIT: Final[int] = 240
 _MEDIUM_CONDENSER_SOFT_LIMIT: Final[int] = 300
-_WIDE_CONDENSER_SOFT_LIMIT: Final[int] = 400
+WIDE_CONDENSER_SOFT_LIMIT: Final[int] = 400
 
-_COMPACT_CONDENSER_HARD_LIMIT: Final[int] = 2400
+COMPACT_CONDENSER_HARD_LIMIT: Final[int] = 2400
 _MEDIUM_CONDENSER_HARD_LIMIT: Final[int] = 3200
-_WIDE_CONDENSER_HARD_LIMIT: Final[int] = 4000
+WIDE_CONDENSER_HARD_LIMIT: Final[int] = 4000
 
-_COMPACT_STREAMING_CHECKPOINT_CHARS: Final[int] = 2400
+COMPACT_STREAMING_CHECKPOINT_CHARS: Final[int] = 2400
 _MEDIUM_STREAMING_CHECKPOINT_CHARS: Final[int] = 3200
-_WIDE_STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
+WIDE_STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
 
-_COMPACT_THINKING_PREVIEW_MIN_CHARS: Final[int] = 60
+COMPACT_THINKING_PREVIEW_MIN_CHARS: Final[int] = 60
 _MEDIUM_THINKING_PREVIEW_MIN_CHARS: Final[int] = 70
-_WIDE_THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
+WIDE_THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
 
-_COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 60
+COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 60
 _MEDIUM_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 70
-_WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
+WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
 
 _STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
 
 _STREAMING_DEDUP_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 _STREAMING_CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
-
-
-@dataclass(frozen=True)
-class _ResolvedEnv:
-    """Resolved environment settings for display configuration.
-
-    Attributes:
-        no_color: True when NO_COLOR is present in environment.
-        force_color: True when FORCE_COLOR is present in environment.
-        force_narrow: True when RALPH_FORCE_NARROW is set to a truthy value.
-        columns: Terminal width override from COLUMNS env, or None.
-        force_ascii: True when RALPH_FORCE_ASCII is set to a truthy value.
-        streaming_dedup_enabled: True when RALPH_STREAMING_DEDUP is not disabled.
-        streaming_checkpoints_enabled: True when RALPH_STREAMING_CHECKPOINTS is not disabled.
-    """
-
-    no_color: bool
-    force_color: bool
-    force_narrow: bool
-    columns: int | None
-    force_ascii: bool
-    streaming_dedup_enabled: bool
-    streaming_checkpoints_enabled: bool
-
 
 _RALPH_FORCE_NARROW_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
@@ -128,6 +106,74 @@ def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:
         streaming_dedup_enabled=streaming_dedup_enabled,
         streaming_checkpoints_enabled=streaming_checkpoints_enabled,
     )
+
+
+def _console_has_no_color(console: Console) -> bool:
+    """Return True when the console has color disabled via its no_color attribute."""
+    raw: object = getattr(console, "no_color", False)
+    return bool(raw)
+
+
+def _build_console(resolved_env: _ResolvedEnv) -> Console:
+    """Create a console based on resolved NO_COLOR / FORCE_COLOR settings.
+
+    Args:
+        resolved_env: Pre-resolved environment settings.
+
+    Returns:
+        Configured Console instance.
+    """
+    if resolved_env.no_color:
+        return make_console(no_color=True, force_terminal=False)
+    if resolved_env.force_color:
+        return make_console(no_color=False, force_terminal=True)
+    return make_console()
+
+
+def _compute_width(
+    resolved_env: _ResolvedEnv,
+    console: Console,
+    force_width: int | None,
+) -> int:
+    """Resolve effective terminal width from overrides, env, and console.
+
+    Args:
+        resolved_env: Pre-resolved environment settings.
+        console: Console to read width from as fallback.
+        force_width: Explicit width override.
+
+    Returns:
+        Effective terminal width in characters.
+    """
+    if force_width is not None and force_width > 0:
+        return force_width
+    if resolved_env.columns is not None:
+        return resolved_env.columns
+    return console.width or 80
+
+
+def _compute_mode(
+    resolved_env: _ResolvedEnv,
+    force_mode: Literal["compact", "medium", "wide"] | None,
+    width: int,
+) -> Literal["compact", "medium", "wide"]:
+    """Resolve display mode from overrides, env flags, and terminal width.
+
+    Args:
+        resolved_env: Pre-resolved environment settings.
+        force_mode: Explicit mode override.
+        width: Effective terminal width.
+
+    Returns:
+        Resolved display mode.
+    """
+    if force_mode is not None:
+        return force_mode
+    if resolved_env.force_narrow or width < NARROW_THRESHOLD:
+        return "compact"
+    if width < MEDIUM_THRESHOLD:
+        return "medium"
+    return "wide"
 
 
 @dataclass(frozen=True)
@@ -218,8 +264,8 @@ class DisplayContext:
 
         Re-resolves width and mode using the same precedence rules as make_display_context(),
         preserving any active overrides (RALPH_FORCE_NARROW, COLUMNS, force_width, force_mode)
-        stored at construction time. The console identity, theme, color_enabled, and glyphs_enabled
-        are unchanged.
+        stored at construction time. The console identity, theme, color_enabled,
+        and glyphs_enabled are unchanged.
 
         Returns:
             New DisplayContext with updated width, mode, and limits.
@@ -253,94 +299,14 @@ class DisplayContext:
         )
 
 
-def _console_has_no_color(console: Console) -> bool:
-    """Return True when the console has color disabled via its no_color attribute."""
-    raw: object = getattr(console, "no_color", False)
-    return bool(raw)
-
-
-def _build_console(resolved_env: _ResolvedEnv) -> Console:
-    """Create a console based on resolved NO_COLOR / FORCE_COLOR settings.
-
-    Args:
-        resolved_env: Pre-resolved environment settings.
-
-    Returns:
-        Configured Console instance.
-    """
-    if resolved_env.no_color:
-        return make_console(no_color=True, force_terminal=False)
-    if resolved_env.force_color:
-        return make_console(no_color=False, force_terminal=True)
-    return make_console()
-
-
-def _compute_width(
-    resolved_env: _ResolvedEnv,
-    console: Console,
-    force_width: int | None,
-) -> int:
-    """Resolve effective terminal width from overrides, env, and console.
-
-    Args:
-        resolved_env: Pre-resolved environment settings.
-        console: Console to read width from as fallback.
-        force_width: Explicit width override.
-
-    Returns:
-        Effective terminal width in characters.
-    """
-    if force_width is not None and force_width > 0:
-        return force_width
-    if resolved_env.columns is not None:
-        return resolved_env.columns
-    return console.width or 80
-
-
-def _compute_mode(
-    resolved_env: _ResolvedEnv,
-    force_mode: Literal["compact", "medium", "wide"] | None,
-    width: int,
-) -> Literal["compact", "medium", "wide"]:
-    """Resolve display mode from overrides, env flags, and terminal width.
-
-    Args:
-        resolved_env: Pre-resolved environment settings.
-        force_mode: Explicit mode override.
-        width: Effective terminal width.
-
-    Returns:
-        Resolved display mode.
-    """
-    if force_mode is not None:
-        return force_mode
-    if resolved_env.force_narrow or width < NARROW_THRESHOLD:
-        return "compact"
-    if width < MEDIUM_THRESHOLD:
-        return "medium"
-    return "wide"
-
-
-@dataclass(frozen=True)
-class _ModeAdaptiveLimits:
-    """Mode-adaptive character limits for content condensation."""
-
-    headline_max_chars: int
-    condenser_soft_limit: int
-    condenser_hard_limit: int
-    streaming_checkpoint_chars: int
-    thinking_preview_min_chars: int
-    tool_result_headline_min_chars: int
-
-
 _MODE_LIMITS: Final[dict[str, _ModeAdaptiveLimits]] = {
     "compact": _ModeAdaptiveLimits(
-        headline_max_chars=_COMPACT_HEADLINE_MAX_CHARS,
-        condenser_soft_limit=_COMPACT_CONDENSER_SOFT_LIMIT,
-        condenser_hard_limit=_COMPACT_CONDENSER_HARD_LIMIT,
-        streaming_checkpoint_chars=_COMPACT_STREAMING_CHECKPOINT_CHARS,
-        thinking_preview_min_chars=_COMPACT_THINKING_PREVIEW_MIN_CHARS,
-        tool_result_headline_min_chars=_COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS,
+        headline_max_chars=COMPACT_HEADLINE_MAX_CHARS,
+        condenser_soft_limit=COMPACT_CONDENSER_SOFT_LIMIT,
+        condenser_hard_limit=COMPACT_CONDENSER_HARD_LIMIT,
+        streaming_checkpoint_chars=COMPACT_STREAMING_CHECKPOINT_CHARS,
+        thinking_preview_min_chars=COMPACT_THINKING_PREVIEW_MIN_CHARS,
+        tool_result_headline_min_chars=COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS,
     ),
     "medium": _ModeAdaptiveLimits(
         headline_max_chars=_MEDIUM_HEADLINE_MAX_CHARS,
@@ -351,12 +317,12 @@ _MODE_LIMITS: Final[dict[str, _ModeAdaptiveLimits]] = {
         tool_result_headline_min_chars=_MEDIUM_TOOL_RESULT_HEADLINE_MIN_CHARS,
     ),
     "wide": _ModeAdaptiveLimits(
-        headline_max_chars=_WIDE_HEADLINE_MAX_CHARS,
-        condenser_soft_limit=_WIDE_CONDENSER_SOFT_LIMIT,
-        condenser_hard_limit=_WIDE_CONDENSER_HARD_LIMIT,
-        streaming_checkpoint_chars=_WIDE_STREAMING_CHECKPOINT_CHARS,
-        thinking_preview_min_chars=_WIDE_THINKING_PREVIEW_MIN_CHARS,
-        tool_result_headline_min_chars=_WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS,
+        headline_max_chars=WIDE_HEADLINE_MAX_CHARS,
+        condenser_soft_limit=WIDE_CONDENSER_SOFT_LIMIT,
+        condenser_hard_limit=WIDE_CONDENSER_HARD_LIMIT,
+        streaming_checkpoint_chars=WIDE_STREAMING_CHECKPOINT_CHARS,
+        thinking_preview_min_chars=WIDE_THINKING_PREVIEW_MIN_CHARS,
+        tool_result_headline_min_chars=WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS,
     ),
 }
 

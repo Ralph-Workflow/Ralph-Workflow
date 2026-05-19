@@ -16,11 +16,11 @@ from ralph.policy.loader import (
     PolicyValidationError as LoaderPolicyValidationError,
 )
 from ralph.policy.loader import (
-    _format_validation_error_detail,
-    _format_validation_error_messages,
-    _format_validation_location,
-    _format_validation_message,
     build_agents_policy_from_config,
+    format_validation_error_detail,
+    format_validation_error_messages,
+    format_validation_location,
+    format_validation_message,
     load_policy,
     load_policy_for_workspace_scope,
     load_policy_or_die,
@@ -50,15 +50,15 @@ def _copy_default_policy_files(target_dir: Path) -> None:
 
 def test_format_validation_helpers_handle_various_inputs() -> None:
     detail: dict[str, object] = {"loc": ["agents", "chain"], "msg": "missing chain"}
-    assert _format_validation_error_detail(detail) == "  agents.chain: missing chain"
-    assert _format_validation_location(None) == "<root>"
-    assert _format_validation_location([]) == "<root>"
-    assert _format_validation_location("top") == "top"
-    assert _format_validation_message(None) == "<missing message>"
-    assert _format_validation_message(42) == "42"
+    assert format_validation_error_detail(detail) == "  agents.chain: missing chain"
+    assert format_validation_location(None) == "<root>"
+    assert format_validation_location([]) == "<root>"
+    assert format_validation_location("top") == "top"
+    assert format_validation_message(None) == "<missing message>"
+    assert format_validation_message(42) == "42"
 
     dummy = _DummyValidationError([detail, {"loc": None, "msg": "oops"}])
-    messages = _format_validation_error_messages(cast("Any", dummy))
+    messages = format_validation_error_messages(cast("Any", dummy))
     assert messages == [
         "  agents.chain: missing chain",
         "  <root>: oops",
@@ -504,7 +504,6 @@ def test_terminal_recovery_route_rejected(tmp_path: Path) -> None:
 
 def test_build_agents_policy_includes_custom_drains() -> None:
     """build_agents_policy_from_config includes all declared drains unconditionally."""
-    from ralph.policy.loader import build_agents_policy_from_config
 
     config = UnifiedConfig(
         agent_chains={"custom_chain": ["claude"]},

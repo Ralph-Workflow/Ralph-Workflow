@@ -8,13 +8,13 @@ import queue
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.parallel_display import ParallelDisplay, _strip_markup
+from ralph.display.parallel_display import ParallelDisplay, strip_markup
 from ralph.pipeline.state import PipelineState
 
 
 def test_strip_markup_removes_rich_tags() -> None:
-    assert _strip_markup("[green]ok[/green]") == "ok"
-    assert _strip_markup("plain text") == "plain text"
+    assert strip_markup("[green]ok[/green]") == "ok"
+    assert strip_markup("plain text") == "plain text"
 
 
 def test_medium_mode_emit_strips_rich_markup() -> None:
@@ -71,8 +71,8 @@ def test_record_activity_updates_snapshot_fields() -> None:
 
     pd.subscriber.record_activity(
         unit_id="developer",
-        agent_name="developer",
         line="I am editing foo.py",
+        agent_name="developer",
         tool_name="edit_file",
         path="src/foo.py",
         workdir="/tmp/project",

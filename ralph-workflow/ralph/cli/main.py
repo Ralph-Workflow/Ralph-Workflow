@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from importlib import import_module
 from pathlib import Path as RuntimePath
-from typing import TYPE_CHECKING, Annotated, Protocol, TypedDict, cast
+from typing import TYPE_CHECKING, Annotated, Protocol, cast
 
 import rich_click as click
 import typer
@@ -20,13 +20,14 @@ from rich.text import Text
 
 from ralph import __version__
 from ralph.api.opencode import list_providers as fetch_providers
+from ralph.cli._cli_override_input import CLIOverrideInput
 from ralph.cli.commands.check_policy import check_policy_command
 from ralph.cli.commands.cleanup import cleanup
 from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
 from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
-from ralph.cli.commands.run import run_pipeline
+from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.smoke import smoke_interactive_claude_command
 from ralph.cli.options import display_agents_table, display_providers_table
 from ralph.config.bootstrap import (
@@ -52,36 +53,30 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from ralph.agents.registry import AgentRegistry
+    from ralph.cli._cli_overrides import CLIOverrides
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
 
 
-@dataclass(frozen=True)
-class CLIOverrideInput:
-    """Input for building CLI overrides."""
+if TYPE_CHECKING:
 
-    developer_agent: str | None = None
-    developer_model: str | None = None
-    git_user_name: str | None = None
-    git_user_email: str | None = None
-    developer_iters: int | None = None
+    class _CommandMain(Protocol):
+        def __call__(
+            self,
+            *,
+            args: Sequence[str] | None = None,
+            prog_name: str | None = None,
+            complete_var: str | None = None,
+            standalone_mode: bool = True,
+            windows_expand_args: bool = True,
+        ) -> object: ...
 
+    class _AgentRegistryFactory(Protocol):
+        @classmethod
+        def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
 
-class GeneralOverrides(TypedDict, total=False):
-    """Partial general-config overrides accepted by the CLI run command."""
-
-    git_user_name: str | None
-    git_user_email: str | None
-    execution: dict[str, bool]
-    developer_iters: int
-
-
-class CLIOverrides(TypedDict):
-    """CLI configuration overrides."""
-
-    general: GeneralOverrides
-    developer_agent: str | None
-    developer_model: str | None
+    class _ValidateCustomMcpServersFn(Protocol):
+        def __call__(self, workspace_root: RuntimePath) -> int: ...
 
 
 click.rich_click.USE_RICH_MARKUP = True
@@ -112,12 +107,7 @@ _THOROUGH_DEVELOPER_ITERS = 10
 
 
 def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
-    """Normalize args before Click parsing.
-
-    - Allows bare ``--init`` by inserting an empty placeholder value.
-    - Converts ``ralph -Q <text>`` to ``ralph -Q --prompt <text>`` so a positional
-      inline prompt can be passed without conflicting with subcommand dispatch.
-    """
+    """Normalize --init and -Q positional text before Click parsing."""
     if args is None:
         args = sys.argv[1:]
 
@@ -135,12 +125,7 @@ def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
 
 
 def _inject_quick_prompt(args: list[str]) -> list[str]:
-    """If -Q/--quick is present and a bare positional text follows, inject --prompt.
-
-    Transforms ['-Q', 'do a task'] -> ['-Q', '--prompt', 'do a task'] so Typer
-    sees the text as the --prompt option value instead of an unknown subcommand.
-    Skips injection when --prompt/-P is already present.
-    """
+    """Inject --prompt before bare positional text when -Q/--quick is present."""
     if not any(a in _QUICK_FLAGS for a in args):
         return args
     if "--prompt" in args or "-P" in args:
@@ -181,27 +166,6 @@ def _inject_quick_prompt(args: list[str]) -> list[str]:
     return result
 
 
-class _CommandMain(Protocol):
-    def __call__(
-        self,
-        *,
-        args: Sequence[str] | None = None,
-        prog_name: str | None = None,
-        complete_var: str | None = None,
-        standalone_mode: bool = True,
-        windows_expand_args: bool = True,
-    ) -> object: ...
-
-
-class _AgentRegistryFactory(Protocol):
-    @classmethod
-    def from_config(cls, config: UnifiedConfig) -> AgentRegistry: ...
-
-
-class _ValidateCustomMcpServersFn(Protocol):
-    def __call__(self, workspace_root: RuntimePath) -> int: ...
-
-
 def _module_attr(module: ModuleType, attribute: str) -> object:
     namespace = cast("dict[str, object]", module.__dict__)
     return namespace[attribute]
@@ -217,7 +181,7 @@ def _load_agent_registry_factory() -> _AgentRegistryFactory:
 def _load_validate_custom_mcp_servers() -> _ValidateCustomMcpServersFn:
     return cast(
         "_ValidateCustomMcpServersFn",
-        _module_attr(import_module("ralph.pipeline.runner"), "_validate_custom_mcp_servers"),
+        _module_attr(import_module("ralph.pipeline.runner"), "validate_custom_mcp_servers"),
     )
 
 
@@ -280,7 +244,7 @@ def _config_path(config: str | None) -> RuntimePath | None:
     return RuntimePath(config)
 
 
-def _resolve_effective_verbosity(
+def resolve_effective_verbosity(
     verbosity: Verbosity,
     *,
     quiet: bool,
@@ -384,7 +348,7 @@ def _handle_early_exit_flags(
         raise typer.Exit(code=check_policy_command(policy_dir, counter_overrides=counter_overrides))
 
 
-def main(  # noqa: PLR0913
+def main(
     ctx: typer.Context,
     prompt: Annotated[
         str | None,
@@ -601,15 +565,15 @@ def main(  # noqa: PLR0913
 
     _validate_mode_flags(quick=quick, thorough=thorough, resume=resume, no_resume=no_resume)
 
-    verbosity = _resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
+    verbosity = resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
 
     _cli_ctx = _get_cli_context()
     _console = _cli_ctx.console
 
-    _bootstrap_global_configs(display_context=_cli_ctx)
+    bootstrap_global_configs(display_context=_cli_ctx)
 
     # Set up logging based on verbosity
-    _configure_logging(verbosity)
+    configure_logging(verbosity)
 
     _validate_prompt_flags(prompt, quick)
 
@@ -632,19 +596,19 @@ def main(  # noqa: PLR0913
     )
 
     # Check for early exit commands
-    exit_code = _handle_list_agents(config, cli_overrides, list_agents, display_context=_cli_ctx)
+    exit_code = handle_list_agents(config, cli_overrides, list_agents, display_context=_cli_ctx)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    exit_code = _handle_list_providers(list_providers, display_context=_cli_ctx)
+    exit_code = handle_list_providers(list_providers, display_context=_cli_ctx)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    exit_code = _handle_check_config(config, cli_overrides, check_config, console=_console)
+    exit_code = handle_check_config(config, cli_overrides, check_config, console=_console)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    exit_code = _handle_check_mcp(check_mcp, console=_console)
+    exit_code = handle_check_mcp(check_mcp, console=_console)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
@@ -669,7 +633,7 @@ def main(  # noqa: PLR0913
         _console.print(summary)
         raise typer.Exit()
 
-    exit_code = _handle_commit_plumbing(
+    exit_code = handle_commit_plumbing(
         CommitPlumbingOptions(
             generate_commit_msg=generate_commit_msg,
             generate_commit=generate_commit,
@@ -687,16 +651,18 @@ def main(  # noqa: PLR0913
         return
 
     # Run the main pipeline
-    exit_code = _run_pipeline(
+    exit_code = invoke_pipeline(
         config,
-        cli_overrides,
-        dry_run,
-        resume,
-        no_resume,
-        verbosity,
-        counter_overrides=counter_overrides,
+        RunPipelineOpts(
+            cli_overrides=cli_overrides,
+            dry_run=dry_run,
+            resume=resume,
+            no_resume=no_resume,
+            verbosity=verbosity,
+            counter_overrides=counter_overrides,
+            inline_prompt=prompt,
+        ),
         display_context=_cli_ctx,
-        inline_prompt=prompt,
     )
     raise typer.Exit(code=exit_code)
 
@@ -746,17 +712,7 @@ def _handle_list_agents(
     *,
     display_context: DisplayContext,
 ) -> int | None:
-    """Handle --list-agents flag.
-
-    Args:
-        config: Path to config file.
-        cli_overrides: CLI overrides dict.
-        list_agents: Whether flag was set.
-        display_context: Display context for adaptive layout.
-
-    Returns:
-        Exit code or None to continue.
-    """
+    """Handle --list-agents flag; returns exit code or None to continue."""
     if not list_agents:
         return None
     try:
@@ -776,15 +732,7 @@ def _handle_list_providers(
     *,
     display_context: DisplayContext,
 ) -> int | None:
-    """Handle --list-providers flag.
-
-    Args:
-        list_providers: Whether flag was set.
-        display_context: Display context for adaptive layout.
-
-    Returns:
-        Exit code or None to continue.
-    """
+    """Handle --list-providers flag; returns exit code or None to continue."""
     if not list_providers:
         return None
     try:
@@ -803,17 +751,7 @@ def _handle_check_config(
     *,
     console: Console | None = None,
 ) -> int | None:
-    """Handle --check-config flag.
-
-    Args:
-        config: Path to config file.
-        cli_overrides: CLI overrides dict.
-        check_config: Whether flag was set.
-        console: Rich console for output.
-
-    Returns:
-        Exit code or None to continue.
-    """
+    """Handle --check-config flag; returns exit code or None to continue."""
     if not check_config:
         return None
     c = console if console is not None else _get_cli_context().console
@@ -829,13 +767,7 @@ def _handle_check_config(
 
 
 def _handle_check_mcp(check_mcp: bool, *, console: Console | None = None) -> int | None:
-    """Handle --check-mcp flag.
-
-    Runs the same startup validation the pipeline runs, without starting
-    the pipeline itself. Returns 0 when every custom MCP server + agent
-    transport probe succeeds, 1 otherwise. When no ``mcp.toml`` is
-    configured, validation is a no-op and returns 0.
-    """
+    """Handle --check-mcp flag; returns exit code or None to continue."""
     if not check_mcp:
         return None
     c = console if console is not None else _get_cli_context().console
@@ -859,15 +791,7 @@ def _handle_commit_plumbing(
     *,
     display_context: DisplayContext,
 ) -> int | None:
-    """Handle commit plumbing commands.
-
-    Args:
-        options: Commit plumbing options.
-        display_context: Display context for consistent rendering.
-
-    Returns:
-        Exit code or None to continue.
-    """
+    """Handle commit plumbing commands; returns exit code or None to continue."""
     if not (options.generate_commit_msg or options.generate_commit or options.show_commit_msg):
         return None
 
@@ -875,45 +799,36 @@ def _handle_commit_plumbing(
     return 0
 
 
-def _run_pipeline(  # noqa: PLR0913
+@dataclass(frozen=True)
+class _RunPipelineOpts:
+    cli_overrides: dict[str, object]
+    dry_run: bool
+    resume: bool
+    no_resume: bool
+    verbosity: Verbosity = Verbosity.VERBOSE
+    counter_overrides: dict[str, int] | None = None
+    inline_prompt: str | None = None
+
+
+def _run_pipeline(
     config: str | None,
-    cli_overrides: dict[str, object],
-    dry_run: bool,
-    resume: bool,
-    no_resume: bool,
-    verbosity: Verbosity = Verbosity.VERBOSE,
+    opts: _RunPipelineOpts,
     *,
-    counter_overrides: dict[str, int] | None = None,
     display_context: DisplayContext,
-    inline_prompt: str | None = None,
 ) -> int:
-    """Run the main pipeline.
-
-    Args:
-        config: Path to config file.
-        cli_overrides: CLI overrides dict.
-        dry_run: Whether to do dry run.
-        resume: Whether to resume.
-        no_resume: Whether to ignore checkpoint.
-        verbosity: Verbosity level.
-        counter_overrides: Budget counter overrides from --counter flags.
-        display_context: Display context for consistent rendering.
-
-    Returns:
-        Exit code.
-    """
+    """Run the main pipeline."""
     c = display_context.console
     try:
-        exit_code = run_pipeline(
+        request = RunPipelineRequest(
             config_path=_config_path(config),
-            cli_overrides=cli_overrides,
-            dry_run=dry_run,
-            resume=resume and not no_resume,
-            verbosity=verbosity,
-            display_context=display_context,
-            counter_overrides=counter_overrides or {},
-            inline_prompt=inline_prompt,
+            cli_overrides=opts.cli_overrides,
+            dry_run=opts.dry_run,
+            resume=opts.resume and not opts.no_resume,
+            verbosity=opts.verbosity,
+            counter_overrides=opts.counter_overrides or {},
+            inline_prompt=opts.inline_prompt,
         )
+        exit_code = run_pipeline(request, display_context=display_context)
         return exit_code
     except KeyboardInterrupt:
         c.print(Text("\nInterrupted by user", style="theme.status.warning"))
@@ -929,11 +844,7 @@ def _run_pipeline(  # noqa: PLR0913
 
 
 def _configure_logging(verbosity: Verbosity) -> None:
-    """Configure logging based on verbosity level.
-
-    Args:
-        verbosity: Verbosity level.
-    """
+    """Configure logging based on verbosity level."""
     # Remove default handler
     logger.remove()
 
@@ -954,17 +865,7 @@ def _configure_logging(verbosity: Verbosity) -> None:
 
 
 def _parse_counter_overrides(raw_entries: list[str]) -> dict[str, int]:
-    """Parse a list of NAME=VALUE strings into a counter overrides dict.
-
-    Args:
-        raw_entries: List of strings in "NAME=VALUE" format.
-
-    Returns:
-        Dict mapping counter name to integer override value.
-
-    Raises:
-        click.UsageError: If any entry is malformed (no '=', blank name, non-integer value).
-    """
+    """Parse NAME=VALUE counter override strings; raises UsageError on malformed input."""
     result: dict[str, int] = {}
     for entry in raw_entries:
         if "=" not in entry:
@@ -986,14 +887,7 @@ def _parse_counter_overrides(raw_entries: list[str]) -> dict[str, int]:
 def _build_cli_overrides(
     input: CLIOverrideInput,
 ) -> dict[str, object]:
-    """Build CLI overrides dictionary.
-
-    Args:
-        input: CLI override input data.
-
-    Returns:
-        Dictionary of CLI overrides for config merging.
-    """
+    """Build CLI overrides dictionary from CLIOverrideInput."""
     overrides: CLIOverrides = {
         "general": {
             "git_user_name": None,
@@ -1021,6 +915,22 @@ def _build_cli_overrides(
 
     return dict(overrides)
 
+
+# Public aliases — test-accessible names and monkeypatch interception points.
+bootstrap_global_configs = _bootstrap_global_configs
+configure_logging = _configure_logging
+handle_check_config = _handle_check_config
+handle_check_mcp = _handle_check_mcp
+handle_commit_plumbing = _handle_commit_plumbing
+handle_list_agents = _handle_list_agents
+handle_list_providers = _handle_list_providers
+inject_quick_prompt = _inject_quick_prompt
+parse_counter_overrides = _parse_counter_overrides
+prepare_init_args = _prepare_init_args
+build_cli_overrides = _build_cli_overrides
+RunPipelineOpts = _RunPipelineOpts
+invoke_pipeline = _run_pipeline
+THOROUGH_DEVELOPER_ITERS = _THOROUGH_DEVELOPER_ITERS
 
 if __name__ == "__main__":
     app()

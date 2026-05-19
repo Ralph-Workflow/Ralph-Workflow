@@ -70,7 +70,7 @@ It orchestrates the workflow around them so the run is more likely to end with:
 - a clean diff and artifact trail to inspect in the morning
 - a short finish receipt instead of a long transcript to reconstruct
 
-In plain terms: Ralph changes **what comes back**, not the fact that you already like Claude Code or Codex.
+In plain terms: Ralph Workflow changes **what comes back**, not the fact that you already like Claude Code or Codex.
 
 ## Fastest honest way to try it
 

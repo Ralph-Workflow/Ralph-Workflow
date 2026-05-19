@@ -18,8 +18,8 @@ Main entry points:
 - ``SuiteTimeoutError`` — raised on suite timeout budget exhaustion.
 """
 
+from ralph.runtime._version_info import PythonVersionInfo
 from ralph.runtime.environment import (
-    PythonVersionInfo,
     RuntimeEnvironment,
     detect_runtime_environment,
     detect_virtualenv_path,

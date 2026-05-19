@@ -7,6 +7,11 @@ must derive their decisions from this package rather than duplicating
 provider or format knowledge.
 """
 
+from ralph.mcp.multimodal._audio_content import AudioContent
+from ralph.mcp.multimodal._document_content import DocumentContent
+from ralph.mcp.multimodal._image_content import ImageContent
+from ralph.mcp.multimodal._pdf_content import PdfContent
+from ralph.mcp.multimodal._video_content import VideoContent
 from ralph.mcp.multimodal.artifacts import (
     INLINE_IMAGE_MIME_TYPES,
     MIME_TYPE_MAP,
@@ -16,12 +21,7 @@ from ralph.mcp.multimodal.artifacts import (
     MODALITY_PDF,
     MODALITY_VIDEO,
     SUPPORTED_MODALITIES,
-    AudioContent,
-    DocumentContent,
-    ImageContent,
-    PdfContent,
     ResourceReferenceContent,
-    VideoContent,
     infer_modality_and_mime,
 )
 from ralph.mcp.multimodal.capabilities import (

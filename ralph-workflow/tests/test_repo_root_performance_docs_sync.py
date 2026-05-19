@@ -46,14 +46,14 @@ RUST_PATTERNS = [
 _MINIMUM_CONTENT_LENGTH = 100
 
 
-def test_performance_docs_exist():
+def test_performance_docs_exist() -> None:
     """All performance guide files must exist."""
     for guide in _PERFORMANCE_GUIDES:
         path = REPO_ROOT_DOCS_PERFORMANCE_DIR / guide
         assert path.exists(), f"Performance guide {guide} must exist"
 
 
-def test_performance_docs_have_historical_labeling():
+def test_performance_docs_have_historical_labeling() -> None:
     """Performance docs must contain explicit historical/archival labeling.
 
     Per docs/README.md, the performance/ family is historical Rust-era reference.
@@ -69,7 +69,7 @@ def test_performance_docs_have_historical_labeling():
         )
 
 
-def test_performance_docs_contain_rust_content():
+def test_performance_docs_contain_rust_content() -> None:
     """Historical performance docs should contain Rust-era content.
 
     Since these are properly labeled historical docs describing the Rust
@@ -92,7 +92,7 @@ def test_performance_docs_contain_rust_content():
             )
 
 
-def test_performance_readme_not_python_current():
+def test_performance_readme_not_python_current() -> None:
     """docs/performance/README.md should NOT claim to be current Python guidance."""
     path = REPO_ROOT_DOCS_PERFORMANCE_DIR / "README.md"
     content = path.read_text().lower()
@@ -105,7 +105,7 @@ def test_performance_readme_not_python_current():
     assert any(m in content for m in HISTORICAL_MARKERS), "README.md must be labeled as historical"
 
 
-def test_memory_budget_has_historical_label():
+def test_memory_budget_has_historical_label() -> None:
     """memory-budget.md must be labeled as historical Rust reference."""
     path = REPO_ROOT_DOCS_PERFORMANCE_DIR / "memory-budget.md"
     if not path.exists():
@@ -116,7 +116,7 @@ def test_memory_budget_has_historical_label():
     )
 
 
-def test_monitoring_guide_has_historical_label():
+def test_monitoring_guide_has_historical_label() -> None:
     """monitoring-guide.md must be labeled as historical Rust reference."""
     path = REPO_ROOT_DOCS_PERFORMANCE_DIR / "monitoring-guide.md"
     if not path.exists():
@@ -127,7 +127,7 @@ def test_monitoring_guide_has_historical_label():
     )
 
 
-def test_optimization_guide_has_historical_label():
+def test_optimization_guide_has_historical_label() -> None:
     """optimization-guide.md must be labeled as historical Rust reference."""
     path = REPO_ROOT_DOCS_PERFORMANCE_DIR / "optimization-guide.md"
     if not path.exists():

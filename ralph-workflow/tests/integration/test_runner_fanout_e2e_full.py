@@ -24,6 +24,7 @@ from ralph.pipeline.events import PipelineEvent, WorkerCompletedEvent, WorkerFai
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
+from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -32,8 +33,8 @@ if TYPE_CHECKING:
     import pytest
 
 
-def _legacy_display() -> runner_module._LegacyConsoleDisplay:
-    return runner_module._LegacyConsoleDisplay(make_display_context())
+def _legacy_display() -> runner_module.LegacyConsoleDisplay:
+    return runner_module.LegacyConsoleDisplay(make_display_context())
 
 
 def _make_work_unit(uid: str) -> WorkUnit:
@@ -45,7 +46,6 @@ def _make_work_unit(uid: str) -> WorkUnit:
 
 
 def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
-    from ralph.policy.models import PhaseParallelization
 
     bundle = MagicMock()
     para = PhaseParallelization(
@@ -138,7 +138,7 @@ class TestFanoutVerificationAndHandoff:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
@@ -197,7 +197,7 @@ class TestFanoutVerificationAndHandoff:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),
@@ -247,7 +247,7 @@ class TestFanoutVerificationAndHandoff:
         monkeypatch.setattr("ralph.pipeline.runner.run_process_async", _fake_run_process_async)
         monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-        runner_module._execute_fan_out_sync(
+        runner_module.execute_fan_out_sync(
             effect=effect,
             state=state,
             display=_legacy_display(),

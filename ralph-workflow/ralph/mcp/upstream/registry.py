@@ -9,12 +9,13 @@ use by the MCP bridge. Alias collisions raise ``RegistryCollisionError`` immedia
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
 from typing import Literal
 
 from loguru import logger
 
 from ralph.mcp.tools.names import upstream_proxy_tool_name
+from ralph.mcp.upstream._proxied_tool import ProxiedTool
+from ralph.mcp.upstream._registry_collision_error import RegistryCollisionError
 from ralph.mcp.upstream.client import (
     HasMediaManifest,
     HttpUpstreamClient,
@@ -24,24 +25,11 @@ from ralph.mcp.upstream.client import (
     normalize_upstream_content_blocks,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
+from ralph.mcp.upstream.models import UpstreamCallError
 from ralph.mcp.upstream.validation import UpstreamValidationError
 
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
 UpstreamClientFactory = Callable[[UpstreamMcpServer], _AnyUpstreamClient]
-
-
-class RegistryCollisionError(ValueError):
-    """Raised when two upstream servers produce the same proxy alias for a tool."""
-
-
-@dataclass(frozen=True)
-class ProxiedTool:
-    """A single upstream tool mapped to a stable proxy alias."""
-
-    alias: str
-    server_name: str
-    tool: UpstreamTool
 
 
 class UpstreamRegistry:

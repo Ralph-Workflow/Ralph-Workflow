@@ -8,7 +8,7 @@ from loguru import logger
 from ralph.config.mcp_models import WebSearchConfig
 from ralph.mcp.tools import websearch as tool_websearch
 from ralph.mcp.tools.coordination import ToolResult
-from ralph.mcp.tools.websearch import _MAX_LIMIT, _MIN_LIMIT
+from ralph.mcp.tools.websearch import MAX_LIMIT, MIN_LIMIT
 from ralph.mcp.websearch.backends.base import SearchResult, WebSearchError
 
 if TYPE_CHECKING:
@@ -50,7 +50,7 @@ def _make_config(
 def test_handle_web_search_ddgs_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_backend = MagicMock()
     mock_backend.search.return_value = _GOOD_RESULTS
-    monkeypatch.setattr(tool_websearch, "_build_backend", lambda name, cfg: mock_backend)
+    monkeypatch.setattr(tool_websearch, "build_backend", lambda name, cfg: mock_backend)
 
     config = _make_config(backend="ddgs")
     result = tool_websearch.handle_web_search(
@@ -83,7 +83,7 @@ def test_fallback_chain_advances_on_failure(monkeypatch: pytest.MonkeyPatch) -> 
             return failing_backend
         return fallback_backend
 
-    monkeypatch.setattr(tool_websearch, "_build_backend", _factory)
+    monkeypatch.setattr(tool_websearch, "build_backend", _factory)
 
     config = _make_config(backend="ddgs", fallback=["tavily"])
     result = tool_websearch.handle_web_search(
@@ -103,7 +103,7 @@ def test_fallback_chain_advances_on_failure(monkeypatch: pytest.MonkeyPatch) -> 
 def test_all_backends_fail_returns_is_error_true(monkeypatch: pytest.MonkeyPatch) -> None:
     failing = MagicMock()
     failing.search.side_effect = WebSearchError("all down")
-    monkeypatch.setattr(tool_websearch, "_build_backend", lambda name, cfg: failing)
+    monkeypatch.setattr(tool_websearch, "build_backend", lambda name, cfg: failing)
 
     config = _make_config(backend="ddgs", fallback=["tavily"])
     result = tool_websearch.handle_web_search(
@@ -142,7 +142,7 @@ def test_limit_bounds_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
         b.search.side_effect = _search
         return b
 
-    monkeypatch.setattr(tool_websearch, "_build_backend", _capturing_backend)
+    monkeypatch.setattr(tool_websearch, "build_backend", _capturing_backend)
 
     tool_websearch.handle_web_search(
         _AllowedSession(),
@@ -157,8 +157,8 @@ def test_limit_bounds_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
         web_search_config=_make_config(),
     )
 
-    assert captured_limits[0] == _MAX_LIMIT, f"Expected {_MAX_LIMIT}, got {captured_limits[0]}"
-    assert captured_limits[1] == _MIN_LIMIT, f"Expected {_MIN_LIMIT}, got {captured_limits[1]}"
+    assert captured_limits[0] == MAX_LIMIT, f"Expected {MAX_LIMIT}, got {captured_limits[0]}"
+    assert captured_limits[1] == MIN_LIMIT, f"Expected {MIN_LIMIT}, got {captured_limits[1]}"
 
 
 def test_query_not_in_warning_logs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -166,7 +166,7 @@ def test_query_not_in_warning_logs(monkeypatch: pytest.MonkeyPatch) -> None:
 
     failing = MagicMock()
     failing.search.side_effect = WebSearchError("backend error")
-    monkeypatch.setattr(tool_websearch, "_build_backend", lambda name, cfg: failing)
+    monkeypatch.setattr(tool_websearch, "build_backend", lambda name, cfg: failing)
 
     records: list[str] = []
     sink_id = logger.add(lambda msg: records.append(str(msg)), level="WARNING")

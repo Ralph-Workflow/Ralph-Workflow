@@ -15,7 +15,7 @@ from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.loader import (
     GLOBAL_CONFIG_PATH,
     LOCAL_CONFIG_PATH,
-    _deep_merge,
+    deep_merge,
     load_config,
 )
 from ralph.config.models import AgentConfig, GeneralConfig
@@ -76,7 +76,7 @@ def test_deep_merge_simple() -> None:
     """Test basic dictionary merge."""
     base: dict[str, object] = {"a": 1, "b": 2}
     override: dict[str, object] = {"b": 3, "c": 4}
-    result = _deep_merge(base, override)
+    result = deep_merge(base, override)
     assert result == {"a": 1, "b": 3, "c": 4}
 
 
@@ -84,7 +84,7 @@ def test_deep_merge_nested() -> None:
     """Test nested dictionary merge."""
     base: dict[str, object] = {"general": {"a": 1, "b": 2}}
     override: dict[str, object] = {"general": {"b": 3, "c": 4}}
-    result = _deep_merge(base, override)
+    result = deep_merge(base, override)
     assert result == {"general": {"a": 1, "b": 3, "c": 4}}
 
 
@@ -92,7 +92,7 @@ def test_deep_merge_override_wins() -> None:
     """Test that override values take precedence."""
     base: dict[str, object] = {"a": 1, "b": {"x": 1, "y": 2}}
     override: dict[str, object] = {"b": {"y": 3, "z": 4}}
-    result = _deep_merge(base, override)
+    result = deep_merge(base, override)
     assert result == {"a": 1, "b": {"x": 1, "y": 3, "z": 4}}
 
 
@@ -155,8 +155,9 @@ def test_load_config_converts_nested_chain_and_drain_tables(
 
     config = load_config(workspace_scope=_scope_for(tmp_path))
 
-    assert config.agent_chains == {"commit_chain": ["claude"]}
-    assert config.agent_drains == {"commit": "commit_chain", "review": "commit_chain"}
+    assert config.agent_chains["commit_chain"].agents == ["claude"]
+    assert config.agent_drains["commit"].chain == "commit_chain"
+    assert config.agent_drains["review"].chain == "commit_chain"
 
 
 def test_load_config_local_normalized_tables_override_xdg_global(
@@ -190,8 +191,8 @@ def test_load_config_local_normalized_tables_override_xdg_global(
 
     config = load_config(workspace_scope=_scope_for(tmp_path))
 
-    assert config.agent_chains["commit_chain"] == ["codex"]
-    assert config.agent_drains["commit"] == "commit_chain"
+    assert config.agent_chains["commit_chain"].agents == ["codex"]
+    assert config.agent_drains["commit"].chain == "commit_chain"
 
 
 def test_unified_config_frozen() -> None:
@@ -364,22 +365,22 @@ def test_load_config_suspect_threshold_roundtrips(
 
 def test_general_config_child_progress_ttl_default() -> None:
     cfg = GeneralConfig()
-    assert cfg.agent_child_progress_ttl_seconds == 45.0  # noqa: PLR2004
+    assert cfg.agent_child_progress_ttl_seconds == 45.0
 
 
 def test_general_config_child_heartbeat_ttl_default() -> None:
     cfg = GeneralConfig()
-    assert cfg.agent_child_heartbeat_ttl_seconds == 15.0  # noqa: PLR2004
+    assert cfg.agent_child_heartbeat_ttl_seconds == 15.0
 
 
 def test_general_config_child_stale_label_ttl_default() -> None:
     cfg = GeneralConfig()
-    assert cfg.agent_child_stale_label_ttl_seconds == 10.0  # noqa: PLR2004
+    assert cfg.agent_child_stale_label_ttl_seconds == 10.0
 
 
 def test_general_config_child_exit_reconcile_default() -> None:
     cfg = GeneralConfig()
-    assert cfg.agent_child_exit_reconcile_seconds == 5.0  # noqa: PLR2004
+    assert cfg.agent_child_exit_reconcile_seconds == 5.0
 
 
 def test_load_config_child_progress_ttl_roundtrips(
@@ -398,7 +399,7 @@ def test_load_config_child_progress_ttl_roundtrips(
 
     config = load_config(workspace_scope=_scope_for(tmp_path))
 
-    assert config.general.agent_child_progress_ttl_seconds == 90.0  # noqa: PLR2004
+    assert config.general.agent_child_progress_ttl_seconds == 90.0
 
 
 # ---------------------------------------------------------------------------

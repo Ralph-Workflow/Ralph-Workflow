@@ -31,7 +31,7 @@ _AUDIT_FILES: list[Path] = [
     REPO_ROOT / "ralph" / "cli" / "commands" / "cleanup.py",
     REPO_ROOT / "ralph" / "cli" / "main.py",
     REPO_ROOT / "ralph" / "config" / "welcome.py",
-    REPO_ROOT / "ralph" / "policy" / "validation.py",
+    REPO_ROOT / "ralph" / "policy" / "validation" / "__init__.py",
     REPO_ROOT / "README.md",
     REPO_ROOT / "CONTRIBUTING.md",
 ]
@@ -72,6 +72,13 @@ _ALLOWLIST: list[tuple[str, str]] = [
     ("Ralph-Workflow/ralph-workflow", "codeberg repository path"),
     ("https://codeberg.org/RalphWorkflow/Ralph-Workflow", "codeberg repository URL"),
     ("https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new", "codeberg issue tracker URL"),
+    # GitHub mirror repo path — Ralph-Workflow is the repo name, not a project name usage
+    ("https://github.com/Ralph-Workflow/Ralph-Workflow", "github repository URL"),
+    ("Ralph-Workflow/Ralph-Workflow", "github repository path"),
+    # GitDB mirrors the GitHub repo path — Ralph-Workflow is the repo name, not a project name usage
+    ("gitdb.net/Ralph-Workflow/Ralph-Workflow", "gitdb mirror path"),
+    # Line-wrapped "Ralph\nWorkflow" in RST source (text wrapping, not a violation)
+    ("or watch Ralph\nWorkflow", "rst line-wrapped Ralph Workflow"),
 ]
 
 # Pattern: a capital-R 'Ralph' word that is NOT followed by ' Workflow'

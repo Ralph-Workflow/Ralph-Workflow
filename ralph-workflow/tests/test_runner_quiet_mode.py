@@ -41,10 +41,12 @@ def _config() -> UnifiedConfig:
     )
 
 
-def _install_runner_stubs(monkeypatch, policy_bundle, tmp_path: Path) -> list[str]:
+def _install_runner_stubs(
+    monkeypatch: MonkeyPatch, policy_bundle: object, tmp_path: Path
+) -> list[str]:
     invoked_phases: list[str] = []
 
-    def fake_execute_effect(effect, _config, _workspace_scope):
+    def fake_execute_effect(effect: object, _config: object, _workspace_scope: object) -> object:
         if isinstance(effect, InvokeAgentEffect):
             invoked_phases.append(effect.phase)
             return PipelineEvent.AGENT_SUCCESS
@@ -53,18 +55,18 @@ def _install_runner_stubs(monkeypatch, policy_bundle, tmp_path: Path) -> list[st
         msg = f"Unexpected effect: {type(effect)!r}"
         raise AssertionError(msg)
 
-    def fake_phase_event_after_agent_run(*, effect, **_kwargs):
+    def fake_phase_event_after_agent_run(*, effect: object, **_kwargs: object) -> object:
         if effect.phase in {"development_analysis", "review_analysis"}:
             return PipelineEvent.ANALYSIS_SUCCESS
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
-    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
-        runner_module, "_phase_event_after_agent_run", fake_phase_event_after_agent_run
+        runner_module, "phase_event_after_agent_run", fake_phase_event_after_agent_run
     )
     return invoked_phases
 
@@ -138,17 +140,17 @@ def test_quiet_mode_renders_completion_summary_on_failure(
 
     monkeypatch.setattr(
         runner_module,
-        "_call_determine_effect_from_policy",
+        "call_determine_effect_from_policy",
         lambda *_a, **_kw: next(effects),
     )
     monkeypatch.setattr(
         runner_module,
-        "_materialize_prepared_prompt",
+        "materialize_prepared_prompt",
         lambda *_a, **_kw: None,
     )
     monkeypatch.setattr(
         runner_module,
-        "_emit_phase_transition_if_changed",
+        "emit_phase_transition_if_changed",
         lambda *args, **kwargs: args[1],
     )
 

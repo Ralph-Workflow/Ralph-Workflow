@@ -9,79 +9,55 @@ from __future__ import annotations
 import contextlib
 import json
 import threading
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from queue import Empty, Queue
 from subprocess import PIPE as _SUBPROCESS_PIPE
 from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
-from ralph.process.manager import ManagedProcess, ProcessTerminationError, get_process_manager
+from ralph.mcp.protocol._mcp_message import MCPMessage
+from ralph.mcp.protocol._transport_error import TransportError
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessTerminationError,
+    SpawnOptions,
+    get_process_manager,
+)
+
+__all__ = [
+    "MCPMessage",
+    "MCPTransport",
+    "StdioTransport",
+    "TransportError",
+]
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
+if TYPE_CHECKING:
+
+    class ProcessLike(Protocol):
+        """Subset of subprocess.Popen required by StdioTransport."""
+
+        @property
+        def stdin(self) -> IO[bytes] | None: ...
+
+        @property
+        def stdout(self) -> IO[bytes] | None: ...
+
+        @property
+        def stderr(self) -> IO[bytes] | None: ...
+
+        def terminate(self) -> None: ...
+        def wait(self, timeout: float | None = None) -> int: ...
+        def kill(self) -> None: ...
+
+    class ThreadLike(Protocol):
+        """Minimal threading.Thread interface required by StdioTransport."""
+
+        def start(self) -> None: ...
 
 
-class TransportError(Exception):
-    """Raised when transport operations fail."""
-
-    pass
-
-
-@dataclass
-class MCPMessage:
-    """Represents an MCP message."""
-
-    method: str
-    params: dict[str, object] | None = None
-    msg_id: str | int | None = None
-    error: dict[str, object] | None = None
-
-
-class MCPTransport(ABC):
-    """Abstract base class for MCP transports."""
-
-    @abstractmethod
-    async def send(self, message: MCPMessage) -> None:
-        """Send a message."""
-        pass
-
-    @abstractmethod
-    def recv(self) -> AsyncIterator[MCPMessage]:
-        """Receive messages as an async iterator."""
-        pass
-
-    @abstractmethod
-    async def close(self) -> None:
-        """Close the transport."""
-        pass
-
-
-class ProcessLike(Protocol):
-    """Subset of subprocess.Popen required by StdioTransport."""
-
-    @property
-    def stdin(self) -> IO[bytes] | None: ...
-
-    @property
-    def stdout(self) -> IO[bytes] | None: ...
-
-    @property
-    def stderr(self) -> IO[bytes] | None: ...
-
-    def terminate(self) -> None: ...
-    def wait(self, timeout: float | None = None) -> int: ...
-    def kill(self) -> None: ...
-
-
-class ThreadLike(Protocol):
-    """Minimal threading.Thread interface required by StdioTransport."""
-
-    def start(self) -> None: ...
-
-
-class StdioTransport(MCPTransport):
+class StdioTransport:
     """MCP transport over stdio.
 
     Communicates with an MCP server process via stdin/stdout.
@@ -220,15 +196,20 @@ class StdioTransport(MCPTransport):
         logger.info("Closed stdio transport")
 
 
+MCPTransport = StdioTransport
+
+
 def _default_process_factory(command: list[str], cwd: str | None) -> ManagedProcess:
     label = f"mcp-stdio:{command[0]}"
     return get_process_manager().spawn(
         command,
-        cwd=cwd,
-        stdin=_SUBPROCESS_PIPE,
-        stdout=_SUBPROCESS_PIPE,
-        stderr=_SUBPROCESS_PIPE,
-        label=label,
+        SpawnOptions(
+            cwd=cwd,
+            stdin=_SUBPROCESS_PIPE,
+            stdout=_SUBPROCESS_PIPE,
+            stderr=_SUBPROCESS_PIPE,
+            label=label,
+        ),
     )
 
 

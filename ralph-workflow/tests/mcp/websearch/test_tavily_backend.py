@@ -18,7 +18,7 @@ SEARCH_LIMIT = 2
 IMPORT_ERROR_MATCH = "pip install ralph-workflow\\[web-search\\]"
 
 
-def _import_tavily_module():
+def _import_tavily_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.tavily")
     except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase
@@ -94,7 +94,7 @@ def test_import_error_message_points_to_extras(monkeypatch: pytest.MonkeyPatch) 
         locals: dict[str, object] | None = None,
         fromlist: tuple[str, ...] = (),
         level: int = 0,
-    ):
+    ) -> object:
         if name == "tavily":
             raise ImportError("missing tavily")
         return original_import(name, globals, locals, fromlist, level)

@@ -30,6 +30,9 @@ from ralph.phases.required_artifacts import (
 )
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
 from ralph.policy.models import ROLE_REVIEW
+from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
+from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
+from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import (
     dump_rendered_prompt,
@@ -44,13 +47,26 @@ from ralph.prompts.developer import (
     prompt_planning_xml_with_context,
 )
 from ralph.prompts.payload_refs import (
-    _sanitize_surrogates,
     build_prompt_payload_variables,
     write_payload_to_directory,
 )
+from ralph.prompts.payload_refs import (
+    sanitize_surrogates as _sanitize_surrogates,
+)
+from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
+
+__all__ = [
+    "MissingPlanHandoffError",
+    "PromptPhaseContext",
+    "PromptPhaseOptions",
+    "collect_media_entries_for_phase",
+    "materialize_prompt_for_phase",
+    "prompt_file_for_phase",
+    "tool_name_prefix_for_transport",
+]
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -61,44 +77,15 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
-class MissingPlanHandoffError(ValueError):
-    """Raised when a template requires an existing plan handoff that is absent."""
-
-
 @dataclass(frozen=True)
-class MultimodalSidecarEntry:
-    """A single multimodal artifact entry in the prompt-to-invoke handoff sidecar."""
+class PromptPhaseOptions:
+    """Optional inputs for prompt materialization with sensible defaults."""
 
-    artifact_id: str
-    uri: str
-    mime_type: str
-    title: str
-    modality: str
-    delivery: str
-    reason: str = ""
-    source_path: str = ""
-    cache_path: str = ""
-    source_uri: str = ""
-    block_type: str = ""
-    failure_kind: str = ""
-    identity_key: str = ""
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "artifact_id": self.artifact_id,
-            "uri": self.uri,
-            "mime_type": self.mime_type,
-            "title": self.title,
-            "modality": self.modality,
-            "delivery": self.delivery,
-            "reason": self.reason,
-            "source_path": self.source_path,
-            "cache_path": self.cache_path,
-            "source_uri": self.source_uri,
-            "block_type": self.block_type,
-            "failure_kind": self.failure_kind,
-            "identity_key": self.identity_key,
-        }
+    artifacts_policy: ArtifactsPolicy | None = None
+    worker_namespace: Path | None = None
+    previous_phase: str | None = None
+    resume_existing_phase: bool = False
+    multimodal_entries: list[MultimodalSidecarEntry] | None = None
 
 
 def _sidecar_entry_identity(entry: MultimodalSidecarEntry) -> str:
@@ -186,36 +173,37 @@ def collect_media_entries_for_phase(
         return []
 
 
-def materialize_prompt_for_phase(  # noqa: PLR0913
-    *,
-    phase: str,
-    workspace: Workspace,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None = None,
-    session_caps: SessionCapabilities,
-    workspace_root: Path,
-    worker_namespace: Path | None = None,
-    previous_phase: str | None = None,
-    resume_existing_phase: bool = False,
-    multimodal_entries: list[MultimodalSidecarEntry] | None = None,
+def materialize_prompt_for_phase(
+    context: PromptPhaseContext | None = None,
+    options: PromptPhaseOptions | None = None,
+    **kwargs: object,
 ) -> str:
     """Render and persist the prompt for a pipeline phase, returning its dump path."""
-    prompt = _render_prompt_for_phase(
-        phase=phase,
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        artifacts_policy=artifacts_policy,
-        session_caps=session_caps,
-        workspace_root=workspace_root,
-        worker_namespace=worker_namespace,
-        previous_phase=previous_phase,
-        resume_existing_phase=resume_existing_phase,
-    )
-    path = dump_rendered_prompt(workspace, phase, prompt)
-    if multimodal_entries:
-        _write_multimodal_sidecar(workspace, phase, multimodal_entries)
+    if context is None:
+        context = PromptPhaseContext(
+            phase=cast("str", kwargs["phase"]),
+            workspace=cast("Workspace", kwargs["workspace"]),
+            pipeline_policy=cast("PipelinePolicy", kwargs["pipeline_policy"]),
+            session_caps=cast("SessionCapabilities", kwargs["session_caps"]),
+            workspace_root=cast("Path", kwargs["workspace_root"]),
+        )
+        if options is None:
+            options = PromptPhaseOptions(
+                artifacts_policy=cast("ArtifactsPolicy | None", kwargs.get("artifacts_policy")),
+                worker_namespace=cast("Path | None", kwargs.get("worker_namespace")),
+                previous_phase=cast("str | None", kwargs.get("previous_phase")),
+                resume_existing_phase=cast("bool", kwargs.get("resume_existing_phase", False)),
+                multimodal_entries=cast(
+                    "list[MultimodalSidecarEntry] | None", kwargs.get("multimodal_entries")
+                ),
+            )
+    opts = options or PromptPhaseOptions()
+    prompt = _render_prompt_for_phase(context, opts)
+    path = dump_rendered_prompt(context.workspace, context.phase, prompt)
+    if opts.multimodal_entries:
+        _write_multimodal_sidecar(context.workspace, context.phase, opts.multimodal_entries)
     else:
-        _clear_multimodal_sidecar(workspace, phase)
+        _clear_multimodal_sidecar(context.workspace, context.phase)
     return path
 
 
@@ -238,7 +226,7 @@ def _loopback_template_name_for_phase(phase_def: PhaseDefinition | None) -> str 
     return phase_def.loopback_prompt_template or phase_def.continuation_template
 
 
-def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
+def read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
     """Read the retry hint file for a phase and delete it after reading."""
     path = retry_hint_path(phase)
     if not workspace.exists(path):
@@ -251,18 +239,19 @@ def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
         return ""
 
 
-def _render_prompt_for_phase(  # noqa: PLR0913
-    phase: str,
-    workspace: Workspace,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None,
-    session_caps: SessionCapabilities,
-    workspace_root: Path,
-    worker_namespace: Path | None = None,
-    previous_phase: str | None = None,
-    resume_existing_phase: bool = False,
+def _render_prompt_for_phase(
+    context: PromptPhaseContext,
+    options: PromptPhaseOptions,
 ) -> str:
-    context = TemplateContext.default(workspace_root)
+    phase = context.phase
+    workspace = context.workspace
+    pipeline_policy = context.pipeline_policy
+    session_caps = context.session_caps
+    workspace_root = context.workspace_root
+    artifacts_policy = options.artifacts_policy
+    worker_namespace = options.worker_namespace
+    previous_phase = options.previous_phase
+    tmpl_ctx = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
     prompt_content = _read_optional(workspace, "PROMPT.md")
     _clear_completed_planning_history_if_needed(
@@ -288,18 +277,11 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             analysis_feedback_content,
             analysis_feedback_path,
             template_name,
-        ) = _prepare_planning_prompt_context(
-            phase=phase,
-            workspace=workspace,
-            pipeline_policy=pipeline_policy,
-            artifacts_policy=artifacts_policy,
-            previous_phase=previous_phase,
-            resume_existing_phase=resume_existing_phase,
-        )
-        last_retry_error = _read_and_clear_retry_hint(workspace, phase)
-        artifact_history_path = _resolve_planning_history_path(workspace_root)
+        ) = _prepare_planning_prompt_context(context, options)
+        last_retry_error = read_and_clear_retry_hint(workspace, phase)
+        artifact_history_path = resolve_planning_history_path(workspace_root)
         return prompt_planning_xml_with_context(
-            context=context,
+            context=tmpl_ctx,
             inputs=PlanningPromptInputs(
                 prompt_content=prompt_content,
                 plan_content=plan_content,
@@ -319,8 +301,8 @@ def _render_prompt_for_phase(  # noqa: PLR0913
     if phase_role == "commit":
         return prompt_commit_message(
             _commit_phase_diff(workspace_root),
-            template_registry=context.registry,
-            partials=context.partials,
+            template_registry=tmpl_ctx.registry,
+            partials=tmpl_ctx.partials,
             submit_artifact_tool_names=SUBMIT_ARTIFACT_TOOL.prompt_aliases(
                 tool_name_prefix=session_caps.tool_name_prefix,
             ),
@@ -355,9 +337,9 @@ def _render_prompt_for_phase(  # noqa: PLR0913
         analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
             workspace, phase, pipeline_policy, artifacts_policy
         )
-        last_retry_error = _read_and_clear_retry_hint(workspace, phase)
+        last_retry_error = read_and_clear_retry_hint(workspace, phase)
         return prompt_developer_iteration_xml_with_context(
-            context=context,
+            context=tmpl_ctx,
             inputs=DeveloperPromptInputs(
                 prompt_content=prompt_content,
                 plan_content=plan_content,
@@ -376,18 +358,18 @@ def _render_prompt_for_phase(  # noqa: PLR0913
 
     # Template-based prompt: review, analysis, or other execution-role phases
     if phase_role in (ROLE_REVIEW, "analysis", "execution", "verification"):
-        template = context.registry.get_template(template_name)
+        template = tmpl_ctx.registry.get_template(template_name)
         diff_content = _git_diff(workspace_root)
         latest_artifact_content, latest_artifact_path = _latest_artifact_content(
             workspace, phase, pipeline_policy, artifacts_policy
         )
         issues_content, issues_path = _resolve_issues_content(workspace)
-        fix_result_content, fix_result_path = _resolve_fix_result_content(workspace)
+        fix_result_content, fix_result_path = resolve_fix_result_content(workspace)
         analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
             workspace, phase, pipeline_policy, artifacts_policy
         )
-        last_retry_error = _read_and_clear_retry_hint(workspace, phase)
-        variables = _phase_payload_variables(
+        last_retry_error = read_and_clear_retry_hint(workspace, phase)
+        variables = phase_payload_variables(
             phase=phase,
             workspace_root=workspace_root,
             worker_namespace=worker_namespace,
@@ -401,16 +383,14 @@ def _render_prompt_for_phase(  # noqa: PLR0913
                 "ANALYSIS_FEEDBACK": analysis_feedback_content,
             },
         )
-        if plan_path:
-            variables["PLAN_PATH"] = plan_path
-        if latest_artifact_path:
-            variables["LATEST_ARTIFACT_PATH"] = latest_artifact_path
-        if issues_path:
-            variables["ISSUES_PATH"] = issues_path
-        if fix_result_path:
-            variables["FIX_RESULT_PATH"] = fix_result_path
-        if analysis_feedback_path:
-            variables["ANALYSIS_FEEDBACK_PATH"] = analysis_feedback_path
+        path_vars = {
+            "PLAN_PATH": plan_path,
+            "LATEST_ARTIFACT_PATH": latest_artifact_path,
+            "ISSUES_PATH": issues_path,
+            "FIX_RESULT_PATH": fix_result_path,
+            "ANALYSIS_FEEDBACK_PATH": analysis_feedback_path,
+        }
+        variables.update({k: v for k, v in path_vars.items() if v})
         if phase_def is not None and phase_def.skip_invocation:
             variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
         variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
@@ -418,7 +398,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
         return render_template(
             template,
             _merged_variables(variables, session_caps),
-            context.partials,
+            tmpl_ctx.partials,
         )
 
     msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
@@ -470,13 +450,14 @@ def _read_optional(workspace: Workspace, path: str) -> str | None:
     return workspace.read(path)
 
 
-def _phase_payload_variables(
+def phase_payload_variables(
     *,
     phase: str,
     workspace_root: Path,
     values: dict[str, str],
     worker_namespace: Path | None = None,
 ) -> dict[str, str]:
+    """Build prompt payload variables, writing oversized values to disk under the phase prefix."""
     output_dir = (
         worker_namespace / "tmp" / "prompt_payloads"
         if worker_namespace is not None
@@ -515,7 +496,7 @@ def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
         workspace,
         artifact_type="plan",
         artifact_path=PLAN_ARTIFACT_PATH,
-        fallback_formatter=_format_plan_for_execution,
+        fallback_formatter=format_plan_for_execution,
     )
 
 
@@ -537,7 +518,7 @@ def _resolve_required_plan_handoff(
             parsed = cast("object", json.loads(workspace.read(PLAN_DRAFT_PATH)))
             if isinstance(parsed, dict) and isinstance(parsed.get("sections"), dict):
                 sections = cast("dict[str, object]", parsed["sections"])
-                return _format_plan_for_execution(json.dumps(sections)), ""
+                return format_plan_for_execution(json.dumps(sections)), ""
     plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
     msg = f"Template '{template_name}' requires an existing plan handoff at {plan_handoff_path}"
     raise MissingPlanHandoffError(msg)
@@ -561,15 +542,16 @@ def _should_preserve_planning_context(
     return is_loopback or preserve_retry_context or resume_existing_phase
 
 
-def _prepare_planning_prompt_context(  # noqa: PLR0913
-    *,
-    phase: str,
-    workspace: Workspace,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None,
-    previous_phase: str | None,
-    resume_existing_phase: bool,
+def _prepare_planning_prompt_context(
+    context: PromptPhaseContext,
+    options: PromptPhaseOptions,
 ) -> tuple[str | None, str, str, str, str]:
+    phase = context.phase
+    workspace = context.workspace
+    pipeline_policy = context.pipeline_policy
+    artifacts_policy = options.artifacts_policy
+    previous_phase = options.previous_phase
+    resume_existing_phase = options.resume_existing_phase
     phase_def = pipeline_policy.phases.get(phase)
     template_name = _template_name_for_phase(phase, pipeline_policy)
     preserve_planning_context = _should_preserve_planning_context(
@@ -628,7 +610,7 @@ def _artifact_history_dir_from_path(history_path: str) -> str:
     return str(Path(history_path).parent)
 
 
-def _resolve_planning_history_path(
+def resolve_planning_history_path(
     workspace_root: Path,
 ) -> str:
     """Return the absolute path to the planning artifact history index, if it exists."""
@@ -791,153 +773,6 @@ def _resolve_agent_handoff(
     return None, ""
 
 
-def _format_plan_for_execution(content: str) -> str:
-    plan = _parse_plan_content(content)
-    if plan is None:
-        return content
-
-    sections = [
-        _format_summary_section(plan),
-        _format_steps_section(plan),
-        _format_critical_files_section(plan),
-        _format_risks_section(plan),
-        _format_verification_section(plan),
-        _format_work_units_section(plan),
-    ]
-    return "\n\n".join(section for section in sections if section) or content
-
-
-def _parse_plan_content(content: str) -> dict[str, object] | None:
-    try:
-        parsed_obj: object = json.loads(content)
-    except json.JSONDecodeError:
-        return None
-
-    if not isinstance(parsed_obj, dict):
-        return None
-
-    parsed = cast("dict[str, object]", parsed_obj)
-    plan = parsed.get("content") if parsed.get("type") == "plan" else parsed_obj
-    return plan if isinstance(plan, dict) else None
-
-
-def _format_summary_section(plan: dict[str, object]) -> str:
-    summary = plan.get("summary")
-    if not isinstance(summary, dict):
-        return ""
-
-    sections: list[str] = []
-    context = summary.get("context")
-    if context:
-        sections.append(f"Summary:\n{context}")
-
-    scope_lines = _bullet_lines(summary.get("scope_items"), "text")
-    if scope_lines:
-        sections.append("\n".join(["Scope items:", *scope_lines]))
-
-    return "\n\n".join(sections)
-
-
-def _format_steps_section(plan: dict[str, object]) -> str:
-    steps = plan.get("steps")
-    if not isinstance(steps, list) or not steps:
-        return ""
-
-    lines = ["Implementation steps:"]
-    for step in steps:
-        if not isinstance(step, dict):
-            continue
-        number = step.get("number", "?")
-        title = step.get("title", "Untitled step")
-        content_text = step.get("content", "")
-        lines.append(f"{number}. {title}")
-        if content_text:
-            lines.append(f"   {content_text}")
-    return "\n".join(lines)
-
-
-def _format_critical_files_section(plan: dict[str, object]) -> str:
-    critical_files = plan.get("critical_files")
-    if not isinstance(critical_files, dict):
-        return ""
-
-    primary_files = critical_files.get("primary_files")
-    if not isinstance(primary_files, list) or not primary_files:
-        return ""
-
-    lines = ["Critical files:"]
-    for file_info in primary_files:
-        if not isinstance(file_info, dict):
-            continue
-        path = file_info.get("path")
-        action = file_info.get("action")
-        why = file_info.get("why")
-        if not (path and action):
-            continue
-        line = f"- {path} ({action})"
-        if why:
-            line = f"{line}: {why}"
-        lines.append(line)
-    return "\n".join(lines)
-
-
-def _format_risks_section(plan: dict[str, object]) -> str:
-    risks = plan.get("risks_mitigations")
-    if not isinstance(risks, list) or not risks:
-        return ""
-
-    lines = ["Risks and mitigations:"]
-    for risk in risks:
-        if not isinstance(risk, dict):
-            continue
-        risk_text = risk.get("risk")
-        mitigation = risk.get("mitigation")
-        if risk_text and mitigation:
-            lines.append(f"- {risk_text} -> {mitigation}")
-    return "\n".join(lines)
-
-
-def _format_verification_section(plan: dict[str, object]) -> str:
-    verification = plan.get("verification_strategy")
-    if not isinstance(verification, list) or not verification:
-        return ""
-
-    lines = ["Verification strategy:"]
-    for check in verification:
-        if not isinstance(check, dict):
-            continue
-        method = check.get("method")
-        outcome = check.get("expected_outcome")
-        if method and outcome:
-            lines.append(f"- {method}: {outcome}")
-    return "\n".join(lines)
-
-
-def _format_work_units_section(plan: dict[str, object]) -> str:
-    work_units = plan.get("work_units")
-    if not isinstance(work_units, list) or not work_units:
-        return ""
-
-    lines = ["Work units:"]
-    for unit in work_units:
-        if not isinstance(unit, dict):
-            continue
-        unit_id = unit.get("unit_id")
-        description = unit.get("description")
-        if unit_id and description:
-            lines.append(f"- {unit_id}: {description}")
-    return "\n".join(lines)
-
-
-def _bullet_lines(items: object, text_key: str) -> list[str]:
-    if not isinstance(items, list):
-        return []
-
-    return [
-        f"- {item[text_key]}" for item in items if isinstance(item, dict) and item.get(text_key)
-    ]
-
-
 def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
@@ -947,7 +782,8 @@ def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
     return content or "(no review issues available)", path
 
 
-def _resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
+def resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
+    """Return (content, path) for the fix_result artifact, with a fallback if absent."""
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="fix_result",
@@ -1086,5 +922,9 @@ def _pending_diff(workspace_root: Path) -> str:
 
 
 def _commit_phase_diff(workspace_root: Path) -> str:
-    diff = _pending_diff(workspace_root).strip()
+    diff = pending_diff(workspace_root).strip()
     return diff or "(no diff available)"
+
+
+pending_diff = _pending_diff
+git_diff = _git_diff

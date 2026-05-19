@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.display.long_content_summary import _SUMMARY_THRESHOLD, should_summarize
+from ralph.display.long_content_summary import SUMMARY_THRESHOLD, should_summarize
 
 _DOC_PATH = Path(__file__).resolve().parents[1] / "docs" / "sphinx" / "transcript.md"
 _MIN_SECTION_LEN = 200
@@ -56,9 +56,9 @@ def test_readme_documents_200_char_inline_cap(long_content_section: str) -> None
 
 
 def test_threshold_constant_matches_readme(long_content_section: str) -> None:
-    assert str(_SUMMARY_THRESHOLD) in long_content_section, (
-        f"transcript.md must document the summary threshold ({_SUMMARY_THRESHOLD})"
-        " to match ralph.display.long_content_summary._SUMMARY_THRESHOLD"
+    assert str(SUMMARY_THRESHOLD) in long_content_section, (
+        f"transcript.md must document the summary threshold ({SUMMARY_THRESHOLD})"
+        " to match ralph.display.long_content_summary.SUMMARY_THRESHOLD"
     )
 
 
@@ -69,11 +69,11 @@ def test_section_is_non_empty(long_content_section: str) -> None:
 
 
 def test_summary_threshold_is_positive() -> None:
-    assert _SUMMARY_THRESHOLD > 0, "_SUMMARY_THRESHOLD must be a positive integer"
+    assert SUMMARY_THRESHOLD > 0, "SUMMARY_THRESHOLD must be a positive integer"
 
 
 def test_should_summarize_above_threshold() -> None:
-    assert should_summarize("x" * (_SUMMARY_THRESHOLD + 1), {}) is True, (
+    assert should_summarize("x" * (SUMMARY_THRESHOLD + 1), {}) is True, (
         "should_summarize must return True for text exceeding the threshold with no env flag"
     )
 

@@ -8,53 +8,30 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+from ralph.mcp.tools._git_diff_params import GitDiffParams
+from ralph.mcp.tools._git_execution_error import ExecutionError
+from ralph.mcp.tools._git_log_params import GitLogParams
+from ralph.mcp.tools._git_show_params import GitShowParams
 from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
-    ToolError,
     ToolResult,
     require_capability,
 )
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import SpawnOptions, get_process_manager
 
 GIT_STATUS_READ_CAPABILITY = "GitStatusRead"
 GIT_DIFF_READ_CAPABILITY = "GitDiffRead"
-_DEFAULT_LOG_COUNT = 10
+DEFAULT_LOG_COUNT = 10
 type GitRunner = Callable[[list[str], Path], subprocess.CompletedProcess[bytes]]
 type CwdProvider = Callable[[], Path]
-
-
-class ExecutionError(ToolError):
-    """Raised when a git subprocess cannot be started or fails."""
-
-
-@dataclass(frozen=True)
-class GitDiffParams:
-    """Parsed parameters for the git diff tool."""
-
-    args: list[str]
-
-
-@dataclass(frozen=True)
-class GitLogParams:
-    """Parsed parameters for the git log tool."""
-
-    count: int
-
-
-@dataclass(frozen=True)
-class GitShowParams:
-    """Parsed parameters for the git show tool."""
-
-    git_ref: str
 
 
 @runtime_checkable
@@ -91,8 +68,8 @@ def parse_git_diff_params(params: Mapping[str, object]) -> GitDiffParams:
 
 def parse_git_log_params(params: Mapping[str, object]) -> GitLogParams:
     """Parse git log params with the Rust default count."""
-    count_value = params.get("count", _DEFAULT_LOG_COUNT)
-    count = count_value if isinstance(count_value, int) and count_value >= 0 else _DEFAULT_LOG_COUNT
+    count_value = params.get("count", DEFAULT_LOG_COUNT)
+    count = count_value if isinstance(count_value, int) and count_value >= 0 else DEFAULT_LOG_COUNT
     return GitLogParams(count=count)
 
 
@@ -159,10 +136,12 @@ def run_git_command_lenient(
 def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
     proc = get_process_manager().spawn(
         command,
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        label="git-mcp-read",
+        SpawnOptions(
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            label="git-mcp-read",
+        ),
     )
     stdout, stderr = proc.communicate()
     returncode = proc.returncode if proc.returncode is not None else 0

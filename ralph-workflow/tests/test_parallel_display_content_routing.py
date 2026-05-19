@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from datetime import UTC, datetime
 from io import StringIO
 from typing import TYPE_CHECKING
 
 from rich.console import Console
 
-from ralph.display.activity_model import ActivityProvider
+from ralph.agents.subprocess_executor import SubprocessAgentExecutor
+from ralph.display.activity_model import ActivityEventKind, ActivityProvider
+from ralph.display.activity_router import ActivityRouter
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.display.plain_renderer import PlainLogRenderer
+from ralph.display.snapshot import PipelineSnapshot
+from ralph.pipeline.activity_stream import stream_parsed_agent_activity
+from ralph.pipeline.work_units import WorkUnit
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -113,11 +121,6 @@ def test_malformed_ndjson_does_not_crash(tmp_path: Path) -> None:
 
 def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
     """SubprocessAgentExecutor writes raw lines to .agent/raw/<unit>.log."""
-    import asyncio
-
-    from ralph.agents.subprocess_executor import SubprocessAgentExecutor
-    from ralph.display.activity_router import ActivityRouter
-    from ralph.pipeline.work_units import WorkUnit
 
     received: list[str] = []
 
@@ -201,13 +204,6 @@ def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) ->
 
 def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> None:
     """Snapshot with active_tool + last_activity_line emits exactly ONE [activity] tagged line."""
-    from datetime import UTC, datetime
-    from io import StringIO
-
-    from rich.console import Console
-
-    from ralph.display.plain_renderer import PlainLogRenderer
-    from ralph.display.snapshot import PipelineSnapshot
 
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
@@ -258,7 +254,6 @@ def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> N
 
 def test_emit_parsed_event_drops_bare_lifecycle_structured_content(tmp_path: Path) -> None:
     """emit_parsed_event with LIFECYCLE kind and bare lifecycle content emits nothing."""
-    from ralph.display.activity_model import ActivityEventKind
 
     pd, buf = _make_display(tmp_path)
     pd.emit_parsed_event("main", ActivityEventKind.LIFECYCLE, "claude/sonnet: thinking", {})
@@ -273,7 +268,6 @@ def test_emit_parsed_event_drops_bare_lifecycle_structured_content(tmp_path: Pat
 
 def test_emit_parsed_event_passes_through_non_lifecycle_content(tmp_path: Path) -> None:
     """emit_parsed_event with TEXT kind and real content renders normally."""
-    from ralph.display.activity_model import ActivityEventKind
 
     pd, buf = _make_display(tmp_path)
     pd.emit_parsed_event("main", ActivityEventKind.TEXT, "actual agent output here", {})
@@ -284,9 +278,6 @@ def test_emit_parsed_event_passes_through_non_lifecycle_content(tmp_path: Path) 
 
 def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_path: Path) -> None:
     """_stream_parsed_agent_activity must not emit [content][activity] for thinking events."""
-    import json
-
-    from ralph.pipeline.runner import _stream_parsed_agent_activity
 
     pd, buf = _make_display(tmp_path)
 
@@ -306,7 +297,7 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
     )
     stop_line = json.dumps({"type": "content_block_stop", "index": 0})
 
-    _stream_parsed_agent_activity(
+    stream_parsed_agent_activity(
         [thinking_line, thinking_delta, stop_line],
         parser_type="claude",
         agent_name="claude/sonnet",
@@ -321,9 +312,6 @@ def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_pat
 
 def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_path: Path) -> None:
     """_stream_parsed_agent_activity routes tool_use via emit_parsed_event with no duplication."""
-    import json
-
-    from ralph.pipeline.runner import _stream_parsed_agent_activity
 
     pd, buf = _make_display(tmp_path)
 
@@ -338,7 +326,7 @@ def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_pat
         }
     )
 
-    _stream_parsed_agent_activity(
+    stream_parsed_agent_activity(
         [tool_line],
         parser_type="claude",
         agent_name="claude/sonnet",

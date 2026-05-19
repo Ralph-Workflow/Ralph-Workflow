@@ -7,17 +7,18 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
-
-if TYPE_CHECKING:
-    from collections.abc import Collection
+from typing import TYPE_CHECKING, Literal, Self, cast
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
+from ralph.mcp.artifacts._analysis_decision import AnalysisDecision
+from ralph.mcp.artifacts._fix_result import FixResult
+from ralph.mcp.artifacts._issue_entry import _IssueEntry
+from ralph.mcp.artifacts._typed_artifact_validation_error import TypedArtifactValidationError
 from ralph.pydantic_compat import RalphBaseModel
 
-_ISSUE_SEVERITIES = frozenset({"high", "medium", "low"})
-_ISSUES_STATUSES = frozenset({"issues_found", "no_issues"})
+if TYPE_CHECKING:
+    from collections.abc import Collection
 
 
 def _load_analysis_decision_vocabulary() -> frozenset[str]:
@@ -46,14 +47,6 @@ def _load_analysis_decision_vocabulary() -> frozenset[str]:
 _ANALYSIS_DECISION_VOCABULARY: frozenset[str] = _load_analysis_decision_vocabulary()
 
 
-class _IssueEntry(RalphBaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    path: str = Field(..., min_length=1)
-    severity: Literal["high", "medium", "low"]
-    summary: str = Field(..., min_length=1)
-
-
 class Issues(RalphBaseModel):
     """Validated schema for an issues artifact payload."""
 
@@ -66,7 +59,7 @@ class Issues(RalphBaseModel):
     how_to_fix: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _check_remediation_when_issues_found(self) -> Issues:
+    def _check_remediation_when_issues_found(self) -> Self:
         if self.status == "issues_found":
             if not self.issues:
                 raise ValueError('issues must be non-empty when status is "issues_found"')
@@ -77,46 +70,6 @@ class Issues(RalphBaseModel):
             if not self.how_to_fix:
                 raise ValueError('how_to_fix must be non-empty when status is "issues_found"')
         return self
-
-
-class FixResult(RalphBaseModel):
-    """Validated schema for a fix_result artifact payload."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    summary: str = Field(..., min_length=1)
-    files_changed: str = Field(..., min_length=1)
-    next_steps: str | None = None
-
-
-class AnalysisDecision(RalphBaseModel):
-    """Validation model for analysis decision artifacts.
-
-    Enforces the documented artifact contract from format_docs/:
-    - status must be one of the values in decision_vocabulary from the default artifacts policy
-    - what_came_up_short and how_to_fix are required when status is
-      "request_changes" or "failed", and must be omitted when "completed"
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    status: str
-    summary: str = Field(..., min_length=1)
-    what_came_up_short: list[str] | None = None
-    how_to_fix: list[str] | None = None
-
-    @model_validator(mode="after")
-    def _check_status_and_remediation(self) -> AnalysisDecision:
-        if self.status in ("request_changes", "failed"):
-            if not self.what_came_up_short:
-                raise ValueError(f'what_came_up_short is required when status is "{self.status}"')
-            if not self.how_to_fix:
-                raise ValueError(f'how_to_fix is required when status is "{self.status}"')
-        return self
-
-
-class TypedArtifactValidationError(ValueError):
-    """Raised when a typed artifact payload is malformed."""
 
 
 def _validate(model_cls: type[RalphBaseModel], content: dict[str, object]) -> dict[str, object]:

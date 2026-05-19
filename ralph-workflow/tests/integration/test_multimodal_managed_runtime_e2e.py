@@ -36,7 +36,10 @@ from ralph.mcp.server.runtime import (
 )
 from ralph.mcp.tools.names import RalphToolName
 from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.models import UpstreamTool
 from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
+from ralph.prompts.debug_dump import media_session_path
+from ralph.prompts.materialize import collect_media_entries_for_phase
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -197,7 +200,7 @@ def _tool_call(
     name: str,
     args: dict[str, object],
     call_id: int = 10,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     req = JsonRpcRequest(
         jsonrpc="2.0",
         method="tools/call",
@@ -332,7 +335,6 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
 
     class _FakeClient:
         def list_tools(self) -> list[object]:
-            from ralph.mcp.upstream.models import UpstreamTool
 
             return [UpstreamTool(name="mix", description="mixed content tool")]
 
@@ -359,11 +361,11 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
 
     content = result.get("content", [])
     # All three input blocks must produce output blocks — no silent loss
-    assert len(content) == 3, f"Expected 3 blocks, got {len(content)}: {content}"  # noqa: PLR2004
+    assert len(content) == 3, f"Expected 3 blocks, got {len(content)}: {content}"
     text_blocks = [b for b in content if b.get("type") == "text"]
     rr_blocks = [b for b in content if b.get("type") == "resource_reference"]
     assert len(text_blocks) == 1, f"Expected 1 text block, got: {text_blocks}"
-    assert len(rr_blocks) == 2, f"Expected 2 resource_reference blocks, got: {rr_blocks}"  # noqa: PLR2004
+    assert len(rr_blocks) == 2, f"Expected 2 resource_reference blocks, got: {rr_blocks}"
     modalities = {b.get("modality") for b in rr_blocks}
     assert modalities == {"image", "audio"}, (
         f"Expected image and audio modalities, got: {modalities}"
@@ -388,7 +390,6 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
 
     class _FakeClient:
         def list_tools(self) -> list[object]:
-            from ralph.mcp.upstream.models import UpstreamTool
 
             return [UpstreamTool(name="pdf_tool", description="returns a PDF URI")]
 
@@ -436,8 +437,6 @@ def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
 
 def test_prompt_sidecar_preserves_mixed_modality_metadata_for_runner_handoff() -> None:
     """Sidecar with image + pdf + audio must round-trip all metadata for runner handoff."""
-    from ralph.prompts.debug_dump import media_session_path
-    from ralph.prompts.materialize import collect_media_entries_for_phase
 
     workspace = MemoryWorkspace()
     mixed_payload = json.dumps(
@@ -491,7 +490,7 @@ def test_prompt_sidecar_preserves_mixed_modality_metadata_for_runner_handoff() -
 
     entries = collect_media_entries_for_phase(workspace, "development")
 
-    assert len(entries) == 3, f"Expected 3 entries, got {len(entries)}"  # noqa: PLR2004
+    assert len(entries) == 3, f"Expected 3 entries, got {len(entries)}"
 
     image_e = next(e for e in entries if e.modality == "image")
     pdf_e = next(e for e in entries if e.modality == "pdf")

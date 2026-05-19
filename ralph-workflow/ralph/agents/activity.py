@@ -3,21 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from importlib import import_module
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from .agent_activity_kind import AgentActivityKind
+else:
+    AgentActivityKind = import_module("ralph.agents.agent_activity_kind").AgentActivityKind
 
-class AgentActivityKind(StrEnum):
-    """Kinds of agent activity that can reset the idle watchdog."""
-
-    OUTPUT_LINE = "output_line"
-    STREAM_DELTA = "stream_delta"
-    TOOL_USE = "tool_use"
-    TOOL_RESULT = "tool_result"
-    LIFECYCLE = "lifecycle"
-    CHILD_PROCESS = "child_process"
-    CHILD_HEARTBEAT = "child_heartbeat"
-    CHILD_PROGRESS = "child_progress"
-    CHILD_TERMINAL_ACK = "child_terminal_ack"
+__all__ = ["AgentActivityKind", "AgentActivitySignal"]
 
 
 @dataclass(frozen=True, slots=True)

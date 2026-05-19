@@ -11,7 +11,7 @@ This test uses a two-agent chain to also verify fallover behavior:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from ralph.agents.invoke import AgentInactivityTimeoutError
@@ -28,6 +28,7 @@ from ralph.policy.models import (
     PipelinePolicy,
     PolicyBundle,
 )
+from ralph.recovery import controller as recovery_controller_module
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.events import FailureEvent, FalloverEvent
 from ralph.recovery.testing import FakeConnectivityMonitor
@@ -70,24 +71,24 @@ def _common_monkeypatches(
     monkeypatch: pytest.MonkeyPatch,
     tmp_git_repo: Path,
     bundle: PolicyBundle,
-    fake_execute: Any,
-    save_fn: Any = None,
+    fake_execute: object,
+    save_fn: object = None,
 ) -> None:
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
-    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
-    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: bundle)
     monkeypatch.setattr(
         runner_module,
         "AgentRegistry",
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", save_fn if save_fn is not None else MagicMock())
-    monkeypatch.setattr(runner_module, "_execute_effect_with_optional_display", fake_execute)
+    monkeypatch.setattr(runner_module, "execute_effect_with_optional_display", fake_execute)
 
 
 def test_runner_exits_via_cycle_cap_not_premature_termination(
@@ -123,7 +124,7 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     invocation_count = 0
     saved_states: list[PipelineState] = []
 
-    def _fake_execute(*args: Any, **kwargs: Any) -> None:
+    def _fake_execute(*args: object, **kwargs: object) -> None:
         nonlocal invocation_count
         invocation_count += 1
         raise AgentInactivityTimeoutError("agent timed out", 30.0)
@@ -164,7 +165,6 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     - Each cycle produces 2 FailureEvents (one per agent) + 1 FalloverEvent
     - Total: 2 x _CYCLE_CAP FailureEvents + _CYCLE_CAP FalloverEvents
     """
-    from ralph.recovery import controller as recovery_controller_module
 
     bundle = _make_policy_bundle()
 
@@ -199,7 +199,7 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
 
     monkeypatch.setattr(recovery_controller_module, "FailureEventBus", _CapturingBus)
 
-    def _fake_execute(*args: Any, **kwargs: Any) -> None:
+    def _fake_execute(*args: object, **kwargs: object) -> None:
         raise AgentInactivityTimeoutError("agent timed out", 30.0)
 
     _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute)
@@ -259,7 +259,7 @@ def test_runner_fallover_history_reflects_agent_transitions(
 
     saved_states: list[PipelineState] = []
 
-    def _fake_execute(*args: Any, **kwargs: Any) -> None:
+    def _fake_execute(*args: object, **kwargs: object) -> None:
         raise AgentInactivityTimeoutError("agent timed out", 30.0)
 
     _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, saved_states.append)
@@ -315,7 +315,7 @@ def test_runner_recovery_cycle_count_reaches_cap(
 
     saved_states: list[PipelineState] = []
 
-    def _fake_execute(*args: Any, **kwargs: Any) -> None:
+    def _fake_execute(*args: object, **kwargs: object) -> None:
         raise AgentInactivityTimeoutError("agent timed out", 30.0)
 
     _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, saved_states.append)

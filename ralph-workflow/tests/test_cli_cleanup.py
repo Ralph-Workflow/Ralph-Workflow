@@ -7,6 +7,7 @@ import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
 import typer
 from typer.testing import CliRunner
 
@@ -137,7 +138,6 @@ class TestCleanupNeverInvokesGit:
 
         Monkeypatches all subprocess entry points and asserts none were called.
         """
-        import pytest
 
         invocations: list[tuple[object, ...]] = []
 

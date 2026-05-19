@@ -1,23 +1,17 @@
 from __future__ import annotations
 
+import pytest
+
 from ralph.mcp.tools.coordination import (
+    CapabilityDeniedError,
     handle_coordinate,
     handle_declare_complete,
     handle_read_env,
     handle_report_progress,
 )
-
-
-class MockSession:
-    session_id = "session-1"
-
-    def check_capability(self, capability: str) -> object:
-        return True
-
-
-class MockWorkspace:
-    def absolute_path(self, path: str) -> str:
-        return path
+from tests.coordination_mock_capable_session import MockCapableSession
+from tests.coordination_mock_session import MockSession
+from tests.coordination_mock_workspace import MockWorkspace
 
 
 def test_report_progress_accepts_injected_timestamp() -> None:
@@ -53,17 +47,10 @@ def test_coordinate_accepts_injected_timestamp() -> None:
     assert "timestamp=789" in result.content[0].text
 
 
-class MockCapableSession:
-    session_id = "session-env"
-
-    def check_capability(self, cap):
-        return "approved"
-
-
 class MockDeniedSession:
     session_id = "denied"
 
-    def check_capability(self, cap):
+    def check_capability(self, cap: object) -> object:
         return "denied"
 
 
@@ -75,16 +62,11 @@ def test_read_env_returns_variable_value() -> None:
 
 
 def test_read_env_returns_not_found_when_missing() -> None:
-    result = handle_read_env(
-        MockCapableSession(), MockWorkspace(), {"name": "MISSING"}, env={}
-    )
+    result = handle_read_env(MockCapableSession(), MockWorkspace(), {"name": "MISSING"}, env={})
     assert "MISSING=[not found]" in result.content[0].text
 
 
 def test_read_env_requires_capability() -> None:
-    import pytest
-
-    from ralph.mcp.tools.coordination import CapabilityDeniedError
 
     with pytest.raises(CapabilityDeniedError):
         handle_read_env(MockDeniedSession(), MockWorkspace(), {"name": "X"}, env={})

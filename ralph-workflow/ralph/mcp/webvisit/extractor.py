@@ -7,37 +7,38 @@ plain-text rendering. Both dependencies are optional ([web-visit] extras).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, cast
 from urllib.parse import urljoin, urlparse
 
+if TYPE_CHECKING:
+    from typing import Protocol
+
+    class _ReadabilityDocumentProtocol(Protocol):
+        def __init__(self, input: str) -> None: ...
+        def title(self) -> str: ...
+        def summary(self, html_partial: bool = ...) -> str: ...
+
+    class _HTMLNodeProtocol(Protocol):
+        @property
+        def attributes(self) -> dict[str, str | None]: ...
+        def decompose(self) -> None: ...
+        def text(self, *, separator: str = ..., strip: bool = ...) -> str: ...
+
+    class _HTMLParserProtocol(Protocol):
+        def __init__(self, html: str) -> None: ...
+        @property
+        def root(self) -> _HTMLNodeProtocol | None: ...
+        def css(self, _selector: str) -> list[_HTMLNodeProtocol]: ...
+
+
 _MAX_LINKS = 100
-
-
-class _ReadabilityDocumentProtocol(Protocol):
-    def __init__(self, input: str) -> None: ...
-    def title(self) -> str: ...
-    def summary(self, html_partial: bool = ...) -> str: ...
-
-
-class _HTMLNodeProtocol(Protocol):
-    @property
-    def attributes(self) -> dict[str, str | None]: ...
-    def decompose(self) -> None: ...
-    def text(self, *, separator: str = ..., strip: bool = ...) -> str: ...
-
-
-class _HTMLParserProtocol(Protocol):
-    def __init__(self, html: str) -> None: ...
-    @property
-    def root(self) -> _HTMLNodeProtocol | None: ...
-    def css(self, _selector: str) -> list[_HTMLNodeProtocol]: ...
 
 
 # Module-level optional imports — runtime may lack the extras.
 _ReadabilityDocument: type[_ReadabilityDocumentProtocol] | None = None
 _HTMLParser: type[_HTMLParserProtocol] | None = None
 try:
-    from readability import Document as _RawDocument  # noqa: I001  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    from readability import Document as _RawDocument
     from selectolax.parser import HTMLParser as _RawHTMLParser
 
     _ReadabilityDocument = cast("type[_ReadabilityDocumentProtocol]", _RawDocument)

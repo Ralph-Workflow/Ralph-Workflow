@@ -9,14 +9,11 @@ from pydantic import ConfigDict, Field, ValidationError, model_validator
 if TYPE_CHECKING:
     from pathlib import Path
 
+from ralph.mcp.artifacts.smoke_test_result_validation_error import SmokeTestResultValidationError
 from ralph.mcp.artifacts.store import get_artifact
 from ralph.pydantic_compat import RalphBaseModel
 
 SMOKE_TEST_RESULT_ARTIFACT_TYPE = "smoke_test_result"
-
-
-class SmokeTestResultValidationError(ValueError):
-    """Raised when a smoke_test_result artifact is malformed."""
 
 
 class SmokeTestResult(RalphBaseModel):

@@ -8,11 +8,11 @@ from pathlib import Path
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus, FalloverEvent
 
 
-def _minimal_policy_bundle():
+def _minimal_policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
 
@@ -49,10 +49,12 @@ def test_chain_exhaustion_with_two_agents() -> None:
 
     registry = _registry_with_one_retry("claude", "opencode")
     controller = RecoveryController(
-        cycle_cap=10,
-        budget_registry=registry,
-        event_bus=bus,
-        policy_bundle=_minimal_policy_bundle(),
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            budget_registry=registry,
+            event_bus=bus,
+            policy_bundle=_minimal_policy_bundle(),
+        )
     )
     state = _make_state(["claude", "opencode"])
 
@@ -60,8 +62,7 @@ def test_chain_exhaustion_with_two_agents() -> None:
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("claude timed out"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Should have fallen over
@@ -76,8 +77,7 @@ def test_chain_exhaustion_with_two_agents() -> None:
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("opencode timed out"),
-        phase="development",
-        agent="opencode",
+        FailureContext(phase="development", agent="opencode"),
     )
 
     assert state.phase == "failed_terminal"
@@ -91,15 +91,16 @@ def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
     """Chain exhaustion last_error must be descriptive and not a forbidden sentinel."""
     registry = _registry_with_one_retry("claude")
     controller = RecoveryController(
-        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        options=RecoveryControllerOptions(
+            cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        )
     )
     state = _make_state(["claude"])
 
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("agent idle timeout"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert state.phase == "failed_terminal"
@@ -112,7 +113,9 @@ def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
     """Each full-chain exhaustion must increment recovery_cycle_count by 1."""
     registry = _registry_with_one_retry("claude")
     controller = RecoveryController(
-        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        options=RecoveryControllerOptions(
+            cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        )
     )
     state = _make_state(["claude"])
 
@@ -121,8 +124,7 @@ def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("idle"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert state.recovery_cycle_count == 1
@@ -132,15 +134,16 @@ def test_single_agent_chain_exhaustion_retains_no_fallover_records() -> None:
     """A single-agent chain increments recovery count without retaining fallover history."""
     registry = _registry_with_one_retry("claude")
     controller = RecoveryController(
-        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        options=RecoveryControllerOptions(
+            cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        )
     )
     state = _make_state(["claude"])
 
     state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("claude timed out"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert state.phase == "failed_terminal"

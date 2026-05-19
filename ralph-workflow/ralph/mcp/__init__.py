@@ -10,13 +10,13 @@ bridge layer and ``ralph.mcp.server`` for standalone server helpers.
 
 from __future__ import annotations
 
+from ralph.mcp.artifacts._artifact_error import ArtifactError
 from ralph.mcp.artifacts.bridge import (
     BridgeConfig,
     BridgeError,
     MCPBridge,
 )
 from ralph.mcp.artifacts.store import (
-    ArtifactError,
     ArtifactExistsError,
     ArtifactNotFoundError,
     get_artifact,

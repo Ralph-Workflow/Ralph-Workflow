@@ -19,14 +19,14 @@ from ralph.pipeline.events import PhaseFailureEvent
 
 @dataclass(slots=True)
 class _FakeWorkspace:
-    def absolute_path(self, rel: str):
+    def absolute_path(self, rel: str) -> None:
         del rel
 
-    def read(self, *args, **kwargs):
+    def read(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
         raise FileNotFoundError("no artifact")
 
-    def write(self, *args, **kwargs):
+    def write(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
 
 

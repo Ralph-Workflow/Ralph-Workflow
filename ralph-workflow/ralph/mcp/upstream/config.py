@@ -9,14 +9,11 @@ from dataclasses import dataclass, field
 from typing import Literal, cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
+from ralph.mcp.upstream.upstream_config_error import UpstreamConfigError
 
 logger = logging.getLogger(__name__)
 
 UPSTREAM_MCP_CONFIG_ENV = "RALPH_UPSTREAM_MCP_CONFIG"
-
-
-class UpstreamConfigError(ValueError):
-    """Raised when upstream MCP config violates Ralph's strict-mode contract."""
 
 
 @dataclass(frozen=True)

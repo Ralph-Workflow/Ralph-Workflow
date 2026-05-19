@@ -6,24 +6,19 @@ output lines and exit code, emitting the correct ``WorkerStatus`` transitions, w
 spawning any subprocess or real agent process.
 """
 
+from __future__ import annotations
+
 import asyncio
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ralph.agents.executor import ExecutorError, WorkerResult
-from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.testing.fake_run import FakeRun
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-@dataclass
-class FakeRun:
-    """Seeded replay script for a single parallel work unit."""
-
-    outputs: list[str]
-    exit_code: int
-    duration_ms: int
-    raise_on_start: Exception | None = None
-    side_effect: Callable[[], None] | None = field(default=None)
+    from ralph.pipeline.work_units import WorkUnit
 
 
 class FakeAgentExecutor:

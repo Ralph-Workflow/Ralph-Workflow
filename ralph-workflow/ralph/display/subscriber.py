@@ -17,7 +17,7 @@ from ralph.display.artifact_reader import (
 )
 from ralph.display.lifecycle_filter import is_bare_lifecycle
 from ralph.display.prompt_reader import find_prompt_path, read_prompt_preview
-from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
+from ralph.display.snapshot import PipelineSnapshot, SnapshotContext, snapshot_from_state
 from ralph.policy.models import ROLE_REVIEW
 from ralph.process.manager import get_process_manager
 
@@ -87,13 +87,13 @@ class PipelineSubscriber:
     snapshot queue without breaking the notify(state) contract.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         queue: Queue[PipelineSnapshot],
         workspace_root: Path,
         run_id: str,
-        prompt_reader: Callable[[Path], tuple[str, ...]] = read_prompt_preview,
+        _prompt_reader: Callable[[Path], tuple[str, ...]] = read_prompt_preview,
         on_snapshot: Callable[[PipelineSnapshot], None] | None = None,
         pipeline_policy: PipelinePolicy | None = None,
     ) -> None:
@@ -108,7 +108,7 @@ class PipelineSubscriber:
         prompt_path = find_prompt_path(workspace_root)
         self._prompt_path: str | None = str(prompt_path) if prompt_path is not None else None
         self._prompt_preview: tuple[str, ...] = (
-            prompt_reader(prompt_path) if prompt_path is not None else ()
+            _prompt_reader(prompt_path) if prompt_path is not None else ()
         )
 
         plan = read_plan_artifact(workspace_root) or PlanSummary()
@@ -210,8 +210,9 @@ class PipelineSubscriber:
         with self._lock:
             return self._build_snapshot_locked(state)
 
-    def record_activity(  # noqa: PLR0913
+    def record_activity(
         self,
+        *,
         unit_id: str,
         line: str,
         agent_name: str = "",
@@ -221,7 +222,6 @@ class PipelineSubscriber:
         command: str | None = None,
         pattern: str | None = None,
     ) -> None:
-        """Record a lightweight agent-activity event and push a fresh snapshot."""
         with self._lock:
             self._active_unit_id = unit_id
             self._active_agent = agent_name or self._active_agent
@@ -429,31 +429,32 @@ class PipelineSubscriber:
             return None
         return snapshot_from_state(
             state,
-            prompt_path=self._prompt_path,
-            prompt_preview=self._prompt_preview,
-            run_id=self._run_id,
-            pipeline_policy=self._pipeline_policy,
-            plan_summary=self._plan_summary,
-            plan_scope_items=self._plan_scope_items,
-            plan_total_steps=self._plan_total_steps,
-            plan_current_step=None,
-            plan_risks=self._plan_risks,
-            active_agent=self._active_agent,
-            active_tool=self._active_tool,
-            active_path=self._active_path,
-            active_unit_id=self._active_unit_id,
-            active_workdir=self._active_workdir,
-            active_command=self._active_command,
-            active_pattern=self._active_pattern,
-            last_activity_line=self._last_activity_line,
-            waiting_status_line=self._waiting_status_line,
-            analysis_phase=self._analysis_phase,
-            analysis_decision=self._analysis_decision,
-            analysis_reason=self._analysis_reason,
-            decision_log=tuple(self._decision_log),
-            mcp_restart_count=self._mcp_restart_count,
-            active_process_labels=tuple(
-                r.label for r in get_process_manager().list_active() if r.label is not None
+            SnapshotContext(
+                prompt_path=self._prompt_path,
+                prompt_preview=self._prompt_preview,
+                run_id=self._run_id,
+                pipeline_policy=self._pipeline_policy,
+                plan_summary=self._plan_summary,
+                plan_scope_items=self._plan_scope_items,
+                plan_total_steps=self._plan_total_steps,
+                plan_risks=self._plan_risks,
+                active_agent=self._active_agent,
+                active_tool=self._active_tool,
+                active_path=self._active_path,
+                active_unit_id=self._active_unit_id,
+                active_workdir=self._active_workdir,
+                active_command=self._active_command,
+                active_pattern=self._active_pattern,
+                last_activity_line=self._last_activity_line,
+                waiting_status_line=self._waiting_status_line,
+                analysis_phase=self._analysis_phase,
+                analysis_decision=self._analysis_decision,
+                analysis_reason=self._analysis_reason,
+                decision_log=tuple(self._decision_log),
+                mcp_restart_count=self._mcp_restart_count,
+                active_process_labels=tuple(
+                    r.label for r in get_process_manager().list_active() if r.label is not None
+                ),
             ),
         )
 

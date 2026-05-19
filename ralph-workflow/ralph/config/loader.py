@@ -31,7 +31,7 @@ GLOBAL_CONFIG_PATH = Path.home() / ".config" / "ralph-workflow.toml"
 LOCAL_CONFIG_PATH = Path(".agent") / "ralph-workflow.toml"
 
 
-def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
+def deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
     """Recursively merge override into base; override wins on conflict.
 
     Args:
@@ -44,7 +44,7 @@ def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[st
     result: dict[str, object] = dict(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(cast("dict[str, object]", result[key]), value)
+            result[key] = deep_merge(cast("dict[str, object]", result[key]), value)
         else:
             result[key] = value
     return result
@@ -91,37 +91,11 @@ def _convert_legacy_config(data: dict[str, object]) -> dict[str, object]:
     _migrate_verbosity(data, general)
     _migrate_workflow_flags(data, general)
     _migrate_simple_fields(data, general)
-    _migrate_agent_policy_tables(data)
 
     if general:
         data["general"] = general
 
     return data
-
-
-def _migrate_agent_policy_tables(data: dict[str, object]) -> None:
-    """Flatten policy-style chain/drain tables into UnifiedConfig shapes."""
-    chains = data.get("agent_chains")
-    if isinstance(chains, dict):
-        normalized_chains: dict[str, object] = {}
-        for name, value in chains.items():
-            if not isinstance(name, str):
-                continue
-            normalized_chains[name] = (
-                value.get("agents", value) if isinstance(value, dict) else value
-            )
-        data["agent_chains"] = normalized_chains
-
-    drains = data.get("agent_drains")
-    if isinstance(drains, dict):
-        normalized_drains: dict[str, object] = {}
-        for name, value in drains.items():
-            if not isinstance(name, str):
-                continue
-            normalized_drains[name] = (
-                value.get("chain", value) if isinstance(value, dict) else value
-            )
-        data["agent_drains"] = normalized_drains
 
 
 def _global_config_path() -> Path:
@@ -206,7 +180,7 @@ def load_config(
         else:
             local_path = workspace_scope.local_config_path
             for propagated_path in workspace_scope.propagated_config_paths:
-                propagated_data = _deep_merge(propagated_data, load_toml(propagated_path))
+                propagated_data = deep_merge(propagated_data, load_toml(propagated_path))
     local_data = load_toml(local_path)
 
     # Convert legacy config format if needed
@@ -215,14 +189,12 @@ def load_config(
     local_data = _convert_legacy_config(local_data)
 
     # Merge: global -> propagated -> local
-    merged = _deep_merge(global_data, propagated_data)
-    merged = _deep_merge(merged, local_data)
-    _migrate_agent_policy_tables(merged)
+    merged = deep_merge(global_data, propagated_data)
+    merged = deep_merge(merged, local_data)
 
     # Apply CLI overrides last
     if cli_overrides:
-        merged = _deep_merge(merged, cli_overrides)
-        _migrate_agent_policy_tables(merged)
+        merged = deep_merge(merged, cli_overrides)
 
     try:
         config = UnifiedConfig.model_validate(merged)

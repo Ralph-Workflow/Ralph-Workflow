@@ -17,7 +17,7 @@ SEARCH_LIMIT = 2
 IMPORT_ERROR_MATCH = "pip install ralph-workflow\\[web-search\\]"
 
 
-def _import_exa_module():
+def _import_exa_module() -> object:
     try:
         return import_module("ralph.mcp.websearch.backends.exa")
     except ModuleNotFoundError as exc:  # pragma: no cover - exercised in RED phase
@@ -31,7 +31,7 @@ def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:
         def __init__(self, *, api_key: str) -> None:
             assert api_key == API_KEY
 
-        def search(self, query: str, *, num_results: int):
+        def search(self, query: str, *, num_results: int) -> object:
             assert query == "python"
             assert num_results == SEARCH_LIMIT
             return SimpleNamespace(
@@ -67,7 +67,7 @@ def test_error_does_not_leak_key(monkeypatch: pytest.MonkeyPatch) -> None:
         def __init__(self, *, api_key: str) -> None:
             self.api_key = api_key
 
-        def search(self, query: str, *, num_results: int):
+        def search(self, query: str, *, num_results: int) -> None:
             raise RuntimeError(f"401 unauthorized api_key={self.api_key} query={query}")
 
     fake_module = cast("Any", ModuleType("exa_py"))

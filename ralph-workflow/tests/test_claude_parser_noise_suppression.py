@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from ralph.agents.parsers.claude import ClaudeParser
 
 
@@ -83,7 +85,6 @@ def test_claude_error_prefix_emits_error() -> None:
 
 def test_claude_assistant_message_with_thinking_block_does_not_emit_error() -> None:
     """Assistant event with message.content thinking block must not produce an error."""
-    import json
 
     parser = ClaudeParser()
     line = json.dumps(
@@ -156,7 +157,6 @@ def test_non_empty_thinking_delta_is_still_emitted() -> None:
 
 def test_whitespace_only_thinking_in_assistant_message_is_suppressed() -> None:
     """assistant message with whitespace-only thinking block must not produce thinking lines."""
-    import json
 
     parser = ClaudeParser()
     line = json.dumps(

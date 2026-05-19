@@ -168,38 +168,40 @@ def fetch_url(
     headers = {"User-Agent": user_agent}
 
     try:
-        with httpx.Client(follow_redirects=True, timeout=timeout) as client:  # noqa: SIM117
-            with client.stream("GET", url, headers=headers) as response:
-                effective_url: str = str(response.url)
-                http_status: int = response.status_code
-                content_type_header: str | None = response.headers.get("content-type")
-                content_type_base = _content_type_base(content_type_header)
+        with (
+            httpx.Client(follow_redirects=True, timeout=timeout) as client,
+            client.stream("GET", url, headers=headers) as response,
+        ):
+            effective_url: str = str(response.url)
+            http_status: int = response.status_code
+            content_type_header: str | None = response.headers.get("content-type")
+            content_type_base = _content_type_base(content_type_header)
 
-                if http_status < _HTTP_SUCCESS_MIN or http_status >= _HTTP_SUCCESS_MAX:
-                    return FetchOutcome(
-                        status="http_error",
-                        effective_url=effective_url,
-                        http_status=http_status,
-                        content_type=content_type_header,
-                        error=f"HTTP {http_status}",
-                    )
-
-                if content_type_base not in _SUPPORTED_CONTENT_TYPES:
-                    return FetchOutcome(
-                        status="unsupported_content",
-                        effective_url=effective_url,
-                        http_status=http_status,
-                        content_type=content_type_header,
-                        error=f"unsupported content type: {content_type_header!r}",
-                    )
-
-                return _read_streaming_body(
-                    response,
-                    max_bytes=max_bytes,
+            if http_status < _HTTP_SUCCESS_MIN or http_status >= _HTTP_SUCCESS_MAX:
+                return FetchOutcome(
+                    status="http_error",
                     effective_url=effective_url,
                     http_status=http_status,
-                    content_type_header=content_type_header,
+                    content_type=content_type_header,
+                    error=f"HTTP {http_status}",
                 )
+
+            if content_type_base not in _SUPPORTED_CONTENT_TYPES:
+                return FetchOutcome(
+                    status="unsupported_content",
+                    effective_url=effective_url,
+                    http_status=http_status,
+                    content_type=content_type_header,
+                    error=f"unsupported content type: {content_type_header!r}",
+                )
+
+            return _read_streaming_body(
+                response,
+                max_bytes=max_bytes,
+                effective_url=effective_url,
+                http_status=http_status,
+                content_type_header=content_type_header,
+            )
 
     except httpx.TimeoutException as exc:
         return FetchOutcome(status="timeout", error=str(exc))

@@ -12,7 +12,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
-from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError, InvokeOptions
+from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
+    AgentInvocationError,
+    InactivityTimeoutOpts,
+    InvokeOptions,
+)
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
@@ -23,7 +28,7 @@ from ralph.pipeline.runner import WorkspaceScope
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 
 if TYPE_CHECKING:
     import pytest
@@ -153,10 +158,10 @@ def test_runner_stale_session_internal_retry_succeeds(
     config = _make_config()
     state = _make_state(last_session_id=stale_session_id, session_preserve=True)
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         effect,
         config,
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -227,19 +232,19 @@ def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
             raise AgentInactivityTimeoutError(
                 "claude",
                 300.0,
-                parsed_output=[captured_session],
-                reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+                [captured_session],
+                InactivityTimeoutOpts(reason=WatchdogFireReason.NO_OUTPUT_DEADLINE),
             )
         return []
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -300,14 +305,14 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
             )
         return []
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -364,14 +369,14 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
 
     config = _make_config()
     state = _make_state(last_session_id=stale_session_id, session_preserve=True)
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         config,
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -449,10 +454,10 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
     config = _make_config()
     state = _make_state(last_session_id=opencode_stale_session_id, session_preserve=True)
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         effect,
         config,
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -517,14 +522,14 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
             raise AgentInvocationError("opencode", 1, "Unknown session: deadbeef")
         return []
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="opencode",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module._AgentExecutionDeps(
+        runner_module.AgentExecutionDeps(
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=AgentInvocationError,
             agent_registry=_registry_factory(
@@ -567,10 +572,14 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
     )
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(last_session_id=session_id, session_preserve=True)
 
-    new_state, _, evt = controller.handle(state, exc, phase="development", agent="claude")
+    new_state, _, evt = controller.handle(
+        state, exc, FailureContext(phase="development", agent="claude")
+    )
 
     assert evt.counted_against_budget is True
     assert evt.category == "agent"
@@ -605,10 +614,14 @@ def test_stale_session_attempt2_uses_fresh_session(
     )
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(last_session_id=session_id, session_preserve=True)
 
-    new_state, _, _ = controller.handle(state, exc, phase="development", agent="claude")
+    new_state, _, _ = controller.handle(
+        state, exc, FailureContext(phase="development", agent="claude")
+    )
 
     resume_session_id = (
         new_state.last_agent_session_id
@@ -652,10 +665,14 @@ def test_stale_session_phase_remains_active(
         "No conversation found with session ID: xyz",
     )
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(last_session_id="xyz")
 
-    new_state, effects, _ = controller.handle(state, exc, phase="development", agent="claude")
+    new_state, effects, _ = controller.handle(
+        state, exc, FailureContext(phase="development", agent="claude")
+    )
 
     assert new_state.phase == "development"
     assert effects == []

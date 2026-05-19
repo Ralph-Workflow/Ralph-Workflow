@@ -7,7 +7,7 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.plain_renderer import _TAG_CATEGORY, _TAGS, PlainLogRenderer, RunStartOrientation
+from ralph.display.plain_renderer import TAG_CATEGORY, TAGS, PlainLogRenderer, RunStartOrientation
 
 
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
@@ -95,8 +95,8 @@ def test_emit_run_start_no_ansi() -> None:
 
 
 def test_run_start_tag_is_registered() -> None:
-    assert "run-start" in _TAGS
-    assert _TAG_CATEGORY.get("run-start") == "META"
+    assert "run-start" in TAGS
+    assert TAG_CATEGORY.get("run-start") == "META"
 
 
 def test_emit_run_start_includes_verbosity_when_present() -> None:

@@ -27,12 +27,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final, cast
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
-from ralph.config.enums import PipelinePhase  # noqa: TC001
-from ralph.pipeline.work_units import WorkUnit  # noqa: TC001
-from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
-from ralph.pydantic_compat import RalphBaseModel
+from ralph.config.enums import PipelinePhase
+from ralph.pipeline.work_units import WorkUnit
+from ralph.pipeline.worker_state import WorkerState
+
+from .state_models import (
+    AgentChainState,
+    CommitState,
+    FalloverRecord,
+    RebaseState,
+    RunMetrics,
+    _FrozenPipelineStateModel,
+)
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName, PipelinePolicy
@@ -86,103 +94,6 @@ def _normalize_fallover_history_for_cap(
     if len(records) <= cap:
         return records
     return records[-cap:]
-
-
-class _FrozenPipelineStateModel(RalphBaseModel):
-    """Private base for frozen pipeline state models."""
-
-    model_config = ConfigDict(frozen=True)
-
-
-class AgentChainState(_FrozenPipelineStateModel):
-    """State for agent fallback chain management.
-
-    Attributes:
-        agents: List of agent names in the fallback chain.
-        current_index: Current agent index being used.
-        retries: Number of retries for current agent.
-    """
-
-    agents: list[str] = Field(default_factory=list)
-    current_index: int = 0
-    retries: int = 0
-
-    def with_retry_increment(self) -> AgentChainState:
-        """Return a copy with retries incremented by 1."""
-        return AgentChainState(
-            agents=self.agents,
-            current_index=self.current_index,
-            retries=self.retries + 1,
-        )
-
-    def with_advance(self) -> AgentChainState:
-        """Return a copy advanced to the next agent with retries reset to 0."""
-        return AgentChainState(
-            agents=self.agents,
-            current_index=self.current_index + 1,
-            retries=0,
-        )
-
-
-class RebaseState(_FrozenPipelineStateModel):
-    """State for git rebase operations."""
-
-    pending: bool = False
-    in_progress: bool = False
-    completed: bool = False
-
-
-class CommitState(_FrozenPipelineStateModel):
-    """State for commit operations."""
-
-    message_prepared: bool = False
-    diff_prepared: bool = False
-    agent_invoked: bool = False
-
-
-class RunMetrics(_FrozenPipelineStateModel):
-    """Run-level execution metrics."""
-
-    total_agent_calls: int = 0
-    total_continuations: int = 0
-    total_fallbacks: int = 0
-    total_retries: int = 0
-
-    def with_retry_increment(self) -> RunMetrics:
-        """Return a copy with total_retries incremented by 1."""
-        return RunMetrics(
-            total_agent_calls=self.total_agent_calls,
-            total_continuations=self.total_continuations,
-            total_fallbacks=self.total_fallbacks,
-            total_retries=self.total_retries + 1,
-        )
-
-    def with_fallback_increment(self) -> RunMetrics:
-        """Return a copy with total_fallbacks incremented by 1."""
-        return RunMetrics(
-            total_agent_calls=self.total_agent_calls,
-            total_continuations=self.total_continuations,
-            total_fallbacks=self.total_fallbacks + 1,
-            total_retries=self.total_retries,
-        )
-
-    def with_continuation_increment(self) -> RunMetrics:
-        """Return a copy with total_continuations incremented by 1."""
-        return RunMetrics(
-            total_agent_calls=self.total_agent_calls,
-            total_continuations=self.total_continuations + 1,
-            total_fallbacks=self.total_fallbacks,
-            total_retries=self.total_retries,
-        )
-
-
-class FalloverRecord(_FrozenPipelineStateModel):
-    """A record of a single agent fallover event persisted in pipeline state."""
-
-    phase: str
-    from_agent: str
-    to_agent: str
-    timestamp_iso: str
 
 
 class PipelineState(_FrozenPipelineStateModel):
@@ -561,3 +472,22 @@ class PipelineState(_FrozenPipelineStateModel):
                 ),
             }
         return self.model_copy(update=updates)
+
+
+# Resolve forward references from TYPE_CHECKING imports at runtime
+PipelineState.model_rebuild(
+    _types_namespace={
+        "PipelinePhase": PipelinePhase,
+        "WorkUnit": WorkUnit,
+        "WorkerState": WorkerState,
+    }
+)
+
+__all__ = [
+    "AgentChainState",
+    "CommitState",
+    "FalloverRecord",
+    "PipelineState",
+    "RebaseState",
+    "RunMetrics",
+]

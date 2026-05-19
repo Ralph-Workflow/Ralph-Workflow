@@ -21,7 +21,6 @@ Example usage::
 """
 
 from ralph.policy.loader import (
-    PolicyValidationError,
     load_policy,
     load_policy_or_die,
 )
@@ -40,6 +39,7 @@ from ralph.policy.models import (
 )
 from ralph.policy.validation import (
     CheckpointPolicyMismatchError,
+    PolicyValidationError,
     validate_chain_exists,
     validate_checkpoint_compatible,
     validate_drain_bound,

@@ -19,8 +19,10 @@ from ralph.policy.models import (
     PipelinePolicy,
 )
 from ralph.prompts.materialize import (
-    _resolve_fix_result_content,
+    PromptPhaseContext,
+    PromptPhaseOptions,
     materialize_prompt_for_phase,
+    resolve_fix_result_content,
     tool_name_prefix_for_transport,
 )
 from ralph.prompts.types import SessionCapabilities, SessionDrain
@@ -38,7 +40,7 @@ def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) ->
     expected = '{"summary": "Applied fixes"}'
     (artifact_dir / "fix_result.json").write_text(expected, encoding="utf-8")
 
-    content, path = _resolve_fix_result_content(workspace)
+    content, path = resolve_fix_result_content(workspace)
     assert "# Fix Result" in content
     assert "Applied fixes" in content
     assert path == str(tmp_path / ".agent" / "FIX_RESULT.md")
@@ -47,7 +49,7 @@ def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) ->
 def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: Path) -> None:
     workspace = FsWorkspace(tmp_path)
 
-    content, path = _resolve_fix_result_content(workspace)
+    content, path = resolve_fix_result_content(workspace)
     assert content == "(no fix result available)"
     assert path == ""
 
@@ -102,13 +104,17 @@ def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
     history_file.write_text("# History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        artifacts_policy=artifacts_policy,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-        previous_phase=None,
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase=None,
+        ),
     )
 
     rendered = workspace.read(prompt_path)
@@ -170,13 +176,17 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
     index_file.write_text("# History", encoding="utf-8")
 
     materialize_prompt_for_phase(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        artifacts_policy=artifacts_policy,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-        previous_phase=None,
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase=None,
+        ),
     )
 
     assert not archived_json.exists(), "archive json must be removed on fresh development entry"
@@ -272,13 +282,17 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
     index_file.write_text("# History", encoding="utf-8")
 
     materialize_prompt_for_phase(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        artifacts_policy=artifacts_policy,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-        previous_phase="development_analysis",
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase="development_analysis",
+        ),
     )
 
     assert archived_json.exists(), "archive json must be preserved on development loopback"
@@ -335,13 +349,17 @@ def test_development_prompt_includes_artifact_history_path_when_history_exists(
     index_file.write_text("# History\n\n## Entry 1\n", encoding="utf-8")
 
     prompt_path = materialize_prompt_for_phase(
-        phase="development",
-        workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        artifacts_policy=artifacts_policy,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-        workspace_root=tmp_path,
-        previous_phase=None,
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase=None,
+        ),
     )
 
     rendered = workspace.read(prompt_path)

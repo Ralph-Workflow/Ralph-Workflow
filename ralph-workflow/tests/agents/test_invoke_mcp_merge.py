@@ -205,7 +205,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
-    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
+    monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -240,16 +240,13 @@ def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
     )
     seen_env: list[dict[str, str]] = []
 
-    def fake_run_pty_and_read_lines(*args: object, **kwargs: object):
-        del kwargs
-        env = args[3]
-        assert isinstance(env, dict)
-        seen_env.append(env)
+    def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
+        seen_env.append(getattr(ctx, "extra_env", None) or {})
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
-    monkeypatch.setattr("ralph.agents.invoke._run_pty_and_read_lines", fake_run_pty_and_read_lines)
+    monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_and_read_lines)
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
-    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
+    monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -344,7 +341,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
-    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
+    monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(

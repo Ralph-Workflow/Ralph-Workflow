@@ -1,4 +1,4 @@
-"""Unit tests for ralph.pipeline.runner._validate_custom_mcp_servers."""
+"""Unit tests for ralph.pipeline.runner.validate_custom_mcp_servers."""
 
 from __future__ import annotations
 
@@ -65,10 +65,10 @@ def test_returns_zero_when_no_custom_mcp_servers_configured(
     monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: ())
     validate_mock = MagicMock()
     probe_mock = MagicMock()
-    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", validate_mock)
-    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", probe_mock)
+    monkeypatch.setattr(runner_module, "VALIDATE_MCP", validate_mock)
+    monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", probe_mock)
 
-    rc = runner_module._validate_custom_mcp_servers(tmp_path)
+    rc = runner_module.validate_custom_mcp_servers(tmp_path)
 
     assert rc == 0
     assert validate_mock.called is False
@@ -84,12 +84,12 @@ def test_healthy_upstreams_and_probes_return_zero(
     monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: servers)
 
     validate_mock = MagicMock(return_value=_ok_report(servers))
-    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", validate_mock)
+    monkeypatch.setattr(runner_module, "VALIDATE_MCP", validate_mock)
 
     probe_mock = MagicMock(return_value=())
-    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", probe_mock)
+    monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", probe_mock)
 
-    rc = runner_module._validate_custom_mcp_servers(tmp_path)
+    rc = runner_module.validate_custom_mcp_servers(tmp_path)
 
     assert rc == 0
     probe_mock.assert_called_once()
@@ -108,15 +108,15 @@ def test_strict_mode_upstream_validation_error_returns_one(
     def raising_validator(*_args: object, **_kwargs: object) -> UpstreamValidationReport:
         raise UpstreamValidationError("boom")
 
-    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", raising_validator)
+    monkeypatch.setattr(runner_module, "VALIDATE_MCP", raising_validator)
 
     probe_mock = MagicMock()
-    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", probe_mock)
+    monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", probe_mock)
 
     stream = StringIO()
     sink_id = logger.add(stream, level="ERROR")
     try:
-        rc = runner_module._validate_custom_mcp_servers(tmp_path)
+        rc = runner_module.validate_custom_mcp_servers(tmp_path)
     finally:
         logger.remove(sink_id)
 
@@ -148,7 +148,7 @@ def test_soft_mode_upstream_failure_returns_zero_and_skips_failed_servers(
     )
     monkeypatch.setattr(
         runner_module,
-        "_VALIDATE_MCP",
+        "VALIDATE_MCP",
         MagicMock(return_value=mixed_report),
     )
 
@@ -160,9 +160,9 @@ def test_soft_mode_upstream_failure_returns_zero_and_skips_failed_servers(
         captured.append((tuple(servers_arg), dict(kwargs)))
         return ()
 
-    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", fake_probe)
+    monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", fake_probe)
 
-    rc = runner_module._validate_custom_mcp_servers(tmp_path)
+    rc = runner_module.validate_custom_mcp_servers(tmp_path)
 
     assert rc == 0
     assert len(captured) == 1
@@ -203,7 +203,7 @@ def test_strict_mode_probe_failure_returns_one(
     warning_stream = StringIO()
     warning_sink = logger.add(warning_stream, level="WARNING")
     try:
-        rc = runner_module._validate_custom_mcp_servers(tmp_path)
+        rc = runner_module.validate_custom_mcp_servers(tmp_path)
     finally:
         logger.remove(error_sink)
         logger.remove(warning_sink)
@@ -244,7 +244,7 @@ def test_soft_mode_probe_failure_returns_zero_and_logs_warning(
     warning_stream = StringIO()
     warning_sink = logger.add(warning_stream, level="WARNING")
     try:
-        rc = runner_module._validate_custom_mcp_servers(tmp_path)
+        rc = runner_module.validate_custom_mcp_servers(tmp_path)
     finally:
         logger.remove(error_sink)
         logger.remove(warning_sink)
@@ -273,12 +273,12 @@ def test_no_probe_invoked_when_no_healthy_servers(
             ),
         )
     )
-    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", MagicMock(return_value=failing_report))
+    monkeypatch.setattr(runner_module, "VALIDATE_MCP", MagicMock(return_value=failing_report))
 
     probe_mock = MagicMock()
-    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", probe_mock)
+    monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", probe_mock)
 
-    rc = runner_module._validate_custom_mcp_servers(tmp_path)
+    rc = runner_module.validate_custom_mcp_servers(tmp_path)
 
     assert rc == 0
     assert probe_mock.called is False

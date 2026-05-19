@@ -9,99 +9,25 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
-from ralph.mcp.multimodal.artifacts import (
-    AudioContent,
-    DocumentContent,
-    ImageContent,
-    PdfContent,
-    ResourceReferenceContent,
-    VideoContent,
-)
+from ralph.mcp.multimodal import ImageContent
+
+from .capability_denied_error import CapabilityDeniedError
+from .coordination_session_like import CoordinationSessionLike
+from .invalid_params_error import InvalidParamsError
+from .tool_content import ToolContent
+from .tool_error import ToolError
+from .tool_result import ContentBlock, ToolResult
+from .workspace_like import WorkspaceLike
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
 
 RUN_REPORT_PROGRESS_CAPABILITY = "run.report_progress"
 ARTIFACT_SUBMIT_CAPABILITY = "artifact.submit"
 ENV_READ_CAPABILITY = "env.read"
-
-
-class ToolError(Exception):
-    """Base error raised by MCP tool handlers."""
-
-
-class InvalidParamsError(ToolError):
-    """Raised when tool parameters are missing or invalid."""
-
-
-class CapabilityDeniedError(ToolError):
-    """Raised when a required session capability is not available."""
-
-
-@dataclass(frozen=True)
-class ToolContent:
-    """Single text tool response content block."""
-
-    type: str
-    text: str
-
-    @classmethod
-    def text_content(cls, text: str) -> ToolContent:
-        """Create a text content block."""
-        return cls(type="text", text=text)
-
-    def to_dict(self) -> dict[str, str]:
-        """Serialize the content block to a dictionary."""
-        return {"type": self.type, "text": self.text}
-
-
-type ContentBlock = (
-    ToolContent
-    | ImageContent
-    | PdfContent
-    | DocumentContent
-    | AudioContent
-    | VideoContent
-    | ResourceReferenceContent
-)
-
-
-@dataclass(frozen=True)
-class ToolResult:
-    """Serializable MCP tool result."""
-
-    content: list[ContentBlock]
-    is_error: bool | None = None
-
-    def to_dict(self) -> dict[str, object]:
-        """Serialize the result to an MCP-compatible dictionary."""
-        return {
-            "content": [item.to_dict() for item in self.content],
-            "isError": self.is_error,
-        }
-
-
-@runtime_checkable
-class CoordinationSessionLike(Protocol):
-    """Minimum session surface required by coordination handlers."""
-
-    session_id: str
-
-    def check_capability(self, capability: str) -> object:
-        """Return a policy outcome for the requested capability."""
-
-
-@runtime_checkable
-class WorkspaceLike(Protocol):
-    """Placeholder workspace protocol for handler parity."""
-
-    def absolute_path(self, path: str) -> str:
-        """Return an absolute workspace path for the provided relative path."""
-        ...
 
 
 def _timestamp() -> int:
@@ -230,19 +156,20 @@ def handle_read_env(
     _workspace: WorkspaceLike,
     params: dict[str, object],
     *,
-    env: Mapping[str, str] = os.environ,
+    env: dict[str, str] | os._Environ[str] = os.environ,
 ) -> ToolResult:
     """Read an environment variable by name."""
     require_capability(session, ENV_READ_CAPABILITY, "Environment variable read")
     name = _parameter_as_string(params, "name")
-    value = _read_env_value(env, name)
+    value = read_env_value(env, name)
     return ToolResult(
         content=[ToolContent.text_content(f"{name}={value}")],
         is_error=False,
     )
 
 
-def _read_env_value(env: Mapping[str, str], name: str) -> str:
+def read_env_value(env: dict[str, str] | os._Environ[str], name: str) -> str:
+    """Return the value of an environment variable, or '[not found]' if absent."""
     return env.get(name, "[not found]")
 
 
@@ -250,19 +177,14 @@ __all__ = [
     "ARTIFACT_SUBMIT_CAPABILITY",
     "ENV_READ_CAPABILITY",
     "RUN_REPORT_PROGRESS_CAPABILITY",
-    "AudioContent",
     "CapabilityDeniedError",
     "ContentBlock",
     "CoordinationSessionLike",
-    "DocumentContent",
     "ImageContent",
     "InvalidParamsError",
-    "PdfContent",
-    "ResourceReferenceContent",
     "ToolContent",
     "ToolError",
     "ToolResult",
-    "VideoContent",
     "WorkspaceLike",
     "format_coordination_text",
     "format_progress_text",

@@ -8,23 +8,16 @@ current pipeline stage, and recent operational activity.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.display.snapshot import PipelineSnapshot
+    from ralph.instance_status import InstanceStatus
+else:
+    InstanceStatus = import_module("ralph.instance_status").InstanceStatus
 
 _UNSET_PHASE = "__unset__"
-
-
-class InstanceStatus(StrEnum):
-    """Lifecycle status of a Ralph Workflow instance."""
-
-    NOT_STARTED = "not_started"
-    ACTIVE = "active"
-    WAITING = "waiting"
-    COMPLETED = "completed"
-    FAILED = "failed"
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,51 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 
-
-class OperatingSystem(StrEnum):
-    """Normalized operating system names."""
-
-    MACOS = "macos"
-    LINUX = "linux"
-    WINDOWS = "windows"
-    UNKNOWN = "unknown"
-
-
-class Architecture(StrEnum):
-    """Normalized CPU architecture names."""
-
-    X86_64 = "x86_64"
-    ARM64 = "arm64"
-    X86 = "x86"
-    UNKNOWN = "unknown"
-
-
-@dataclass(frozen=True)
-class EnvironmentInfo:
-    """Detected runtime environment traits."""
-
-    ci: bool = False
-    container: bool = False
-    wsl: bool = False
-    codespaces: bool = False
-    ssh: bool = False
-
-    def markers(self) -> list[str]:
-        """Return enabled environment markers in display order."""
-        markers: list[str] = []
-        if self.ci:
-            markers.append("ci")
-        if self.container:
-            markers.append("container")
-        if self.wsl:
-            markers.append("wsl")
-        if self.codespaces:
-            markers.append("codespaces")
-        if self.ssh:
-            markers.append("ssh")
-        return markers
+from .architecture import Architecture
+from .environment_info import EnvironmentInfo
+from .operating_system import OperatingSystem
 
 
 @dataclass(frozen=True)
@@ -100,3 +59,6 @@ class PlatformInfo:
         if self.package_manager is not None:
             summary = f"{summary} via {self.package_manager}"
         return summary
+
+
+__all__ = ["Architecture", "EnvironmentInfo", "OperatingSystem", "PlatformInfo"]

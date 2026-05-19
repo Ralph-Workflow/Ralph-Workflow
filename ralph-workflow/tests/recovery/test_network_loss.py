@@ -9,7 +9,7 @@ from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.connectivity import ConnectivityState
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEvent, FailureEventBus
 from ralph.recovery.testing import FakeConnectivityMonitor
 
@@ -27,14 +27,13 @@ def test_environmental_failure_does_not_debit_budget() -> None:
     bus = FailureEventBus()
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
-    controller = RecoveryController(cycle_cap=10, event_bus=bus)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus))
     state = _make_state(["claude"])
 
     new_state, effects, evt = controller.handle(
         state,
         ConnectionError("connection reset by peer"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert new_state.phase == "development"
@@ -47,14 +46,13 @@ def test_environmental_failure_does_not_debit_budget() -> None:
 
 def test_environmental_failure_via_message_substring() -> None:
     """Failures with transport substrings in the message are classified environmental."""
-    controller = RecoveryController(cycle_cap=10)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
 
     new_state, effects, evt = controller.handle(
         state,
         "ECONNREFUSED: connection refused to 127.0.0.1:8080",
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert evt.category == "environmental"
@@ -65,7 +63,7 @@ def test_environmental_failure_via_message_substring() -> None:
 
 def test_environmental_failure_via_reducer_with_controller() -> None:
     """PhaseFailureEvent with env error routes via controller, no budget debit."""
-    controller = RecoveryController(cycle_cap=10)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude"])
 
     event = PhaseFailureEvent(
@@ -99,14 +97,13 @@ def test_connectivity_monitor_state_transitions() -> None:
 
 def test_environmental_failure_no_fallover_record() -> None:
     """Environmental failures must not produce fallover records."""
-    controller = RecoveryController(cycle_cap=10)
+    controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
     state = _make_state(["claude", "opencode"])
 
     controller.handle(
         state,
         ConnectionError("Temporary failure in name resolution"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert len(state.fallover_history) == 0
@@ -178,7 +175,9 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     )
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    )
     state = _make_state(["claude"])
 
     # Start offline
@@ -208,8 +207,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     _, _, evt = controller.handle(
         state,
         ConnectionError("pre-existing connection reset"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     # Environmental failure - no budget debit
@@ -220,7 +218,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     budget = controller.budget_registry.get("development", "claude")
     assert budget is not None
     assert budget.consumed == 0
-    assert budget.remaining == 3  # noqa: PLR2004
+    assert budget.remaining == 3
 
 
 def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
@@ -237,7 +235,9 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    )
     state = _make_state(["claude"])
 
     # Simulate: go offline, wait, come back online, then invoke
@@ -259,11 +259,11 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
     # Budget still intact
     budget = controller.budget_registry.get("development", "claude")
     assert budget is not None
-    assert budget.remaining == 3  # noqa: PLR2004
+    assert budget.remaining == 3
 
     # Now simulate a successful agent invocation after resume
     # (no failure - just a state update showing no budget consumed)
     new_state = state.copy_with(last_retry_delay_ms=0)
     assert new_state.phase == "development"
     # No budget was consumed during offline period
-    assert budget.remaining == 3  # noqa: PLR2004
+    assert budget.remaining == 3

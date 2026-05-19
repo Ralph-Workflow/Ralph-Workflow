@@ -1,35 +1,12 @@
-"""Protocol and result types for the agent executor abstraction.
-
-Defines ``AgentExecutor`` (the ``Protocol`` every executor must satisfy),
-``WorkerResult`` (the typed return value after a work unit completes), and
-``ExecutorError`` (the base exception for unrecoverable executor failures).
-"""
+"""Agent executor protocol."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from ralph.agents.executor_error import ExecutorError
+from ralph.agents.worker_result import WorkerResult
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
-
-
-@dataclass(frozen=True)
-class WorkerResult:
-    """Immutable result returned by an executor after a work unit finishes.
-
-    ``exit_code`` mirrors the subprocess exit status; 0 indicates success.
-    ``final_message`` is the last status line emitted by the agent.
-    ``duration_ms`` is the wall-clock elapsed time for the unit.
-    """
-
-    unit_id: str
-    exit_code: int
-    final_message: str
-    duration_ms: int
-
-
-class ExecutorError(Exception):
-    """Raised when an executor encounters an unrecoverable failure."""
 
 
 @runtime_checkable

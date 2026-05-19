@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Final, cast
 
-from ralph.agents.parsers.base import AgentOutputLine, TextAccumulator
+from .agent_output_line import AgentOutputLine
+from .text_accumulator import TextAccumulator
 
 JsonValue = object
 JsonDict = dict[str, JsonValue]

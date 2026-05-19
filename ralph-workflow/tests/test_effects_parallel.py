@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import typing
 from dataclasses import FrozenInstanceError, fields
 from typing import get_type_hints
 
@@ -49,7 +50,6 @@ def test_merge_integration_effect_not_in_effects() -> None:
 
 
 def test_effect_union_does_not_include_merge_integration() -> None:
-    import typing
 
     args = typing.get_args(effects.Effect)
     names = [getattr(t, "__name__", str(t)) for t in args]

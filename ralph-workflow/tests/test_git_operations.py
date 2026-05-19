@@ -155,7 +155,7 @@ def test_create_commit() -> None:
         return FakeConfig()
 
     class FakeIndex:
-        def commit(self, message: str, author, committer) -> FakeCommit:
+        def commit(self, message: str, author: object, committer: object) -> FakeCommit:
             captured["message"] = message
             captured["author"] = author
             captured["committer"] = committer
@@ -182,7 +182,7 @@ def test_create_commit_with_author() -> None:
         hexsha = "b" * FULL_SHA_LENGTH
 
     class FakeIndex:
-        def commit(self, message: str, author, committer) -> FakeCommit:
+        def commit(self, message: str, author: object, committer: object) -> FakeCommit:
             captured["message"] = message
             captured["author"] = author
             captured["committer"] = committer

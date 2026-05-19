@@ -44,14 +44,21 @@ def _result(
     )
 
 
-def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys) -> None:
+def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys: object) -> None:
+    pytest_cmd = (
+        "-m", "pytest", "tests", "-q", "-n", "4",
+        "--dist", "worksteal", "-m", "not subprocess_e2e",
+    )
     runner = StubRunner(
         [
             _result(args=("lint",), returncode=0, stdout="lint ok\n"),
             _result(args=("typecheck",), returncode=0, stdout="typecheck ok\n"),
-            _result(args=("docs",), returncode=0, stdout="docs ok\n"),
-            _result(args=("test-cov",), returncode=0, stdout="tests ok\n"),
-            _result(args=("test-subprocess-e2e",), returncode=0, stdout="e2e ok\n"),
+            ProcessResult(
+                command=("python", *pytest_cmd),
+                returncode=0,
+                stdout="test ok\n",
+                stderr="",
+            ),
         ]
     )
 
@@ -62,15 +69,15 @@ def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys) -> N
     assert [call[:2] for call in runner.calls] == [
         ("make", ("lint",)),
         ("make", ("typecheck",)),
-        ("make", ("docs",)),
-        ("make", ("test-cov",)),
-        ("make", ("test-subprocess-e2e",)),
+        ("python", pytest_cmd),
     ]
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
 
 
-def test_main_prints_agent_fix_banner_when_verify_step_fails(tmp_path: Path, capsys) -> None:
+def test_main_prints_agent_fix_banner_when_verify_step_fails(
+    tmp_path: Path, capsys: object
+) -> None:
     runner = StubRunner(
         [
             _result(args=("lint",), returncode=0, stdout="lint ok\n"),

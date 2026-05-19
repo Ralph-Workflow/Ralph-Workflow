@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import StrEnum
 from threading import Lock
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
+from ralph.mcp.artifacts._agent_session_id import AgentSessionId
+from ralph.mcp.artifacts._audit_correlation import AuditCorrelation
+from ralph.mcp.artifacts._audit_metadata import AuditMetadata
+from ralph.mcp.artifacts._mcp_audit_correlation import McpAuditCorrelation
+from ralph.mcp.artifacts._mcp_audit_event_type import McpAuditEventType
+from ralph.mcp.artifacts._mcp_audit_record import McpAuditRecord
+from ralph.mcp.artifacts._ralph_audit_record import RalphAuditRecord
 from ralph.mcp.protocol.capability_mapping import (
     AccessDecision,
-    McpCapability,
     PolicyMode,
     PolicyOutcome,
     PolicyOutcomeStatus,
@@ -19,99 +23,14 @@ from ralph.mcp.protocol.capability_mapping import (
     Capability as RalphCapability,
 )
 
+if TYPE_CHECKING:
 
-class AgentSessionId:
-    """Convenience wrapper around a session identifier."""
+    class AuditSink(Protocol):
+        """Protocol defining the MCP audit sink contract."""
 
-    __slots__ = ("_value",)
+        def emit(self, record: McpAuditRecord) -> None: ...
 
-    def __init__(self, value: str) -> None:
-        self._value = value
-
-    @classmethod
-    def from_string(cls, value: str) -> AgentSessionId:
-        return cls(value)
-
-    def as_str(self) -> str:
-        return self._value
-
-    def __str__(self) -> str:
-        return self._value
-
-
-class AuditSink(Protocol):
-    """Protocol defining the MCP audit sink contract."""
-
-    def emit(self, record: McpAuditRecord) -> None: ...
-
-    def flush(self) -> None: ...
-
-
-class McpAuditEventType(StrEnum):
-    """Enumeration of MCP audit event categories."""
-
-    TOOL = "tool"
-    DENIAL = "denial"
-    MODE_TRANSITION = "mode_transition"
-    HEARTBEAT = "heartbeat"
-    SELF_TERMINATION = "self_termination"
-
-
-@dataclass(frozen=True)
-class AuditCorrelation:
-    """Correlation metadata emitted with a Ralph audit record."""
-
-    run_id: str | None = None
-    generation: int | None = None
-    drain: str | None = None
-    policy_mode: str | None = None
-
-
-@dataclass(frozen=True)
-class McpAuditCorrelation:
-    """Correlation metadata that comes from the MCP dispatch layer."""
-
-    run_id: str | None = None
-    generation: int | None = None
-    drain: str | None = None
-    policy_mode: PolicyMode | None = None
-
-
-@dataclass
-class AuditMetadata:
-    """Extended metadata attached to an MCP audit record."""
-
-    event_type: McpAuditEventType = McpAuditEventType.TOOL
-    details: str | None = None
-    correlation: McpAuditCorrelation = field(default_factory=McpAuditCorrelation)
-
-
-@dataclass
-class McpAuditRecord:
-    """Audit record emitted by the MCP server dispatch layer."""
-
-    timestamp_nanos: int
-    session_id: str
-    tool_name: str
-    decision: AccessDecision
-    path: str | None = None
-    capability: McpCapability | None = None
-    metadata: AuditMetadata = field(default_factory=AuditMetadata)
-
-
-@dataclass(frozen=True)
-class RalphAuditRecord:
-    """Audit record format consumed by Ralph's audit trail."""
-
-    session_id: AgentSessionId
-    timestamp: int
-    capability: RalphCapability
-    outcome: PolicyOutcome
-    description: str
-    duration_ms: int | None = None
-    result_status: str | None = None
-    event_type: str | None = None
-    correlation: AuditCorrelation | None = None
+        def flush(self) -> None: ...
 
 
 def outcome_from_decision(decision: AccessDecision) -> PolicyOutcome:
@@ -221,8 +140,6 @@ __all__ = [
     "McpAuditCorrelation",
     "McpAuditEventType",
     "McpAuditRecord",
-    "PolicyOutcome",
-    "PolicyOutcomeStatus",
     "RalphAuditRecord",
     "RalphAuditSinkAdapter",
     "outcome_from_decision",

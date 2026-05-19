@@ -14,7 +14,7 @@ def test_extract_choice_menu_state_parses_numbered_modal_options() -> None:
     Enter to confirm · Esc to cancel
     """
 
-    state = invoke_module._extract_choice_menu_state(screen)
+    state = invoke_module.extract_choice_menu_state(screen)
 
     assert state is not None
     assert state.prompt == "Enable auto mode?"
@@ -37,7 +37,7 @@ def test_plan_menu_response_prefers_non_persistent_affirmative_option() -> None:
     Enter to confirm · Esc to cancel
     """
 
-    response = invoke_module._plan_choice_menu_response(screen)
+    response = invoke_module.plan_choice_menu_response(screen)
 
     assert response == "\x1b[B\r"
 
@@ -53,7 +53,7 @@ def test_plan_menu_response_confirms_selected_affirmative_option() -> None:
     Enter to confirm · Esc to cancel
     """
 
-    response = invoke_module._plan_choice_menu_response(screen)
+    response = invoke_module.plan_choice_menu_response(screen)
 
     assert response == "\r"
 
@@ -67,7 +67,7 @@ def test_interactive_auto_response_handles_menu_snapshot_without_prompt_line() -
     Enter to confirm · Esc to cancel
     """
 
-    response = invoke_module._interactive_auto_response_for_prompt(
+    response = invoke_module.interactive_auto_response_for_prompt(
         screen,
         auto_mode_prompt_seen=False,
     )
@@ -86,7 +86,7 @@ def test_interactive_auto_response_prefers_non_persistent_allow_option() -> None
     Enter to confirm · Esc to cancel
     """
 
-    response = invoke_module._interactive_auto_response_for_prompt(
+    response = invoke_module.interactive_auto_response_for_prompt(
         screen,
         auto_mode_prompt_seen=False,
     )
@@ -105,7 +105,7 @@ def test_interactive_auto_response_refuses_ambiguous_menu() -> None:
     Enter to confirm · Esc to cancel
     """
 
-    response = invoke_module._interactive_auto_response_for_prompt(
+    response = invoke_module.interactive_auto_response_for_prompt(
         screen,
         auto_mode_prompt_seen=False,
     )
@@ -124,7 +124,7 @@ def test_permission_prompt_action_message_describes_selected_option() -> None:
     Enter to confirm · Esc to cancel
     """
 
-    message = invoke_module._permission_prompt_action_message(
+    message = invoke_module.permission_prompt_action_message(
         screen,
         auto_mode_prompt_seen=False,
     )

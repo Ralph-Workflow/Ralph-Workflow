@@ -2,22 +2,34 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+import pathlib
+import tempfile
+from datetime import timedelta
+from typing import TYPE_CHECKING, cast
 
 import pytest
 from pydantic import ValidationError
 
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+from ralph.config.models import AgentConfig as _AgentConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import HeartbeatPolicy
-from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
+from ralph.mcp.server.lifecycle import (
+    McpRestartPolicy,
+    McpServerError,
+    ProcessLike,
+    RestartAwareMcpBridge,
+    StandaloneMcpProcess,
+)
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.runner import WorkspaceScope
+from ralph.process.mcp_supervisor import McpSupervisor
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -27,7 +39,7 @@ def _make_config(agent_idle_timeout_seconds: float) -> UnifiedConfig:
     )
 
 
-def _registry_factory(config: object) -> Any:
+def _registry_factory(config: object) -> object:
     agent_config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
     class RegistryInstance:
@@ -86,13 +98,13 @@ def test_config_idle_timeout_flows_to_invoke_options(
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
@@ -102,7 +114,7 @@ def test_config_idle_timeout_flows_to_invoke_options(
 def test_config_default_idle_timeout_is_300() -> None:
     """Default GeneralConfig.agent_idle_timeout_seconds is 300.0 seconds."""
     config = GeneralConfig()
-    assert config.agent_idle_timeout_seconds == 300.0  # noqa: PLR2004
+    assert config.agent_idle_timeout_seconds == 300.0
 
 
 def test_config_idle_timeout_validation_rejects_zero() -> None:
@@ -131,9 +143,8 @@ def _make_config_with_watchdog(
     )
 
 
-def _capture_options_factory(captured: dict[str, object]) -> Any:
+def _capture_options_factory(captured: dict[str, object]) -> object:
     """Return a fake_invoke_agent that captures the full options object."""
-    from ralph.config.models import AgentConfig as _AgentConfig
 
     def fake_invoke_agent(
         config: _AgentConfig,
@@ -178,12 +189,12 @@ def _run_with_config(
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=_capture_options_factory(captured),
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
@@ -236,16 +247,16 @@ def test_config_max_waiting_seconds_flows_to_invoke_options(
 def test_config_default_drain_window_is_0_5() -> None:
     """Default GeneralConfig.agent_idle_drain_window_seconds is 0.5s."""
     config = GeneralConfig()
-    assert config.agent_idle_drain_window_seconds == 0.5  # noqa: PLR2004
+    assert config.agent_idle_drain_window_seconds == 0.5
 
 
 def test_config_default_max_waiting_is_1800() -> None:
     """Default GeneralConfig.agent_idle_max_waiting_on_child_seconds is 1800.0s."""
     config = GeneralConfig()
-    assert config.agent_idle_max_waiting_on_child_seconds == 1800.0  # noqa: PLR2004
+    assert config.agent_idle_max_waiting_on_child_seconds == 1800.0
 
 
-def _make_config_full(  # noqa: PLR0913
+def _make_config_full(
     agent_idle_timeout_seconds: float = 300.0,
     agent_idle_drain_window_seconds: float = 0.5,
     agent_idle_max_waiting_on_child_seconds: float = 1800.0,
@@ -364,19 +375,19 @@ def test_config_max_session_seconds_flows_to_invoke_options(
 def test_config_default_idle_poll_interval_is_0_05() -> None:
     """Default GeneralConfig.agent_idle_poll_interval_seconds is 0.05s."""
     config = GeneralConfig()
-    assert config.agent_idle_poll_interval_seconds == 0.05  # noqa: PLR2004
+    assert config.agent_idle_poll_interval_seconds == 0.05
 
 
 def test_config_default_process_exit_wait_is_30() -> None:
     """Default GeneralConfig.agent_process_exit_wait_seconds is 30.0s."""
     config = GeneralConfig()
-    assert config.agent_process_exit_wait_seconds == 30.0  # noqa: PLR2004
+    assert config.agent_process_exit_wait_seconds == 30.0
 
 
 def test_config_default_descendant_wait_poll_is_0_5() -> None:
     """Default GeneralConfig.agent_descendant_wait_poll_seconds is 0.5s."""
     config = GeneralConfig()
-    assert config.agent_descendant_wait_poll_seconds == 0.5  # noqa: PLR2004
+    assert config.agent_descendant_wait_poll_seconds == 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -416,13 +427,13 @@ def test_mcp_server_error_causes_agent_failure(
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
     monkeypatch.setattr(runner_module, "check_mcp_bridge_health", fake_check_mcp_bridge_health)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    result = runner_module._execute_agent_effect(
+    result = runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
     assert result == PipelineEvent.AGENT_FAILURE
@@ -463,7 +474,7 @@ def test_bridge_shared_across_retry_attempts(
         nonlocal attempt
         invoke_calls.append(attempt)
         attempt += 1
-        if attempt < 2:  # noqa: PLR2004
+        if attempt < 2:
             raise RuntimeError("timeout")
         return []
 
@@ -471,18 +482,18 @@ def test_bridge_shared_across_retry_attempts(
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
     assert len(bridge_start_calls) == 1, "bridge must be started only once"
-    assert len(invoke_calls) == 2, "agent must be invoked twice (retry)"  # noqa: PLR2004
+    assert len(invoke_calls) == 2, "agent must be invoked twice (retry)"
 
 
 def test_check_mcp_bridge_health_called_per_retry_attempt(
@@ -529,17 +540,17 @@ def test_check_mcp_bridge_health_called_per_retry_attempt(
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
     monkeypatch.setattr(runner_module, "check_mcp_bridge_health", fake_check_mcp_bridge_health)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
-    assert len(health_check_calls) == 2, (  # noqa: PLR2004
+    assert len(health_check_calls) == 2, (
         f"health check must fire on each attempt; got {len(health_check_calls)} call(s)"
     )
 
@@ -548,15 +559,6 @@ def test_record_mcp_restart_forwarded_to_subscriber(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """When bridge.restart_count > 0, record_mcp_restart is called on the display subscriber."""
-    import pathlib
-    import tempfile
-
-    from ralph.mcp.server.lifecycle import (
-        McpRestartPolicy,
-        ProcessLike,
-        RestartAwareMcpBridge,
-        StandaloneMcpProcess,
-    )
 
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -624,13 +626,13 @@ def test_record_mcp_restart_forwarded_to_subscriber(
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
 
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect,
         config,
         deps,
@@ -645,9 +647,6 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """_execute_agent_effect passes heartbeat_policy_from_env().interval to McpSupervisor."""
-    from datetime import timedelta
-
-    from ralph.process.mcp_supervisor import McpSupervisor
 
     config = _make_config_with_watchdog()
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -656,8 +655,6 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     captured_intervals: list[timedelta] = []
 
     original_init = McpSupervisor.__init__
-
-    from collections.abc import Callable  # noqa: TC003
 
     def patched_init(
         self: McpSupervisor,
@@ -691,12 +688,12 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
         lambda *, workspace_root, name: str(tmp_path / "SYSTEM_PROMPT.md"),
     )
 
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
-    runner_module._execute_agent_effect(
+    runner_module.execute_agent_effect(
         effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 

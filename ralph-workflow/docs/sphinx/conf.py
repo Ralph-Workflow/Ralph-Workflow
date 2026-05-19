@@ -71,8 +71,7 @@ myst_enable_extensions = ["colon_fence", "deflist", "linkify", "substitution"]
 suppress_warnings = [
     "autodoc.import_object",
     "ref.python",
-    # Suppress inventory fetch failures — docs.python.org may be unreachable in offline/CI environments.
-    # ref.python already suppresses unresolved xrefs so there is no user-visible regression.
+    # Suppress inventory fetch failures: docs.python.org may be unreachable.
     "intersphinx",
     "myst.xref_missing",
 ]

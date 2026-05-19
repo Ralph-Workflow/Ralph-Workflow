@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Final, cast
 
-from ralph.agents.parsers.base import AgentOutputLine, TextAccumulator, stringify_text_blocks
+from .agent_output_line import AgentOutputLine
+from .base import stringify_text_blocks
+from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

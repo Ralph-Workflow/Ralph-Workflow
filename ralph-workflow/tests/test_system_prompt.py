@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import ralph.prompts.system_prompt as system_prompt_module
 from ralph.prompts.system_prompt import materialize_system_prompt
 
+if TYPE_CHECKING:
+    import pytest
+
 
 def test_materialize_system_prompt_creates_prompt_history_snapshot(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         system_prompt_module,
@@ -31,7 +35,7 @@ def test_materialize_system_prompt_creates_prompt_history_snapshot(
 
 def test_materialize_system_prompt_refreshes_current_prompt_from_prompt_md(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         system_prompt_module,

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
+
+from ralph.files._file_snapshot import FileSnapshot
+from ralph.files._file_state_issue import FileStateIssue
+from ralph.files._file_state_kind import FileStateKind
 
 DEFAULT_TRACKED_FILES: tuple[Path, ...] = (
     Path("PROMPT.md"),
@@ -22,32 +25,6 @@ DEFAULT_TRACKED_FILES: tuple[Path, ...] = (
 )
 
 _READ_CHUNK_SIZE = 1024 * 1024
-
-
-class FileStateKind(Enum):
-    """Kinds of file-state drift detected during checkpoint validation."""
-
-    MISSING = "missing"
-    UNEXPECTED = "unexpected"
-    CHANGED = "changed"
-
-
-@dataclass(frozen=True)
-class FileSnapshot:
-    """Captured state for a single tracked file."""
-
-    path: Path
-    checksum: str
-    size: int
-    exists: bool
-
-
-@dataclass(frozen=True)
-class FileStateIssue:
-    """A mismatch between captured and current file state."""
-
-    kind: FileStateKind
-    path: Path
 
 
 @dataclass(frozen=True)
@@ -132,3 +109,16 @@ def _relative_path(path: Path, root: Path) -> Path:
     if path.is_absolute():
         return path.relative_to(root)
     return path
+
+
+__all__ = [
+    "DEFAULT_TRACKED_FILES",
+    "FileSnapshot",
+    "FileStateIssue",
+    "FileStateKind",
+    "FileSystemState",
+    "calculate_checksum",
+    "capture_file_snapshot",
+    "capture_file_system_state",
+    "validate_file_system_state",
+]

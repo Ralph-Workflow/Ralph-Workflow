@@ -187,7 +187,8 @@ def test_targeted_runtime_modules_no_longer_need_explicit_any_ignores() -> None:
     offenders = [
         f"{rel_path}:{line_number}"
         for rel_path, line_number, line in _repo_type_ignore_lines()
-        if rel_path in TARGETED_RUNTIME_IGNORE_FREE_PATHS and "# type: ignore[explicit-any]" in line
+        if rel_path in TARGETED_RUNTIME_IGNORE_FREE_PATHS
+        and ("# type:" + " ignore[explicit-any]") in line
     ]
     assert offenders == [], (
         "The first-party Pydantic compatibility shim should eliminate broad model-level "

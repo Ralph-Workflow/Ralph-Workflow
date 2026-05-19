@@ -8,11 +8,13 @@ must resume and complete normally with no false-positive FailureEvents.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import ralph.recovery.controller as recovery_controller_module
 from ralph.config.enums import Verbosity
 from ralph.pipeline import runner as runner_module
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -25,7 +27,7 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.recovery.connectivity import ConnectivityState
-from ralph.recovery.events import FailureEvent
+from ralph.recovery.events import FailureEvent, FailureEventBus
 from ralph.recovery.testing import FakeConnectivityMonitor
 from ralph.workspace.scope import WorkspaceScope
 
@@ -80,7 +82,6 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     4. Runner completes successfully (exit code 0).
     5. No FailureEvents are emitted during the offline window.
     """
-    from ralph.pipeline.events import PipelineEvent
 
     bundle = _make_policy_bundle()
 
@@ -95,7 +96,7 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
 
     invocation_count = 0
 
-    def _fake_execute(*args: Any, **kwargs: Any) -> PipelineEvent:
+    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
         nonlocal invocation_count
         invocation_count += 1
         return PipelineEvent.AGENT_SUCCESS
@@ -103,21 +104,21 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
-    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
-    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: bundle)
     monkeypatch.setattr(
         runner_module,
         "AgentRegistry",
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-    monkeypatch.setattr(runner_module, "_execute_effect_with_optional_display", _fake_execute)
+    monkeypatch.setattr(runner_module, "execute_effect_with_optional_display", _fake_execute)
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
@@ -128,7 +129,7 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
     listener_registered = threading.Event()
     original_add_listener = monitor.add_listener
 
-    def _intercepted_add_listener(cb: Any) -> Any:
+    def _intercepted_add_listener(cb: object) -> object:
         unsub = original_add_listener(cb)
         listener_registered.set()
         return unsub
@@ -192,9 +193,6 @@ def test_offline_window_produces_no_failure_events(
     The offline period must be completely silent — no budget debits,
     no failure events, no fallover records.
     """
-    import ralph.recovery.controller as recovery_controller_module
-    from ralph.pipeline.events import PipelineEvent
-    from ralph.recovery.events import FailureEventBus
 
     bundle = _make_policy_bundle()
 
@@ -220,27 +218,27 @@ def test_offline_window_produces_no_failure_events(
 
     monkeypatch.setattr(recovery_controller_module, "FailureEventBus", _CapturingBus)
 
-    def _fake_execute(*args: Any, **kwargs: Any) -> PipelineEvent:
+    def _fake_execute(*args: object, **kwargs: object) -> PipelineEvent:
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
-    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
-    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: bundle)
     monkeypatch.setattr(
         runner_module,
         "AgentRegistry",
         MagicMock(from_config=MagicMock(return_value=MagicMock())),
     )
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
-    monkeypatch.setattr(runner_module, "_materialize_prepared_prompt", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_prepared_prompt", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-    monkeypatch.setattr(runner_module, "_execute_effect_with_optional_display", _fake_execute)
+    monkeypatch.setattr(runner_module, "execute_effect_with_optional_display", _fake_execute)
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
     )
 
@@ -249,7 +247,7 @@ def test_offline_window_produces_no_failure_events(
     listener_registered = threading.Event()
     original_add_listener = monitor.add_listener
 
-    def _intercepted_add_listener(cb: Any) -> Any:
+    def _intercepted_add_listener(cb: object) -> object:
         unsub = original_add_listener(cb)
         listener_registered.set()
         return unsub

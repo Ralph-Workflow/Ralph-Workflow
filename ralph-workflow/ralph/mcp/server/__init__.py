@@ -10,12 +10,13 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
-from .lifecycle import SessionBridgeLike, shutdown_mcp_server, start_mcp_server
+from .lifecycle import McpServerExtras, SessionBridgeLike, shutdown_mcp_server, start_mcp_server
 
 if TYPE_CHECKING:
     from .runtime import build_fastmcp_server, run_standalone_server
 
 __all__ = [
+    "McpServerExtras",
     "SessionBridgeLike",
     "build_fastmcp_server",
     "factory_impl",

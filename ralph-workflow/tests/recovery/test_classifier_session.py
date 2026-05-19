@@ -9,13 +9,11 @@ class _AgentInvocationError(Exception):
     """Simulates AgentInvocationError via class name."""
 
 
-_AgentInvocationError.__name__ = "AgentInvocationError"
-
-
-class _AgentInactivityTimeoutError(_AgentInvocationError):
+class _AgentInactivityTimeoutError(Exception):
     """Simulates AgentInactivityTimeoutError via class name."""
 
 
+_AgentInvocationError.__name__ = "AgentInvocationError"
 _AgentInactivityTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
 

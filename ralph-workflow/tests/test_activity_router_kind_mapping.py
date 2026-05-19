@@ -6,7 +6,7 @@ No private helpers are referenced.
 
 from __future__ import annotations
 
-from ralph.agents.parsers.base import AgentOutputLine
+from ralph.agents.parsers import AgentOutputLine
 from ralph.display.activity_model import ActivityEventKind, ActivityProvider
 from ralph.display.activity_router import ActivityRouter
 

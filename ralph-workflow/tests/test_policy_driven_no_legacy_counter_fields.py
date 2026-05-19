@@ -53,7 +53,7 @@ def test_with_outer_progress_does_not_set_scalar_field() -> None:
     """with_outer_progress must not attempt to copy a value to a scalar field."""
     state = PipelineState(phase="planning")
     new_state = state.with_outer_progress("iteration", 3)
-    assert new_state.get_outer_progress("iteration") == 3  # noqa: PLR2004
+    assert new_state.get_outer_progress("iteration") == 3
     # Scalar field must not exist
     assert not hasattr(new_state, "iteration"), (
         "with_outer_progress still mirrors values into a scalar 'iteration' field."

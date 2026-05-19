@@ -29,11 +29,11 @@ from ralph.onboarding import (
     starter_prompt_validation_hint,
 )
 from ralph.policy.loader import (
-    PolicyValidationError,
     load_policy,
     load_policy_for_workspace_scope,
 )
 from ralph.policy.validation import (
+    PolicyValidationError,
     validate_agent_chains_satisfiable,
     validate_recovery_config,
 )
@@ -87,7 +87,7 @@ def diagnose_command(
 
     config_ok = _check_git_repo(display_context=ctx)
     config_ok &= _check_configuration(config_path, cli_overrides, display_context=ctx)
-    agent_missing = _check_agents(cli_overrides, display_context=ctx)
+    agent_missing = check_agents(cli_overrides, display_context=ctx)
     config_ok &= not agent_missing
     config_ok &= _check_mcp_servers(workspace_scope, display_context=ctx)
     config_ok &= _check_workspace_files(display_context=ctx)
@@ -108,7 +108,7 @@ def diagnose_command(
         except Exception:
             pass
 
-    next_steps = _build_next_steps(
+    next_steps = build_next_steps(
         validation_ok=validation_ok,
         agent_missing=agent_missing,
         prompt_exists=prompt_exists,
@@ -125,7 +125,7 @@ def diagnose_command(
     return 0
 
 
-def _build_next_steps(
+def build_next_steps(
     *,
     validation_ok: bool,
     agent_missing: bool,
@@ -345,7 +345,7 @@ def _check_configuration(
     return True
 
 
-def _check_agents(
+def check_agents(
     cli_overrides: dict[str, object] | None,
     *,
     display_context: DisplayContext,
@@ -541,3 +541,9 @@ def _status_text(label: str, detail: str, style: str) -> Text:
     text.append(" ")
     text.append(detail)
     return text
+
+
+check_git_repo = _check_git_repo
+check_configuration = _check_configuration
+check_mcp_servers = _check_mcp_servers
+check_workspace_files = _check_workspace_files

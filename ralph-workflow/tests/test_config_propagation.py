@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke import InvokeOptions, _policy_from_options
+from ralph.agents.invoke import InvokeOptions, policy_from_options
 from ralph.config.loader import GLOBAL_CONFIG_PATH, load_config
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
 _MAIN_WAITING_INTERVAL = 45.0
 _CHILD_WAITING_INTERVAL = 90.0
@@ -20,7 +22,7 @@ _CUSTOM_NO_PROGRESS_CEILING = 300.0
 
 
 def test_load_config_uses_main_worktree_as_propagation_layer(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     main_repo = tmp_path / "main"
@@ -51,7 +53,7 @@ def test_load_config_uses_main_worktree_as_propagation_layer(
 
 
 def test_load_config_prefers_child_worktree_local_override(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     main_repo = tmp_path / "main"
@@ -92,7 +94,7 @@ def test_waiting_status_interval_propagates_to_timeout_policy() -> None:
         idle_timeout_seconds=_IDLE_TIMEOUT,
         waiting_status_interval_seconds=_CUSTOM_WAITING_INTERVAL,
     )
-    policy = _policy_from_options(opts)
+    policy = policy_from_options(opts)
 
     assert policy.waiting_status_interval_seconds == _CUSTOM_WAITING_INTERVAL
 
@@ -103,7 +105,7 @@ def test_suspect_threshold_propagates_to_timeout_policy() -> None:
         idle_timeout_seconds=_IDLE_TIMEOUT,
         suspect_waiting_on_child_seconds=_CUSTOM_SUSPECT_THRESHOLD,
     )
-    policy = _policy_from_options(opts)
+    policy = policy_from_options(opts)
 
     assert policy.suspect_waiting_on_child_seconds == _CUSTOM_SUSPECT_THRESHOLD
 
@@ -122,7 +124,7 @@ def test_no_progress_ceiling_uses_default_when_not_set() -> None:
         idle_timeout_seconds=_IDLE_TIMEOUT,
         # max_waiting_on_child_no_progress_seconds not set -> defaults to None in InvokeOptions
     )
-    policy = _policy_from_options(opts)
+    policy = policy_from_options(opts)
 
     # With idle_timeout_seconds=300, max_waiting_on_child_seconds defaults to 1800.
     # max_waiting_on_child_no_progress_seconds should default to 600 (600 <= 1800).
@@ -135,6 +137,6 @@ def test_no_progress_ceiling_propagates_explicit_value() -> None:
         idle_timeout_seconds=_IDLE_TIMEOUT,
         max_waiting_on_child_no_progress_seconds=_CUSTOM_NO_PROGRESS_CEILING,
     )
-    policy = _policy_from_options(opts)
+    policy = policy_from_options(opts)
 
     assert policy.max_waiting_on_child_no_progress_seconds == _CUSTOM_NO_PROGRESS_CEILING

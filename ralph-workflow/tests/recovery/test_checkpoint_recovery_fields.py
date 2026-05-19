@@ -45,11 +45,11 @@ def test_recovery_fields_round_trip(tmp_path: Path) -> None:
     loaded = load(ckpt_path)
 
     assert loaded is not None
-    assert loaded.recovery_cycle_count == 3  # noqa: PLR2004
+    assert loaded.recovery_cycle_count == 3
     assert loaded.last_failure_category == "agent"
     assert loaded.last_connectivity_state == "online"
-    assert loaded.recovery_cycle_cap == 10  # noqa: PLR2004
-    assert loaded.last_retry_delay_ms == 500  # noqa: PLR2004
+    assert loaded.recovery_cycle_cap == 10
+    assert loaded.last_retry_delay_ms == 500
     assert len(loaded.fallover_history) == 1
     record = loaded.fallover_history[0]
     assert record.phase == "development"
@@ -129,10 +129,10 @@ def test_multiple_fallover_records_preserved(tmp_path: Path) -> None:
     loaded = load(ckpt_path)
 
     assert loaded is not None
-    assert len(loaded.fallover_history) == 2  # noqa: PLR2004
+    assert len(loaded.fallover_history) == 2
     assert loaded.fallover_history[0].from_agent == "claude"
     assert loaded.fallover_history[1].from_agent == "opencode"
-    assert loaded.recovery_cycle_count == 2  # noqa: PLR2004
+    assert loaded.recovery_cycle_count == 2
 
 
 def test_zero_recovery_fields_round_trip(tmp_path: Path) -> None:
@@ -147,7 +147,7 @@ def test_zero_recovery_fields_round_trip(tmp_path: Path) -> None:
     assert loaded.recovery_cycle_count == 0
     assert loaded.last_failure_category is None
     assert loaded.last_connectivity_state == "unknown"
-    assert loaded.recovery_cycle_cap == 200  # noqa: PLR2004
+    assert loaded.recovery_cycle_cap == 200
     assert loaded.last_retry_delay_ms == 0
     assert loaded.fallover_history == ()
 
@@ -186,5 +186,5 @@ def test_over_cap_recovery_history_loads_with_newest_records_only(tmp_path: Path
     loaded = load(ckpt_path)
 
     assert loaded is not None
-    assert loaded.recovery_cycle_cap == 2  # noqa: PLR2004
+    assert loaded.recovery_cycle_cap == 2
     assert [record.from_agent for record in loaded.fallover_history] == ["a2", "a3"]

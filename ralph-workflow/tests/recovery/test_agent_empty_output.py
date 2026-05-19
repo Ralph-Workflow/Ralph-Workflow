@@ -9,11 +9,11 @@ from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus, FalloverEvent
 
 
-def _minimal_policy_bundle():
+def _minimal_policy_bundle() -> object:
     with tempfile.TemporaryDirectory() as d:
         return load_policy(Path(d) / ".agent")
 
@@ -32,7 +32,9 @@ def _make_registry_with_budget(phase: str, agent: str, max_retries: int = 1) -> 
 def test_agent_fault_debits_budget() -> None:
     """An agent-attributable fault decrements the budget."""
     registry = _make_registry_with_budget("development", "claude", max_retries=2)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+    )
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):
@@ -43,8 +45,7 @@ def test_agent_fault_debits_budget() -> None:
     _, _, evt = controller.handle(
         state,
         _AgentTimeoutError("agent timed out with no output"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert evt.category == "agent"
@@ -64,7 +65,9 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
         lambda evt: collected_fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
     )
 
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry, event_bus=bus)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry, event_bus=bus)
+    )
     state = _make_state(["claude", "opencode"])
 
     class _AgentTimeoutError(Exception):
@@ -75,8 +78,7 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("agent idle timeout"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert len(collected_fallovers) == 1
@@ -90,7 +92,9 @@ def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
     """When entire chain is exhausted, state enters "failed"."""
     registry = _make_registry_with_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
-        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        options=RecoveryControllerOptions(
+            cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+        )
     )
     state = _make_state(["claude"])
 
@@ -102,8 +106,7 @@ def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("agent idle timeout"),
-        phase="development",
-        agent="claude",
+        FailureContext(phase="development", agent="claude"),
     )
 
     assert new_state.phase == "failed_terminal"

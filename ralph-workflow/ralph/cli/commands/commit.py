@@ -21,12 +21,17 @@ from rich.text import Text
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
+    InvokeRuntimeOptions,
     build_invoke_options_from_config,
     extract_session_id,
     invoke_agent,
 )
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
+from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
+from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
+from ralph.cli.commands._commit_chain_config import CommitChainConfig
+from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.artifact_renderer import render_commit_message
@@ -42,7 +47,7 @@ from ralph.mcp.artifacts.commit_message import (
     read_commit_message_artifact,
 )
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
-from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
+from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
@@ -52,16 +57,18 @@ from ralph.prompts.commit import (
     prompt_commit_message,
     prompt_commit_message_for_opencode,
 )
-from ralph.prompts.payload_refs import _sanitize_surrogates
+from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
+__all__ = ["CommitPlumbingOptions", "commit_plumbing"]
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-    from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.policy.models import AgentsPolicy
 
@@ -74,54 +81,6 @@ _MAX_METADATA_PARTS = 5
 _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_message artifact"
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
-
-
-@dataclass(frozen=True)
-class CommitAgentAttempt:
-    """Result of a single commit-message agent invocation attempt."""
-
-    message: str = ""
-    skipped: bool = False
-    failure_detail: str = ""
-    parsed_output: list[str] = field(default_factory=list)
-    raw_output: list[str] = field(default_factory=list)
-    resume_session_id: str | None = None
-
-
-@dataclass(frozen=True)
-class CommitAttemptContext:
-    """Runtime context threaded into each commit agent invocation attempt.
-
-    Attributes:
-        repo_root: Repository root path.
-        verbose: Whether verbose output is enabled.
-        extra_env: Extra environment variables for the agent subprocess.
-        general_config: Full general config supplying all timeout fields.
-    """
-
-    repo_root: Path
-    verbose: bool
-    extra_env: dict[str, str]
-    general_config: GeneralConfig | None = None
-
-
-@dataclass(frozen=True)
-class CommitPlumbingOptions:
-    """Options for commit plumbing operations.
-
-    Attributes:
-        generate_commit_msg: Generate commit message without applying.
-        generate_commit: Generate and apply commit.
-        show_commit_msg: Show current commit message.
-        config_path: Path to configuration file.
-        cli_overrides: CLI flag overrides.
-    """
-
-    generate_commit_msg: bool = False
-    generate_commit: bool = False
-    show_commit_msg: bool = False
-    config_path: Path | None = None
-    cli_overrides: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -203,7 +162,7 @@ def _handle_agent_commit_generation(
         return
 
     delete_commit_message_artifacts(repo_root)
-    diff = _working_tree_diff(repo_root)
+    diff = working_tree_diff(repo_root)
     if not diff.strip():
         console.print(Text("No changes to commit", style="theme.status.warning"))
         return
@@ -223,11 +182,13 @@ def _handle_agent_commit_generation(
     result = _generate_commit_message_with_chain(
         diff=diff,
         repo_root=repo_root,
-        registry=registry,
-        agents=agents,
-        verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
-        agents_policy=load_agents_policy_for_workspace_scope(workspace_scope, config=config),
-        general_config=config.general,
+        chain_config=CommitChainConfig(
+            registry=registry,
+            agents=agents,
+            verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
+            agents_policy=load_agents_policy_for_workspace_scope(workspace_scope, config=config),
+            general_config=config.general,
+        ),
         display_context=ctx,
     )
 
@@ -404,34 +365,30 @@ def _submit_artifact_tool_names_for_transport(
     return (SUBMIT_ARTIFACT_TOOL,)
 
 
-def _generate_commit_message_with_chain(  # noqa: PLR0913
+def _generate_commit_message_with_chain(
     *,
     diff: str,
     repo_root: Path,
-    registry: AgentRegistry,
-    agents: list[str],
-    verbose: bool,
-    agents_policy: AgentsPolicy,
-    general_config: GeneralConfig | None = None,
+    chain_config: CommitChainConfig,
     display_context: DisplayContext,
 ) -> CommitAgentResult:
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
-    start_commit_bridge_params = signature(_start_commit_bridge).parameters
+    start_commit_bridge_params = signature(start_commit_bridge).parameters
     if "agents_policy" in start_commit_bridge_params:
-        bridge = _start_commit_bridge(repo_root, agents_policy=agents_policy)
+        bridge = start_commit_bridge(repo_root, agents_policy=chain_config.agents_policy)
     else:
         legacy_start_commit_bridge = cast(
             "typing.Callable[[Path], SessionBridgeLike]",
-            _start_commit_bridge,
+            start_commit_bridge,
         )
         bridge = legacy_start_commit_bridge(repo_root)
     extra_env = _commit_bridge_env(bridge)
     failure_details: list[str] = []
 
     try:
-        for agent_name in agents:
-            cfg = registry.get(agent_name)
+        for agent_name in chain_config.agents:
+            cfg = chain_config.registry.get(agent_name)
             if cfg is None:
                 continue
             prompt = _commit_prompt_for_agent(
@@ -440,14 +397,17 @@ def _generate_commit_message_with_chain(  # noqa: PLR0913
                 template_registry=template_registry,
                 repo_root=repo_root,
             )
-            prompt_file = _write_commit_prompt_file(repo_root, prompt)
+            prompt_file = write_commit_prompt_file(repo_root, prompt)
+            attempt_ctx = CommitAttemptContext(
+                repo_root=repo_root,
+                verbose=chain_config.verbose,
+                extra_env=extra_env,
+                general_config=chain_config.general_config,
+            )
             result = _generate_commit_message_with_agent(
                 cfg,
-                repo_root=repo_root,
                 prompt_file=prompt_file,
-                verbose=verbose,
-                extra_env=extra_env,
-                general_config=general_config,
+                attempt_context=attempt_ctx,
                 display_context=display_context,
             )
             failure_details.extend(result.failure_details)
@@ -462,24 +422,15 @@ def _generate_commit_message_with_chain(  # noqa: PLR0913
     return CommitAgentResult(failure_details=failure_details)
 
 
-def _generate_commit_message_with_agent(  # noqa: PLR0913
+def _generate_commit_message_with_agent(
     agent: AgentConfig,
     *,
-    repo_root: Path,
     prompt_file: str,
-    verbose: bool,
-    extra_env: dict[str, str],
-    general_config: GeneralConfig | None = None,
+    attempt_context: CommitAttemptContext,
     display_context: DisplayContext,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
-    attempt_context = CommitAttemptContext(
-        repo_root=repo_root,
-        verbose=verbose,
-        extra_env=extra_env,
-        general_config=general_config,
-    )
-    initial_attempt = _invoke_commit_agent_attempt(
+    initial_attempt = invoke_commit_agent_attempt(
         agent,
         prompt_file=prompt_file,
         attempt_context=attempt_context,
@@ -494,7 +445,7 @@ def _generate_commit_message_with_agent(  # noqa: PLR0913
         return CommitAgentResult(failure_details=failure_details)
 
     if initial_attempt.resume_session_id:
-        session_retry = _invoke_commit_agent_attempt(
+        session_retry = invoke_commit_agent_attempt(
             agent,
             prompt_file=prompt_file,
             attempt_context=attempt_context,
@@ -509,14 +460,14 @@ def _generate_commit_message_with_agent(  # noqa: PLR0913
         if not _is_missing_commit_artifact_failure(session_retry.failure_detail):
             return CommitAgentResult(failure_details=failure_details)
 
-    summary_prompt_file = _write_commit_prompt_file(
-        repo_root,
+    summary_prompt_file = write_commit_prompt_file(
+        attempt_context.repo_root,
         _summarized_retry_prompt(
             _read_retry_prompt_text(prompt_file),
             initial_attempt.parsed_output,
         ),
     )
-    summary_retry = _invoke_commit_agent_attempt(
+    summary_retry = invoke_commit_agent_attempt(
         agent,
         prompt_file=summary_prompt_file,
         attempt_context=attempt_context,
@@ -535,7 +486,7 @@ def _is_skip_response(text: str) -> bool:
     return text.strip().lower().startswith(_SKIP_PREFIX)
 
 
-def _invoke_commit_agent_attempt(
+def invoke_commit_agent_attempt(
     agent: AgentConfig,
     *,
     prompt_file: str,
@@ -543,6 +494,7 @@ def _invoke_commit_agent_attempt(
     session_id: str | None = None,
     display_context: DisplayContext,
 ) -> CommitAgentAttempt:
+    """Run one commit-agent invocation attempt and return its result."""
     delete_commit_message_artifacts(attempt_context.repo_root)
     system_prompt = materialize_system_prompt(
         workspace_root=attempt_context.repo_root,
@@ -552,12 +504,14 @@ def _invoke_commit_agent_attempt(
     if attempt_context.general_config is not None:
         options = build_invoke_options_from_config(
             attempt_context.general_config,
-            verbose=attempt_context.verbose,
-            workspace_path=attempt_context.repo_root,
-            extra_env=attempt_context.extra_env,
-            pure=_is_opencode_agent(agent),
-            session_id=session_id,
-            system_prompt_file=system_prompt,
+            InvokeRuntimeOptions(
+                verbose=attempt_context.verbose,
+                workspace_path=attempt_context.repo_root,
+                extra_env=attempt_context.extra_env,
+                pure=_is_opencode_agent(agent),
+                session_id=session_id,
+                system_prompt_file=system_prompt,
+            ),
         )
     else:
         options = InvokeOptions(
@@ -582,7 +536,7 @@ def _invoke_commit_agent_attempt(
         )
 
     try:
-        parsed_output, raw_output, resume_session_id = _collect_commit_agent_output(
+        parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
             lines,
             parser_type=str(agent.json_parser),
             agent_name=agent.cmd.split()[0],
@@ -762,7 +716,7 @@ def _format_commit_agent_failure(
     return "\n".join(lines)
 
 
-def _collect_commit_agent_output(
+def collect_commit_agent_output(
     lines: Iterable[object],
     *,
     parser_type: str,
@@ -770,6 +724,7 @@ def _collect_commit_agent_output(
     verbose: bool,
     display_context: DisplayContext,
 ) -> tuple[list[str], list[str], str | None]:
+    """Consume agent output lines, returning (parsed_lines, raw_lines, resume_session_id)."""
     ctx = display_context
     console = ctx.console
     parser = _resolve_commit_parser(parser_type)
@@ -959,7 +914,9 @@ def _start_commit_bridge(repo_root: Path, *, agents_policy: AgentsPolicy) -> Ses
         stored_capability_profile=session_mcp_plan.capability_profile,
     )
     workspace = FsWorkspace(repo_root)
-    return start_mcp_server(session, workspace, extra_env=session_mcp_plan.server_env)
+    return start_mcp_server(
+        session, workspace, extras=McpServerExtras(extra_env=session_mcp_plan.server_env)
+    )
 
 
 def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
@@ -967,3 +924,10 @@ def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
         MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
         MCP_RUN_ID_ENV: "commit-plumbing",
     }
+
+
+start_commit_bridge = _start_commit_bridge
+write_commit_prompt_file = _write_commit_prompt_file
+working_tree_diff = _working_tree_diff
+submit_artifact_tool_name_for_transport = _submit_artifact_tool_name_for_transport
+render_commit_agent_activity_line = _render_commit_agent_activity_line

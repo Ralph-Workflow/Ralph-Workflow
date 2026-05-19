@@ -3,93 +3,50 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
 
 from rich.cells import cell_len
 from rich.markup import escape
 
+from ralph.display.activity_event_kind import ActivityEventKind
+from ralph.display.activity_provider import ActivityProvider
+from ralph.display.activity_visibility_hint import ActivityVisibilityHint
+from ralph.display.agent_activity_event import AgentActivityEvent
+from ralph.display.event_options import EventOptions
 
-class ActivityProvider(StrEnum):
-    """Canonical provider identity for agent activity events."""
-
-    CLAUDE = "claude"
-    CODEX = "codex"
-    OPENCODE = "opencode"
-    GEMINI = "gemini"
-    GENERIC = "generic"
-    UNKNOWN = "unknown"
+_module_sequence_lock = threading.Lock()
 
 
-class ActivityEventKind(StrEnum):
-    """Canonical event kinds emitted across providers."""
+class _ModuleSequence:
+    __slots__ = ("_counter",)
 
-    TEXT = "text"
-    THINKING = "thinking"
-    STATUS = "status"
-    TOOL_USE = "tool_use"
-    TOOL_RESULT = "tool_result"
-    ERROR = "error"
-    LIFECYCLE = "lifecycle"
-    HEARTBEAT = "heartbeat"
-    PROGRESS = "progress"
-    UNKNOWN = "unknown"
-
-
-class ActivityVisibilityHint(StrEnum):
-    """Visibility intent used by later presenter and display layers."""
-
-    VISIBLE = "visible"
-    HIDDEN = "hidden"
-    FALLBACK_ONLY = "fallback_only"
-
-
-@dataclass(frozen=True, slots=True)
-class AgentActivityEvent:
-    """Typed canonical activity event for future parser normalization work."""
-
-    provider: ActivityProvider
-    kind: ActivityEventKind
-    content: str | None = None
-    metadata: dict[str, object] = field(default_factory=dict)
-    visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE
-    source: str = ""
-    sequence: int | None = None
-    timestamp: str | None = None
-
-
-class _SequenceCounter:
     def __init__(self) -> None:
-        self._n = 0
-        self._lock = threading.Lock()
+        self._counter = 0
 
     def next(self) -> int:
-        with self._lock:
-            self._n += 1
-            return self._n
+        with _module_sequence_lock:
+            self._counter += 1
+            return self._counter
 
 
-module_sequence = _SequenceCounter()
+module_sequence = _ModuleSequence()
 
 
-def make_event(  # noqa: PLR0913
+def make_event(
     *,
     provider: ActivityProvider,
     kind: ActivityEventKind,
-    content: str | None = None,
-    metadata: dict[str, object] | None = None,
-    visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE,
-    source: str = "",
+    options: EventOptions | None = None,
 ) -> AgentActivityEvent:
-    """Construct an ``AgentActivityEvent`` with an auto-incremented sequence and UTC timestamp."""
+    """Construct an AgentActivityEvent with an auto-incremented sequence and UTC timestamp."""
+    opts = options or EventOptions()
     return AgentActivityEvent(
         provider=provider,
         kind=kind,
-        content=content,
-        metadata=metadata or {},
-        visibility=visibility,
-        source=source,
+        content=opts.content,
+        metadata=opts.metadata or {},
+        visibility=opts.visibility,
+        source=opts.source,
         sequence=module_sequence.next(),
         timestamp=datetime.now(UTC).isoformat(),
     )
@@ -98,7 +55,7 @@ def make_event(  # noqa: PLR0913
 _ICON_BY_KIND: dict[ActivityEventKind, str] = {
     ActivityEventKind.TEXT: "│",
     ActivityEventKind.THINKING: "∴",
-    ActivityEventKind.STATUS: "\u203a",
+    ActivityEventKind.STATUS: "▸",
     ActivityEventKind.TOOL_USE: "▸",
     ActivityEventKind.TOOL_RESULT: "✓",
     ActivityEventKind.ERROR: "✗",
@@ -143,7 +100,10 @@ __all__ = [
     "ActivityProvider",
     "ActivityVisibilityHint",
     "AgentActivityEvent",
+    "EventOptions",
     "make_event",
     "module_sequence",
     "render_event_line",
 ]
+
+SequenceCounter = _ModuleSequence

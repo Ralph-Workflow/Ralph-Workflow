@@ -5,7 +5,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ralph.display.snapshot import PipelineSnapshot, WorkerSnapshot, snapshot_from_state
+from ralph.display.snapshot import (
+    PipelineSnapshot,
+    SnapshotContext,
+    WorkerSnapshot,
+    snapshot_from_state,
+)
 from ralph.pipeline.state import PipelineState, RunMetrics
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
@@ -67,9 +72,11 @@ def test_snapshot_from_state_projects_exact_fields_and_order() -> None:
 
     snapshot = snapshot_from_state(
         state,
-        prompt_path="PROMPT.md",
-        prompt_preview=("# title",),
-        run_id="run-123",
+        SnapshotContext(
+            prompt_path="PROMPT.md",
+            prompt_preview=("# title",),
+            run_id="run-123",
+        ),
     )
 
     assert snapshot.phase == "development"
@@ -151,7 +158,7 @@ def test_snapshot_from_state_projects_exact_fields_and_order() -> None:
 def test_snapshot_from_state_maps_unknown_status_to_info() -> None:
     unknown = WorkerState.model_construct(unit_id="unit-1", status="MYSTERY")
     state = _make_state(worker_states={"unit-1": unknown})
-    snapshot = snapshot_from_state(state, prompt_path=None, prompt_preview=(), run_id=None)
+    snapshot = snapshot_from_state(state)
 
     assert snapshot.workers[0].status_semantic == "info"
     assert snapshot.workers[0].status == "MYSTERY"
@@ -232,12 +239,7 @@ def test_snapshot_elapsed_seconds_cover_running_finished_and_not_started(
         },
     )
 
-    snapshot = snapshot_from_state(
-        state,
-        prompt_path=None,
-        prompt_preview=(),
-        run_id=None,
-    )
+    snapshot = snapshot_from_state(state)
 
     elapsed = {worker.unit_id: worker.elapsed_s for worker in snapshot.workers}
     assert elapsed["running"] == pytest.approx(10.0)

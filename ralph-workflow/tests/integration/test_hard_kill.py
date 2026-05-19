@@ -12,16 +12,17 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ralph.display.parallel_display import ParallelDisplay
+
 from ralph.agents.executor import WorkerResult
 from ralph.agents.subprocess_executor import agent_process_label
-from ralph.display.parallel_display import ParallelDisplay  # noqa: TC001
 from ralph.pipeline import checkpoint
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
-from ralph.process.manager import get_process_manager, reset_process_manager
+from ralph.process.manager import SpawnOptions, get_process_manager, reset_process_manager
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -51,7 +52,7 @@ class SleeperExecutor:
         on_status(WorkerStatus.RUNNING)
         start_time = time.monotonic()
         handle = await get_process_manager().spawn_async(
-            ["sleep", "30"], label=agent_process_label(unit.unit_id)
+            ["sleep", "30"], SpawnOptions(label=agent_process_label(unit.unit_id))
         )
         self.pids.append(handle.record.pid)
 
@@ -103,8 +104,8 @@ async def _run_with_cancel(
             effect=effect,
             executor=executor,
             display=cast("ParallelDisplay", _FakeDisplay()),
-            ctx=coordinator._WorkerContext(
-                log=coordinator._WorkerLog(
+            ctx=coordinator.WorkerContext(
+                log=coordinator.WorkerLog(
                     log_dir=checkpoint_path.parent / "logs",
                     run_id="hard-kill-test",
                 ),

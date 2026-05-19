@@ -43,10 +43,11 @@ if TYPE_CHECKING:
     from ralph.workspace.scope import WorkspaceScope
 
 __all__ = [
-    "PolicyValidationError",
     "load_policy",
     "load_policy_or_die",
 ]
+
+
 def _load_toml(path: Path) -> dict[str, object]:
     """Load a TOML file, returning empty dict if absent.
 
@@ -107,18 +108,21 @@ def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
     return dict(cast("Mapping[str, object]", nested_pipeline))
 
 
-def _format_validation_error_messages(exc: ValidationError) -> list[str]:
+def format_validation_error_messages(exc: ValidationError) -> list[str]:
+    """Format all pydantic ValidationError errors into human-readable strings."""
     details = cast("ValidationErrorDetails", exc.errors())
-    return [_format_validation_error_detail(detail) for detail in details]
+    return [format_validation_error_detail(detail) for detail in details]
 
 
-def _format_validation_error_detail(detail: ValidationErrorDetail) -> str:
+def format_validation_error_detail(detail: ValidationErrorDetail) -> str:
+    """Format a single pydantic validation error detail as 'location: message'."""
     loc = detail.get("loc")
     msg = detail.get("msg")
-    return f"  {_format_validation_location(loc)}: {_format_validation_message(msg)}"
+    return f"  {format_validation_location(loc)}: {format_validation_message(msg)}"
 
 
-def _format_validation_location(raw_loc: object | None) -> str:
+def format_validation_location(raw_loc: object | None) -> str:
+    """Format a pydantic error location tuple to a dotted path string."""
     if raw_loc is None:
         return "<root>"
     if isinstance(raw_loc, list | tuple):
@@ -128,7 +132,8 @@ def _format_validation_location(raw_loc: object | None) -> str:
     return str(raw_loc)
 
 
-def _format_validation_message(raw_msg: object | None) -> str:
+def format_validation_message(raw_msg: object | None) -> str:
+    """Return the validation error message string, substituting a placeholder if absent."""
     if isinstance(raw_msg, str):
         return raw_msg
     if raw_msg is None:
@@ -151,7 +156,7 @@ def _validate_agents(data: dict[str, object]) -> AgentsPolicy:
     try:
         return AgentsPolicy.model_validate(data)
     except ValidationError as exc:
-        msgs = _format_validation_error_messages(exc)
+        msgs = format_validation_error_messages(exc)
         raise PolicyValidationError(
             "agents.toml validation failed:\n" + "\n".join(msgs),
             source="agents",
@@ -173,7 +178,7 @@ def _validate_pipeline(data: dict[str, object]) -> PipelinePolicy:
     try:
         return PipelinePolicy.model_validate(_normalize_pipeline_data(data))
     except ValidationError as exc:
-        msgs = _format_validation_error_messages(exc)
+        msgs = format_validation_error_messages(exc)
         raise PolicyValidationError(
             "pipeline.toml validation failed:\n" + "\n".join(msgs),
             source="pipeline",
@@ -195,7 +200,7 @@ def _validate_artifacts(data: dict[str, object]) -> ArtifactsPolicy:
     try:
         return ArtifactsPolicy.model_validate(data)
     except ValidationError as exc:
-        msgs = _format_validation_error_messages(exc)
+        msgs = format_validation_error_messages(exc)
         raise PolicyValidationError(
             "artifacts.toml validation failed:\n" + "\n".join(msgs),
             source="artifacts",
@@ -336,7 +341,7 @@ _DEFAULT_AGENTS_POLICY_CACHE: list[AgentsPolicy] = []
 def _cached_default_agents_policy() -> AgentsPolicy:
     if not _DEFAULT_AGENTS_POLICY_CACHE:
         _DEFAULT_AGENTS_POLICY_CACHE.append(
-            _validate_agents(_load_toml(_default_dir() / "agents.toml"))
+            _validate_agents(_load_toml(default_dir() / "agents.toml"))
         )
     return _DEFAULT_AGENTS_POLICY_CACHE[0]
 
@@ -394,8 +399,8 @@ def _load_policy_from_paths(
     global_pipeline_path, global_artifacts_path = (
         global_policy_paths if global_policy_paths is not None else (None, None)
     )
-    default_dir = _default_dir()
-    default_pipeline_data = _load_toml(default_dir / "pipeline.toml")
+    default_policy_dir = default_dir()
+    default_pipeline_data = _load_toml(default_policy_dir / "pipeline.toml")
     local_pipeline_data = _load_toml(pipeline_path)
     if global_pipeline_path is None:
         pipeline_data = local_pipeline_data or default_pipeline_data
@@ -405,7 +410,7 @@ def _load_policy_from_paths(
         if local_pipeline_data:
             pipeline_data = _merge_mapping_defaults(pipeline_data, local_pipeline_data)
 
-    default_artifacts_data = _load_toml(default_dir / "artifacts.toml")
+    default_artifacts_data = _load_toml(default_policy_dir / "artifacts.toml")
     local_artifacts_data = _load_toml(artifacts_path)
     if global_artifacts_path is None:
         if local_artifacts_data:
@@ -429,7 +434,7 @@ def _load_policy_from_paths(
             artifacts=artifacts_policy,
         )
     except ValidationError as exc:
-        msgs = _format_validation_error_messages(exc)
+        msgs = format_validation_error_messages(exc)
         raise PolicyValidationError(
             "Cross-policy validation failed (drain bindings / analysis contracts):\n"
             + "\n".join(msgs),
@@ -487,7 +492,7 @@ def load_policy_for_workspace_scope(
     )
 
 
-def _default_dir() -> Path:
+def default_dir() -> Path:
     """Return the path to the bundled default policy files."""
     return Path(ralph.policy.__file__).parent / "defaults"
 

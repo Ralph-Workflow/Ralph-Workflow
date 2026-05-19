@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 from rich.rule import Rule
 from rich.text import Text
 
-from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
@@ -22,6 +21,7 @@ from ralph.display.phase_status import (
 if TYPE_CHECKING:
     from rich.console import Console
 
+    from ralph.display.context import DisplayContext
     from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
     from ralph.policy.models import PipelinePolicy
 
@@ -37,7 +37,7 @@ _PHASE_STYLES: dict[str, str] = {
 }
 
 # Role-pair based major transitions (used when pipeline_policy is available)
-_MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
+MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
     {
         ("execution", "analysis"),
         ("analysis", "commit"),
@@ -52,7 +52,7 @@ _MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
 )
 
 
-def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> str:
+def phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> str:
     """Return the rich style string for a phase name or role.
 
     When pipeline_policy is provided, the style is derived from the phase's
@@ -73,7 +73,7 @@ def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> s
     return _PHASE_STYLES.get(phase, "theme.text.muted")
 
 
-def _phase_label(phase: str) -> str:
+def phase_label(phase: str) -> str:
     """Return a human-readable label for a phase name.
 
     Examples:
@@ -104,14 +104,14 @@ def _resolve_transition_meta(
         return False
     from_role = from_def.role or ""
     to_role = to_def.role or ""
-    return (from_role, to_role) in _MAJOR_ROLE_PAIRS
+    return (from_role, to_role) in MAJOR_ROLE_PAIRS
 
 
-def _render_major_transition(  # noqa: PLR0913
+def _render_major_transition(
     c: Console,
     from_label: str,
     to_label: str,
-    style: str,
+    _style: str,
     context: dict[str, object] | None,
     arrow: str,
 ) -> None:
@@ -119,31 +119,19 @@ def _render_major_transition(  # noqa: PLR0913
     title = Text()
     title.append(from_label, style="theme.text.muted")
     title.append(f" {arrow} ", style="theme.text.emphasis")
-    title.append(to_label, style=style)
+    title.append(to_label, style=_style)
     if context:
         detail = "  ".join(format_transition_context_items(context))
         title.append(f"  ({detail})", style="theme.text.muted")
-    c.print(Rule(title=title, style=style))
+    c.print(Rule(title=title, style=_style))
 
 
-def _resolve_console(
-    console: Console | None,
-    display_context: DisplayContext | None,
-) -> Console:
-    if display_context is not None:
-        return display_context.console
-    if console is not None:
-        return console
-    raise TypeError("console or display_context is required")
-
-
-def show_phase_transition(  # noqa: PLR0913
+def show_phase_transition(
     from_phase: str,
     to_phase: str,
     *,
     context: dict[str, object] | None = None,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
     """Display a visual transition between pipeline phases.
@@ -154,12 +142,12 @@ def show_phase_transition(  # noqa: PLR0913
     When pipeline_policy is provided, styles and descriptions are derived from
     declared phase roles so renamed phases render correctly.
     """
-    c = _resolve_console(console, display_context)
-    ctx = display_context if display_context is not None else make_display_context(console=c)
+    c = display_context.console
+    ctx = display_context
 
-    style = _phase_style(to_phase, pipeline_policy)
-    from_label = _phase_label(from_phase)
-    to_label = _phase_label(to_phase)
+    style = phase_style(to_phase, pipeline_policy)
+    from_label = phase_label(from_phase)
+    to_label = phase_label(to_phase)
     is_major = _resolve_transition_meta(from_phase, to_phase, pipeline_policy)
 
     if is_major:
@@ -213,23 +201,19 @@ def show_phase_start(
     phase: str,
     *,
     agent_name: str | None = None,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
     """Display the start of a pipeline phase (no iteration context).
 
     For banners that carry iteration context, use :func:`show_phase_start_from_entry`.
     """
-    c = _resolve_console(console, display_context)
-    effective_ctx = (
-        display_context if display_context is not None else make_display_context(console=c)
-    )
-    style = _phase_style(phase, pipeline_policy)
-    label = _phase_label(phase)
+    c = display_context.console
+    style = phase_style(phase, pipeline_policy)
+    label = phase_label(phase)
 
     line = Text()
-    start_glyph = effective_ctx.glyph_for("start")
+    start_glyph = display_context.glyph_for("start")
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
@@ -239,7 +223,55 @@ def show_phase_start(
     c.print(line)
 
 
-def show_phase_start_from_entry(  # noqa: PLR0912
+def _render_wide_phase_start(
+    entry: PhaseEntryModel,
+    style: str,
+    label: str,
+    display_context: DisplayContext,
+) -> None:
+    """Render the wide-mode phase-start banner (titled Rule + optional agent line)."""
+    c = display_context.console
+    od_glyph = display_context.glyph_for("outer_dev")
+    ia_glyph = display_context.glyph_for("inner_analysis")
+    start_glyph = display_context.glyph_for("start")
+    rule_title = Text()
+    rule_title.append(f"{start_glyph} ", style=style)
+    rule_title.append(label, style=style)
+    if entry.outer_dev_iteration is not None:
+        rule_title.append(
+            _build_outer_iteration_suffix(
+                entry.outer_dev_iteration,
+                entry.outer_dev_cap,
+                od_glyph=od_glyph,
+                qualifier="(outer)",
+            ),
+            style="theme.outer_dev",
+        )
+    if entry.inner_analysis is not None:
+        rule_title.append(
+            _build_inner_analysis_suffix(
+                entry.inner_analysis,
+                entry.inner_analysis_cap,
+                ia_glyph=ia_glyph,
+                qualifier="(inner)",
+            ),
+            style="theme.inner_analysis",
+        )
+    if entry.inner_analysis is not None and entry.inner_analysis_cap is not None:
+        remaining = entry.inner_analysis_cap - entry.inner_analysis
+        if remaining > 0:
+            rule_title.append(f"  [{remaining} left]", style="theme.text.muted")
+        elif remaining == 0:
+            rule_title.append("  [last]", style="theme.level.warn")
+    c.print(Rule(title=rule_title, style=style))
+    if entry.agent_name is not None:
+        agent_line = Text()
+        agent_line.append("    agent: ", style="theme.text.muted")
+        agent_line.append(entry.agent_name, style="theme.text.emphasis")
+        c.print(agent_line)
+
+
+def show_phase_start_from_entry(
     entry: PhaseEntryModel,
     *,
     display_context: DisplayContext,
@@ -259,7 +291,7 @@ def show_phase_start_from_entry(  # noqa: PLR0912
     Compact mode: terse banner line, no qualifiers, no Rule.
     """
     c = display_context.console
-    style = _phase_style(entry.phase_name, pipeline_policy)
+    style = phase_style(entry.phase_name, pipeline_policy)
     label = entry.human_label()
     mode = display_context.mode
     start_glyph = display_context.glyph_for("start")
@@ -267,50 +299,12 @@ def show_phase_start_from_entry(  # noqa: PLR0912
     ia_glyph = display_context.glyph_for("inner_analysis")
 
     if mode == "wide":
-        # All context goes into the Rule title — single source of truth for this phase section.
-        # Qualifiers (outer)/(inner) appear here instead of on a separate redundant banner line.
-        rule_title = Text()
-        rule_title.append(f"{start_glyph} ", style=style)
-        rule_title.append(label, style=style)
-        if entry.outer_dev_iteration is not None:
-            rule_title.append(
-                _build_outer_iteration_suffix(
-                    entry.outer_dev_iteration,
-                    entry.outer_dev_cap,
-                    od_glyph=od_glyph,
-                    qualifier="(outer)",
-                ),
-                style="theme.outer_dev",
-            )
-        if entry.inner_analysis is not None:
-            rule_title.append(
-                _build_inner_analysis_suffix(
-                    entry.inner_analysis,
-                    entry.inner_analysis_cap,
-                    ia_glyph=ia_glyph,
-                    qualifier="(inner)",
-                ),
-                style="theme.inner_analysis",
-            )
-        if entry.inner_analysis is not None and entry.inner_analysis_cap is not None:
-            remaining = entry.inner_analysis_cap - entry.inner_analysis
-            if remaining > 0:
-                rule_title.append(f"  [{remaining} left]", style="theme.text.muted")
-            elif remaining == 0:
-                rule_title.append("  [last]", style="theme.level.warn")
-        c.print(Rule(title=rule_title, style=style))
-        if entry.agent_name is not None:
-            agent_line = Text()
-            agent_line.append("    agent: ", style="theme.text.muted")
-            agent_line.append(entry.agent_name, style="theme.text.emphasis")
-            c.print(agent_line)
+        _render_wide_phase_start(entry, style, label, display_context)
         return
 
-    # Medium mode: blank line provides visual phase boundary without a full separator
     if mode == "medium":
         c.print()
 
-    # Medium and compact mode: banner line with iteration context
     line = Text()
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
@@ -336,7 +330,6 @@ def show_phase_start_from_entry(  # noqa: PLR0912
         )
         line.append(suffix, style="theme.inner_analysis")
 
-    # Show remaining analysis slots in medium mode when cap is known
     if (
         mode == "medium"
         and entry.inner_analysis is not None
@@ -480,8 +473,8 @@ def show_phase_close_banner(
     phase-level performance report.
     """
     c = display_context.console
-    style = _phase_style(exit_model.phase_name, pipeline_policy)
-    label = _phase_label(exit_model.phase_name)
+    style = phase_style(exit_model.phase_name, pipeline_policy)
+    label = phase_label(exit_model.phase_name)
 
     line = Text()
     success_glyph = display_context.glyph_for("success")

@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.config.ccs_config import CcsAliasConfig, CcsConfig
 from ralph.config.enums import AgentTransport, JsonParserType
-from ralph.config.models import AgentConfig, CcsAliasConfig, CcsConfig
+from ralph.config.models import AgentConfig
 
 _MIN_OPENCODE_SEGMENTS = 3
 _CLAUDE_MODEL_SEGMENTS = 2
@@ -21,7 +22,8 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
 
-def _builtin_agents() -> dict[str, AgentConfig]:
+def builtin_agents() -> dict[str, AgentConfig]:
+    """Return the built-in agent configurations keyed by agent name."""
     return {
         # Interactive Claude runs inside Ralph Workflow's MCP boundary, so we
         # bypass Claude's own approval prompts here and rely on the Ralph
@@ -96,7 +98,7 @@ class AgentRegistry:
         """
         registry = cls(ccs_defaults=config.ccs)
 
-        for name, agent_config in _builtin_agents().items():
+        for name, agent_config in builtin_agents().items():
             registry.register(name, agent_config)
 
         for name, agent_config in config.agents.items():
@@ -227,7 +229,7 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
         if len(segments) < _MIN_OPENCODE_SEGMENTS or not all(segments[1:]):
             return None
 
-        base_config = deepcopy(_builtin_agents()["opencode"])
+        base_config = deepcopy(builtin_agents()["opencode"])
         dynamic_overrides: dict[str, object] = {
             "model_flag": f"-m {_normalize_opencode_model_id(name)}",
             "can_commit": True,
@@ -237,11 +239,11 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
         if name.startswith("ccs/"):
             resolved = _resolve_dynamic_ccs_agent(name, ccs_defaults)
         elif name.startswith("claude-headless/"):
-            base_config = deepcopy(_builtin_agents()["claude-headless"])
+            base_config = deepcopy(builtin_agents()["claude-headless"])
             claude_headless_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
             resolved = base_config.model_copy(update=claude_headless_overrides)
         elif name.startswith("claude/"):
-            base_config = deepcopy(_builtin_agents()["claude"])
+            base_config = deepcopy(builtin_agents()["claude"])
             claude_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
             resolved = base_config.model_copy(update=claude_overrides)
 

@@ -7,7 +7,7 @@ import pytest
 from ralph.recovery.classifier import (
     FailureCategory,
     FailureClassifier,
-    _is_missing_artifact_message,
+    is_missing_artifact_message,
 )
 
 _CLASSIFIER = FailureClassifier()
@@ -45,8 +45,8 @@ def test_missing_artifact_message_classifies_as_artifact_validation(message: str
     ],
 )
 def test_is_missing_artifact_message_helper(message: str) -> None:
-    assert _is_missing_artifact_message(message), (
-        f"Expected _is_missing_artifact_message to return True for {message!r}"
+    assert is_missing_artifact_message(message), (
+        f"Expected is_missing_artifact_message to return True for {message!r}"
     )
 
 

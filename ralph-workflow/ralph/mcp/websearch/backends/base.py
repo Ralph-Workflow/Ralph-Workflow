@@ -2,21 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Protocol
 
-
-@dataclass(frozen=True)
-class SearchResult:
-    """Normalized search result shape shared by all backends."""
-
-    title: str
-    url: str
-    snippet: str
-
-
-class WebSearchError(RuntimeError):
-    """Raised when a web-search backend fails."""
+from ralph.mcp.websearch.backends._search_result import SearchResult
+from ralph.mcp.websearch.backends._web_search_error import WebSearchError
 
 
 class WebSearchBackend(Protocol):

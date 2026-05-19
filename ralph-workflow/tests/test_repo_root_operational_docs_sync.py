@@ -17,14 +17,14 @@ _OPERATIONAL_GUIDES = [
 ]
 
 
-def test_operational_guides_exist():
+def test_operational_guides_exist() -> None:
     """All operational guide files must exist."""
     for guide in _OPERATIONAL_GUIDES:
         path = REPO_ROOT_DOCS_DIR / guide
         assert path.exists(), f"Operational guide {guide} must exist"
 
 
-def test_no_stale_rust_workflow_references():
+def test_no_stale_rust_workflow_references() -> None:
     """Operational guides must not contain stale Rust-era workflow claims.
 
     Note: Files that properly label themselves as historical/archival may contain
@@ -50,7 +50,7 @@ def test_no_stale_rust_workflow_references():
             )
 
 
-def test_python_tooling_guide_is_current():
+def test_python_tooling_guide_is_current() -> None:
     """docs/tooling/python-tooling.md must be current Python guidance."""
     path = REPO_ROOT_DOCS_DIR / "tooling" / "python-tooling.md"
     if not path.exists():
@@ -64,7 +64,7 @@ def test_python_tooling_guide_is_current():
     assert "cargo" not in content, "python-tooling.md should not reference Rust-era cargo"
 
 
-def test_quick_reference_has_current_commands():
+def test_quick_reference_has_current_commands() -> None:
     """quick-reference.md should contain current Ralph commands."""
     path = REPO_ROOT_DOCS_DIR / "quick-reference.md"
     if not path.exists():
@@ -76,7 +76,7 @@ def test_quick_reference_has_current_commands():
         assert "run" in content.lower() or "verify" in content.lower()
 
 
-def test_agent_compatibility_has_current_provider_info():
+def test_agent_compatibility_has_current_provider_info() -> None:
     """agent-compatibility.md should have current provider matrix."""
     path = REPO_ROOT_DOCS_DIR / "agent-compatibility.md"
     if not path.exists():
@@ -89,7 +89,7 @@ def test_agent_compatibility_has_current_provider_info():
     assert has_provider_info, "agent-compatibility.md should contain current provider information"
 
 
-def test_template_guide_is_python_focused():
+def test_template_guide_is_python_focused() -> None:
     """template-guide.md should be Python-focused."""
     path = REPO_ROOT_DOCS_DIR / "template-guide.md"
     if not path.exists():
@@ -99,7 +99,7 @@ def test_template_guide_is_python_focused():
     assert "cargo" not in content.lower()
 
 
-def test_git_workflow_is_current():
+def test_git_workflow_is_current() -> None:
     """git-workflow.md should describe current Git workflow."""
     path = REPO_ROOT_DOCS_DIR / "git-workflow.md"
     if not path.exists():

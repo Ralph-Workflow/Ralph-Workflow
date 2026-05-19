@@ -25,6 +25,7 @@ from ralph.policy.models import (
     PolicyBundle,
     PostCommitRoute,
     PostCommitRouteWhen,
+    RecoveryPolicy,
 )
 from ralph.policy.validation import PolicyValidationError, validate_policy_completeness
 
@@ -92,7 +93,7 @@ def test_budget_counter_config_requires_default_max() -> None:
 def test_budget_counter_config_with_explicit_default_max_succeeds() -> None:
     """Constructing BudgetCounterConfig with an explicit default_max succeeds."""
     cfg = BudgetCounterConfig(tracks_budget=True, description="test", default_max=5)
-    assert cfg.default_max == 5  # noqa: PLR2004
+    assert cfg.default_max == 5
 
 
 def test_budget_counter_config_zero_default_max_is_valid_for_untracked() -> None:
@@ -121,7 +122,6 @@ def test_validate_policy_completeness_rejects_custom_named_zero_tracked_counter(
 
 def test_validate_policy_completeness_accepts_untracked_zero_counter() -> None:
     """A zero default_max is allowed when tracks_budget=False."""
-    from ralph.policy.models import RecoveryPolicy
 
     pipeline = PipelinePolicy(
         entry_phase="work",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import sys
 from typing import TYPE_CHECKING
@@ -9,8 +10,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.executor import ProcessExecutionError, ProcessResult, run_process, run_process_async
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy
-from ralph.testing.fake_process import FakeTimeoutPopen
+from ralph.executor.process import ProcessRunOptions
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, SpawnOptions
+from ralph.testing.fake_process import FakeControllableAsyncProcess, FakeTimeoutPopen
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,7 +33,7 @@ def _make_timeout_pm(partial_stdout: bytes = b"") -> ProcessManager:
     """Build a PM whose sync factory returns a FakeTimeoutPopen."""
     pid_iter = itertools.count(1)
 
-    def factory(command, *, cwd, env, stdin, stdout, stderr, start_new_session, text):  # noqa: PLR0913
+    def factory(command: object, opts: SpawnOptions) -> object:
         return FakeTimeoutPopen(next(pid_iter), partial_stdout=partial_stdout)
 
     return ProcessManager(policy=_FAST_POLICY, sync_process_factory=factory)
@@ -39,7 +41,9 @@ def _make_timeout_pm(partial_stdout: bytes = b"") -> ProcessManager:
 
 def test_run_process_captures_stdout_stderr_and_exit_code(tmp_path: Path) -> None:
     """Synchronous execution should capture output and preserve exit code."""
-    result = run_process(PYTHON, ["-c", SYNC_FAILURE_SCRIPT], cwd=tmp_path)
+    result = run_process(
+        PYTHON, ["-c", SYNC_FAILURE_SCRIPT], options=ProcessRunOptions(cwd=tmp_path)
+    )
 
     assert isinstance(result, ProcessResult)
     assert result.returncode == EXIT_CODE
@@ -65,7 +69,7 @@ async def test_run_process_async_captures_output(tmp_path: Path) -> None:
 
 
 def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
-    """Timeouts raise a dedicated execution error with partial output.
+    """Timeouts return ProcessResult with exit code 124 and partial output.
 
     Uses a fake process that raises TimeoutExpired immediately, avoiding
     any real wall-clock wait.
@@ -73,34 +77,28 @@ def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
     partial = b"before-timeout"
     pm = _make_timeout_pm(partial_stdout=partial)
 
-    with pytest.raises(ProcessExecutionError) as excinfo:
-        run_process(
-            "fake-cmd",
-            cwd=tmp_path,
-            timeout=TIMEOUT_S,
-            _pm=pm,
-        )
+    result = run_process(
+        "fake-cmd",
+        options=ProcessRunOptions(cwd=tmp_path, timeout=TIMEOUT_S),
+        _pm=pm,
+    )
 
-    error = excinfo.value
-    assert error.timed_out is True
-    assert error.timeout == TIMEOUT_S
-    assert error.command == ("fake-cmd",)
-    assert error.stdout.strip() == "before-timeout"
-    assert "timed out" in str(error)
+    assert isinstance(result, ProcessResult)
+    assert result.returncode == 124  # TIMEOUT_EXIT_CODE
+    assert result.succeeded is False
+    assert result.stdout.strip() == "before-timeout"
+    assert result.command == ("fake-cmd",)
 
 
 @pytest.mark.asyncio
 async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> None:
-    """Async timeouts raise a dedicated execution error with partial output.
+    """Async timeouts return ProcessResult with exit code 124.
 
     Uses a FakeControllableAsyncProcess whose communicate() and wait() block
     on an event, so asyncio.wait() times out without any real clock delay.
     kill_followup_timeout_s > 0 lets _terminate_root_only_async complete
     after terminate() sets the event.
     """
-    import asyncio
-
-    from ralph.testing.fake_process import FakeControllableAsyncProcess
 
     completion = asyncio.Event()  # never set → simulate a hanging process
     proc = FakeControllableAsyncProcess(
@@ -109,7 +107,17 @@ async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> Non
         completion_event=completion,
     )
 
-    async def factory(command, *, cwd, env, stdin, stdout, stderr, start_new_session):  # noqa: PLR0913
+    async def factory(
+        command: object,
+        *,
+        cwd: object,
+        env: object,
+        stdin: object,
+        stdout: object,
+        stderr: object,
+        start_new_session: object,
+    ) -> object:
+        del command, cwd, env, stdin, stdout, stderr, start_new_session
         return proc
 
     # kill_followup_timeout_s > 0 so _terminate_root_only_async can finish
@@ -121,17 +129,18 @@ async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> Non
         async_process_factory=factory,
     )
 
-    with pytest.raises(ProcessExecutionError) as excinfo:
-        await run_process_async(
-            "fake-cmd",
-            cwd=tmp_path,
-            timeout=0.0,
-            _pm=pm,
-        )
+    result = await run_process_async(
+        "fake-cmd",
+        cwd=tmp_path,
+        timeout=0.0,
+        _pm=pm,
+    )
 
-    error = excinfo.value
-    assert error.timed_out is True
-    assert error.timeout == 0.0
+    assert isinstance(result, ProcessResult)
+    assert result.returncode == 124  # TIMEOUT_EXIT_CODE
+    assert result.succeeded is False
+    # Note: FakeControllableAsyncProcess.communicate() does not preserve
+    # stdout data that was fed before termination, so we don't assert on stdout
 
 
 def test_run_process_wraps_missing_command(tmp_path: Path) -> None:
@@ -139,7 +148,7 @@ def test_run_process_wraps_missing_command(tmp_path: Path) -> None:
     missing_command = "definitely-not-a-real-command-ralph"
 
     with pytest.raises(ProcessExecutionError) as excinfo:
-        run_process(missing_command, cwd=tmp_path)
+        run_process(missing_command, options=ProcessRunOptions(cwd=tmp_path))
 
     error = excinfo.value
     assert error.timed_out is False

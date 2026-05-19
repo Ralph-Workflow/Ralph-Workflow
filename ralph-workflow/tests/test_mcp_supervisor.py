@@ -9,7 +9,7 @@ from datetime import timedelta
 import pytest
 
 from ralph.mcp.server import lifecycle
-from ralph.process.mcp_supervisor import _DEFAULT_INTERVAL, McpSupervisor
+from ralph.process.mcp_supervisor import DEFAULT_INTERVAL, McpSupervisor
 
 
 class FakeProcess:
@@ -180,7 +180,7 @@ def test_supervisor_uses_configured_check_interval() -> None:
 
 def test_supervisor_default_interval_equals_two_seconds() -> None:
     """The module-level _DEFAULT_INTERVAL constant is still 2 s for explicit construction."""
-    assert timedelta(seconds=2) == _DEFAULT_INTERVAL
+    assert timedelta(seconds=2) == DEFAULT_INTERVAL
 
 
 def test_supervisor_calls_on_error_callback_when_budget_exhausted() -> None:

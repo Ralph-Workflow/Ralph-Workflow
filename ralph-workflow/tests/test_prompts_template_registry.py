@@ -3,7 +3,7 @@ import pytest
 from ralph.prompts.template_registry import TemplateNotFoundError, TemplateRegistry
 
 
-def test_returns_registered_template_content():
+def test_returns_registered_template_content() -> None:
     registry = TemplateRegistry()
     registry.register_template("welcome", "Hello, {name}!")
 
@@ -12,7 +12,7 @@ def test_returns_registered_template_content():
     assert template == "Hello, {name}!"
 
 
-def test_get_template_raises_when_missing():
+def test_get_template_raises_when_missing() -> None:
     registry = TemplateRegistry()
 
     with pytest.raises(TemplateNotFoundError):

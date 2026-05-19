@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ralph.git.rebase.rebase_checkpoint import (
     RebaseCheckpoint,
@@ -12,6 +13,9 @@ from ralph.git.rebase.rebase_checkpoint import (
     rebase_checkpoint_exists,
     save_rebase_checkpoint,
 )
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _checkpoint_entry(upstream: str) -> RebaseCheckpoint:
@@ -23,7 +27,9 @@ def _checkpoint_entry(upstream: str) -> RebaseCheckpoint:
     return checkpoint
 
 
-def test_save_and_load_checkpoint_preserves_state(tmp_path, monkeypatch) -> None:
+def test_save_and_load_checkpoint_preserves_state(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     checkpoint = _checkpoint_entry("feature-branch")
 
@@ -38,7 +44,9 @@ def test_save_and_load_checkpoint_preserves_state(tmp_path, monkeypatch) -> None
     assert loaded.error_count == checkpoint.error_count
 
 
-def test_save_checkpoint_uses_unique_temp_files_per_writer(tmp_path, monkeypatch) -> None:
+def test_save_checkpoint_uses_unique_temp_files_per_writer(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     checkpoints = [_checkpoint_entry("branch-a"), _checkpoint_entry("branch-b")]
     barrier = threading.Barrier(2)
@@ -67,7 +75,9 @@ def test_save_checkpoint_uses_unique_temp_files_per_writer(tmp_path, monkeypatch
     assert load_rebase_checkpoint() is not None
 
 
-def test_clear_rebase_checkpoint_removes_files(tmp_path, monkeypatch) -> None:
+def test_clear_rebase_checkpoint_removes_files(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     checkpoint = _checkpoint_entry("main")
 
@@ -79,7 +89,9 @@ def test_clear_rebase_checkpoint_removes_files(tmp_path, monkeypatch) -> None:
     assert load_rebase_checkpoint() is None
 
 
-def test_corrupted_checkpoint_restores_from_backup(tmp_path, monkeypatch) -> None:
+def test_corrupted_checkpoint_restores_from_backup(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     checkpoint = _checkpoint_entry("corrupt-branch")
 

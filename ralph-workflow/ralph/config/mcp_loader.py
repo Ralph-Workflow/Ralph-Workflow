@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 from pydantic import ValidationError
 
-from ralph.config.loader import _deep_merge
+from ralph.config.loader import deep_merge as _deep_merge
 from ralph.config.mcp_models import McpConfig
 
 if TYPE_CHECKING:
@@ -31,18 +31,21 @@ _LOCAL_MCP_FILENAME = "mcp.toml"
 _TOML_DECODE_ERROR = cast("type[ValueError]", tomllib.TOMLDecodeError)
 
 
-def _bundled_default_mcp_config_path() -> Path:
+def bundled_default_mcp_config_path() -> Path:
+    """Return the path to the bundled default MCP configuration file."""
     return Path(__file__).parent.parent / "policy" / "defaults" / _LOCAL_MCP_FILENAME
 
 
-def _global_mcp_config_path() -> Path:
+def global_mcp_config_path() -> Path:
+    """Return the user-level global MCP config path, respecting XDG_CONFIG_HOME."""
     xdg = getenv("XDG_CONFIG_HOME")
     if xdg:
         return Path(xdg) / _GLOBAL_MCP_FILENAME
     return Path.home() / ".config" / _GLOBAL_MCP_FILENAME
 
 
-def _local_mcp_config_path(workspace_scope: WorkspaceScope) -> Path:
+def local_mcp_config_path(workspace_scope: WorkspaceScope) -> Path:
+    """Return the workspace-local MCP config path for the given workspace scope."""
     if hasattr(workspace_scope, "resolve_agent_file"):
         return workspace_scope.resolve_agent_file(_LOCAL_MCP_FILENAME)
     return workspace_scope.local_config_path.parent / _LOCAL_MCP_FILENAME
@@ -102,13 +105,13 @@ def load_mcp_config(
         SystemExit: On TOML parse error, schema validation failure, or unknown
             fallback backend reference.
     """
-    bundled = _load_mcp_toml(_bundled_default_mcp_config_path())
-    global_data = _load_mcp_toml(_global_mcp_config_path())
+    bundled = _load_mcp_toml(bundled_default_mcp_config_path())
+    global_data = _load_mcp_toml(global_mcp_config_path())
 
     if config_path is not None:
         local_data = _load_mcp_toml(config_path)
     elif workspace_scope is not None:
-        local_data = _load_mcp_toml(_local_mcp_config_path(workspace_scope))
+        local_data = _load_mcp_toml(local_mcp_config_path(workspace_scope))
     else:
         local_data = {}
 

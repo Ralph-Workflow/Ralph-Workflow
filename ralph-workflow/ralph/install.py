@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
-from ralph.executor.process import ProcessExecutionError, run_process
+from ralph.executor.process import ProcessExecutionError, ProcessRunOptions, run_process
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -21,7 +21,7 @@ class RunCommand(Protocol):
 
 def _run_command(command: Sequence[str], *, cwd: Path) -> None:
     cmd = tuple(command)
-    result = run_process(cmd[0], cmd[1:], cwd=cwd)
+    result = run_process(cmd[0], cmd[1:], options=ProcessRunOptions(cwd=cwd))
     if not result.succeeded:
         raise ProcessExecutionError(
             cmd,

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
+
+from ralph.git.rebase._concurrent_operation import _ConcurrentOperation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -21,12 +22,6 @@ _LOCK_FILES = ("index.lock", "packed-refs.lock", "HEAD.lock")
 
 class RebasePreconditionError(Exception):
     """Raised when a rebase cannot start because a precondition failed."""
-
-
-@dataclass(frozen=True)
-class _ConcurrentOperation:
-    kind: str
-    description: str
 
 
 def check_rebase_preconditions(repo_root: Path | str) -> None:

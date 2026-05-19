@@ -5,12 +5,13 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph import __version__
+from ralph.rich_protocols import RichGroupProto, RichPanelProto, RichTextProto
+
 if TYPE_CHECKING:
     from types import ModuleType
 
     from ralph.display.context import DisplayContext
-
-from ralph import __version__
 
 ASCII_ART = (
     " ____       _       _     _     ",
@@ -23,30 +24,20 @@ ASCII_ART = (
 WELCOME_MESSAGE = "Welcome to Ralph Workflow"
 TAGLINE = "PROMPT-driven agent orchestrator"
 
+__all__ = [
+    "RichGroupProto",
+    "RichPanelProto",
+    "RichTextProto",
+    "SupportsPrint",
+    "render_banner",
+    "show_banner",
+]
+
 
 class SupportsPrint(Protocol):
     """Protocol for rich-compatible consoles."""
 
-    def print(self, *_objects: object, **_kwargs: object) -> None:
-        """Print rich renderables."""
-
-
-class _RichTextProto(Protocol):
-    """Protocol for rich.Text class."""
-
-    def __call__(self, text: str = "", *, style: str = "") -> object: ...
-
-
-class _RichPanelProto(Protocol):
-    """Protocol for rich.Panel class."""
-
-    def fit(self, _renderable: object, **kwargs: object) -> object: ...
-
-
-class _RichGroupProto(Protocol):
-    """Protocol for rich.Group class."""
-
-    def __call__(self, *_renderables: object) -> object: ...
+    def print(self, *args: object, **kwargs: object) -> None: ...
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:
@@ -54,15 +45,15 @@ def _module_attr(module: ModuleType, attribute: str) -> object:
     return namespace[attribute]
 
 
-def _load_rich_components() -> tuple[_RichGroupProto, _RichPanelProto, _RichTextProto]:
+def _load_rich_components() -> tuple[RichGroupProto, RichPanelProto, RichTextProto]:
     """Load rich classes lazily so static analysis does not depend on local env setup."""
     console_module = import_module("rich.console")
     panel_module = import_module("rich.panel")
     text_module = import_module("rich.text")
     return (
-        cast("_RichGroupProto", _module_attr(console_module, "Group")),
-        cast("_RichPanelProto", _module_attr(panel_module, "Panel")),
-        cast("_RichTextProto", _module_attr(text_module, "Text")),
+        cast("RichGroupProto", _module_attr(console_module, "Group")),
+        cast("RichPanelProto", _module_attr(panel_module, "Panel")),
+        cast("RichTextProto", _module_attr(text_module, "Text")),
     )
 
 

@@ -6,10 +6,13 @@ consumed by display panels and subscribers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from ralph.display.budget_progress import BudgetProgress
+from ralph.display.pipeline_snapshot import PipelineSnapshot
+from ralph.display.worker_snapshot import WorkerSnapshot
 from ralph.pipeline.progress import review_issues_found as _review_issues_found
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
@@ -27,52 +30,17 @@ _STATUS_TO_SEMANTIC: dict[str, str] = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class WorkerSnapshot:
-    """Immutable projection of a single worker's execution state."""
+@dataclass(frozen=True)
+class SnapshotContext:
+    """Display context for building a PipelineSnapshot from a PipelineState.
 
-    unit_id: str
-    description: str
-    status: str
-    status_semantic: str
-    started_at: datetime | None
-    finished_at: datetime | None
-    elapsed_s: float
-    exit_code: int | None
-    error_message: str | None
-    dropped_lines: int = 0
+    All fields are optional so callers can populate only what they know.
+    """
 
-
-@dataclass(frozen=True, slots=True)
-class BudgetProgress:
-    """Immutable progress record for a single policy-declared budget counter."""
-
-    completed: int
-    cap: int
-    description: str
-    tracks_budget: bool
-
-
-@dataclass(frozen=True, slots=True)
-class PipelineSnapshot:
-    """Immutable pipeline state snapshot for transcript rendering."""
-
-    phase: str
-    previous_phase: str | None
-    review_issues_found: bool
-    interrupted_by_user: bool
-    last_error: str | None
-    pr_url: str | None
-    push_count: int
-    total_agent_calls: int
-    total_continuations: int
-    total_fallbacks: int
-    total_retries: int
-    workers: tuple[WorkerSnapshot, ...]
-    prompt_path: str | None
-    prompt_preview: tuple[str, ...]
-    run_id: str | None
-    created_at: datetime
+    prompt_path: str | None = None
+    prompt_preview: tuple[str, ...] = ()
+    run_id: str | None = None
+    pipeline_policy: PipelinePolicy | None = None
     plan_summary: str | None = None
     plan_scope_items: tuple[str, ...] = ()
     plan_total_steps: int = 0
@@ -90,61 +58,21 @@ class PipelineSnapshot:
     analysis_phase: str | None = None
     analysis_decision: str | None = None
     analysis_reason: str | None = None
-    decision_log: tuple[tuple[str, str, str, str], ...] = field(default_factory=tuple)
-    # Recovery observability fields
-    recovery_cycle_count: int = 0
-    recovery_cycle_cap: int = 200
-    fallover_history: tuple[tuple[str, str, str, str], ...] = field(default_factory=tuple)
-    last_failure_category: str | None = None
-    last_connectivity_state: str = "unknown"
-    # Policy-derived terminal flags — populated when pipeline_policy is available
-    is_terminal_success: bool = False
-    is_terminal_failure: bool = False
-    current_phase_role: str | None = None
-    previous_phase_role: str | None = None
-    terminal_failure_route: str | None = None
-    # Generic budget progress keyed by policy-declared counter name
-    budget_progress: dict[str, BudgetProgress] = field(default_factory=dict)
-    outer_dev_iteration: int | None = None  # Computed from budget_progress tracks_budget counter
-    # MCP health observability
+    decision_log: tuple[tuple[str, str, str, str], ...] = ()
     mcp_restart_count: int = 0
-    # ProcessManager-backed active process labels (compact, label-driven)
     active_process_labels: tuple[str, ...] = ()
 
 
-def snapshot_from_state(  # noqa: PLR0913
+def snapshot_from_state(
     state: PipelineState,
-    *,
-    prompt_path: str | None,
-    prompt_preview: tuple[str, ...],
-    run_id: str | None,
-    pipeline_policy: PipelinePolicy | None = None,
-    plan_summary: str | None = None,
-    plan_scope_items: tuple[str, ...] = (),
-    plan_total_steps: int = 0,
-    plan_current_step: int | None = None,
-    plan_risks: tuple[str, ...] = (),
-    active_agent: str | None = None,
-    active_tool: str | None = None,
-    active_path: str | None = None,
-    active_unit_id: str | None = None,
-    active_workdir: str | None = None,
-    active_command: str | None = None,
-    active_pattern: str | None = None,
-    last_activity_line: str | None = None,
-    waiting_status_line: str | None = None,
-    analysis_phase: str | None = None,
-    analysis_decision: str | None = None,
-    analysis_reason: str | None = None,
-    decision_log: tuple[tuple[str, str, str, str], ...] = (),
-    mcp_restart_count: int = 0,
-    active_process_labels: tuple[str, ...] = (),
+    context: SnapshotContext | None = None,
 ) -> PipelineSnapshot:
     """Project PipelineState into an immutable pipeline snapshot."""
+    effective_context = context or SnapshotContext()
     created_at = datetime.now(UTC)
     workers = _snapshot_workers(state)
+    pipeline_policy = effective_context.pipeline_policy
 
-    # Convert fallover_history to tuple of tuples for frozen dataclass
     fallover_tuples = tuple(
         (fo.phase, fo.from_agent, fo.to_agent, fo.timestamp_iso) for fo in state.fallover_history
     )
@@ -170,7 +98,6 @@ def snapshot_from_state(  # noqa: PLR0913
             )
         if prev_def is not None:
             previous_phase_role = prev_def.role
-        # Resolve terminal failure route from the first failure-terminal phase found
         for _pname, _pdef in pipeline_policy.phases.items():
             if _pdef.role == "terminal" and _pdef.terminal_outcome == "failure":
                 terminal_failure_route = _pname
@@ -209,28 +136,28 @@ def snapshot_from_state(  # noqa: PLR0913
         total_fallbacks=state.metrics.total_fallbacks,
         total_retries=state.metrics.total_retries,
         workers=workers,
-        prompt_path=prompt_path,
-        prompt_preview=prompt_preview,
-        run_id=run_id,
+        prompt_path=effective_context.prompt_path,
+        prompt_preview=effective_context.prompt_preview,
+        run_id=effective_context.run_id,
         created_at=created_at,
-        plan_summary=plan_summary,
-        plan_scope_items=plan_scope_items,
-        plan_total_steps=plan_total_steps,
-        plan_current_step=plan_current_step,
-        plan_risks=plan_risks,
-        active_agent=active_agent,
-        active_tool=active_tool,
-        active_path=active_path,
-        active_unit_id=active_unit_id,
-        active_workdir=active_workdir,
-        active_command=active_command,
-        active_pattern=active_pattern,
-        last_activity_line=last_activity_line,
-        waiting_status_line=waiting_status_line,
-        analysis_phase=analysis_phase,
-        analysis_decision=analysis_decision,
-        analysis_reason=analysis_reason,
-        decision_log=tuple(decision_log),
+        plan_summary=effective_context.plan_summary,
+        plan_scope_items=effective_context.plan_scope_items,
+        plan_total_steps=effective_context.plan_total_steps,
+        plan_current_step=effective_context.plan_current_step,
+        plan_risks=effective_context.plan_risks,
+        active_agent=effective_context.active_agent,
+        active_tool=effective_context.active_tool,
+        active_path=effective_context.active_path,
+        active_unit_id=effective_context.active_unit_id,
+        active_workdir=effective_context.active_workdir,
+        active_command=effective_context.active_command,
+        active_pattern=effective_context.active_pattern,
+        last_activity_line=effective_context.last_activity_line,
+        waiting_status_line=effective_context.waiting_status_line,
+        analysis_phase=effective_context.analysis_phase,
+        analysis_decision=effective_context.analysis_decision,
+        analysis_reason=effective_context.analysis_reason,
+        decision_log=tuple(effective_context.decision_log),
         recovery_cycle_count=state.recovery_cycle_count,
         recovery_cycle_cap=state.recovery_cycle_cap,
         fallover_history=fallover_tuples,
@@ -250,8 +177,8 @@ def snapshot_from_state(  # noqa: PLR0913
             ),
             None,
         ),
-        mcp_restart_count=mcp_restart_count,
-        active_process_labels=active_process_labels,
+        mcp_restart_count=effective_context.mcp_restart_count,
+        active_process_labels=effective_context.active_process_labels,
     )
 
 
@@ -298,4 +225,10 @@ def _elapsed_seconds(worker: WorkerState) -> float:
     return (datetime.now(UTC) - worker.started_at).total_seconds()
 
 
-__all__ = ["BudgetProgress", "PipelineSnapshot", "WorkerSnapshot", "snapshot_from_state"]
+__all__ = [
+    "BudgetProgress",
+    "PipelineSnapshot",
+    "SnapshotContext",
+    "WorkerSnapshot",
+    "snapshot_from_state",
+]

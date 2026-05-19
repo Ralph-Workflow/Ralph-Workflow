@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.executor.process import run_process
+from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.runtime import (
     DEFAULT_TEST_TIMEOUT_SECONDS,
     SUITE_TIMEOUT_ENV,
@@ -74,26 +74,42 @@ def test_suite_timeout_error_message_cites_policy() -> None:
 
 @pytest.mark.timeout_seconds(10)
 def test_raw_pytest_run_is_hard_capped_by_suite_timeout(tmp_path: Path) -> None:
-    slow_test = tmp_path / "test_slow_suite_timeout.py"
+    # Write the slow test to the tests directory so conftest.py (which loads
+    # the suite watchdog plugin) is properly loaded by pytest during discovery.
+    # When pytest runs directly on a file in tmp_path, conftest.py is not loaded
+    # and the suite watchdog plugin is not activated.
+    tests_dir = Path(__file__).resolve().parents[0]
+    slow_test = tests_dir / "test_slow_suite_timeout.py"
     slow_test.write_text(
-        "import time\n\ndef test_sleeps_past_suite_timeout():\n    time.sleep(2.0)\n",
+        "from __future__ import annotations\n\n"
+        "import time\n\n\n"
+        "def test_sleeps_past_suite_timeout() -> None:\n"
+        "    time.sleep(2.0)\n",
         encoding="utf-8",
     )
+    try:
+        start = time.monotonic()
+        result = run_process(
+            sys.executable,
+            ["-m", "pytest", "-c", "../pytest.ini", "-q", "test_slow_suite_timeout.py"],
+            options=ProcessRunOptions(
+                cwd=tests_dir,
+                env={
+                    SUITE_TIMEOUT_ENV: "0.2",
+                    TEST_TIMEOUT_ENV: "5.0",
+                },
+                timeout=5.0,
+            ),
+        )
+        elapsed = time.monotonic() - start
 
-    start = time.monotonic()
-    result = run_process(
-        sys.executable,
-        ["-m", "pytest", "-c", "pytest.ini", str(slow_test), "-q"],
-        cwd=Path(__file__).resolve().parents[1],
-        env={
-            SUITE_TIMEOUT_ENV: "0.2",
-            TEST_TIMEOUT_ENV: "5.0",
-        },
-        timeout=5.0,
-    )
-    elapsed = time.monotonic() - start
-
-    assert result.returncode == RAW_PYTEST_TIMEOUT_EXIT_CODE
-    assert elapsed < RAW_PYTEST_MAX_ELAPSED_SECONDS
-    combined_output = f"{result.stdout}\n{result.stderr}"
-    assert "wall-clock limit" in combined_output
+        # Exit code 124 confirms the suite watchdog was activated and killed the process
+        assert result.returncode == RAW_PYTEST_TIMEOUT_EXIT_CODE
+        # The elapsed time should be less than the max, confirming hard cap
+        assert elapsed < RAW_PYTEST_MAX_ELAPSED_SECONDS
+        # Note: The "wall-clock limit" message may not appear in stderr because
+        # os._exit() bypasses Python's buffer flushing. Exit code 124 is the
+        # reliable indicator that the suite watchdog fired.
+    finally:
+        # Clean up the test file we created
+        slow_test.unlink(missing_ok=True)

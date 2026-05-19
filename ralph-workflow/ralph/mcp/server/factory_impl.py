@@ -10,37 +10,30 @@ from __future__ import annotations
 
 from dataclasses import replace
 from threading import Lock
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.mcp.protocol._session_bridge_like import SessionBridgeLike
 from ralph.mcp.protocol.session import AgentSession
-from ralph.mcp.protocol.startup import SessionBridgeLike, WorkspaceLike
 from ralph.mcp.server import lifecycle
+from ralph.mcp.server._bridge_with_process import _BridgeWithProcess
 from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
 
+if TYPE_CHECKING:
+    from ralph.mcp.protocol.startup import WorkspaceLike
 
-class StartServer(Protocol):
-    """Callable signature for the MCP server start function."""
+    class StartServer(Protocol):
+        """Callable signature for the MCP server start function."""
 
-    def __call__(
-        self,
-        session: AgentSession,
-        workspace: WorkspaceLike,
-        *,
-        deps: lifecycle.LifecycleDeps | None = None,
-    ) -> SessionBridgeLike: ...
-
-
-@runtime_checkable
-class _ProcessWithPid(Protocol):
-    pid: int
-
-
-@runtime_checkable
-class _BridgeWithProcess(SessionBridgeLike, Protocol):
-    process: _ProcessWithPid
+        def __call__(
+            self,
+            session: AgentSession,
+            workspace: WorkspaceLike,
+            *,
+            deps: lifecycle.LifecycleDeps | None = None,
+        ) -> SessionBridgeLike: ...
 
 
 class DynamicBindingMcpServerFactory(McpServerFactory):

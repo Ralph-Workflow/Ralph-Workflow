@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from ralph.git.rebase._invalid_transition_error import InvalidTransitionError
+from ralph.git.rebase._rebase_event import RebaseEvent
+from ralph.git.rebase._rebase_lock import RebaseLock
+from ralph.git.rebase._rebase_phase import RebasePhase
+from ralph.git.rebase._recovery_action import RecoveryAction
 
 from .rebase_checkpoint import (
     RebaseCheckpoint,
-    RebaseLock,
-    RebasePhase,
     acquire_rebase_lock,
     clear_rebase_checkpoint,
     load_rebase_checkpoint,
@@ -16,7 +18,6 @@ from .rebase_checkpoint import (
     restore_from_backup,
     save_rebase_checkpoint,
 )
-from .rebase_kinds import RebaseErrorKind, RebaseKind
 
 __all__ = [
     "InvalidTransitionError",
@@ -36,22 +37,6 @@ __all__ = [
 ]
 
 DEFAULT_MAX_RECOVERY_ATTEMPTS = 3
-
-
-class InvalidTransitionError(Exception):
-    """Raised when an event is invalid in the current state."""
-
-
-class RebaseEvent(Enum):
-    """Events that drive transitions in the ``RebaseStateMachine``."""
-
-    START_REBASE = "start_rebase"
-    CONFLICT_DETECTED = "conflict_detected"
-    START_RESOLUTION = "start_resolution"
-    RESOLVE_CONFLICT = "resolve_conflict"
-    CONTINUE = "continue"
-    COMPLETE = "complete"
-    ABORT = "abort"
 
 
 class RebaseStateMachine:
@@ -212,31 +197,3 @@ class RebaseStateMachine:
             self.abort_rebase()
         else:
             raise InvalidTransitionError("Unknown event")
-
-
-class RecoveryAction(Enum):
-    """Decision returned by ``decide`` to guide error recovery in a rebase."""
-
-    Continue = "continue"
-    Retry = "retry"
-    Abort = "abort"
-    Skip = "skip"
-
-    @staticmethod
-    def decide(error_kind: RebaseErrorKind, error_count: int, max_attempts: int) -> RecoveryAction:
-        if error_count >= max_attempts:
-            return RecoveryAction.Abort
-        kind = error_kind.kind
-        if kind == RebaseKind.CONTENT_CONFLICT:
-            return RecoveryAction.Continue
-        if kind in {
-            RebaseKind.CONCURRENT_OPERATION,
-            RebaseKind.PATCH_APPLICATION_FAILED,
-            RebaseKind.AUTOSTASH_FAILED,
-            RebaseKind.COMMIT_CREATION_FAILED,
-            RebaseKind.REFERENCE_UPDATE_FAILED,
-        }:
-            return RecoveryAction.Retry
-        if kind == RebaseKind.EMPTY_COMMIT:
-            return RecoveryAction.Skip
-        return RecoveryAction.Abort

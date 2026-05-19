@@ -8,7 +8,7 @@ from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.recovery.budget import AgentBudgetRegistry
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEvent, FailureEventBus
 
 _MIN_ERROR_LEN = 10
@@ -76,7 +76,9 @@ def test_worker_failure_routes_through_recovery_controller() -> None:
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    )
 
     state = _make_state_with_workers_and_chain(["w1", "w2"], agents=["claude"])
 
@@ -102,7 +104,9 @@ def test_worker_failure_with_agent_timeout_routes_through_recovery() -> None:
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
     registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
-    controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    )
 
     state = _make_state_with_workers_and_chain(["w1"], agents=["claude"])
 

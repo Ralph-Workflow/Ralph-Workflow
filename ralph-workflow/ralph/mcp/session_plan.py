@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from ralph.api.opencode import get_model_by_id
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp._session_model_opts import SessionModelOpts
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
@@ -102,13 +103,13 @@ def resolve_model_identity(
     )
 
 
-def build_session_mcp_plan(  # noqa: PLR0913
+def build_session_mcp_plan(
     *,
     transport: AgentTransport | None,
     drain: str,
     workspace_path: Path | None,
     agents_policy: AgentsPolicy | None = None,
-    model_identity: MultimodalModelIdentity | None = None,
+    model_opts: SessionModelOpts | None = None,
     model_flag: str | None = None,
 ) -> SessionMcpPlan:
     """Build the runtime MCP plan for a new agent session.
@@ -152,10 +153,11 @@ def build_session_mcp_plan(  # noqa: PLR0913
     if upstreams and not is_commit:
         capabilities.add("upstream.tool_use")
 
-    if model_identity is not None:
-        resolved_identity = model_identity
-    elif model_flag is not None:
-        resolved_identity = resolve_model_identity(transport, model_flag)
+    _model_opts = model_opts or SessionModelOpts(model_flag=model_flag)
+    if _model_opts.model_identity is not None:
+        resolved_identity = _model_opts.model_identity
+    elif _model_opts.model_flag is not None:
+        resolved_identity = resolve_model_identity(transport, _model_opts.model_flag)
     else:
         resolved_identity = UNKNOWN_IDENTITY
     return SessionMcpPlan(
@@ -226,6 +228,7 @@ def _base_capabilities_for_drain(
 
 __all__ = [
     "SessionMcpPlan",
+    "SessionModelOpts",
     "build_session_mcp_plan",
     "resolve_model_identity",
 ]

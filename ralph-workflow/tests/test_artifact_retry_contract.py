@@ -37,7 +37,11 @@ from ralph.phases.required_artifacts import (
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
-from ralph.prompts.materialize import _read_and_clear_retry_hint
+from ralph.prompts.materialize import (
+    PromptPhaseContext,
+    PromptPhaseOptions,
+    read_and_clear_retry_hint,
+)
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -75,20 +79,20 @@ def _load_default_optional_artifact_phases() -> set[str]:
 REQUIRED_ARTIFACTS = _load_default_artifact_registry()
 
 
-def _analysis_handler_for(phase_name: str):
+def _analysis_handler_for(phase_name: str) -> object:
     """Return a wrapper around handle_generic_analysis_phase with phase/drain pre-set."""
 
-    def _handler(effect, ctx):
+    def _handler(effect: object, ctx: object) -> object:
         real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
         return handle_generic_analysis_phase(real_effect, ctx)
 
     return _handler
 
 
-def _execution_handler_for(phase_name: str):
+def _execution_handler_for(phase_name: str) -> object:
     """Return a wrapper around handle_execution_phase with the correct phase set."""
 
-    def _handler(effect, ctx):
+    def _handler(effect: object, ctx: object) -> object:
         real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
         return handle_execution_phase(real_effect, ctx)
 
@@ -178,7 +182,7 @@ _PHASE_VALID_ARTIFACT: dict[str, str] = {
 }
 
 
-def _make_ctx(workspace: MemoryWorkspace, policy=None) -> PhaseContext:
+def _make_ctx(workspace: MemoryWorkspace, policy: object = None) -> PhaseContext:
     if policy is None:
         with tempfile.TemporaryDirectory() as tmp:
             policy = load_policy(Path(tmp) / ".agent")
@@ -335,7 +339,7 @@ def test_read_and_clear_retry_hint_returns_content_and_deletes_file() -> None:
     workspace = MemoryWorkspace()
     workspace.write(retry_hint_path("review"), "hint content here")
 
-    result = _read_and_clear_retry_hint(workspace, "review")
+    result = read_and_clear_retry_hint(workspace, "review")
 
     assert result == "hint content here"
     assert not workspace.exists(retry_hint_path("review")), "Hint file must be deleted after read"
@@ -343,7 +347,7 @@ def test_read_and_clear_retry_hint_returns_content_and_deletes_file() -> None:
 
 def test_read_and_clear_retry_hint_returns_empty_when_absent() -> None:
     workspace = MemoryWorkspace()
-    result = _read_and_clear_retry_hint(workspace, "review")
+    result = read_and_clear_retry_hint(workspace, "review")
     assert result == ""
 
 
@@ -374,13 +378,15 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
         "PREVIOUS ATTEMPT FAILED: missing decision artifact",
     )
 
-    with patch.object(materialize_module, "_git_diff", return_value="diff"):
+    with patch.object(materialize_module, "git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(
-            phase="development_analysis",
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-            workspace_root=tmp_path,
+            PromptPhaseContext(
+                phase="development_analysis",
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+                workspace_root=tmp_path,
+            ),
         )
 
     rendered = workspace.read(prompt_path)
@@ -404,15 +410,19 @@ def test_development_proof_failure_uses_retry_hint_contract(
     assert failure_events[0].retry_in_session is True
     assert workspace.exists(retry_hint_path("development"))
 
-    with patch.object(materialize_module, "_git_diff", return_value="diff"):
+    with patch.object(materialize_module, "git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(
-            phase="development",
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            artifacts_policy=policy.artifacts,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
-            workspace_root=tmp_path,
-            previous_phase="development_analysis",
+            PromptPhaseContext(
+                phase="development",
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=policy.artifacts,
+                previous_phase="development_analysis",
+            ),
         )
 
     rendered = workspace.read(prompt_path)
@@ -463,14 +473,18 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
     ra = REQUIRED_ARTIFACTS[phase]
     workspace.write(ra.json_path, _PHASE_VALID_ARTIFACT[phase])
 
-    with patch.object(materialize_module, "_git_diff", return_value="diff"):
+    with patch.object(materialize_module, "git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(
-            phase=phase,
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            artifacts_policy=policy.artifacts,
-            session_caps=SessionCapabilities.defaults_for_drain(drain),
-            workspace_root=tmp_path,
+            PromptPhaseContext(
+                phase=phase,
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(drain),
+                workspace_root=tmp_path,
+            ),
+            PromptPhaseOptions(
+                artifacts_policy=policy.artifacts,
+            ),
         )
 
     rendered = workspace.read(prompt_path)

@@ -11,11 +11,20 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
-from ralph.display.content_condenser import condense_content
+from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
-from ralph.display.plain_renderer import PlainLogRenderer, _PhaseCounters
+from ralph.display.plain_renderer import (
+    ActivityLineOptions as _ActivityLineOptions,
+)
+from ralph.display.plain_renderer import (
+    PhaseCloseOptions,
+    PlainLogRenderer,
+)
+from ralph.display.plain_renderer import (
+    PhaseCounters as _PhaseCounters,
+)
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
@@ -38,7 +47,8 @@ _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
 
 
-def _strip_markup(line: str) -> str:
+def strip_markup(line: str) -> str:
+    """Strip Rich markup tags from a line, returning plain text."""
     return PlainLogRenderer.strip_markup(line)
 
 
@@ -191,12 +201,17 @@ class ParallelDisplay:
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
 
-        visible, condensed_flag, summary_line, ai_summary_line = condense_content(
-            text,
-            soft_limit=self._ctx.condenser_soft_limit,
-            hard_limit=self._ctx.condenser_hard_limit,
-            summary=True,
-            env=self._ctx.env,
+        visible, condensed_flag, summary_line, ai_summary_line = cast(
+            "tuple[str, bool, str | None, str | None]",
+            condense_content(
+                text,
+                options=CondenseOptions(
+                    soft_limit=self._ctx.condenser_soft_limit,
+                    hard_limit=self._ctx.condenser_hard_limit,
+                    summary=True,
+                    overflow_ref=overflow_ref,
+                ),
+            ),
         )
 
         if condensed_flag:
@@ -218,11 +233,13 @@ class ParallelDisplay:
             unit_id,
             kind.value,
             visible,
-            condensed_ref=overflow_ref if condensed_flag else None,
-            condensed_flag=condensed_flag,
-            summary_line=effective_summary_line,
-            ai_summary_line=ai_summary_line,
-            _tool_signature=tool_signature,
+            options=_ActivityLineOptions(
+                condensed_ref=overflow_ref if condensed_flag else None,
+                condensed_flag=condensed_flag,
+                summary_line=effective_summary_line,
+                ai_summary_line=ai_summary_line,
+                tool_signature=tool_signature,
+            ),
         )
 
         self._emit_drop_warning(unit_id)
@@ -335,9 +352,11 @@ class ParallelDisplay:
             self._plain_renderer.emit_phase_close(
                 phase,
                 produced,
-                phase_role=phase_role,
-                iteration_context=iteration_context,
-                exit_trigger=exit_trigger,
+                options=PhaseCloseOptions(
+                    phase_role=phase_role,
+                    iteration_context=iteration_context,
+                    exit_trigger=exit_trigger,
+                ),
             )
 
     def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
@@ -383,4 +402,4 @@ class ParallelDisplay:
         self.stop()
 
 
-__all__ = ["ParallelDisplay", "_strip_markup"]
+__all__ = ["ParallelDisplay", "strip_markup"]

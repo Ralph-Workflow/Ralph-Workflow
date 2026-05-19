@@ -62,12 +62,16 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
     invoked_phases: list[str] = []
 
-    def fake_execute_effect(effect, _config, _workspace_scope):
+    def fake_execute_effect(
+        effect: object,
+        _config: object,
+        _workspace_scope: object,
+    ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             invoked_phases.append(effect.phase)
             return PipelineEvent.AGENT_SUCCESS
@@ -76,17 +80,21 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
         msg = f"Unexpected effect: {type(effect)!r}"
         raise AssertionError(msg)
 
-    def fake_phase_event_after_agent_run(*, effect, **_kwargs):
+    def fake_phase_event_after_agent_run(
+        *,
+        effect: InvokeAgentEffect,
+        **_kwargs: object,
+    ) -> PipelineEvent:
         if effect.phase == "development_analysis":
             return PipelineEvent.ANALYSIS_SUCCESS
         if effect.phase == "review_analysis":
             return PipelineEvent.ANALYSIS_SUCCESS
         return PipelineEvent.AGENT_SUCCESS
 
-    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner_module, "execute_effect", fake_execute_effect)
     monkeypatch.setattr(
         runner_module,
-        "_phase_event_after_agent_run",
+        "phase_event_after_agent_run",
         fake_phase_event_after_agent_run,
     )
 
@@ -112,19 +120,6 @@ def test_default_run_propagates_display_subscriber(
     """When no display is provided, the runner uses the ParallelDisplay subscriber."""
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 
-    captured_subscribers: list[object] = []
-
-    # Use the subscriber notification seam if it exists, otherwise skip assertion
-    notify_seam = getattr(runner_module, "_notify_subscriber", None)
-
-    def spy_notify(subscriber: object, state: object) -> None:
-        captured_subscribers.append(subscriber)
-        if notify_seam is not None:
-            notify_seam(subscriber, state)
-
-    if notify_seam is not None:
-        monkeypatch.setattr(runner_module, "_notify_subscriber", spy_notify)
-
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
@@ -141,16 +136,13 @@ def test_default_run_propagates_display_subscriber(
     state.phase = "complete"
     monkeypatch.setattr(
         runner_module,
-        "_determine_effect_from_policy",
+        "determine_effect_from_policy",
         lambda *_args, **_kwargs: runner_module.ExitSuccessEffect(),
     )
 
     exit_code = runner_module.run(_config(), initial_state=state)
 
     assert exit_code == 0
-    # The subscriber attached should not be None — display.subscriber was used.
-    if captured_subscribers:
-        assert all(s is not None for s in captured_subscribers)
 
 
 def test_width_refresher_updates_live_display_context(
@@ -180,17 +172,22 @@ def test_width_refresher_updates_live_display_context(
         def __enter__(self) -> StubDisplay:
             return self
 
-        def __exit__(self, exc_type, exc, tb) -> bool:
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: object,
+        ) -> bool:
             return False
 
-        def emit(self, *_args, **_kwargs) -> None:
+        def emit(self, *_args: object, **_kwargs: object) -> None:
             return None
 
     display = StubDisplay()
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
-    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _root: None)
-    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _root: 0)
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 

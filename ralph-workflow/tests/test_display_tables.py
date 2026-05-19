@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 from rich.console import Console
 
@@ -31,7 +31,7 @@ GeneralConfig.model_rebuild()
 UnifiedConfig.model_rebuild()
 
 
-def _capture_output(func: Callable[..., None], *args: Any, **kwargs: Any) -> str:
+def _capture_output(func: Callable[..., None], *args: object, **kwargs: object) -> str:
     stream = io.StringIO()
     console = Console(file=stream, color_system=None, force_terminal=False, theme=RALPH_THEME)
     ctx = make_display_context(console=console)

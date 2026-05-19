@@ -7,7 +7,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from ralph.display.completion_summary import _make_badge_text, emit_completion_summary
+from ralph.display.completion_summary import emit_completion_summary, make_badge_text
 from ralph.display.context import make_display_context
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
@@ -115,7 +115,7 @@ def test_badge_reason_text_dim_in_themed_output() -> None:
         width=200,
         highlight=False,
     )
-    t = _make_badge_text("PASS", " Development Analysis: proceed")
+    t = make_badge_text("PASS", " Development Analysis: proceed")
     console.print(t, markup=False, highlight=False, no_wrap=True)
     out = buf.getvalue()
     assert "Development Analysis: proceed" in out

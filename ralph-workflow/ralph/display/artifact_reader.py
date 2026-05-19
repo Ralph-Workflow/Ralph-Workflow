@@ -9,24 +9,16 @@ example during the first iteration before any analysis has run).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
+
+from ralph.display.plan_summary import PlanSummary
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 ARTIFACTS_DIR_REL = ".agent/artifacts"
 PLAN_ARTIFACT_REL = "plan.json"
-
-
-@dataclass(frozen=True, slots=True)
-class PlanSummary:
-    """A stable, presentation-friendly projection of a plan.json artifact."""
-
-    summary: str | None = None
-    scope_items: tuple[str, ...] = ()
-    total_steps: int = 0
-    risks_mitigations: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)

@@ -14,7 +14,12 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from ralph.executor.process import ProcessExecutionError, ProcessResult, run_process
+from ralph.executor.process import (
+    TIMEOUT_EXIT_CODE,
+    ProcessResult,
+    ProcessRunOptions,
+    run_process,
+)
 
 DEFAULT_TEST_TIMEOUT_SECONDS = 1.0
 DEFAULT_SUITE_TIMEOUT_SECONDS = 30.0
@@ -106,19 +111,19 @@ def run_command_with_timeout(
     capture_output: bool = True,
 ) -> ProcessResult:
     cmd = tuple(command)
-    try:
-        return run_process(
-            cmd[0],
-            cmd[1:],
+    result = run_process(
+        cmd[0],
+        cmd[1:],
+        options=ProcessRunOptions(
             cwd=cwd,
             env=dict(env) if env is not None else None,
             timeout=suite_timeout_seconds,
             capture_output=capture_output,
-        )
-    except ProcessExecutionError as exc:
-        if exc.timed_out:
-            raise SuiteTimeoutError(suite_timeout_seconds) from exc
-        raise
+        ),
+    )
+    if result.returncode == TIMEOUT_EXIT_CODE:
+        raise SuiteTimeoutError(suite_timeout_seconds)
+    return result
 
 
 def _parse_args(argv: Sequence[str]) -> tuple[float, list[str]]:

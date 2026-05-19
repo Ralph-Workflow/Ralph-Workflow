@@ -6,7 +6,7 @@ import json
 
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce
-from ralph.pipeline.state import FalloverRecord, PipelineState
+from ralph.pipeline.state import AgentChainState, FalloverRecord, PipelineState, RunMetrics
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
@@ -240,34 +240,31 @@ def test_recovery_fields_round_trip() -> None:
 
 
 def test_agent_chain_state_with_retry_increment_increments_retries_only() -> None:
-    from ralph.pipeline.state import AgentChainState
 
     chain = AgentChainState(agents=["a", "b"], current_index=0, retries=2)
 
     new_chain = chain.with_retry_increment()
 
-    assert new_chain.retries == 3  # noqa: PLR2004
+    assert new_chain.retries == 3
     assert new_chain.current_index == 0
     assert new_chain.agents == ["a", "b"]
-    assert chain.retries == 2  # noqa: PLR2004
+    assert chain.retries == 2
 
 
 def test_agent_chain_state_with_advance_resets_retries_and_advances_index() -> None:
-    from ralph.pipeline.state import AgentChainState
 
     chain = AgentChainState(agents=["a", "b", "c"], current_index=1, retries=4)
 
     new_chain = chain.with_advance()
 
-    assert new_chain.current_index == 2  # noqa: PLR2004
+    assert new_chain.current_index == 2
     assert new_chain.retries == 0
     assert new_chain.agents == ["a", "b", "c"]
     assert chain.current_index == 1
-    assert chain.retries == 4  # noqa: PLR2004
+    assert chain.retries == 4
 
 
 def test_agent_chain_state_with_retry_increment_preserves_empty_agents() -> None:
-    from ralph.pipeline.state import AgentChainState
 
     chain = AgentChainState()
 
@@ -279,7 +276,6 @@ def test_agent_chain_state_with_retry_increment_preserves_empty_agents() -> None
 
 
 def test_run_metrics_with_retry_increment_increments_retries_only() -> None:
-    from ralph.pipeline.state import RunMetrics
 
     metrics = RunMetrics(
         total_agent_calls=2,
@@ -290,15 +286,14 @@ def test_run_metrics_with_retry_increment_increments_retries_only() -> None:
 
     new_metrics = metrics.with_retry_increment()
 
-    assert new_metrics.total_retries == 5  # noqa: PLR2004
-    assert new_metrics.total_agent_calls == 2  # noqa: PLR2004
-    assert new_metrics.total_continuations == 3  # noqa: PLR2004
+    assert new_metrics.total_retries == 5
+    assert new_metrics.total_agent_calls == 2
+    assert new_metrics.total_continuations == 3
     assert new_metrics.total_fallbacks == 1
-    assert metrics.total_retries == 4  # noqa: PLR2004
+    assert metrics.total_retries == 4
 
 
 def test_run_metrics_with_fallback_increment_increments_fallbacks_only() -> None:
-    from ralph.pipeline.state import RunMetrics
 
     metrics = RunMetrics(
         total_agent_calls=2,
@@ -309,15 +304,14 @@ def test_run_metrics_with_fallback_increment_increments_fallbacks_only() -> None
 
     new_metrics = metrics.with_fallback_increment()
 
-    assert new_metrics.total_fallbacks == 2  # noqa: PLR2004
-    assert new_metrics.total_agent_calls == 2  # noqa: PLR2004
-    assert new_metrics.total_continuations == 3  # noqa: PLR2004
-    assert new_metrics.total_retries == 4  # noqa: PLR2004
+    assert new_metrics.total_fallbacks == 2
+    assert new_metrics.total_agent_calls == 2
+    assert new_metrics.total_continuations == 3
+    assert new_metrics.total_retries == 4
     assert metrics.total_fallbacks == 1
 
 
 def test_run_metrics_with_continuation_increment_increments_continuations_only() -> None:
-    from ralph.pipeline.state import RunMetrics
 
     metrics = RunMetrics(
         total_agent_calls=2,
@@ -328,11 +322,11 @@ def test_run_metrics_with_continuation_increment_increments_continuations_only()
 
     new_metrics = metrics.with_continuation_increment()
 
-    assert new_metrics.total_continuations == 4  # noqa: PLR2004
-    assert new_metrics.total_agent_calls == 2  # noqa: PLR2004
+    assert new_metrics.total_continuations == 4
+    assert new_metrics.total_agent_calls == 2
     assert new_metrics.total_fallbacks == 1
-    assert new_metrics.total_retries == 4  # noqa: PLR2004
-    assert metrics.total_continuations == 3  # noqa: PLR2004
+    assert new_metrics.total_retries == 4
+    assert metrics.total_continuations == 3
 
 
 def test_recovery_history_validation_trims_to_newest_cycle_cap_records() -> None:
@@ -376,7 +370,7 @@ def test_recovery_history_validation_trims_to_newest_cycle_cap_records() -> None
 
     state = PipelineState.model_validate(payload)
 
-    assert state.recovery_cycle_cap == 3  # noqa: PLR2004
+    assert state.recovery_cycle_cap == 3
     assert [record.from_agent for record in state.fallover_history] == ["a3", "a4", "a5"]
 
 
@@ -409,5 +403,5 @@ def test_copy_with_trims_fallover_history_when_cycle_cap_is_lowered() -> None:
 
     lowered = state.copy_with(recovery_cycle_cap=2)
 
-    assert lowered.recovery_cycle_cap == 2  # noqa: PLR2004
+    assert lowered.recovery_cycle_cap == 2
     assert [record.from_agent for record in lowered.fallover_history] == ["a2", "a3"]

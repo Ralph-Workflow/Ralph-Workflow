@@ -33,7 +33,7 @@ _EXPECTED_EXIT_CODE = 7
 
 
 @pytest.fixture(autouse=True)
-def _reset_pm():
+def _reset_pm() -> object:
     reset_process_manager()
     yield
     with contextlib.suppress(Exception):
@@ -42,7 +42,7 @@ def _reset_pm():
 
 
 @pytest.mark.asyncio
-async def test_exit_code_7_is_exited_not_failed(tmp_path) -> None:
+async def test_exit_code_7_is_exited_not_failed(tmp_path: object) -> None:
     """ProcessManager records EXITED (not FAILED) even when returncode != 0."""
     pm = ProcessManager(policy=_FAST_POLICY)
     handle = pm.spawn([PYTHON, "-c", f"import sys; sys.exit({_EXPECTED_EXIT_CODE})"])
@@ -54,7 +54,7 @@ async def test_exit_code_7_is_exited_not_failed(tmp_path) -> None:
     assert handle.record.status != ProcessStatus.FAILED
 
 
-def _load_coordinator():
+def _load_coordinator() -> object:
     return importlib.import_module("ralph.pipeline.parallel.coordinator")
 
 
@@ -67,7 +67,7 @@ def _make_unit(unit_id: str) -> WorkUnit:
     )
 
 
-def _seed_artifact(artifact_dir) -> None:
+def _seed_artifact(artifact_dir: object) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "plan.json").write_text(
         json.dumps(
@@ -103,13 +103,13 @@ class _RecordingMcpFactory:
         )
 
 
-def _make_ctx(module, same_workspace):
-    ctx_type = module._WorkerContext
+def _make_ctx(module: object, same_workspace: object) -> object:
+    ctx_type = module.WorkerContext
     return ctx_type(log=None, same_workspace=same_workspace)
 
 
 @pytest.mark.asyncio
-async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path) -> None:
+async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path: object) -> None:
     """Worker coordinator: exit_code != 0 but artifact present → worker succeeds.
 
     This is the exit-code-not-trusted invariant: success comes from worker-local
@@ -146,7 +146,7 @@ async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path) -> None:
+async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path: object) -> None:
     """Worker coordinator: exit_code == 0 but no artifact → worker fails.
 
     This is the exit-code-not-trusted invariant: only worker-local artifact

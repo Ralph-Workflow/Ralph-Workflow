@@ -3,35 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 
-
-class _StringEnum(StrEnum):
-    """Compat base for string-valued enums across tooling versions."""
-
-
-class SizeAlert(_StringEnum):
-    """Alert level for checkpoint size checks."""
-
-    OK = "ok"
-    WARNING = "warning"
-    ERROR = "error"
-
-
-@dataclass(frozen=True)
-class SizeCheckResult:
-    """Structured checkpoint size check result."""
-
-    level: str
-    message: str | None = None
-
-
-@dataclass(frozen=True)
-class SizeThresholds:
-    """Warning and error thresholds in bytes."""
-
-    warn_threshold: int = 1_572_864
-    error_threshold: int = 2_097_152
+from ralph.checkpoint.size_alert import SizeAlert
+from ralph.checkpoint.size_check_result import SizeCheckResult
+from ralph.checkpoint.size_thresholds import SizeThresholds
 
 
 @dataclass(frozen=True)

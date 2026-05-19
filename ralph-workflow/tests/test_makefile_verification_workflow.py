@@ -4,9 +4,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-COVERED_PYTEST_SHARD_COUNT = 6
-COVER_APPEND_SHARD_COUNT = 5
-UNIT_TEST_SHARD_COUNT = 5
+COVERED_PYTEST_SHARD_COUNT = 11
+COVER_APPEND_SHARD_COUNT = 10
+UNIT_TEST_SHARD_COUNT = 10
 
 
 def _target_body(name: str) -> list[str]:
@@ -55,9 +55,14 @@ def test_test_cov_splits_covered_pytest_runs_under_timeout_wrapper() -> None:
     assert all("--cov=ralph" in line for line in pytest_lines)
     assert any("$(PYTEST_CORE_PATHS)" in line for line in pytest_lines)
     assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_A_H)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_I_P)" in line for line in pytest_lines)
-    assert any("$(PYTEST_ROOT_PATHS_Q_Z)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_A_B)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_C_H)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_I_M)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_N_O)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_PA_PL)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_PM_PZ)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_Q_S)" in line for line in pytest_lines)
+    assert any("$(PYTEST_ROOT_PATHS_T_Z)" in line for line in pytest_lines)
     assert any("python -m pytest tests/integration/ -q" in line for line in pytest_lines)
     assert sum("--cov-append" in line for line in pytest_lines) == COVER_APPEND_SHARD_COUNT
 
@@ -81,9 +86,14 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
     assert any("$(PYTEST_CORE_PATHS)" in line for line in unit_body)
     assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_A_H)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_I_P)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_Q_Z)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_A_B)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_C_H)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_I_M)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_N_O)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_PA_PL)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_PM_PZ)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_Q_S)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_T_Z)" in line for line in unit_body)
     assert "python -m pytest tests/integration/ -q" in integration_body[0]
 
 

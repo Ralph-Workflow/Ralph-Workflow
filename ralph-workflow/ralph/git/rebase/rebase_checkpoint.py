@@ -8,17 +8,17 @@ import shutil
 import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ralph.git.rebase._rebase_lock import RebaseLock
+from ralph.git.rebase._rebase_phase import RebasePhase
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 __all__ = [
     "RebaseCheckpoint",
-    "RebaseLock",
-    "RebasePhase",
     "acquire_rebase_lock",
     "clear_rebase_checkpoint",
     "load_rebase_checkpoint",
@@ -93,33 +93,11 @@ def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
             return default
 
 
-class RebasePhase(StrEnum):
-    """Lifecycle phase of an in-progress rebase operation."""
-
-    NotStarted = "not_started"
-    PreRebaseCheck = "pre_rebase_check"
-    RebaseInProgress = "rebase_in_progress"
-    ConflictDetected = "conflict_detected"
-    ConflictResolutionInProgress = "conflict_resolution_in_progress"
-    CompletingRebase = "completing_rebase"
-    RebaseComplete = "rebase_complete"
-    RebaseAborted = "rebase_aborted"
-
-    def max_recovery_attempts(self) -> int:
-        if self == RebasePhase.ConflictResolutionInProgress:
-            return 5
-        if self in {RebasePhase.RebaseInProgress, RebasePhase.CompletingRebase}:
-            return 2
-        if self == RebasePhase.PreRebaseCheck:
-            return 1
-        return 3
-
-
 @dataclass
 class RebaseCheckpoint:
     """Persisted state for a rebase operation, written to ``.agent/rebase_checkpoint.json``."""
 
-    phase: RebasePhase = RebasePhase.NotStarted
+    phase: RebasePhase = field(default_factory=lambda: RebasePhase.NotStarted)
     upstream_branch: str = ""
     conflicted_files: list[str] = field(default_factory=list)
     resolved_files: list[str] = field(default_factory=list)
@@ -346,27 +324,5 @@ def _is_lock_stale() -> bool:
     return True
 
 
-class RebaseLock:
-    """Context manager that acquires and releases the rebase lock."""
-
-    def __init__(self) -> None:
-        self.owns_lock = False
-
-    def __enter__(self) -> RebaseLock:
-        acquire_rebase_lock()
-        self.owns_lock = True
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: object | None,
-    ) -> None:
-        if self.owns_lock:
-            release_rebase_lock()
-
-    def leak(self) -> bool:
-        owns = self.owns_lock
-        self.owns_lock = False
-        return owns
+RebaseLock._acquire_fn = acquire_rebase_lock
+RebaseLock._release_fn = release_rebase_lock

@@ -5,7 +5,7 @@ from __future__ import annotations
 import gc
 import json
 import tracemalloc
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -64,11 +64,11 @@ class _CcsConfigStub:
     enabled: bool = False
 
 
-@dataclass
 class _ConfigStub:
-    general: _GeneralConfigStub = field(default_factory=_GeneralConfigStub)
-    ccs: _CcsConfigStub = field(default_factory=_CcsConfigStub)
-    ccs_aliases: dict[str, str] = field(default_factory=dict)
+    def __init__(self) -> None:
+        self.general = _GeneralConfigStub()
+        self.ccs = _CcsConfigStub()
+        self.ccs_aliases: dict[str, str] = {}
 
 
 class _RegistryInstance:
@@ -147,7 +147,7 @@ def _install_runner_seams(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
         lambda **_kwargs: str(tmp_path / "SYSTEM_PROMPT.md"),
     )
     monkeypatch.setattr(runner_module, "build_session_mcp_plan", _build_session_mcp_plan)
-    monkeypatch.setattr(runner_module, "_emit_display_line", _emit_display_line)
+    monkeypatch.setattr(runner_module, "emit_display_line", _emit_display_line)
 
 
 def _config() -> UnifiedConfig:
@@ -178,7 +178,7 @@ def test_run_pipeline_memory_regression(monkeypatch: MonkeyPatch, tmp_path: Path
         phase="development",
         prompt_file="PROMPT.md",
     )
-    deps = runner_module._AgentExecutionDeps(
+    deps = runner_module.AgentExecutionDeps(
         invoke_agent=_fake_invoke_agent,
         agent_invocation_error=AgentInvocationError,
         agent_registry=_RegistryFactory,
@@ -192,7 +192,7 @@ def test_run_pipeline_memory_regression(monkeypatch: MonkeyPatch, tmp_path: Path
     tracemalloc.reset_peak()
 
     for _ in range(_ITERATION_COUNT):
-        event = runner_module._execute_agent_effect(
+        event = runner_module.execute_agent_effect(
             effect,
             _config(),
             deps,

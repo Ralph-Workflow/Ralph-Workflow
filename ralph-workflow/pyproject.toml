@@ -133,13 +133,18 @@ select = [
   "PL",
   "PGH",
 ]
+ignore = ["PLR2004", "PLC0415"]  # Magic values in tests are acceptable; PLC0415 allows lazy imports to avoid circular dependencies
 
-[tool.ruff.lint.per-file-ignores]
-# Tests are exempt from ANN (annotations) and PLC0415 (import-outside-top-level)
-# because pytest fixtures and parametrize patterns require importing inside test
-# functions to isolate module-load side effects between cases.
-"tests/**" = ["ANN", "PLC0415"]
-"ralph/__init__.py" = ["F401"]
+[tool.ruff.lint.pylint]
+# CLI entry-point functions (e.g., typer commands) necessarily have one parameter per flag.
+# The ruff default of 5 is too low for production CLI functions.
+# main() in cli/main.py has ~33 parameters representing CLI flags.
+max-args = 40
+
+
+
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel", "ralph.pydantic_compat.RalphBaseModel"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -195,4 +200,5 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-xdist>=3.6",
     "ruff>=0.1",
+    "types-tqdm>=4.67.3.20260518",
 ]

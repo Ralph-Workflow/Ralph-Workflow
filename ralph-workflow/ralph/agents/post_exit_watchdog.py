@@ -22,42 +22,24 @@ Fire-reason precedence:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.post_exit_verdict import PostExitVerdict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.agents.clock import Clock
     from ralph.agents.idle_watchdog import TimeoutPolicy
-    from ralph.agents.timeout_clock import Clock
 
 __all__ = [
     "PostExitVerdict",
     "PostExitWatchdog",
 ]
-
-
-class PostExitVerdict(StrEnum):
-    """Result of a PostExitWatchdog wait method."""
-
-    # wait_for_process_exit
-    CONTINUE = "continue"  # predicate returned True before deadline (process exited)
-    FIRE_PROCESS_EXIT_HANG = "fire_process_exit_hang"  # deadline elapsed, predicate still False
-
-    # wait_parent_exit_grace / wait_descendant_quiesce
-    SIGNALS_PRESENT = "signals_present"  # TERMINAL_COMPLETE seen
-    CHILDREN_ACTIVE = "children_active"  # WAITING_ON_CHILD returned
-    QUIESCED_NO_SIGNALS = "quiesced_no_signals"  # RESUMABLE_CONTINUE at/after deadline
-    # descendant_wait deadline elapsed with WAITING_ON_CHILD persistent
-    FIRE_DESCENDANT_HANG = "fire_descendant_hang"
-
-
-# Re-export WatchdogFireReason so callers can reference it without an extra import.
-from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: E402
 
 
 @dataclass

@@ -4,39 +4,13 @@ from __future__ import annotations
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
+from ralph.mcp.artifacts.analysis_item_proof import AnalysisItemProof
+from ralph.mcp.artifacts.development_result_continuation import Continuation
+from ralph.mcp.artifacts.development_result_validation_error import DevelopmentResultValidationError
+from ralph.mcp.artifacts.plan_item_proof import PlanItemProof
 from ralph.pydantic_compat import RalphBaseModel
 
 DEVELOPMENT_RESULT_ARTIFACT_TYPE = "development_result"
-
-
-class DevelopmentResultValidationError(ValueError):
-    """Raised when a development_result artifact is malformed."""
-
-
-class PlanItemProof(RalphBaseModel):
-    """Evidence that a plan item was completed."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    plan_item: str = Field(..., min_length=1)
-    proof: str = Field(..., min_length=1)
-
-
-class AnalysisItemProof(RalphBaseModel):
-    """Evidence that a prior analysis item was addressed."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    how_to_fix_item: str = Field(..., min_length=1)
-    proof: str = Field(..., min_length=1)
-
-
-class Continuation(RalphBaseModel):
-    """Reference to a prior session when a development result is partial."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    prior_session_id: str = Field(..., min_length=1)
 
 
 class DevelopmentResult(RalphBaseModel):
@@ -74,6 +48,8 @@ def normalize_development_result_content(content: dict[str, object]) -> dict[str
 __all__ = [
     "DEVELOPMENT_RESULT_ARTIFACT_TYPE",
     "AnalysisItemProof",
+    "Continuation",
+    "DevelopmentResult",
     "DevelopmentResultValidationError",
     "PlanItemProof",
     "normalize_development_result_content",

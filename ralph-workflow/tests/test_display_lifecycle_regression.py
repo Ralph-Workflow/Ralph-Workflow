@@ -5,12 +5,14 @@ from __future__ import annotations
 import queue
 from io import StringIO
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 from rich.console import Console
 
 from ralph.display.activity_model import ActivityProvider
 from ralph.display.context import make_display_context
+from ralph.display.lifecycle_filter import is_bare_lifecycle
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.subscriber import PipelineSubscriber
 
@@ -89,7 +91,6 @@ def test_prompt_md_sequence_produces_no_lifecycle_noise(tmp_path: Path) -> None:
 
 def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> None:
     """PipelineSubscriber.record_activity must not store bare lifecycle markers."""
-    from unittest.mock import MagicMock
 
     q: queue.Queue[PipelineSnapshot] = queue.Queue(maxsize=64)
     subscriber = PipelineSubscriber(
@@ -120,8 +121,8 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
     subscriber.notify(state)
     subscriber.record_activity(
         unit_id="main",
-        agent_name="claude/sonnet",
         line="claude/sonnet tool: mcp__ralph__read_file (path=x.py)",
+        agent_name="claude/sonnet",
         tool_name="mcp__ralph__read_file",
     )
     snapshot = subscriber.build_snapshot(state)
@@ -140,8 +141,8 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
     ]:
         subscriber.record_activity(
             unit_id="main",
-            agent_name="claude/sonnet",
             line=lifecycle_line,
+            agent_name="claude/sonnet",
         )
         snapshot = subscriber.build_snapshot(state)
         assert snapshot is not None
@@ -169,7 +170,6 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
 )
 def test_is_bare_lifecycle_smoke(lifecycle_line: str) -> None:
     """is_bare_lifecycle must return True for all known lifecycle markers."""
-    from ralph.display.lifecycle_filter import is_bare_lifecycle
 
     assert is_bare_lifecycle(lifecycle_line), (
         f"Expected is_bare_lifecycle({lifecycle_line!r}) to be True"
@@ -188,7 +188,6 @@ def test_is_bare_lifecycle_smoke(lifecycle_line: str) -> None:
 )
 def test_is_bare_lifecycle_passes_real_content(non_lifecycle_line: str) -> None:
     """is_bare_lifecycle must return False for real content lines."""
-    from ralph.display.lifecycle_filter import is_bare_lifecycle
 
     assert not is_bare_lifecycle(non_lifecycle_line), (
         f"Expected is_bare_lifecycle({non_lifecycle_line!r}) to be False"

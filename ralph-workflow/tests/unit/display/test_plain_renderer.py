@@ -17,7 +17,7 @@ FIXED_TIME = datetime(2026, 4, 18, 12, 0, tzinfo=UTC)
 PLAN_STEP_COUNT = 2
 
 
-def _make_snapshot(  # noqa: PLR0913
+def _make_snapshot(
     *,
     phase: str = "development",
     current_phase_role: str | None = "execution",

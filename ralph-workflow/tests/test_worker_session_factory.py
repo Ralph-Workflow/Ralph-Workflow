@@ -12,7 +12,7 @@ from ralph.mcp.multimodal.capabilities import (
     resolve_capability_profile,
 )
 from ralph.mcp.server.factory import McpServerHandle
-from ralph.pipeline.parallel.worker_session import build_worker_session
+from ralph.pipeline.parallel.worker_session import WorkerSessionConfig, build_worker_session
 from ralph.pipeline.work_units import WorkUnit
 from ralph.workspace.scope import WorkspaceScope
 
@@ -109,7 +109,10 @@ def test_worker_artifact_dir_stored_in_session(tmp_path: Path) -> None:
     artifact_dir = tmp_path / ".agent" / "workers" / "task-epsilon" / "artifacts"
     artifact_dir.mkdir(parents=True)
     bundle = build_worker_session(
-        unit, _make_factory(), _make_scope(tmp_path), worker_artifact_dir=artifact_dir
+        unit,
+        _make_factory(),
+        _make_scope(tmp_path),
+        WorkerSessionConfig(worker_artifact_dir=artifact_dir),
     )
     assert bundle.session.worker_artifact_dir == artifact_dir
 
@@ -144,11 +147,13 @@ def test_worker_session_inherits_session_contract_params(tmp_path: Path) -> None
         unit,
         _make_factory(),
         scope,
-        worker_artifact_dir=artifact_dir,
-        session_drain="development",
-        session_capabilities=capabilities,
-        session_model_identity=identity,
-        session_capability_profile=profile,
+        WorkerSessionConfig(
+            worker_artifact_dir=artifact_dir,
+            session_drain="development",
+            session_capabilities=capabilities,
+            session_model_identity=identity,
+            session_capability_profile=profile,
+        ),
     )
 
     assert bundle.session.drain == "development"
