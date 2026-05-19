@@ -20,3 +20,12 @@ This gives you a fast yes/no evaluation:
 - did the validation land in the right place?
 - did the tests really run?
 - would you merge the result?
+
+## After your first run
+
+If Ralph Workflow handles a task like this well, do the public next step on **Codeberg** first:
+- inspect the primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+- star or watch it there if the result feels real
+- open an issue for any first-run friction you hit
+
+GitHub is only the mirror: https://github.com/Ralph-Workflow/Ralph-Workflow

@@ -2,6 +2,15 @@
 
 ## 2026-05-19 (Tuesday)
 
+### RalphWorkflow AIToolsIndex backlink repair
+- **Submitted Ralph Workflow to AIToolsIndex through its live public submission API**: used `POST https://aitoolsindex.org/api/submit/enqueue-tool-submission` to place Ralph Workflow on a fresh AI-tools directory surface that points evaluators at `https://ralphworkflow.com/`, whose first repo CTA is Codeberg and whose mirror CTA is GitHub second.
+  - Verification: the live submit `POST` returned HTTP `200` with `success: true`, submission key `ToolSubmission-1779212965338-7e01868a-5ae9-4a09-b5c0-2656462fa6bd`, and the follow-up status check at `GET https://aitoolsindex.org/api/submit/get-tool-submission?key=...` returned `status: success`.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The audit still says Codeberg adoption is flat and explicitly prioritizes executable backlink building over more generic content churn. AIToolsIndex was still missing from `outreach-log.md`, its shipped JS exposes a real public API, and this was the strongest viable same-run repair that could add a fresh indexed discovery surface without repeating another owned-surface rewrite.
+  - Expected outcome: a new directory backlink should send qualified AI-tool evaluators into the homepage's Codeberg-first path and increase primary-repo inspection volume.
+  - Measurement window: next 7 days for listing/discoverability evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if the listing goes live or becomes discoverable and Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending cycles on more generic directory submissions alone and shift the next replacement move to a warmer competitor-citation or discussion surface that can send higher-intent traffic.
+  - Type: **REPAIRED / REPLACING**
+
 ### RalphWorkflow Claude Code overnight Telegraph distribution repair
 - **Published a Codeberg-first Telegraph post for the exact pain phrase `run Claude Code overnight without babysitting`**: shipped `Run Claude Code Overnight Without Babysitting` to Telegraph so the newest high-intent Claude Code evaluator page now has a live external surface that routes readers to Codeberg first and GitHub second.
   - Live URL: `https://telegra.ph/Run-Claude-Code-Overnight-Without-Babysitting-05-19`
@@ -2167,3 +2176,95 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Measurement window: next 7 days for path/referral evidence on the new page surfaces; next 14 days for **Codeberg** stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop expanding Claude Code landing-page variants alone and replace this lane with a warmer external distribution/citation move that sends traffic directly into the strongest Codeberg-first proof/comparison paths.
   - Type: **NEW / REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 19:16:24
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow proof-example Codeberg CTA repair
+- **Repaired the public example proof assets so they now close on Codeberg-first actions instead of dead-ending after trust**: added explicit end-of-page Codeberg inspect/star/watch/issue CTA blocks to `content/examples/first_task_example.md` and `content/examples/review_bundle_example.md`, with GitHub framed only as the mirror.
+  - Files: `content/examples/first_task_example.md`, `content/examples/review_bundle_example.md`
+  - Verification: read both updated files back and confirmed each now ends with a Codeberg-primary / GitHub-mirror next-step block.
+  - Why: this is **REPAIRED / REPLACING** a flat tactic. Codeberg adoption is still flat, the active repair path says to prioritize repo/docs conversion surfaces over more generic output, and these proof/example pages were linked from the main README but had no public next-step at all. That meant high-intent evaluators could agree with the example and still leave without taking a primary-repo action.
+  - Expected outcome: more qualified readers who open the example first-task or review-bundle pages should continue into Codeberg inspection and then convert into stars, watches, or first-run issues instead of bouncing after the proof asset.
+  - Measurement window: next 7 days for proof-page referral/inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending cycles on deeper proof-page CTA tightening and shift the next replacement move to a fresh external distribution surface that sends traffic directly into these repaired example pages.
+  - Type: **REPAIRED / REPLACING**
+
+## 2026-05-19 (Tuesday) — Evening Audit Assessment
+
+**Bottleneck:** `distribution_and_message_to_primary_repo_conversion`
+**Codeberg delta:** 0 (stars 9, watchers 2, forks 2 — all flat across 9-sample window)
+**GitHub delta:** 0 (mirror, not primary — secondary evidence only)
+
+### What worked today
+- Telegraph keyword posts: all 3 live and returning HTTP 200 ✅
+  - `Run Claude Code Overnight Without Babysitting` ✅
+  - `Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For` ✅
+  - `Spec-Driven AI Agent: Why the Spec Matters More Than the Model` ✅
+- ToolShelf directory submission: API returned `{"success":true}` ✅
+- First-task evaluator path repair: commit `659eee44` pushed ✅
+- Reddit posting correctly held — repetition risk was real and structural ✅
+
+### What is failing
+- **Reddit template repetition (priority 2 repair):** The opener "Honestly the part I'd optimize first is the handoff, not the model stack." appeared across multiple posts and was literally duplicated by u/Informal-Salt827 on 2026-05-19 (09:37 and 16:01 CEST). The broader body cadence — finish-state opener → bounded diff/checks → product/link close — is equally stale.
+- **Codeberg adoption flat (root problem):** No star/watch/fork delta despite 3 Telegraph posts, 1 directory submission, 1 evaluator path repair, and multiple Reddit monitor passes today.
+
+### What is low leverage right now
+- More Reddit monitor passes (cooldown state, no posting possible)
+- More content drafts on the same keyword angles already covered by Telegraph
+- Reddit CTAs to GitHub mirror (routing is now fixed — do not regress)
+
+### What is high leverage
+- **Reddit template rewrite** — was the priority-2 repair not yet executed. Fixed now: `drafts/reddit_autopost_comment.txt` rewritten with 3 fresh structural templates, old opener permanently retired.
+- **Telegraph → Codeberg conversion path** — the 3 new Telegraph posts are live but untested. If they drive any search traffic and Codeberg is still flat in 7 days, the problem is not distribution but the repo conversion surface itself (START_HERE, first-task-guide, README clarity).
+- **Homepage SEO** — flagged in audit as repair action P1 but not yet executed. If Telegraph posts do not move Codeberg in 7 days, homepage title/description SEO tuning is the next highest-leverage move.
+
+### Four marketing questions — still answered ✅
+- What: free, open-source, orchestrates existing agents on your machine
+- Who: developers with work too big to babysit and too risky to trust blindly
+- Why different: repo-native, reviewable finish state instead of transcript
+- Why now: free, runs tonight, wake up to reviewable output
+
+### Actions taken this audit
+1. `drafts/reddit_autopost_comment.txt` — permanent rewrite. Old opener retired. 3 fresh structural templates written (workflow, parallel, approval-friction). Posting rules tightened.
+2. `drafts/reddit_next_window_packets_latest.md` — updated to remove stale opener and align to new templates.
+3. Telegraph verification — all 3 posts live with HTTP 200 ✅
+
+### Measurement window
+- Telegraph posts indexed / referral evidence: 7 days (2026-05-26)
+- Codeberg stars/watchers delta: 14 days (2026-06-02)
+- Reddit template fresh: next audit window
+
+### Next replacement if still flat (2026-06-02)
+- If Telegraph keyword pages + directory submission + evaluator path repair produce no Codeberg delta:
+  1. Homepage SEO tuning (title/description for keyword gaps — unattended coding agent, AI agent orchestration CLI)
+  2. Competitor citation / backlink campaign (find where comparable tools are discussed and where Ralph Workflow would be the better answer)
+  3. Shift effort from owned content to external third-party surfaces that send qualified traffic directly to Codeberg
+
+### RalphWorkflow Claude Code evaluator-page conversion repair
+- **When:** 2026-05-19 19:32:00
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** tightened two still-leaky high-intent hosted-docs pages — `docs/sphinx/claude-code-approval-mode.md` and `docs/sphinx/claude-code-run-until-done.md` — so they now end with an explicit **Codeberg-first** public next-step block instead of a softer generic wrap-up. Both pages now tell evaluators to inspect, star/watch, or file first-run friction on **Codeberg**, frame GitHub only as the mirror, and hand off directly to `after-your-first-run` so the trial converts into one visible primary-repo action.
+  - Files: `repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-approval-mode.md`, `repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-run-until-done.md`
+- **Verification:** `grep -nE 'After Your First Ralph Workflow Run|Use GitHub only as the mirror|Star or watch on Codeberg|Report .*Codeberg' repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/{claude-code-approval-mode.md,claude-code-run-until-done.md}` confirmed the new CTA / routing copy; `git -C repos/Ralph-Workflow/github-mirror/ralph-workflow diff -- docs/sphinx/claude-code-approval-mode.md docs/sphinx/claude-code-run-until-done.md` confirmed the change set.
+- **Why this action:** this is **REPAIRED / REPLACING** a failing tactic. Directory/backlink submissions are already active, but Codeberg adoption is still flat and these two Claude Code intent pages were still leaking evaluator attention without a strong final conversion step. Repairing that handoff is a tighter same-run fix than producing another generic post.
+- **Expected outcome:** more readers arriving through `Claude Code approval mode` and `Claude Code run until done` intent should convert into **Codeberg** repo inspections, stars, watches, or first-run issues instead of stopping at private evaluation.
+- **Measurement window:** immediate for source-level conversion-path quality; next deploy for live page availability; next 7-14 days for whether Codeberg stars/watchers/issues move after traffic hits those pages.
+- **Replace if it fails:** if those pages are live and Codeberg adoption is still flat through **2026-06-02**, stop spending the next cycle on Claude Code CTA polish and replace this lane with a new verified distribution source or proof asset aimed at the same evaluator intent.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 19:43:35
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow Aider evaluator-page conversion repair
+- **When:** 2026-05-19 20:10:53 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** repaired a still-leaky high-intent competitor path by turning the public `Ralph Workflow vs Aider` page into a Codeberg-first conversion surface instead of a comparison that ended without a public next step. I added an explicit Codeberg inspect/star/watch/issue block to the Aider comparison page, surfaced that page from the top README start-here list, and added it to the hosted-docs homepage chooser so Aider evaluators can find the unattended-handoff path faster.
+  - Commit: `aab75a85` — `Tighten Aider comparison conversion path`
+  - Status: ✅ pushed to Codeberg primary (`origin`) and GitHub mirror (`github`)
+- **Verification:** `grep` confirmed the new Codeberg-first CTA block in `docs/sphinx/ralph-workflow-vs-aider.md`, README and docs homepage both now surface the Aider comparison, and `make docs` passed after including the existing `agents.md` page in the hidden toctree so the docs build stays green.
+- **Why this action:** this is **REPAIRED / REPLACING** a failing tactic. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and Aider is one of the monitored comparison targets with a large existing evaluator audience. That page still lacked the same Codeberg-first next-step block already added to other exact-intent pages, so comparison traffic could understand the product and still leave without taking a primary-repo action.
+- **Expected outcome:** more qualified Aider comparison readers should continue into the **Codeberg** repo, then convert into stars, watches, or first-run issues instead of ending at a private comparison read.
+- **Measurement window:** immediate for source-level conversion-path quality and live docs availability; next 7 days for Aider-page referral / engagement clues; next 14 days for **Codeberg** stars/watchers/issues delta.
+- **Replace if it fails:** if Codeberg adoption is still flat through `2026-06-02`, stop spending the next cycle on more competitor-page CTA polish alone and replace this lane with a warmer external competitor-citation/distribution move or another stronger proof asset aimed at the same evaluator intent.

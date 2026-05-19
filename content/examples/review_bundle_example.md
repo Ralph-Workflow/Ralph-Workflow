@@ -28,3 +28,12 @@ Add empty-project-name validation to the CLI create flow.
 Would you merge this?
 
 If the answer is not obvious, the handoff is not clean enough yet.
+
+## After a good morning-after handoff
+
+If this is the kind of finish you want, use **Codeberg** as the main public home:
+- inspect the primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+- star or watch it there if the workflow earned it
+- file an issue with the task shape or review gap if something still felt weak
+
+GitHub is the mirror only: https://github.com/Ralph-Workflow/Ralph-Workflow
