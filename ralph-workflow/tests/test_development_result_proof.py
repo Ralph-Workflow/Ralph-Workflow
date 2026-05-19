@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ralph.phases import PhaseContext
 from ralph.phases.execution import handle_execution_phase
@@ -18,13 +18,22 @@ from ralph.recovery.classifier import FailureCategory
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.memory import MemoryWorkspace
 
+if TYPE_CHECKING:
+    from ralph.policy.models import PolicyBundle
+
+
+_FUZZY_ANALYSIS_HOW_TO_FIX = (
+    "Edit `ralph-workflow/Makefile` to remove the contradictory "
+    "`'(part of verify)'` claim from the doc"
+)
+
 
 @lru_cache(maxsize=1)
-def _default_policy_bundle() -> object:
+def _default_policy_bundle() -> PolicyBundle:
     return load_policy(Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults")
 
 
-def _make_context(workspace: MemoryWorkspace, policy: object = None) -> PhaseContext:
+def _make_context(workspace: MemoryWorkspace, policy: PolicyBundle | None = None) -> PhaseContext:
     if policy is None:
         policy = _default_policy_bundle()
     registry: Any = object()
@@ -376,6 +385,77 @@ def test_analysis_feedback_passes_with_exact_text() -> None:
         plan_items=[{"plan_item": "Step 1: Add validation", "proof": "Implemented."}],
         analysis_items=[
             {"how_to_fix_item": "Add test for edge case", "proof": "Added test."},
+        ],
+    )
+    ctx = _make_context(workspace)
+
+    events = handle_execution_phase(_invoke(), ctx)
+
+    assert events == [PipelineEvent.AGENT_SUCCESS]
+
+
+
+def test_analysis_feedback_passes_with_case_and_punctuation_variation() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    _write_analysis_feedback(workspace)
+    _write_dev_result(
+        workspace,
+        plan_items=[{"plan_item": "Step 1: Add validation", "proof": "Implemented."}],
+        analysis_items=[
+            {
+                "how_to_fix_item": (
+                    "edit makefile to remove the contradictory part of verify claim "
+                    "from the doc"
+                ),
+                "proof": "Updated the document wording.",
+            },
+        ],
+    )
+    workspace.write(
+        ".agent/artifacts/development_analysis_decision.json",
+        json.dumps(
+            {
+                "status": "request_changes",
+                "summary": "Issues found",
+                "what_came_up_short": ["Doc wording was contradictory"],
+                "how_to_fix": [_FUZZY_ANALYSIS_HOW_TO_FIX],
+            }
+        ),
+    )
+    ctx = _make_context(workspace)
+
+    events = handle_execution_phase(_invoke(), ctx)
+
+    assert events == [PipelineEvent.AGENT_SUCCESS]
+
+
+
+def test_analysis_feedback_passes_with_minor_spelling_variation() -> None:
+    workspace = MemoryWorkspace()
+    _write_plan_steps(workspace)
+    workspace.write(
+        ".agent/artifacts/development_analysis_decision.json",
+        json.dumps(
+            {
+                "status": "request_changes",
+                "summary": "Issues found",
+                "what_came_up_short": ["Doc wording was contradictory"],
+                "how_to_fix": [_FUZZY_ANALYSIS_HOW_TO_FIX],
+            }
+        ),
+    )
+    _write_dev_result(
+        workspace,
+        plan_items=[{"plan_item": "Step 1: Add validation", "proof": "Implemented."}],
+        analysis_items=[
+            {
+                "how_to_fix_item": (
+                    "Edit ralph workflow Makefile to remove the contradictry part of "
+                    "verify claim from the doc"
+                ),
+                "proof": "Updated the document wording.",
+            },
         ],
     )
     ctx = _make_context(workspace)

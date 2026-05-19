@@ -58,9 +58,9 @@ If the answer is murky, the handoff is still too weak.
 ## What to read next
 
 - Want the concrete artifact bundle? Read [example-review-bundle.md](./example-review-bundle.md)
+- Want the longer first-task proof walk-through? Read [free-open-source-proof.md](./free-open-source-proof.md)
 - Want the post-run branch point? Read [after-your-first-run.md](./after-your-first-run.md)
 - Want the merge checklist? Read [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md)
-- Want the cleanest finish receipt? Read [what-a-good-ai-coding-finish-receipt-looks-like.md](./what-a-good-ai-coding-finish-receipt-looks-like.md)
 
 ## Keep the public action on Codeberg
 
