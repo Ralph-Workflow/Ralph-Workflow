@@ -152,6 +152,19 @@ A weak first task is:
 - a broad migration with no clear stopping point
 - anything where nobody agrees what `done` means
 
+## Best next step after you run one of these templates
+
+Do not leave the result as a private experiment.
+
+Use **Codeberg** as the main public home:
+
+- **Inspect the primary repo on Codeberg first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg if the first run earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or missing template guidance on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror if that is where you already track projects:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+Then use [After Your First Ralph Workflow Run](after-your-first-run.md) to turn one honest trial into the right public next step.
+
 ## Next step
 
 - Continue with [Getting Started](getting-started.md) for the fastest first-run path

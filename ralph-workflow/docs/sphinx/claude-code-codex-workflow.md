@@ -88,6 +88,19 @@ If you want the shortest first-run path, start with [Getting Started](getting-st
 If you want help choosing the first agent path, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 If you want to inspect a public proof asset before your own run, open [Example Review Bundle](example-review-bundle.md).
 
+## Best next step if the role split still ends in manual review glue
+
+Do not stop at "we used two agents."
+
+Use **Codeberg** as the main public home:
+
+- **Inspect the primary repo on Codeberg first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg if the morning-after handoff is the thing you were missing:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg if the split still leaves weak finish-state proof:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror if that is where you already follow projects:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+Then use [After Your First Ralph Workflow Run](after-your-first-run.md) so one promising trial becomes a visible primary-repo trust signal and one rough trial becomes a useful issue.
+
 ## The practical takeaway
 
 Claude Code + Codex is already a good instinct.

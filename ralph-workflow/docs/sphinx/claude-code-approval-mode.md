@@ -61,6 +61,7 @@ Ralph Workflow is the better fit when:
 - the task is clear enough to hand off overnight
 - the real evaluation happens the next morning in the diff, not mid-run in the terminal
 - you want the run to end in a reviewable finish state instead of another decision queue
+- you want the public trust signal and first-run feedback to accumulate on Codeberg instead of disappearing into a local-only experiment
 
 If you need live intervention on a fragile exploratory session, approval mode may still be the right tool.
 If you want a bounded overnight handoff you can judge honestly in the morning, Ralph Workflow is the stronger path.
@@ -72,11 +73,23 @@ Use this rule before you pick the workflow:
 - If the main need is **live approvals during exploration**, stay interactive.
 - If the main need is **a reviewable morning-after handoff**, use Ralph Workflow.
 
+## Best next step if approval mode is still making you babysit the run
+
+Do not leave the evaluation private.
+
+Use **Codeberg** as the main public home:
+
+- **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg if the overnight workflow earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report approval-mode friction or weak finish-state proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+Then use [After Your First Ralph Workflow Run](after-your-first-run.md) to turn the result into one clear public next step instead of letting it end as a private trial.
+
 ## Next steps
 
 - Start with [Getting Started](getting-started.md)
 - Read [Bounded Autonomy for Unattended Coding](bounded-autonomy-for-unattended-coding.md) if the real fear is drift
 - Read [Remote Supervision of Coding Agents](remote-supervision-of-coding-agents.md) if the habit is late-night transcript watching
 - Read [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) if the merge decision is still fuzzy
-- Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- Use the synced **GitHub mirror** second: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- Use [After Your First Ralph Workflow Run](after-your-first-run.md) once you have one honest overnight result
