@@ -42,6 +42,8 @@ Everything else in this docs map is secondary until after that first Codeberg-fi
 - `bounded-autonomy-for-unattended-coding.md` — keep unattended runs fail-closed, cheap to miss, and easy to review the next morning
 - `remote-supervision-of-coding-agents.md` — for developers who think they need remote supervision but really need a cleaner finish-state trust path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first category page for developers searching for an open-source AI coding orchestrator they can inspect before install
+- `ai-agent-orchestration-cli.md` — practical comparison page for developers evaluating orchestration CLIs and looking for a Codeberg-first reviewable-output path
+- `spec-driven-ai-agent.md` — category/positioning page for developers who want a spec-first workflow instead of a prompt-first loop
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
 - `ralph-workflow-vs-claude-code.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing Claude Code habit
@@ -121,6 +123,8 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `bounded-autonomy-for-unattended-coding.md` — practical guide for keeping unattended runs bounded, fail-closed, and reviewable
 - `remote-supervision-of-coding-agents.md` — practical guide for converting live-supervision pain into a cleaner morning-after review path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first explanation of what Ralph Workflow adds if you are comparing open-source AI coding orchestrators
+- `ai-agent-orchestration-cli.md` — practical comparison page for developers evaluating orchestration CLIs by the quality of the reviewable handoff
+- `spec-driven-ai-agent.md` — explanation of why Ralph Workflow is built around a spec-first finish line instead of a prompt-first loop
 - `what-a-good-ai-coding-finish-receipt-looks-like.md` — what a short trustworthy morning-after handoff should contain so review does not start with transcript archaeology
 - `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task
 - `why-worktrees-are-not-enough.md` — practical comparison for teams already using worktrees who still need a reviewable unattended handoff

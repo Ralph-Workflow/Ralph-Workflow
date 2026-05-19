@@ -55,6 +55,8 @@ If you want copy-paste starter specs instead of drafting from scratch, read [Fir
 If you already use Aider for interactive work and want the clearest contrast, read [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md).
 If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fix artifacts before you run Ralph Workflow yourself, read [Example Review Bundle](example-review-bundle.md).
 If you are comparing category options first, read [Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For](open-source-ai-coding-orchestrator.md).
+If you are comparing orchestration tools directly, read [AI Agent Orchestration CLI: A Practical Comparison for Developers](ai-agent-orchestration-cli.md).
+If the missing piece is a spec-first mental model instead of a bigger prompt, read [Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt](spec-driven-ai-agent.md).
 Use the primary repo on Codeberg for inspection, stars, watches, and issues: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The GitHub mirror is here if you already track projects there: <https://github.com/Ralph-Workflow/Ralph-Workflow>.
 
 ## Before you start

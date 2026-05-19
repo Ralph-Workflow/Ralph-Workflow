@@ -35,7 +35,9 @@ Choose the first path that matches how you already work tonight:
 - Want unattended runs to stay **bounded and fail-closed** instead of drifting all night? Read :doc:`bounded-autonomy-for-unattended-coding`.
 - Keep reaching for **remote supervision** when the real problem is trusting the finish state? Read :doc:`remote-supervision-of-coding-agents`.
 - Searching for an **open-source AI coding orchestrator** you can inspect on Codeberg first? Read :doc:`open-source-ai-coding-orchestrator`.
+- Evaluating an **AI agent orchestration CLI** and want the practical difference? Read :doc:`ai-agent-orchestration-cli`.
 - Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
+- Want a **spec-driven AI agent** instead of a prompt-first loop? Read :doc:`spec-driven-ai-agent`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
 - Already finished a first run and want the right public next step? Read :doc:`after-your-first-run`.
 
@@ -322,7 +324,9 @@ Then come back and ask one question:
    getting-started
    when-unattended-coding-fits
    open-source-ai-coding-orchestrator
+   ai-agent-orchestration-cli
    unattended-coding-agent
+   spec-driven-ai-agent
    first-task-guide
    which-agent-should-i-start-with
    claude-code-automation
