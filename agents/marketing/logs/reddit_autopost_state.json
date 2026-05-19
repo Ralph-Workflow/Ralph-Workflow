@@ -1,6 +1,9 @@
 {
-  "last_attempt_at": "2026-05-19T03:50:39.676475",
+  "last_attempt_at": "2026-05-19T04:24:28.017357",
   "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-18_2115.md",
-  "last_attempt_status": "fresh_opportunity_rate_limited",
-  "last_detail": "opportunity_state:fresh_rate_limited; opportunities:6"
+  "last_thread_url": "<https://www.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/>",
+  "last_comment_url": null,
+  "last_attempt_status": "already_logged",
+  "last_poster_status": "already_logged",
+  "last_detail": "Thread already exists in outreach-log.md"
 }

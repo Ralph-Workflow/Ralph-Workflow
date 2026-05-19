@@ -2,6 +2,16 @@
 
 ## 2026-05-19 (Tuesday)
 
+### RalphWorkflow remote-supervision conversion repair
+- **New remote-supervision trust page shipped**: added a new public `Remote Supervision of Coding Agents` conversion page and surfaced it across the highest-intent repo/docs entry points so evaluators who think they need remote supervision now get a direct Codeberg-first answer that reframes the real problem as finish-state trust, not just live visibility.
+  - Commit: `51857c72` — `Add remote supervision conversion path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/remote-supervision-of-coding-agents.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/quickstart.md`, `ralph-workflow/docs/sphinx/remote-supervision-of-coding-agents.md`
+  - Why: this is **NEW / REPLACING** a failed tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the live bottleneck and explicitly requires repo/docs conversion surfaces or SEO landing pages instead of more write.as-only output. Recent Reddit monitoring kept surfacing remote-supervision / approval-babysitting pain, but there was no direct Codeberg-first page for that evaluator intent. This repair turns that pain into a repo-native conversion path instead of another generic article.
+  - Expected outcome: more qualified Codeberg repo inspections from developers searching for remote supervision / approval-drag answers, with a secondary increase in Codeberg stars/watchers/issues because the page closes on primary-repo actions.
+  - Measurement window: next 7 days for page-path usage / repo-inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding supervision/trust landing pages and shift the next replacement move to a live external distribution action that sends traffic directly into the strongest Codeberg-first proof/comparison pages.
+
 ### RalphWorkflow Codex CLI comparison conversion repair
 - **New Codex-first comparison surface shipped**: added a new public `Ralph Workflow vs Codex CLI` comparison page and surfaced it across the highest-intent repo/docs entry points so Codex-native evaluators now get a direct Codeberg-first answer to what Ralph Workflow is, who it is for, why it is different, and why to try it now instead of bouncing off the repo or defaulting to the GitHub mirror.
   - Commit: `24c841f2` — `Add Codex CLI comparison conversion path`
@@ -1387,3 +1397,27 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Expected outcome: stronger conversion from existing repo/docs traffic into Codeberg repo inspections first, then stars/watchers/issues, because the public docs path is now cleaner, more trustworthy, and explicitly primary-repo oriented.
   - Measurement window: next 7 days for docs/repo inspection evidence on Codeberg-first entry paths; next 14 days for Codeberg stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending the next cycle on more internal docs polish and replace it with an external distribution move that sends traffic directly into the strongest repaired Codeberg-first proof/comparison pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 04:36:05
+- **Note:** Momentum check found: reddit_monitor_stale, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow hosted-docs mirror-link repair
+- **Broken hosted-docs GitHub mirror links fixed and pushed**: corrected the stale lowercase GitHub mirror URL (`github.com/ralph-workflow/ralph-workflow`) on the live hosted-docs source surfaces that still send high-intent readers through an inconsistent/non-canonical mirror path instead of the real synced mirror, while keeping Codeberg as the explicit primary repo.
+  - Commit: `13ac736a` — `Fix hosted docs GitHub mirror links`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `ralph-workflow/README.md`, `ralph-workflow/docs/sphinx/getting-started.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/ralph-workflow-vs-codex-cli.md`, `ralph-workflow/docs/sphinx/why-worktrees-are-not-enough.md`
+  - Why: this is **REPAIRED / REPLACING** a failing tactic. The audit says primary-repo conversion is still flat and requires direct repair work on public repo/docs surfaces instead of more write.as-only output. Leaving broken or inconsistent mirror URLs on hosted docs quietly burns trust and weakens the Codeberg-first / GitHub-second routing discipline right at the inspection step.
+  - Expected outcome: fewer trust leaks on hosted docs entry points, cleaner Codeberg-first repo inspection flow, and a secondary lift in valid GitHub-mirror inspections from visitors who only follow projects there.
+  - Measurement window: next 7 days for hosted-docs path usage / repo-inspection evidence; next 14 days for Codeberg stars/watchers delta.
+  - Replace if it fails: if Codeberg stars/watchers are still flat through 2026-06-02, stop spending the next cycle on mirror-link hygiene and replace it with a live external distribution move into the strongest existing Codeberg-first proof/comparison pages.
+
+### RalphWorkflow conversion-surface simplification repair
+- **README / START_HERE / docs map rewritten to force the primary Codeberg-first path**: shipped a repo-surface rewrite that stops asking evaluators to choose from a long menu of pages before they understand the core adoption flow. The public entry points now foreground the same three-step path: inspect the primary repo on Codeberg, run one bounded real task, and judge the morning-after handoff with the merge question.
+  - Commit: `cf6b26af` — `Prioritize Codeberg-first evaluation path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`
+  - Why: this is **REWRITTEN / REPLACING** a failing tactic. The audit says the live bottleneck is `distribution_and_message_to_primary_repo_conversion`, and the current repo/docs surfaces had become broad enough that high-intent visitors could get lost in the option set instead of taking the primary Codeberg-first evaluation path. This repair does not add another asset; it rewrites the entry surfaces so existing traffic gets a clearer next action.
+  - Expected outcome: more qualified Codeberg repo inspections and fewer evaluator drop-offs from the repo/docs landing surfaces because the first three actions are now explicit instead of buried in a long link list.
+  - Measurement window: next 7 days for clearer repo-inspection / issue-path evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending cycles on entry-surface hierarchy tweaks and replace this with a new external distribution move that sends warm traffic directly into the strongest Codeberg proof path.

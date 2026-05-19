@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
-"""Post scheduled RalphWorkflow drafts to write.as, with Codeberg CTAs.
+"""Post scheduled RalphWorkflow drafts to write.as and Telegraph, with Codeberg CTAs.
 
-Distribution note (2026-05-19): Telegraph API is permanently broken (UNKNOWN_METHOD) — cannot re-enable.
-write.as is the only currently working distribution channel.
-Seeking additional platforms: Dev.to (auth blocked), HN (needs account), Lobsters (needs invite).
+Distribution (2026-05-19): Dual-posts to write.as + Telegraph via post_to_web.py.
+Both platforms get the same body with Codeberg primary + GitHub mirror CTA footer.
+Blocked channels: Dev.to (auth blocked), HN (needs account), Lobsters (needs invite).
 
 Rules:
 - only publish markdown drafts for today
 - never generate filler posts automatically
 - skip a draft if the same content hash already posted successfully to all platforms
-- always include Codeberg primary + GitHub mirror CTA footer
-- post to write.as with Codeberg CTAs
-- Telegraph disabled — API broken
-
-Repair (2026-05-19): write.as-only publishing is the current constraint.
-Telegraph is permanently broken. Seeking alternatives: Dev.to API (blocked), HN (needs account),
-Lobsters (needs invite). Each published piece includes a Codeberg primary CTA to drive repo adoption.
+- always include Codeberg primary + GitHub mirror CTA footer in every post
+- dual-post to write.as and Telegraph simultaneously
 """
+
 from __future__ import annotations
 
 import hashlib

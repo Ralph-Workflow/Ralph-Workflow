@@ -1,5 +1,5 @@
-My default is to optimize for a clean morning-after review, not maximum autonomy.
+Honestly the part I'd optimize first is the handoff, not the model stack.
 
-If the run ends with a readable diff, checks, and unresolved decisions called out, it's usable. If it ends with a confident summary, it usually isn't.
+If the run ends with one readable diff, real checks, and a short note about what still looks sketchy, you can move fast without lying to yourself about the result.
 
-That framing has helped more than any specific model switch.
+Most of the pain is not raw generation. It's stale assumptions, fuzzy ownership, and nobody making the finish easy to review.
