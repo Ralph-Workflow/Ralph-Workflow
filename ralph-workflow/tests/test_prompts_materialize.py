@@ -729,3 +729,271 @@ def test_development_analysis_to_development_commit_clears_history_per_policy(
     # development_result history is cleared (clear_on_fresh_entry=true for development)
     assert not dev_archived.exists(), "development_result archive must be removed"
     assert not dev_index.exists(), "development_result history index must be removed"
+
+
+
+def test_planning_analysis_bypass_clears_history_per_policy(
+    tmp_path: Path,
+) -> None:
+    """planning bypass: iteration cap hit routes planning->development (skipping analysis)."""
+    pipeline_policy = PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                role="execution",
+                prompt_template="planning.jinja",
+                transitions=PhaseTransition(on_success="planning_analysis"),
+                artifact_history=ArtifactHistoryPolicy(enabled=True, clear_on_fresh_entry=True),
+            ),
+            "planning_analysis": PhaseDefinition(
+                drain="planning_analysis",
+                role="analysis",
+                prompt_template="planning_analysis.jinja",
+                transitions=PhaseTransition(
+                    on_success="development",
+                    on_loopback="planning",
+                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
+                decisions={
+                    "completed": PhaseDecisionRoute(target="development"),
+                    "request_changes": PhaseDecisionRoute(target="planning"),
+                },
+                artifact_history=ArtifactHistoryPolicy(enabled=True, clear_on_fresh_entry=False),
+            ),
+            "development": PhaseDefinition(
+                drain="development",
+                role="execution",
+                prompt_template="developer_iteration.jinja",
+                transitions=PhaseTransition(on_success="complete"),
+                artifact_history=ArtifactHistoryPolicy(enabled=True, clear_on_fresh_entry=True),
+            ),
+            "complete": PhaseDefinition(
+                drain="complete",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+            ),
+        },
+        entry_phase="planning",
+        terminal_phase="complete",
+    )
+
+    artifacts_policy = ArtifactsPolicy(
+        artifacts={
+            "plan": ArtifactContract(
+                drain="planning",
+                artifact_type="plan",
+            ),
+            "planning_analysis_decision": ArtifactContract(
+                drain="planning_analysis",
+                artifact_type="planning_analysis_decision",
+                decision_vocabulary=["completed", "request_changes"],
+            ),
+            "development_result": ArtifactContract(
+                drain="development",
+                artifact_type="development_result",
+            ),
+        }
+    )
+
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Implement the feature")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
+
+    # Create plan history files
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
+    plan_hist_dir.mkdir(parents=True, exist_ok=True)
+    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
+    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_index = history_index_path(artifact_dir, "plan")
+    plan_index.write_text("# History", encoding="utf-8")
+
+    # Create planning_analysis_decision history files
+    analysis_hist_dir = history_dir_for_artifact(artifact_dir, "planning_analysis_decision")
+    analysis_hist_dir.mkdir(parents=True, exist_ok=True)
+    analysis_archived = analysis_hist_dir / "20260506T120000_planning_analysis_decision.json"
+    analysis_archived.write_text('{"type":"planning_analysis_decision"}', encoding="utf-8")
+    analysis_index = history_index_path(artifact_dir, "planning_analysis_decision")
+    analysis_index.write_text("# History", encoding="utf-8")
+
+    # Create development_result history files
+    dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
+    dev_hist_dir.mkdir(parents=True, exist_ok=True)
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
+    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_index = history_index_path(artifact_dir, "development_result")
+    dev_index.write_text("# History", encoding="utf-8")
+
+    # Bypass: previous_phase is "planning" (execution role), NOT "planning_analysis"
+    # The chain is: planning -> planning_analysis -> development
+    # But we're bypassing planning_analysis, so: planning -> development
+    materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase="planning",  # Bypass: skipped planning_analysis
+        ),
+    )
+
+    # Plan history is cleared (clear_on_fresh_entry=true for planning)
+    assert not plan_archived.exists(), "plan archive must be removed on bypass"
+    assert not plan_index.exists(), "plan history index must be removed on bypass"
+    # planning_analysis_decision history is preserved (clear_on_fresh_entry=false)
+    assert analysis_archived.exists(), "planning_analysis_decision archive must be preserved"
+    assert analysis_index.exists(), "planning_analysis_decision history index must be preserved"
+    # development_result history is cleared (clear_on_fresh_entry=true for development)
+    assert not dev_archived.exists(), "development_result archive must be removed on bypass"
+    assert not dev_index.exists(), "development_result history index must be removed on bypass"
+
+
+def test_development_analysis_bypass_clears_history_per_policy(
+    tmp_path: Path,
+) -> None:
+    """development bypass: iteration cap hit routes development->development_commit."""
+    pipeline_policy = PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                role="execution",
+                prompt_template="planning.jinja",
+                transitions=PhaseTransition(on_success="planning_analysis"),
+                artifact_history=ArtifactHistoryPolicy(enabled=True, clear_on_fresh_entry=True),
+            ),
+            "planning_analysis": PhaseDefinition(
+                drain="planning_analysis",
+                role="analysis",
+                prompt_template="planning_analysis.jinja",
+                transitions=PhaseTransition(
+                    on_success="development",
+                    on_loopback="planning",
+                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
+                decisions={
+                    "completed": PhaseDecisionRoute(target="development"),
+                },
+                artifact_history=ArtifactHistoryPolicy(enabled=True, clear_on_fresh_entry=False),
+            ),
+            "development": PhaseDefinition(
+                drain="development",
+                role="execution",
+                prompt_template="developer_iteration.jinja",
+                transitions=PhaseTransition(on_success="development_analysis"),
+                artifact_history=ArtifactHistoryPolicy(enabled=True, clear_on_fresh_entry=True),
+            ),
+            "development_analysis": PhaseDefinition(
+                drain="development_analysis",
+                role="analysis",
+                prompt_template="development_analysis.jinja",
+                transitions=PhaseTransition(
+                    on_success="development_commit",
+                    on_loopback="development",
+                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
+                decisions={
+                    "completed": PhaseDecisionRoute(target="development_commit"),
+                    "request_changes": PhaseDecisionRoute(target="development"),
+                },
+                artifact_history=ArtifactHistoryPolicy(enabled=True, clear_on_fresh_entry=False),
+            ),
+            "development_commit": PhaseDefinition(
+                drain="development_commit",
+                role="commit",
+                prompt_template="commit_message.jinja",
+                transitions=PhaseTransition(on_success="complete"),
+                artifact_history=ArtifactHistoryPolicy(enabled=True, clear_on_fresh_entry=False),
+            ),
+            "complete": PhaseDefinition(
+                drain="complete",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+            ),
+        },
+        entry_phase="planning",
+        terminal_phase="complete",
+        loop_counters={
+            "planning_analysis_iteration": LoopCounterConfig(default_max=3),
+            "development_analysis_iteration": LoopCounterConfig(default_max=3),
+        },
+    )
+
+    artifacts_policy = ArtifactsPolicy(
+        artifacts={
+            "plan": ArtifactContract(
+                drain="planning",
+                artifact_type="plan",
+            ),
+            "development_result": ArtifactContract(
+                drain="development",
+                artifact_type="development_result",
+            ),
+            "development_analysis_decision": ArtifactContract(
+                drain="development_analysis",
+                artifact_type="development_analysis_decision",
+                decision_vocabulary=["completed", "request_changes"],
+            ),
+        }
+    )
+
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Implement the feature")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
+
+    # Create plan history files
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
+    plan_hist_dir.mkdir(parents=True, exist_ok=True)
+    plan_archived = plan_hist_dir / "20260506T120000_plan.json"
+    plan_archived.write_text('{"type":"plan"}', encoding="utf-8")
+    plan_index = history_index_path(artifact_dir, "plan")
+    plan_index.write_text("# History", encoding="utf-8")
+
+    # Create development_result history files
+    dev_hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
+    dev_hist_dir.mkdir(parents=True, exist_ok=True)
+    dev_archived = dev_hist_dir / "20260506T120000_development_result.json"
+    dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
+    dev_index = history_index_path(artifact_dir, "development_result")
+    dev_index.write_text("# History", encoding="utf-8")
+
+    # Create development_analysis_decision history files
+    analysis_hist_dir = history_dir_for_artifact(artifact_dir, "development_analysis_decision")
+    analysis_hist_dir.mkdir(parents=True, exist_ok=True)
+    analysis_archived = analysis_hist_dir / "20260506T120000_development_analysis_decision.json"
+    analysis_archived.write_text('{"type":"development_analysis_decision"}', encoding="utf-8")
+    analysis_index = history_index_path(artifact_dir, "development_analysis_decision")
+    analysis_index.write_text("# History", encoding="utf-8")
+
+    # Bypass: previous_phase is "development" (execution role), NOT "development_analysis"
+    # The chain is: development -> development_analysis -> development_commit
+    # But we're bypassing development_analysis, so: development -> development_commit
+    materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="development_commit",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(
+            artifacts_policy=artifacts_policy,
+            previous_phase="development",  # Bypass: skipped development_analysis
+        ),
+    )
+
+    # Plan history is cleared (clear_on_fresh_entry=true for planning)
+    assert not plan_archived.exists(), "plan archive must be removed on bypass"
+    assert not plan_index.exists(), "plan history index must be removed on bypass"
+    # development_analysis_decision history is preserved (clear_on_fresh_entry=false)
+    assert analysis_archived.exists(), "development_analysis_decision archive must be preserved"
+    assert analysis_index.exists(), "development_analysis_decision history index must be preserved"
+    # development_result history is cleared (clear_on_fresh_entry=true for development)
+    assert not dev_archived.exists(), "development_result archive must be removed on bypass"
+    assert not dev_index.exists(), "development_result history index must be removed on bypass"
