@@ -201,6 +201,7 @@ Ship-blocking checks:
 - Was the changed prose copy-edited for brevity, rhythm, headings, repetition, and scanability?
 
 If clutter, duplication, or navigation anxiety increased, do not ship the docs change until it is pruned or reorganized.
+- Every once in a while, if `README.md` / `START_HERE.md` / docs surfaces drift into a bad state, do a **full-house docs audit** instead of another local patch. That audit should review the whole top-level docs system, not just the page that currently looks wrong.
 
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 

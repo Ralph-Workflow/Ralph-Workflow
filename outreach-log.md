@@ -42,6 +42,19 @@
   - Type: **REPAIRED / REPLACING**
 
 ### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-19_2115.md`
+- **Scan summary:** 29 candidate Reddit threads/posts scanned, 7 shortlisted, 22 rejected.
+- **Current verdict:** Mixed — 7 credible discussion opportunities were found, but only 1-2 are decent RalphWorkflow mention fits and 0 are obvious high-confidence product mentions after prior-use, bounded-autonomy, audit-boundary, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code just shipped a \"run until done\" mode. Upgrade to v2.1.139 for /goal."
+  - `r/ClaudeCode` — "Claude Code stuck in \"approval loop\""
+  - `r/ClaudeCode` — "A practical way to run Claude Code tasks in parallel without turning your repo into chaos"
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+- **Repeated pains worth tracking:** approval drag / double-confirmation friction, morning-after review/reconstruction, cleanup noise on the human review surface, shared-boundary ownership, fail-closed / runaway-loop anxiety, long-run memory/schema drift, and audit-boundary / permission-separation pressure in production multi-agent setups.
+- **Risk note:** repeat-pattern risk is now both literal and structural — two `u/Informal-Salt827` comments on **2026-05-19 09:37 CEST** and **2026-05-19 16:01 CEST** reused the exact same body, and the deeper repetition issue is now **pain-shape cadence** as much as phrasing.
+- **Posting note:** No posting attempted from this monitor pass.
+
+### Reddit monitoring
 - **Report:** `seo-reports/reddit_monitor_2026-05-19_1815.md`
 - **Scan summary:** 27 candidate Reddit threads/posts scanned, 6 shortlisted, 21 rejected.
 - **Current verdict:** Mixed — 6 credible discussion opportunities were found, but only 1-2 are decent RalphWorkflow mention fits and 0 are obvious high-confidence product mentions after prior-use, freshness, bounded-autonomy, and no-product-value filtering.
@@ -2330,3 +2343,57 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Measurement window: next 7 days for Codeberg-facing page inspection / referral evidence; next 14 days (through `2026-06-02`) for Codeberg stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat on `2026-06-02`, stop spending cycles on more repo-root CTA tightening alone and shift the next replacement move to a fresh external distribution or backlink surface that sends traffic directly into these repaired pages.
   - Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 21:11:37
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow repo-root evaluator-doc CTA repair
+- **When:** 2026-05-19 21:18:39
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** patched the two highest-intent repo-root evaluator pages that still ended without an explicit primary-repo next step: `docs/reviewable-output.md` and `docs/unattended-coding-agent.md`. Added Codeberg-first inspect / star-watch / issue CTA blocks with GitHub framed only as the mirror, then pushed commit `d69bd83b` (`Tighten Codeberg CTAs on evaluator docs`) to Codeberg and the GitHub mirror.
+  - Verification: `git diff -- docs/reviewable-output.md docs/unattended-coding-agent.md` showed the new CTA blocks; `grep -nE 'Codeberg|GitHub only as the mirror|issues/new' docs/reviewable-output.md docs/unattended-coding-agent.md` confirmed the new routing copy; push succeeded to both `origin` (Codeberg) and `github`.
+- **Why this action:** this is **REPAIRED / REPLACING** a flat tactic. The live audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck and specifically prioritizes stronger repo/docs conversion surfaces over repeating stale distribution. These two pages sit directly in the evaluator journey from the docs map, but they still let qualified readers finish the page without a public Codeberg action.
+- **Expected outcome:** more qualified readers who land on proof/fit pages should click into the **Codeberg** repo and convert into visible stars, watches, or first-run issues instead of keeping the evaluation private.
+- **Measurement window:** next 7 days for referral/inspection evidence from these pages; next 14 days (through `2026-06-02`) for **Codeberg** stars/watchers/issues delta.
+- **Replace if it fails:** if Codeberg stars/watchers/issues are still flat on `2026-06-02`, stop spending the next cycle on more evaluator-doc CTA tightening alone and replace this lane with a fresh external backlink/distribution surface that points directly into the repaired evaluator pages.
+
+### RalphWorkflow approval-loop Telegraph distribution repair
+- **When:** 2026-05-19 21:44:55 CEST
+- **Type:** NEW / REPLACING
+- **What I executed:** published a new Codeberg-first Telegraph post for the live evaluator pain phrase **`Claude Code approval loop`** so the already-shipped repo/docs approval-mode page now has a matching external distribution surface instead of relying only on owned docs.
+  - Live URL: `https://telegra.ph/Claude-Code-Approval-Loop-The-Real-Problem-Is-the-Morning-After-Handoff-05-19`
+  - Source draft: `drafts/2026-05-19_claude-code-approval-loop_telegraph.md`
+  - Verification: `python3 agents/marketing/run_posting.py` returned `status: posted` for the new draft; live fetch returned HTTP `200`; published body contains the Codeberg-primary CTA (`View on Codeberg`) and GitHub mirror CTA second.
+- **Why this action:** this is **NEW / REPLACING** a failed tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, Codeberg adoption is still flat, and the freshest live discussion pain in monitoring is approval drag / approval-loop babysitting. The repo/docs answer already existed, so the highest-leverage same-run move was to distribute that exact pain framing on an unblocked external surface with Codeberg first rather than invent another generic article or repeat a directory already used today.
+- **Expected outcome:** more qualified Claude Code evaluators searching or sharing around approval-loop pain should reach a Codeberg-first explanation and click through to inspect the primary repo.
+- **Measurement window:** next 7 days for Telegraph indexing / referral evidence; next 14 days for **Codeberg** stars/watchers/forks/issues delta.
+- **Replace if it fails:** if this page is indexed/shared and **Codeberg** is still flat through `2026-06-02`, stop expanding Telegraph pain-term distribution alone and replace the next cycle with either a warmer competitor-citation/discussion surface or another direct conversion repair on owned pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 21:45:51
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+
+### RalphWorkflow AI coding workflow automation Telegraph distribution repair
+- **When:** 2026-05-19 21:57:00 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** published the already-shipped exact-intent page **AI Coding Workflow Automation: What Actually Makes It Useful** to Telegraph with an explicit **Codeberg-first** CTA and GitHub framed only as the mirror. Published URL: https://telegra.ph/AI-Coding-Workflow-Automation-What-Actually-Makes-It-Useful-05-19
+- **Verification:** live publish returned Telegraph `ok:true` with path `AI-Coding-Workflow-Automation-What-Actually-Makes-It-Useful-05-19`; direct fetch of the public page returned HTTP `200` and the published body preserved the target phrase plus Codeberg-first routing.
+- **Why this action:** this is **REPAIRED / REPLACING** a flat tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, and the active repair rule says to stop defaulting to dead/weak distribution and instead cross-post already-strong assets to unblocked platforms with explicit Codeberg CTA. The owned landing page for `AI coding workflow automation` was already live on repo/docs surfaces but still lacked the matching external keyword-distribution surface, so publishing that exact-intent asset was the strongest same-run move available.
+- **Expected outcome:** evaluators searching for **AI coding workflow automation** should now be able to discover a public article that explains the reviewable-handoff angle quickly and then click into **Codeberg** as the primary repo instead of bouncing or defaulting to GitHub.
+- **Measurement window:** next 7 days for indexing/discovery and referral evidence from the Telegraph page; next 14 days (through `2026-06-02`) for **Codeberg** stars/watchers/issues delta.
+- **Replace if it fails:** if this Telegraph page is live and Codeberg adoption is still flat on `2026-06-02`, stop adding more Telegraph copies for adjacent automation phrases and replace this lane with a stronger backlink or directory/discussion surface that can cite the owned page directly.
+
+### RalphWorkflow top-level evaluator-path pruning repair
+- **When:** 2026-05-19 22:00:00 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** pruned the two highest-traffic evaluator entry surfaces — `README.md` and `START_HERE.md` — so they stop acting like link farms after the main evaluation path. I replaced the long blocker-by-blocker link dump with a short curated chooser that keeps the default path clear, groups the deeper reads by actual blocker, and routes overflow navigation into `docs/README.md` instead of expanding the top-level surfaces again.
+  - Commit: `0620913b` — `Prune evaluator docs path`
+  - Status: ✅ pushed to Codeberg primary (`origin`) and GitHub mirror (`github`)
+- **Verification:** `git diff -- README.md START_HERE.md` showed the pruning pass (34 deletions / 17 insertions); `grep` confirmed the new compact chooser blocks; `git push origin HEAD` and `git push github HEAD` both succeeded.
+- **Why this action:** this is **REPAIRED / REPLACING** a failing tactic. Codeberg adoption is still flat, the active repair path says to prefer stronger repo/docs conversion surfaces over repeating stale distribution, and the top evaluator journey had accumulated too many parallel links. That creates navigation anxiety right where a qualified visitor should either start a run or click into Codeberg. Pruning the entry path is a stronger same-run conversion repair than another adjacent CTA micro-edit or another low-context post.
+- **Docs review note:** reviewed the public evaluator journey in order across `README.md`, `START_HERE.md`, and `docs/README.md`. The change belongs on the top-level surfaces because this was a first-screen navigation problem, not a missing-doc problem. I pruned and grouped links instead of adding new ones, reduced duplication between README and START_HERE, kept `docs/README.md` as the long-form chooser, and made the top-level experience easier to skim in under 10 seconds.
+- **Expected outcome:** more qualified GitHub/Codeberg evaluators should stay on the main path, reach the Codeberg-first next step faster, and convert into primary-repo inspections, stars, watches, or first-run issues instead of bouncing into docs sprawl.
+- **Measurement window:** next 7 days for clearer top-level evaluator flow and referral behavior from repo entry surfaces; next 14 days (through `2026-06-02`) for **Codeberg** stars/watchers/issues delta.
+- **Replace if it fails:** if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending the next cycle on more top-level docs pruning alone and replace this lane with a warmer external competitor-citation/distribution move that sends traffic directly into the tightened evaluator path.

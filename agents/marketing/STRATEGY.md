@@ -5,7 +5,7 @@
 The active automation path is now intentionally small:
 
 1. `generate_content.py` creates RalphWorkflow-only drafts with experiment metadata.
-2. `run_posting.py` publishes scheduled markdown drafts to write.as only.
+2. `run_posting.py` publishes scheduled markdown drafts to Telegraph (write.as is permanently blocked).
 3. `run.py` measures site health and post performance, then makes weekly content-mix decisions.
 4. Blocked channels stay blocked until credentials/access change.
 5. Apollo.io is a managed account-based outbound channel, but its automation state is currently monitored as blocked until login protection is unblocked.
@@ -31,7 +31,7 @@ This strategy file remains the long-term record, but the current system should f
 ### Tier 1: Automated Posting (works today ✅)
 | Platform | Status | Notes |
 |----------|--------|-------|
-| write.as | ✅ Active | Anonymous posting, cron daily |
+| write.as | ❌ Blocked | Permanently blocked — do not use. Telegraph is primary. |
 | Telegraph | ✅ Active | Anonymous posting, cron daily |
 
 ### Tier 2: Account-Based (blocked) 🔒
@@ -75,7 +75,7 @@ This strategy file remains the long-term record, but the current system should f
 The marketing agent runs and asks:
 
 **1. What happened?**
-- Traffic changes (write.as views, SEO rankings)
+- Traffic changes (Telegraph views, SEO rankings)
 - GitHub activity (stars, forks, mentions)
 - Outreach results (PRs merged, issues responded)
 
@@ -157,7 +157,7 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 ### Automated Posting ✅
 | Channel | Status | Notes |
 |---------|--------|-------|
-| write.as | ✅ Working | SSL works via curl, Python ssl module has cert mismatch |
+| write.as | ❌ Blocked | Permanently blocked — use Telegraph only. |
 | Telegraph | ❌ Broken | Entire API returns UNKNOWN_METHOD — platform may be deprecated |
 
 ### Account-Based Channels 🔒
@@ -192,8 +192,8 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 
 ## What to Do Right Now (No Credentials Needed)
 
-1. **Improve write.as content** — Target low-competition keywords
-2. **Fix Python SSL** — Use curl wrapper for write.as API calls
+1. **Improve Telegraph content** — Target low-competition keywords (unattended coding agent, AI agent orchestration CLI)
+2. **Publish keyword-gap Telegraph posts** — Target "unattended coding agent" and "AI agent orchestration CLI" specifically
 3. **Submit to more directories** — Find free tool directories
 4. **Improve ralphworkflow.com SEO** — Better internal linking, more content
 5. **Create linkable assets** — SEO-optimized standalone pages

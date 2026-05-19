@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-19T20:45:29.938774",
+  "timestamp": "2026-05-19T21:44:55.889296",
   "results": [
     {
       "draft": "2026-05-19_orchestration_draft.md",
@@ -20,6 +20,18 @@
       "ok": true,
       "status": "already_posted",
       "draft_hash": "2fe199186fe320e437ff90e933ef7ad9bac9af662157dadc0b36db7148865cc3",
+      "experiment_id": null
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_claude-code-approval-loop_telegraph.md",
+      "title": "Claude Code Approval Loop: The Real Problem Is the Morning-After Handoff",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Claude-Code-Approval-Loop-The-Real-Problem-Is-the-Morning-After-Handoff-05-19",
+      "error": null,
+      "draft_hash": "9c4797fcafa9bafa464e30797004019659e43fa0f4bee61472bdba97587d0b34",
       "experiment_id": null
     },
     {
@@ -44,14 +56,9 @@
       "experiment_id": null
     },
     {
-      "date": "2026-05-19",
       "draft": "2026-05-19_run-claude-code-overnight-without-babysitting_telegraph.md",
-      "title": "Run Claude Code Overnight Without Babysitting",
-      "platform": "telegraph",
       "ok": true,
-      "status": "posted",
-      "url": "https://telegra.ph/Run-Claude-Code-Overnight-Without-Babysitting-05-19-3",
-      "error": null,
+      "status": "already_posted",
       "draft_hash": "a1f0fee0a6c09f5162990824c0559b2c95f94a7428692328baaf91ee901521aa",
       "experiment_id": null
     },

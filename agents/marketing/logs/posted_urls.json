@@ -244,7 +244,31 @@
       "error": null,
       "draft_hash": "a1f0fee0a6c09f5162990824c0559b2c95f94a7428692328baaf91ee901521aa",
       "experiment_id": null
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_claude-code-approval-loop_telegraph.md",
+      "title": "Claude Code Approval Loop: The Real Problem Is the Morning-After Handoff",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Claude-Code-Approval-Loop-The-Real-Problem-Is-the-Morning-After-Handoff-05-19",
+      "error": null,
+      "draft_hash": "9c4797fcafa9bafa464e30797004019659e43fa0f4bee61472bdba97587d0b34",
+      "experiment_id": null
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "docs/ai-coding-workflow-automation.md",
+      "title": "AI Coding Workflow Automation: What Actually Makes It Useful",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/AI-Coding-Workflow-Automation-What-Actually-Makes-It-Useful-05-19",
+      "error": null,
+      "draft_hash": "manual-2026-05-19-ai-coding-workflow-automation-telegraph",
+      "experiment_id": null
     }
   ],
-  "last_run": "2026-05-19T20:45:29.938774"
+  "last_run": "2026-05-19T19:57:00Z"
 }
