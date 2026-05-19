@@ -106,7 +106,7 @@ Codeberg is the primary repo and the main adoption surface. If Ralph looks like 
 
 If you want third-party surfaces before you decide whether to try it, Ralph Workflow is now live or pending on a few developer-facing discovery pages:
 
-- [GitDB project page](https://gitdb.net/Ralph-Workflow/Ralph-Workflow) — inspect the GitHub mirror from a GitHub-native discovery surface.
+- [ToolWise review page](https://toolwise.ai/tools/ralph-workflow) — inspect a live AI-tool review surface that was submitted with Codeberg as the primary destination.
 - [SaaSHub product page](https://www.saashub.com/ralph-workflow) — review the product card and alternatives context.
 - [SaaSHub alternatives](https://www.saashub.com/ralph-workflow-alternatives) — compare Ralph Workflow against adjacent tools in the same evaluation flow.
 - [TechTools Launchpad listing](https://techtools.cz/tools/launchpad/?tool=71) — a live developer-tools directory entry.
