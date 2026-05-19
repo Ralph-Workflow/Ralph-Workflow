@@ -51,6 +51,7 @@ The post-run branch should stay explicit:
 - `remote-supervision-of-coding-agents.md` — for developers who think they need remote supervision but really need a cleaner finish-state trust path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first category page for developers searching for an open-source AI coding orchestrator they can inspect before install
 - `ai-agent-orchestration-cli.md` — practical comparison page for developers evaluating orchestration CLIs and looking for a Codeberg-first reviewable-output path
+- `unattended-coding-agent.md` — practical page for developers searching for an unattended coding agent and trying to judge whether the morning-after handoff will actually be reviewable
 - `spec-driven-ai-agent.md` — category/positioning page for developers who want a spec-first workflow instead of a prompt-first loop
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
@@ -133,6 +134,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `remote-supervision-of-coding-agents.md` — practical guide for converting live-supervision pain into a cleaner morning-after review path
 - `open-source-ai-coding-orchestrator.md` — Codeberg-first explanation of what Ralph Workflow adds if you are comparing open-source AI coding orchestrators
 - `ai-agent-orchestration-cli.md` — practical comparison page for developers evaluating orchestration CLIs by the quality of the reviewable handoff
+- `unattended-coding-agent.md` — practical page for developers searching for an unattended coding agent they can trust to produce a morning-after handoff instead of a transcript
 - `spec-driven-ai-agent.md` — explanation of why Ralph Workflow is built around a spec-first finish line instead of a prompt-first loop
 - `what-a-good-ai-coding-finish-receipt-looks-like.md` — what a short trustworthy morning-after handoff should contain so review does not start with transcript archaeology
 - `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task

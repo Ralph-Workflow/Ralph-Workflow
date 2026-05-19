@@ -182,6 +182,7 @@ If the core trust question is still whether the task is actually done, read [doc
 If you want the cleanest possible morning-after re-entry point, read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
 If the thing you keep calling "remote supervision" is really a finish-state trust problem, read [docs/remote-supervision-of-coding-agents.md](./docs/remote-supervision-of-coding-agents.md).
 If you are evaluating category fit first and want the clearest Codeberg-first positioning, read [docs/open-source-ai-coding-orchestrator.md](./docs/open-source-ai-coding-orchestrator.md).
+If your exact search is "unattended coding agent" and you want the shortest trust-first answer before setup, read [docs/unattended-coding-agent.md](./docs/unattended-coding-agent.md).
 If you already use Aider and want to know when Ralph Workflow is the better fit, read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
 
 ## Run the fastest honest first test
