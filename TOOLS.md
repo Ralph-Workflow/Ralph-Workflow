@@ -70,7 +70,8 @@ Add whatever helps you do your job. This is your cheat sheet.
 ### IONOS Webmail
 - **Login username:** `ken@hireaegis.com`
 - **Password:** `GV%@iwClD4vetq`
-  - Note: user provided on 2026-05-19 as a possible path to recover Apollo verification access.
+- **IMAP host:** `imap.ionos.com:993`
+  - Note: user provided on 2026-05-19 as a possible path to recover Apollo verification access; IMAP login was confirmed working.
 
 ## Git Hosting
 

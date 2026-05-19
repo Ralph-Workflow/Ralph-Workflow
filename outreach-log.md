@@ -1,5 +1,29 @@
 # Outreach Log
 
+## 2026-05-19 (Tuesday)
+
+### RalphWorkflow spec-driven keyword distribution repair
+- **Published a Codeberg-first Telegraph post for the exact search term `spec-driven AI agent`**: shipped `Spec-Driven AI Agent: Why the Spec Matters More Than the Model` to Telegraph so the third live keyword-gap repair now has an unblocked external surface that links Codeberg first and GitHub second.
+  - Live URL: `https://telegra.ph/Spec-Driven-AI-Agent-Why-the-Spec-Matters-More-Than-the-Model-05-19`
+  - Verification: live fetch returned HTTP 200 and the page body includes the spec-first framing plus Codeberg-primary / GitHub-mirror CTA block.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. Codeberg adoption is still flat, the audit explicitly says Telegraph keyword-gap distribution is the active repair path, and the other two homepage gaps (`AI agent orchestration CLI`, `unattended coding agent`) already have matching Telegraph surfaces. `spec-driven AI agent` was the remaining high-fit keyword with owned coverage but no matching public distribution page.
+  - Expected outcome: more qualified evaluators searching or sharing around `spec-driven AI agent` should reach a Codeberg-first explanation and click through to inspect the primary repo.
+  - Measurement window: next 7 days for Telegraph indexing/referral evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending cycles on Telegraph keyword-gap expansion and shift the next replacement move to a new executable backlink/distribution surface or a repo-root conversion repair tied to a live evaluator intent.
+  - Type: **REPAIRED / REPLACING**
+
+### Reddit monitoring
+- **Report:** `seo-reports/reddit_monitor_2026-05-19_1221.md`
+- **Scan summary:** 30 candidate Reddit threads/posts scanned, 6 shortlisted, 24 rejected.
+- **Current verdict:** Mixed — 6 credible discussion opportunities were found, but only 1–2 are decent RalphWorkflow mention fits and 0 are obvious high-confidence product mentions after prior-use, freshness, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code just shipped a \"run until done\" mode. Upgrade to v2.1.139 for /goal."
+  - `r/ClaudeAI` — "Claude Code’s checkpoint commits are polluting my git history. How are you handling this?"
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+- **Repeated pains worth tracking:** approval drag, morning-after review/reconstruction, cleanup noise on the human review surface, shared-boundary ownership, spend / fail-closed / runaway-loop anxiety, and memory drift in longer-running agents.
+- **Risk note:** the repeat-pattern risk is now bigger than exact phrase reuse; builder/reviewer framing and the familiar diff/checks/product-close cadence are getting stale even when the wording is fresh.
+- **Posting note:** No posting attempted from this monitor pass.
+
 ## 2026-05-19 (Tuesday) — Audit Assessment
 
 **This audit cycle produced no materially new direction.** The audit ran and its findings were executed as repairs in the same window (see below). All reported deltas remain flat because:
@@ -1373,6 +1397,14 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
 - **When:** 2026-05-19 01:59:17
 - **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages.
 
+### RalphWorkflow homepage title repair
+- **Repaired** the hosted-docs theme homepage title path by adding an explicit homepage `<title>` override plus `og:title` / `twitter:title` overrides in `ralph-workflow/docs/sphinx/_themes/ralph-docs/page.html`, then rebuilding the docs locally to verify the generated `index.html` now emits `Unattended Coding Agent & AI Agent Orchestration CLI — Ralph Workflow` instead of relying on weaker fallback title behavior.
+  - Verification: live fetch of `https://ralphworkflow.com` at 2026-05-19 10:49 UTC still showed the stale title `Ralph Workflow — free CLI for AI coding tasks — Ralph Workflow`; local `make docs` succeeded; grep on built `ralph-workflow/docs/sphinx/_build/html/index.html` confirmed the repaired `<title>`, `og:title`, and `twitter:title` values.
+  - Why: this is a **repaired tactic replacing a still-leaking homepage SEO surface**. The exact-intent homepage copy already existed in docs source, but the public homepage title was still underselling the product against the higher-intent phrases the audit called out (`unattended coding agent`, `AI agent orchestration CLI`). Fixing the title path is higher leverage than writing another generic post while primary-repo adoption is flat.
+  - Expected outcome: once the rebuilt docs are deployed, search and social previews should align with the stronger evaluator phrases and send more qualified visitors into the Codeberg-first homepage CTA path.
+  - Measurement window: first check after next deploy, then 7-14 days for GSC impressions/clicks on `unattended coding agent` / `AI agent orchestration CLI` plus the next 9 adoption samples for Codeberg stars/watchers/forks.
+  - Replace if it fails: if the deployed homepage title is corrected and Codeberg/GSC movement is still flat after the next 7-14 day window, stop spending cycles on homepage metadata and replace this with a fresh external distribution/backlink move that creates new qualified traffic rather than another on-page SEO tweak.
+
 ### Marketing momentum watchdog
 - **When:** 2026-05-19 02:06:28
 - **Note:** Momentum check found: primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages, toolshelf, agentdepot.
@@ -1773,3 +1805,30 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Expected outcome: more qualified evaluators searching or sharing around `AI agent orchestration CLI` should reach a Codeberg-first explanation and click through to inspect the primary repo.
   - Measurement window: next 7 days for Telegraph views / referral evidence; next 14 days for **Codeberg** stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending cycles on Telegraph keyword-gap publishing alone and shift the next replacement move to a new executable backlink/directory surface or a fresh external discussion channel that routes directly to Codeberg.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 12:11:48
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow unattended-coding-agent Telegraph distribution repair
+- **Published a Codeberg-first Telegraph post for the exact search term `unattended coding agent`**: shipped `Unattended Coding Agent: What It Actually Means and How to Run One Safely` to Telegraph so a second high-priority keyword gap now has an unblocked public distribution surface that links Codeberg first and GitHub second.
+  - Live URL: `https://telegra.ph/Unattended-Coding-Agent-What-It-Actually-Means-and-How-to-Run-One-Safely-05-19-4`
+  - Verification: live fetch returned HTTP 200 and the published title/body plus Codeberg-first CTA are readable.
+  - Source draft: `drafts/2026-05-19_unattended-coding-agent_telegraph.md`
+  - Why: this is **NEW / REPLACING** a failed tactic. Codeberg adoption is still flat, the audit's priority repair path explicitly calls for Telegraph posts targeting keyword gaps, and `unattended coding agent` was already a strong owned docs page with no matching external distribution surface yet.
+  - Expected outcome: more qualified search/discovery readers should reach the Codeberg repo from an exact-intent trust page, with secondary upside on Codeberg stars/watchers/issues if the phrase matches active evaluator demand.
+  - Measurement window: next 7 days for Telegraph views / referral evidence; next 14 days for **Codeberg** stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through `2026-06-02`, stop spending cycles on Telegraph keyword-gap publishing alone and shift the next replacement move to a new executable backlink/directory surface or a fresh external discussion channel that routes directly to Codeberg.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 12:42:53
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow homepage title / primary-repo CTA repair
+- **REPAIRED** the live-homepage SEO/conversion leak by shipping the pending docs homepage title + hero CTA fix that was already sitting uncommitted in the repo: committed `Fix homepage SEO title for Codeberg-first conversion` (`98a18bd6`) and pushed it to both Codeberg and the GitHub mirror.
+  - Files: `ralph-workflow/docs/sphinx/_themes/ralph-docs/page.html`, `ralph-workflow/docs/sphinx/index.rst`
+  - Verification: live fetch of `https://ralphworkflow.com` at `2026-05-19 11:03 UTC` still showed the stale title `Ralph Workflow — free CLI for AI coding tasks — Ralph Workflow`; local `make docs` succeeded; grep on built `ralph-workflow/docs/sphinx/_build/html/index.html` confirmed the new `<title>Unattended Coding Agent & AI Agent Orchestration CLI — Ralph Workflow</title>`, matching `og:title` / `twitter:title`, and the primary hero CTA now points to Codeberg first; pushed successfully to `origin` (Codeberg) and `github` after rebasing onto the newer remote `main`.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The audit said to stop defaulting to more write.as-style output and fix homepage SEO + Codeberg-first conversion surfaces while Codeberg adoption is flat. The strongest executable move right now was to ship the already-prepared homepage fix instead of creating another duplicate directory submission or another generic article.
+  - Expected outcome: once the docs deploy refreshes, search/snippet traffic and homepage visitors should see a much tighter exact-intent title (`unattended coding agent`, `AI agent orchestration CLI`) plus an above-the-fold Codeberg-first CTA, increasing qualified primary-repo inspections.
+  - Measurement window: first check on the next live homepage refresh; then next 7 days for search/snippet alignment and next 14 days for **Codeberg** stars/watchers/forks/issues delta.
+  - Replace if it fails: if the live homepage updates and Codeberg adoption is still flat through `2026-06-02`, stop spending cycles on homepage metadata/CTA tweaks and replace this lane with a fresh executable external distribution or backlink move that sends net-new qualified traffic straight to the strongest Codeberg-first proof path.
