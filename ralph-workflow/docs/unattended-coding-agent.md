@@ -50,3 +50,10 @@ Use one real backlog task tonight.
 If you want proof before setup, inspect the public [Example Review Bundle](./sphinx/example-review-bundle.md).
 
 If you want the shortest install path, go to [Start Here](../START_HERE.md).
+
+If this matches the kind of unattended coding agent you actually want, keep the first public action on **Codeberg**:
+
+- **Inspect Ralph Workflow on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star / watch Ralph Workflow on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
