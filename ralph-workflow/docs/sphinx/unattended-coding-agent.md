@@ -88,3 +88,14 @@ Use one real backlog task tonight.
 If you want proof before setup, inspect the public [Example Review Bundle](example-review-bundle.md).
 
 If you want the shortest install path, go to [Getting Started](getting-started.md).
+
+## Best public next step if this is the kind of handoff you want
+
+Keep the public trust signal on **Codeberg**, where Ralph Workflow lives first:
+
+- **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg if the first run earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or proof gaps on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+That keeps unattended-coding evaluators pointed at the primary repo instead of splitting adoption across mirrors.

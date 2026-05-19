@@ -113,3 +113,14 @@ If you want the shortest honest path after that, continue with:
 5. Review the result tomorrow and ask: **would I merge this?**
 
 That is enough to tell you whether Ralph Workflow is useful in your real environment.
+
+## Best public next step after you pick an agent
+
+Once you know which agent you want to start with, keep the public project relationship on **Codeberg**:
+
+- **Inspect the primary repo first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg if the first run looks promising:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Open first-run friction or docs issues on Codeberg if the run misses:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+That keeps qualified evaluation traffic, trust signals, and feedback attached to the primary repo instead of leaking them across mirrors.

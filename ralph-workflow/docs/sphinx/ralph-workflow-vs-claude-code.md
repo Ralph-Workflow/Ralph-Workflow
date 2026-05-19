@@ -91,3 +91,14 @@ Use one real backlog task, not a vague demo.
 If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
 
 If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).
+
+## Best public next step if Claude Code is already in your stack
+
+Use **Codeberg** as the main public home for evaluating Ralph Workflow:
+
+- **Inspect the primary repo first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg if Ralph Workflow earns a place next to Claude Code:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Open first-run friction or docs issues on Codeberg if the handoff misses:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+That keeps Claude Code comparison traffic, trust, and feedback attached to the primary repo instead of the mirror.
