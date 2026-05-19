@@ -13,6 +13,15 @@ This page is the shortest path from a private first run to a useful public next 
 
 Use Codeberg for the real project relationship: stars, watches, issues, and contribution history.
 
+## The only branch that matters
+
+Treat the first run as a fork with only two healthy outcomes:
+
+1. **It earned trust** → star or watch Ralph Workflow on Codeberg.
+2. **It exposed friction** → open the matching first-run or docs/proof issue form on Codeberg.
+
+If you do neither, the adoption signal stays private and the project learns nothing.
+
 ## The two-minute scorecard
 
 After the run finishes, check these in order:
@@ -43,8 +52,8 @@ That is the cleanest public signal that Ralph Workflow earned a place in your to
 
 Report it on **Codeberg** so the fix lands on the primary repo:
 
-- **First-run friction form** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Docs / proof gap form** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **First-run friction form** — choose that form at <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Docs / proof gap form** — choose that form at <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 
 Best bug/feedback reports say:
 

@@ -26,6 +26,12 @@ If you are here to decide whether Ralph Workflow is worth a real try, start with
 
 Everything else in this docs map is secondary until after that first Codeberg-first evaluation.
 
+The post-run branch should stay explicit:
+
+- **Promising first run** → star or watch Ralph Workflow on Codeberg
+- **Rough first run** → open the matching first-run or docs/proof issue form on Codeberg
+- **Need the scorecard first** → `after-your-first-run.md`
+
 ## Best first docs for evaluators
 
 - `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task

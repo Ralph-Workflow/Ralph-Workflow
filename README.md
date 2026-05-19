@@ -16,6 +16,18 @@ The point is not to generate a throwaway demo. Ralph Workflow is built for the k
 
 **Important first-run expectation:** Ralph Workflow is free and open source, but it does **not** replace the coding agents you already use. Before your first run, have at least one supported agent CLI already installed and already authenticated on your own machine. Ralph orchestrates that agent and hands back a reviewable result.
 
+## The shortest Codeberg conversion path after a real first run
+
+Do not leave the evaluation private.
+
+After one real run, convert the outcome into exactly one public action on **Codeberg**:
+
+- **Promising run?** Star or watch the primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Shaky run or missing proof?** Open the right issue form on Codeberg: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Need the two-minute scorecard first?** Use [docs/after-your-first-run.md](./docs/after-your-first-run.md)
+
+That is the clearest path from “this might be useful” to a real primary-repo trust signal.
+
 ## Start on Codeberg first
 
 If Ralph Workflow looks like a fit, use the primary repo as the real next step:
@@ -69,7 +81,7 @@ That is the real promise: not “the agent seemed smart,” but **a bounded diff
 
 If you want the fuller artifact shape before you install, inspect the public [example review bundle](./docs/example-review-bundle.md).
 
-If you try a real first run and anything feels unclear, shaky, or harder than it should, report it on **Codeberg** with the new first-run issue path: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. That is the fastest way to improve the real adoption path without splitting feedback across the mirror.
+If you try a real first run and anything feels unclear, shaky, or harder than it should, report it on **Codeberg** with the matching first-run or docs/proof form: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>. That is the fastest way to improve the real adoption path without splitting feedback across the mirror.
 
 If the run goes well, do the public next step on **Codeberg** instead of leaving the evaluation private: [docs/after-your-first-run.md](./docs/after-your-first-run.md).
 

@@ -41,6 +41,12 @@ Choose the first path that matches how you already work tonight:
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
 - Already finished a first run and want the right public next step? Read :doc:`after-your-first-run`.
 
+Keep the post-run branch simple:
+
+- **Promising first run** → put the public trust signal on Codeberg by starring or watching the primary repo.
+- **Rough first run** → open the matching first-run or docs/proof issue form on Codeberg.
+- **Need the two-minute scorecard first** → use :doc:`after-your-first-run`.
+
 .. note::
 
    New here? Read :doc:`getting-started` first — it gets you from install to first run quickly,
