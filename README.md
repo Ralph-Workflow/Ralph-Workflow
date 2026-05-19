@@ -7,14 +7,25 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 > **GitHub is the mirror. Codeberg is the primary repo.**
-> Inspect, star, watch, open issues, and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> Use this GitHub mirror if GitHub is where you already track open-source tools: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+> Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> Use this GitHub mirror if GitHub is where you already track open-source tools, but treat Codeberg as the main home: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Ralph Workflow is an agent-agnostic orchestration CLI for spec-driven planning, analysis, coding, and review. You write the task in `PROMPT.md`, Ralph routes each phase through the agents you choose, and you come back to a real codebase: changes in git, logs, artifacts, and review output you can inspect in your normal engineering process.
 
 The point is not to generate a throwaway demo. Ralph Workflow is built for the kind of work that should leave you with a serious starting point for production: a working feature, a refactor in progress, a verified batch of tests, or a reviewable implementation foundation your team can keep pushing forward.
 
 **Important first-run expectation:** Ralph Workflow is free and open source, but it does **not** replace the coding agents you already use. Before your first run, have at least one supported agent CLI already installed and already authenticated on your own machine. Ralph orchestrates that agent and hands back a reviewable result.
+
+## Start on Codeberg first
+
+If Ralph Workflow looks like a fit, use the primary repo as the real next step:
+
+- **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star / watch / fork on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Open issues or review the roadmap on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues>
+- **Use the GitHub mirror only if GitHub is where you already follow projects:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+That keeps adoption, issues, and review traffic pointed at the primary repo instead of splitting trust signals across two homes.
 
 ## Quick answer: is this for you?
 
@@ -63,7 +74,7 @@ If you want the fuller artifact shape before you install, inspect the public [ex
 - **I want to inspect the project where I already follow open-source tools.** Start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow), or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
 - **I want to see what a good result looks like before I try it.** Read [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete morning-after review path.
 
-Codeberg is the primary repo and the main adoption surface. If Ralph looks like a fit for your workflow, **star or watch it on Codeberg before your first run**. If you mainly follow projects on GitHub, the mirror is there too.
+Codeberg is the primary repo and the main adoption surface. If Ralph looks like a fit for your workflow, **inspect it on Codeberg first, then star, watch, or fork it there before your first run**. If you mainly follow projects on GitHub, the mirror is there too.
 
 ## Independent places to inspect Ralph Workflow
 

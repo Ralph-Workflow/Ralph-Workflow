@@ -14,10 +14,10 @@ Ralph Workflow
      <div class="hero-actions">
        <a class="hero-cta" href="getting-started.html">Run your first real task →</a>
        <a class="hero-cta hero-cta-secondary" href="example-review-bundle.html">See a public review bundle first</a>
-     <a class="hero-cta hero-cta-secondary" href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Inspect on Codeberg</a>
+       <a class="hero-cta hero-cta-secondary" href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Inspect on Codeberg</a>
      </div>
      <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
-     <p class="hero-proof-note">Prefer to inspect the code before installing or follow the project where you already evaluate open source? <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Review, star, or watch the primary Codeberg repo</a>. If GitHub is where you already track projects, the <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">mirror is there too</a>.</p>
+     <p class="hero-proof-note">Prefer to inspect the code before installing or follow the project where you already evaluate open source? <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Review, star, watch, or fork the primary Codeberg repo</a>. If GitHub is where you already track projects, the <a href="https://github.com/Ralph-Workflow/Ralph-Workflow">mirror is there too</a>.</p>
    </section>
 
 Choose the first path that matches how you already work tonight:
@@ -26,6 +26,7 @@ Choose the first path that matches how you already work tonight:
 - Already using **Claude Code** and deciding whether you even need Ralph? Start with :doc:`ralph-workflow-vs-claude-code`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
+- Already using **worktrees** and still not trusting the morning-after result? Read :doc:`why-worktrees-are-not-enough`.
 - Want a clearer **merge decision** for the morning-after handoff? Read :doc:`review-ai-coding-output-before-merge`.
 - Want the cleanest possible **finish receipt / re-entry path** before you trust the run? Read :doc:`what-a-good-ai-coding-finish-receipt-looks-like`.
 - Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
@@ -81,8 +82,9 @@ Why try it now? Because you can use the agents you already trust on your own mac
 backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
 If you prefer to inspect or follow open-source projects on GitHub, Ralph Workflow also has a synced
-public mirror there. The primary repo lives on Codeberg, but you can review, star, or watch Ralph
-Workflow from either place.
+public mirror there. The primary repo lives on Codeberg, and that is where stars, watches, forks,
+issues, and contribution history should accumulate. Use GitHub when it helps discovery; use
+Codeberg for the main project relationship.
 
 Important first-run expectation: Ralph Workflow is free and open source, but it does not replace
 the coding agents you already use. Before you start, have at least one supported agent CLI already
@@ -301,6 +303,7 @@ Then come back and ask one question:
    ralph-workflow-vs-claude-code
    claude-code-codex-workflow
    what-breaks-first-with-multiple-coding-agents
+   why-worktrees-are-not-enough
    first-task-prompt-templates
    ralph-workflow-vs-aider
    reviewable-output

@@ -1,8 +1,8 @@
 # Start Here: Use Ralph Workflow on One Real Task
 
 > **GitHub is the mirror. Codeberg is the primary repo.**
-> Inspect, star, watch, and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> Use the GitHub mirror if GitHub is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+> Inspect, star, watch, fork, and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> Use the GitHub mirror if GitHub is where you already track projects, but treat Codeberg as the main home: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
@@ -22,7 +22,12 @@ If the only thing you are stuck on right now is agent choice, read [docs/which-a
 
 If you want to inspect the project before you install anything, open the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first, or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
 
-Codeberg is the primary repo and the main adoption surface. If Ralph looks worth trying on your next overnight backlog task, **star or watch it on Codeberg**. If you mainly evaluate projects on GitHub, the mirror is available there too.
+Codeberg is the primary repo and the main adoption surface. If Ralph looks worth trying on your next overnight backlog task, **inspect it on Codeberg first, then star, watch, or fork it there**. If you mainly evaluate projects on GitHub, the mirror is available there too.
+
+Use Codeberg for the real project actions:
+- **Source + releases:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Issues / feedback:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 If you want a little more outside proof before you install, you can also inspect Ralph Workflow on [GitDB](https://gitdb.net/Ralph-Workflow/Ralph-Workflow), [SaaSHub](https://www.saashub.com/ralph-workflow), or [TechTools Launchpad](https://techtools.cz/tools/launchpad/?tool=71). Those are not substitutes for your own judgment, but they do give you independent discovery/comparison surfaces before your first run.
 
