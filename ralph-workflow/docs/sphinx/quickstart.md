@@ -22,7 +22,7 @@ Checklist before you start:
 - a git repo you can safely test in
 - at least one supported agent CLI already working on your machine
 
-If you are unsure which agent to start with, use the one already installed and read [Which Agent Should I Start With?](which-agent-should-i-start-with.md). If Claude Code is already your default and you want the clearest reason to add Ralph, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md). If you already split work between Claude Code and Codex, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md). If you already run multiple agents and the trust gap is in the morning-after handoff, read [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md). If the merge decision itself still feels fuzzy, read [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md). If the missing piece is a short trustworthy re-entry summary, read [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md).
+If you are unsure which agent to start with, use the one already installed and read [Which Agent Should I Start With?](which-agent-should-i-start-with.md). If Claude Code is already your default and you want the clearest reason to add Ralph, read [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md). If you already split work between Claude Code and Codex, read [Claude Code + Codex Workflow](claude-code-codex-workflow.md). If you already run multiple agents and the trust gap is in the morning-after handoff, read [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md). If the merge decision itself still feels fuzzy, read [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md). If the missing piece is a short trustworthy re-entry summary, read [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md). If you want the Codeberg-first category explanation before you install, read [Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For](open-source-ai-coding-orchestrator.md).
 
 ## Install
 
@@ -91,6 +91,8 @@ ralph
 ```
 
 Ralph Workflow runs unattended and shows progress inline. In plain terms, it plans the task, implements the work, reviews the result during the run, and leaves you with completed work, logs, and artifacts to inspect afterward.
+
+If the run earns your trust, put the public signal on the primary Codeberg repo first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The GitHub mirror stays available here: <https://github.com/Ralph-Workflow/Ralph-Workflow>.
 
 If interrupted, Ralph Workflow saves a checkpoint automatically. Continue from that saved state with:
 

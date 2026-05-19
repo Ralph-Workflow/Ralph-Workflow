@@ -51,7 +51,8 @@ If you want the cleanest possible short handoff before you trust the run, read [
 If you want copy-paste starter specs instead of drafting from scratch, read [First-Task Prompt Templates](first-task-prompt-templates.md).
 If you already use Aider for interactive work and want the clearest contrast, read [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md).
 If you want to inspect a public sample `PROMPT.md`, handoff notes, and review/fix artifacts before you run Ralph yourself, read [Example Review Bundle](example-review-bundle.md).
-If you prefer to inspect or follow the project on GitHub, the public mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow> (primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>).
+If you are comparing category options first, read [Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For](open-source-ai-coding-orchestrator.md).
+Use the primary repo on Codeberg for inspection, stars, watches, and issues: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The GitHub mirror is here if you already track projects there: <https://github.com/Ralph-Workflow/Ralph-Workflow>.
 
 ## Before you start
 

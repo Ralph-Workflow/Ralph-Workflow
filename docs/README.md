@@ -23,6 +23,7 @@ Important expectation for evaluators: Ralph Workflow is free and open source, bu
 - `first-task-prompt-templates.md` — copy-paste `PROMPT.md` shapes for the most common good first tasks
 - `free-open-source-proof.md` — example first task, artifact bundle, and what a reviewable morning-after result should look like
 - `review-ai-coding-output-before-merge.md` — five-minute merge review path for the morning-after handoff
+- `open-source-ai-coding-orchestrator.md` — Codeberg-first category page for developers searching for an open-source AI coding orchestrator they can inspect before install
 - `when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
 - `why-worktrees-are-not-enough.md` — practical difference between simple worktree isolation and a reviewable unattended handoff
 - `ralph-workflow-vs-claude-code.md` — direct comparison for developers deciding whether they need Ralph Workflow on top of an existing Claude Code habit
@@ -94,6 +95,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `first-task-prompt-templates.md` — copy-paste starter prompt shapes for feature work, validation, refactors, tests, and docs
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like
 - `review-ai-coding-output-before-merge.md` — practical merge-review checklist for deciding whether the handoff is trustworthy
+- `open-source-ai-coding-orchestrator.md` — Codeberg-first explanation of what Ralph Workflow adds if you are comparing open-source AI coding orchestrators
 - `what-a-good-ai-coding-finish-receipt-looks-like.md` — what a short trustworthy morning-after handoff should contain so review does not start with transcript archaeology
 - `when-unattended-coding-fits.md` — quick good-fit vs bad-fit guide for choosing a first real unattended task
 - `why-worktrees-are-not-enough.md` — practical comparison for teams already using worktrees who still need a reviewable unattended handoff

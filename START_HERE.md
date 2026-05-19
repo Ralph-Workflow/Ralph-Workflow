@@ -152,6 +152,7 @@ If you already use Claude Code and Codex together and want a cleaner split betwe
 If you already run multiple coding agents and the real pain is review/reconstruction, read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
 If the handoff still feels hard to judge at merge time, read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
 If you want the cleanest possible morning-after re-entry point, read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
+If you are evaluating category fit first and want the clearest Codeberg-first positioning, read [docs/open-source-ai-coding-orchestrator.md](./docs/open-source-ai-coding-orchestrator.md).
 If you already use Aider and want to know when Ralph Workflow is the better fit, read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
 
 ## Run the fastest honest first test

@@ -29,6 +29,7 @@ Choose the first path that matches how you already work tonight:
 - Already using **worktrees** and still not trusting the morning-after result? Read :doc:`why-worktrees-are-not-enough`.
 - Want a clearer **merge decision** for the morning-after handoff? Read :doc:`review-ai-coding-output-before-merge`.
 - Want the cleanest possible **finish receipt / re-entry path** before you trust the run? Read :doc:`what-a-good-ai-coding-finish-receipt-looks-like`.
+- Searching for an **open-source AI coding orchestrator** you can inspect on Codeberg first? Read :doc:`open-source-ai-coding-orchestrator`.
 - Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
 - Want proof before setup? Open the public :doc:`example-review-bundle` and judge whether the morning-after handoff looks mergeable.
 
@@ -218,6 +219,12 @@ Then come back and ask one question:
       :link-type: doc
 
       Do not over-optimize the provider choice: start with the agent already installed and authenticated on your machine.
+
+   .. grid-item-card:: Need the category-level explanation first?
+      :link: open-source-ai-coding-orchestrator
+      :link-type: doc
+
+      See the Codeberg-first answer to what Ralph Workflow adds if you are comparing open-source AI coding orchestrators.
 
    .. grid-item-card:: Already use Claude Code?
       :link: ralph-workflow-vs-claude-code

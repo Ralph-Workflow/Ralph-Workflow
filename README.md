@@ -72,6 +72,7 @@ If you try a real first run and anything feels unclear, shaky, or harder than it
 - **I run multiple agents already. What actually breaks first?** Read [docs/what-breaks-first-with-multiple-coding-agents.md](./docs/what-breaks-first-with-multiple-coding-agents.md).
 - **I want a concrete merge-review path for AI output.** Read [docs/review-ai-coding-output-before-merge.md](./docs/review-ai-coding-output-before-merge.md).
 - **I want to know what a strong morning-after handoff should actually contain.** Read [docs/what-a-good-ai-coding-finish-receipt-looks-like.md](./docs/what-a-good-ai-coding-finish-receipt-looks-like.md).
+- **I am looking for an open-source AI coding orchestrator I can inspect before I install.** Read [docs/open-source-ai-coding-orchestrator.md](./docs/open-source-ai-coding-orchestrator.md).
 - **I already use Aider. Why would I use Ralph instead?** Read [docs/ralph-workflow-vs-aider.md](./docs/ralph-workflow-vs-aider.md).
 - **I want to inspect the project where I already follow open-source tools.** Start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow), or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
 - **I want to see what a good result looks like before I try it.** Read [docs/free-open-source-proof.md](./docs/free-open-source-proof.md) for a concrete morning-after review path.
