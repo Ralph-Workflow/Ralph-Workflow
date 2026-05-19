@@ -28,6 +28,7 @@ Choose the first path that matches how you already work tonight:
 - Already using **Claude Code** and specifically searching for a better automation / unattended path? Start with :doc:`claude-code-automation`.
 - Already searching for how to run **Claude Code overnight without babysitting**? Start with :doc:`run-claude-code-overnight-without-babysitting`.
 - Already using **Claude Code** but still stuck in approval mode or plan mode babysitting? Read :doc:`claude-code-approval-mode`.
+- Already evaluating **Claude Code run until done** or the newer **`/goal`** flow but still need a trustworthy finish state? Read :doc:`claude-code-run-until-done`.
 - Already using **Codex CLI** and deciding whether you need Ralph Workflow for the morning-after handoff? Start with :doc:`ralph-workflow-vs-codex-cli`.
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
@@ -60,7 +61,9 @@ Keep the post-run branch simple:
 .. toctree::
    :hidden:
 
-   agents
+   getting-started
+   developer-reference
+   claude-code-run-until-done
 
 What a good first handoff looks like
 ======================================

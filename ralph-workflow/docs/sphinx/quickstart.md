@@ -30,6 +30,7 @@ Use this flow in a real repo you already care about.
 - Claude Code already your default? → [Claude Code Automation for Real Repo Work](claude-code-automation.md)
 - Running Claude Code overnight without babysitting? → [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md)
 - Approval mode still leaves you babysitting? → [Claude Code Approval Mode Is Not an Unattended Workflow](claude-code-approval-mode.md)
+- Curious about Claude Code `run until done` or `/goal`, but still want a sharper merge decision? → [Claude Code "Run Until Done" Still Needs a Reviewable Finish](claude-code-run-until-done.md)
 - Evaluating orchestration tools directly? → [AI Agent Orchestration CLI: A Practical Comparison](ai-agent-orchestration-cli.md)
 - Want the spec-first framing? → [Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt](spec-driven-ai-agent.md)
 

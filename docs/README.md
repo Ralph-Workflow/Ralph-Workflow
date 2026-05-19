@@ -93,6 +93,7 @@ For Python performance guidance, refer to the package docstrings and Sphinx docu
 - `claude-code-automation.md` — practical guide for developers who already like Claude Code but need a trustworthy automation / overnight finish path
 - `run-claude-code-overnight-without-babysitting.md` — practical plain-language page for the exact "Claude Code overnight" / "without babysitting" search intent
 - `claude-code-approval-mode.md` — practical guide for developers whose approval or plan mode still leaves them doing approval babysitting instead of morning-after review
+- `claude-code-run-until-done.md` — practical page for developers evaluating Claude Code `run until done` / `/goal` and deciding whether the real missing piece is a more trustworthy morning-after handoff
 - `ralph-workflow-vs-opencode.md` — practical comparison for developers deciding between staying interactive in OpenCode and handing off a reviewable unattended run
 - `first-task-prompt-templates.md` — copy-paste starter prompt shapes for feature work, validation, refactors, tests, and docs
 - `free-open-source-proof.md` — how to evaluate a first real free and open-source Ralph Workflow run and what reviewable output should look like

@@ -98,6 +98,7 @@ If you want a stronger answer to "what is this, who is it for, why is it differe
 - [What Good Ralph Workflow Output Looks Like](./docs/reviewable-output.md) — the shortest trust-page version of the morning-after handoff standard.
 - [How to Tell if an AI Coding Task Is Actually Done](./docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md) — how to judge whether the morning-after result is actually trustworthy.
 - [Claude Code + Codex Workflow: Plan, Build, Review](./docs/claude-code-codex-workflow.md) — the cleanest long-form explanation of the plan/build/review split.
+- [Claude Code "Run Until Done" Still Needs a Reviewable Finish](./docs/claude-code-run-until-done.md) — the shortest answer if `/goal` sounds promising but the merge decision is still the real bottleneck.
 - [When Unattended AI Coding Actually Works](./docs/when-unattended-coding-fits.md) — the quickest fit check before you spend a night on the wrong task.
 
 They all lead back to the same honest test: install Ralph Workflow for free, run one real backlog task on your own machine, and decide tomorrow whether you would merge it.
