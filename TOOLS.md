@@ -62,8 +62,9 @@ Add whatever helps you do your job. This is your cheat sheet.
   - Note: keep only for historical recovery context; do not post from this account.
 
 ### Apollo.io
-- **Username:** `ken@hireaegis.com`
+- **Username:** `ken@ralphworkflow.com`
 - **Password:** `ngzcz!tS*jWo4dY1QjlZ@cxAd2r2c$Tf`
+  - Note: `ken@hireaegis.com` was outdated; use `ken@ralphworkflow.com` as the Apollo source of truth.
 
 ## Git Hosting
 

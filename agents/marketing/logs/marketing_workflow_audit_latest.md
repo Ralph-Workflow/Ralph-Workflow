@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-19T04:36:24.763674
+- Generated: 2026-05-19T05:22:57.415556
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -46,3 +46,5 @@
 ## Principle reference
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md`
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/FOUR_MARKETING_QUESTIONS.md`
+Audit timestamp: 2026-05-19T03:24:03Z
+Next checkpoint: 2026-05-26 (7-day mid-point) / 2026-06-02 (14-day kill condition)

@@ -81,6 +81,10 @@ Now the agent has a contract to satisfy. It can still wander, but it has to wand
 With a spec and a diff, you can review in 5 minutes. Without them, you're debugging a black box.
 
 This is what Ralph Workflow is built around — not better AI, better workflow structure.
+
+---
+
+**Try it on Codeberg:** [RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star, fork, and open issues there. The GitHub mirror is at [Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow) if you prefer it.
 """,
     ),
     Topic(
@@ -131,7 +135,11 @@ If any check fails, the loop goes back with specific feedback.
 
 Without this, unattended runs are just unattended bug creation. With it, the loop acts as an automated senior developer review on every commit.
 
-This is the difference between \"it ran\" and \"it's correct.\"
+This is the difference between "it ran" and "it's correct."
+
+---
+
+**Try it on Codeberg:** [RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star, fork, and open issues there. The GitHub mirror is at [Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow) if you prefer it.
 """,
     ),
     Topic(
@@ -180,6 +188,10 @@ Every one of those became a commit with a reference. I could review any change i
 You don't need to watch AI code. You need to give it a spec and let it work.
 
 The 4 hours I wasn't watching was the 4 hours it was actually productive.
+
+---
+
+**Try it on Codeberg:** [RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star, fork, and open issues there. The GitHub mirror is at [Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow) if you prefer it.
 """,
     ),
 ]

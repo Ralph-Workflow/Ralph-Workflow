@@ -2,6 +2,26 @@
 
 ## 2026-05-19 (Tuesday)
 
+### RalphWorkflow Telegraph distribution repair
+- **Cross-posted the strongest trust article to Telegraph with Codeberg-first CTA**: published `How to Tell if an AI Coding Task Is Actually Done` on Telegraph so the best existing trust/distribution asset is no longer trapped in a write.as-only lane and now sends readers to Codeberg first, GitHub second.
+  - Live URL: `https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19`
+  - Verification: live fetch returned HTTP 200 and the published title/body are readable.
+  - Source draft: `drafts/2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md`
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The audit explicitly says to stop defaulting to write.as-only publishing because that channel has not moved Codeberg adoption. The highest-leverage executable external move right now was to reuse an already-strong trust asset on an unblocked second platform and make the CTA Codeberg-first.
+  - Expected outcome: more qualified top/mid-funnel readers should reach the Codeberg repo from a practical trust-oriented article instead of a product pitch, with a secondary chance of more Codeberg stars/watchers/issues if the article matches search/discovery intent.
+  - Measurement window: next 7 days for Telegraph views / referral evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending cycles on owned cross-posting alone and shift the next replacement move to a higher-distribution external surface that can directly send traffic into the strongest Codeberg-first proof/comparison pages.
+
+### RalphWorkflow example-review-bundle conversion repair
+- **Strongest proof asset now closes on Codeberg**: patched the public `example-review-bundle` proof page and its hosted-docs mirror so visitors who already trust the morning-after handoff now get an explicit Codeberg-first next step instead of a content dead-end.
+  - Commit: `519abacf` — `Tighten Codeberg CTA on example review bundle`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `docs/example-review-bundle.md`, `ralph-workflow/docs/sphinx/example-review-bundle.md`
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the live bottleneck, and the strongest proof asset was still missing a direct primary-repo action path even after earlier proof-doc repairs. This was a real conversion leak on a high-intent page.
+  - Expected outcome: more Codeberg repo inspections and more primary-repo trust actions from proof-asset readers who are already close to trying Ralph Workflow.
+  - Measurement window: next 7 days for proof-page usage / repo-inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending cycles on proof-asset CTA tightening and shift the next replacement move to an external distribution action that sends traffic directly into the strongest Codeberg-first proof/comparison pages.
+
 ### RalphWorkflow remote-supervision conversion repair
 - **New remote-supervision trust page shipped**: added a new public `Remote Supervision of Coding Agents` conversion page and surfaced it across the highest-intent repo/docs entry points so evaluators who think they need remote supervision now get a direct Codeberg-first answer that reframes the real problem as finish-state trust, not just live visibility.
   - Commit: `51857c72` — `Add remote supervision conversion path`
@@ -1421,3 +1441,35 @@ Bottleneck unchanged (conversion to free use / GitHub adoption). Conversion surf
   - Expected outcome: more qualified Codeberg repo inspections and fewer evaluator drop-offs from the repo/docs landing surfaces because the first three actions are now explicit instead of buried in a long link list.
   - Measurement window: next 7 days for clearer repo-inspection / issue-path evidence; next 14 days for Codeberg stars/watchers/issues delta.
   - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop spending cycles on entry-surface hierarchy tweaks and replace this with a new external distribution move that sends warm traffic directly into the strongest Codeberg proof path.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 05:06:09
+- **Note:** Momentum check found: reddit_monitor_stale, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-19 05:38:22
+- **Note:** Momentum check found: reddit_monitor_stale, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat. Distribution channels need replacement or human-auth handoff: slashdot, saashub, toolhunter, devpages. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow post-run conversion repair
+- **New Codeberg-first first-run scorecard shipped**: added a public `after-your-first-run` page plus routed the main evaluator entry points into it so first-run users now get an explicit post-run path from private evaluation to a Codeberg star/watch or a useful issue instead of ending the loop with "interesting" and no public action.
+  - Commit: `21e0c557` — `Add first-run scorecard conversion path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `CONTRIBUTING.md`, `docs/README.md`, `docs/after-your-first-run.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/getting-started.md`, `ralph-workflow/docs/sphinx/quickstart.md`, `ralph-workflow/docs/sphinx/after-your-first-run.md`
+  - Why: this is **NEW / REPLACING** a failed tactic. The audit says the live bottleneck is `distribution_and_message_to_primary_repo_conversion`, and current repo/docs surfaces still made the first-run finish line too passive. This repair turns the morning-after moment into a direct Codeberg conversion surface instead of another content-only exit.
+  - Expected outcome: more Codeberg stars/watchers/issues from high-intent visitors who already ran or closely inspected Ralph Workflow and now have a concrete primary-repo next step.
+  - Measurement window: next 7 days for clicks/inspection evidence on the new post-run path; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding post-run repo/docs conversion layers and shift the next replacement move to a wider external distribution action that sends traffic directly into the strongest Codeberg-first proof and post-run pages.
+
+### Apollo monitor
+- **When:** 2026-05-19 06:07:23
+- **Note:** Apollo status changed from `script_failure` to `still_on_login_page`.
+
+### RalphWorkflow Claude Code approval-mode conversion repair
+- **New approval-mode trust page shipped**: added a new public `Claude Code Approval Mode Is Not an Unattended Workflow` page and surfaced it across the highest-intent repo/docs entry points so developers stuck in approval-mode / plan-mode babysitting now get a direct Codeberg-first answer that reframes the problem as morning-after finish-state trust rather than more interactive supervision.
+  - Commit: `0c1f68c5` — `Add Claude Code approval-mode conversion path`
+  - Status: ✅ Pushed to Codeberg and GitHub mirror
+  - Files: `README.md`, `START_HERE.md`, `docs/README.md`, `docs/claude-code-approval-mode.md`, `ralph-workflow/docs/sphinx/index.rst`, `ralph-workflow/docs/sphinx/getting-started.md`, `ralph-workflow/docs/sphinx/quickstart.md`, `ralph-workflow/docs/sphinx/claude-code-approval-mode.md`
+  - Why: this is **NEW / REPLACING** a failed tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, Codeberg adoption is flat, and repeated live demand keeps clustering around approval drag / plan-mode babysitting. There was no direct Codeberg-first page for that evaluator intent, so warm interest could not convert through a pain-specific repo path.
+  - Expected outcome: more qualified Codeberg repo inspections from Claude Code users searching for approval-mode / plan-mode answers, with a secondary increase in Codeberg stars/watchers/issues because the new page closes on primary-repo actions.
+  - Measurement window: next 7 days for page-path / repo-inspection evidence; next 14 days for Codeberg stars/watchers/issues delta.
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat through 2026-06-02, stop adding approval/supervision trust pages and shift the next replacement move to a live external distribution action that sends traffic directly into the strongest Codeberg-first proof/comparison pages.

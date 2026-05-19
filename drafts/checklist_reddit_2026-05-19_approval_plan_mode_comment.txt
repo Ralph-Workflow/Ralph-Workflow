@@ -1,0 +1,16 @@
+
+=== REDDIT POSTING CHECKLIST ===
+URL: https://www.reddit.com/r/cscareerquestions/submit
+Title: What helped me most was treating approvals as stage gates instead of trying to supervise every prompt.
+Body: What helped me most was treating approvals as stage gates instead of trying to supervise every prompt.
+
+I want three boring checkpoints: scope is locked, implementation happened in one bounded branch, and verification says what passed plus what still needs judgment. If a run cannot stop cleanly at one of those gates, plan mode just turns into babysitting.
+
+I wrote down the first-run version of that workflow here:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+
+That lives in Ralph Workflow’s repo because Ralph is the free/open-source setup I use for this exact problem: keep the agent CLIs you already run on your own machine, let them do larger unattended work, and come back to something you can actually review instead of a transcript you have to mentally reconstruct.
+---
+1. Open URL
+2. Fill form
+3. Submit

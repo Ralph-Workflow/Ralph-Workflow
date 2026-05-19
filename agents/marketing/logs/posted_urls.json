@@ -96,7 +96,35 @@
       "keyword": "unattended ai coding",
       "cta": "install_ralphworkflow",
       "hypothesis": "Technical posts should outperform philosophy posts on write.as because they are more concrete and searchable."
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md",
+      "title": "How to Tell if an AI Coding Task Is Actually Done",
+      "platform": "write.as",
+      "ok": true,
+      "status": "posted",
+      "url": "https://write.as/contentisblocked",
+      "error": null,
+      "draft_hash": "7df5d951fd36ab17618beac53ce8e324bd09686832d69fc4bbcb1949b57b1966",
+      "experiment_id": null,
+      "content_type": null,
+      "keyword": null,
+      "cta": null,
+      "hypothesis": null
+    },
+    {
+      "date": "2026-05-19",
+      "draft": "2026-05-19_how-to-tell-if-an-ai-coding-task-is-actually-done_telegraph.md",
+      "title": "How to Tell if an AI Coding Task Is Actually Done",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2",
+      "error": null,
+      "draft_hash": "7df5d951fd36ab17618beac53ce8e324bd09686832d69fc4bbcb1949b57b1966",
+      "experiment_id": null
     }
   ],
-  "last_run": "2026-05-19T01:50:30.182020"
+  "last_run": "2026-05-19T06:04:57.036230"
 }

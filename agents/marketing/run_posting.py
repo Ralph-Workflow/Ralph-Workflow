@@ -203,7 +203,8 @@ def post_telegraph(title: str, body: str) -> Tuple[bool, str]:
 def find_todays_drafts(today: str) -> list[Path]:
     if not DRAFTS_DIR.exists():
         return []
-    return sorted(DRAFTS_DIR.glob(f"{today}_*_draft.md"))
+    # Match both _draft.md and _telegraph.md suffixed files so dual-posting runs
+    return sorted(DRAFTS_DIR.glob(f"{today}_*_draft.md")) + sorted(DRAFTS_DIR.glob(f"{today}_*_telegraph.md"))
 
 
 def main() -> int:
