@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-19T09:36:34.750629",
-  "count": 21,
+  "generated_at": "2026-05-19T09:52:16.385404",
+  "count": 22,
   "recent_window_count": 6,
   "by_account": {
     "Informal-Salt827": 6
@@ -15,9 +15,6 @@
     "code",
     "runs",
     "agent",
-    "utilizing",
-    "other",
-    "agents",
     "pattern",
     "using",
     "keep",
@@ -25,52 +22,46 @@
     "overnight",
     "unattended",
     "teams",
-    "gemini"
+    "gemini",
+    "codex",
+    "checkpoint",
+    "commits"
   ],
   "top_body_tokens": [
-    "agent",
+    "review",
     "ralph",
     "workflow",
-    "review",
     "overnight",
-    "instead",
     "diff",
-    "checks",
-    "done",
-    "agents",
-    "open",
-    "already",
-    "result",
-    "usually",
+    "code",
+    "it's",
+    "clean",
+    "readable",
+    "about",
+    "handoff",
     "finish",
-    "free",
-    "source",
-    "orchestrate",
-    "machine",
-    "output"
+    "before",
+    "like",
+    "already",
+    "open",
+    "surface",
+    "checks",
+    "making",
+    "ends"
   ],
   "phrase_hits": {
-    "reviewable": 2,
-    "worktree": 1,
     "diff": 4,
-    "overnight": 4,
-    "scope": 3,
-    "handoff": 3,
+    "overnight": 3,
+    "scope": 2,
+    "handoff": 4,
     "trust": 2,
+    "reviewable": 1,
     "done criteria": 1,
     "small scoped": 1
   },
   "repeated_openings": [],
   "account_switches": [],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-18T03:28:01.659500",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeCode",
-      "title": "Claude utilizing other agents?",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tg50xl/claude_utilizing_other_agents/omemy51/",
-      "opening_line": "That can work well, but I’ve had the best results when each extra agent owns a different phase instead of all of them touching the same task at once."
-    },
     {
       "timestamp": "2026-05-18T09:47:16.212568",
       "account": "Informal-Salt827",
@@ -110,6 +101,14 @@
       "title": "Autonomous Claude Code runs in the new reality.",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/omjjo73/",
       "opening_line": "My default is to optimize for a clean morning-after review, not maximum autonomy."
+    },
+    {
+      "timestamp": "2026-05-19T09:37:03.252988",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Claude Code approval / plan mode questions",
+      "comment_url": "https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/",
+      "opening_line": "Honestly the part I'd optimize first is the handoff, not the model stack."
     }
   ],
   "recommendations": [

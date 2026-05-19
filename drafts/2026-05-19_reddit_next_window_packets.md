@@ -1,10 +1,12 @@
-# RalphWorkflow Reddit next-window packet — 2026-05-19 03:50 CEST
+# RalphWorkflow Reddit next-window packet — 2026-05-19 10:03 CEST
 
 Live posting is **not** the move right now.
 
-Latest watchdog state references report `reddit_monitor_2026-05-18_2115.md`.
-- `status: fresh_opportunity_rate_limited`
-- `detail: opportunity_state:fresh_rate_limited; opportunities:6`
+Latest watchdog state references report `reddit_monitor_2026-05-19_0942.md`.
+- `status: cooldown_skip`
+- `detail: global_cooldown_active:26m_since_last_post`
+- `retry_after_minutes: 18`
+- `next_safe_post_at: 2026-05-19T10:22:03`
 
 So this packet is optimized for the **next safe window**, not for forcing a post now.
 
@@ -40,15 +42,15 @@ That page lives in Ralph Workflow’s repo because Ralph is the free/open-source
 
 ---
 
-## 2) `r/ClaudeCode` — Claude Code approval / plan mode questions
-- URL: <https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/>
+## 2) `r/ClaudeCode` — A practical way to run Claude Code tasks in parallel without turning your repo into chaos
+- URL: <https://www.reddit.com/r/ClaudeCode/comments/1taepox/a_practical_way_to_run_claude_code_tasks_in/>
 - Mention fit: medium-low
 - Best landing page to seed:
   - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
 - Why this stays in the packet:
   - still usable as a workflow reply without forcing a product pitch
   - landing page keeps the CTA on a concrete first-use or proof path
-  - best RalphWorkflow angle from the monitor: the fix is not magic fewer prompts; it is a cleaner approval surface and a visible finish contract
+  - best RalphWorkflow angle from the monitor: parallel work only helps if the final review surface stays boring and legible
 
 ### Draft body B
 The useful shift for me was optimizing for a cleaner morning-after review, not more agent activity.

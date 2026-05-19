@@ -1,9 +1,8 @@
 {
-  "last_attempt_at": "2026-05-19T09:37:03.348189",
-  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-19_0717.md",
-  "last_thread_url": "<https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/>",
-  "last_comment_url": "https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/",
-  "last_attempt_status": "posted",
-  "last_poster_status": "posted",
-  "last_detail": ""
+  "last_attempt_at": "2026-05-19T10:03:41.764592",
+  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-19_0942.md",
+  "last_attempt_status": "cooldown_skip",
+  "last_detail": "global_cooldown_active:26m_since_last_post",
+  "retry_after_minutes": 18,
+  "next_safe_post_at": "2026-05-19T10:22:03"
 }
