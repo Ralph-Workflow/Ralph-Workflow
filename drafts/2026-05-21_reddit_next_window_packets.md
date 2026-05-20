@@ -29,12 +29,13 @@ Messaging guardrails preserved in every draft:
   - best RalphWorkflow angle from the monitor: use both only if the finish gets clearer: what changed, what passed, what still needs a decision
 
 ### Draft body A
-The constraint that cleaned up our multi-agent runs: the second pass never re-implements. It only reviews and flags what the first pass left ambiguous.
+What finally made CC+Codex usable for me was giving them different debts.
 
-That separation alone removed most of the overlap confusion and made the morning result something I could actually grade.
+Claude can take the first implementation pass, but Codex only gets to inspect repo state, challenge assumptions, and point at the exact file/check mismatch. If both agents are allowed to keep rewriting, the handoff turns into noise.
 
-Ralph Workflow is free and open-source: it enforces that role separation so the morning result is reviewable.
+That split made the morning review much faster because I was looking at disagreements and receipts, not two competing implementations.
 
+Ralph Workflow is my open-source attempt to force that shape instead of relying on discipline alone:
 https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/claude-code-codex-workflow.md
 
 ---
