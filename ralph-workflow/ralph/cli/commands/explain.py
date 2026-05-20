@@ -134,8 +134,7 @@ def explain_command(policy_dir: Path | None = None) -> int:
     Returns:
         Exit code: 0 on success, 1 on general error, 2 on policy validation error.
     """
-    load_config = _load_config_loader()
-    load_policy, load_policy_for_workspace_scope = _load_policy_loader()
+    load_policy, _load_policy_for_workspace_scope = _load_policy_loader()
     explain_policy = _load_explain_policy()
     render_explanation_ascii, render_explanation_text = _load_renderers()
     policy_validation_error_type = _load_policy_validation_error_type()
@@ -149,10 +148,8 @@ def explain_command(policy_dir: Path | None = None) -> int:
                 return 1
             bundle = load_policy(resolved_dir)
         else:
-            scope = _load_resolve_workspace_scope()()
-            config = load_config(None, {}, workspace_scope=scope)
             resolved_dir, is_bundled = _resolve_policy_dir()
-            bundle = load_policy_for_workspace_scope(scope, config=config)
+            bundle = load_policy(resolved_dir)
         if is_bundled:
             print("INFO: Using bundled default policy — no project-local .agent/*.toml files found")
         print(f"Policy source: {resolved_dir}")

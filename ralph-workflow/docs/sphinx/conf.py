@@ -9,6 +9,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from ralph import __version__
+from ralph.project_urls import (
+    CODEBERG_ISSUES_URL,
+    CODEBERG_REPOSITORY_URL,
+    GITHUB_MIRROR_URL,
+)
 
 project = "Ralph Workflow"
 copyright = "2026, Ralph Workflow Contributors"
@@ -68,6 +73,18 @@ html_js_files = ["ralph-docs.js"]
 pygments_style = "friendly"
 
 myst_enable_extensions = ["colon_fence", "deflist", "linkify", "substitution"]
+
+myst_substitutions = {
+    "codeberg_repository_url": CODEBERG_REPOSITORY_URL,
+    "github_mirror_url": GITHUB_MIRROR_URL,
+    "codeberg_issues_url": CODEBERG_ISSUES_URL,
+}
+
+rst_epilog = f"""
+.. |codeberg_repository_url| replace:: {CODEBERG_REPOSITORY_URL}
+.. |github_mirror_url| replace:: {GITHUB_MIRROR_URL}
+.. |codeberg_issues_url| replace:: {CODEBERG_ISSUES_URL}
+"""
 
 suppress_warnings = [
     "autodoc.import_object",

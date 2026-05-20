@@ -140,6 +140,13 @@ ralph.instance_status
    :members:
    :show-inheritance:
 
+ralph.project_urls
+~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.project_urls
+   :members:
+   :show-inheritance:
+
 ralph.logging_models
 ~~~~~~~~~~~~~~~~~~~~
 
