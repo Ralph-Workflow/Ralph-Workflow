@@ -43,12 +43,17 @@
 - ❌ **SlashOps** — 302 redirect (not a valid submission page)
 - ❌ **Toolland** — 404 (no submission page)
 
-## Today's Telegraph Posts (keyword-gap content — COMPLETE 2026-05-20)
-- ✅ AI Agent Workflow Composer (https://telegra.ph/AI-Agent-Workflow-Composer-What-It-Actually-Means-and-Why-the-Distinction-Matters-05-20)
-- ✅ Claude Code Unattended (https://telegra.ph/Run-Claude-Code-Unattended--What-the-Documentation-Does-Not-Tell-You-05-20)
-- ✅ AI Coding Workflow Automation (https://telegra.ph/AI-Coding-Workflow-Automation-05-20)
-- ✅ Claude Code Automation (https://telegra.ph/Claude-Code-Automation-05-20)
-- ✅ Spec-Driven AI Agent (https://telegra.ph/Spec-Driven-AI-Agent-05-20)
+## Telegraph Posts (keyword-gap content)
+### ✅ Live posts (2026-05-20, 3 new/replaced after 404 audit):
+- ✅ AI Agent Workflow Composer — https://telegra.ph/AI-Agent-Workflow-Composer-What-It-Actually-Means-and-Why-the-Distinction-Matters-05-20
+- ✅ Claude Code Unattended — https://telegra.ph/Run-Claude-Code-Unattended--What-the-Documentation-Does-Not-Tell-You-05-20
+- ✅ Spec-Driven AI Agents (new URL after 404) — https://telegra.ph/Spec-Driven-AI-Agents-Why-the-Handoff-Problem-Is-the-Real-Bottleneck-05-20
+- ✅ AI Coding Workflow Automation (new URL after 404) — https://telegra.ph/AI-Coding-Workflow-Automation-That-Doesnt-Just-Move-Work-Downstream-05-20
+- ✅ Claude Code Automation (new URL after 404) — https://telegra.ph/Claude-Code-Automation-Making-Unattended-Runs-Actually-Pay-Off-05-20
+### ❌ Previously 404 (replaced 2026-05-20):
+- ~~https://telegra.ph/Spec-Driven-AI-Agent-05-20~~ (404 — replaced)
+- ~~https://telegra.ph/AI-Coding-Workflow-Automation-05-20~~ (404 — replaced)
+- ~~https://telegra.ph/Claude-Code-Automation-05-20~~ (404 — replaced)
 
 ## Remaining High-Leverage Actions
 1. **Submit to AlternativeTo** — browser action required (Cloudflare block) — claim listing at https://alternativeto.net/software/ralph-workflow/

@@ -153,7 +153,7 @@
       "url": "https://slashdot.org/submission",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-20T12:50:59.202832",
+      "timestamp": "2026-05-20T14:53:29.474201",
       "http_code": "200",
       "final_url": "https://slashdot.org/submission",
       "status": "login_required",
@@ -191,13 +191,67 @@
     },
     {
       "name": "saashub",
-      "url": "https://saashub.com",
+      "url": "https://www.saashub.com/services/submit",
       "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-20T12:50:57.812529",
+      "difficulty": "medium",
+      "timestamp": "2026-05-20T14:53:24.705870",
       "http_code": "200",
-      "final_url": "https://www.saashub.com/",
-      "status": "accessible"
+      "final_url": "https://www.saashub.com/services/submit",
+      "status": "broken_submit_surface",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 2,
+        "input_count": 2,
+        "textarea_count": 0,
+        "select_count": 0,
+        "body_excerpt": "Software Alternatives, Accelerators & Startups\nRegister | Login\nTools & Categories \n Feature My Product\nSubmit Product\nSubmit a Product\nSuccessful submission advice\nFollow the guidelines\nPlease read the guidelines below before submitting your product.\nAdd Categories\nList a few relevant categories. You may check your competitors' categories for inspiration.\nList Competitors\nThe submission will be slowed down and put to the bottom of the queue if there are not listed competitors.\nVerify the product\nVerifying your product will give it a higher priority. You will need an email address on the product's domain.\nWebsite URL\nA URL to the product website or a product page on your company's website.\nPlease note that all submitted products go through an approval process.\n\nThese types of products are ",
+        "forms": [
+          {
+            "index": 0,
+            "action": "/services/new",
+            "method": "get",
+            "text": "Website URL\nA URL to the product website or a product page on your company's website.\nPlease note that all submitted products go through an approval process.\n\nThese types of products are not accepted:\n\nSoftware development agencies.\nLanding pages with an email form for a waiting list.\nProducts that ",
+            "control_count": 2,
+            "named_control_count": 2
+          },
+          {
+            "index": 1,
+            "action": null,
+            "method": "dialog",
+            "text": "\nPlease confirm?\n\nCancel\nConfirm\n\n",
+            "control_count": 0,
+            "named_control_count": 0
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 2,
+        "same_origin_script_count": 0,
+        "scripts_fetched": 0,
+        "has_network_submission_markers": false,
+        "has_prevent_default": false,
+        "has_success_markers": false,
+        "submit_handler_window_count": 0,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": false,
+        "has_captcha_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false,
+        "api_candidates": []
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://www.saashub.com/api/submit",
+        "get_code": 404,
+        "post_code": 404,
+        "post_body": "<!DOCTYPE html>\n<!-- saved from url=(0029)https://www.saashub.com/about -->\n<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n    <link rel=\"stylesheet\" media=\"all\" href=",
+        "public_submit_detected": false,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      },
+      "note": "submission requires account creation plus hCaptcha / human-authenticated verification from this environment; treat SaaSHub as a managed existing listing, not an autonomous submit lane"
     },
     {
       "name": "productpapa",
@@ -284,7 +338,7 @@
       "url": "https://toolshelf.dev/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T12:50:32.665468",
+      "timestamp": "2026-05-20T14:52:59.041253",
       "http_code": "200",
       "final_url": "https://toolshelf.dev/submit",
       "status": "accessible",
@@ -404,7 +458,7 @@
       "url": "https://toolwise.ai/submit-tool",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T12:50:40.584984",
+      "timestamp": "2026-05-20T14:53:05.341066",
       "http_code": "200",
       "final_url": "https://toolwise.ai/submit-tool",
       "status": "accessible",
@@ -470,7 +524,7 @@
       "url": "https://aitoolsindex.org/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T12:50:50.017273",
+      "timestamp": "2026-05-20T14:53:15.670450",
       "http_code": "200",
       "final_url": "https://aitoolsindex.org/submit",
       "status": "accessible",
@@ -868,12 +922,6 @@
     }
   ],
   "working": [
-    {
-      "name": "saashub",
-      "url": "https://saashub.com",
-      "method": "submit",
-      "difficulty": "easy"
-    },
     {
       "name": "toolshelf",
       "url": "https://toolshelf.dev/submit",

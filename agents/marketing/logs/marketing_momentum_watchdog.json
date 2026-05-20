@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-05-20T14:02:44.718740+02:00",
+  "generated_at": "2026-05-20T14:53:37.350802+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-20_1220.md",
-  "report_age_hours": 1.6,
-  "latest_post_age_hours": 2.63,
+  "report_age_hours": 2.45,
+  "latest_post_age_hours": 3.48,
   "adoption_flat": true,
   "pending_repairs": [
     "primary_repo_flat",
@@ -11,6 +11,7 @@
   ],
   "blocked_distribution_channels": [
     "slashdot",
+    "saashub",
     "tools-ai-online",
     "codaone",
     "aisotools",
@@ -20,7 +21,7 @@
   ],
   "apollo": {
     "status": "ato_email_verification_required",
-    "age_hours": 1.49,
+    "age_hours": 2.34,
     "cloudflare_blocked": false
   },
   "actions": [

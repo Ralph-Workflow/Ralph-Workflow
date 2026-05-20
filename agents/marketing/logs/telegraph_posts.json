@@ -26,5 +26,17 @@
     "keyword": "spec-driven AI agent",
     "published_at": "2026-05-20T11:48:00Z",
     "notes": "Republished/fixed missing keyword-gap asset after repairing draft encoding defect; keeps Codeberg primary and GitHub mirror CTA."
+  },
+  {
+    "url": "https://telegra.ph/Claude-Code-Automation-What-You-Can-Actually-Delegate-and-What-You-Cannot-05-20-7",
+    "title": "Claude Code Automation: What You Can Actually Delegate and What You Cannot",
+    "keyword": "Claude Code automation",
+    "published_at": "2026-05-20T12:48:56Z"
+  },
+  {
+    "url": "https://telegra.ph/Run-Claude-Code-Unattended--What-the-Documentation-Does-Not-Tell-You-05-20-5",
+    "title": "Run Claude Code Unattended — What the Documentation Does Not Tell You",
+    "keyword": "Claude Code unattended",
+    "published_at": "2026-05-20T12:48:56Z"
   }
 ]
