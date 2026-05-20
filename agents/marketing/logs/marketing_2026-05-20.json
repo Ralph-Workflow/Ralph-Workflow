@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-20T09:06:16.154824",
+  "timestamp": "2026-05-20T16:03:05.910413",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -19,11 +19,16 @@
     }
   },
   "totals": {
-    "posts_last_30d": 27,
+    "posts_last_30d": 32,
     "views_last_30d": 0
   },
   "content_summary": {
     "philosophy": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "seo-guide": {
       "posts": 1,
       "views": 0,
       "avg_views": 0.0
@@ -34,7 +39,7 @@
       "avg_views": 0.0
     },
     "unknown": {
-      "posts": 24,
+      "posts": 28,
       "views": 0,
       "avg_views": 0.0
     },
@@ -114,7 +119,7 @@
     "competitor_analysis": null
   },
   "adoption": {
-    "timestamp": "2026-05-20T08:25:35.891413",
+    "timestamp": "2026-05-20T15:37:40.370625",
     "metrics": [
       {
         "platform": "GitHub",
@@ -179,12 +184,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "[ContentGen] Created: /home/mistlight/.openclaw/workspace/drafts/2026-05-20_philosophy_draft.md",
+    "stdout": "[generate_content.py] SEO match: using topic 'spec_driven' for gap keyword 'spec-driven AI agent'\n[ContentGen] Created: /home/mistlight/.openclaw/workspace/drafts/2026-05-20_spec_driven_draft.md",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "{\n  \"timestamp\": \"2026-05-20T09:06:27.010040\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-20_orchestration_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"ba6927b5e59ac56e0408be665f467675a8f4da36c3ded807a7697d83c3c0d4e2\",\n      \"experiment_id\": \"2026-05-20-orchestration\"\n    },\n    {\n      \"date\": \"2026-05-20\",\n      \"draft\": \"2026-05-20_philosophy_draft.md\",\n      \"title\": \"Why AI Agents Need Structure, Not Just Prompts\",\n      \"platform\": \"telegraph\",\n      \"ok\": true,\n      \"status\": \"posted\",\n      \"url\": \"https://telegra.ph/Why-AI-Agents-Need-Structure-Not-Just-Prompts-05-20\",\n      \"error\": null,\n      \"draft_hash\": \"ca635991957dca7fa4ae59d9a31c4cf95e372e71253e1a47e0ee4d8a78c38b2b\",\n      \"experiment_id\": \"2026-05-20-philosophy\"\n    },\n    {\n      \"draft\": \"2026-05-20_ai-agent-workflow-composer_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"c5be97340566aca5bba2d79e20f5ac0a0f82ce2a830cb582d63ec0eeeda19596\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-20_ai-coding-workflow-automation_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"c29deb08f114433d4f52667bd622366952a465fbba927632cfc746b765b91c24\",\n      \"experiment_id\": \"2026-05-20-ai-workflow-automation\"\n    },\n    {\n      \"draft\": \"2026-05-20_claude-code-automation_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"e25acf55fb121327f400e9e5f4950fe6adcc21cfd557164dad9fc1e7b43640ad\",\n      \"experiment_id\": \"2026-05-20-claude-automation\"\n    },\n    {\n      \"draft\": \"2026-05-20_claude-code-unattended_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"3f9341f2ee15b435ca8938036d2f4ffe9cdf523306a6874fd5e00cc78adbc50a\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-20_spec-driven-ai-agent_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"5d2c747e90b89eeab81739fdd879b8e6d0eb09f975932ccf004bee08ac6be2c7\",\n      \"experiment_id\": \"2026-05-20-spec-driven\"\n    }\n  ]\n}",
+    "stdout": "{\n  \"timestamp\": \"2026-05-20T16:03:16.985088\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-20_orchestration_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"ba6927b5e59ac56e0408be665f467675a8f4da36c3ded807a7697d83c3c0d4e2\",\n      \"experiment_id\": \"2026-05-20-orchestration\"\n    },\n    {\n      \"draft\": \"2026-05-20_philosophy_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"4f7af8f503ff3f76479e69d3c2de88bb9fb93d498e652a0ce28f4e5721a924ea\",\n      \"experiment_id\": \"2026-05-20-philosophy\"\n    },\n    {\n      \"date\": \"2026-05-20\",\n      \"draft\": \"2026-05-20_spec_driven_draft.md\",\n      \"title\": \"Spec-Driven AI Agent: Why Explicit Contracts Change What Your Agent Produces\",\n      \"platform\": \"telegraph\",\n      \"ok\": true,\n      \"status\": \"posted\",\n      \"url\": \"https://telegra.ph/Spec-Driven-AI-Agent-Why-Explicit-Contracts-Change-What-Your-Agent-Produces-05-20\",\n      \"error\": null,\n      \"draft_hash\": \"a6e06c09ff6139388cde59f2e1dc0d981cb59bde83125bfc54565df55cbc8ac2\",\n      \"experiment_id\": \"2026-05-20-spec_driven\"\n    },\n    {\n      \"draft\": \"2026-05-20_ai-agent-workflow-composer_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"c5be97340566aca5bba2d79e20f5ac0a0f82ce2a830cb582d63ec0eeeda19596\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-20_ai-coding-workflow-automation_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"0b04dad590724fc0925c334a659ef618336197cbb9a9d722b7010563eaff08d9\",\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-20_ai-engineering-pipeline_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"a1ea222ab3e26974fb47b7652e6eddc56958b7cc39056f07299a6587015beb1a\",\n      \"experiment_id\": \"2026-05-20-pipeline\"\n    },\n    {\n      \"draft\": \"2026-05-20_claude-code-automation_telegraph.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"e25acf55fb121327f400e9e5f4950fe6adcc21cfd557164dad9fc1e7b43640ad\",\n      \"experiment_id\": \"2026-05-20-claude-automation\"\n    },\n    {\n      \"draft\": \"2026-05-20_claude-code-unattended_telegraph.md\",\n      \"ok\": false,\n      \"status\": \"blocked_positioning_drift\",\n      \"issues\": [\n        \"missing default-workflow / extensibility framing\"\n      ],\n      \"experiment_id\": null\n    },\n    {\n      \"draft\": \"2026-05-20_spec-driven-ai-agent_telegraph.md\",\n      \"ok\": false,\n      \"status\": \"blocked_positioning_drift\",\n      \"issues\": [\n        \"missing default-workflow / extensibility framing\"\n      ],\n      \"experiment_id\": \"2026-05-20-spec-driven\"\n    }\n  ]\n}",
     "stderr": ""
   }
 }

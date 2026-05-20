@@ -55,6 +55,24 @@
 - ~~https://telegra.ph/AI-Coding-Workflow-Automation-05-20~~ (404 — replaced)
 - ~~https://telegra.ph/Claude-Code-Automation-05-20~~ (404 — replaced)
 
+## Repair Status — 2026-05-20 (15:50 CEST)
+
+### ✅ Completed (per repair_needed: primary_repo_flat)
+- **(b) Telegraph keyword-gap posts:** All 5 telegraph posts target the key keyword gaps: "unattended coding agent" (Claude Code Unattended), "AI agent orchestration CLI" (AI Agent Workflow Composer), "spec-driven AI agent" (Spec-Driven AI Agents), "Claude Code automation" (Claude Code Automation), "AI coding workflow automation" (AI Coding Workflow Automation).
+- **(c) Backlink building:** SaaSHub confirmed live. Toolhunt AI, There's An AI For That, AI Navigator listed. Telegraph articles published. Guest post outreach blocked by read-only GitHub PAT.
+
+### 🔶 Remaining Gap (per repair_needed: primary_repo_flat)
+- **(a) Homepage SEO tuning:** Current title is "Unattended coding agent CLI — Ralph Workflow" — functional but could be keyword-front-loaded. Meta description also requires CMS/hosting access to ralphworkflow.com which is not available from this environment. This is the one remaining gap for primary_repo_flat repair. Recommend: obtain CMS/hosting access or a deployable SEO content file.
+
+### ✅ Confirmed Closed (per repair_needed: mirror_repo_flat)
+- All telegraph post drafts distinguish Codeberg (primary) from GitHub (mirror) in all published content.
+
+### ✅ Confirmed Closed (per repair_needed: repetitive_outreach)
+- reddit_fresh_openings.md updated (2026-05-20 15:50) with 2 new archetypes (r/codex and r/entrepreneur/r/startups) and 6 fresh openings (F–J) covering visceral failure story, finish-line contrast, fail-closed, spec-first, and trust-first angles — all distinct from the banned E opening.
+- BANNED_BODY_PREFIXES and BANNED_BODY_PHRASES already expanded in `agents/marketing/reddit_post.py` per prior repair.
+
+---
+
 ## Remaining High-Leverage Actions
 1. **Submit to AlternativeTo** — browser action required (Cloudflare block) — claim listing at https://alternativeto.net/software/ralph-workflow/
 2. **Product Hunt launch** — best done at real launch moment with maker account

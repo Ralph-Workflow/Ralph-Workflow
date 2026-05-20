@@ -10,9 +10,21 @@
 - easy to verify
 - low rollback risk
 
-## One-paragraph spec
+## Copy-paste task spec
 
-When a user runs the project creation flow, reject empty or whitespace-only project names before any files are created. Keep the rest of the flow unchanged. Add or update tests to cover the validation. Done means the CLI shows a clear error, no project is created for invalid input, and tests pass.
+```md
+Change:
+Reject empty or whitespace-only project names in the CLI create flow.
+
+Keep unchanged:
+Do not alter the rest of the creation flow or the generated file layout.
+
+Done means:
+Invalid names show a clear error and create no project.
+
+Checks:
+Existing create-flow tests still pass and new validation tests pass.
+```
 
 ## Why this is better than a vague demo
 

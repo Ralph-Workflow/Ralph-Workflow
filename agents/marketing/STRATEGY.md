@@ -307,8 +307,9 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 
 ### Content Performance
 - philosophy: 1 posts, 0 total views, 0.0 avg views/publish
+- seo-guide: 1 posts, 0 total views, 0.0 avg views/publish
 - technical: 1 posts, 0 total views, 0.0 avg views/publish
-- unknown: 24 posts, 0 total views, 0.0 avg views/publish
+- unknown: 28 posts, 0 total views, 0.0 avg views/publish
 - usecase: 1 posts, 0 total views, 0.0 avg views/publish
 
 ### Weekly Decisions

@@ -58,6 +58,28 @@ Do NOT reuse any opening across subreddits.
 **Opening C (pattern-first):**
 "The automation pattern that actually holds up: spec before, receipt after. What changed, what passed, what still needs judgment. Everything else is just a longer script."
 
+## r/codex — Tool Handoff / Finish-State Pain
+
+**Opening A (finish-first):**
+"Most tooling talk focuses on the start — which model, which context window, which parallel branch. The part that actually determines whether you close the laptop is the finish: what changed, what ran, what still looks off. That is where the real workflow problem lives."
+
+**Opening B (failure-story-first):**
+"The overnight run I regret most was not the one that failed — it was the one that seemed to succeed. No visible diff, no clear receipt, just a quiet feeling that something had happened. Bounded cost with a reviewable result would have caught it."
+
+**Opening C (spec-first):**
+"The overnight run question is usually not 'which agent should run longer' — it is 'what will I actually be able to review in the morning.' Most setups answer the first question and completely skip the second."
+
+## r/entrepreneur / r/startups — Bounded Cost / Fail-Closed Pain
+
+**Opening A (bounded-cost-first):**
+"The overnight run I regret most was not the one that failed — it was the one that seemed to succeed. No visible diff, no clear receipt, just a quiet feeling that something had happened. Bounded cost with a reviewable result would have caught it."
+
+**Opening B (contrast-first):**
+"Finished code, passed checks, and a short unresolved list — that is what trustworthy unattended output looks like. Anything less is just a longer prompt in disguise."
+
+**Opening C (trust-first):**
+"The autonomy failure I run into most is not the agent doing something obviously wrong. It is the agent confidently doing the wrong thing and stopping as if it were finished."
+
 ## Generic / Low-Fit Subreddits
 
 **Opening A (constraint-first):**

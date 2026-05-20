@@ -9,7 +9,7 @@
     },
     {
       "date": "2026-05-09",
-      "title": "dev.to Article: \"I let AI code for 4 hours — here's the exact workflow\"",
+      "title": "dev.to Article: \"I let AI code for 4 hours \u2014 here's the exact workflow\"",
       "platform": "write.as",
       "ok": true,
       "url": "https://write.as/hc9rvxrkrkl5w"
@@ -30,7 +30,7 @@
     },
     {
       "date": "2026-05-09",
-      "title": "dev.to Article: \"I let AI code for 4 hours — here's the exact workflow\"",
+      "title": "dev.to Article: \"I let AI code for 4 hours \u2014 here's the exact workflow\"",
       "platform": "write.as",
       "ok": true,
       "url": "https://write.as/v4euvnxb3z5jh"
@@ -284,7 +284,7 @@
     {
       "date": "2026-05-20",
       "draft": "2026-05-20_claude-code-unattended_telegraph.md",
-      "title": "Run Claude Code Unattended — What the Documentation Does Not Tell You",
+      "title": "Run Claude Code Unattended \u2014 What the Documentation Does Not Tell You",
       "platform": "telegraph",
       "ok": true,
       "status": "posted",
@@ -391,7 +391,19 @@
       "content_type": "seo-guide",
       "cta": "install_ralphworkflow",
       "hypothesis": "Targeting spec-driven AI agent captures developers who want structured, reviewable agent runs rather than open-ended prompting."
+    },
+    {
+      "date": "2026-05-20",
+      "draft": "2026-05-20_spec_driven_draft.md",
+      "title": "Spec-Driven AI Agent: Why Explicit Contracts Change What Your Agent Produces",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Spec-Driven-AI-Agent-Why-Explicit-Contracts-Change-What-Your-Agent-Produces-05-20",
+      "error": null,
+      "draft_hash": "a6e06c09ff6139388cde59f2e1dc0d981cb59bde83125bfc54565df55cbc8ac2",
+      "experiment_id": "2026-05-20-spec_driven"
     }
   ],
-  "last_run": "2026-05-20T11:48:00+00:00"
+  "last_run": "2026-05-20T16:03:16.985088"
 }
