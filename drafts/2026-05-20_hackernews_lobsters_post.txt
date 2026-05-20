@@ -1,63 +1,80 @@
-# HN/Lobsters Submission Draft — Ralph Workflow
-# Generated: 2026-05-20
-# Candidate: "Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For"
-# Telegraph source: https://telegra.ph/Open-Source-AI-Coding-Orchestrator-What-Ralph-Workflow-Is-Actually-For-05-19
-# Target: Hacker News, then Lobsters
+=== HN / LOBSTERS HUMAN HANDOFF PACKET ===
+Generated: 2026-05-20 20:19 CEST
+Action type: REWRITTEN / REPLACING
 
----
+Why this is the move now:
+- Codeberg is still flat across the active measurement window.
+- Reddit is on cooldown / low-fit.
+- Telegraph keyword-gap and homepage SEO repairs are already live.
+- The remaining highest-leverage distribution move is a human-posted HN submission, with Lobsters second.
 
-TITLE (HN):
-Ask HN: How do you actually run AI coding agents on real overnight work?
+Expected outcome:
+- higher-intent developer traffic into the primary Codeberg repo from a category-legible, workflow-first external surface
 
-ALTERNATIVE TITLE (HN):
-Ask HN: What's your workflow for running AI agents on multi-hour tasks without babysitting?
+Measurement window:
+- 7 days for HN/Lobsters visibility or referral evidence
+- 14 days through 2026-06-03 for Codeberg stars/watchers/forks delta
 
----
+Replace if it fails:
+- if this gets posted and Codeberg is still flat by 2026-06-03, stop leaning on owned/discussion distribution alone and switch to direct curator / competitor-citation outreach
 
-TITLE (Lobsters):
-Show Lobsters: Ralph Workflow — open-source AI coding orchestrator with a strong default loop
+Primary asset:
+- Title/angle: AI Agent Orchestration CLI: A Practical Comparison for Developers
+- URL: https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
+- Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+- GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+- Main site: https://ralphworkflow.com
 
----
+Why this asset beats the older packet:
+- matches the live homepage wording: unattended coding agent + AI agent orchestration CLI
+- answers the four marketing questions cleanly
+- routes to Codeberg first and GitHub second
+- feels more category-legible for HN/Lobsters than the older ask/show draft
 
-SUBMISSION TEXT (HN — "Ask" style, conversational, non-promotional):
+====================
+HACKER NEWS
+====================
+Submission type: Link post
 
-You've been there: you set up a coding agent, give it a task, and then spend the next two hours answering prompts, approving intermediate steps, and trying to figure out whether it actually finished the thing you wanted.
+Title:
+AI Agent Orchestration CLI: A Practical Comparison for Developers
 
-The model quality debate is overdone. The real gap is workflow.
+Alt title if needed:
+What Developers Actually Need From an AI Agent Orchestration CLI
 
-I've been building Ralph Workflow — a free, open-source AI orchestrator that structures a coding session as a loop: spec first, development iteration, review. You set the finish condition before you start, and the agent runs through the phases without needing a human in the loop every few minutes.
+URL:
+https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
 
-The difference between "I supervised an agent for three hours" and "I woke up to a reviewable diff" is mostly workflow design.
+Suggested first comment:
+Most AI coding discussion still gets stuck on model choice. The question I care about more is whether the workflow actually ends in something you would inspect, test, and maybe merge.
 
-It's on Codeberg (primary), mirrors to GitHub. Works with Claude Code, Codex CLI, or OpenCode.
+The implementation behind the piece is Ralph Workflow: a free and open-source repo-native workflow for longer coding runs on your own machine. Primary repo is Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow . GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 
-Curious how others handle the overnight / unattended problem. What does your loop look like?
+Good reply angles if people push back:
+- the real bar is the finish line: finished code, tested code, and what changed
+- worktrees help isolation; they do not prove the merged result holds up
+- good first use is one bounded backlog task, not open-ended autonomy theater
+- Codeberg is primary because that is where first-run feedback and adoption are centered
 
----
+====================
+LOBSTERS
+====================
+Submission type: Link post
+Tags: ai, programming, tools
 
-SUBMISSION TEXT (Lobsters — "Show" style, more direct):
+Title:
+AI Agent Orchestration CLI: A Practical Comparison for Developers
 
-Ralph Workflow is an open-source AI coding orchestrator built around a simple idea: structure the session as a loop, not a prompt chain.
+URL:
+https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
 
-- Planning loop: turns a task into a runnable spec
-- Development loop: executes against the spec, iterates, runs checks
-- Review loop: surfaces a clean diff you'd actually merge
+Suggested story/comment framing:
+This is the comparison question I keep finding more useful than “which coding agent is best?” — what should an orchestration CLI actually hand back before an AI-generated change is ready to inspect, test, and maybe merge?
 
-Works with Claude Code, Codex CLI, or OpenCode. Free and open source. No hosted component required.
+The implementation behind the essay is Ralph Workflow, a free and open-source workflow that runs existing coding agents on your own machine and tries to end with finished code, tested code, and a clear review surface. Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow . GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 
-The default workflow works as-is for a real task today, or you build your own workflow on top.
-
-Repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
-Docs: https://ralphworkflow.com/
-
----
-
-VERIFICATION CHECKLIST before submitting:
-[ ] Title does not sound like a product launch
-[ ] No "we're building" or "I built" framing in the HN body
-[ ] Codeberg URL is the first link
-[ ] Four marketing questions are answered implicitly
-[ ] Not posted to HN from same account in last 30 days
-[ ] Not posted to Lobsters from same account in last 14 days
-
----
+Manual steps:
+1. Submit to HN first as a link post.
+2. If that is live, submit the same asset to Lobsters.
+3. Keep follow-up comments workflow-first, not promo-first.
+4. If asked for the repo, give Codeberg first and GitHub only as the mirror.

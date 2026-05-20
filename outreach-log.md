@@ -1,5 +1,23 @@
 # Outreach Log
 
+## 2026-05-20 (Wednesday) — Live homepage title/description drift repair (18:38 UTC / 20:38 CEST)
+- **What I executed:** repaired the actual live homepage metadata in `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`, restarted the app, and re-fetched `https://ralphworkflow.com` to verify the public page changed.
+  - Live `<title>` now: **`Unattended coding agent — AI agent orchestration CLI — Ralph Workflow`**
+  - Live meta description now: **`Free open-source unattended coding agent and AI agent orchestration CLI. Inspect Codeberg first, run one real backlog task overnight, and wake up to finished, tested code ready to review.`**
+- **Why this action:** this is **REPAIRED / REPLACING**. The active bottleneck is still `distribution_and_message_to_primary_repo_conversion`, and the cron explicitly prioritizes homepage title/description SEO tuning while Codeberg is flat. I verified the public site was still serving the older `operating system for autonomous coding` title, so the highest-leverage executable move was to fix the live owned entry surface instead of creating another generic content asset.
+- **Expected outcome:** warmer search and homepage visitors for the exact evaluator intents `unattended coding agent` and `AI agent orchestration CLI`, with a clearer Codeberg-first evaluation path before mirror/default drift.
+- **Measurement window:** next 7 days for live snippet alignment / referral quality; next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop doing more homepage metadata micro-tuning and replace this tactic with fresh external distribution/backlink work or direct curator/competitor-citation outreach.
+- **Type:** **REPAIRED / REPLACING**
+
+## 2026-05-20 (Wednesday) — HN/Lobsters packet rewrite + human handoff (18:19 UTC / 20:19 CEST)
+- **What I executed:** rewrote `drafts/2026-05-20_hackernews_lobsters_post.txt` into a current human-ready submission packet built around the strongest live non-Reddit asset: `AI Agent Orchestration CLI: A Practical Comparison for Developers` (`https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20`).
+- **Why this action:** this is **REWRITTEN / REPLACING**. Codeberg is still flat, Reddit is cooling or low-fit, homepage SEO + Telegraph keyword-gap repairs are already live, and the remaining highest-leverage move is still HN first / Lobsters second. I cannot post there autonomously from this environment, so the best executable move now is to eliminate packet drift and hand off one clean current submission path instead of leaving an older or split draft in place.
+- **Expected outcome:** faster human execution of the strongest remaining distribution move, sending higher-intent developer traffic into the primary Codeberg repo from a category-legible external surface.
+- **Measurement window:** 7 days for HN/Lobsters visibility or referral evidence; 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if this gets posted and Codeberg is still flat by **2026-06-03**, stop leaning on owned/discussion distribution alone and shift to direct curator / competitor-citation outreach.
+- **Type:** **REWRITTEN / REPLACING**
+
 ## 2026-05-20 (Wednesday) — Reddit monitoring (16:21 UTC / 18:21 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-20_1821.md`
 - **Scan summary:** 26 candidate Reddit threads/posts scanned, 8 shortlisted, 18 rejected.
@@ -3818,3 +3836,51 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending cycles on homepage CTA/microcopy repairs and replace this tactic with a fresh external referral or backlink source.
 - **Type:** **REPAIRED / REPLACING**
 - **Verification:** live fetch after restart confirmed the updated title, updated meta description, and visible **`Inspect on Codeberg first`** CTA on `https://ralphworkflow.com`.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 20:08:01
+- **Note:** Momentum check found: no_recent_reddit_post, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 20:15:21
+- **Note:** Momentum check found: no_recent_reddit_post, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach.
+
+### Apollo monitor
+- **When:** 2026-05-20 20:15:54
+- **Note:** Apollo status changed from `script_failure` to `ato_email_verification_required`.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 20:17:27
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 20:40:05
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Live homepage first-task framing repair (18:56 UTC / 20:56 CEST)
+- **What I executed:** repaired the actual live homepage conversion copy in `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`, restarted the app, and re-fetched `https://ralphworkflow.com` to verify the public page changed.
+  - Replaced the broad `Pick something meaty from your backlog` / `big enough to be worth an overnight run` framing with explicit first-run guidance: start with **one meaningful but low-risk task you can judge quickly tomorrow morning**.
+  - Updated the start-here card and FAQ so the live site now says the first run should be **bounded before it is ambitious**, then graduate to bigger features/refactors after Ralph Workflow earns trust.
+- **Why this action:** this is **REPAIRED / REPLACING**. The active bottleneck is still `distribution_and_message_to_primary_repo_conversion`, and `ADOPTION_FUNNEL_NEXT.md` says the strongest current lever is the first-task / free-use path. The live homepage was still contradicting that strategy by nudging first-time evaluators toward larger, riskier tasks. Fixing that contradiction on the public first-touch surface was higher leverage than creating another article or another no-output monitor pass.
+- **Expected outcome:** more qualified homepage visitors should choose a safer first run, reach the `would you merge it?` moment faster, and convert into primary-repo trust actions on **Codeberg** instead of bouncing after an over-ambitious first attempt.
+- **Measurement window:** next 7 days for live first-run messaging alignment / evaluator-path quality; next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending more cycles on first-task copy tuning and replace this tactic with a fresh external distribution / backlink / curator-citation move.
+- **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 21:02:23
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Live homepage first-task conversion repair (19:14 UTC / 21:14 CEST)
+- **What I executed:** repaired the live homepage hero at `https://ralphworkflow.com` so the first-screen evaluator path now matches the real adoption bottleneck: **Codeberg first, first task second, install third**.
+  - Changed `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` so the hero CTA row now shows:
+    - **Inspect the primary repo on Codeberg**
+    - **Pick your first real task**
+    - **Install ralph-workflow**
+  - Rewrote the helper line under the CTAs to: **`Best evaluator path: inspect Codeberg first, pick one real backlog task, then install and run it tonight.`**
+  - Removed the weaker **TechTools Launchpad** proof link from the homepage proof strip so the public trust surface stays curated instead of noisy.
+- **Why this action:** this is **REPAIRED / REPLACING**. Codeberg adoption is still flat, the current funnel bottleneck is still conversion from interest to free use, and the live homepage hero was still install-first even though the stronger evaluator journey is Codeberg inspection → first-task shaping → first run. Tightening the first screen is a stronger same-run move than generating more generic content while the owned conversion surface still led with the wrong next step.
+- **Expected outcome:** more qualified visitors should self-route into the highest-intent evaluation path, increasing **Codeberg** repo inspection first and then stars/watchers/forks from people who already know what task they would try.
+- **Measurement window:** next 7 days for homepage path alignment / referral quality; next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on homepage hero/CTA tuning and replace this tactic with a fresh external distribution/backlink or competitor-citation move.
+- **Type:** **REPAIRED / REPLACING**
