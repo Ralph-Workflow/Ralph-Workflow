@@ -115,6 +115,38 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "captcha_blocked")
         self.assertIn("captcha", note.lower())
 
+    def test_validated_submit_host_overrides_captcha_block_assumption(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {
+                "probe_status": "ok",
+                "form_count": 1,
+                "input_count": 6,
+                "textarea_count": 2,
+                "select_count": 2,
+                "body_excerpt": "Submit Your Tool\nTool Name\nWebsite URL\nCategory\nPricing Type",
+                "forms": [
+                    {
+                        "action": None,
+                        "method": None,
+                        "control_count": 10,
+                        "named_control_count": 10,
+                    }
+                ],
+            },
+            {
+                "probe_status": "ok",
+                "has_captcha_markers": True,
+                "has_network_submission_markers": True,
+            },
+            {
+                "probe_status": "ok",
+                "public_submit_detected": False,
+            },
+            page_url="https://www.codaone.ai/submit/",
+        )
+        self.assertEqual(status, "accessible")
+        self.assertIn("validated json submit endpoint", note.lower())
+
     def test_submission_probe_gate_only_triggers_for_real_submit_pages(self):
         self.assertTrue(channel_discovery.submission_surface_needs_form_probe(
             "https://www.toolhunter.cc/submit",
@@ -143,6 +175,7 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertNotIn("devpages", active)
         self.assertIn("toolwise", active)
         self.assertIn("aitoolsindex", active)
+        self.assertIn("codaone", active)
 
 
 if __name__ == "__main__":
