@@ -211,6 +211,32 @@ def test_pending_diff_falls_back_when_not_a_git_repo(tmp_path: Path) -> None:
     assert diff == "(no diff available)"
 
 
+def test_materialize_commit_phase_includes_untracked_files_for_initial_repo(
+    tmp_path: Path,
+) -> None:
+    repo = GitRepo.init(tmp_path)
+    try:
+        policy = load_policy(tmp_path / ".agent")
+        workspace = MemoryWorkspace(root=str(tmp_path))
+        (tmp_path / "new_file.py").write_text("value = 1\n", encoding="utf-8")
+
+        prompt_path = materialize_prompt_for_phase(
+            PromptPhaseContext(
+                phase="development_commit",
+                workspace=workspace,
+                pipeline_policy=policy.pipeline,
+                session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+                workspace_root=tmp_path,
+            ),
+        )
+
+        rendered = workspace.read(prompt_path)
+        assert "new_file.py" in rendered
+        assert "(no diff available)" not in rendered
+    finally:
+        repo.close()
+
+
 def test_git_diff_strips_lone_surrogates_from_gitpython_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

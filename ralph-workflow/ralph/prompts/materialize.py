@@ -958,7 +958,18 @@ def _pending_diff(workspace_root: Path) -> str:
         return "(no diff available)"
 def _commit_phase_diff(workspace_root: Path) -> str:
     diff = _pending_diff(workspace_root).strip()
-    return diff or "(no diff available)"
+    try:
+        repo = Repo(workspace_root)
+        untracked = cast("str", repo.git.ls_files("--others", "--exclude-standard")).strip()
+    except Exception:
+        untracked = ""
+    if not untracked:
+        return diff or "(no diff available)"
+    if diff == "(no diff available)":
+        diff = ""
+    section = "\n\n## Untracked files (will be staged by git add -A):\n" + untracked
+    combined = (diff + section).strip()
+    return combined or "(no diff available)"
 def commit_cleanup_diff(workspace_root: Path) -> str:
     """Return diff for commit cleanup including untracked files.
     Combines pending diff with untracked files that ``git add -A`` would stage.
