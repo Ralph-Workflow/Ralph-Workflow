@@ -102,3 +102,37 @@ class TestPromptHelperDispatch:
         # --help should work without calling run_prompt_helper
         mock_run_prompt_helper.assert_not_called()
         assert result.exit_code == 0
+
+    def test_prompt_helper_passes_workspace_scope_to_load_config(
+        self,
+        cli_runner: typer.testing.CliRunner,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--prompt-helper passes workspace_scope to load_config."""
+        monkeypatch.setattr(main_module, "run_prompt_helper", MagicMock(return_value=None))
+
+        captured_kwargs: dict[str, object] = {}
+
+        def tracking_load_config(*args: object, **kwargs: object) -> object:
+            captured_kwargs.update(kwargs)
+            mock_config = MagicMock()
+            mock_config.prompt_helper.agent = "prompt-helper-agent"
+            return mock_config
+
+        monkeypatch.setattr(main_module, "load_config", tracking_load_config)
+
+        mock_scope = MagicMock()
+        mock_scope.root = Path("/fake/workspace")
+        monkeypatch.setattr(main_module, "resolve_workspace_scope", lambda: mock_scope)
+
+        result = cli_runner.invoke(
+            main_module.app,
+            ["--prompt-helper"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0
+        assert "workspace_scope" in captured_kwargs, (
+            "load_config must be called with workspace_scope= kwarg"
+        )
+        assert captured_kwargs["workspace_scope"] is mock_scope

@@ -335,9 +335,10 @@ def _handle_prompt_helper(
     cli_overrides: dict[str, object],
 ) -> None:
     """Handle --prompt-helper early-exit before pipeline."""
-    cfg = load_config(_config_path(config), cli_overrides)
-    workspace_scope = None if _config_path(config) is not None else resolve_workspace_scope()
+    config_path = _config_path(config)
+    workspace_scope = None if config_path is not None else resolve_workspace_scope()
     workspace_root = workspace_scope.root if workspace_scope else RuntimePath.cwd()
+    cfg = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
     run_prompt_helper(cfg, workspace_root)
 
 
