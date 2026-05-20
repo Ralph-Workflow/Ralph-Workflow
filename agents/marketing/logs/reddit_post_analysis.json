@@ -1,62 +1,62 @@
 {
-  "generated_at": "2026-05-20T03:49:21.932904",
-  "count": 23,
+  "generated_at": "2026-05-20T05:11:56.066161",
+  "count": 24,
   "recent_window_count": 6,
   "by_account": {
     "Informal-Salt827": 6
   },
   "by_community": {
-    "r/ClaudeCode": 4,
     "r/ClaudeAI": 1,
-    "r/AI_Agents": 1
+    "r/AI_Agents": 1,
+    "r/ClaudeCode": 4
   },
   "top_title_words": [
     "claude",
     "code",
-    "agent",
     "mode",
-    "teams",
-    "gemini",
-    "codex",
     "checkpoint",
     "commits",
     "polluting",
     "history",
     "handling",
     "multi",
+    "agent",
     "supervision",
-    "becoming"
+    "becoming",
+    "real",
+    "autonomous",
+    "runs"
   ],
   "top_body_tokens": [
     "review",
-    "ralph",
-    "workflow",
     "diff",
     "checks",
+    "handoff",
+    "ralph",
+    "workflow",
     "making",
     "ends",
+    "readable",
+    "model",
     "about",
-    "before",
-    "stale",
-    "assumptions",
-    "nobody",
-    "like",
-    "already",
-    "open",
-    "real",
-    "short",
-    "finish",
     "surface",
-    "handoff"
+    "without",
+    "instead",
+    "result",
+    "easy",
+    "optimize",
+    "it's",
+    "real",
+    "short"
   ],
   "phrase_hits": {
-    "trust": 2,
-    "overnight": 2,
-    "handoff": 4,
     "reviewable": 1,
-    "diff": 4,
+    "diff": 5,
+    "overnight": 1,
+    "handoff": 4,
     "done criteria": 1,
-    "scope": 1,
+    "trust": 1,
+    "scope": 2,
     "small scoped": 1
   },
   "repeated_openings": [
@@ -64,14 +64,6 @@
   ],
   "account_switches": [],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-18T15:59:46.593035",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeCode",
-      "title": "Claude Code Agent Teams W/ Gemini and Codex",
-      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tep6dl/claude_code_agent_teams_w_gemini_and_codex/omhhcbh/",
-      "opening_line": "If you're running Claude Code with Gemini or Codex, I'd design for stable handoffs before I optimized for more throughput."
-    },
     {
       "timestamp": "2026-05-18T17:59:49.433267",
       "account": "Informal-Salt827",
@@ -111,6 +103,14 @@
       "title": "Claude Code just shipped a \"run until done\" mode. Upgrade to v2.1.139 for /goal.",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1taty8a/claude_code_just_shipped_a_run_until_done_mode/omo8q4d/",
       "opening_line": "Honestly the part I'd optimize first is the handoff, not the model stack."
+    },
+    {
+      "timestamp": "2026-05-20T04:26:57.206970",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "How do you ACTUALLY use CC+codex?",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tb7j36/how_do_you_actually_use_cccodex/omshh9e/",
+      "opening_line": "Forcing the handoff to be boring and explicit — that is what usually saves multi-tool runs, not another model hop."
     }
   ],
   "recommendations": [

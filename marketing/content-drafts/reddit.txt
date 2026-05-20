@@ -3,29 +3,29 @@ Title: [Dev Tool] RalphWorkflow — turns Claude Code / Codex CLI into an unatte
 ---
 OPENING VARIANTS (pick one per post — never reuse across subreddits or within 3 posts of the same subreddit):
 
-[r/ClaudeCode — visceral failure / babysitting] Opening F:
-The pattern I see most is: you write a task, the agent starts, you answer a prompt, then another, it hallucinates, you correct it, and you are still there at midnight babysitting a tool that was supposed to save you time. The fix is not a better prompt — it is a clearer finish line.
+[r/ClaudeCode — rate limit failure story] Opening N:
+Every Claude Code failure I can trace starts the same way: rate limit hits at 2am, script exits, and I have no idea where it stopped or what state the repo is in. The fix was not a better API key — it was making checkpoint resume and fallback chains the default behavior instead of an afterthought.
 
-[r/ClaudeCode — approval mode frustration] Opening J:
-Approval mode works until 2am when you're still clicking approve on runs that handed you a prompt instead of finished code. The fix is not fewer prompts — it is a finish contract that owes you finished code, test results, and a short explicit list of what still needs your call.
+[r/ClaudeCode — spec-first anti-hallucination] Opening O:
+I stopped trying to prompt my way out of hallucinations and started writing specs instead. Not prompts with caution language — actual specs with bounded scope, explicit constraints, and a finish contract. The model cannot argue with a written definition of done.
 
-[r/ClaudeCode — repo-state / finish anxiety] Opening K:
-The failure mode I care about is not whether the agent looked productive. It is whether I can open the repo later and understand exactly what changed, what passed, and what still needs a human call.
+[r/ClaudeCode — morning handoff story] Opening P:
+The question I now ask at the start of every agent session: what will I actually see in my editor tomorrow morning? If I cannot answer that clearly, the session is not bounded. RalphWorkflow forces that answer before the first command runs.
 
-[r/codex / r/ClaudeCode — finish-line contrast] Opening H:
-Most tooling talk focuses on the start — which model, which context window, which parallel branch. The part that actually determines whether you close the laptop is the finish: what changed, what ran, what still looks off. That is where the real workflow problem lives.
+[r/codex / r/ClaudeCode — finish contract framing] Opening Q:
+What I wanted from an AI coding tool was not "run longer" — it was "owe me a result." Not a transcript, not a confident summary, not an open-ended continuation. A bounded result I can open, review, and decide on in under five minutes.
 
-[r/programming / r/Python / r/devops — what did you actually ship?] Opening G:
-The overnight run question is usually not "which agent should run longer" — it is "what will I actually be able to review in the morning." Most setups answer the first question and completely skip the second.
+[r/programming / r/Python / r/devops — overnight run failure modes] Opening R:
+Three things that kill overnight agent runs: rate limits mid-cycle, repo state corruption on resume, and unbounded scope creep. I have a CLI that addresses all three by design — not by hoping the agent self-corrects.
 
-[r/programming / r/AI_Agents / r/devops — anti-transcript] Opening L:
-A lot of agent workflow advice still assumes the transcript is the artifact. For real repo work, the artifact has to be the diff plus the proof bundle — otherwise you are doing transcript archaeology instead of review.
+[r/programming / r/AI_Agents / r/devops — artifact vs transcript] Opening S:
+The artifact of a good agent session is not the transcript. It is the diff, the test evidence, and a short list of what still needs a human call. Everything else is working material, not deliverable.
 
-[r/SideProject / r/startups / r/entrepreneur — bounded overnight wager] Opening M:
-The only overnight agent runs worth repeating are the ones with a bounded downside by morning. If I cannot tell what changed and what still looks risky in five minutes, the run was too open-ended.
+[r/SideProject / r/startups / r/entrepreneur — bounded downside framing] Opening T:
+The overnight runs worth repeating are the ones where the downside is bounded before you close the laptop. Not "maybe it worked" — here is what changed, here is what passed, here is what still needs your call. That is the only version worth coming back to.
 
-[r/entrepreneur / r/startups / r/AI_Agents — bounded-cost / fail-closed] Opening I:
-The overnight run I regret most was not the one that failed — it was the one that seemed to succeed. No visible diff, no clear receipt, just a quiet feeling that something had happened. Bounded cost with a reviewable result would have caught it.
+[r/entrepreneur / r/startups / r/AI_Agents — fail-closed story] Opening U:
+The worst overnight run I ever had was not the one that failed visibly. It was the one that seemed to succeed but produced nothing I could actually use. I now require a finish receipt before calling any run a win.
 
 [r/ExperiencedDevF] Opening:
 Wanted a workflow that asks the one question that matters when an AI coding session finishes: would you actually merge this? Not did it generate code, did it finish the job in a way that holds up. Built RalphWorkflow around that bar — planning loop, dev loop, program loop, fallback chains, and a clean morning handoff. Posting here because this community tends to have the most honest takes on whether something actually solves a real problem or just automates the wrong thing.
@@ -62,7 +62,7 @@ The workflow config lives in `.agent/ralph-workflow.toml` in your repo — it's 
 
 ---
 
-BANNED PHRASES (never appear in body):
+BANNED PHRASES (never appear in body — updated from stale post audit):
 - "reviewable work units"
 - "for me the reliable pattern is"
 - "for me the reliable version is"
@@ -72,5 +72,13 @@ BANNED PHRASES (never appear in body):
 - "most of the pain is not raw generation"
 - "stale assumptions"
 - "lying to yourself about the result"
+- "fuzzy ownership"
+- "nobody making the finish easy to review"
+- "maximum autonomy"
+- "clean morning-after review"
+- "optimize for a clean morning-after review"
+- "that framing has helped more than any specific model switch"
+- "readable diff" (overused in recent posts — use "diff you can open" or "output you can review" instead)
+- "confident summary" (permanently banned — implies false confidence)
 
 FRESHNESS RULE: No opening from any list may appear in more than one subreddit in the same audit window. The live post tool rejects openings reused from the last 10 logged posts.

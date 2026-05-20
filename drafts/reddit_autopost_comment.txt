@@ -1,3 +1,3 @@
-A new autonomy mode only matters if it knows how to stop without making you do transcript archaeology later.
+Forcing the handoff to be boring and explicit — that is what usually saves multi-tool runs, not another model hop.
 
-Longer runtime is cheap. A clear finish state is the expensive part: what changed, what ran, and whether you'd actually merge it.
+One scoped task, one readable diff, real checks, and a short receipt of anything still risky gives you something you can actually judge instead of just admire.

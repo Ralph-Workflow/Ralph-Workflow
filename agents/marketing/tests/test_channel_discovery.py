@@ -115,6 +115,39 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "captcha_blocked")
         self.assertIn("captcha", note.lower())
 
+    def test_classifies_server_error_submit_endpoint_as_broken_surface(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {
+                "probe_status": "ok",
+                "form_count": 1,
+                "input_count": 4,
+                "textarea_count": 1,
+                "select_count": 0,
+                "body_excerpt": "Submit your tool\nYour Email\nTool Name\nWebsite URL\nDescription",
+                "forms": [
+                    {
+                        "action": None,
+                        "method": None,
+                        "control_count": 5,
+                        "named_control_count": 5,
+                    }
+                ],
+            },
+            {
+                "probe_status": "ok",
+                "has_network_submission_markers": True,
+            },
+            {
+                "probe_status": "ok",
+                "submit_url": "https://www.iatool.online/api/submit-tool",
+                "post_code": 500,
+                "server_error_detected": True,
+                "public_submit_detected": False,
+            },
+        )
+        self.assertEqual(status, "broken_submit_surface")
+        self.assertIn("server error 500", note.lower())
+
     def test_validated_submit_host_overrides_captcha_block_assumption(self):
         status, note = channel_discovery.classify_submission_surface_probe(
             {
@@ -147,6 +180,39 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "accessible")
         self.assertIn("validated json submit endpoint", note.lower())
 
+    def test_known_broken_submit_host_overrides_false_positive_api_accessibility(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {
+                "probe_status": "ok",
+                "form_count": 1,
+                "input_count": 5,
+                "textarea_count": 1,
+                "select_count": 1,
+                "body_excerpt": "Submit Your AI Tool\nTool Name\nWebsite URL\nCategory\nDescription",
+                "forms": [
+                    {
+                        "action": None,
+                        "method": None,
+                        "control_count": 7,
+                        "named_control_count": 7,
+                    }
+                ],
+            },
+            {
+                "probe_status": "ok",
+                "has_network_submission_markers": True,
+            },
+            {
+                "probe_status": "ok",
+                "submit_url": "https://aisotools.com/api/submit",
+                "public_submit_detected": True,
+                "post_code": 400,
+            },
+            page_url="https://aisotools.com/submit",
+        )
+        self.assertEqual(status, "broken_submit_surface")
+        self.assertIn("valid payload returns", note.lower())
+
     def test_submission_probe_gate_only_triggers_for_real_submit_pages(self):
         self.assertTrue(channel_discovery.submission_surface_needs_form_probe(
             "https://www.toolhunter.cc/submit",
@@ -176,6 +242,8 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertIn("toolwise", active)
         self.assertIn("aitoolsindex", active)
         self.assertIn("codaone", active)
+        self.assertIn("aisotools", active)
+        self.assertIn("comeai", active)
 
 
 if __name__ == "__main__":

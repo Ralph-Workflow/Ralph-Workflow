@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-20T03:51:43.555981",
+  "timestamp": "2026-05-20T04:37:24.490404",
   "results": {
     "sitemap": {
       "exists": true,
@@ -10,8 +10,11 @@
       "content": "User-agent: *\nDisallow: /admin\nDisallow: /api\nDisallow: /auth\nDisallow: /good_job\nDisallow: /api-docs\n\nSitemap: https://ralphworkflow.com/sitemap.xml\n"
     },
     "backlinks": {
-      "backlinks": 0,
-      "sources": []
+      "count_approx": 1,
+      "sources": {
+        "SaaSHub": "https://saashub.com/ralph-workflow"
+      },
+      "note": "Google search blocked; verified from known directory listings + Bing"
     },
     "github_mentions": {
       "error": "No token"

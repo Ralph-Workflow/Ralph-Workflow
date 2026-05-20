@@ -2749,3 +2749,48 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Measurement window: next 7 days for repo-path usage by high-intent evaluators; primary business check = next 14 days of **Codeberg** stars/watchers/issues delta (through **2026-06-03**).
   - Replace if it fails: if Codeberg is still flat through `2026-06-03`, stop spending another cycle on post-run copy alone and replace this lane with a fresh external backlink/citation surface or a stronger public proof asset that can send warmer traffic into the same Codeberg-first path.
   - Type: **REPAIRED / REPLACING**
+
+### Reddit autopost
+- **Thread:** https://old.reddit.com/r/ClaudeCode/comments/1tb7j36/how_do_you_actually_use_cccodex/
+- **Comment URL:** https://old.reddit.com/r/ClaudeCode/comments/1tb7j36/how_do_you_actually_use_cccodex/omshh9e/
+- **Status:** ✅ Published
+- **Notes:** Autoposted from reddit-monitor shortlist: #4 How do you ACTUALLY use CC+codex? (`r/ClaudeCode`).
+- **Retrospective source:** `/home/mistlight/.openclaw/workspace/agents/marketing/logs/reddit_post_analysis.md`
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 04:27:07
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Keyword landing page Codeberg-first CTA repair (02:44 UTC)
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** patched the five live keyword landing pages that were still leaking evaluators into install/docs-first paths instead of **Codeberg first**:
+  - `/ai-coding-workflow-automation`
+  - `/spec-driven-ai-agent`
+  - `/claude-code-automation`
+  - `/ai-agent-orchestration-cli`
+  - `/unattended-coding-agent`
+  - On each page, the hero CTA now leads with **`Inspect the primary repo on Codeberg`**, adds **`Choose your first real task`** as the next action, demotes install to a tertiary option, and explicitly labels **GitHub as the mirror**.
+  - On the closing CTA blocks, the primary button now points to **Codeberg** instead of install on each of those keyword pages.
+  - Restarted the live app with `systemctl --user restart ralph_site_puma_production.service`.
+- **Verification:** direct live fetches at `2026-05-20 02:44:31 UTC` confirmed all five public pages now contain `Inspect the primary repo on Codeberg`, `Choose your first real task`, and `GitHub only as the mirror`.
+- **Why this action:** this is **REPAIRED / REPLACING** a still-flat tactic. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and the active repair order explicitly says all public-facing content must route to **Codeberg first** and GitHub second. These keyword landers were already attracting the right intent (`spec-driven AI agent`, `AI coding workflow automation`, `Claude Code automation`, `AI agent orchestration CLI`, `unattended coding agent`) but were still leading with install/docs CTAs. That was a direct conversion leak at the exact pages we want search/discovery traffic landing on.
+- **Expected outcome:** more qualified organic and directory visitors who land on these intent pages should inspect the **primary Codeberg repo** first, then move into the first-task guide, instead of bouncing into generic install flow or mirror ambiguity.
+- **Measurement window:** next 7 days for keyword-landing behavior / crawl pickup; primary business check = next 14 days of **Codeberg** stars/watchers/issues delta (through **2026-06-03**).
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on owned CTA ordering across these landers and replace this lane with a warmer external backlink/citation or comparison/discussion surface that can send higher-intent traffic directly into the repaired Codeberg-first pages.
+
+## 2026-05-20 (Wednesday) — Broken submit-surface detection repair for AISOTools + Come AI (03:00 UTC)
+- **Repaired the channel-discovery queue so it stops treating two fresh directory surfaces as executable when their live submit flows actually fail**: added `aisotools` (`https://aisotools.com/submit`) and `comeai` / `iatool.online` (`https://www.iatool.online/submit-tool/`) to `agents/marketing/channel_discovery.py`, taught the discovery probe to extract candidate `/api/*` submit endpoints from client code and follow submit redirects, then verified both real submit paths with valid payloads.
+  - Verification:
+    - `python3 -m unittest agents.marketing.tests.test_channel_discovery -v` passed (`13` tests).
+    - `POST https://aisotools.com/api/submit` with a valid Ralph Workflow payload returned **HTTP 500** with `{"error":"Server misconfigured. Try again later."}`.
+    - `POST https://www.iatool.online/api/submit-tool/` with a valid Ralph Workflow payload returned **HTTP 500** with `{"error":"Server error"}`.
+    - Fresh discovery results now record both channels as `broken_submit_surface`, and `agents/marketing/logs/channel_discovery.json` no longer lists either one in `working`.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The audit still says the live bottleneck is `distribution_and_message_to_primary_repo_conversion`, but the next best-looking fresh directory lanes were wasting cycles because their public forms only looked open at the validation layer. Real submissions failed on valid payloads, so the highest-leverage same-run move was to cut those false positives out of the executable queue instead of pretending they were fresh backlinks.
+  - Expected outcome: future marketing loops should stop burning turns on AISOTools / Come AI retries and stay focused on actually executable Codeberg-routable distribution or conversion repairs.
+  - Measurement window: immediate success = `channel_discovery.json` keeps both channels out of `working`; business check = next 14 days of **Codeberg** stars/watchers/issues movement (**through 2026-06-03**) because loop time should stay concentrated on real lanes.
+  - Replace if it fails: if these hosts start accepting valid submissions later or Codeberg is still flat by **2026-06-03**, stop treating queue hygiene alone as enough and shift the next move to another freshly verified external backlink surface or a direct owned-surface conversion repair.
+  - Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 05:11:56
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, aisotools, comeai. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
