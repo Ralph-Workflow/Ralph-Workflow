@@ -8,6 +8,7 @@ These tests operate at two levels:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -58,10 +59,15 @@ def _make_state(
     )
 
 
-def _make_config(agent_idle_timeout_seconds: float = 300.0) -> UnifiedConfig:
-    return UnifiedConfig(
-        general=GeneralConfig(agent_idle_timeout_seconds=agent_idle_timeout_seconds)
-    )
+def _make_config(
+    agent_idle_timeout_seconds: float = 300.0,
+    *,
+    max_same_agent_retries: int | None = None,
+) -> UnifiedConfig:
+    general = GeneralConfig(agent_idle_timeout_seconds=agent_idle_timeout_seconds)
+    if max_same_agent_retries is not None:
+        general = general.model_copy(update={"max_same_agent_retries": max_same_agent_retries})
+    return UnifiedConfig(general=general)
 
 
 
@@ -185,12 +191,22 @@ def test_runner_stale_session_internal_retry_succeeds(
     # (3) Retry prompt contains stale-session context — produced by _write_agent_retry_prompt,
     # not by manual test-side construction
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
-    assert "RETRY CONTEXT:" in retry_content, (
-        f"Retry prompt must contain retry context, got: {retry_content[:200]!r}"
-    )
+    assert retry_content.splitlines()[0] == "ERROR RECOVERY REQUIRED"
     assert (
-        "fresh session required" in retry_content.lower() or "session" in retry_content.lower()
-    ), f"Retry prompt must contain stale-session context, got: {retry_content[:200]!r}"
+        "stale session id" in retry_content.lower()
+        or "fresh session required" in retry_content.lower()
+    )
+    assert "do not restart the task from scratch" in retry_content.lower()
+    assert "original prompt:" in retry_content.lower()
+    assert str(prompt_file) in retry_content
+    assert "previous context summary:" in retry_content.lower()
+
+    context_match = re.search(r"Previous context summary:\s*`([^`]+)`", retry_content)
+    assert context_match is not None
+    context_path = Path(context_match.group(1))
+    assert context_path.exists()
+    context_text = context_path.read_text(encoding="utf-8").lower()
+    assert "no conversation found with session id" in context_text
 
 
 def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
@@ -260,7 +276,11 @@ def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
     second_session_id, second_prompt = captured_calls[1]
     assert second_session_id is None
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
-    assert "inactivity timeout" in retry_content
+    assert retry_content.splitlines()[0] == "ERROR RECOVERY REQUIRED"
+    assert "inactivity timeout" in retry_content.lower()
+    assert "the exact cause may be unknown" in retry_content.lower()
+    assert "original prompt:" in retry_content.lower()
+    assert str(prompt_file) in retry_content
 
 
 def test_runner_stale_session_with_parsed_session_id_retries_fresh(
@@ -645,6 +665,11 @@ def test_classifier_stale_session_only_on_exact_substring() -> None:
     generic_exc = AgentInvocationError("claude", 1, "agent exited unexpectedly")
     generic_failure = classifier.classify(generic_exc, phase="development", agent="claude")
     assert generic_failure.reset_session is False
+
+
+def test_default_same_agent_retry_cap_is_visible_and_global() -> None:
+    assert GeneralConfig().max_same_agent_retries == 10
+    assert _make_config().general.max_same_agent_retries == 10
 
 
 def test_stale_session_phase_remains_active(

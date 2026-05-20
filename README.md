@@ -23,7 +23,7 @@ It is for developers and technical teams with work **too big to babysit and too 
 
 ## Why it is different
 
-- **Simple at the center** — the Ralph-loop core stays understandable.
+- **Simple at the center** — the Ralph Workflow loop core stays understandable.
 - **Powerful in composition** — simple loops can be composed into much more complex workflows.
 - **Built for orchestration** — planning, coding, verification, and review can use different agents when needed.
 - **Strong default workflow** — you do not need to invent a workflow before getting value.
@@ -35,6 +35,7 @@ It is for developers and technical teams with work **too big to babysit and too 
 - [Choose Your First Ralph Workflow Task](docs/first-task-guide.md)
 - [AI Agent Orchestration CLI](docs/ai-agent-orchestration-cli.md)
 - [Spec-Driven AI Agent](docs/spec-driven-ai-agent.md)
+- [Maintained Sphinx docs source](ralph-workflow/docs/sphinx/README.md)
 - [Getting Started](ralph-workflow/README.md)
 
 ## A fast way to tell whether Ralph Workflow fits

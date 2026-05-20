@@ -366,6 +366,21 @@ def test_retry_hint_content_includes_artifact_info(phase: str) -> None:
     assert ra.json_path in hint, f"Hint for {phase} must mention artifact path"
 
 
+def test_retry_hint_is_error_first_and_artifact_centered() -> None:
+    hint = build_retry_hint(
+        "development",
+        "Missing required artifact at .agent/artifacts/development_result.json",
+        registry=REQUIRED_ARTIFACTS,
+    )
+
+    first_line = hint.splitlines()[0]
+    assert first_line == "ERROR RECOVERY REQUIRED"
+    assert "development_result" in hint
+    assert ".agent/artifacts/development_result.json" in hint
+    assert "do not restart the task from scratch" in hint.lower()
+    assert "internet outage" in hint.lower() or "external" in hint.lower()
+
+
 def test_materialize_development_analysis_prompt_includes_last_retry_error(
     tmp_path: Path,
 ) -> None:

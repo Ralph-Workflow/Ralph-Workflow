@@ -51,6 +51,7 @@ from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
+from ralph.recovery.retry_prompt import build_retry_error_block
 from ralph.workspace import FsWorkspace
 
 if TYPE_CHECKING:
@@ -421,8 +422,8 @@ def _resolve_recovery_session_id(
 
 
 def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
-    raw = cast("object", getattr(config.general, "max_same_agent_retries", 1))
-    return raw if isinstance(raw, int) and raw >= 0 else 1
+    raw = cast("object", getattr(config.general, "max_same_agent_retries", 10))
+    return raw if isinstance(raw, int) and raw >= 0 else 10
 
 
 def _failure_requires_fresh_session(exc: Exception, inactivity_error_type: type[Exception]) -> bool:
@@ -488,14 +489,21 @@ def _retry_prompt_file_for_context(
     reason: str,
     context_lines: list[str],
 ) -> str:
-    if not context_lines:
-        return prompt_file
     return _write_agent_retry_prompt(
         workspace_root=workspace_root,
         prompt_file=prompt_file,
         reason=reason,
         context_lines=context_lines,
     )
+
+
+def _write_retry_context_file(*, workspace_root: Path, context_lines: list[str]) -> Path:
+    prompt_dir = workspace_root / ".agent" / "tmp"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    context_path = prompt_dir / f"agent_retry_context_{uuid.uuid4().hex}.md"
+    summary = "\n".join(context_lines) if context_lines else "(no output captured)"
+    context_path.write_text(summary, encoding="utf-8")
+    return context_path
 
 
 def _write_agent_retry_prompt(
@@ -510,17 +518,23 @@ def _write_agent_retry_prompt(
     prompt_dir = workspace_root / ".agent" / "tmp"
     prompt_dir.mkdir(parents=True, exist_ok=True)
     retry_prompt_path = prompt_dir / f"agent_retry_{uuid.uuid4().hex}.md"
+    context_path = _write_retry_context_file(
+        workspace_root=workspace_root,
+        context_lines=context_lines,
+    )
     summary = "\n".join(context_lines) if context_lines else "(no output captured)"
+    error_block = build_retry_error_block(
+        failure_summary=f"the previous attempt failed because of {reason}",
+        prompt_path=str(prompt_path),
+        context_path=str(context_path),
+    )
     retry_prompt_path.write_text(
         (
-            f"{base_prompt}\n\n"
-            "RETRY CONTEXT:\n"
-            f"The previous attempt ended because of {reason}.\n"
-            "Treat this as an infrastructure interruption, not a new user request.\n"
-            "Resume from the current workspace state instead of starting over.\n"
-            "Review the latest files and prior output summary before continuing.\n"
-            "Previous output summary:\n"
-            f"{summary}\n"
+            f"{error_block}\n\n"
+            "PREVIOUS OUTPUT SUMMARY EXCERPT:\n"
+            f"{summary}\n\n"
+            "ORIGINAL TASK PROMPT:\n"
+            f"{base_prompt}\n"
         ),
         encoding="utf-8",
     )

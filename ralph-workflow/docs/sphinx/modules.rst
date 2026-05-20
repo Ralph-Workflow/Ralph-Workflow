@@ -2142,6 +2142,13 @@ ralph.recovery.failure_category
    :members:
    :show-inheritance:
 
+ralph.recovery.retry_prompt
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.retry_prompt
+   :members:
+   :show-inheritance:
+
 ralph.recovery.seed_budget_registry
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

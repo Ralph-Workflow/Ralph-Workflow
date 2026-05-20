@@ -3,9 +3,13 @@
 > **Codeberg is the primary repo for Ralph Workflow.**
 > Inspect, follow, and open issues there first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
-This page is the map.
-The top-level README should stay short.
-If you already know what question you need answered, jump to the closest page below.
+This page is the authoritative map for the **current maintained Python** documentation set.
+Use it to distinguish current guidance from historical or narrower family-specific material.
+
+## Current vs archival status
+
+- **Current / maintained / Python:** the repo-root README, `START_HERE.md`, the guides in this `docs/` directory, and the maintained Sphinx source under `../ralph-workflow/docs/sphinx/`.
+- **Historical / archival / Rust-era:** any older page that still describes cargo, xtask, or non-Python workflow setup should be treated as historical context rather than current operating guidance.
 
 ## First-click path for most evaluators
 
@@ -15,6 +19,13 @@ If you are still deciding whether Ralph Workflow is worth trying, use these in o
 2. [START_HERE.md](../START_HERE.md)
 3. [reviewable-output.md](./reviewable-output.md)
 4. [after-your-first-run.md](./after-your-first-run.md)
+
+## Documentation families covered here
+
+- **agents** — transport behavior, orchestration, completion, retries, and supervision guides
+- **code-style** — code-style expectations, naming, and contributor-facing writing/style references
+- **tooling** — CLI, MCP, setup, verification, and other tooling references
+- **performance** — timeout, watchdog, runtime, and performance-oriented guidance
 
 ## Pick the question you actually have
 
@@ -41,6 +52,14 @@ If you are still deciding whether Ralph Workflow is worth trying, use these in o
 - [quick-reference.md](./quick-reference.md)
 - [unattended-coding-agent.md](./unattended-coding-agent.md)
 - [why-worktrees-are-not-enough.md](./why-worktrees-are-not-enough.md)
+
+### Family directories and maintained sources
+
+- `agents/` — current agent behavior and orchestration guidance
+- `code-style/` — code-style family notes and standards
+- `tooling/` — tooling family notes for setup, verification, and operational helpers
+- `performance/` — performance family notes for runtime behavior and limits
+- `../ralph-workflow/docs/sphinx/` — maintained Sphinx/manual entrypoints for the Python package
 
 ## Third-party proof before setup
 

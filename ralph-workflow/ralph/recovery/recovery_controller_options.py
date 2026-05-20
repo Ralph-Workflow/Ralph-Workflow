@@ -22,3 +22,4 @@ class RecoveryControllerOptions:
     budget_registry: AgentBudgetRegistry | None = None
     policy_bundle: PolicyBundle | None = None
     backoff_attempts: dict[str, int] | None = None
+    technical_retry_cap: int = 10

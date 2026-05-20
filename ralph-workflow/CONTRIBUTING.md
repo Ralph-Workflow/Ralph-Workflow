@@ -222,6 +222,18 @@ When working on `ralph/mcp/server/` or `ralph/pipeline/runner.py`, preserve thes
 
 Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
 
+### Technical retry contract (mandatory)
+
+All direct technical retries must stay on one shared contract. This includes stale-session recovery, timeouts, transient connectivity failures, ambiguous recoverable faults, and artifact-submission / artifact-validation retries that re-run the same task.
+
+Required invariants:
+
+1. **Single cap family:** direct technical retries must be governed by the shared `general.max_same_agent_retries` cap (threaded into runtime owners), not ad-hoc per-call counters.
+2. **Single error format:** retry reprompts and retry hints must use the shared formatter in `ralph/recovery/retry_prompt.py`, with the failure/error block first and prompt/context references secondary.
+3. **Loopbacks are separate:** analysis/validation loopbacks are not technical retries and must not silently reuse the technical retry counter path.
+4. **Tests are required at both seams:** changes to technical retry behavior must update (a) runner-level tests for direct retry prompt generation and (b) recovery/controller-level tests for cap enforcement and chain progression.
+5. **No new retry writers at call sites:** if a new recoverable technical failure is introduced, route it through the shared technical retry owner instead of adding a new retry loop or prompt builder in place.
+
 ## Release and versioning
 
 For the complete release process — version bumping, building, validating, and publishing
