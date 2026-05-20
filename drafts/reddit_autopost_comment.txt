@@ -1,5 +1,5 @@
-The multi-tool failure I kept hitting: one session sounds confident, the next session inherits contradictory assumptions, and the combined result quietly stops making sense.
+The constraint that cleaned up our multi-agent runs: the second pass never re-implements. It only reviews and flags what the first pass left ambiguous.
 
-The fix is an explicit baton pass between sessions — scoped task, bounded diff, check evidence, named open decisions.
+That separation alone removed most of the overlap confusion and made the morning result something I could actually grade.
 
-Ralph Workflow is free and open-source: it enforces that baton pass so sessions hand off cleanly.
+Ralph Workflow is free and open-source: it enforces that role separation so the morning result is reviewable.

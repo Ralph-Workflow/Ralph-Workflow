@@ -1,17 +1,18 @@
 {
-  "timestamp": "2026-05-20T14:47:52.111961",
+  "timestamp": "2026-05-20T18:12:39.610195",
   "results": {
     "sitemap": {
       "exists": true,
-      "url_count": 619
+      "url_count": 631
     },
     "robots": {
       "exists": true,
       "content": "User-agent: *\nDisallow: /admin\nDisallow: /api\nDisallow: /auth\nDisallow: /good_job\nDisallow: /api-docs\n\nSitemap: https://ralphworkflow.com/sitemap.xml\n"
     },
     "backlinks": {
-      "count_approx": 1,
+      "count_approx": 2,
       "sources": {
+        "ToolWise": "https://toolwise.ai/tools/ralph-workflow",
         "SaaSHub": "https://saashub.com/ralph-workflow"
       },
       "note": "Google search blocked; verified from known directory listings + Bing"
@@ -21,183 +22,103 @@
     },
     "directories": [
       {
-        "name": "Toolhunt AI",
-        "url": "https://toolhunt.ai/submit",
-        "listed": true
-      },
-      {
-        "name": "There's An AI For That",
-        "url": "https://theresanaiforthat.com/submit/",
-        "listed": true
-      },
-      {
-        "name": "AI Navigator",
-        "url": "https://ainavigator.ai/submit",
-        "listed": true
-      },
-      {
-        "name": "AlternativeTo",
-        "url": "https://alternativeto.net/submit/",
+        "name": "ToolWise",
+        "url": "https://toolwise.ai/tools/ralph-workflow",
+        "state": "live_listing",
         "listed": true
       },
       {
         "name": "SaaSHub",
-        "url": "https://saashub.com/submit",
+        "url": "https://saashub.com/ralph-workflow",
+        "state": "live_listing",
         "listed": true
+      },
+      {
+        "name": "ToolShelf",
+        "url": "https://toolshelf.dev/submit",
+        "state": "submitted_pending",
+        "listed": null
+      },
+      {
+        "name": "AIToolsIndex",
+        "url": "https://aitoolsindex.org/submit",
+        "state": "submitted_pending",
+        "listed": null
+      },
+      {
+        "name": "MadeWithStack",
+        "url": "https://www.madewithstack.com",
+        "state": "submitted_pending",
+        "listed": null
+      },
+      {
+        "name": "DevTool Center",
+        "url": "https://www.devtool.center/submit",
+        "state": "submitted_pending",
+        "listed": null
+      },
+      {
+        "name": "AlternativeTo",
+        "url": "https://alternativeto.net/submit/",
+        "state": "manual_login_required",
+        "listed": null
       },
       {
         "name": "Product Hunt",
         "url": "https://producthunt.com/submit",
-        "listed": true
-      },
-      {
-        "name": "Futurepedia",
-        "url": "https://futurepedia.io/submit-tool",
-        "listed": true
-      },
-      {
-        "name": "FutureTools",
-        "url": "https://www.futuretools.io/submit",
-        "listed": true
-      },
-      {
-        "name": "TopAI.tools",
-        "url": "https://topai.tools/submit",
-        "listed": true
-      },
-      {
-        "name": "Dang.ai",
-        "url": "https://dang.ai/submit",
-        "listed": true
-      },
-      {
-        "name": "AI Scout",
-        "url": "https://aiscout.net/submit",
-        "listed": true
-      },
-      {
-        "name": "Toolify",
-        "url": "https://www.toolify.ai/submit-a-tool",
-        "listed": true
-      },
-      {
-        "name": "Ben's Bites",
-        "url": "https://news.bensbites.com/submit",
-        "listed": true
-      },
-      {
-        "name": "ListMyAI",
-        "url": "https://listmyai.net/submit",
-        "listed": true
-      },
-      {
-        "name": "Uneed",
-        "url": "https://uneed.best/submit",
-        "listed": true
+        "state": "manual_launch_required",
+        "listed": null
       }
     ],
     "directory_submissions": [
       {
-        "directory": "Toolhunt AI",
-        "submit_url": "https://toolhunt.ai/submit",
-        "data": {
-          "name": "Ralph Workflow",
-          "url": "https://ralphworkflow.com",
-          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
-          "category": "Developer Tools > AI Coding Assistants",
-          "tags": [
-            "ai",
-            "automation",
-            "cli",
-            "open-source",
-            "coding",
-            "workflow",
-            "unattended"
-          ],
-          "method": "GET",
-          "submit_url": "https://toolhunt.ai/submit"
-        },
-        "note": null,
-        "status": "error: Remote end closed connection without response",
-        "action_required": "manual"
+        "directory": "ToolWise",
+        "submit_url": "https://toolwise.ai/tools/ralph-workflow",
+        "status": "live_listing",
+        "note": "Already live; reuse as proof surface, do not resubmit"
       },
       {
-        "directory": "There's An AI For That",
-        "submit_url": "https://theresanaiforthat.com/submit/",
-        "data": {
-          "name": "Ralph Workflow",
-          "url": "https://ralphworkflow.com",
-          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
-          "category": "AI Tools > AI Workflow Automation",
-          "method": "form",
-          "submit_url": "https://theresanaiforthat.com/submit/"
-        },
-        "note": null,
-        "status": "not_automated",
-        "action_required": "manual"
+        "directory": "SaaSHub",
+        "submit_url": "https://saashub.com/ralph-workflow",
+        "status": "live_listing",
+        "note": "Already live; monitor only"
       },
       {
-        "directory": "AI Navigator",
-        "submit_url": "https://ainavigator.ai/submit",
-        "data": {
-          "name": "Ralph Workflow",
-          "url": "https://ralphworkflow.com",
-          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
-          "category": "AI Development Tools",
-          "method": "form",
-          "submit_url": "https://ainavigator.ai/submit"
-        },
-        "note": null,
-        "status": "not_automated",
-        "action_required": "manual"
+        "directory": "ToolShelf",
+        "submit_url": "https://toolshelf.dev/submit",
+        "status": "submitted_pending",
+        "note": "Public API already used; wait for review/indexing instead of resubmitting"
+      },
+      {
+        "directory": "AIToolsIndex",
+        "submit_url": "https://aitoolsindex.org/submit",
+        "status": "submitted_pending",
+        "note": "Public API already used; monitor approval/indexing"
+      },
+      {
+        "directory": "MadeWithStack",
+        "submit_url": "https://www.madewithstack.com",
+        "status": "submitted_pending",
+        "note": "Editorial review pending"
+      },
+      {
+        "directory": "DevTool Center",
+        "submit_url": "https://www.devtool.center/submit",
+        "status": "submitted_pending",
+        "note": "Submission pending review"
       },
       {
         "directory": "AlternativeTo",
         "submit_url": "https://alternativeto.net/submit/",
-        "data": {
-          "name": "Ralph Workflow",
-          "url": "https://ralphworkflow.com",
-          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
-          "category": "Software Development > AI Pair Programmers",
-          "method": "form",
-          "submit_url": "https://alternativeto.net/submit/",
-          "note": "AlternativeTo typically requires logging in before submitting"
-        },
-        "note": "AlternativeTo typically requires logging in before submitting",
-        "status": "not_automated",
-        "action_required": "manual"
-      },
-      {
-        "directory": "SaaSHub",
-        "submit_url": "https://saashub.com/submit",
-        "data": {
-          "name": "Ralph Workflow",
-          "url": "https://ralphworkflow.com",
-          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
-          "category": "Development > AI Coding Assistants",
-          "method": "form",
-          "submit_url": "https://saashub.com/submit",
-          "note": "SaaSHub requires account creation before submission"
-        },
-        "note": "SaaSHub requires account creation before submission",
-        "status": "not_automated",
+        "status": "manual_login_required",
+        "note": "Requires account creation and manual submit",
         "action_required": "manual"
       },
       {
         "directory": "Product Hunt",
         "submit_url": "https://producthunt.com/submit",
-        "data": {
-          "name": "Ralph Workflow",
-          "tagline": "The operating system for autonomous coding",
-          "url": "https://ralphworkflow.com",
-          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
-          "category": "Developer Tools",
-          "method": "form",
-          "submit_url": "https://producthunt.com/submit",
-          "note": "Product Hunt requires maker account and is best for launch-day visibility"
-        },
-        "note": "Product Hunt requires maker account and is best for launch-day visibility",
-        "status": "not_automated",
+        "status": "manual_launch_required",
+        "note": "Requires maker account and a real launch flow",
         "action_required": "manual"
       }
     ],

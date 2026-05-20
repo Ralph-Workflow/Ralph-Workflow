@@ -58,8 +58,8 @@ This strategy file remains the long-term record, but the current system should f
 - ✅ Meta tags + OG tags
 - ✅ Schema.org markup
 - ❌ No Google Search Console
-- ❌ 0 backlinks from 103 repos that mention RW
-- ✅ Listed on Toolhunt AI, There's An AI For That, AI Navigator, AlternativeTo, SaaSHub
+- ❌ 0 indexed backlinks in the active measurement window from repo citations / recent submissions
+- ✅ Live third-party proof surfaces include ToolWise and SaaSHub; additional directory submissions are pending review/indexing
 - ❌ Not on Product Hunt
 
 ## Content Calendar

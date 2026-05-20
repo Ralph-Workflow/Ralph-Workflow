@@ -399,7 +399,13 @@
         "auth_required_detected": false,
         "server_error_detected": false
       },
-      "note": "public submission API detected at https://toolshelf.dev/api/submit"
+      "note": "public submission API detected at https://toolshelf.dev/api/submit",
+      "submission_status": "submitted",
+      "submission_timestamp": "2026-05-20T17:21:00.000000",
+      "submission_result": {
+        "success": true,
+        "message": "Tool submitted successfully! We'll review it soon."
+      }
     },
     {
       "name": "agentdepot",
@@ -922,12 +928,6 @@
     }
   ],
   "working": [
-    {
-      "name": "toolshelf",
-      "url": "https://toolshelf.dev/submit",
-      "method": "submit",
-      "difficulty": "easy"
-    },
     {
       "name": "toolwise",
       "url": "https://toolwise.ai/submit-tool",
