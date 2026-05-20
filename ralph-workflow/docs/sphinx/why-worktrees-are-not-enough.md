@@ -8,7 +8,7 @@ Ralph Workflow is a **free and open-source** tool that orchestrates the coding a
 
 It is for developers and technical teams doing engineering work that is **too big to babysit and too risky to trust blindly**.
 
-What makes Ralph Workflow different is not that it creates more branches or more sessions. It is that it is built to take an unattended task all the way to a **reviewable result**: a scoped diff, checks that actually ran, artifacts, and enough context to decide whether you would merge it.
+What makes Ralph Workflow different is not that it creates more branches or more sessions. It is that it is built to take an unattended task through a **real loop**: sharpen the task, implement, verify, review, and leave behind executable results plus enough evidence to decide whether you would merge it.
 
 Why use it now? You can keep the agents and local setup you already trust, run one real backlog task tonight, and decide tomorrow whether the result actually holds up.
 
@@ -66,7 +66,7 @@ That difference matters more than another branch-management trick.
 
 A useful unattended run should hand back:
 
-- a bounded diff
+- working behavior you can inspect or run
 - changed files you can inspect normally
 - checks that really ran
 - artifacts and logs you can follow
@@ -76,7 +76,7 @@ A useful unattended run should hand back:
 
 Use worktrees when you need safer parallel isolation.
 
-Use Ralph Workflow when you need an unattended run to come back as a **reviewable engineering handoff**, not just a separate sandbox.
+Use Ralph Workflow when you need an unattended run to come back as a **verifiable engineering result**, not just a separate sandbox.
 
 The best first test is simple:
 

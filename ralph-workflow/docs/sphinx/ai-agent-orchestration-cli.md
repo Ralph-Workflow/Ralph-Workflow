@@ -1,6 +1,6 @@
 # AI Agent Orchestration CLI: A Practical Comparison for Developers
 
-Ralph Workflow is a **free and open-source** AI agent orchestration CLI for developers who want work that is **too big to babysit and too risky to trust blindly** to come back as a reviewable result instead of a transcript.
+Ralph Workflow is a **free and open-source** AI agent orchestration CLI for developers who want work that is **too big to babysit and too risky to trust blindly** and need more than a single agent session.
 
 If you are searching for an AI agent orchestration CLI, the real question is not whether a tool can call an agent. It is whether the tool can turn longer coding work into something you would actually inspect, test, and maybe merge.
 
@@ -51,7 +51,7 @@ Ralph Workflow is **not** a hosted black box. It runs on your own machine with t
 3. Open [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) and judge the morning-after handoff honestly
 4. Turn that result into one public next step with [After Your First Ralph Workflow Run](after-your-first-run.md)
 
-If GitHub is where you already track projects, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## Best next step on Codeberg if this matches what you need
 

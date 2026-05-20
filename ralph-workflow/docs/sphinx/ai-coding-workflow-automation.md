@@ -2,13 +2,13 @@
 
 If you are searching for **AI coding workflow automation**, the real question is not whether a tool can launch an agent and keep it busy.
 
-The real question is: **does the workflow come back as something you would actually review and maybe merge?**
+The real question is: **does the workflow produce software you can actually run, verify, and maybe merge?**
 
 Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish line: Ralph Workflow is built to hand back a **reviewable result** — a diff, checks, artifacts, and enough context to decide whether the work actually holds up.
+What makes it different is the workflow model: Ralph Workflow is built around **composable loops** for planning, implementation, verification, and review, with enough evidence at the end to decide whether the work actually holds up.
 
 Why use it now? Because you can inspect the source on **Codeberg**, run one real backlog task tonight, and judge the result tomorrow with one honest question: **would I merge this?**
 
@@ -32,7 +32,7 @@ The common failure mode is not that the model refuses to write code.
 
 It is that the automation hands back something hard to judge:
 
-- a transcript instead of a reviewable diff
+- a transcript instead of executable proof
 - a claim that tests passed without a clear proof path
 - a long run with no clean re-entry point
 - too much manual glue between planning, implementation, and review
@@ -48,7 +48,7 @@ It gives the run a more trustworthy shape:
 - **spec-first** instead of prompt-first
 - **phase-gated** instead of draft-and-stop
 - **agent-agnostic** instead of locked to one coding tool
-- **reviewable output** instead of a transcript you have to reconstruct
+- **composable loops** instead of a single long agent session
 
 It is not a hosted black box. It runs on your machine with Claude Code, Codex CLI, OpenCode, or the agent path you already use.
 
@@ -60,7 +60,7 @@ It is not a hosted black box. It runs on your machine with Claude Code, Codex CL
 4. Judge the morning-after handoff with [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md)
 5. Turn that outcome into one public next step with [after-your-first-run.md](./after-your-first-run.md)
 
-If GitHub is where you already track projects, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## Best next step on Codeberg if this is what you want
 
@@ -79,7 +79,7 @@ That keeps adoption and feedback on the primary repo instead of splitting them a
 
 Because Ralph Workflow is free and open source, works with the agents you already use on your own machine, and gives you a practical way to test AI coding workflow automation on one real backlog task instead of a synthetic demo.
 
-Run one real task, judge the handoff honestly, and then take exactly one public action on Codeberg:
+Run one real task, judge the software and checks honestly, and then take exactly one public action on Codeberg:
 
 - **promising run:** star or watch the repo
 - **shaky run:** open the right issue on Codeberg

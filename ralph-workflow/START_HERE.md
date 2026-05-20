@@ -6,13 +6,13 @@
 
 If you want to know whether Ralph Workflow is worth keeping, do not start with a vague demo.
 
-Start with one real task you already want done, run it unattended, and judge the result like a normal code review.
+Start with one real task you already want done, run it unattended, and judge the result like a normal software change.
 
 ## What Ralph Workflow is
 
-Ralph Workflow is a **free and open-source** CLI that orchestrates the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** CLI for orchestrating the coding agents you already use **on your own machine**.
 
-You write the task in `PROMPT.md`, Ralph Workflow runs planning, implementation, and review, and you come back to code changes, logs, and artifacts you can inspect in your normal git workflow.
+You write the task in `PROMPT.md`, Ralph Workflow runs a looped workflow across planning, implementation, verification, and review, and you come back to executable changes, checks, logs, and artifacts you can inspect in your normal engineering workflow.
 
 ## Who it is for
 
@@ -22,20 +22,20 @@ If a task needs more than one prompt, more than one verification step, or more t
 
 ## Why it is different
 
-A normal AI coding chat gives you a transcript and a claim that the task is done.
+The difference is not that it can hand back something reviewable. Any decent agent can try to do that.
 
-Ralph Workflow is built to leave you with something **reviewable**:
+The difference is that Ralph Workflow extends the simple Ralph loop into a **composable orchestration system**:
 
-- changed files in your repo
-- logs and artifacts from the run
-- review context you can inspect afterward
-- a result you can judge with the same merge standards you already use
+- plan, build, verify, and review in one workflow
+- route different phases across different agents
+- keep the workflow repo-native instead of trapped in one session
+- start with a strong default software-writing workflow, then compose more complex loops when you need them
 
 ## Why try it now
 
 Because it is free and open source, works with the agents you already trust, and gives you a clean first test:
 
-**pick one real task tonight, run it, and decide tomorrow whether you would merge the result.**
+**pick one real task tonight, run it, and decide tomorrow whether it produced working software, real verification, or an honest blocked state.**
 
 That is a better evaluation than reading more marketing copy.
 
@@ -55,6 +55,14 @@ If you want to inspect the project before you run anything, start on Codeberg an
 
 - Primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - GitHub mirror: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+If you want outside proof before you install anything, inspect one of the live third-party surfaces that already point evaluators back into Ralph Workflow:
+
+- ToolWise review page: <https://toolwise.ai/tools/ralph-workflow>
+- SaaSHub product page: <https://www.saashub.com/ralph-workflow>
+- TechTools Launchpad listing: <https://techtools.cz/tools/launchpad/?tool=71>
+
+If you want the short filter before you even draft `PROMPT.md`, use [Choose Your First Ralph Workflow Task](docs/first-task-guide.md).
 
 ## Pick the right first task
 
@@ -112,9 +120,10 @@ Do not ask whether the agent sounded smart.
 
 Ask:
 
+- does the software actually do the requested thing?
+- did unit / integration / build checks run where they should have?
 - does the diff match the task?
 - are the changes small enough to review?
-- did the checks actually run?
 - **would I merge this?**
 
 If yes, Ralph Workflow earned a bigger task.
@@ -130,6 +139,7 @@ Do not let the first run end as a private opinion.
 
 ## Next links
 
+- [Choose Your First Ralph Workflow Task](docs/first-task-guide.md) — use the fastest repo-native filter before you draft the first spec
 - [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts before your own first run
 - [After Your First Ralph Workflow Run](docs/after-your-first-run.md) — turn a promising run or a rough run into the right Codeberg-first action
 - [Getting Started](docs/sphinx/getting-started.md)

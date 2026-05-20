@@ -9,7 +9,7 @@ It is this:
 This page is the shortest path from a private first run to a useful public next step on **Codeberg**.
 
 - Primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- GitHub mirror: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- GitHub mirror only if that is where you already follow projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Use Codeberg for the real project relationship: stars, watches, issues, and contribution history.
 
@@ -27,10 +27,11 @@ If you do neither, the adoption signal stays private and the project learns noth
 After the run finishes, check these in order:
 
 1. **Does the diff match the task?**
-2. **Did the checks actually run?**
-3. **Are the changes reviewable in one sitting?**
-4. **Are open questions called out clearly?**
-5. **Would I merge this?**
+2. **Did the software actually do the requested thing?**
+3. **Did the checks actually run, including integration checks where they matter?**
+4. **Are the changes reviewable in one sitting?**
+5. **Are open questions called out clearly?**
+6. **Would I merge this?**
 
 If the answer to most of these is **yes**, Ralph Workflow is doing useful work.
 
@@ -69,7 +70,7 @@ A successful first run does **not** need to be perfect.
 It only needs to prove something real:
 
 - the task was scoped well enough to hand off
-- the handoff came back as a real review surface
+- the workflow came back with real executable proof
 - you can tell why you would or would not merge it
 
 That is already much better than a transcript that only sounds finished.
@@ -78,7 +79,7 @@ That is already much better than a transcript that only sounds finished.
 
 Move to a bigger second task only if the first run gave you:
 
-- a bounded diff
+- working behavior you can verify
 - real checks
 - a clean re-entry point the next morning
 - enough trust that you would review another result

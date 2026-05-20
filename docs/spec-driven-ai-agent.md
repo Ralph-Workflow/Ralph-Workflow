@@ -57,7 +57,7 @@ Bad fit:
 3. Use [first-task-guide.md](./first-task-guide.md) and [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) to judge the result honestly
 4. Turn that result into one public next step with [after-your-first-run.md](./after-your-first-run.md)
 
-If you already track projects on GitHub, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## Best next step on Codeberg if you want a spec-first overnight workflow
 

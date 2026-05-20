@@ -44,13 +44,13 @@ Ralph Workflow is strongest when you want an unattended coding agent for work li
 - a narrow refactor with checks
 - a test-writing pass
 - a docs or cleanup task with clear acceptance criteria
-- a real overnight backlog item you can judge with a merge decision
+- a real overnight backlog item you can judge by running the software and checking the verification
 
 Good first runs share the same shape:
 
-- one real task
+- one real substantial task
+- a detailed product or engineering spec
 - clear acceptance criteria
-- cheap rollback if it misses
 - a reviewer who can honestly answer: **would I merge this?**
 
 If that is your use case, start with [Choose Your First Ralph Workflow Task](first-task-guide.md) and [First-Task Prompt Templates](first-task-prompt-templates.md).
@@ -79,8 +79,8 @@ That is the practical difference between "an agent session ran overnight" and "I
 Use one real backlog task tonight.
 
 1. Install Ralph Workflow
-2. Pick a task small enough to judge in one sitting
-3. Write a short `PROMPT.md` with acceptance criteria
+2. Pick a task that is substantial enough to deserve unattended work
+3. Write a detailed `PROMPT.md` with product requirements and acceptance criteria
 4. Run it overnight
 5. Review the diff, checks, and notes in the morning
 6. Ask: **would I merge this?**
