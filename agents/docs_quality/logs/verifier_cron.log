@@ -316,3 +316,526 @@ AGENTIC
   ],
   "shouldUserNeedToRepeatThis": true
 }
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_FAIL
+- /home/mistlight/RalphWithReviewer/README.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/RalphWithReviewer/README.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/RalphWithReviewer/README.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/RalphWithReviewer/README.md:10: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/RalphWithReviewer/README.md:16: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:20: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:10: [positioning-drift] First screen is dominated by deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:9: [positioning-drift] First screen is dominated by deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:3: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:36: [positioning-drift] First screen is dominated by deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:14: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:34: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:31: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:7: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:7: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:11: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:43: [positioning-drift] First screen is dominated by deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:11: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:19: [positioning-drift] First screen is dominated by deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:38: [positioning-drift] First screen is dominated by deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:17: [internal-detail-drift] Top-level/public docs are leading with internal detail: review bundle
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/getting-started.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/getting-started.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/getting-started.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/getting-started.md:7: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:36: [positioning-drift] First screen is dominated by deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:14: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/RalphWithReviewer/README.md:1: [fit-gap] Surface must frame Ralph Workflow as substantial, well-specified work.
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:1: [fit-gap] Surface must frame Ralph Workflow as substantial, well-specified work.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [fit-gap] Surface must frame Ralph Workflow as substantial, well-specified work.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:1: [proof-page-gap] Proof page must clearly subordinate proof details to the main product story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:45: [proof-page-drift] Proof page is drifting back to deprecated merge/diff framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:21: [proof-page-drift] Proof page is drifting back to deprecated merge/diff framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:45: [proof-page-drift] Proof page is drifting back to deprecated merge/diff framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md:1: [docs-map-gap] Docs index must route users through product framing, not just proof pages.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md:16: [docs-map-drift] Docs index is over-weighting proof/detail pages on the first screen: reviewable-output.md
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/after-your-first-run.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:3: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:36: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:3: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-coding-workflow-automation.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-coding-workflow-automation.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-coding-workflow-automation.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/bounded-autonomy-for-unattended-coding.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/bounded-autonomy-for-unattended-coding.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-approval-mode.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-approval-mode.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-approval-mode.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-automation.md:5: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-automation.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-automation.md:5: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-codex-workflow.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-codex-workflow.md:19: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-codex-workflow.md:33: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-codex-workflow.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-run-until-done.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-run-until-done.md:17: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-run-until-done.md:13: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: not just a transcript
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:48: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: not just a transcript
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-prompt-templates.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-prompt-templates.md:16: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-prompt-templates.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:59: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:53: [public-doc-drift] Public doc first screen is using deprecated proof framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/open-source-ai-coding-orchestrator.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/open-source-ai-coding-orchestrator.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/open-source-ai-coding-orchestrator.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-aider.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-aider.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-aider.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-claude-code.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-claude-code.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-claude-code.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-codex-cli.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-codex-cli.md:30: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-codex-cli.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-opencode.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-opencode.md:28: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-opencode.md:26: [public-doc-drift] Public doc first screen is using deprecated proof framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-opencode.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/remote-supervision-of-coding-agents.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/remote-supervision-of-coding-agents.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:34: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:43: [public-doc-drift] Public doc first screen is using deprecated proof framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:45: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:21: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:45: [public-doc-drift] Public doc first screen is using deprecated proof framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: handoff standard
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/run-claude-code-overnight-without-babysitting.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/run-claude-code-overnight-without-babysitting.md:13: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:34: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:34: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:43: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-a-good-ai-coding-finish-receipt-looks-like.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-a-good-ai-coding-finish-receipt-looks-like.md:1: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-a-good-ai-coding-finish-receipt-looks-like.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-breaks-first-with-multiple-coding-agents.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-breaks-first-with-multiple-coding-agents.md:20: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-breaks-first-with-multiple-coding-agents.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/when-unattended-coding-fits.md:39: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/which-agent-should-i-start-with.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/which-agent-should-i-start-with.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/why-worktrees-are-not-enough.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/why-worktrees-are-not-enough.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/after-your-first-run.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:36: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-coding-workflow-automation.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/bounded-autonomy-for-unattended-coding.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/bounded-autonomy-for-unattended-coding.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-approval-mode.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-approval-mode.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-approval-mode.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-automation.md:5: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-automation.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-automation.md:5: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-codex-workflow.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-codex-workflow.md:19: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-codex-workflow.md:33: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-codex-workflow.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-run-until-done.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-run-until-done.md:17: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-run-until-done.md:13: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: not just a transcript
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:50: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: not just a transcript
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-guide.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-guide.md:9: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-guide.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-prompt-templates.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-prompt-templates.md:16: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-prompt-templates.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/how-to-tell-if-an-ai-coding-task-is-actually-done.md:59: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/how-to-tell-if-an-ai-coding-task-is-actually-done.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:19: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/quickstart.md:33: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/quickstart.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ralph-workflow-vs-codex-cli.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ralph-workflow-vs-codex-cli.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/remote-supervision-of-coding-agents.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/remote-supervision-of-coding-agents.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/review-ai-coding-output-before-merge.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/review-ai-coding-output-before-merge.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/run-claude-code-overnight-without-babysitting.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/run-claude-code-overnight-without-babysitting.md:13: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/unattended-coding-agent.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/unattended-coding-agent.md:54: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/unattended-coding-agent.md:34: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/unattended-coding-agent.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md:1: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md:20: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/when-unattended-coding-fits.md:39: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [heading-sprawl] Too many second-level headings (11). Max 8.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [top-link-budget] Too many top-of-page links (14). Max 10.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md:1: [top-link-budget] Too many top-of-page links (16). Max 12.
+
+AGENTIC
+{
+  "status": "fail",
+  "summary": "Top-level positioning is partly improved, but the promoted docs route still drifts back into reviewable-output/artifact-led framing and does not hold a clean, consistent product story across the system.",
+  "loopHealthy": false,
+  "criteria": {
+    "positioning": "fail",
+    "accuracy": "pass",
+    "internalLeakage": "fail",
+    "copyQuality": "fail",
+    "informationArchitecture": "fail",
+    "journeyCoherence": "fail"
+  },
+  "mustFix": [
+    "Stop routing evaluators from `docs/README.md` to `docs/reviewable-output.md` as the third step in the default journey. That directly violates the required writing order by promoting proof/handoff before the default workflow and composition story are fully established.",
+    "Remove reviewable-result/artifact language as the dominant differentiator on promoted pages. `START_HERE.md`, `docs/first-task-guide.md`, `docs/ai-agent-orchestration-cli.md`, `docs/spec-driven-ai-agent.md`, and `docs/unattended-coding-agent.md` all over-index on `reviewable result`, `diff`, `artifacts`, and morning-after handoff instead of the simple-core/composable-framework/default-workflow story.",
+    "Rewrite the README -> START_HERE -> docs map route so it consistently explains: simple Ralph-loop core first, composition/orchestration second, strong default workflow third, extension later, proof last. The current route keeps collapsing back into output-review framing.",
+    "Reduce top-level link anxiety. The GitHub mirror README promotes five first-click links plus another five 'Need one deeper answer?' links; `docs/README.md` adds a broad page farm. The system still feels like a routing surface, not a designed evaluator journey.",
+    "Prune or demote pages whose framing fights the positioning reference. Several SEO-style pages are technically aligned in spots but still sell Ralph Workflow as a way to get reviewable output rather than as a composable loop framework and operating system for autonomous coding.",
+    "Tighten copy across promoted pages to remove repetitive CTA blocks about starring/watching/reporting on Codeberg. The mirror/primary distinction is accurate, but repeated repo-action boilerplate crowds out product explanation and weakens trust."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "The claimed default evaluator route is `README -> START_HERE -> reviewable-output -> after-your-first-run`, which centers proof/handoff pages instead of the required simple-core/composition/default-workflow story. This is the clearest system-level architecture failure."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "The page is supposed to be the guided first-run path, but it frames success primarily around merge judgment, diffs, checks, and notes, then promotes `docs/reviewable-output.md` as the first deeper page. It reinforces result-proof framing more than product understanding."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "This promoted comparison page repeatedly defines the product around 'reviewable result instead of a transcript,' preserved checkpoints/artifacts, and morning-after handoff. It gives too much top-level weight to proof mechanics versus composable orchestration built on a simple loop core."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md",
+      "reason": "Although stronger than some pages, it still describes the workflow as returning 'a real diff, checks, artifacts, and open questions' before sufficiently developing the stronger product framing: improvement on Ralph, simple core, strong default workflow, extend later."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md",
+      "reason": "The page explicitly says the differentiator is 'the handoff' and defines it as 'reviewable result' with diff/checks/artifacts. That is a direct positioning drift signal from the rubric."
+    },
+    {
+      "path": "/home/mistlight/RalphWithReviewer/README.md",
+      "reason": "Even the top README says the main promise is 'a real diff, checks, logs, and artifacts you can inspect.' That makes proof artifacts sound like the main product promise, not supporting evidence."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": true
+}
+independent verifier failed signoff
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_FAIL
+- /home/mistlight/RalphWithReviewer/README.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/RalphWithReviewer/README.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/RalphWithReviewer/README.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/RalphWithReviewer/README.md:10: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/RalphWithReviewer/README.md:16: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:20: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:10: [positioning-drift] First screen is dominated by deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:9: [positioning-drift] First screen is dominated by deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:3: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:36: [positioning-drift] First screen is dominated by deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:14: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:34: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:31: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:7: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:7: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:11: [positioning-drift] First screen is dominated by deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:43: [positioning-drift] First screen is dominated by deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:11: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:19: [positioning-drift] First screen is dominated by deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:38: [positioning-drift] First screen is dominated by deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:17: [internal-detail-drift] Top-level/public docs are leading with internal detail: review bundle
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/getting-started.md:1: [positioning-gap] First screen must explain that Ralph Workflow is an AI agent orchestrator.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/getting-started.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/getting-started.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/getting-started.md:7: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain the simple Ralph-loop core.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain composition into more complex workflows.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:1: [positioning-gap] First screen must explain the strong default workflow and extensibility story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:36: [positioning-drift] First screen is dominated by deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:14: [internal-detail-drift] Top-level/public docs are leading with internal detail: artifacts
+- /home/mistlight/RalphWithReviewer/README.md:1: [fit-gap] Surface must frame Ralph Workflow as substantial, well-specified work.
+- /home/mistlight/RalphWithReviewer/ralph-workflow/README.md:1: [fit-gap] Surface must frame Ralph Workflow as substantial, well-specified work.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md:1: [fit-gap] Surface must frame Ralph Workflow as substantial, well-specified work.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:1: [proof-page-gap] Proof page must clearly subordinate proof details to the main product story.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:45: [proof-page-drift] Proof page is drifting back to deprecated merge/diff framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:21: [proof-page-drift] Proof page is drifting back to deprecated merge/diff framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:45: [proof-page-drift] Proof page is drifting back to deprecated merge/diff framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md:1: [docs-map-gap] Docs index must route users through product framing, not just proof pages.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md:16: [docs-map-drift] Docs index is over-weighting proof/detail pages on the first screen: reviewable-output.md
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/after-your-first-run.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:3: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:36: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md:3: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-coding-workflow-automation.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-coding-workflow-automation.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-coding-workflow-automation.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/bounded-autonomy-for-unattended-coding.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/bounded-autonomy-for-unattended-coding.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-approval-mode.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-approval-mode.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-approval-mode.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-automation.md:5: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-automation.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-automation.md:5: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-codex-workflow.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-codex-workflow.md:19: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-codex-workflow.md:33: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-codex-workflow.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-run-until-done.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-run-until-done.md:17: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/claude-code-run-until-done.md:13: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: not just a transcript
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:48: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: not just a transcript
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-prompt-templates.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-prompt-templates.md:16: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-prompt-templates.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:59: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:53: [public-doc-drift] Public doc first screen is using deprecated proof framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/open-source-ai-coding-orchestrator.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/open-source-ai-coding-orchestrator.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/open-source-ai-coding-orchestrator.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-aider.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-aider.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-aider.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-claude-code.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-claude-code.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-claude-code.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-codex-cli.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-codex-cli.md:30: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-codex-cli.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-opencode.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-opencode.md:28: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-opencode.md:26: [public-doc-drift] Public doc first screen is using deprecated proof framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ralph-workflow-vs-opencode.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/remote-supervision-of-coding-agents.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/remote-supervision-of-coding-agents.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:34: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:43: [public-doc-drift] Public doc first screen is using deprecated proof framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/review-ai-coding-output-before-merge.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:45: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:21: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:45: [public-doc-drift] Public doc first screen is using deprecated proof framing: bounded diff
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: handoff standard
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/run-claude-code-overnight-without-babysitting.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/run-claude-code-overnight-without-babysitting.md:13: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:34: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md:34: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:43: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/unattended-coding-agent.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-a-good-ai-coding-finish-receipt-looks-like.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-a-good-ai-coding-finish-receipt-looks-like.md:1: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-a-good-ai-coding-finish-receipt-looks-like.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-breaks-first-with-multiple-coding-agents.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-breaks-first-with-multiple-coding-agents.md:20: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/what-breaks-first-with-multiple-coding-agents.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/when-unattended-coding-fits.md:39: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/which-agent-should-i-start-with.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/which-agent-should-i-start-with.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/why-worktrees-are-not-enough.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/why-worktrees-are-not-enough.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/after-your-first-run.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md:36: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-coding-workflow-automation.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/bounded-autonomy-for-unattended-coding.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/bounded-autonomy-for-unattended-coding.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-approval-mode.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-approval-mode.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-approval-mode.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-automation.md:5: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-automation.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-automation.md:5: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-codex-workflow.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-codex-workflow.md:19: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-codex-workflow.md:33: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-codex-workflow.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-run-until-done.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-run-until-done.md:17: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/claude-code-run-until-done.md:13: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: not just a transcript
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:50: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/example-review-bundle.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: not just a transcript
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-guide.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-guide.md:9: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-guide.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-prompt-templates.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-prompt-templates.md:16: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/first-task-prompt-templates.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/how-to-tell-if-an-ai-coding-task-is-actually-done.md:59: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/how-to-tell-if-an-ai-coding-task-is-actually-done.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:19: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/open-source-ai-coding-orchestrator.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/quickstart.md:33: [public-doc-drift] Public doc first screen is using deprecated proof framing: merge decision
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/quickstart.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ralph-workflow-vs-codex-cli.md:6: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ralph-workflow-vs-codex-cli.md:6: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/remote-supervision-of-coding-agents.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/remote-supervision-of-coding-agents.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/review-ai-coding-output-before-merge.md:38: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/review-ai-coding-output-before-merge.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/run-claude-code-overnight-without-babysitting.md:13: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/run-claude-code-overnight-without-babysitting.md:13: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/unattended-coding-agent.md:11: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/unattended-coding-agent.md:54: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/unattended-coding-agent.md:34: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/unattended-coding-agent.md:11: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md:1: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md:7: [public-doc-drift] Public doc first screen is using deprecated proof framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md:20: [public-doc-drift] Public doc first screen is using deprecated proof framing: finish receipt
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/what-breaks-first-with-multiple-coding-agents.md:7: [public-doc-drift] Public doc first screen is still using the old differentiator framing: reviewable result
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/when-unattended-coding-fits.md:39: [public-doc-drift] Public doc first screen is using deprecated proof framing: would i merge this
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [heading-sprawl] Too many second-level headings (11). Max 8.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md:1: [top-link-budget] Too many top-of-page links (14). Max 10.
+- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md:1: [top-link-budget] Too many top-of-page links (16). Max 12.
+
+AGENTIC
+{
+  "status": "fail",
+  "summary": "The docs system still routes evaluators into proof-first and handoff-heavy framing instead of consistently selling Ralph Workflow as a simple-core, composable orchestration system with a strong default workflow.",
+  "loopHealthy": false,
+  "criteria": {
+    "positioning": "fail",
+    "accuracy": "fail",
+    "internalLeakage": "fail",
+    "copyQuality": "fail",
+    "informationArchitecture": "fail",
+    "journeyCoherence": "fail"
+  },
+  "mustFix": [
+    "Make the top-level journey consistently start with the simple Ralph-loop core, then composition/orchestration, then the strong default workflow. Right now several surfaces still lead with reviewability, artifacts, and merge judgment.",
+    "Remove proof/handoff pages from the primary evaluator route. `docs/README.md` currently sends most evaluators from `README -> START_HERE -> reviewable-output -> after-your-first-run`, which directly violates the positioning order and over-centers supporting evidence.",
+    "Stop selling internal or maintainer-shaped concepts as public value. Terms like `artifacts`, `review bundle`, `finish receipt`, `checkpoints`, and workflow state are too prominent across promoted pages.",
+    "Fix factual/product inconsistency across surfaced READMEs. One public README presents a Rust/crate install path, another presents PyPI/Python packaging. That makes the product story and onboarding path feel unstable.",
+    "Prune link anxiety on top-level pages. The GitHub mirror README and several docs pages push too many promoted next clicks, comparisons, and proof pages before the core story is settled.",
+    "Rewrite promoted comparison/discovery pages so they reinforce orchestration/composition/default-workflow framing instead of repeatedly circling back to 'reviewable result' as the main differentiator.",
+    "Reduce repetitive Codeberg mirror reminders so they support trust without dominating the reading experience."
+  ],
+  "strongestEvidence": [
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+      "reason": "The official docs map routes evaluators to `reviewable-output.md` as step 3 and `after-your-first-run.md` as step 4, making proof artifacts and post-run behavior more central than the product's simple-core composable orchestration story."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "reason": "The promoted next pages include `docs/reviewable-output.md` as 'handoff standard', which keeps pushing internal proof framing instead of reinforcing the default workflow and composition story."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md",
+      "reason": "This is the strongest top-level surface and mostly aligns with positioning, but its 'Start here' and 'Need one deeper answer?' sections still fan out into multiple adjacent pages, increasing routing complexity before the user has a single clean narrative."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/ai-agent-orchestration-cli.md",
+      "reason": "Although labeled as orchestration framing, it still foregrounds checkpoints, artifacts, and reviewable output. The differentiator lands on handoff proof more than on simple-core composable orchestration with a strong default workflow."
+    },
+    {
+      "path": "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/spec-driven-ai-agent.md",
+      "reason": "This page again centers 'real diff, checks, artifacts, and open questions' and 'reviewable result' instead of using spec-first as a bridge into the core loop and composable workflow framing."
+    },
+    {
+      "path": "/home/mistlight/RalphWithReviewer/README.md",
+      "reason": "The alternate public README leads with 'reviewable result', 'real diff, checks, logs, and artifacts', and a narrow morning-scale first task, which conflicts with the canonical positioning around ambitious, well-specified work and result-first software outcomes."
+    },
+    {
+      "path": "/home/mistlight/RalphWithReviewer/ralph-workflow/README.md",
+      "reason": "This surfaced README exposes workflow state files and context-clearing mechanics in a public onboarding path, leaking implementation-shaped concepts that belong deeper in architecture or reference docs."
+    }
+  ],
+  "shouldUserNeedToRepeatThis": true
+}
