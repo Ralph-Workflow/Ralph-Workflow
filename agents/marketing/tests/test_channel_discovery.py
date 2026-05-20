@@ -180,6 +180,26 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "broken_submit_surface")
         self.assertIn("security verification", note.lower())
 
+    def test_known_broken_submit_host_overrides_even_when_surface_probe_errors(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {
+                "probe_status": "error",
+                "note": "Page.goto timeout",
+            },
+            {
+                "probe_status": "ok",
+                "has_network_submission_markers": True,
+            },
+            {
+                "probe_status": "ok",
+                "post_code": 403,
+                "public_submit_detected": False,
+            },
+            page_url="https://www.codaone.ai/submit/",
+        )
+        self.assertEqual(status, "broken_submit_surface")
+        self.assertIn("security verification", note.lower())
+
     def test_known_broken_submit_host_overrides_false_positive_api_accessibility(self):
         status, note = channel_discovery.classify_submission_surface_probe(
             {

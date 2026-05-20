@@ -3884,3 +3884,61 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Measurement window:** next 7 days for homepage path alignment / referral quality; next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta.
 - **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on homepage hero/CTA tuning and replace this tactic with a fresh external distribution/backlink or competitor-citation move.
 - **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 21:15:46
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Live first-task docs proof-strip repair (19:31 UTC / 21:31 CEST)
+- **What I executed:** repaired the two live first-task evaluator pages on `https://ralphworkflow.com/docs/` so they now close with third-party proof and a Codeberg-first action path instead of leaving evaluators at a docs dead-end.
+  - Updated source-of-truth docs in both workspace and deployed source copies: `Ralph-Site/docs/sphinx_overrides/first-task-guide.md`, `Ralph-Site/docs/sphinx_overrides/first-task-prompt-templates.md`, `/home/mistlight/ralph_site/current/docs/sphinx_overrides/first-task-guide.md`, and `/home/mistlight/ralph_site/current/docs/sphinx_overrides/first-task-prompt-templates.md`.
+  - Patched the live published pages directly at `/home/mistlight/ralph_site/current/public/docs/first-task-guide.html` and `/home/mistlight/ralph_site/current/public/docs/first-task-prompt-templates.html` so the change is public immediately.
+  - Added a compact `Independent places to inspect Ralph Workflow before you install` block linking to the live `ToolWise` review page and `SaaSHub` product page, while keeping **Codeberg** as the primary repo CTA and GitHub explicitly framed as the mirror only.
+- **Verification:** live fetches on **2026-05-20 19:31 UTC** confirmed both public pages now show the new proof strip plus the Codeberg-first / GitHub-mirror action block:
+  - `https://ralphworkflow.com/docs/first-task-guide/`
+  - `https://ralphworkflow.com/docs/first-task-prompt-templates/`
+- **Why this action:** this is **REPAIRED / REPLACING**. The audit says the bottleneck is still `distribution_and_message_to_primary_repo_conversion`, homepage/telegraph repairs are already in flight, and the hero now routes evaluators into these exact first-task pages. The leak was that those pages taught task choice but did not give trust-seeking visitors an immediate third-party proof pass before the repo action. Tightening this handoff is higher leverage than another generic content draft or another blocked directory chase.
+- **Expected outcome:** more qualified visitors who reach the first-task path should continue into **Codeberg** after seeing a small independent-proof set, rather than bouncing after reading task-shaping docs.
+- **Measurement window:** next 7 days for first-task-page engagement / referral evidence from `ToolWise` or `SaaSHub`; next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks/issues delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending more cycles on owned first-task CTA/proof refinements and replace this lane with a warmer external referral or manual competitor-citation / HN-level distribution move.
+- **Type:** **REPAIRED / REPLACING**
+
+## 2026-05-20 (Wednesday) — Reddit monitoring (19:23 UTC / 21:23 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-20_2123.md`
+- **Scan summary:** 27 candidate Reddit threads/posts scanned, 8 shortlisted, 19 rejected.
+- **Current verdict:** Mixed — 8 credible discussion opportunities were found, but only 0-2 are honest RalphWorkflow mention fits and 0 are obvious high-confidence product mentions after prior-use, thread-family saturation, no-product-value, and body-rhythm filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code stuck in \"approval loop\""
+  - `r/ClaudeCode` — "How do you ACTUALLY use CC+codex?"
+  - `r/ClaudeCode` — "How are you actually running Claude Code at scale on real codebases?"
+  - `r/ClaudeCode` — "Critique my Workflow"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+- **Repeated pains worth tracking:** approval drag, morning-after review/reconstruction, review tax / verification delay, checkpoint noise on the human review surface, worktree/setup friction that does not solve the merge question, long-run drift / archaeology, and remote-supervision-as-babysitting.
+- **Risk note:** repeat-pattern risk now includes **thread-family saturation** in addition to stale opener families, canned product-definition closes, and the familiar 3-5 paragraph body rhythm.
+- **Posting note:** No posting attempted from this monitor pass. This was a research-first pass only.
+
+## 2026-05-20 (Wednesday) — Repo-native first-task prompt-template conversion repair (19:37 UTC / 21:37 CEST)
+- **What I executed:** created a new repo-native evaluator page at `/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/first-task-prompt-templates.md` and rewired the first-run conversion path to use it instead of leaking evaluators into `docs/sphinx/...` implementation paths.
+  - Updated: `START_HERE.md`, `docs/README.md`, `docs/first-task-guide.md`, `docs/spec-driven-ai-agent.md`, `docs/reviewable-output.md`, and `docs/unattended-coding-agent.md`
+  - Verification: ran a local markdown-link resolution check across all touched files; result: **`OK: all local markdown links in touched files resolve.`**
+- **Why this action:** this is **REPAIRED / REPLACING**. The live bottleneck is still `distribution_and_message_to_primary_repo_conversion`, Codeberg adoption is flat, and another generic content push would be weaker than fixing a free-use leak inside the repo-native evaluator path. A blank `PROMPT.md` is friction; a first-class prompt-template page reduces that friction and keeps the path Codeberg/repo-native instead of pushing people into internal docs structure.
+- **Expected outcome:** more evaluators who reach the repo should continue from interest to an actual first run, because the first-task path now gives them a direct copy-paste spec asset without path confusion.
+- **Measurement window:** next 7 days for repo-surface clarity / path integrity; next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending more cycles on repo-native first-run docs polish alone and replace this tactic with a fresh external distribution or backlink move that sends new qualified traffic into the repaired path.
+- **Type:** **REPAIRED / REPLACING**
+- **Docs review note:** reviewed `README.md` (left unchanged), `START_HERE.md`, and `docs/README.md`. The new page belongs on the repo-native free-use path because it removes evaluator friction at the exact moment someone needs to draft `PROMPT.md`; it prunes implementation-path leakage (`docs/sphinx/...`) instead of adding a new top-level distraction, reduces duplication by making one canonical prompt-template target, and improves the top-level experience by keeping the first-run flow shorter and more legible.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 21:43:59
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+
+## 2026-05-20 (Wednesday) — Coda One false-positive backlink-lane repair (20:13 UTC / 22:13 CEST)
+- **What I executed:** repaired `agents/marketing/channel_discovery.py` so known broken submit hosts are classified **before** a successful Playwright surface probe is required, added a regression test for the exact Coda One failure mode, reran `python3 -m unittest agents.marketing.tests.test_channel_discovery -v`, and rechecked `https://www.codaone.ai/submit/`.
+  - Verification: Coda One now classifies as **`broken_submit_surface`** even when the page probe times out, because the real submit path still resolves to a blocked/forbidden security-gated flow from this environment.
+  - Discovery queue refreshed: `agents/marketing/logs/channel_discovery.json` now removes **codaone** from actionable working channels, leaving `toolshelf`, `toolwise`, and `aitoolsindex`.
+- **Why this action:** this is **REPAIRED / REPLACING**. The active bottleneck is still distribution to the primary repo, but another false-positive submit lane was still inflating the executable backlink queue. That would keep wasting loops on a channel that is not actually writable from here. The highest-leverage same-run action was to repair the discovery classifier so future effort stays on real lanes or honest blockers.
+- **Expected outcome:** fewer wasted marketing cycles on fake autonomous submit surfaces, cleaner backlink-lane accounting, and faster replacement of blocked channels with real Codeberg-routable opportunities.
+- **Measurement window:** immediate success = future discovery runs keep **codaone** out of `working`; business check = next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta while the loop stays focused on real channels.
+- **Replace if it fails:** if discovery still resurfaces false-positive submit lanes or Codeberg is still flat by **2026-06-03**, stop treating discovery cleanup alone as enough and replace it with a warmer citation/outreach move or human-executed distribution.
+- **Type:** **REPAIRED / REPLACING**

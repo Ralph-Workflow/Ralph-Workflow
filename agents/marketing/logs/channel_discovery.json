@@ -153,7 +153,7 @@
       "url": "https://slashdot.org/submission",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-20T14:53:29.474201",
+      "timestamp": "2026-05-20T21:59:27.236937",
       "http_code": "200",
       "final_url": "https://slashdot.org/submission",
       "status": "login_required",
@@ -338,7 +338,7 @@
       "url": "https://toolshelf.dev/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T14:52:59.041253",
+      "timestamp": "2026-05-20T21:58:48.306031",
       "http_code": "200",
       "final_url": "https://toolshelf.dev/submit",
       "status": "accessible",
@@ -400,12 +400,8 @@
         "server_error_detected": false
       },
       "note": "public submission API detected at https://toolshelf.dev/api/submit",
-      "submission_status": "submitted",
-      "submission_timestamp": "2026-05-20T17:21:00.000000",
-      "submission_result": {
-        "success": true,
-        "message": "Tool submitted successfully! We'll review it soon."
-      }
+      "submission_status": "login_required",
+      "submission_note": "Submit page requires sign-in; form is login-only, no public submission"
     },
     {
       "name": "agentdepot",
@@ -464,7 +460,7 @@
       "url": "https://toolwise.ai/submit-tool",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T14:53:05.341066",
+      "timestamp": "2026-05-20T21:58:55.668652",
       "http_code": "200",
       "final_url": "https://toolwise.ai/submit-tool",
       "status": "accessible",
@@ -523,14 +519,16 @@
         "auth_required_detected": false,
         "server_error_detected": false
       },
-      "note": "public submission API detected at https://toolwise.ai/api/tools"
+      "note": "public submission API detected at https://toolwise.ai/api/tools",
+      "submission_status": "already_listed",
+      "submission_note": "POST /api/tools returned 409 slug-already-exists; listing exists at /tools/ralph-workflow"
     },
     {
       "name": "aitoolsindex",
       "url": "https://aitoolsindex.org/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T14:53:15.670450",
+      "timestamp": "2026-05-20T21:59:04.004367",
       "http_code": "200",
       "final_url": "https://aitoolsindex.org/submit",
       "status": "accessible",
@@ -584,14 +582,21 @@
         "auth_required_detected": false,
         "server_error_detected": false
       },
-      "note": "public submission API detected at https://aitoolsindex.org/api/submit/enqueue-tool-submission"
+      "note": "public submission API detected at https://aitoolsindex.org/api/submit/enqueue-tool-submission",
+      "submission_status": "success",
+      "submission_note": "POST to /api/submit/enqueue-tool-submission returned 200",
+      "submitted_data": {
+        "name": "Ralph Workflow",
+        "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+        "description": "Open-source AI coding assistant workflow system"
+      }
     },
     {
       "name": "tools-ai-online",
       "url": "https://www.tools-ai.online/submit-tool",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-20T03:19:30.219760",
+      "timestamp": "2026-05-20T21:58:05.353505",
       "http_code": "200",
       "final_url": "https://www.tools-ai.online/submit-tool",
       "status": "captcha_blocked",
@@ -627,7 +632,8 @@
         "has_auth_markers": false,
         "has_captcha_markers": true,
         "has_mailto_submission_markers": true,
-        "has_issue_handoff_markers": false
+        "has_issue_handoff_markers": false,
+        "api_candidates": []
       },
       "api_probe": {
         "probe_status": "ok",
@@ -635,7 +641,9 @@
         "get_code": 404,
         "post_code": 404,
         "post_body": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/0c85235b60c0b9a0.css\" da",
-        "public_submit_detected": false
+        "public_submit_detected": false,
+        "auth_required_detected": false,
+        "server_error_detected": false
       },
       "note": "submission requires a CAPTCHA-backed browser flow, not an autonomous public API"
     },
@@ -644,13 +652,13 @@
       "url": "https://www.codaone.ai/submit/",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T04:00:26.610095",
+      "timestamp": "2026-05-20T22:13:36.226896",
       "http_code": "200",
       "final_url": "https://www.codaone.ai/submit/",
       "status": "broken_submit_surface",
       "surface_probe": {
         "probe_status": "error",
-        "note": "Page.goto: Timeout 60000ms exceeded.\nCall log:\n  - navigating to \"https://www.codaone.ai/submit/\", waiting until \"networkidle\"\n"
+        "note": "Page.goto: Timeout 15000ms exceeded.\nCall log:\n  - navigating to \"https://www.codaone.ai/submit/\", waiting until \"networkidle\"\n"
       },
       "source_probe": {
         "probe_status": "ok",
@@ -664,20 +672,25 @@
         "submit_handler_has_network_markers": false,
         "submit_handler_has_success_markers": false,
         "has_auth_markers": false,
-        "has_captcha_markers": true,
+        "has_captcha_markers": false,
         "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false
+        "has_issue_handoff_markers": false,
+        "api_candidates": [
+          "https://www.codaone.ai/api/auth/logout",
+          "https://www.codaone.ai/api/auth/me"
+        ]
       },
       "api_probe": {
         "probe_status": "ok",
-        "submit_url": "https://www.codaone.ai/api/submit-tool",
-        "get_code": 405,
-        "post_code": 400,
-        "post_body": "{\"error\":\"Security verification required\"}",
+        "submit_url": "https://www.codaone.ai/api/auth/logout",
+        "get_code": 404,
+        "post_code": 403,
+        "post_body": "{\"error\":\"Forbidden\"}",
         "public_submit_detected": false,
+        "auth_required_detected": false,
         "server_error_detected": false
       },
-      "note": "submission currently requires security verification / turnstile from this environment; browser probe shows a turnstile field and direct POST probes return security-verification 400 or server-error 500"
+      "note": "submission currently requires security verification / turnstile from this environment; direct POST probes return security-verification 400 or server-error 500"
     },
     {
       "name": "aisotools",
@@ -928,6 +941,12 @@
     }
   ],
   "working": [
+    {
+      "name": "toolshelf",
+      "url": "https://toolshelf.dev/submit",
+      "method": "submit",
+      "difficulty": "easy"
+    },
     {
       "name": "toolwise",
       "url": "https://toolwise.ai/submit-tool",
