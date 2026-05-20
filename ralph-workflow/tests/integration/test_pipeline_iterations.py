@@ -26,6 +26,9 @@ from ralph.pipeline.events import AnalysisDecisionEvent, PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests.integration._commit_cleanup_always_loopback_invoker import (
+    CommitCleanupAlwaysLoopbackInvoker,
+)
 from tests.integration._development_analysis_always_loopback_invoker import (
     DevelopmentAnalysisAlwaysLoopbackInvoker,
 )
@@ -672,3 +675,32 @@ def test_dev_cycle_routing_layer_completes_with_mocked_execution(
     assert final_state.phase == "complete"
     assert final_state.get_outer_progress("iteration") == DEVELOPMENT_CYCLES_TWO
     assert final_state.get_budget_remaining("iteration") == 0
+
+
+def test_commit_cleanup_loop_exhaustion_advances_to_development_commit(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    memory_workspace: MemoryWorkspace,
+) -> None:
+    """Commit cleanup loop exhaustion bypasses to development_commit with counter reset.
+
+    When CommitCleanupAlwaysLoopbackInvoker forces every cleanup run to loopback,
+    the loop counter increments until it hits the cap (3), at which point the
+    exhaustion bypass routes to development_commit. The commit_cleanup_iteration
+    counter should be reset to 0 when development_commit runs (via loop_resets).
+    """
+    invoker = CommitCleanupAlwaysLoopbackInvoker(memory_workspace)
+
+    result, saved_states = _run_pipeline(
+        monkeypatch,
+        tmp_path,
+        invoker,
+        _config(),
+        counter_overrides={"iteration": 1},
+    )
+
+    assert result == 0
+    assert invoker.count_for("development_commit_cleanup") == 3
+    dev_commit_state = _state_with_phase(saved_states, "development_commit")
+    assert dev_commit_state.get_loop_iteration("commit_cleanup_iteration") == 0
+    assert saved_states[-1].phase == "complete"

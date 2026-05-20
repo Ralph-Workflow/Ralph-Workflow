@@ -609,3 +609,138 @@ class TestValidatePolicyCompletenessNewRules:
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
         with pytest.raises(PolicyValidationError, match="clean_outcome"):
             validate_policy_completeness(bundle)
+
+    def test_commit_policy_loop_resets_accepts_commit_cleanup_iteration_field(self) -> None:
+        """commit_policy.loop_resets accepting commit_cleanup iteration field passes validation.
+
+        Bug #1: The validator only scanned analysis-role phases for valid iteration
+        fields. This test verifies that commit_cleanup-role phases are also accepted.
+        """
+        drains = [
+            "development_analysis",
+            "commit",
+            "development_commit_cleanup",
+            "development_commit",
+            "complete",
+        ]
+        agents = self._minimal_agents(drains)
+        pipeline = PipelinePolicy(
+            phases={
+                "development_analysis": self._minimal_analysis_phase(
+                    "development_analysis",
+                    "development_analysis_iteration",
+                    on_success="development_commit_cleanup",
+                    failure_target="failed_terminal",
+                ),
+                "development_commit_cleanup": PhaseDefinition(
+                    drain="commit",
+                    role="commit_cleanup",
+                    transitions=PhaseTransition(
+                        on_success="development_commit",
+                        on_loopback="development_commit_cleanup",
+                        on_failure="failed_terminal",
+                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
+                ),
+                "development_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_failure=None,
+                    ),
+                    commit_policy=PhaseCommitPolicy(
+                        increments_counter="iteration",
+                        loop_resets=["commit_cleanup_iteration"],
+                    ),
+                ),
+                "failed_terminal": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="failure",
+                    transitions=PhaseTransition(on_success="failed_terminal"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_loopback="complete",
+                    ),
+                ),
+            },
+            loop_counters={
+                "development_analysis_iteration": LoopCounterConfig(default_max=3),
+                "commit_cleanup_iteration": LoopCounterConfig(default_max=3),
+            },
+            entry_phase="development_analysis",
+            terminal_phase="complete",
+        )
+        artifacts = self._minimal_analysis_artifacts("development_analysis")
+        bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
+        validate_policy_completeness(bundle)  # must not raise
+
+    def test_commit_policy_loop_resets_rejects_field_not_from_analysis_or_commit_cleanup(
+        self,
+    ) -> None:
+        """commit_policy.loop_resets with field from unknown role fails validation.
+
+        Bug #1: The validator only checked analysis-role phases. This test ensures
+        that fields from unrecognized roles are still rejected.
+        """
+        agents = self._minimal_agents(["development_analysis", "development_commit", "complete"])
+        dev_analysis_decisions = {
+            "completed": PhaseDecisionRoute(target="development_commit", reset_loop=True),
+            "failed": PhaseDecisionRoute(target="failed_terminal", reset_loop=False),
+        }
+        pipeline = PipelinePolicy(
+            phases={
+                "development_analysis": PhaseDefinition(
+                    drain="development_analysis",
+                    role="analysis",
+                    transitions=PhaseTransition(
+                        on_success="development_commit",
+                        on_loopback="development_analysis",
+                    ),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="development_analysis_iteration"
+                    ),
+                    decisions=dev_analysis_decisions,
+                ),
+                "development_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_failure=None,
+                    ),
+                    commit_policy=PhaseCommitPolicy(
+                        increments_counter="iteration",
+                        # "unknown_iteration_field" is not from any analysis or commit_cleanup phase
+                        loop_resets=["unknown_iteration_field"],
+                    ),
+                ),
+                "failed_terminal": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="failure",
+                    transitions=PhaseTransition(on_success="failed_terminal"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_loopback="complete",
+                    ),
+                ),
+            },
+            entry_phase="development_analysis",
+            terminal_phase="complete",
+        )
+        artifacts = self._minimal_analysis_artifacts("development_analysis")
+        bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
+        with pytest.raises(PolicyValidationError, match="invalid iteration field"):
+            validate_policy_completeness(bundle)

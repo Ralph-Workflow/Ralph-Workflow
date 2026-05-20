@@ -115,3 +115,23 @@ class TestDefaultPolicyLoading:
             f"loop_policy.iteration_state_field must be 'commit_cleanup_iteration', "
             f"got: {phase.loop_policy.iteration_state_field}"
         )
+
+    def test_development_commit_loop_resets_contains_commit_cleanup_iteration(self) -> None:
+        """Test that development_commit.commit_policy.loop_resets includes commit_cleanup_iteration.
+
+        Bug #2: The default policy was missing commit_cleanup_iteration in loop_resets,
+        so the commit cleanup loop counter was never reset at the start of each
+        development cycle, causing the cleanup phase to run with a stale counter.
+        """
+        default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
+        bundle = load_policy(default_dir)
+
+        dev_commit = bundle.pipeline.phases["development_commit"]
+        assert dev_commit.commit_policy is not None
+        loop_resets = dev_commit.commit_policy.loop_resets
+        assert "commit_cleanup_iteration" in loop_resets, (
+            f"loop_resets must include 'commit_cleanup_iteration', got: {loop_resets}"
+        )
+        assert "development_analysis_iteration" in loop_resets, (
+            f"loop_resets must include 'development_analysis_iteration', got: {loop_resets}"
+        )

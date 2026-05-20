@@ -110,7 +110,11 @@ def _validate_commit_phase_loop_resets(
     valid_iteration_fields: set[str] = set()
     for defn in policy.phases.values():
         lp = defn.loop_policy
-        if isinstance(defn, PhaseDefinition) and defn.role == "analysis" and lp is not None:
+        if (
+            isinstance(defn, PhaseDefinition)
+            and defn.role in ("analysis", "commit_cleanup")
+            and lp is not None
+        ):
             valid_iteration_fields.add(lp.iteration_state_field)
 
     invalid_resets = [f for f in loop_resets if f not in valid_iteration_fields]
@@ -119,7 +123,7 @@ def _validate_commit_phase_loop_resets(
             f"phases.{phase_name}.commit_policy.loop_resets: "
             f"invalid iteration field(s) {invalid_resets}. "
             f"loop_resets must reference iteration_state_field values from analysis phases "
-            f"or be empty. Valid fields: {sorted(valid_iteration_fields)}"
+            f"or commit_cleanup phases or be empty. Valid fields: {sorted(valid_iteration_fields)}"
         )
 
 

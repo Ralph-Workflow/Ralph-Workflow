@@ -206,7 +206,7 @@ on_failure = "failed_terminal"
 requires_artifact = true
 skipped_advances_progress = true
 increments_counter = "iteration"
-loop_resets = ["development_analysis_iteration"]
+loop_resets = ["development_analysis_iteration", "commit_cleanup_iteration"]
 
 # The 'complete' phase is the terminal marker — it has no transitions
 # because the pipeline ends when it reaches terminal_phase.
