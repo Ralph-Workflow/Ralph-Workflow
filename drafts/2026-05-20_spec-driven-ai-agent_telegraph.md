@@ -26,7 +26,7 @@ A spec serves two functions that nothing else can replace:
 
 This sounds simple. In practice, most specs written for AI coding agents are too vague to serve either function.
 
-## What Makes a Spec驱动 Agent Run Actually Work
+## What Makes a Spec-Driven Agent Run Actually Work
 
 A spec that works for an AI coding agent has a specific shape:
 

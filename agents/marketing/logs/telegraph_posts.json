@@ -11,7 +11,7 @@
     "title": "How to Run an Unattended Coding Agent That Actually Finishes",
     "keyword": "unattended coding agent",
     "published_at": "2026-05-20T08:15:00Z",
-    "notes": "Targets primary keyword gap. Covers why model-done \u2260 done, planning gate importance, recovery, Claude Code unattended setup."
+    "notes": "Targets primary keyword gap. Covers why model-done ≠ done, planning gate importance, recovery, Claude Code unattended setup."
   },
   {
     "url": "https://telegra.ph/AI-Coding-Workflow-Automation-Without-Giving-Up-Control-05-20-6",
@@ -19,5 +19,12 @@
     "keyword": "AI coding workflow automation",
     "published_at": "2026-05-20T10:02:00Z",
     "notes": "Targets evaluator-intent gap after homepage/docs repairs. Keeps Codeberg primary and GitHub mirror CTA."
+  },
+  {
+    "url": "https://telegra.ph/Spec-Driven-AI-Agent-Why-the-Spec-Is-the-Most-Important-Part-of-the-Loop-05-20-5",
+    "title": "Spec-Driven AI Agent: Why the Spec Is the Most Important Part of the Loop",
+    "keyword": "spec-driven AI agent",
+    "published_at": "2026-05-20T11:48:00Z",
+    "notes": "Republished/fixed missing keyword-gap asset after repairing draft encoding defect; keeps Codeberg primary and GitHub mirror CTA."
   }
 ]
