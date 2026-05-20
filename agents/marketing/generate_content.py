@@ -330,7 +330,7 @@ def build_draft_content(topic: Topic, now: datetime) -> str:
             "with a strong default workflow for writing software, and lets you use that default "
             "as-is or build your own workflow on top."
         )
-    issues = validate_marketing_copy(body)
+    issues = validate_marketing_copy(body, require_default_workflow=True)
     if issues:
         raise RuntimeError(f"Generated draft failed positioning validation for topic {topic.slug}: {issues}")
     return f"{render_front_matter(metadata)}\n\n{body}\n"

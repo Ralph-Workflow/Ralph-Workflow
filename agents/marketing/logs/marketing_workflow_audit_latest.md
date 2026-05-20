@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-20T08:25:49.077315
+- Generated: 2026-05-20T09:43:02.551915
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -43,10 +43,10 @@
 - Require each new marketing action to name its expected outcome, measurement window, and replacement condition if it fails.
 
 ## Four marketing questions that messaging must answer
-- what_is_it: free and open-source tool that orchestrates existing agents on your machine
-- who_is_it_for: developers/teams with engineering work too big to babysit and too risky to trust blindly
-- why_different: repo-native unattended orchestration that aims to leave substantial, reviewable output instead of just a transcript
-- why_now: free to use now and useful for overnight project-scale work while you sleep
+- what_is_it: Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.
+- who_is_it_for: Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.
+- why_different: It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
+- why_now: You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process.
 
 ## Principle reference
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md`

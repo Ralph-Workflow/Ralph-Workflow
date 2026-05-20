@@ -1,0 +1,144 @@
+{
+  "generated_at": "2026-05-20T09:13:27.560696",
+  "canonical_source": "agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
+  "shared_module": "agents/marketing/positioning.py",
+  "public_loops": [
+    {
+      "file": "generate_content.py",
+      "role": "draft generation",
+      "uses_shared_positioning": true
+    },
+    {
+      "file": "run_posting.py",
+      "role": "scheduled publishing",
+      "uses_shared_positioning": true
+    },
+    {
+      "file": "post_to_web.py",
+      "role": "manual cross-post publishing",
+      "uses_shared_positioning": true
+    },
+    {
+      "file": "seo_outreach.py",
+      "role": "directory submission copy",
+      "uses_shared_positioning": true
+    },
+    {
+      "file": "outreach_pipeline.py",
+      "role": "GitHub outreach copy",
+      "uses_shared_positioning": true
+    },
+    {
+      "file": "reddit_autopost.py",
+      "role": "Reddit reply generation",
+      "uses_shared_positioning": true
+    },
+    {
+      "file": "reddit_next_window_packet.py",
+      "role": "Reddit draft packet generation",
+      "uses_shared_positioning": true
+    },
+    {
+      "file": "marketing_workflow_audit.py",
+      "role": "messaging audit artifact",
+      "uses_shared_positioning": true
+    },
+    {
+      "file": "competitor_analysis.py",
+      "role": "public comparison page generation",
+      "uses_shared_positioning": true
+    }
+  ],
+  "internal_loops": [
+    {
+      "file": "run.py",
+      "role": "strategy/metrics orchestration",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "seo_daily.py",
+      "role": "SEO measurement",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "adoption_tracker.py",
+      "role": "repo adoption measurement",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "marketing_momentum_watchdog.py",
+      "role": "status/watchdog output",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "reflection_engine.py",
+      "role": "internal reflection",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "weekly_review.py",
+      "role": "internal review",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "channel_discovery.py",
+      "role": "channel research",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "apollo_monitor.py",
+      "role": "account monitoring",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "github_outreach.py",
+      "role": "legacy/outreach support",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "reddit_watchdog.py",
+      "role": "opportunity timing gate",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "reddit_retrospective.py",
+      "role": "postmortem analysis",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "reddit_post.py",
+      "role": "browser posting transport",
+      "uses_shared_positioning": false,
+      "note": "transport only; content comes from reddit_autopost.py"
+    },
+    {
+      "file": "post_helpers.py",
+      "role": "posting transport helpers",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "sync_research.py",
+      "role": "research sync",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    },
+    {
+      "file": "gsc_auth.py",
+      "role": "auth utility",
+      "uses_shared_positioning": false,
+      "note": "internal/non-copy loop"
+    }
+  ]
+}

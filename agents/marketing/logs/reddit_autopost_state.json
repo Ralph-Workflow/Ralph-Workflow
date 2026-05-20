@@ -1,9 +1,6 @@
 {
-  "last_attempt_at": "2026-05-20T04:26:57.299935",
-  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-20_0402.md",
-  "last_thread_url": "<https://www.reddit.com/r/ClaudeCode/comments/1tb7j36/how_do_you_actually_use_cccodex/>",
-  "last_comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tb7j36/how_do_you_actually_use_cccodex/omshh9e/",
-  "last_attempt_status": "posted",
-  "last_poster_status": "posted",
-  "last_detail": ""
+  "last_attempt_at": "2026-05-20T09:55:50.830134",
+  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-20_0915.md",
+  "last_attempt_status": "fresh_opportunity_rate_limited",
+  "last_detail": "opportunity_state:fresh_rate_limited; opportunities:7"
 }

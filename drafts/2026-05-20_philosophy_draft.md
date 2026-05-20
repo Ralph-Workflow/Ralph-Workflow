@@ -46,3 +46,7 @@ This is what Ralph Workflow is built around — not better AI, better workflow s
 ---
 
 **Try it on Codeberg:** [RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star, fork, and open issues there. The GitHub mirror is at [Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow) if you prefer it.
+
+## Where Ralph Workflow Fits
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps the core loop simple, ships with a strong default workflow for writing software, and lets you use that default as-is or build your own workflow on top.

@@ -236,7 +236,7 @@ def main() -> int:
             })
             continue
 
-        issues = validate_marketing_copy(body)
+        issues = validate_marketing_copy(body, require_default_workflow=True)
         if issues:
             results.append({
                 "draft": draft.name,

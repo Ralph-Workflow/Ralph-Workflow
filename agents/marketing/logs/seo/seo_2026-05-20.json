@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-20T08:05:03.001599",
+  "timestamp": "2026-05-20T09:50:33.895540",
   "results": {
     "sitemap": {
       "exists": true,
@@ -103,7 +103,7 @@
         "data": {
           "name": "Ralph Workflow",
           "url": "https://ralphworkflow.com",
-          "description": "Free open-source AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Runs unattended project-scale work and hands back a reviewable result: diff, checks, and notes. For developers with work too big to babysit and too risky to trust blindly.",
+          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
           "category": "Developer Tools > AI Coding Assistants",
           "tags": [
             "ai",
@@ -127,7 +127,7 @@
         "data": {
           "name": "Ralph Workflow",
           "url": "https://ralphworkflow.com",
-          "description": "Free open-source AI agent orchestration CLI. Turns Claude Code, Codex, and OpenCode into unattended project pipelines that end in reviewable output: diff, checks, and a short receipt. For developers who want to leave substantial work running and come back to something they can actually judge.",
+          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
           "category": "AI Tools > AI Workflow Automation",
           "method": "form",
           "submit_url": "https://theresanaiforthat.com/submit/"
@@ -142,7 +142,7 @@
         "data": {
           "name": "Ralph Workflow",
           "url": "https://ralphworkflow.com",
-          "description": "Open-source orchestration CLI for AI coding agents. Spec-driven, agent-agnostic, and built to leave reviewable output instead of just a transcript. Works with Claude Code, Codex, and OpenCode on your own machine.",
+          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
           "category": "AI Development Tools",
           "method": "form",
           "submit_url": "https://ainavigator.ai/submit"
@@ -157,7 +157,7 @@
         "data": {
           "name": "Ralph Workflow",
           "url": "https://ralphworkflow.com",
-          "description": "Free open-source alternative to hosted AI coding platforms. Orchestrates Claude Code, Codex, and OpenCode as an unattended CLI pipeline that ends in diff + checks + review notes instead of a transcript.",
+          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
           "category": "Software Development > AI Pair Programmers",
           "method": "form",
           "submit_url": "https://alternativeto.net/submit/",
@@ -173,7 +173,7 @@
         "data": {
           "name": "Ralph Workflow",
           "url": "https://ralphworkflow.com",
-          "description": "Free open-source CLI tool. Orchestrates AI coding agents (Claude Code, Codex, OpenCode) for unattended project work with a reviewable finish state: diff, checks, and notes. No account, no cloud, runs on your own machine.",
+          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
           "category": "Development > AI Coding Assistants",
           "method": "form",
           "submit_url": "https://saashub.com/submit",
@@ -188,9 +188,9 @@
         "submit_url": "https://producthunt.com/submit",
         "data": {
           "name": "Ralph Workflow",
-          "tagline": "Open-source CLI that runs your AI coding agents unattended and leaves reviewable output",
+          "tagline": "The operating system for autonomous coding",
           "url": "https://ralphworkflow.com",
-          "description": "Ralph Workflow is a free, open-source orchestration CLI for Claude Code, Codex, and OpenCode. It runs unattended project-scale work and hands back a result you can actually review: a diff, test results, and a short note on what still needs judgment. For developers who want to leave bigger tasks running and come back to something mergeable.",
+          "description": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.",
           "category": "Developer Tools",
           "method": "form",
           "submit_url": "https://producthunt.com/submit",
