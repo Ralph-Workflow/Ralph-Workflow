@@ -20,6 +20,8 @@ Start with **one real backlog task** you already care about.
 
 If you are still deciding whether your task is a good first fit, read [docs/first-task-guide.md](./docs/first-task-guide.md) before you install anything.
 
+If your real blocker is the blank page in `PROMPT.md`, skip straight to [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md) and copy the closest starter spec instead of drafting from scratch.
+
 If the only thing you are stuck on right now is agent choice, read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md) and pick the agent that is already working on your machine.
 
 If you want to inspect the project before you install anything, open the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) first, or use the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) if that is where you already track projects.
@@ -75,6 +77,7 @@ If the run is promising, use [After Your First Ralph Workflow Run](./docs/after-
 
 1. **Inspect the primary repo on Codeberg first** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 2. **Choose one bounded real task tonight** — use [docs/first-task-guide.md](./docs/first-task-guide.md) if you need a fast good-fit filter before setup
+   - If you already know the task shape, copy a starter spec from [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
 3. **Run that task with the exact quickstart below** — do not read every doc first
 4. **Judge the morning-after handoff with one question** — *would I merge this?*
 
@@ -98,7 +101,7 @@ If the quick path is already clear, skip the rest and run it.
 If one blocker remains, use the smallest matching guide:
 
 - **Trust the output:** [What Good Ralph Workflow Output Looks Like](./docs/reviewable-output.md), [How to Tell if an AI Coding Task Is Actually Done](./docs/how-to-tell-if-an-ai-coding-task-is-actually-done.md)
-- **Pick the right task:** [When Unattended AI Coding Actually Works](./docs/when-unattended-coding-fits.md), [first-task-guide.md](./docs/first-task-guide.md)
+- **Pick the right task:** [When Unattended AI Coding Actually Works](./docs/when-unattended-coding-fits.md), [first-task-guide.md](./docs/first-task-guide.md), [first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
 - **Claude Code-specific evaluation:** [Claude Code + Codex Workflow: Plan, Build, Review](./docs/claude-code-codex-workflow.md), [Claude Code "Run Until Done" Still Needs a Reviewable Finish](./docs/claude-code-run-until-done.md)
 - **Need the full docs chooser:** [docs/README.md](./docs/README.md)
 

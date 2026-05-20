@@ -20,10 +20,11 @@ Important expectation for evaluators: Ralph Workflow is free and open source, bu
 If you are here to decide whether Ralph Workflow is worth a real try, start with these:
 
 1. `first-task-guide.md` — pick a bounded real backlog task before you install or run anything
-2. `../START_HERE.md` — shortest honest first-run path once the task is chosen
-3. `example-review-bundle.md` — public proof of the morning-after handoff shape
-4. `review-ai-coding-output-before-merge.md` — the five-minute merge test for judging whether the result really holds up
-5. `after-your-first-run.md` — the shortest path from a private first run to a Codeberg star/watch or a useful issue
+2. `first-task-prompt-templates.md` — copy a starter spec if writing the first `PROMPT.md` from scratch is the blocker
+3. `../START_HERE.md` — shortest honest first-run path once the task is chosen
+4. `example-review-bundle.md` — public proof of the morning-after handoff shape
+5. `review-ai-coding-output-before-merge.md` — the five-minute merge test for judging whether the result really holds up
+6. `after-your-first-run.md` — the shortest path from a private first run to a Codeberg star/watch or a useful issue
 
 Everything else in this docs map is secondary until after that first Codeberg-first evaluation.
 
