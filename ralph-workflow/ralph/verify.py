@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.executor.process import ProcessResult, ProcessRunOptions, run_process
+from ralph.verify_timeout import DEFAULT_SUITE_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -46,16 +48,16 @@ _VERIFY_STEPS: tuple[tuple[str, ...], ...] = (
     ("typecheck",),
 )
 
-_TEST_TIMEOUT_SECONDS = 120
+_TEST_TIMEOUT_SECONDS = DEFAULT_SUITE_TIMEOUT_SECONDS
 
 
-def _run_tests(*, cwd: Path, runner: VerifyRunner) -> int:
+def _run_tests(*, cwd: Path, runner: VerifyRunner, timeout: float) -> int:
     """Run pytest directly to avoid 11-shard sequential overhead."""
     pytest_cmd = (
         "-m", "pytest", "tests", "-q", "-n", "4",
         "--dist", "worksteal", "-m", "not subprocess_e2e",
     )
-    result = runner("python", pytest_cmd, cwd=cwd, timeout=_TEST_TIMEOUT_SECONDS)
+    result = runner("python", pytest_cmd, cwd=cwd, timeout=timeout)
     if result.stdout:
         print(result.stdout, end="", flush=True)
     if result.stderr:
@@ -98,7 +100,8 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
     """Run all verification steps and return the first non-zero exit code, or 0."""
     print("Running full verification...", flush=True)
 
-    # Run lint and typecheck via make
+    # Run lint and typecheck via make, measuring elapsed time to budget the 30s total
+    verify_start = time.monotonic()
     for args in _VERIFY_STEPS:
         result = runner("make", args, cwd=cwd)
         if result.stdout:
@@ -113,8 +116,26 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             )
             return result.returncode
 
+    # Budget remaining time for pytest after lint and typecheck
+    elapsed = time.monotonic() - verify_start
+    remaining_budget = DEFAULT_SUITE_TIMEOUT_SECONDS - elapsed
+
+    # Strict budget enforcement: if pre-pytest steps already exhausted the budget,
+    # do not grant additional time that would push total runtime past the 30s cap.
+    if remaining_budget <= 0:
+        print(
+            format_verify_failure_banner(
+                failed_command="pytest tests (budget exhausted by lint/typecheck)"
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+        return 1
+
+    pytest_timeout = remaining_budget
+
     # Run tests directly via pytest to avoid 11-shard sequential overhead
-    test_result = _run_tests(cwd=cwd, runner=runner)
+    test_result = _run_tests(cwd=cwd, runner=runner, timeout=pytest_timeout)
     if test_result != 0:
         print(
             format_verify_failure_banner(failed_command="pytest tests"),
