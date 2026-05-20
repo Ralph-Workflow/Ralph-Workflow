@@ -4,7 +4,7 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with engineering work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different from a normal AI coding session is the handoff: Ralph Workflow is built to return a **reviewable result** in your repo instead of a long transcript and a claim that the task is done.
+What makes it different from a normal AI coding session is not just the handoff. Ralph Workflow turns the simple Ralph loop into a **composable workflow** with planning, implementation, verification, and review, and the default version of that workflow is already good for writing software.
 
 Why try it now? Because you can pick one real backlog task tonight, run it with the tools you already trust, and decide tomorrow whether the result is something you would actually merge — with one honest question: **would I merge this?**
 
@@ -14,10 +14,10 @@ The fastest honest test is one real backlog task you already care about.
 
 Choose something that is:
 
-- substantial enough to justify unattended execution
-- defined enough that success is easy to evaluate afterward
-- detailed enough that you can write a serious product spec
-- real enough that you already want it shipped
+- small enough to judge in one sitting
+- clear enough that success is easy to define
+- cheap to roll back if the run misses
+- real enough that you already want it done
 
 ## Good first tasks
 
@@ -81,10 +81,10 @@ Add a /health endpoint that returns HTTP 200 with {"status": "ok"}.
 
 Before you run, ask:
 
-1. Do I already know what the product outcome needs to be?
-2. Can I write a detailed enough spec that the agent should not have to invent the goal?
-3. Can I name the checks that prove it worked?
-4. Would the result matter enough that I actually want this work done?
+1. Can I describe the task in one paragraph?
+2. Can I name the checks that prove it worked?
+3. Would a diff be enough for a reviewer to judge the result?
+4. If it misses, is the rollback cheap?
 
 If the answer is yes to all four, it is probably a good Ralph Workflow task.
 
@@ -103,10 +103,10 @@ That is the real product test.
 
 ## Next step
 
-- Continue with [Getting Started](getting-started.md) for the install and first-run flow
-- Read [First-Task Prompt Templates](first-task-prompt-templates.md) if you want copy-paste starter specs instead of drafting from scratch
+- Continue with [Getting Started](sphinx/getting-started.md) for the install and first-run flow
+- Read [First-Task Prompt Templates](sphinx/first-task-prompt-templates.md) if you want copy-paste starter specs instead of drafting from scratch
 - Read [What Good Output Looks Like](reviewable-output.md) to see the kind of handoff you should expect
-- Read [Example Review Bundle](example-review-bundle.md) if you want a public sample `PROMPT.md`, result notes, and artifacts before your first run
+- Read [Example Review Bundle](sphinx/example-review-bundle.md) if you want a public sample `PROMPT.md`, result notes, and artifacts before your first run
 
 If this first-task filter matches how you want to evaluate Ralph Workflow, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 

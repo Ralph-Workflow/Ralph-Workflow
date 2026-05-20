@@ -32,7 +32,7 @@ Ralph Workflow is strongest when you want an unattended coding agent for work li
 - a narrow refactor with checks
 - a test-writing pass
 - a docs or cleanup task with clear acceptance criteria
-- a real overnight backlog item you can judge with a merge decision
+- a real overnight backlog item you can judge by running the software and checking the verification
 
 If that is your use case, start with [Choose Your First Ralph Workflow Task](./sphinx/first-task-guide.md) and [First-Task Prompt Templates](./sphinx/first-task-prompt-templates.md).
 

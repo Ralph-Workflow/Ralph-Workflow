@@ -3,7 +3,7 @@
 If you already know Aider, the simplest difference is this:
 
 - **Aider** is an interactive AI pair-programming tool you steer in the terminal.
-- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine** and hands back a **reviewable result** after an unattended run.
+- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine** inside a **composable loop workflow** for real software work.
 
 That means Ralph Workflow is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -27,7 +27,7 @@ Ralph Workflow is usually the better fit when you want to:
 - wake up to a large chunk of work instead of babysitting the terminal
 - use different agents for planning, development, and review
 - keep the workflow repo-native and inspectable on your own machine
-- judge the result with a simple merge / no-merge decision
+- judge the result by whether it produced working software and real verification
 
 Typical good Ralph Workflow tasks:
 

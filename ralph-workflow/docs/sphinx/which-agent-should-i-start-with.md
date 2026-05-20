@@ -4,7 +4,7 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow brings back a **reviewable result** in your repo — diff, checks, artifacts — instead of a transcript and a claim that the task is done.
+What makes it different is the workflow model: Ralph Workflow lets you start with a strong default software workflow and route different phases across agents instead of relying on one long coding session.
 
 Why use it now? You do **not** need to switch your whole toolchain first. Pick one agent you already trust, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
@@ -17,7 +17,7 @@ Do **not** optimize this choice too hard.
 The main first-run question is not "which model is theoretically best?"
 It is:
 
-> **Can I get one real unattended run to finish with a reviewable result?**
+> **Can I get one real unattended run to produce working software, real checks, or an honest blocked state?**
 
 If one agent is already working for you today, that is usually the right first choice.
 

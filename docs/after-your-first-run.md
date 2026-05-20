@@ -9,7 +9,7 @@ It is this:
 This page is the shortest path from a private first run to a useful public next step on **Codeberg**.
 
 - Primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- GitHub mirror: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- GitHub mirror only if that is where you already follow projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Use Codeberg for the real project relationship: stars, watches, issues, and contribution history.
 
@@ -95,6 +95,8 @@ Use these in order:
 
 1. [Example review bundle](./example-review-bundle.md)
 2. [What Good Output Looks Like](./free-open-source-proof.md)
-3. [Contributing](../CONTRIBUTING.md)
+3. [Open a first-run or docs/proof issue on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new)
 
-The goal is simple: convert your first run into one honest public action on **Codeberg** — either a **star/watch** because it worked, or a **useful issue** because it did not.
+Do not turn uncertainty into silence.
+If the run looked promising, put the signal on **Codeberg** with a **star** or **watch**.
+If the run felt weak, put the learning on **Codeberg** with a **useful issue**.

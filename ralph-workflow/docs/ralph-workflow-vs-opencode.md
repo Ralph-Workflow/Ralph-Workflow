@@ -3,7 +3,7 @@
 If you already use OpenCode, the simplest difference is this:
 
 - **OpenCode** is the coding-agent interface and provider-routing layer you drive directly.
-- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs OpenCode or another supported coding agent **on your own machine** and hands back a **reviewable result** after an unattended run.
+- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs OpenCode or another supported coding agent **on your own machine** inside a **composable loop workflow** for real software work.
 
 That makes Ralph Workflow a fit for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -13,9 +13,9 @@ Why try it now? Because you do not need to replace OpenCode to use it. Keep your
 
 OpenCode is strongest when you want flexible provider access and a direct agent surface you can steer yourself.
 
-Ralph Workflow is strongest when you want the morning-after handoff to be the product.
+Ralph Workflow is strongest when you want the workflow itself to do more than one agent session can do cleanly.
 
-You write a bounded spec in `PROMPT.md`, Ralph Workflow runs planning, development, verification, and review as one unattended flow, and you come back to a diff, checks, logs, and artifacts you can inspect like normal engineering work.
+You write a bounded spec in `PROMPT.md`, Ralph Workflow runs planning, development, verification, and review as one unattended flow, and you come back to executable changes, test evidence, logs, and artifacts you can inspect like normal engineering work.
 
 ## Choose Ralph Workflow when
 
@@ -23,9 +23,9 @@ Ralph Workflow is usually the better fit when you want to:
 
 - keep OpenCode as your agent path but stop babysitting the session
 - hand off a real backlog task and review it later
-- wake up to a bounded diff instead of a long transcript
+- run a real loop across planning, implementation, verification, and review
 - route planning, implementation, and review through different agents when needed
-- judge the result with one merge / no-merge decision
+- evaluate the result by running software and checks, not by trusting a chat session
 
 ## Choose OpenCode when
 

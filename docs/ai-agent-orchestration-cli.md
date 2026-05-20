@@ -51,7 +51,7 @@ Ralph Workflow is **not** a hosted black box. It runs on your own machine with t
 3. Open [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) and judge the morning-after handoff honestly
 4. Turn that result into one public next step with [after-your-first-run.md](./after-your-first-run.md)
 
-If GitHub is where you already track projects, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## Best next step on Codeberg if this matches what you need
 

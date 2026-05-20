@@ -10,7 +10,7 @@ If yes, put the trust signal on **Codeberg**.
 If no, report the exact friction on **Codeberg**.
 
 - Primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- GitHub mirror: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- GitHub mirror only if that is where you already follow projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## The two healthy outcomes
 

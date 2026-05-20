@@ -4,7 +4,7 @@ Ralph Workflow is a **free and open-source** tool that orchestrates the coding a
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a short finish receipt — instead of just a transcript and a confident done claim.
+What makes it different is not that it produces a cleaner summary. Ralph Workflow is built to leave you with **software and verification you can actually judge** — executable changes, checks, artifacts, and a short finish receipt — instead of just a transcript and a confident done claim.
 
 Why read this now? An AI coding task is not done when the model sounds done. It is done when the result comes back in a shape you can review, verify, and decide whether you would merge.
 
@@ -50,7 +50,7 @@ Those are signs that the task may be **stopped**, but not truly **done**.
 
 A strong unattended coding result should hand back:
 
-- a bounded diff
+- working behavior you can verify
 - changed files that match the brief
 - checks that actually ran
 - a short finish receipt
@@ -72,7 +72,7 @@ For small interactive work, you can often patch that with live supervision.
 For overnight or unattended work, that does not scale.
 
 You need the end state to be legible without replaying the entire session.
-That is why Ralph Workflow is built around **repo-local output** and a **reviewable morning-after handoff**, not just a transcript.
+That is why Ralph Workflow is built around **repo-local execution, verification, and artifacts**, not just a transcript.
 
 ## The honest first evaluation path
 

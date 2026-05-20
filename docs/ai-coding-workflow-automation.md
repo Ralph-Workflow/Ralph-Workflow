@@ -60,7 +60,7 @@ It is not a hosted black box. It runs on your machine with Claude Code, Codex CL
 4. Judge the morning-after handoff with [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md)
 5. Turn that outcome into one public next step with [after-your-first-run.md](./after-your-first-run.md)
 
-If GitHub is where you already track projects, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## Best next step on Codeberg if this is what you want
 
