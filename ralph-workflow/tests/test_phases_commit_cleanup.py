@@ -204,6 +204,36 @@ def test_missing_artifact_returns_failure_event(tmp_git_repo: Path) -> None:
     assert event.recoverable is True
 
 
+def test_cleanup_actions_applied_when_analysis_complete_true(tmp_git_repo: Path) -> None:
+    """Cleanup actions are applied even when analysis_complete=True."""
+    workspace = FsWorkspace(tmp_git_repo)
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "add_to_gitignore", "pattern": "*.exe"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit_cleanup",
+        prompt_file="cleanup.txt",
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    gitignore = tmp_git_repo / ".gitignore"
+    assert gitignore.exists()
+    assert "*.exe" in gitignore.read_text()
+
+
 def test_non_repo_directory_inits_git(tmp_path: Path) -> None:
     """Test that git is initialized if workspace is not a repo."""
     non_repo = tmp_path / "non_repo"
