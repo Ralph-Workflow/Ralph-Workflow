@@ -1,5 +1,9 @@
 # Which Agent Should I Start With?
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
@@ -78,7 +82,7 @@ For a first run, these matter more than whether you picked Claude Code, Codex, o
 - choosing a **small real backlog task**
 - writing a **clear one-paragraph spec** in `PROMPT.md`
 - making sure the repo is safe to test in
-- judging the result with one question: **would I merge this?**
+- judging the result with one question: **does the implementation hold up?**
 
 A good first task will teach you more than switching agents three times.
 
@@ -110,7 +114,7 @@ If you want the shortest honest path after that, continue with:
 2. Use [Getting Started](getting-started.md) for the fastest real-task path.
 3. If `PROMPT.md` is blank, use [First-Task Prompt Templates](first-task-prompt-templates.md).
 4. Run one bounded backlog task.
-5. Review the result tomorrow and ask: **would I merge this?**
+5. Review the result tomorrow and ask: **does the implementation hold up?**
 
 That is enough to tell you whether Ralph Workflow is useful in your real environment.
 

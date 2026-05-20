@@ -1,5 +1,9 @@
 # Parallel Development Mode
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 ## IMPORTANT: v1 is same-workspace only
 
 Ralph parallel workers in v1 share a single checkout. There are no per-worker git branches and no post-development merge step. Isolation is enforced by `allowed_directories` path restrictions and per-worker namespaces under `.agent/workers/<unit_id>/`. v1 uses the same git checkout for all workers; per-worker git checkout isolation is not part of the v1 product surface.

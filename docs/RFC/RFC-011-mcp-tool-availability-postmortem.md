@@ -1,5 +1,9 @@
 # RFC-011: Revised Post-Mortem - MCP Transport Lifetime Coupled to Agent Attempt Lifetime
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 **RFC Number**: RFC-011  
 **Title**: Revised Post-Mortem - MCP Transport Lifetime Coupled to Agent Attempt Lifetime  
 **Status**: Superseded / Previous conclusion was incorrect  

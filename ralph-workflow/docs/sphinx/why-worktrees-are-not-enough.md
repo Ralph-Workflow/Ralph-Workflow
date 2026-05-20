@@ -1,5 +1,9 @@
 # Why Worktrees Are Not Enough for Unattended AI Coding
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you already use Claude Code, Codex CLI, or similar tools with git worktrees, you have solved part of the problem.
 
 You have **not** solved the whole one.
@@ -70,7 +74,7 @@ A useful unattended run should hand back:
 - changed files you can inspect normally
 - checks that really ran
 - artifacts and logs you can follow
-- a clean yes/no merge decision
+- a clean yes/no human review
 
 ## The practical rule
 
@@ -83,14 +87,14 @@ The best first test is simple:
 - pick one real backlog task
 - describe it clearly in `PROMPT.md`
 - run Ralph Workflow overnight
-- ask in the morning: **would I merge this?**
+- ask in the morning: **does the implementation hold up?**
 
 If yes, that is the product value.
 
 ## Next steps
 
 - Start with [Getting Started](getting-started.md)
-- See [What Good Ralph Workflow Output Looks Like](reviewable-output.md) for an example reviewable result
+- See [What Good Ralph Workflow Output Looks Like](reviewable-output.md) for an example strong software result
 - See [When Unattended Coding Fits](when-unattended-coding-fits.md) to choose a good first task
 - See [Example Review Bundle](example-review-bundle.md) if you want a public proof asset before your first run
 

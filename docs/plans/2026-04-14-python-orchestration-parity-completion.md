@@ -1,5 +1,9 @@
 # Python Orchestration Parity Completion Plan
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Complete remaining parity gaps in ralph-workflow against `docs/plans/2026-04-09-configurable-orchestration.md` by wiring MCP/session startup in runtime invocation, adding explicit commit post-routing for `development_analysis`/`review_analysis` topology, and adding planning `work_units` parsing/validation hooks.

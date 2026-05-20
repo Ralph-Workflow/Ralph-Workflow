@@ -1,5 +1,9 @@
 # Result Verification (Analysis Agent)
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This document describes the *analysis step* inside the Development iteration.
 For the full end-to-end lifecycle (Planning -> Development -> Commit -> Review/Fix loops), see `pipeline-lifecycle.md`.
 

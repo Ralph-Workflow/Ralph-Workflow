@@ -1,10 +1,14 @@
 # Bounded Autonomy for Unattended Coding
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already run **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is not raw autonomy. Ralph Workflow is built to make unattended runs end in a **reviewable result**: a real diff, checks that ran, artifacts, and clear open questions.
+What makes it different is not raw autonomy. Ralph Workflow is built to make unattended runs end in a **strong software result**: a real diff, checks that ran, artifacts, and clear open questions.
 
 Why use it now? Because you can try it tonight on one real backlog task, keep the run bounded, and decide tomorrow whether the result actually earned a merge.
 
@@ -112,5 +116,5 @@ Primary repo on Codeberg:
 
 - Start with [Getting Started](getting-started.md)
 - Use [When Ralph Workflow Fits — and When It Does Not](when-unattended-coding-fits.md) if you are still choosing the first task
-- Use [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) if the merge decision still feels fuzzy
+- Use [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) if the human review still feels fuzzy
 - Inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) to see a concrete review path before your own run

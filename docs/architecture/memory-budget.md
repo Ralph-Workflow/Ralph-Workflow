@@ -1,5 +1,9 @@
 # Memory Budget and Resource Management
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This document describes the memory budgets, limits, and expected resource usage patterns for ralph-workflow. It provides guidance for production monitoring and helps prevent unbounded memory growth.
 
 ## Overview

@@ -1,165 +1,64 @@
 # Quickstart
 
-> **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) if you want the same flow with more explanation.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything. If you need config answers, open [Configuration Reference](configuration.md). If you want docs routed by use case, open [End-User Stories](user-stories.md).
 
-Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
+Use this page when you already understand the product story and want the shortest path to one honest first run in a real repository.
+Ralph Workflow gives you a strong default unattended coding workflow built from a simple core loop inspired by the original Ralph loop; the point of this page is to use that default safely before you customize anything.
+If you need fuller explanation, task-selection help, or more context for why the default flow works, go back to [Getting Started](getting-started.md).
 
-It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
+## Quickstart checklist
 
-What makes it different is the workflow model: Ralph Workflow uses **composable loops** to take work through planning, implementation, verification, and review instead of stopping at one agent session.
+1. Pick a real repo and a task with a visible finish line.
+2. Prefer the default workflow before touching advanced config.
+3. Run Ralph Workflow on that task.
+4. Judge the result by the repo change and the checks that ran.
+5. Only customize after you know what the default loop already does well enough.
 
-Why use it now? Because you can run one real backlog task tonight, come back to a diff, checks, and artifacts tomorrow, and ask one honest question: **would I merge this?**
-
-Important first-run expectation: Ralph Workflow does **not** replace the coding agent itself. Before you install, have at least one supported agent CLI already installed and already authenticated on your own machine.
-
-## The fastest honest first run
-
-Use this flow in a real repo you already care about.
-
-**Before you start, confirm:**
-
-- Python 3.12+
-- a git repo you can safely test in
-- at least one supported agent CLI already working on your machine
-
-**If you are unsure which agent to start with**, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md) first — it maps agent setup friction to the right first path.
-
-**For the clearest fit判断 before installing:**
-
-- OpenCode already your default? → [Ralph Workflow vs OpenCode](ralph-workflow-vs-opencode.md)
-- Claude Code already your default? → [Claude Code Automation for Real Repo Work](claude-code-automation.md)
-- Running Claude Code overnight without babysitting? → [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md)
-- Approval mode still leaves you babysitting? → [Claude Code Approval Mode Is Not an Unattended Workflow](claude-code-approval-mode.md)
-- Curious about Claude Code `run until done` or `/goal`, but still want a sharper merge decision? → [Claude Code "Run Until Done" Still Needs a Reviewable Finish](claude-code-run-until-done.md)
-- Evaluating orchestration tools directly? → [AI Agent Orchestration CLI: A Practical Comparison](ai-agent-orchestration-cli.md)
-- Want the spec-first framing? → [Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt](spec-driven-ai-agent.md)
-
-## Install
+## Minimal commands
 
 ```bash
 pipx install ralph-workflow
-ralph --version
-```
-
-## Initialize Ralph Workflow in a repository
-
-Go to your project directory, then run:
-
-```bash
-cd <your-project>
+cd /path/to/your/project
 ralph --init
+ralph --diagnose
+ralph
 ```
 
-This creates:
+## Local config is explicit opt-in
 
-- `PROMPT.md` — the task file in the project root
-- `.agent/` — project-local support files (`mcp.toml`, `pipeline.toml`, `artifacts.toml`)
-- `~/.config/ralph-workflow.toml` and `~/.config/ralph-workflow-mcp.toml` — user-global defaults created once and reused across projects
-
-If this repository also needs a project-local copy of the main Ralph Workflow config, run the explicit opt-in local-override flow:
+Use `ralph --init` for the standard project support files.
+If you explicitly want a project-local main config override, run:
 
 ```bash
 ralph --init-local-config
 ```
 
-That command creates `.agent/ralph-workflow.toml` as the project-local main-config override.
+That command creates `.agent/ralph-workflow.toml` for repo-local overrides.
 
-## Edit `PROMPT.md`
+## Good first-task shape
 
-Open `PROMPT.md` and replace the example with one **real, bounded backlog task**. If you are unsure what a good first task looks like, read [Choose Your First Ralph Workflow Task](first-task-guide.md) first. If you want copy-paste prompt shapes instead of starting from a blank page, read [First-Task Prompt Templates](first-task-prompt-templates.md).
+Your first task should be:
 
-A strong first prompt looks like this:
+- substantial enough to benefit from planning and verification
+- specific enough that success is easy to recognize
+- connected to checks you can actually run
+- important enough that better unattended workflow would matter
 
-```markdown
-# Goal
+If you need help picking that task, use [First Task Guide](first-task-guide.md).
 
-Add validation so the CLI rejects empty project names before creating files.
-Keep the rest of the flow unchanged.
+## What success should look like
 
-## Acceptance criteria
+A good first quickstart run should leave you with:
 
-- Empty or whitespace-only project names fail with a clear error
-- No project files are created for invalid names
-- Existing valid-name behavior stays unchanged
-- Tests cover the new validation
-```
+- a visible repo change tied to the task you asked for
+- checks or verification output you can inspect directly
+- a short list of remaining risks or follow-up work
+- enough confidence to decide whether the default workflow is useful in this repo
 
-**Important:** remove the `<!-- ralph:starter-prompt ... -->` comment at the top after replacing the example content. Ralph Workflow refuses to run while that sentinel is still present.
+## After the quickstart
 
-## Verify the environment
-
-```bash
-ralph --diagnose
-```
-
-The diagnostic checks the repo, config, agent binaries, MCP definitions, and prompt pre-flight state. Fix any ❌ rows before running.
-
-## Run Ralph Workflow
-
-```bash
-ralph
-```
-
-Ralph Workflow runs unattended and shows progress inline. In plain terms, it plans the task, implements the work, reviews the result during the run, and leaves you with completed work, logs, and artifacts to inspect afterward.
-
-If the run earns your trust, put the public signal on the primary Codeberg repo first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The GitHub mirror stays available here: <https://github.com/Ralph-Workflow/Ralph-Workflow>.
-
-If interrupted, Ralph Workflow saves a checkpoint automatically. Continue from that saved state with:
-
-```bash
-ralph --resume
-```
-
-## How to judge the result honestly
-
-Do not ask whether the agent sounded convincing.
-
-Ask:
-
-- does the diff match the task?
-- did the checks really run?
-- are the changes reviewable in one sitting?
-- **would I merge this?**
-
-That is the real first-run test.
-
-If you want the shortest post-run scorecard plus the right public next step, use [After Your First Ralph Workflow Run](after-your-first-run.md).
-
-## Where to go next
-
-**Pick your first real task:**
-
-- [Choose Your First Ralph Workflow Task](first-task-guide.md) — pick a bounded backlog item with a clean pass/fail evaluation
-- [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste starter specs for common good-fit tasks
-
-**Find the right agent:**
-
-- [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — pick the path with the least setup friction for your machine
-
-**Understand the tradeoffs before you commit:**
-
-- [Ralph Workflow vs OpenCode](ralph-workflow-vs-opencode.md) — baseline: interactive OpenCode setup
-- [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md) — baseline: interactive Claude Code session
-- [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md) — baseline: interactive Codex CLI session
-- [Ralph Workflow vs Aider](ralph-workflow-vs-aider.md) — baseline: interactive AI pair programming
-- [Claude Code + Codex Workflow](claude-code-codex-workflow.md) — split work between both
-
-**Run it overnight:**
-
-- [Run Claude Code Overnight Without Babysitting](run-claude-code-overnight-without-babysitting.md)
-- [Bounded Autonomy for Unattended Coding](bounded-autonomy-for-unattended-coding.md)
-- [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md)
-
-**Judge the result:**
-
-- [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — five-minute morning-after checklist
-- [What a Good AI Coding Finish Receipt Looks Like](what-a-good-ai-coding-finish-receipt-looks-like.md) — the short handoff that tells you what changed, what passed, what still needs judgment
-- [After Your First Ralph Workflow Run](after-your-first-run.md) — post-run scorecard
-- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — proof overview and merge test
-- [Example Review Bundle](example-review-bundle.md) — public sample prompt, result, review, and artifacts
-
-**Day-one reference:**
-
-- [Getting Started](getting-started.md) — fuller first-run walkthrough
-- [CLI Reference](cli.md) — all flags and subcommands
-- [Configuration Reference](configuration.md) — config files and precedence
+- Need the fuller first-run walkthrough? Open [Getting Started](getting-started.md).
+- Need config answers? Open [Configuration Reference](configuration.md).
+- Need docs routed by use case? Open [End-User Stories](user-stories.md).
+- Need to inspect trustworthy output? Open [What Good Ralph Workflow Output Looks Like](../../../docs/reviewable-output.md).

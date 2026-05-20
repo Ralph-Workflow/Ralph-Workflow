@@ -1,5 +1,9 @@
 # RFC-008: Deterministic Parallel Worker Orchestration
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 **Status**: Draft
 **Authors**: Product synthesis from external orchestrator research
 **Created**: 2026-03-18

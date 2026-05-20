@@ -1,104 +1,43 @@
-# Unattended Coding Agent: What It Is, When It Helps, and Why Ralph Workflow Exists
+# Unattended Coding Agent: What It Should Actually Mean
 
-If you are looking for an **unattended coding agent**, the useful question is not just "which model writes code?"
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+That simple center composes into more complex workflows for substantial, well-specified repo work on your own machine with the agents you already use, and the default workflow is already strong enough to start with.
 
-The real question is: **can I hand off a real backlog task, walk away, and come back to something reviewable?**
+If you are looking for an unattended coding agent, the important question is not just whether a model can keep typing while you are away.
+The important question is whether you can come back to software you can judge honestly.
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+## Unattended should still mean accountable
 
-It is for developers and technical teams with engineering work that is **too big to babysit and too risky to trust blindly**.
+A useful unattended workflow should leave you with:
 
-What makes it different from a normal agent session is the handoff: Ralph Workflow is built to bring back a **reviewable result** — a diff, checks, artifacts, and finish notes — instead of just a long transcript and a claim that the work is done.
-It works best when the task is already defined in enough detail that you can hand the run a serious, detailed product or engineering spec.
+- a clear task boundary
+- software that actually runs or verifies better than before
+- checks that tell you something real
+- enough structure that you can understand what happened without replaying everything
 
-Why use it now? Because you can try it tonight with the agents you already have, on one real, substantial task, for free.
+That is the standard Ralph Workflow is trying to meet.
+It is not promising magic independence from engineering discipline.
+It is promising a stronger way to organize serious work.
 
-Before you install anything, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+## When unattended use fits best
 
-If the workflow earns trust after a real run, keep the public signal on Codeberg:
+Ralph Workflow fits best when you have:
 
-- **Star or watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- a backlog task with a written finish line
+- a repo with meaningful tests or validation
+- enough scope that a simple chat session becomes awkward
+- time to evaluate the result after the run
 
-## What an unattended coding agent should actually do
+It fits worse when the task is vague, tiny, or dependent on constant mid-run steering.
 
-A useful unattended coding agent should help you:
+## Why the default workflow matters
 
-- hand off a bounded engineering task
-- keep the work inside your repo and normal tooling
-- run long enough to finish a meaningful chunk of work
-- leave behind proof you can review in the morning
-- make it obvious what still needs human judgment
+Most people should not have to build an orchestration system before they can judge one.
+You should be able to start with the shipped path, learn how it behaves on a real task, and extend it later only if you need to.
 
-That is the gap Ralph Workflow is trying to close.
+## Where to go next
 
-## What usually goes wrong with unattended coding
-
-Most unattended coding breaks trust in predictable ways:
-
-- the task was too vague
-- the run touched shared boundaries with no explicit owner
-- the agent produced a lot of edits but weak proof
-- the morning-after handoff is a transcript, not a finish receipt
-- the branch looks fine alone, but the merged state is still unclear
-
-That is why Ralph Workflow focuses less on "let the agent run" and more on **what comes back when it finishes**.
-
-## When Ralph Workflow is a good fit
-
-Ralph Workflow is strongest when you want an unattended coding agent for work like:
-
-- a substantial feature slice with a clear product outcome
-- a serious refactor with checks and explicit constraints
-- a documentation or test initiative with real acceptance criteria
-- a real overnight backlog item that should leave behind a meaningful implementation head start
-- multi-file engineering work where the spec is already known before the run starts
-
-Good first runs share the same shape:
-
-- one real substantial task
-- a detailed product or engineering spec
-- clear acceptance criteria
-- a reviewer who can honestly answer: **would I merge this?**
-
-If that is your use case, start with [Choose Your First Ralph Workflow Task](first-task-guide.md) and [First-Task Prompt Templates](first-task-prompt-templates.md).
-
-## When you do not want an unattended coding agent
-
-Ralph Workflow is a weak fit when the task still needs constant human steering, the scope is still being invented, or the rollback would be painful.
-
-For that filter, read [When Ralph Workflow Fits — and When It Does Not](when-unattended-coding-fits.md).
-
-## What Ralph Workflow adds beyond running Claude Code or Codex directly
-
-If you already use Claude Code, Codex, or another agent CLI, Ralph Workflow is not asking you to throw that away.
-
-It adds a repo-native unattended workflow around those tools so you can:
-
-- orchestrate the agent you already trust on your machine
-- run planning, implementation, and verification as one flow
-- wake up to a result that is easier to inspect
-- judge the work on the diff, checks, and finish receipt instead of the agent's self-report
-
-That is the practical difference between "an agent session ran overnight" and "I got back something I can review quickly."
-
-## Fastest honest way to try it
-
-Use one real backlog task tonight.
-
-1. Install Ralph Workflow
-2. Pick a task that is substantial enough to deserve unattended work
-3. Write a detailed `PROMPT.md` with product requirements and acceptance criteria
-4. Run it overnight
-5. Review the diff, checks, and notes in the morning
-6. Ask: **would I merge this?**
-
-If you want proof before setup, inspect the public [Example Review Bundle](example-review-bundle.md).
-
-If you want the shortest install path, go to [Start Here](../START_HERE.md).
-
-If the morning-after handoff looks promising, do not leave that evaluation private:
-
-- **promising run:** star or watch Ralph Workflow on Codeberg
-- **shaky run:** open the right issue on Codeberg
+- for the shortest honest first run: [START_HERE.md](../START_HERE.md)
+- for choosing a task worth running unattended: [first-task-guide.md](./first-task-guide.md)
+- for the maintained manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
+- for user-goal routing inside the manual: [user-stories.md](../ralph-workflow/docs/sphinx/user-stories.md)

@@ -1,5 +1,9 @@
 # Supervising API
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This page is for developers and integrators building orchestrators that supervise one or more Ralph Workflow instances.
 
 If you only need to run Ralph Workflow interactively, this page is not relevant to your use case.

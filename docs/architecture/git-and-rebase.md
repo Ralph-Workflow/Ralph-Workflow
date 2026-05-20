@@ -1,5 +1,9 @@
 # Git and Rebase Architecture
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This document explains how Ralph interacts with git repositories and why it avoids shelling out to `git`.
 
 ## libgit2 (No git CLI Dependency)

@@ -44,5 +44,6 @@ Use GitHub only as the mirror if that is where you already track projects: <http
 ## Need the fuller hosted-docs version?
 
 - [Hosted-docs version](sphinx/spec-driven-ai-agent.md)
-- [Choose Your First Ralph Workflow Task](sphinx/first-task-guide.md)
+- [Choose Your First Ralph Workflow Task](first-task-guide.md)
+- [First-Task Prompt Templates](first-task-prompt-templates.md)
 - [How to Review AI Coding Output Before You Merge](sphinx/review-ai-coding-output-before-merge.md)

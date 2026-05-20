@@ -1,5 +1,9 @@
 # Legacy SSE Upstream Support Implementation Plan
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Support legacy MCP HTTP+SSE upstream servers end to end so a docs-mcp style `.agent/mcp.toml` entry using `url = "http://127.0.0.1:6280/sse"` works in Ralph.

@@ -91,7 +91,8 @@ If you want to inspect a public sample bundle instead of only reading the summar
 
 ## Next step
 
-- Read [Choose Your First Ralph Workflow Task](./sphinx/first-task-guide.md)
+- Read [Choose Your First Ralph Workflow Task](first-task-guide.md)
+- Copy a starter spec from [First-Task Prompt Templates](first-task-prompt-templates.md)
 - Continue to [Start Here](../START_HERE.md) for the install and first-run path
 
 If this is the kind of morning-after handoff you want, keep the first public relationship on **Codeberg**:

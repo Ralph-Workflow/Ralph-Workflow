@@ -1,10 +1,14 @@
 # Claude Code Approval Mode Is Not an Unattended Workflow
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish state: Ralph Workflow hands back a **reviewable result** — a real diff, checks that ran, artifacts, and clear open questions — instead of a session that still depends on you hovering nearby.
+What makes it different is the finish state: Ralph Workflow hands back a **strong software result** — a real diff, checks that ran, artifacts, and clear open questions — instead of a session that still depends on you hovering nearby.
 
 Why use it now? If your current Claude Code setup still keeps you stuck in approval mode, plan mode, or transcript watching, Ralph Workflow gives you a sharper test: run one real task tonight and decide tomorrow whether the result actually earned a merge.
 
@@ -35,7 +39,7 @@ When people say they need approval mode, they often really mean one of these ins
 - "I do not trust the run to stop cleanly when it drifts."
 - "I do not want to wake up to a confident mess."
 - "I need the run to prove what happened without replaying everything."
-- "I want a better morning-after merge decision than 'it seemed fine while I watched it.'"
+- "I want a better morning-after human review than 'it seemed fine while I watched it.'"
 
 That is not just an approval problem. That is a finish-state trust problem.
 
@@ -74,7 +78,7 @@ Use this rule before you pick the workflow:
 - Start with [../START_HERE.md](../START_HERE.md)
 - Read [bounded-autonomy-for-unattended-coding.md](./bounded-autonomy-for-unattended-coding.md) if the real fear is drift
 - Read [remote-supervision-of-coding-agents.md](./remote-supervision-of-coding-agents.md) if the habit is late-night transcript watching
-- Read [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) if the merge decision is still fuzzy
+- Read [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) if the human review is still fuzzy
 - Inspect the **primary Codeberg repo**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **GitHub mirror**: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 

@@ -1,5 +1,9 @@
 # Ralph Workflow vs Claude Code
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you already know Claude Code, the simplest difference is this:
 
 - **Claude Code** is an interactive coding agent you drive directly.
@@ -67,7 +71,7 @@ Ralph Workflow is built around a different handoff:
 - checks that actually ran
 - artifacts saved in the repo
 - review output you can inspect
-- enough context to answer: **would I merge this?**
+- enough context to answer: **does the implementation hold up?**
 
 That is the real product test.
 

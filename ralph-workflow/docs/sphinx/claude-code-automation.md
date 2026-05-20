@@ -1,16 +1,20 @@
 # Claude Code Automation for Real Repo Work
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you are searching for **Claude Code automation**, the real question is not just how to make Claude keep typing while you are away.
 
-The real question is: **can you come back to a reviewable result instead of a long session and a confident done claim?**
+The real question is: **can you come back to a strong software result instead of a long session and a confident done claim?**
 
 Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish line: Ralph Workflow hands back a **reviewable result** — diff, checks, artifacts, and enough context to decide whether the run actually earned a merge.
+What makes it different is the finish line: Ralph Workflow hands back a **strong software result** — diff, checks, artifacts, and enough context to decide whether the run actually earned a merge.
 
-Why use it now? Keep Claude Code in the loop, inspect the source on **Codeberg** first, run one real backlog task tonight, and judge the result tomorrow with one question: **would I merge this?**
+Why use it now? Keep Claude Code in the loop, inspect the source on **Codeberg** first, run one real backlog task tonight, and judge the result tomorrow with one question: **does the implementation hold up?**
 
 ## What useful Claude Code automation should actually solve
 
@@ -79,7 +83,7 @@ Keeping the main trust signals on Codeberg makes the primary repo a clearer eval
 2. Pick one real backlog task with clear acceptance criteria
 3. Run Ralph Workflow overnight
 4. Review the diff, checks, and artifacts in the morning
-5. Ask: **would I merge this?**
+5. Ask: **does the implementation hold up?**
 
 If you want the shortest path, start with [getting-started.md](getting-started.md).
 If you want the clearest contrast first, read [ralph-workflow-vs-claude-code.md](ralph-workflow-vs-claude-code.md).

@@ -1,5 +1,9 @@
 # Directive-Style Error Response Format for MCP Artifact Validation
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > Design document for Task 2 of the XSD-to-MCP migration plan.
 > These types are design sketches; implementation is deferred to T5.
 

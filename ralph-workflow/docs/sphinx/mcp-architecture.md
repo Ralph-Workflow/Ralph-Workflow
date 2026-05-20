@@ -1,5 +1,9 @@
 # MCP Architecture
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **New to Ralph Workflow?** See [Getting Started](getting-started.md) first — it introduces MCP in context before these internals.
 
 This page explains how Ralph Workflow's local MCP server is put together, how it decides which tools an agent may use, and how it proxies tools from upstream MCP servers.

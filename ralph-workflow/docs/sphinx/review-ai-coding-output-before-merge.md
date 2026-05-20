@@ -1,10 +1,14 @@
 # How to Review AI Coding Output Before You Merge
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+This page is supporting proof for that composable workflow system and its strong default workflow, not the main product pitch.
+
+
 Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is not that it can summarize a run nicely. Ralph Workflow is built to leave you with **software you can actually evaluate** — executable behavior, real checks, artifacts, and a short finish receipt — instead of just a transcript and a confident done claim.
+What makes it different is not that it can summarize a run nicely. Ralph Workflow is built to leave you with **software you can actually evaluate** — executable behavior, real checks, artifacts, and a short result summary — instead of just a transcript and a confident done claim.
 
 Why read this now? The real question is not whether an agent looked smart. It is whether the morning-after result is something you would actually trust enough to review and merge.
 
@@ -20,7 +24,7 @@ Open the result in this order:
    - Do the changed files match the task you asked for?
    - Does the scope still match the defined product or engineering spec?
 
-3. **Read the finish receipt**
+3. **Read the result summary**
    - What changed?
    - What checks ran?
    - What stayed uncertain?
@@ -35,7 +39,7 @@ Open the result in this order:
    - If the task touched a shared boundary, make sure the merged state still holds up.
 
 6. **Ask one question**
-   - **Would I merge this?**
+   - **does the implementation hold up?**
 
 If that answer is quick and boring, the handoff is strong. If you still need to reconstruct the whole night from logs, it is not.
 
@@ -46,7 +50,7 @@ A useful unattended run should give you:
 - working behavior you can verify
 - changed files that match the ask
 - checks that actually ran
-- a short finish receipt instead of a long transcript
+- a short result summary instead of a long transcript
 - artifacts you can inspect when you need more detail
 - open questions called out clearly instead of hidden behind confidence
 
@@ -76,7 +80,7 @@ Best first-task companions:
 - [Getting Started](getting-started.md) — shortest path to a real first run
 - [First-Task Prompt Templates](first-task-prompt-templates.md) — copy-paste spec shapes for strong first runs
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — what good output should look like
-- [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, finish receipts, and clean re-entry
+- [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, result summarys, and clean re-entry
 
 If the morning-after result gives you working behavior, real checks, and a verification path you can evaluate quickly, Ralph Workflow is doing useful work.
 

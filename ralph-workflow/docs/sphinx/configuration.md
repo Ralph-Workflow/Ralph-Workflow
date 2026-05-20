@@ -1,6 +1,30 @@
 # Configuration Reference
 
+Use this page when your question is about files, precedence, validation commands, or configuration edits. If you want docs routed by use case instead of page type, open [End-User Stories](user-stories.md).
+
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **New to Ralph Workflow?** Start with [Getting Started](getting-started.md) before diving into config details.
+
+If your immediate question is **"Where do I edit `ralph-workflow.toml`?"**, the short answer is:
+
+- **Global defaults for all projects** → `~/.config/ralph-workflow.toml`
+- **Project-specific override for just this repo** → `.agent/ralph-workflow.toml`
+
+If `.agent/ralph-workflow.toml` does not exist yet, create it with:
+
+```bash
+ralph --init-local-config
+```
+
+After editing config, validate it with:
+
+```bash
+ralph --check-config
+ralph --check-policy
+```
 
 Ralph Workflow uses layered configuration. Settings are resolved in this order, highest priority first:
 
@@ -33,6 +57,61 @@ Ralph Workflow manages a standard config set across two scopes.
 
 Run `ralph --init` to create the standard project-local support files. Use `ralph --init-local-config` when you explicitly want a project-local copy of the main config.
 
+## Advanced config map
+
+If you already know you want the deeper docs, use this map instead of scanning the whole manual:
+
+| I want to change... | Open this page |
+|---|---|
+| agent selection, retry behavior, verbosity, or drain bindings | this page: [Configuration Reference](configuration.md) |
+| workflow phases, loopbacks, commit routes, fan-out, counters, or recovery | [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) |
+| artifact contracts, decision vocabularies, summary files, or commit-message artifacts | [Advanced Artifact Configuration](advanced-artifact-configuration.md) |
+| MCP servers, web search, crawl, or media/web-visit integrations | [Advanced MCP Configuration](advanced-mcp-configuration.md) |
+| what the active policy means after all config layers resolve | [Policy Explanation](policy-explanation.md) |
+
+## Which file should I edit?
+
+Use this rule of thumb:
+
+- **I want this behavior in every repo I run** → edit `~/.config/ralph-workflow.toml`
+- **I only want this behavior in one repo** → edit `.agent/ralph-workflow.toml`
+- **I want to change workflow phases, loopbacks, or phase-owned policy** → edit `.agent/pipeline.toml`
+- **I want to change MCP servers or web/search access** → edit `~/.config/ralph-workflow-mcp.toml` or `.agent/mcp.toml`
+- **I want to change artifact contracts/history** → edit `.agent/artifacts.toml`
+
+The common mistake is editing `ralph-workflow.toml` when the real change belongs in `pipeline.toml`. The main `ralph-workflow.toml` file is mostly for:
+
+- agent selection and fallback chains
+- drain-to-chain bindings
+- retry / timeout / verbosity settings
+- Claude Code Switch / agent definitions
+
+The workflow structure itself lives in `pipeline.toml`.
+
+## The fastest safe workflow for editing config
+
+1. Decide whether the change is **global** or **repo-local**.
+2. Edit the right TOML file.
+3. Run `ralph --check-config`.
+4. If you changed workflow behavior, also run `ralph --check-policy`.
+5. Run `ralph --diagnose` before the next real unattended run.
+
+If you want the active workflow explained in plain English after the config change, run:
+
+```bash
+ralph --explain-policy
+```
+
+## Most common user edits in `ralph-workflow.toml`
+
+Most end users do not need to invent a policy from scratch. They usually want one of these changes:
+
+1. change which agents are used for planning / development / analysis / commit
+2. increase or decrease retry / cycle behavior
+3. raise or lower verbosity
+4. set git author info for automated commits
+5. create a project-local override without affecting every repo
+
 ## Bundled defaults
 
 The bundled defaults live in `ralph/policy/defaults/`. When in doubt, the files themselves are the most exact reference:
@@ -61,6 +140,32 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `max_backoff_ms` | `60000` | Maximum retry backoff delay |
 | `max_cycles` | `3` | Maximum full fallback cycles through a drain |
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
+
+### Example: change verbosity globally
+
+```toml
+[general]
+verbosity = 3
+```
+
+Use this when you want richer logs in every project.
+
+### Example: set git author info globally
+
+```toml
+[general]
+git_user_name = "Your Name"
+git_user_email = "you@example.com"
+```
+
+### Example: make one repo quieter without changing everything else
+
+Create `.agent/ralph-workflow.toml`:
+
+```toml
+[general]
+verbosity = 1
+```
 
 ### `[general.workflow]`
 
@@ -97,6 +202,73 @@ In practice:
 - **drains** map workflow steps to those chains
 
 Multiple drains can point at the same chain. That lets you change agent policy without rewriting the workflow itself.
+
+### Example: switch development to a different fallback order
+
+```toml
+[agent_chains]
+development = ["codex", "claude/sonnet", "opencode/minimax/MiniMax-M2.7-highspeed"]
+```
+
+Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"**
+
+### Example: use a repo-local override for one project only
+
+If one repo needs a stricter or more expensive development chain than your default setup, put only the override in `.agent/ralph-workflow.toml`:
+
+```toml
+[agent_chains]
+development = ["claude/opus", "codex"]
+```
+
+That repo-local file overrides the global chain just for that repo.
+
+## User stories: what to edit for common goals
+
+### I want Ralph Workflow to use different coding agents
+
+Edit `ralph-workflow.toml` → `[agent_chains]`.
+
+### I want one repo to behave differently from my defaults
+
+Create or edit `.agent/ralph-workflow.toml`.
+
+### I want to change the workflow shape itself
+
+Edit `.agent/pipeline.toml`, not `ralph-workflow.toml`.
+
+Then read [Advanced Pipeline Configuration](advanced-pipeline-configuration.md).
+
+### I want to enable or customize MCP / web tools
+
+Edit `ralph-workflow-mcp.toml` or `.agent/mcp.toml`.
+
+Then read [Advanced MCP Configuration](advanced-mcp-configuration.md).
+
+### I want to change artifact contracts, decision vocabularies, or summary file outputs
+
+Edit `.agent/artifacts.toml`.
+
+Then read [Advanced Artifact Configuration](advanced-artifact-configuration.md).
+
+### I want to understand what my policy now does after editing it
+
+Run:
+
+```bash
+ralph --check-policy
+ralph --explain-policy
+```
+
+### I broke my config and want to get back to a known-good baseline
+
+Run:
+
+```bash
+ralph --regenerate-config
+```
+
+Ralph Workflow backs up overwritten files with a `.bak` suffix.
 
 ## `pipeline.toml` in plain language
 
@@ -155,4 +327,44 @@ Use the more detailed docs when you need them:
 - [Concepts](concepts.md) — terms like phase, drain, and artifact
 - [CLI Reference](cli.md) — runtime flags and shortcuts
 - [Policy Explanation](policy-explanation.md) — inspect the active workflow in plain English
+- [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) — phases, routing, counters, recovery, and fan-out
+- [Advanced Artifact Configuration](advanced-artifact-configuration.md) — artifact contracts, decision vocabularies, and summaries
+- [Advanced MCP Configuration](advanced-mcp-configuration.md) — MCP servers, search, crawl, and web tooling
 - [Developer Reference](developer-reference.md) — implementation-oriented detail
+- [End-User Stories](user-stories.md) — common user goals and the shortest docs path for each one
+If you want the advanced/operator version of this topic — phases, counters, commit policy, recovery, and parallel fan-out — use [Advanced Pipeline Configuration](advanced-pipeline-configuration.md).
+
+## `artifacts.toml` in plain language
+
+`artifacts.toml` defines the typed outputs Ralph Workflow expects from each drain.
+
+The top-level ideas are:
+
+- `drain` — which phase/drain this artifact belongs to
+- `artifact_type` — the structured output kind for the MCP artifact system
+- `decision_vocabulary` — allowed analysis decision strings for decision-style artifacts
+- `prompt_template` — which prompt template is responsible for producing that artifact
+- `markdown_summary_path` — optional human-readable summary path Ralph Workflow writes
+- `artifact_json_path` — optional explicit JSON artifact path
+
+In practice, you edit `artifacts.toml` when you want to:
+
+- add or rename workflow artifacts
+- change which decisions an analysis artifact may emit
+- change where human-readable summaries are written
+- add or customize commit-message artifact behavior
+
+If that is your goal, use [Advanced Artifact Configuration](advanced-artifact-configuration.md).
+
+## `mcp.toml` in plain language
+
+`mcp.toml` configures external tool servers and web-capability integrations.
+
+You edit it when you want to:
+
+- add an MCP server over `stdio` or `http`
+- configure web search backends
+- configure web-visit / readable-page fetching
+- wire in advanced crawling like Crawl4AI
+
+If that is your goal, use [Advanced MCP Configuration](advanced-mcp-configuration.md).

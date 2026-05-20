@@ -1,9 +1,13 @@
 # Ralph Workflow vs OpenCode
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you already use OpenCode, the simplest difference is this:
 
 - **OpenCode** is the coding-agent interface and provider-routing layer you drive directly.
-- **Ralph Workflow** is an **open-source** orchestration CLI that runs OpenCode or another supported coding agent **on your own machine** and hands back a **reviewable result** after an unattended run.
+- **Ralph Workflow** is an **open-source** orchestration CLI that runs OpenCode or another supported coding agent **on your own machine** and hands back a **strong software result** after an unattended run.
 
 That makes Ralph Workflow a fit for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -23,9 +27,9 @@ Ralph Workflow is usually the better fit when you want to:
 
 - keep OpenCode as your agent path but stop babysitting the session
 - hand off a real backlog task and review it later
-- wake up to a bounded diff instead of a long transcript
+- wake up to a understandable diff instead of a long transcript
 - route planning, implementation, and review through different agents when needed
-- judge the result with one merge / no-merge decision
+- judge the result with one merge / no-human review
 
 Typical good Ralph Workflow tasks:
 
@@ -65,7 +69,7 @@ Ralph Workflow is built around a different finish line:
 - checks that actually ran
 - artifacts saved in the repo
 - review output you can inspect
-- enough context to answer: **would I merge this?**
+- enough context to answer: **does the implementation hold up?**
 
 That is the real product test.
 

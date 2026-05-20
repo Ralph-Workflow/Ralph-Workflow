@@ -1,5 +1,9 @@
 # Configurable Orchestration Layer (Move Orchestration Policy from Rust into Config)
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 **Date:** 2026-04-09
 **Status:** Proposed
 **Scope:** Define the intended orchestration flow explicitly and move orchestration policy decisions out of implicit Rust control-flow code and into validated, visible configuration files. Rust should keep execution mechanics; configuration should express the orchestration policy. Replace the remaining legacy structured-output assumptions with an MCP-artifact-only orchestration contract, and make drain routing, phase wiring, artifact contracts, analysis decision routes, parallel-work policy, and orchestration invariants legible in TOML so bad agent selection fails fast instead of silently falling through to the wrong chain.

@@ -1,5 +1,9 @@
 # Shared Run-Scoped MCP Server Implementation Plan
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace per-attempt MCP bridge churn with a stable run-scoped MCP server that stays alive for the entire Ralph run and applies per-session/per-agent policy inside the server.

@@ -1,5 +1,9 @@
 # AI Agent Orchestration CLI: A Practical Comparison for Developers
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger composable workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph Workflow is a **free and open-source** AI agent orchestration CLI for developers who want work that is **too big to babysit and too risky to trust blindly** and need more than a single agent session.
 
 If you are searching for an AI agent orchestration CLI, the real question is not whether a tool can call an agent. It is whether the tool can turn longer coding work into something you would actually inspect, test, and maybe merge.
@@ -11,7 +15,7 @@ An AI agent orchestration CLI should do more than wrap one prompt:
 - require a written task or spec before the run starts
 - let you use the agents you already have on your own machine
 - move through plan, build, verify, and review instead of stopping at a draft
-- preserve checkpoints and artifacts for long runs
+- preserve checkpoints and supporting details for long runs
 - hand back a reviewable diff with checks and notes
 
 If it cannot do those things, it is closer to prompt automation than orchestration.
@@ -31,9 +35,9 @@ That is the gap an orchestration CLI is supposed to close.
 
 [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) is built for that gap.
 
-It is for developers and technical teams who want to hand off substantial work overnight, come back to changed files plus checks and artifacts, and ask one honest question:
+It is for developers and technical teams who want to hand off substantial work overnight, come back to changed files plus checks and supporting details, and ask one honest question:
 
-**Would I merge this?**
+**does the implementation hold up?**
 
 What makes it different is the finish line:
 

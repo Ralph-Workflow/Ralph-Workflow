@@ -1,5 +1,9 @@
 # OpenCode Child Liveness Hardening Implementation Plan
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make Ralph Workflow reliably distinguish OpenCode child agents that are truly still doing useful work from children that have already exited, are orphaned/stale, or are hung.

@@ -1,5 +1,9 @@
 # Ralph Workflow vs OpenCode
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you already use OpenCode, the simplest difference is this:
 
 - **OpenCode** is the coding-agent interface and provider-routing layer you drive directly.

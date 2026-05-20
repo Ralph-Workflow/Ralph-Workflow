@@ -1,5 +1,9 @@
 # Why Worktrees Are Not Enough for Unattended AI Coding
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you already use Claude Code, Codex CLI, or similar tools with git worktrees, you have solved part of the problem.
 
 You have **not** solved the whole one.
@@ -8,7 +12,7 @@ Ralph Workflow is an **open-source** tool that orchestrates the coding agents yo
 
 It is for developers and technical teams doing engineering work that is **too big to babysit and too risky to trust blindly**.
 
-What makes Ralph Workflow different is not that it creates more branches or more sessions. It is that it is built to take an unattended task all the way to a **reviewable result**: a scoped diff, checks that actually ran, artifacts, and enough context to decide whether you would merge it.
+What makes Ralph Workflow different is not that it creates more branches or more sessions. It is that it is built to take an unattended task all the way to a **strong software result**: a scoped diff, checks that actually ran, artifacts, and enough context to decide whether you would merge it.
 
 Why use it now? You can keep the agents and local setup you already trust, run one real backlog task tonight, and decide tomorrow whether the result actually holds up.
 
@@ -66,11 +70,11 @@ That difference matters more than another branch-management trick.
 
 A useful unattended run should hand back:
 
-- a bounded diff
+- a understandable diff
 - changed files you can inspect normally
 - checks that really ran
 - artifacts and logs you can follow
-- a clean yes/no merge decision
+- a clean yes/no human review
 
 ## The practical rule
 
@@ -83,14 +87,14 @@ The best first test is simple:
 - pick one real backlog task
 - describe it clearly in `PROMPT.md`
 - run Ralph Workflow overnight
-- ask in the morning: **would I merge this?**
+- ask in the morning: **does the implementation hold up?**
 
 If yes, that is the product value.
 
 ## Next steps
 
 - Start with [../START_HERE.md](../START_HERE.md)
-- See [free-open-source-proof.md](./free-open-source-proof.md) for an example reviewable result
+- See [free-open-source-proof.md](./free-open-source-proof.md) for an example strong software result
 - See [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) to choose a good first task
 
 If worktree isolation is already familiar but you still need a trustworthy unattended finish, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>

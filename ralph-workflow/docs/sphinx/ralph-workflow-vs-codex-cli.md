@@ -1,9 +1,13 @@
 # Ralph Workflow vs Codex CLI
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you already use Codex CLI, the simplest difference is this:
 
 - **Codex CLI** is a direct coding agent you drive yourself.
-- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs Codex CLI or another supported coding agent **on your own machine** and hands back a **reviewable result** after an unattended run.
+- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs Codex CLI or another supported coding agent **on your own machine** and hands back a **strong software result** after an unattended run.
 
 That means Ralph Workflow is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -67,7 +71,7 @@ Ralph Workflow is built around a different finish line:
 - checks that actually ran
 - artifacts saved in the repo
 - review output you can inspect
-- enough context to answer: **would I merge this?**
+- enough context to answer: **does the implementation hold up?**
 
 That is the real product test.
 

@@ -1,5 +1,9 @@
 # Release & Versioning
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This maintainer-facing page describes how to bump, build, validate, and publish a new Ralph Workflow release.
 
 ## 1. Bump the version

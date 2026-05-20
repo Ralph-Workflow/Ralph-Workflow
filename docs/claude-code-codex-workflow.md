@@ -1,10 +1,14 @@
 # Claude Code + Codex Workflow: Split the Work, Not the Review
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams using tools like **Claude Code** and **Codex** for work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: instead of a transcript and a confident "done" claim, Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a clean morning-after re-entry point.
+What makes it different is the handoff: instead of a transcript and a confident "done" claim, Ralph Workflow is built to leave you with a **strong software result** — a real diff, checks, artifacts, and a clean morning-after re-entry point.
 
 Why use it now? You can keep Claude Code and Codex in your workflow, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
@@ -16,7 +20,7 @@ A common split is:
 
 - one agent plans or implements
 - the other reviews, challenges, or verifies
-- the human makes the merge decision at the end
+- the human makes the human review at the end
 
 That is usually better than one long unchecked run from a single tool.
 
@@ -30,7 +34,7 @@ The hard part is what happens after that:
 - shared boundaries drift across config, schema, or interfaces
 - each branch looks locally fine, but the merged state is shaky
 - the morning-after handoff is a terminal transcript instead of a clean review surface
-- nobody gets a short finish receipt saying what changed, what passed, and what still needs judgment
+- nobody gets a short result summary saying what changed, what passed, and what still needs judgment
 
 That is the gap Ralph Workflow is built for.
 
@@ -68,7 +72,7 @@ It orchestrates the workflow around them so the run is more likely to end with:
 - checks that actually ran
 - a review/fix loop inside the workflow
 - a clean diff and artifact trail to inspect in the morning
-- a short finish receipt instead of a long transcript to reconstruct
+- a short result summary instead of a long transcript to reconstruct
 
 In plain terms: Ralph changes **what comes back**, not the fact that you already like Claude Code or Codex.
 

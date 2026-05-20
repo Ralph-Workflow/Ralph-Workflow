@@ -1,5 +1,9 @@
 # Plan Schema: XSD Equivalence Notes
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > Field-by-field mapping from `ralph-workflow/schemas/plan.schema.json` to `ralph-workflow/src/prompts/xsd/plan.xsd`.
 
 ---

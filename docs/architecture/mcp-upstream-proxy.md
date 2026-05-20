@@ -1,5 +1,9 @@
 # MCP Upstream Proxy Architecture
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This document describes the Ralph upstream proxy architecture for the Python implementation.
 
 **Status**: Design and partial implementation — implementation has started; the upstream config model (`ralph-workflow/ralph/mcp/upstream_config.py`) is implemented as of Task 2. Remaining tasks add the proxy client, registry, and runtime integration.

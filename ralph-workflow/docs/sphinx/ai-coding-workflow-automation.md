@@ -1,5 +1,9 @@
 # AI Coding Workflow Automation: What Actually Makes It Useful
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you are searching for **AI coding workflow automation**, the real question is not whether a tool can launch an agent and keep it busy.
 
 The real question is: **does the workflow produce software you can actually run, verify, and maybe merge?**
@@ -10,7 +14,7 @@ It is for developers and technical teams with work that is **too big to babysit 
 
 What makes it different is the workflow model: Ralph Workflow is built around **composable loops** for planning, implementation, verification, and review, with enough evidence at the end to decide whether the work actually holds up.
 
-Why use it now? Because you can inspect the source on **Codeberg**, run one real backlog task tonight, and judge the result tomorrow with one honest question: **would I merge this?**
+Why use it now? Because you can inspect the source on **Codeberg**, run one real backlog task tonight, and judge the result tomorrow with one honest question: **does the implementation hold up?**
 
 ## What AI coding workflow automation should actually automate
 
