@@ -7,8 +7,9 @@
 If you are evaluating Ralph Workflow rather than maintaining it, start with the shortest repo-native path first:
 
 1. `../START_HERE.md` — shortest honest first-run path
-2. `after-your-first-run.md` — shortest Codeberg-first scorecard after a real run
-3. `reviewable-output.md` — what a good morning-after handoff should look like
+2. `first-task-guide.md` — fastest repo-native filter for choosing the right first backlog task
+3. `after-your-first-run.md` — shortest Codeberg-first scorecard after a real run
+4. `reviewable-output.md` — what a good morning-after handoff should look like
 4. `ai-agent-orchestration-cli.md` — practical evaluation path for orchestration-CLI intent
 5. `spec-driven-ai-agent.md` — practical evaluation path for spec-first intent
 6. `claude-code-automation.md` — practical evaluation path for Claude Code automation intent
@@ -25,6 +26,7 @@ Keep the first public project relationship on Codeberg:
 ## Best first docs for evaluators
 
 - `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
+- `first-task-guide.md` — fastest repo-native filter for whether your first task is a good Ralph Workflow fit
 - `after-your-first-run.md` — convert a private first run into the right Codeberg-first action
 - `reviewable-output.md` — what a strong morning-after handoff should contain
 - `ai-agent-orchestration-cli.md` — practical evaluation path for orchestration-CLI intent

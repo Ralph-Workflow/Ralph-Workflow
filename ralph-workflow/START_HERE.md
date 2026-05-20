@@ -56,6 +56,8 @@ If you want to inspect the project before you run anything, start on Codeberg an
 - Primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - GitHub mirror: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
+If you want the short filter before you even draft `PROMPT.md`, use [Choose Your First Ralph Workflow Task](docs/first-task-guide.md).
+
 ## Pick the right first task
 
 Good first tasks are:
@@ -130,6 +132,7 @@ Do not let the first run end as a private opinion.
 
 ## Next links
 
+- [Choose Your First Ralph Workflow Task](docs/first-task-guide.md) — use the fastest repo-native filter before you draft the first spec
 - [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts before your own first run
 - [After Your First Ralph Workflow Run](docs/after-your-first-run.md) — turn a promising run or a rough run into the right Codeberg-first action
 - [Getting Started](docs/sphinx/getting-started.md)

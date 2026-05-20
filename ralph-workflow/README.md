@@ -18,6 +18,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 
 - [Try Ralph Workflow on one real backlog task](START_HERE.md)
 - [After Your First Run](docs/after-your-first-run.md) — shortest Codeberg-first scorecard after a real evaluation
+- [Choose Your First Ralph Workflow Task](docs/first-task-guide.md) — fastest honest filter for what to run first
 - [Getting Started with Ralph Workflow](docs/sphinx/getting-started.md)
 - [Quickstart reference](docs/sphinx/quickstart.md)
 - [AI Agent Orchestration CLI](docs/ai-agent-orchestration-cli.md) — practical repo-native path if you are comparing orchestration CLIs
@@ -36,7 +37,7 @@ Ralph Workflow supports mixed-agent runs across planning, analysis, development,
 
 ## A fast way to tell whether Ralph Workflow fits
 
-1. Pick one real backlog task that is small enough to review in one sitting.
+1. Pick one real backlog task that is small enough to review in one sitting. If you want the filter first, use [Choose Your First Ralph Workflow Task](docs/first-task-guide.md).
 2. Write it down in `PROMPT.md` with clear acceptance criteria.
 3. Run Ralph Workflow overnight.
 4. Come back and ask one question: **would you merge this?**
