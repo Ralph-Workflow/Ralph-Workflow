@@ -77,3 +77,17 @@ class TestBuildPromptHelperPrompt:
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
         )
         assert "declare_complete" in result
+
+    def test_prompt_contains_scale_adaptation_guidance(self) -> None:
+        """Prompt contains scale-to-fit guidance for adapting structure to scope."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        assert "scale to fit" in result.lower()
+
+    def test_prompt_contains_long_spec_handling_guidance(self) -> None:
+        """Prompt contains guidance for managing long specifications."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        assert "chunk" in result.lower() or "regroup" in result.lower()

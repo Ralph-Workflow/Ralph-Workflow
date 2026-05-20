@@ -60,3 +60,14 @@ Inside the `content` JSON string you must provide:
 - Did you avoid implementation details and code structure in your responses?
 - Did you capture UX/UI requirements when the request has user-facing components?
 - Did you present a polished draft to the user and ask for review before submitting?
+
+## Organizing large specifications
+
+When the product specification is large or PRD-style, keep list fields readable and scannable:
+
+- **Group related items with descriptive prefixes.** In `product_behavior` and `ux_ui_requirements`, prefix related items with a feature area tag such as `[Authentication]` or `[Dashboard]` to cluster related behaviors: `[Dashboard] Tasks appear in priority order by deadline and role`.
+- **Summarize; do not enumerate exhaustively.** Prefer 5-10 well-organized bullets per field over 30 loosely related items. Summarize groups of related points into one well-worded bullet rather than listing every sub-detail.
+- **Avoid overlap across fields.** Each field has a distinct purpose. A behavior belongs in `product_behavior`; its accessibility constraint belongs in `ux_ui_requirements`. Do not repeat the same item in multiple fields.
+- **Keep each bullet distinct.** Every item should describe a unique, specific point. Remove redundant or overlapping items before submitting.
+
+Note: product_spec.py has all 10 required and optional fields and is already adequate — do NOT modify it.

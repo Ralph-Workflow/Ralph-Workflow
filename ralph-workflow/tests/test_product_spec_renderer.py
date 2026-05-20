@@ -174,3 +174,86 @@ class TestRenderProductSpecAsPrompt:
         assert "**Constraints:**" in result
         assert "**Product behavior:**" in result
         assert "**UX/UI requirements:**" in result
+
+    def test_render_handles_large_prd_style_spec_with_all_fields(self) -> None:
+        """Large PRD-style spec with all 10 fields renders correctly."""
+        spec = {
+            "title": "Enterprise Platform Redesign",
+            "scope": (
+                "A comprehensive platform redesign spanning authentication, "
+                "dashboard, reporting, and API endpoints."
+            ),
+            "goals": [
+                "Modernize the authentication system",
+                "Improve dashboard usability for power users",
+                "Reduce report generation time by 50%",
+                "Establish a scalable API foundation",
+            ],
+            "users": [
+                "Enterprise administrators managing tenant configurations",
+                "Power users performing daily tasks via the dashboard",
+                "Business analysts generating recurring reports",
+                "External API consumers integrating via REST endpoints",
+            ],
+            "constraints": [
+                "Must support SAML 2.0 and OIDC authentication",
+                "All UI components must be accessible to WCAG 2.1 AA",
+                "API must maintain backward compatibility with v1",
+            ],
+            "success_criteria": [
+                "90% of users complete core tasks in 2 clicks or fewer",
+                "Dashboard loads in under 1.5 seconds on median hardware",
+                "Report generation completes within 5 seconds for 95% of runs",
+                "API responds within 200ms at the 95th percentile",
+                "Zero downtime deployment with rolling update strategy",
+            ],
+            "product_behavior": [
+                "[Auth] Single sign-on via SAML 2.0 and OIDC providers",
+                "[Auth] Multi-factor authentication required for admin roles",
+                "[Dashboard] Tasks appear in priority order by deadline and role",
+                "[Dashboard] Notification banner persists without requiring dismissal",
+                "[Reporting] Schedule recurring reports with configurable delivery",
+                "[Reporting] Export to PDF, CSV, and Excel",
+                "[API] Rate limits enforced at 1000 requests per minute per tenant",
+            ],
+            "ux_ui_requirements": [
+                "Minimum touch target size of 44x44 pixels",
+                "Color-blind safe palette with icon plus color indicators",
+                "Keyboard navigable without mouse required",
+                "Screen reader announces all interactive elements with ARIA labels",
+                "Responsive layout adapts from 320px to 2560px viewport widths",
+            ],
+            "scope_boundaries": [
+                "Mobile-native application",
+                "Legacy SOAP API endpoints",
+                "Third-party analytics integration in v1",
+            ],
+            "open_questions": [
+                "Which identity provider should be primary for new tenants?",
+                "Should report scheduling support timezone-aware delivery?",
+                "What is the acceptable error budget for API rate limit violations?",
+            ],
+        }
+        result = render_product_spec_as_prompt(spec)
+        # Main headings
+        assert "# Goal" in result
+        assert "## Context" in result
+        assert "## Acceptance criteria" in result
+        assert "## Notes" in result
+        # Context sub-group labels
+        assert "**Goals:**" in result
+        assert "**Users:**" in result
+        assert "**Constraints:**" in result
+        assert "**Product behavior:**" in result
+        assert "**UX/UI requirements:**" in result
+        # Title
+        assert "Enterprise Platform Redesign" in result
+        # Bracket-prefixed product behavior items
+        assert "[Auth] Single sign-on" in result
+        assert "[Dashboard] Tasks appear" in result
+        # UX/UI requirement
+        assert "Minimum touch target size" in result
+        # Scope boundary
+        assert "Mobile-native application" in result
+        # Open questions (at least one)
+        assert any(q in result for q in spec["open_questions"])

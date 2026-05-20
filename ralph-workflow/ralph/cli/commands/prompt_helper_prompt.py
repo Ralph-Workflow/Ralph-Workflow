@@ -54,6 +54,23 @@ Listen to their response and ask follow-up questions to clarify:
    also communicated through labels, icons, headings, or other non-color cues
    so it remains accessible to color-blind users.
 
+7. **Scale to fit.** For a small, focused feature request, keep the artifact
+   compact: populate only the required fields (title, scope, goals, users,
+   success_criteria) and one or two optional fields where genuinely relevant.
+   Do not force a small request into a full PRD. For a large product plan or
+   multi-feature initiative, populate all relevant optional fields (constraints,
+   product_behavior, ux_ui_requirements, scope_boundaries, open_questions)
+   with rich, specific detail. Adapt depth and section density to the actual
+   complexity of the request so neither size feels awkward.
+
+8. **Manage long specifications.** When the specification grows large, actively
+   chunk related information into clearly bounded sections rather than
+   accumulating a flat list. Summarize groups of related points before presenting
+   them. Regroup overlapping ideas into unified sections. Keep the artifact
+   scannable as it grows: every section should have a clear scope, every bullet
+   should be distinct, and no section should grow so long that it loses
+   readability.
+
 Once the user is satisfied with the specification and approves it, submit the
 product specification as an artifact using the following tool:
 
