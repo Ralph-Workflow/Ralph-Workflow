@@ -1,89 +1,43 @@
 # What Good Ralph Workflow Output Looks Like
 
-Ralph Workflow only earns trust if the run gives you something you can evaluate like real software work, not just like agent theater.
+Use this page after you understand the workflow and want a review standard for the morning-after handoff.
+This page is supporting proof, not the main product pitch.
 
-Before you install anything, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger composable workflow for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
 
-If the first real run earns trust, keep the public next step on Codeberg:
+## What a trustworthy result should answer quickly
 
-- **Star or watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+A strong result should let you answer these questions without diving into raw logs first:
 
-## The actual evaluation standard
+- What changed?
+- What checks ran?
+- What still looks risky?
+- What should I inspect first?
 
-A useful Ralph Workflow run should let you answer the same questions you would ask of any serious software change:
+If the output cannot answer those quickly, the handoff is weak even if the branch is large.
 
-- does the software run?
-- did the relevant tests pass?
-- did any integration or end-to-end checks run where they should have?
-- does the diff match the requested task?
-- are remaining risks or open questions called out clearly?
+## What strong output usually includes
 
-If the run only gives you a vibe, a transcript, or a polished summary, it is not good enough yet.
+Strong output usually includes:
 
-## What proof should exist after a run
+- a concise task/result summary
+- the important files or components that changed
+- the checks that ran and whether they passed
+- known gaps, caveats, or follow-up risks
+- enough context for a human to inspect the software directly
 
-This section is not the product pitch.
+## What to evaluate first
 
-Its job is narrower: after Ralph Workflow runs, what concrete proof should exist that the workflow actually did software work instead of producing agent theater?
+1. inspect the software behavior or diff summary
+2. inspect the checks that ran
+3. inspect the remaining risks or open questions
+4. only then fall back to deeper logs if something looks wrong
 
-A good result should make three things obvious:
+That order keeps proof secondary to actual software judgment.
 
-- **what the workflow changed**
-- **what executable behavior now works or failed honestly**
-- **what verification actually ran**
+## What to do next
 
-For example:
-
-```text
-Task: Add empty-project-name validation to the CLI create flow
-
-Changed files:
-- cli/create.py
-- tests/test_create.py
-
-Checks run:
-- create-flow unit tests
-- lint / formatting checks if applicable
-- any relevant integration checks if they exist
-
-Executable result:
-- CLI create flow rejects empty project names
-- existing valid-name flow still works
-
-Open questions:
-- should reserved names also be rejected?
-- should whitespace be trimmed before validation?
-```
-
-That is the standard: not “the agent seemed smart,” but **working software, real checks, and explicit remaining uncertainty**.
-
-If those three things are not obvious, the workflow has not finished its job cleanly enough.
-
-## The five-minute proof check
-
-1. Run the executable path or inspect the actual behavior.
-2. Check whether unit, integration, and other relevant verification actually ran.
-3. Open the diff and confirm the changes match the task.
-4. Read the open questions and remaining risk.
-5. Ask one question: **did the workflow produce software I can trust enough to keep or merge?**
-
-If the answer is obvious, the workflow did useful work.
-If the answer is murky, the handoff is still too weak.
-
-## What to read next
-
-- Want the concrete artifact bundle? Read [example-review-bundle.md](./example-review-bundle.md)
-- Want the post-run branch point? Read [after-your-first-run.md](./after-your-first-run.md)
-- Want the merge checklist? Read [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md)
-- Want the cleanest finish receipt? Read [what-a-good-ai-coding-finish-receipt-looks-like.md](./what-a-good-ai-coding-finish-receipt-looks-like.md)
-
-## Keep the public action on Codeberg
-
-After one real run, the healthiest outcomes are:
-
-1. **Promising run** → star or watch the primary repo on Codeberg.
-2. **Shaky run** → open a useful first-run or docs/proof issue on Codeberg.
-
-Do not leave the evaluation private if Ralph Workflow proved something real.
+- Need the full operator path? Return to [Getting Started](getting-started.md).
+- Need config/operator reference? Open [Reference](reference.md).
+- Need first-run task guidance? Open [first-task-guide.md](first-task-guide.md).

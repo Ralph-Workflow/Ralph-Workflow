@@ -1,5 +1,9 @@
 # Agent Compatibility Guide
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This guide documents compatibility between Ralph Workflow and various AI coding agents in its configurable review orchestration. Ralph's review phase is designed to be agent-agnostic in its prompts, but different agents may have varying levels of success due to differences in JSON output format, tool execution behavior, and agent-specific quirks.
 
 > **⚠️ Compatibility Note**: GLM, ZhipuAI, Qwen, and DeepSeek agents have known compatibility issues with review tasks. Ralph automatically applies workarounds (Universal Review Prompt), but success rates may vary. **For best results, use Claude Code or Codex as the reviewer.** Override with `--reviewer-agent claude` or `--reviewer-agent codex`.

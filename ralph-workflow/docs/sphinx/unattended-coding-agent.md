@@ -1,5 +1,9 @@
 # Unattended Coding Agent: What It Is, When It Helps, and Why Ralph Workflow Exists
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you are looking for an **unattended coding agent**, the useful question is not just "which model writes code?"
 
 The real question is: **can I hand off a real backlog task, walk away, and come back to something reviewable?**
@@ -8,7 +12,7 @@ Ralph Workflow is a **free and open-source** tool that orchestrates the coding a
 
 It is for developers and technical teams with engineering work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different from a normal agent session is the handoff: Ralph Workflow is built to bring back a **reviewable result** — a diff, checks, artifacts, and finish notes — instead of just a long transcript and a claim that the work is done.
+What makes it different from a normal agent session is the handoff: Ralph Workflow is built to bring back a **strong software result** — a diff, checks, artifacts, and finish notes — instead of just a long transcript and a claim that the work is done.
 
 Why use it now? Because you can try it tonight with the agents you already have, on one real task, for free.
 
@@ -31,7 +35,7 @@ Most unattended coding breaks trust in predictable ways:
 - the task was too vague
 - the run touched shared boundaries with no explicit owner
 - the agent produced a lot of edits but weak proof
-- the morning-after handoff is a transcript, not a finish receipt
+- the morning-after handoff is a transcript, not a result summary
 - the branch looks fine alone, but the merged state is still unclear
 
 That is why Ralph Workflow focuses less on "let the agent run" and more on **what comes back when it finishes**.
@@ -51,7 +55,7 @@ Good first runs share the same shape:
 - one real substantial task
 - a detailed product or engineering spec
 - clear acceptance criteria
-- a reviewer who can honestly answer: **would I merge this?**
+- a reviewer who can honestly answer: **does the implementation hold up?**
 
 If that is your use case, start with [Choose Your First Ralph Workflow Task](first-task-guide.md) and [First-Task Prompt Templates](first-task-prompt-templates.md).
 
@@ -70,7 +74,7 @@ It adds a repo-native unattended workflow around those tools so you can:
 - orchestrate the agent you already trust on your machine
 - run planning, implementation, and verification as one flow
 - wake up to a result that is easier to inspect
-- judge the work on the diff, checks, and finish receipt instead of the agent's self-report
+- judge the work on the diff, checks, and result summary instead of the agent's self-report
 
 That is the practical difference between "an agent session ran overnight" and "I got back something I can review quickly."
 
@@ -83,7 +87,7 @@ Use one real backlog task tonight.
 3. Write a detailed `PROMPT.md` with product requirements and acceptance criteria
 4. Run it overnight
 5. Review the diff, checks, and notes in the morning
-6. Ask: **would I merge this?**
+6. Ask: **does the implementation hold up?**
 
 If you want proof before setup, inspect the public [Example Review Bundle](example-review-bundle.md).
 

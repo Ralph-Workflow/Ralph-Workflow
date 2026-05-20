@@ -1,5 +1,9 @@
 # Custom Lints (dylint)
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **Legacy Rust-era reference:** This document describes archived Rust-specific lint infrastructure from the retired implementation. The maintained Ralph Workflow product is now the Python package in `ralph-workflow/`; use this file only when you intentionally need historical Rust linting context.
 
 This repository uses [dylint](https://github.com/trailofbits/dylint) for custom Rust lints.

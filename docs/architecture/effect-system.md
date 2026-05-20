@@ -1,5 +1,9 @@
 # Effect System Architecture
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This document defines the effect system layers used in Ralph for managing side effects and filesystem access rules.
 
 Scope note: this doc is about *where side effects live* and *what filesystem APIs are allowed*. For the reducer/event-loop contract, see `event-loop-and-reducers.md`.

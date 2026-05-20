@@ -1,5 +1,9 @@
 # Claude Code "Run Until Done" Still Needs a Reviewable Finish
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you are searching for **Claude Code run until done** or the newer **`/goal`-style finish mode**, the useful question is not whether the session can keep going longer.
 
 The useful question is this:
@@ -10,11 +14,11 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish state: Ralph Workflow hands back a **reviewable result** — a real diff, checks that ran, artifacts you can inspect, and clear open questions — instead of a longer session plus another confident done claim.
+What makes it different is the finish state: Ralph Workflow hands back a **strong software result** — a real diff, checks that ran, artifacts you can inspect, and clear open questions — instead of a longer session plus another confident done claim.
 
 Why use it now? Because if Claude Code can now push further on its own, the next bottleneck is not raw autonomy. The bottleneck is whether the morning-after handoff is trustworthy enough to act on.
 
-## "Run until done" solves persistence, not the merge decision
+## "Run until done" solves persistence, not the human review
 
 A longer-running Claude Code mode can help when you want the agent to:
 
@@ -93,9 +97,9 @@ If you want to inspect that artifact shape first, open the public [example revie
 Ralph Workflow is the stronger path when:
 
 - Claude Code is already useful, but you want a cleaner morning-after review path
-- `/goal` or "run until done" reduces interruptions but still leaves a fuzzy merge decision
+- `/goal` or "run until done" reduces interruptions but still leaves a fuzzy human review
 - the task is clear enough to hand off overnight
-- you care more about the finish receipt than the live transcript
+- you care more about the result summary than the live transcript
 
 If you need live exploration on a fragile task, stay interactive. If you want a bounded overnight handoff you can judge honestly in the morning, Ralph Workflow is the better fit.
 
@@ -118,7 +122,7 @@ Then use [After Your First Ralph Workflow Run](after-your-first-run.md) so a pro
 2. Pick one real backlog task with clear acceptance criteria
 3. Run Ralph Workflow overnight
 4. Review the diff, checks, and artifacts in the morning
-5. Ask: **would I merge this?**
+5. Ask: **does the implementation hold up?**
 
 If you want the shortest path, start with [Getting Started](getting-started.md).
 

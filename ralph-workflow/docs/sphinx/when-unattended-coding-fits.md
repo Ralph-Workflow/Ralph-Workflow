@@ -1,5 +1,9 @@
 # When Ralph Workflow Fits — and When It Does Not
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams who want to hand off engineering work that is **too big to babysit and too risky to trust blindly**.
@@ -36,7 +40,7 @@ Why these fit:
 - the scope is clear
 - success can be verified
 - rollback is cheap if the run misses
-- a human reviewer can quickly answer: **would I merge this?**
+- a human reviewer can quickly answer: **does the implementation hold up?**
 
 ## Bad fits
 
@@ -55,6 +59,10 @@ Why these fail:
 - the handoff is hard to review honestly
 - `done` is unclear
 - the task needs live steering, not unattended execution
+
+If you want concrete examples before you choose a first run, read [Good Unattended AI Coding Task vs Bad One](good-unattended-ai-coding-task.md).
+
+If you want the fastest copy-paste path from task choice to `PROMPT.md`, pair that with [Choose Your First Ralph Workflow Task](first-task-guide.md) and [First-Task Prompt Templates](first-task-prompt-templates.md).
 
 ## A good first-task filter
 
@@ -77,14 +85,17 @@ A strong first run looks like this:
 - review the diff, checks, and notes in the morning
 - decide whether you would merge it
 
+If you are choosing fast, start with a **validation / guardrail**, **small feature slice**, or **test coverage pass**. Those three shapes usually produce the clearest morning-after yes/no answer.
+
 That is the real product test.
 
 ## Next steps
 
 - Start with [Getting Started](getting-started.md)
-- Read [Choose Your First Ralph Workflow Task](first-task-guide.md)
+- Read [Choose Your First Ralph Workflow Task](first-task-guide.md) for the quickest first-run filter
+- Read [Good Unattended AI Coding Task vs Bad One](good-unattended-ai-coding-task.md) for concrete task shapes before you commit to a first run
+- Read [First-Task Prompt Templates](first-task-prompt-templates.md) if you want a copy-paste `PROMPT.md` shape before your first run
 - See [Example Review Bundle](example-review-bundle.md) for a public sample prompt, handoff notes, and artifacts
-- Use [First-Task Prompt Templates](first-task-prompt-templates.md) if you want a copy-paste `PROMPT.md` shape before your first run
 
 After one real run, convert the result into exactly one Codeberg action:
 

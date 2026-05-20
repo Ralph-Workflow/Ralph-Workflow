@@ -1,5 +1,9 @@
 # Run Claude Code Overnight Without Babysitting
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you are searching for **how to run Claude Code overnight without babysitting**, the real question is not just how to leave the terminal open longer.
 
 The real question is this:
@@ -10,7 +14,7 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow leaves you with a **reviewable result** — a real diff, checks that ran, artifacts you can inspect, and a clear morning-after merge question.
+What makes it different is the handoff: Ralph Workflow leaves you with a **strong software result** — a real diff, checks that ran, artifacts you can inspect, and a clear morning-after merge question.
 
 Why use it now? Run one real backlog task tonight and judge the result tomorrow instead of hovering over an unattended session and hoping it stayed on track.
 
@@ -84,7 +88,7 @@ Keeping the trust signals on Codeberg makes the primary repo a clearer evaluatio
 2. Pick one real backlog task with clear acceptance criteria
 3. Run Ralph Workflow overnight
 4. Review the diff, checks, and artifacts in the morning
-5. Ask: **would I merge this?**
+5. Ask: **does the implementation hold up?**
 
 If you want the shortest path, start with [../START_HERE.md](../START_HERE.md).
 

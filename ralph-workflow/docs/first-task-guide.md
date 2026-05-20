@@ -104,7 +104,7 @@ That is the real product test.
 ## Next step
 
 - Continue with [Getting Started](sphinx/getting-started.md) for the install and first-run flow
-- Read [First-Task Prompt Templates](sphinx/first-task-prompt-templates.md) if you want copy-paste starter specs instead of drafting from scratch
+- Read [First-Task Prompt Templates](first-task-prompt-templates.md) if you want copy-paste starter specs instead of drafting from scratch
 - Read [What Good Output Looks Like](reviewable-output.md) to see the kind of handoff you should expect
 - Read [Example Review Bundle](sphinx/example-review-bundle.md) if you want a public sample `PROMPT.md`, result notes, and artifacts before your first run
 

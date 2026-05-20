@@ -1,5 +1,9 @@
 # Streaming and NDJSON Parser Architecture
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This document describes how Ralph parses and renders streaming NDJSON output from agent CLIs (Claude, Codex, Gemini, OpenCode). The goals are:
 
 - real-time output when possible

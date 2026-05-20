@@ -60,9 +60,10 @@ If you want outside proof before you install anything, inspect one of the live t
 
 - ToolWise review page: <https://toolwise.ai/tools/ralph-workflow>
 - SaaSHub product page: <https://www.saashub.com/ralph-workflow>
-- TechTools Launchpad listing: <https://techtools.cz/tools/launchpad/?tool=71>
+- SaaSHub alternatives page: <https://www.saashub.com/ralph-workflow-alternatives>
 
 If you want the short filter before you even draft `PROMPT.md`, use [Choose Your First Ralph Workflow Task](docs/first-task-guide.md).
+If a blank page slows you down, copy one of the [First-Task Prompt Templates](docs/first-task-prompt-templates.md).
 
 ## Pick the right first task
 
@@ -81,6 +82,8 @@ Bad first tasks are:
 - anything where nobody agrees what success looks like
 
 ## Write the task like a one-paragraph spec
+
+If you want copy-paste starter shapes instead of drafting from scratch, use [First-Task Prompt Templates](docs/first-task-prompt-templates.md).
 
 Your `PROMPT.md` should make four things obvious:
 
@@ -140,6 +143,7 @@ Do not let the first run end as a private opinion.
 ## Next links
 
 - [Choose Your First Ralph Workflow Task](docs/first-task-guide.md) — use the fastest repo-native filter before you draft the first spec
+- [First-Task Prompt Templates](docs/first-task-prompt-templates.md) — copy one proven `PROMPT.md` shape instead of starting from a blank page
 - [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, handoff notes, and review/fix artifacts before your own first run
 - [After Your First Ralph Workflow Run](docs/after-your-first-run.md) — turn a promising run or a rough run into the right Codeberg-first action
 - [Getting Started](docs/sphinx/getting-started.md)

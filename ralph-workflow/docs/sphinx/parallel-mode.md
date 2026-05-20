@@ -1,5 +1,9 @@
 # Parallel Mode
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
 
 When the planning phase produces two or more work units, Ralph Workflow can fan development out across multiple workers in parallel. In v1, those workers all operate against the same git checkout and are isolated from each other with path restrictions and per-worker artifact namespaces.

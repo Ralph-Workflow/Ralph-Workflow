@@ -1,80 +1,55 @@
 # Documentation Map
 
-> **Codeberg is the primary repo for Ralph Workflow.**
-> Inspect, follow, and open issues there first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 This page is the authoritative map for the **current maintained Python** documentation set.
-Use it to distinguish current guidance from historical or narrower family-specific material.
+Use it after [README.md](../README.md) and [START_HERE.md](../START_HERE.md) to distinguish current guidance from historical or narrower family-specific material.
 
 ## Current vs archival status
 
 - **Current / maintained / Python:** the repo-root README, `START_HERE.md`, the guides in this `docs/` directory, and the maintained Sphinx source under `../ralph-workflow/docs/sphinx/`.
 - **Historical / archival / Rust-era:** any older page that still describes cargo, xtask, or non-Python workflow setup should be treated as historical context rather than current operating guidance.
 
-## First-click path for most evaluators
+## Choose one route
 
-If you are still deciding whether Ralph Workflow is worth trying, use these in order:
+### I want the fastest first successful run
 
-1. [README.md](../README.md)
-2. [START_HERE.md](../START_HERE.md)
-3. [reviewable-output.md](./reviewable-output.md)
-4. [after-your-first-run.md](./after-your-first-run.md)
+- [Choose your first task](./first-task-guide.md)
+- [First-task prompt templates](./first-task-prompt-templates.md)
+- [Getting started in the manual](../ralph-workflow/docs/sphinx/getting-started.md)
 
-## Documentation families covered here
+### I want the maintained operator manual
 
-- **agents** — transport behavior, orchestration, completion, retries, and supervision guides
-- **code-style** — code-style expectations, naming, and contributor-facing writing/style references
-- **tooling** — CLI, MCP, setup, verification, and other tooling references
-- **performance** — timeout, watchdog, runtime, and performance-oriented guidance
+- [Manual home](../ralph-workflow/docs/sphinx/index.rst)
+- [Configuration](../ralph-workflow/docs/sphinx/configuration.md)
+- [Reference](../ralph-workflow/docs/sphinx/reference.md)
+- [User stories](../ralph-workflow/docs/sphinx/user-stories.md)
 
-## Pick the question you actually have
+### I want product framing before I go deeper
 
-### First run
+- [AI agent orchestration CLI](./ai-agent-orchestration-cli.md)
+- [Why the spec still matters](./spec-driven-ai-agent.md)
+- [What unattended use should mean](./unattended-coding-agent.md)
 
-- [first-task-guide.md](./first-task-guide.md)
-- [first-task-prompt-templates.md](./first-task-prompt-templates.md)
-- [which-agent-should-i-start-with.md](./which-agent-should-i-start-with.md)
+## Documentation families and status
 
-### Trust and proof
+The maintained Python path is the current route.
+If a page looks historical, archival, or Rust-era, prefer the maintained Python manual and guide families below first.
 
-- [reviewable-output.md](./reviewable-output.md)
-- [example-review-bundle.md](./example-review-bundle.md)
-- [free-open-source-proof.md](./free-open-source-proof.md)
+- `docs/agents/` — current maintainer and verification guidance
+- `docs/code-style/` — current Python code style and implementation rules
+- `docs/tooling/` — current tooling references
+- `docs/performance/` — current performance baselines and monitoring guidance
+- `docs/architecture/` — current deeper implementation and runtime design docs
+- `docs/RFC/` — historical design records and background context, not the first-run path
 
-### Product framing and comparisons
+## Keep proof secondary
 
-- [agent-compatibility.md](./agent-compatibility.md)
-- [claude-code-vs-ralph-workflow.md](./claude-code-vs-ralph-workflow.md)
-- [ralph-workflow-vs-opencode.md](./ralph-workflow-vs-opencode.md)
-
-### Workflow and usage details
-
-- [quick-reference.md](./quick-reference.md)
-- [unattended-coding-agent.md](./unattended-coding-agent.md)
-- [why-worktrees-are-not-enough.md](./why-worktrees-are-not-enough.md)
-
-### Family directories and maintained sources
-
-- `agents/` — current agent behavior and orchestration guidance
-- `code-style/` — code-style family notes and standards
-- `tooling/` — tooling family notes for setup, verification, and operational helpers
-- `performance/` — performance family notes for runtime behavior and limits
-- `../ralph-workflow/docs/sphinx/` — maintained Sphinx/manual entrypoints for the Python package
-
-## Third-party proof before setup
-
-If you want external inspection before your first run, use a short curated set instead of hunting around:
-
-- [ToolWise review page](https://toolwise.ai/tools/ralph-workflow)
-- [SaaSHub product page](https://www.saashub.com/ralph-workflow)
-- [TechTools Launchpad listing](https://techtools.cz/tools/launchpad/?tool=71)
-
-## Keep the routing simple
-
-If you feel yourself opening many pages at once, stop.
-Use `README -> START_HERE -> one deeper page` as the default path.
+Use proof-oriented pages only after you already understand the product story or the operator route.
+If you need deeper evidence, the manual and linked supporting pages will take you there.
 
 ## Primary repo
 
-Use Codeberg for issues, follow, and source-of-truth browsing:
+Codeberg is the primary repo and source of truth:
 <https://codeberg.org/RalphWorkflow/Ralph-Workflow>

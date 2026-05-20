@@ -1,10 +1,14 @@
 # After Your First Ralph Workflow Run
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If Ralph Workflow did its job, the question after your first run is not whether the agent sounded smart.
 
 It is this:
 
-> **Would I merge this?**
+> **does the implementation hold up?**
 
 This page is the shortest path from a private first run to a useful public next step on **Codeberg**.
 
@@ -30,7 +34,7 @@ After the run finishes, check these in order:
 2. **Did the checks actually run?**
 3. **Are the changes reviewable in one sitting?**
 4. **Are open questions called out clearly?**
-5. **Would I merge this?**
+5. **does the implementation hold up?**
 
 If the answer to most of these is **yes**, Ralph Workflow is doing useful work.
 
@@ -78,7 +82,7 @@ That is already much better than a transcript that only sounds finished.
 
 Move to a bigger second task only if the first run gave you:
 
-- a bounded diff
+- a understandable diff
 - real checks
 - a clean re-entry point the next morning
 - enough trust that you would review another result

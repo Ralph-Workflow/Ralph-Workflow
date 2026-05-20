@@ -1,10 +1,14 @@
 # Which Agent Should I Start With?
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow brings back a **reviewable result** in your repo — diff, checks, artifacts — instead of a transcript and a claim that the task is done.
+What makes it different is the handoff: Ralph Workflow brings back a **strong software result** in your repo — diff, checks, artifacts — instead of a transcript and a claim that the task is done.
 
 Why use it now? You do **not** need to switch your whole toolchain first. Pick one agent you already trust, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
@@ -16,7 +20,7 @@ Do **not** optimize this choice too hard. The main first-run question is not "wh
 
 It is:
 
-> **Can I get one real unattended run to finish with a reviewable result?**
+> **Can I get one real unattended run to finish with a strong software result?**
 
 If one agent is already working for you today, that is usually the right first choice.
 
@@ -72,7 +76,7 @@ For a first run, these matter more than whether you picked Claude Code, Codex, o
 - choosing a **small real backlog task**
 - writing a **clear one-paragraph spec** in `PROMPT.md`
 - making sure the repo is safe to test in
-- judging the result with one question: **would I merge this?**
+- judging the result with one question: **does the implementation hold up?**
 
 A good first task will teach you more than switching agents three times.
 
@@ -103,7 +107,7 @@ If you want to inspect the project before you install it, start with the [primar
 2. Use [../START_HERE.md](../START_HERE.md) for the fastest real-task path.
 3. If `PROMPT.md` is blank, use [first-task-prompt-templates.md](./first-task-prompt-templates.md).
 4. Run one bounded backlog task.
-5. Review the result tomorrow and ask: **would I merge this?**
+5. Review the result tomorrow and ask: **does the implementation hold up?**
 
 That is enough to tell you whether Ralph Workflow is useful in your real environment.
 

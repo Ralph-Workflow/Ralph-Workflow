@@ -1,5 +1,9 @@
 # Codebase Tour (Where the Architecture Lives)
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This document is a high-level map of the `ralph-workflow` codebase, oriented toward a contributor reading the Rust for the first time.
 
 If you want the state machine behavior first, start with `pipeline-lifecycle.md` and `event-loop-and-reducers.md`.

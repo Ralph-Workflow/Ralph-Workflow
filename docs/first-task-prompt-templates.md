@@ -1,10 +1,14 @@
 # First-Task Prompt Templates
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow returns a **reviewable result** in your repo — diff, checks, artifacts — instead of a transcript and a claim that the task is done.
+What makes it different is the handoff: Ralph Workflow returns a **strong software result** in your repo — diff, checks, artifacts — instead of a transcript and a claim that the task is done.
 
 Why use it now? Copy one of these templates into `PROMPT.md`, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
@@ -13,7 +17,7 @@ Why use it now? Copy one of these templates into `PROMPT.md`, run one real backl
 1. Pick the template closest to your real task.
 2. Replace the placeholders with your repo-specific details.
 3. Keep the scope narrow enough to review in one sitting.
-4. Run Ralph Workflow and ask one question in the morning: **would I merge this?**
+4. Run Ralph Workflow and ask one question in the morning: **does the implementation hold up?**
 
 If you are still not sure whether your task is a good fit, read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) first.
 

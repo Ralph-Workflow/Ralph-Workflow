@@ -1,5 +1,9 @@
 # RFC-001: Enhanced OpenCode Integration for Ralph Workflow Orchestrator
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 **RFC Number**: RFC-001
 **Title**: Enhanced OpenCode Integration for Ralph Workflow Orchestrator
 **Status**: Draft

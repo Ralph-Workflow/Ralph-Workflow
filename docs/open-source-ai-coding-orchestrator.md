@@ -1,5 +1,9 @@
 # Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 If you are searching for an **open-source AI coding orchestrator**, the real question is not just whether it can call multiple agents.
 
 The real question is: **can it take one real backlog task, run on your own machine, and bring back something you would actually review and maybe merge?**
@@ -8,9 +12,9 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish line: Ralph Workflow is built to hand back a **reviewable result** — a diff, checks, artifacts, and enough context to decide whether the work actually holds up.
+What makes it different is the finish line: Ralph Workflow is built to hand back a **strong software result** — a diff, checks, artifacts, and enough context to decide whether the work actually holds up.
 
-Why use it now? Because you can inspect the source on **Codeberg**, install it for free, run one real task tonight, and judge the result tomorrow with one honest question: **would I merge this?**
+Why use it now? Because you can inspect the source on **Codeberg**, install it for free, run one real task tonight, and judge the result tomorrow with one honest question: **does the implementation hold up?**
 
 ## What an AI coding orchestrator should actually do
 
@@ -81,7 +85,7 @@ Keeping adoption and feedback on Codeberg makes the primary repo a clearer trust
 2. Write a short `PROMPT.md` with acceptance criteria
 3. Run Ralph Workflow overnight on your own machine
 4. Review the diff, checks, and artifacts in the morning
-5. Ask: **would I merge this?**
+5. Ask: **does the implementation hold up?**
 
 If you want the shortest path, start with [../START_HERE.md](../START_HERE.md).
 If you want the best task filter first, read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md).

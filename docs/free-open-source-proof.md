@@ -1,5 +1,9 @@
 # Free and Open-Source Proof: What Good Ralph Workflow Output Looks Like
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 The fastest honest way to evaluate Ralph Workflow is not to ask whether it generated code.
 
 Ask whether it gave you something you would actually review and merge.
@@ -76,7 +80,7 @@ Add empty-project-name validation to the CLI create flow.
 2. Read `.agent/DEVELOPMENT_RESULT.md` for the implementation summary.
 3. Read `.agent/ISSUES.md` and `.agent/FIX_RESULT.md` if the review/fix loop ran.
 4. Run the relevant tests yourself.
-5. Ask one question: **would I merge this?**
+5. Ask one question: **does the implementation hold up?**
 
 If that path feels fast and honest, Ralph Workflow did its job. If it feels murky, the handoff is still too weak.
 

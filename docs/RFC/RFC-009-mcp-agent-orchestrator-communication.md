@@ -1,5 +1,9 @@
 # RFC-009: MCP-Style Agent-Orchestrator Communication
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 **RFC Number**: RFC-009
 **Title**: MCP-Style Agent-Orchestrator Communication
 **Status**: Phase 1 Complete | Phase 2/3 In Progress

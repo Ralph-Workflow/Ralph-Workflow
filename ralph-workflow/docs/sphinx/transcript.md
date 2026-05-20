@@ -1,5 +1,9 @@
 # Transcript and Display Reference
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This page explains the terminal transcript Ralph Workflow prints during a run. It is mainly for contributors and operators who want to decode the exact line format, display rules, and lifecycle banners.
 
 If you just need to run Ralph Workflow successfully, you can skip this page and use [Getting Started](getting-started.md), [CLI Reference](cli.md), and [Troubleshooting](troubleshooting.md) instead.

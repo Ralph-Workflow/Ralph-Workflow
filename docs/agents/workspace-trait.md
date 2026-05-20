@@ -1,5 +1,9 @@
 # Workspace Protocol (CRITICAL)
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 ALL filesystem operations MUST go through the `Workspace` protocol. Direct `open()`, `Path.read_text()`, `Path.write_text()`, or any other `pathlib`/`os` filesystem call is **FORBIDDEN** in production pipeline and phase code. This is not a style preference — it is a hard constraint that enables testing.
 
 If you need deeper architecture context (how `FsWorkspace` wraps the real filesystem and where direct `pathlib` use is allowed at the CLI bootstrap layer), see the module docstring in `ralph/workspace/__init__.py`.

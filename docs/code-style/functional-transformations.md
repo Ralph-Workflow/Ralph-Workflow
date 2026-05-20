@@ -1,5 +1,9 @@
 # Functional Transformations
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **Historical Rust-era documentation** — This file describes the retired Rust implementation's functional programming patterns. The current Python package under `ralph-workflow/` follows different patterns. Treat this file as archival background only.
 
 This document is a practical cookbook for writing Rust that satisfies the repository's

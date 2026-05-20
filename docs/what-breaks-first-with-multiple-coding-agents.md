@@ -1,10 +1,14 @@
 # What Breaks First When You Run Multiple Coding Agents?
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams who already know how to run Claude Code, Codex, OpenCode, worktrees, or parallel branches — but still do not trust the morning-after result when the task is **too big to babysit and too risky to trust blindly**.
 
-What makes Ralph Workflow different is the finish line: it is built to hand back a **reviewable result** — a real diff, checks, artifacts, and a short handoff trail — instead of a transcript plus a confident claim that the task is done.
+What makes Ralph Workflow different is the finish line: it is built to hand back a **strong software result** — a real diff, checks, artifacts, and a short handoff trail — instead of a transcript plus a confident claim that the task is done.
 
 Why use it now? Multi-agent coding is getting easier to start and harder to review. You can try Ralph Workflow for free on one real backlog task tonight and decide tomorrow whether the handoff is something you would actually merge.
 
@@ -17,7 +21,7 @@ More often, the first serious break is one of these:
 - **shared-boundary drift** — one branch changed a schema, config shape, interface, or assumption that another branch quietly depended on
 - **reconstruction overhead** — the only way to understand the run is to reread a long terminal transcript
 - **weak merged-state confidence** — each branch looked locally fine, but nobody proved the combined result still holds up
-- **no clean finish receipt** — you get changed files, but not a short answer to: what changed, what passed, what still needs judgment?
+- **no clean result summary** — you get changed files, but not a short answer to: what changed, what passed, what still needs judgment?
 - **scope creep during unattended runs** — the agent kept moving, but the task stopped being small enough to review honestly
 
 Worktrees help with collisions.
@@ -36,7 +40,7 @@ If you run more than one coding agent, the safety comes from the handoff discipl
    - Do not stop at "my branch CI is green."
    - Rebase, rerun the real checks, and judge the result in the state that would actually land.
 
-3. **A short finish receipt**
+3. **A short result summary**
    - Every unattended pass should leave a small note saying:
      - what changed
      - what checks ran
@@ -78,7 +82,7 @@ Test it on one real backlog task that is:
 
 Then ask one question the next morning:
 
-> **Would I merge this?**
+> **does the implementation hold up?**
 
 If yes, hand it a harder task next.
 

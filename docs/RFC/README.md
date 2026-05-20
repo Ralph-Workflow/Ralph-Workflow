@@ -1,5 +1,9 @@
 # Ralph RFCs (Request for Comments)
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This directory contains design proposals and incident writeups for significant changes to Ralph.
 
 RFCs are primarily kept for historical context. Even when an RFC is marked "Implemented", the codebase may have evolved since it was written.

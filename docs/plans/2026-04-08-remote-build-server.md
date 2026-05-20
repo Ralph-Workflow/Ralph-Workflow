@@ -1,5 +1,9 @@
 # Remote Build Server Plan
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **Historical/reference-only document.** This plan describes the retired Rust-era `cargo xtask`-based remote build infrastructure. The maintained Ralph Workflow product is the Python package in `ralph-workflow/`. This document is retained for historical reference and design context only.
 >
 > The only still-operationally-relevant content is **section 5 (Remote Machine Setup)**, which documents one-time server provisioning steps (Rust toolchain, bun, cargo-dylint, mold, sccache). All other sections describe the retired `cargo xtask` implementation that is no longer maintained.

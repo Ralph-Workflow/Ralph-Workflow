@@ -1,10 +1,14 @@
 # How to Review AI Coding Output Before You Merge
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+This page is supporting proof for that composable workflow system and its strong default workflow, not the main product pitch.
+
+
 Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a short finish receipt — instead of just a transcript and a confident done claim.
+What makes it different is the handoff: Ralph Workflow is built to leave you with a **strong software result** — a real diff, checks, artifacts, and a short result summary — instead of just a transcript and a confident done claim.
 
 Why read this now? Because the real question is not whether an agent looked smart. It is whether the morning-after result is something you would actually trust enough to review and merge.
 
@@ -16,7 +20,7 @@ Open the result in this order:
    - Do the changed files match the task you asked for?
    - Does the scope still match the defined product or engineering spec?
 
-2. **Read the finish receipt**
+2. **Read the result summary**
    - What changed?
    - What checks ran?
    - What stayed uncertain?
@@ -31,7 +35,7 @@ Open the result in this order:
    - If the task touched a shared boundary, make sure the merged state still holds up.
 
 5. **Ask one question**
-   - **Would I merge this?**
+   - **does the implementation hold up?**
 
 If that answer is quick and boring, the handoff is strong.
 If you still need to reconstruct the whole night from logs, it is not.
@@ -40,10 +44,10 @@ If you still need to reconstruct the whole night from logs, it is not.
 
 A useful unattended run should give you:
 
-- a bounded diff
+- a understandable diff
 - changed files that match the ask
 - checks that actually ran
-- a short finish receipt instead of a long transcript
+- a short result summary instead of a long transcript
 - artifacts you can inspect when you need more detail
 - open questions called out clearly instead of hidden behind confidence
 
@@ -73,9 +77,9 @@ Best first-task companions:
 - [../START_HERE.md](../START_HERE.md) — shortest path to a real first run
 - [first-task-prompt-templates.md](./first-task-prompt-templates.md) — copy-paste spec shapes for strong first runs
 - [free-open-source-proof.md](./free-open-source-proof.md) — what good output should look like
-- [what-breaks-first-with-multiple-coding-agents.md](./what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, finish receipts, and clean re-entry
+- [what-breaks-first-with-multiple-coding-agents.md](./what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, result summarys, and clean re-entry
 
-If the morning-after result gives you a clean diff, real checks, and a merge decision you can make quickly, Ralph Workflow is doing useful work.
+If the morning-after result gives you a clean diff, real checks, and a human review you can make quickly, Ralph Workflow is doing useful work.
 
 If that is the evaluation path you want, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 

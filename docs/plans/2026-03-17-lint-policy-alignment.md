@@ -1,5 +1,9 @@
 # Lint Policy Alignment Implementation Plan
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 > **STATUS:** This plan is outdated. All custom lints have been consolidated into `ralph_lints` for performance reasons. The individual lint crates (file_too_long, forbid_mut_binding, forbid_imperative_loops, forbid_mutating_receiver_methods, forbid_interior_mutability) have been removed.
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

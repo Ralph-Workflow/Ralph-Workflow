@@ -1,5 +1,9 @@
 # Pipeline Lifecycle
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This document describes the end-to-end lifecycle of a Ralph Workflow run: how the pipeline moves through planning, development, analysis, commit, review, and fix phases, and how policy-defined orchestration drives every routing decision.
 
 The implementation lives in `ralph-workflow/ralph/`. All module references point to that package.

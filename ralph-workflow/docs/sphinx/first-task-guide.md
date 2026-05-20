@@ -1,5 +1,9 @@
 # Choose Your First Ralph Workflow Task
 
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
+That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Use this page when your main question is not installation or config, but task selection.
 Its job is to help you choose one real task that gives Ralph Workflow an honest first test.
 
@@ -13,7 +17,7 @@ Why try it now? Because you can pick one real backlog task tonight, run it with 
 2. Write it as a one-paragraph spec.
 3. Run Ralph Workflow tonight.
 4. Open the diff and the checks tomorrow.
-5. Ask: **would I merge this?**
+5. Ask: **does the implementation hold up?**
 
 That is the whole evaluation.
 
@@ -108,7 +112,7 @@ Ask:
 - are the changes small enough to review?
 - did the checks really run?
 - what still needs a human judgment call?
-- **would I merge this?**
+- **does the implementation hold up?**
 
 A good first run should come back with **finished code**, **tested code**, and a result that is **ready to review**.
 

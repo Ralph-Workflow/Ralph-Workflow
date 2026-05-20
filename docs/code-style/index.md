@@ -1,5 +1,9 @@
 # Project Code Style Guide
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 This directory has not yet been fully ported to the Python implementation. Many files here still document the retired Rust codebase.
 
 ## Current Python style source of truth

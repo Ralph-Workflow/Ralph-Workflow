@@ -1,5 +1,9 @@
 # Sisyphus System Analysis: Learnings for Ralph Workflow
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 ## Executive Summary
 
 This document analyzes the Sisyphus/oh-my-openagent system to identify patterns applicable to the Ralph Workflow unattended pipeline. Key areas of transfer: **planning discipline**, **unattended execution**, **agent orchestration**, and **verification strategies**.

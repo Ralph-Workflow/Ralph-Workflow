@@ -1,5 +1,9 @@
 # Logging and Observability Architecture
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 ## Overview
 
 Ralph's logging infrastructure provides comprehensive observability into pipeline execution through a per-run directory structure. All logs from a single `ralph` invocation are grouped under `.agent/logs-<run_id>/`, making it easy to:

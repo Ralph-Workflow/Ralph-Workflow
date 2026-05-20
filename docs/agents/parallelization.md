@@ -1,5 +1,9 @@
 # Parallel Development Mode
 
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
 Ralph supports parallel development fan-out: when planning produces multiple work units, Ralph develops them simultaneously in the **same workspace** (same-workspace v1).
 
 Only the **development** phase fans out in parallel. Review, fix, and commit phases always run serially afterward.
