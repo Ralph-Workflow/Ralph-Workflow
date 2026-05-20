@@ -1,116 +1,122 @@
 # Choose Your First Ralph Workflow Task
 
-Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
+Use this page when your main question is not installation or config, but task selection.
+Its job is to help you choose one real task that gives Ralph Workflow an honest first test.
 
-It is for developers and technical teams with engineering work that is **too big to babysit and too risky to trust blindly**.
+Ralph Workflow is **the operating system for autonomous coding** — a free and open-source workflow for developers who want work that is **too big to babysit** but **too risky to trust blindly**.
 
-What makes it different from a normal AI coding session is the handoff: Ralph Workflow is built to return a **reviewable result** in your repo instead of a long transcript and a claim that the task is done.
+Why try it now? Because you can pick one real backlog task tonight, run it with the agents you already trust, and decide tomorrow whether the result is something you would actually merge.
 
-Why try it now? Because you can pick one real backlog task tonight, run it with the tools you already trust, and decide tomorrow whether the result is something you would actually merge — with one honest question: **would I merge this?**
+## The fastest honest first run
 
-## Do not start with a vague demo
+1. Pick one meaningful task you can still judge tomorrow morning.
+2. Write it as a one-paragraph spec.
+3. Run Ralph Workflow tonight.
+4. Open the diff and the checks tomorrow.
+5. Ask: **would I merge this?**
 
-The fastest honest test is one real backlog task you already care about.
+That is the whole evaluation.
 
-Choose something that is:
+## What makes a good first task
 
-- substantial enough to justify unattended execution
-- defined enough that success is easy to evaluate afterward
-- detailed enough that you can write a serious product spec
-- real enough that you already want it shipped
+A strong first task is:
 
-## Good first tasks
+- real backlog work you already care about
+- small enough to review in one sitting
+- bounded enough that rollback is cheap
+- well-specified enough to describe in a real spec
+- testable enough that the checks can prove something
 
-These are strong first uses for Ralph Workflow:
+Good first tasks usually look like:
 
-- a bounded feature slice
-- a narrow refactor with tests
-- a cleanup task with obvious verification
-- repetitive implementation work where `done` is easy to judge
-- a docs or test pass with a clear finish line
+- a bounded validation rule
+- a focused feature slice with tests
+- a narrow refactor with known invariants
+- a bug fix with a clear reproduction path
+- a documentation or test pass with an obvious finish line
 
-Why these work:
+## What you can ship tonight
 
-- the scope is easy to describe
-- the checks are obvious
-- the diff is reviewable
-- failure is inexpensive to unwind
+If you want the lowest-friction first run, start with one of these exact shapes:
 
-## Bad first tasks
+- **Validation rule:** reject empty or whitespace-only names in one CLI or form flow
+- **Feature slice:** add one filter, one export, or one settings toggle with tests
+- **Isolated refactor:** replace one duplicated helper path with a shared utility and keep behavior stable
+- **Test coverage pass:** add missing tests around behavior you already rely on
+- **Documentation catch-up:** update one underexplained feature that already exists
 
-These are weak first uses for Ralph Workflow:
+If none of those feel easy to judge tomorrow morning, the task is still too broad.
 
-- vague product exploration
+## What makes a bad first task
+
+Avoid first runs that are:
+
+- vague exploration
 - risky production surgery
-- a broad multi-part migration with no clear stopping point
-- tasks that depend on frequent mid-run human decisions
-- anything where nobody agrees what success looks like
+- a broad migration with no clear stopping point
+- work that needs constant mid-run human steering
+- tasks where nobody agrees what success looks like
 
-Why these fail:
+These do a bad job of showing what Ralph Workflow is for because the finish line gets fuzzy and the review becomes harder than the coding.
 
-- the agent has to guess too much
-- the result is hard to review honestly
-- `done` is unclear
-- live steering matters more than unattended execution
+If you want the sharper pass/fail version with examples, read [Good Unattended AI Coding Task vs Bad One](good-unattended-ai-coding-task.md).
 
 ## Write the task like a one-paragraph spec
 
-Before the run starts, write down:
+Use this shape:
 
-- what needs to change
-- what should stay untouched
-- what `done` looks like
-- what checks prove it worked
+```md
+Change:
+[what should change]
 
-A good starter spec looks like this:
+Keep unchanged:
+[what must stay stable]
 
-```markdown
-# Goal
+Done means:
+[observable outcome]
 
-Add a /health endpoint that returns HTTP 200 with {"status": "ok"}.
-
-## Acceptance criteria
-
-- GET /health returns HTTP 200
-- Response body is valid JSON with status == ok
-- A new test covers the endpoint
-- Existing routes keep working unchanged
+Checks:
+[tests, lint, build, or other verification]
 ```
 
-## The four-question first-task filter
+Example:
 
-Before you run, ask:
+```md
+Change:
+Reject empty or whitespace-only project names in the CLI create flow.
 
-1. Do I already know what the product outcome needs to be?
-2. Can I write a detailed enough spec that the agent should not have to invent the goal?
-3. Can I name the checks that prove it worked?
-4. Would the result matter enough that I actually want this work done?
+Keep unchanged:
+Do not alter the rest of the creation flow or the generated file layout.
 
-If the answer is yes to all four, it is probably a good Ralph Workflow task.
+Done means:
+Invalid names show a clear error and create no project.
 
-## How to judge the result honestly
+Checks:
+Existing create-flow tests still pass and new validation tests pass.
+```
 
-Do not ask whether the agent looked smart.
+If you want more starter shapes, use [First-Task Prompt Templates](first-task-prompt-templates.md).
+If you want the reasoning behind this structure, read [Spec-Driven AI Agent](spec-driven-ai-agent.md).
+
+## How to judge the morning-after result
+
+Do not ask whether the tool looked smart.
 
 Ask:
 
 - does the diff match the task?
 - are the changes small enough to review?
 - did the checks really run?
+- what still needs a human judgment call?
 - **would I merge this?**
 
-That is the real product test.
+A good first run should come back with **finished code**, **tested code**, and a result that is **ready to review**.
 
-## Next step
+## What to do next
 
-- Continue with [Getting Started](getting-started.md) for the install and first-run flow
-- Read [First-Task Prompt Templates](first-task-prompt-templates.md) if you want copy-paste starter specs instead of drafting from scratch
-- Read [What Good Output Looks Like](reviewable-output.md) to see the kind of handoff you should expect
-- Read [Example Review Bundle](example-review-bundle.md) if you want a public sample `PROMPT.md`, result notes, and artifacts before your first run
+- Need the shortest first-run path? Go back to [Quickstart](quickstart.md).
+- Need the fuller operator flow? Use [Getting Started](getting-started.md).
+- Need help understanding why the spec matters? Read [Spec-Driven AI Agent](spec-driven-ai-agent.md).
+- Want to see the output standard? Read [Reviewable Output](reviewable-output.md) and [Example Review Bundle](example-review-bundle.md).
 
 If this first-task filter matches how you want to evaluate Ralph Workflow, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-
-Best next public actions:
-- **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
