@@ -124,7 +124,7 @@ class CompetitorAnalysisTests(unittest.TestCase):
         self.assertIn("## Why Choose Ralph Workflow", md)
         self.assertIn("pip install ralph-workflow", md)
         self.assertIn("Claude Code", md)  # Ralph advantage
-        self.assertIn("cost arbitrage", md)  # Ralph advantage
+        self.assertIn("Cost arbitrage", md)  # Ralph advantage
 
 
 if __name__ == "__main__":
