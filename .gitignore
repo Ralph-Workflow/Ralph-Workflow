@@ -1,2 +1,32 @@
 __pycache__/
 *.pyc
+
+# Private local profiles / browser state
+.apollo-*/
+.ionos-mail-profile/
+.reddit-*-profile/
+
+# Secrets / tokens / credentials
+*_token*.json
+*_service_account*.json
+*_client_secrets*.json
+*_code_verifier*.txt
+accounts/*_creds.json
+agents/marketing/reddit_account.json
+
+# Local temp / debug / artifacts
+.tmp_*
+tmp/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.log
+
+# Nested repos / deploy trees
+repos/
+Ralph-Site/
+claude/
+opencode/
+state/

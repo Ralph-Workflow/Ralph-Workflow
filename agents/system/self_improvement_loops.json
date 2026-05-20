@@ -1,0 +1,21 @@
+{
+  "loops": [
+    {
+      "name": "ralph-docs-watchdog",
+      "kind": "docs-watchdog",
+      "baseDir": "/home/mistlight/.openclaw/workspace/agents/docs_quality",
+      "runnerScript": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_runner.py",
+      "verifierScript": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py",
+      "checkerScript": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_check.py",
+      "editorialAuditScript": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_editorial_audit.py",
+      "agenticReviewScript": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_agentic_review.py",
+      "runnerArtifact": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_latest.md",
+      "agenticReviewArtifact": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.md",
+      "verifierArtifact": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
+      "runnerCrontabLine": "1,31 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_runner.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/watchdog_cron.log 2>&1",
+      "verifierCrontabLine": "6,36 * * * * /usr/bin/python3 /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_docs_verify.py >> /home/mistlight/.openclaw/workspace/agents/docs_quality/logs/verifier_cron.log 2>&1",
+      "maxArtifactAgeMinutes": 120,
+      "requiresVerifierPassPhrase": "Status: independently verified pass"
+    }
+  ]
+}

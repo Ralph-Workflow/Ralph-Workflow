@@ -26,6 +26,8 @@ def save_history(h):
         json.dump(h, f, indent=2)
 
 def gh(url, method="GET", data=None):
+    if not TOKEN:
+        return {"error": "GITHUB_TOKEN not set"}, 0
     headers = {
         "Authorization": f"token {TOKEN}",
         "Accept": "application/vnd.github.v3+json"
@@ -38,19 +40,35 @@ def gh(url, method="GET", data=None):
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read()), resp.status
     except urllib.error.HTTPError as e:
-        return json.loads(e.read()), e.code
+        body = e.read().decode("utf-8", errors="ignore")
+        try:
+            return json.loads(body), e.code
+        except Exception:
+            return {"error": body[:200]}, e.code
+
+# Candidate filenames in search-order preference
+_README_CANDIDATES = [
+    "README.md", "README.MD", "README.rst", "README.txt",
+    "INSTALL.md", "INSTALL", "CONTRIBUTING.md",
+    "docs/index.md", "docs/README.md", "docs/overview.md",
+    "doc/index.md", "doc/README.md",
+]
 
 def get_readme(repo):
-    for ext in ["md", "MD"]:
-        data, status = gh(f"https://api.github.com/repos/{repo}/contents/README.{ext}")
+    """Find and return the best candidate doc file + sha from a repo.
+    Tries multiple filenames before giving up."""
+    tried = []
+    for fname in _README_CANDIDATES:
+        data, status = gh(f"https://api.github.com/repos/{repo}/contents/{fname}")
         if status == 200 and data.get("encoding") == "base64":
             content = base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
-            return content, data.get("sha", "")
-    return None, None
+            return content, data.get("sha", ""), fname
+        tried.append(fname)
+    return None, None, None
 
 def check_already_linked(repo):
     """Check if repo's README already links to ralphworkflow.com."""
-    content, _ = get_readme(repo)
+    content, _, _ = get_readme(repo)
     if content and "ralphworkflow.com" in content.lower():
         return True
     return False
@@ -86,7 +104,9 @@ def submit_pr(repo, readme_content, sha, filename):
     new_content = "\n".join(new_lines)
     
     # Get default branch
-    repo_data, _ = gh(f"https://api.github.com/repos/{repo}")
+    repo_data, status = gh(f"https://api.github.com/repos/{repo}")
+    if status != 200:
+        return {"success": False, "error": f"Cannot fetch repo: HTTP {status}"}
     default_branch = repo_data.get("default_branch", "main")
     
     # Create branch
@@ -140,6 +160,19 @@ Happy to answer any questions about how it works!
     return {"success": False, "error": str(data)}
 
 def main():
+    if not TOKEN:
+        print("[Outreach] ERROR: GITHUB_TOKEN environment variable is not set.")
+        print("[Outreach] To enable backlink outreach, set it with:")
+        print("  export GITHUB_TOKEN=ghp_...\n")
+        print("[Outreach] GitHub token is needed to:")
+        print("  1. Search for repos mentioning Ralph Workflow")
+        print("  2. Read README files to check if already linked")
+        print("  3. File issues or submit PRs for backlink additions")
+        print("")
+        print("[Outreach] Get a token at: https://github.com/settings/tokens")
+        print("[Outreach] Required scope: repo (full control)")
+        return
+
     history = load_history()
     contacted = set(history.get("contacted", []))
     
@@ -150,7 +183,7 @@ def main():
     data, status = gh(search_url)
     
     if status != 200:
-        print(f"[Outreach] Search failed: {status}")
+        print(f"[Outreach] Search failed: {status} — {data.get('error', data)}")
         return
     
     repos = data.get("items", [])
@@ -183,10 +216,10 @@ def main():
         
         time.sleep(0.5)  # Rate limit respect
         
-        # Get README
-        readme_content, sha = get_readme(repo_name)
+        # Get README / doc file
+        readme_content, sha, filename = get_readme(repo_name)
         if not readme_content:
-            print("no README, skipping")
+            print("no README found, skipping")
             contacted.add(repo_name)
             continue
         
@@ -202,18 +235,7 @@ def main():
             else:
                 print(f"❌ {result.get('error', 'unknown')}")
         else:
-            # Lower value: submit PR directly
-            filename = "README.md"
-            for ext in ["md", "MD"]:
-                try:
-                    _, s = gh(f"https://api.github.com/repos/{repo_name}/contents/README.{ext}")
-                    if s == 200:
-                        filename = f"README.{ext}"
-                        break
-                except:
-                    continue
-            
-            print(f"submitting PR ({stars}⭐)...", end=" ", flush=True)
+            print(f"submitting PR ({stars}⭐, file={filename})...", end=" ", flush=True)
             result = submit_pr(repo_name, readme_content, sha, filename)
             if result.get("success"):
                 pr_results.append({"repo": repo_name, "url": result.get("pr_url"), "stars": stars})

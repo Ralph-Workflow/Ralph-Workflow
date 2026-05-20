@@ -40,8 +40,7 @@ def get_writeas_postviews(post_id):
 def post_telegraph(title, body, author_name="RW Marketing"):
     """Post to Telegraph. Returns (ok, url, error).
     
-    NOTE: Telegraph API currently returns UNKNOWN_METHOD for all write operations.
-    This may be a platform issue.
+    Telegraph requires JSON node format for content, not HTML.
     """
     # Get a fresh account token
     r1 = subprocess.run([
@@ -57,17 +56,48 @@ def post_telegraph(title, body, author_name="RW Marketing"):
     except Exception as e:
         return False, "", f"Token error: {e}"
     
-    # Build HTML content
-    import html
-    content_html = "<p>" + body.replace("\n\n", "</p><p>") + "</p>"
-    content_html = html.escape(content_html)
+    # Build content as proper Telegraph JSON node format
+    paragraphs = []
+    for para in body.split("\n\n"):
+        para = para.strip()
+        if not para:
+            continue
+        # Handle headings
+        if para.startswith("# "):
+            paragraphs.append({"tag": "h3", "children": [para[2:]]})
+        elif para.startswith("## "):
+            paragraphs.append({"tag": "h4", "children": [para[3:]]})
+        elif para.startswith("### "):
+            paragraphs.append({"tag": "h5", "children": [para[4:]]})
+        elif para.startswith("> "):
+            paragraphs.append({"tag": "blockquote", "children": [para[2:]]})
+        elif para.startswith("```"):
+            paragraphs.append({"tag": "pre", "children": [para[3:].strip()]})
+        else:
+            # Handle inline bold/italic
+            import re
+            text = para
+            nodes = []
+            # Split on bold first
+            parts = re.split(r'(\*{1,2}[^\*]+\*{1,2})', text)
+            for part in parts:
+                if re.match(r'\*{1,2}.*\*{1,2}', part):
+                    tag = "b" if part.startswith("**") else "i"
+                    nodes.append({"tag": tag, "children": [part[2 if tag == "b" else 1:-2 if tag == "b" else 1]]})
+                elif part:
+                    nodes.append(part)
+            if nodes:
+                paragraphs.append({"tag": "p", "children": nodes if len(nodes) > 1 else [text]})
+            else:
+                paragraphs.append({"tag": "p", "children": [para]})
     
-    # Try createPage ( Telegraph's actual method for creating pages)
+    content_json = json.dumps(paragraphs)
+    
     params = urllib.parse.urlencode({
         "access_token": token,
         "title": title,
         "author_name": author_name,
-        "content": content_html,
+        "content": content_json,
         "return_content": "false"
     })
     
@@ -93,8 +123,8 @@ def post_to_both(title, body):
     ok, url, err = post_writeas(title, body)
     results["writeas"] = {"ok": ok, "url": url, "error": err}
     
-    # Telegraph is currently broken, skip it
-    results["telegraph"] = {"ok": False, "url": "", "error": "API returns UNKNOWN_METHOD - likely deprecated"}
+    ok, url, err = post_telegraph(title, body)
+    results["telegraph"] = {"ok": ok, "url": url, "error": err}
     
     return results
 

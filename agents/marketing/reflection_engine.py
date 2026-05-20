@@ -28,13 +28,16 @@ def analyze_trends(logs):
     if not logs:
         return {"trends": [], "summary": "No historical data yet"}
     
-    # write.as view trends
-    writeas_data = []
+    # Telegraph view trends (write.as is permanently blocked — do not use)
+    telegraph_data = []
     for log in logs:
-        if "data" in log and "writeas_views" in log["data"]:
-            views = sum(a.get("views", 0) for a in log["data"]["writeas_views"])
+        if "data" in log and "telegraph_views" in log["data"]:
+            views = sum(a.get("views", 0) for a in log["data"]["telegraph_views"])
             ts = log.get("timestamp", "")
-            writeas_data.append({"views": views, "date": ts[:10]})
+            telegraph_data.append({"views": views, "date": ts[:10]})
+        elif "data" in log and "writeas_views" in log["data"]:
+            # Historical write.as data — no longer actionable (platform blocked)
+            pass
     
     # GitHub trends
     github_data = []
@@ -44,12 +47,14 @@ def analyze_trends(logs):
             ts = log.get("timestamp", "")
             github_data.append({"stars": stars, "date": ts[:10]})
     
-    # Content performance
+    # Content performance (telegraph_views preferred; writeas_views is historical only)
     best_article = None
     best_views = 0
     for log in logs:
-        if "data" in log and "writeas_views" in log["data"]:
-            for a in log["data"]["writeas_views"]:
+        if "data" in log:
+            # Prefer Telegraph data
+            views_key = "telegraph_views" if "telegraph_views" in log["data"] else "writeas_views"
+            for a in log["data"].get(views_key, []):
                 if a.get("views", 0) > best_views:
                     best_views = a.get("views", 0)
                     best_article = a
@@ -57,13 +62,13 @@ def analyze_trends(logs):
     trends = []
     
     # Detect view trajectory
-    if len(writeas_data) >= 2:
-        if writeas_data[-1]["views"] > writeas_data[0]["views"] * 1.5:
-            trends.append({"type": "improving", "channel": "writeas", 
-                          "message": f"Views growing: {writeas_data[0]['views']} → {writeas_data[-1]['views']}"})
-        elif writeas_data[-1]["views"] < writeas_data[0]["views"] * 0.5:
-            trends.append({"type": "declining", "channel": "writeas",
-                          "message": f"Views dropping: {writeas_data[0]['views']} → {writeas_data[-1]['views']}"})
+    if len(telegraph_data) >= 2:
+        if telegraph_data[-1]["views"] > telegraph_data[0]["views"] * 1.5:
+            trends.append({"type": "improving", "channel": "telegraph", 
+                          "message": f"Views growing: {telegraph_data[0]['views']} → {telegraph_data[-1]['views']}"})
+        elif telegraph_data[-1]["views"] < telegraph_data[0]["views"] * 0.5:
+            trends.append({"type": "declining", "channel": "telegraph",
+                          "message": f"Views dropping: {telegraph_data[0]['views']} → {telegraph_data[-1]['views']}"})
     
     # Best content analysis
     if best_article and best_views > 0:
@@ -80,7 +85,7 @@ def analyze_trends(logs):
     
     return {
         "trends": trends,
-        "writeas_data": writeas_data,
+        "telegraph_data": telegraph_data,
         "github_data": github_data,
         "best_article": best_article,
         "total_logs": len(logs)
@@ -93,18 +98,18 @@ def generate_insights(analysis):
     
     for trend in trends:
         if trend["type"] == "declining":
-            if trend["channel"] == "writeas":
+            if trend["channel"] == "telegraph":
                 insights.append({
                     "priority": "HIGH",
-                    "action": "write.as views declining — try new headlines, post at different times, or change topics",
+                    "action": "Telegraph views declining — try new headlines, post at different times, or change topics",
                     "reason": "Content not reaching audience"
                 })
         
         if trend["type"] == "improving":
-            if trend["channel"] == "writeas":
+            if trend["channel"] == "telegraph":
                 insights.append({
                     "priority": "MEDIUM", 
-                    "action": "write.as growing — identify what changed (topic, headline, timing) and double down",
+                    "action": "Telegraph growing — identify what changed (topic, headline, timing) and double down",
                     "reason": "Something is working"
                 })
     
@@ -189,8 +194,8 @@ def generate_next_experiment(insights):
     experiments = [
         {
             "name": "keyword-targeted-content",
-            "action": "Write write.as post targeting 'best AI coding workflow 2025' — low competition keyword",
-            "expected_impact": "5-20 views/day from search",
+            "action": "Write Telegraph post targeting 'unattended coding agent' or 'AI coding workflow automation' — target the keyword gaps from SEO report",
+            "expected_impact": "5-20 views/day from search via Telegraph",
             "status": "ready"
         },
         {

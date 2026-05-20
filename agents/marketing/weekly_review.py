@@ -58,7 +58,7 @@ def check_seo_rankings():
 
 def get_github_data():
     """Get GitHub stats for Ralph-Workflow repos."""
-    repos = ["RalphWorkflow/Ralph-Workflow", "mistlight/Ralph-Workflow", "mistlight/Ralph-Site-Rs"]
+    repos = ["Ralph-Workflow/Ralph-Workflow", "mistlight/Ralph-Workflow", "mistlight/Ralph-Site-Rs"]
     results = []
     for repo in repos:
         try:

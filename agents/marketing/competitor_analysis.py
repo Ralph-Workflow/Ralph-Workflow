@@ -142,7 +142,7 @@ RALPH_ADVANTAGE_KEYWORDS = [
 
 # ── HTTP helpers ────────────────────────────────────────────────────────────────
 
-def http_get(url: str, headers: dict | None = None, timeout: int = 12) -> tuple[int, str]:
+def http_get(url: str, headers: dict | None = None, timeout: int = 8) -> tuple[int, str]:
     hdrs = {"User-Agent": "Mozilla/5.0 (compatible; RalphBot/1.0)"}
     if headers:
         hdrs.update(headers)
@@ -223,18 +223,17 @@ def monitor_competitor(slug: str, info: dict) -> dict:
             result["docs_status"] = doc_status
             result["docs_title"] = _extract_title(doc_body)
 
-    # Check GitHub stars if available
+    # Check GitHub stars if available (fail fast — 5s timeout)
     if info.get("github"):
         stars = get_github_stars(info["github"])
         if stars:
             result["github_stars"] = stars
 
-    time.sleep(0.3)
     return result
 
 
 def get_github_stars(repo_url: str) -> Optional[int]:
-    """Get GitHub star count for a repository."""
+    """Get GitHub star count for a repository. Fails fast — 5s timeout."""
     # Convert URL to API URL
     # e.g. https://github.com/nousresearch/hermes-agent → nousresearch/hermes-agent
     m = re.search(r"github\.com/([^/]+)/([^/]+)", repo_url)
@@ -248,7 +247,7 @@ def get_github_stars(repo_url: str) -> Optional[int]:
             api_url,
             headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "RalphBot/1.0"}
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
             return data.get("stargazers_count")
     except Exception:
@@ -263,7 +262,8 @@ def run_competitor_monitoring() -> dict:
             results[slug] = monitor_competitor(slug, info)
         except Exception as e:
             results[slug] = {"slug": slug, "error": str(e)}
-        time.sleep(0.5)
+        # Minimal pacing — just enough to avoid hammering
+        time.sleep(0.15)
 
     # Save snapshot
     today = datetime.now().strftime("%Y-%m-%d")
@@ -278,18 +278,7 @@ def run_competitor_monitoring() -> dict:
 def generate_comparison_page(competitor_slug: str, competitor_info: dict, monitoring_data: dict) -> str:
     """Generate a markdown comparison page for Ralph Workflow vs a competitor."""
 
-    ralph_features = [
-        "Multi-agent phase routing (planning → development → review → fix)",
-        "Claude Code, OpenCode Codex, and OpenCode in the same pipeline",
-        "Cost arbitrage: cheap models for development, frontier for review",
-        "Policy-defined orchestration via TOML configuration",
-        "Checkpoint and resume with failure classification",
-        "Structured artifact contracts (not just exit codes)",
-        "Real unattended execution — walk away, come back to clean diff",
-        "Vendor-neutral: you own the config, not the tool",
-        "Parallel work unit execution for independent tasks",
-        "MCP-native with standalone ralph-mcp runtime",
-    ]
+
 
     comp_features = competitor_info.get("key_strengths", [])
 
@@ -298,7 +287,7 @@ def generate_comparison_page(competitor_slug: str, competitor_info: dict, monito
         f"# Ralph Workflow vs {competitor_info['name']}",
         "",
         f"**Last updated:** {datetime.now().strftime('%B %d, %Y')} · "
-        f"[Edit this comparison](https://codeberg.org/RalphWorkflow/Ralph-Workflow) · "
+        f"[Edit this comparison](https://codeberg.org/Ralph-Workflow/Ralph-Workflow) · "
         f"[← Back to all comparisons](/comparisons)",
         "",
         "## At a Glance",
@@ -308,7 +297,7 @@ def generate_comparison_page(competitor_slug: str, competitor_info: dict, monito
         f"| **What it is** | Unattended multi-agent orchestration | {competitor_info['positioning']} |",
         f"| **License** | AGPL (source) / CC0 (outputs) | {competitor_info['pricing']} |",
         f"| **Setup** | TOML config files, no cloud required | Varies |",
-        f"| **Vendor lock-in** | None — own your config | { 'Yes' if competitor_info['name'] in ['Claude Code', 'GitHub Copilot', 'Cursor'] else 'Varies' } |",
+        f"| **Vendor lock-in** | None — own your config | {'Yes' if competitor_info['name'] in ['Claude Code', 'GitHub Copilot', 'Cursor'] else 'Varies'} |",
         "",
         "## Key Differences",
         "",
@@ -417,7 +406,8 @@ def generate_comparison_page(competitor_slug: str, competitor_info: dict, monito
         "",
         f"[Install guide →](https://ralphworkflow.com/docs) · "
         f"[Quick start →](https://ralphworkflow.com/docs#quick-start) · "
-        f"[GitHub →](https://github.com/RalphWorkflow/Ralph-Workflow)",
+        f"[Primary Codeberg repo →](https://codeberg.org/RalphWorkflow/Ralph-Workflow) · "
+        f"[GitHub mirror →](https://github.com/Ralph-Workflow/Ralph-Workflow)",
         "",
     ])
 
@@ -436,7 +426,6 @@ def generate_all_comparison_pages(monitoring_data: dict):
         path = comparisons_dir / f"{slug}.md"
         path.write_text(md)
         generated.append((slug, info["name"], path))
-        time.sleep(0.2)
 
     return generated
 
@@ -444,49 +433,59 @@ def generate_all_comparison_pages(monitoring_data: dict):
 # ── Competitor discovery ──────────────────────────────────────────────────────
 
 def discover_new_competitors() -> list[dict]:
-    """Use web search to find new competitors in the AI agent orchestration space."""
-    # Search for emerging competitors
-    query = urllib.parse.quote("AI agent workflow orchestration CLI tool 2025")
-    url = f"https://www.google.com/search?q={query}&num=10"
-    status, body = http_get(url)
-    if status != 200:
+    """Find new competitors via web search. Falls back to empty list if blocked.
+    
+    Note: Google search is unreliable for automated scraping. This function
+    returns an empty list more often than not. For manual competitor research,
+    check the SUMMARY.md in .planning/research/ instead.
+    """
+    try:
+        query = urllib.parse.quote("AI agent workflow orchestration CLI tool 2025")
+        url = f"https://www.google.com/search?q={query}&num=10"
+        status, body = http_get(url, timeout=5)
+        if status != 200 or not body:
+            return []
+
+        # Extract competitor domains from search results
+        domains = re.findall(r'href="(https?://[^"]+)"', body)
+        seen = set()
+        competitors = []
+        for href in domains:
+            domain = urllib.parse.urlparse(href).netloc
+            if domain in seen or "ralphworkflow" in domain:
+                continue
+            if any(kw in domain for kw in ["agent", "ai", "claude", "copilot", "coder", "dev", "tool", "orchestrat"]):
+                seen.add(domain)
+                competitors.append({"domain": domain, "url": href})
+
+        return competitors[:5]
+    except Exception:
         return []
-
-    # Extract competitor domains from search results
-    domains = re.findall(r'href="(https?://[^"]+)"', body)
-    seen = set()
-    competitors = []
-    for href in domains:
-        try:
-            from urllib.parse import urlparse as _urlparse
-            domain = _urlparse(href).netloc
-        except Exception:
-            continue
-        if domain in seen or "ralphworkflow" in domain:
-            continue
-        if any(kw in domain for kw in ["agent", "ai", "claude", "copilot", "coder", "dev", "tool", "orchestrat"]):
-            seen.add(domain)
-            competitors.append({"domain": domain, "url": href})
-
-    return competitors[:5]
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> int:
+    script_start = time.time()
     print(f"[competitor_analysis] Starting competitor analysis at {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
     # 1. Monitor all known competitors
     print("  → Monitoring competitors...")
+    t0 = time.time()
     monitoring = run_competitor_monitoring()
+    print(f"    done in {time.time()-t0:.1f}s")
 
     # 2. Generate comparison pages
     print("  → Generating comparison pages...")
+    t1 = time.time()
     comparisons = generate_all_comparison_pages(monitoring)
+    print(f"    done in {time.time()-t1:.1f}s")
 
-    # 3. Check for new competitors
+    # 3. Check for new competitors (fast-fail if Google is blocked)
     print("  → Discovering new competitors...")
+    t2 = time.time()
     new_competitors = discover_new_competitors()
+    print(f"    done in {time.time()-t2:.1f}s (found {len(new_competitors)})")
 
     # 4. Build summary report
     today = datetime.now().strftime("%Y-%m-%d")
@@ -526,7 +525,8 @@ def main() -> int:
     summary_path = REPORTS_DIR / f"competitor_analysis_{today}.md"
     summary_path.write_text("\n".join(summary_lines))
 
-    print(f"\nCompetitor analysis complete:")
+    total = time.time() - script_start
+    print(f"\nCompetitor analysis complete ({total:.1f}s total):")
     print(f"  - Monitored: {len(monitoring)} competitors")
     print(f"  - Generated: {len(comparisons)} comparison pages")
     print(f"  - Discovered: {len(new_competitors)} new candidates")
