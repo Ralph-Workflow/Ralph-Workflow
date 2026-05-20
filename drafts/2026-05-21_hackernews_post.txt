@@ -1,0 +1,13 @@
+Show HN: I built a live coding interview platform with real-time AI visibility
+
+We've been building HireAegis Interviewer — a platform where you watch candidates code in a real IDE with AI assistance and Docker live previews visible to both interviewer and candidate.
+
+The key differentiator: both parties see the AI suggestions in real-time. You watch how a candidate evaluates, accepts, or rejects AI recommendations. That tells you more than any whiteboard problem.
+
+After 200+ real interviews, we've learned a lot about what actually predicts job performance vs. what just looksimpressive.
+
+Free to try. No credit card required.
+
+feedback welcome
+
+Happy to answer questions about the tech stack (Rails 8 + React + Inertia + Docker for previews).

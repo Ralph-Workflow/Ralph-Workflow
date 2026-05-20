@@ -1,5 +1,23 @@
 # Outreach Log
 
+## 2026-05-20 (Wednesday) — Marketing workflow audit (21:35 UTC / 23:35 CEST)
+- **Verdict: stay quiet. Execution ceiling confirmed. HN/Lobsters human handoff is the only unmade high-leverage move.**
+  - Codeberg flat (9⭐ 2👁 2🍴, 0 delta across 9 samples). GitHub mirror flat (0⭐ 2👁 0🍴).
+  - All reproducible autonomous paths exhausted: homepage SEO + CTA repairs live, Telegraph keyword-gap at 100%, channel discovery false positives repaired, Reddit fresh body packet verified and in inventory, HN/Lobsters packet rewritten and ready.
+  - Reddit cadence risk is deeper than lexical — banned opening double-use confirmed on May 19, and the broader rhythm structure (`contrast opener → handoff framing → proof bundle → product close`) survives fresh drafts. Cooldown is correct.
+  - Backlinks: 0 indexed. AIToolsIndex + ToolShelf in-flight.
+  - **HN/Lobsters is still the single highest-leverage unmade move. Packet is at `drafts/2026-05-20_hackernews_lobsters_post.txt`. Human action required.**
+  - Four marketing questions: all correctly answered, no drift.
+- **What worked:** Full infrastructure stack shipped and verified. All owned surfaces consistent and Codeberg-first.
+- **What failed:** Reddit structural cadence repetition (banned opening double-use May 19 confirmed). No Codeberg adoption movement. Zero indexed backlinks. HN/Lobsters still blocked from autonomous execution.
+- **What is repetitive:** Monitor passes during cooldown (correctly no-post). Telegraph keyword-gap at 100% ceiling. Reddit body regeneration without structural angle change.
+- **What is low leverage:** More owned-surface polish, more monitor passes, more keyword-gap posts.
+- **Current bottleneck:** HN/Lobsters human execution. Autonomous ceiling reached.
+- **Next higher-leverage move:** Human: execute HN/Lobsters from `drafts/2026-05-20_hackernews_lobsters_post.txt`. Monitor AIToolsIndex + ToolShelf for indexing signal. Reddit stays on cooldown unless a genuinely fresh thread fit surfaces.
+- **Measurement window:** 7 days for HN/Lobsters visibility; 14 days through **2026-06-03** for Codeberg delta + indexed backlink evidence.
+- **Replace if it fails:** if Codeberg is still flat with no backlinks indexed by **2026-06-03**, stop owned distribution investment and shift to direct human outreach (curators, comparison backlinks, HN retry).
+- Type: **AUDIT / DIRECTION**
+
 ## 2026-05-20 (Wednesday) — Homepage hero install-strip resequencing (21:11 UTC / 23:11 CEST)
 - **What I executed:** updated the live homepage hero install strip in `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` so it now reads **Try it tonight** and explicitly sequences the evaluator path as **1. Inspect Codeberg** → **2. Pick a first task** → **3. Install**, then touched `tmp/restart.txt` and verified the live homepage HTML at `https://ralphworkflow.com` now contains `Try it tonight`, `1. Inspect Codeberg`, and the new note `Fastest honest path: inspect the primary repo on Codeberg, choose one real task, then install.`
 - **Why this action:** this is **REPAIRED / REPLACING**. The current bottleneck is still `distribution_and_message_to_primary_repo_conversion`, Reddit remains high-risk for repetition, and the homepage hero still had a prominent install-led utility strip that could bypass the Codeberg-first evaluator path even after the top CTA row was repaired.
@@ -3994,3 +4012,42 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-20 22:42:40
 - **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 23:21:45
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Hosted fit-page Codeberg-first conversion repair (21:34 UTC / 23:34 CEST)
+- **What I executed:** repaired the hosted `When Ralph Workflow Fits — and When It Does Not` docs page so a high-intent evaluator no longer lands on a weaker, drifted version of one of the main proof assets.
+  - Synced `Ralph-Site/docs/sphinx_overrides/when-unattended-coding-fits.md` to the stronger Codeberg-first version already reflected in the repo docs.
+  - Removed the weak/duplicated next-step structure and added the missing conversion path: inspect **Codeberg** first, star/watch or file first-run friction on Codeberg after a real run, and treat GitHub as mirror only.
+  - Added stronger first-task guidance (`validation / guardrail`, `small feature slice`, `test coverage pass`) plus the missing links to `Good Unattended AI Coding Task vs Bad One` and `After Your First Ralph Workflow Run`.
+  - Because `bin/build-docs` is currently blocked on the production host (`Bundler::GemRequireError: cannot load such file -- debug/prelude`), I also patched the live built artifacts directly at `/home/mistlight/ralph_site/current/public/docs/when-unattended-coding-fits.html` and `_sources/when-unattended-coding-fits.md.txt` so the public page changed in this same run instead of waiting on the broken build path.
+- **Verification:** fetched `https://ralphworkflow.com/docs/when-unattended-coding-fits.html` after the patch and confirmed the live page now includes `inspect the primary Codeberg repo first`, `After Your First Ralph Workflow Run`, and the final `promising run / shaky run` Codeberg action split.
+- **Why this action:** this is **REPAIRED / REPLACING**. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and this page is one of the clearest high-intent self-qualification surfaces in the hosted docs. Before the repair it had drifted into a weaker version of the message and was missing the direct Codeberg-first post-evaluation path. Repairing that leak is a stronger same-run move than forcing another Reddit angle from a saturated pool.
+- **Expected outcome:** more evaluators who arrive on the fit-check page should self-qualify faster, choose a better first task, and convert that first run into a public **Codeberg** action instead of dropping off after reading.
+- **Measurement window:** next 14 days (**through 2026-06-03**) for **Codeberg** stars/watchers/forks and any evidence that first-run / proof-page traffic is converting into primary-repo actions.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on fit-page copy/CTA repair and replace this lane with the next warmer executable distribution move (curator/comparison-page citation outreach or another live third-party proof lane).
+- **Type:** **REPAIRED / REPLACING**
+- **Docs review note:** reviewed `README.md`, `START_HERE_RALPHWORKFLOW.md`, and `Ralph-Site/docs/README.md` against this change. The repair belongs on this promoted proof page because it fixes a specific high-intent conversion leak without expanding top-level surfaces; nothing new was added to README or Start Here, duplication on the page was reduced, and the overall README → START_HERE → docs path is cleaner because this page now ends in one explicit Codeberg-first action.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 23:38:31
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Replace weak proof link with live comparison-intent proof (21:58 UTC / 23:58 CEST)
+- **What I executed:** replaced the weakest third-party proof slot (`TechTools Launchpad`) with the live `SaaSHub alternatives` comparison surface across the highest-intent evaluator path:
+  - `/home/mistlight/.openclaw/workspace/Ralph-Site/app/views/pages/home.html.erb`
+  - `/home/mistlight/.openclaw/workspace/Ralph-Site/docs/sphinx_overrides/index.rst`
+  - `/home/mistlight/.openclaw/workspace/Ralph-Site/docs/sphinx_overrides/first-task-guide.md`
+  - `/home/mistlight/.openclaw/workspace/Ralph-Site/docs/sphinx_overrides/first-task-prompt-templates.md`
+  - `/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/START_HERE.md`
+  - `/home/mistlight/.openclaw/workspace/README.md`
+  - Deployed the homepage proof swap on the live site too at `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`, touched `tmp/restart.txt`, and re-fetched `https://ralphworkflow.com` to verify the public HTML now contains `Start with a review surface, then a live comparison surface` and the new `SaaSHub comparisons ↗` link.
+  - Verified live external proof targets first: `https://www.saashub.com/ralph-workflow` and `https://www.saashub.com/ralph-workflow-alternatives` both returned 200 on **2026-05-20**; the alternatives page explicitly positions Ralph Workflow in a competitor-comparison context.
+- **Why this action:** this is **REPAIRED / REPLACING**. The current bottleneck is still `distribution_and_message_to_primary_repo_conversion`, backlink velocity is still weak, and generic directory/listing proof is lower leverage than a live comparison surface that matches how skeptical evaluators actually shop between Claude Code / Codex / aider-style options. Stronger proof was available now, so the right move was to replace the weaker trust lane instead of adding more polish or repeating another flat tactic.
+- **Expected outcome:** more high-intent evaluators click from homepage/docs/repo entry surfaces into a comparison-oriented proof page, then continue to **Codeberg** as the primary repo instead of bouncing after a generic listing check.
+- **Measurement window:** next **7 days** for crawl/behavior alignment on homepage/docs/repo entry surfaces; next **14 days through 2026-06-03** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on third-party-proof swaps and replace this with a new executable backlink/distribution action or direct curator/competitor-citation outreach.
+- **Type:** **REPAIRED / REPLACING**
+- **Docs review note:** changed surfaces = homepage + hosted docs index + first-task docs + repo entry surfaces. Why here = these are the first evaluator surfaces before install. What was pruned = one weaker generic listing was replaced, not added on top. Duplication reduced = proof links now point to review + product + comparison surfaces with clearer roles. Top-level experience is better because the trust shortcut now matches comparison intent instead of sending evaluators to a thinner listing.
