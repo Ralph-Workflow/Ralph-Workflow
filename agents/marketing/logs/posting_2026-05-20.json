@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-20T08:02:25.486607",
+  "timestamp": "2026-05-20T09:06:27.010040",
   "results": [
     {
       "draft": "2026-05-20_orchestration_draft.md",
@@ -7,6 +7,18 @@
       "status": "already_posted",
       "draft_hash": "ba6927b5e59ac56e0408be665f467675a8f4da36c3ded807a7697d83c3c0d4e2",
       "experiment_id": "2026-05-20-orchestration"
+    },
+    {
+      "date": "2026-05-20",
+      "draft": "2026-05-20_philosophy_draft.md",
+      "title": "Why AI Agents Need Structure, Not Just Prompts",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Why-AI-Agents-Need-Structure-Not-Just-Prompts-05-20",
+      "error": null,
+      "draft_hash": "ca635991957dca7fa4ae59d9a31c4cf95e372e71253e1a47e0ee4d8a78c38b2b",
+      "experiment_id": "2026-05-20-philosophy"
     },
     {
       "draft": "2026-05-20_ai-agent-workflow-composer_telegraph.md",

@@ -79,6 +79,8 @@ Add whatever helps you do your job. This is your cheat sheet.
   - Key: `~/.ssh/git_access` (ed25519)
 - **GitHub SSH:** `git@github.com:Ralph-Workflow/Ralph-Workflow.git`
   - Key: `~/.ssh/id_ed25519` (ed25519)
+- **Ralph Site SSH:** `ssh://git@git.sellogic.ai:2224/mistlight/Ralph-Site.git`
+  - Note: canonical remote for the Ralph Site repo
 
 ## Model Quick Policy
 

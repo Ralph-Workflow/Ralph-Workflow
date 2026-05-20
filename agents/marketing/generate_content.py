@@ -8,10 +8,17 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+ROOT = Path("/home/mistlight/.openclaw/workspace")
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from agents.marketing.positioning import validate_marketing_copy
 
 DRAFTS_DIR = Path("/home/mistlight/.openclaw/workspace/drafts")
 DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -314,7 +321,19 @@ def render_front_matter(metadata: dict[str, str]) -> str:
 
 def build_draft_content(topic: Topic, now: datetime) -> str:
     metadata = build_metadata(topic, now)
-    return f"{render_front_matter(metadata)}\n\n{topic.body.strip()}\n"
+    body = topic.body.strip()
+    if "operating system for autonomous coding" not in body.lower():
+        body += (
+            "\n\n## Where Ralph Workflow Fits\n\n"
+            "Ralph Workflow is the operating system for autonomous coding: a free and open-source "
+            "composable loop framework and AI orchestrator. It keeps the core loop simple, ships "
+            "with a strong default workflow for writing software, and lets you use that default "
+            "as-is or build your own workflow on top."
+        )
+    issues = validate_marketing_copy(body)
+    if issues:
+        raise RuntimeError(f"Generated draft failed positioning validation for topic {topic.slug}: {issues}")
+    return f"{render_front_matter(metadata)}\n\n{body}\n"
 
 
 def generate_draft(now: Optional[datetime] = None) -> Optional[Path]:

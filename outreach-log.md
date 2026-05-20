@@ -2962,3 +2962,45 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Measurement window: next 7 days for live homepage behavior / trust-path alignment; next 14 days for **Codeberg** stars, watchers, forks, and issue activity (through **2026-06-03**).
   - Replace if it fails: if Codeberg adoption is still flat by **2026-06-03**, stop spending the next cycle on more homepage trust-copy tweaks and replace this with a fresh executable backlink/citation/distribution surface that sends qualified traffic into the strongest Codeberg-first page.
   - Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 08:15:41
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, aisotools, comeai. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Claude Code automation Telegraph republish repair (08:24 CEST)
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** republished the missing `Claude Code automation` Telegraph asset from the existing draft `drafts/2026-05-20_claude-code-automation_telegraph.md` after the earlier backlink-plan/audit pass showed several 2026-05-20 Telegraph items had been marked done but were actually 404. Live page published at:
+  - `https://telegra.ph/Claude-Code-Automation-What-You-Can-Actually-Delegate-and-What-You-Cannot-05-20-3`
+- **Verification:** direct fetch at `2026-05-20 06:24 UTC` returned **HTTP 200** and confirmed the page body plus the closing **Codeberg primary / GitHub mirror** CTA are live.
+- **Why this action:** this is **REPAIRED / REPLACING** a failed distribution lane. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, Telegraph is the active replacement channel, and `Claude Code automation` is a high-intent evaluator phrase already targeted by the homepage/docs repairs. Republishing the missing external asset is higher leverage than another internal wording pass because it restores a real off-site discovery surface that had been falsely counted as shipped.
+- **Expected outcome:** qualified search/discovery traffic for `Claude Code automation` should now have a live external page that explains the spec-first / reviewable-finish angle and routes serious evaluators to **Codeberg first**.
+- **Measurement window:** next 7 days for Telegraph indexing / referral evidence; primary business check = next 14 days of **Codeberg** stars/watchers/issues delta (through **2026-06-03**).
+- **Replace if it fails:** if this page is live/indexed and Codeberg is still flat by **2026-06-03**, stop spending another cycle on Telegraph publication alone and shift the next replacement move to a freshly verified backlink/citation surface or a stronger public comparison/proof asset.
+
+## 2026-05-20 (Wednesday) — High-intent docs Codeberg-first CTA repair (06:47 UTC)
+- **Repaired three live high-intent docs pages that were still leaking evaluator intent away from the primary repo**: updated the owned source markdown in `Ralph-Site/docs/sphinx_overrides/{claude-code-codex-workflow,getting-started,what-a-good-ai-coding-finish-receipt-looks-like}.md`, aligned the root repo trust page `repos/Ralph-Workflow/github-mirror/docs/what-a-good-ai-coding-finish-receipt-looks-like.md`, then hot-patched the currently served HTML in `/home/mistlight/ralph_site/current/public/docs/` so the public pages now end with explicit **Codeberg-first** actions (`inspect / star / watch on Codeberg`, `file first-run friction on Codeberg`, `GitHub only as mirror`).
+  - Verification: live fetches of `https://ralphworkflow.com/docs/claude-code-codex-workflow`, `https://ralphworkflow.com/docs/getting-started`, and `https://ralphworkflow.com/docs/what-a-good-ai-coding-finish-receipt-looks-like` now show the new Codeberg-first CTA blocks. The local docs-source repair is also in place for future rebuilds.
+  - Why: this is **REPAIRED / REPLACING** a flat tactic. The active bottleneck is still `distribution_and_message_to_primary_repo_conversion`, fresh directory surfaces were blocked/dead/already used, and these are warm evaluator pages for exactly the pains Ralph Workflow solves. Leaving GitHub-only or weak generic endings here was a direct primary-repo conversion leak.
+  - Expected outcome: more qualified docs readers who already resonate with the morning-after handoff / first-run trust problem should convert into **Codeberg** repo visits, stars, watches, and first-run issues instead of drifting to the GitHub mirror or stalling after reading.
+  - Measurement window: next 7 days for docs-page click/referral evidence; next 14 days for **Codeberg** stars/watchers/issues delta (through **2026-06-03**).
+  - Replace if it fails: if Codeberg is still flat on **2026-06-03**, stop spending cycles on more owned CTA-endcap tweaks and shift the next replacement move to a fresh executable external backlink/distribution surface or warmer discussion lane.
+  - Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 08:46:46
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, aisotools, comeai. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Homepage evaluator-intent block repair for Codeberg-first conversion (06:50 UTC)
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** patched the live Ralph site homepage source at `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` to add a new above-the-fold evaluator-intent section aimed at still-uncovered search language and trust framing:
+  - `Claude Code automation`
+  - `Claude Code unattended`
+  - `AI coding workflow automation`
+  - `AI agent workflow composer`
+  - The new block explains the real finish-line problem in plain language and explicitly frames Ralph Workflow as the **open-source, Codeberg-first** option for real repo work on the user's own machine.
+  - Triggered a live app refresh with `touch /home/mistlight/ralph_site/current/tmp/restart.txt`.
+- **Verification:** direct live fetch of `https://ralphworkflow.com` after the refresh showed the new section publicly present, including the exact headings `Claude Code automation and Claude Code unattended runs` and `AI coding workflow automation and AI agent workflow composer`.
+- **Why this action:** this is **REPAIRED / REPLACING** a still-flat tactic. The audit keeps `distribution_and_message_to_primary_repo_conversion` as the primary bottleneck, and the active repair order explicitly prioritizes homepage SEO/message tuning before more low-confidence channel repetition. Directory options are either already used, blocked, or manual-gated; this homepage block was a same-run, directly executable repair that strengthens search-intent match and first-screen conversion into the primary Codeberg path.
+- **Expected outcome:** more qualified homepage visitors arriving from Claude Code / workflow-automation intent should recognize their exact problem faster, trust the positioning sooner, and continue into **Codeberg** inspection instead of bouncing or treating Ralph Workflow as another vague orchestration tool.
+- **Measurement window:** immediate check = live homepage keeps serving the new evaluator-intent block; next 7 days (**through 2026-05-27**) for crawl/snippet/internal-path pickup; primary business check = next 14 days of **Codeberg** stars/watchers/issues delta (**through 2026-06-03**).
+- **Replace if it fails:** if the live block stays up and **Codeberg** is still flat by **2026-06-03**, stop spending another cycle on homepage body wording and replace this lane with a fresh executable backlink/citation or comparison/discussion surface that can send new qualified traffic directly into the repaired Codeberg-first pages.

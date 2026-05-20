@@ -22,27 +22,25 @@ import os
 import re
 import subprocess
 import urllib.parse
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple
 
 AGENTS_DIR = Path("/home/mistlight/.openclaw/workspace/agents/marketing")
+ROOT = Path("/home/mistlight/.openclaw/workspace")
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from agents.marketing.positioning import repo_cta_footer, validate_marketing_copy
+
 LOG_DIR = AGENTS_DIR / "logs"
 DRAFTS_DIR = Path("/home/mistlight/.openclaw/workspace/drafts")
 POSTED_FILE = LOG_DIR / "posted_urls.json"
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-# CTA footer appended to every post body
-CODEBERG_PRIMARY = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
-GITHUB_MIRROR = "https://github.com/Ralph-Workflow/Ralph-Workflow"
-CTA_FOOTER = (
-    f"\n\n---\n\n"
-    f"**Ralph Workflow** — "
-    f"[View on Codeberg]({CODEBERG_PRIMARY}) (primary) · "
-    f"[GitHub mirror]({GITHUB_MIRROR}). "
-    f"Free, open-source CLI that orchestrates the coding agents you already use on your own machine."
-)
+CTA_FOOTER = repo_cta_footer()
 
 
 def load_posted() -> dict:
@@ -234,6 +232,17 @@ def main() -> int:
                 "ok": True,
                 "status": "already_posted",
                 "draft_hash": draft_hash,
+                "experiment_id": metadata.get("experiment_id"),
+            })
+            continue
+
+        issues = validate_marketing_copy(body)
+        if issues:
+            results.append({
+                "draft": draft.name,
+                "ok": False,
+                "status": "blocked_positioning_drift",
+                "issues": issues,
                 "experiment_id": metadata.get("experiment_id"),
             })
             continue
