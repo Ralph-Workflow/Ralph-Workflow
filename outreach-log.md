@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-20 (Wednesday) — Reddit monitoring (16:21 UTC / 18:21 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-20_1821.md`
+- **Scan summary:** 26 candidate Reddit threads/posts scanned, 8 shortlisted, 18 rejected.
+- **Current verdict:** Mixed — 8 credible discussion opportunities were found, but only 0-2 are honest RalphWorkflow mention fits and 0 are obvious high-confidence product mentions after prior-use, thread-type, no-product-value, and freshness filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code stuck in \"approval loop\""
+  - `r/ClaudeCode` — "How do you ACTUALLY use CC+codex?"
+  - `r/ClaudeCode` — "How are you actually running Claude Code at scale on real codebases?"
+  - `r/ClaudeCode` — "Critique my Workflow"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+- **Repeated pains worth tracking:** approval drag, morning-after review/reconstruction, review tax / verification delay, cleanup noise, worktree/setup friction that does not solve the merge question, long-run drift / archaeology, and context bloat / stale session state.
+- **Risk note:** repeat-pattern risk now includes **body rhythm** in addition to stale opener families and canned product-definition closes. Even fresher drafts can still feel robotic if they keep landing in the same 3-5 paragraph cadence.
+- **Posting note:** No posting attempted from this monitor pass. This was a research-first pass only.
+
 ## 2026-05-20 (Wednesday) — Marketing workflow audit (17:20 UTC / 19:20 CEST)
 - **Verdict: stay quiet. Infrastructure complete. One missed executable surfaced — submit ToolShelf now.**
   - Codeberg flat (9⭐ 2👁 2🍴, 0 delta across 9 samples). GitHub mirror flat (0⭐ 2👁 0🍴).
@@ -3669,3 +3683,52 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Measurement window:** immediate success = the next SEO/distribution runs keep reporting the corrected live/pending/manual inventory; business check = next 14 days (**through 2026-06-03**) for **Codeberg** stars/watchers/forks delta and any indexed-backlink movement from the real pending directory queue.
 - **Replace if it fails:** if the repaired inventory stays accurate but Codeberg is still flat and no new backlinks index by **2026-06-03**, stop spending cycles on directory-lane maintenance and replace it with warmer curator/comparison-page citation outreach or human-executed HN/Lobsters distribution.
 - **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 18:13:53
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, saashub, tools-ai-online, codaone, aisotools, comeai, toolsland, aipowerstacks. Cloudflare/auth protection blocks login.
+
+## 2026-05-20 (Wednesday) — Homepage first-task conversion-path repair (16:31 UTC / 18:31 CEST)
+- **What I executed:** rewired the live homepage CTAs and first-run section to push evaluators into the strongest free-use path instead of generic docs flow.
+  - Replaced the hero tertiary CTA with **Pick your first task** linking to `/docs/first-task-guide`.
+  - Added a new CTA pair under **What you can ship tonight**: **Pick your first task** + **Copy a prompt template**.
+  - Replaced the quick-start secondary CTA with the same first-task / prompt-template pair so the install path now stays tied to task choice.
+  - Verification: after copying the updated template to `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` and touching `tmp/restart.txt`, live fetch of `https://ralphworkflow.com/` confirmed the homepage now contains `Pick your first task`, `Copy a prompt template`, and links to `/docs/first-task-guide` + `/docs/first-task-prompt-templates`.
+- **Why this action:** this is **REPAIRED / REPLACING**. The audit still says Codeberg adoption is flat and the adoption funnel still says the bottleneck is conversion from interest to free use. Homepage SEO tuning was already shipped; the next stronger same-run repair was making the homepage route warmer traffic straight into the first-task decision and copy-paste prompt path.
+- **Expected outcome:** more homepage visitors should choose a real first task faster, reach the Codeberg-first evaluation path with less drift, and convert into primary-repo inspections or follows instead of bouncing into generic setup.
+- **Measurement window:** next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta and any evidence that homepage visitors are reaching the first-task pages more often.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on homepage CTA/path polish and shift the next replacement move to a fresh backlink / competitor-citation lane or a higher-trust external distribution surface.
+- **Type:** **REPAIRED / REPLACING**
+
+## 2026-05-20 (Wednesday) — Live homepage third-party proof-strip repair (16:38 UTC / 18:38 CEST)
+- **What I executed:** restored a missing first-screen trust surface on the actual live homepage by adding an `Independent places to inspect Ralph Workflow` strip to `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`, linking directly to the live **ToolWise** review page and **SaaSHub** product page while keeping Codeberg framed as the primary repo.
+  - Verification: touched `/home/mistlight/ralph_site/current/tmp/restart.txt`, then verified both source and public HTML. `https://ralphworkflow.com` now contains `Independent places to inspect Ralph Workflow`, `ToolWise review page`, `SaaSHub product page`, and the exact listing URLs `toolwise.ai/tools/ralph-workflow` + `saashub.com/ralph-workflow`.
+- **Why this action:** this is **REPAIRED / REPLACING**. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and the active repair path explicitly prioritizes homepage SEO/conversion plus backlink/proof work while Codeberg is flat. Earlier repo/docs proof-link repairs existed, but the live homepage itself had lost those third-party trust links, which meant skeptical first-touch visitors could still hit the owned site and never see the strongest outside proof before deciding whether to inspect Codeberg.
+- **Expected outcome:** more trust-seeking homepage visitors should click into third-party proof first, then inspect the primary Codeberg repo with less hesitation, which should improve qualified primary-repo inspection and increase the chance of Codeberg stars/watchers/forks moving.
+- **Measurement window:** next 7 days for proof-link visibility / referral evidence from the homepage; next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on homepage trust-strip polish and replace it with a warmer external citation/distribution move (curator/comparison-page outreach or human-executed HN/Lobsters).
+- **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 18:41:49
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, saashub, tools-ai-online, codaone, aisotools, comeai, toolsland, aipowerstacks. Cloudflare/auth protection blocks login.
+
+### RalphWorkflow homepage trust-surface repair
+- **When:** 2026-05-20 18:53:54 +02:00
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** added a lightweight **Independent proof** strip directly under the homepage hero CTAs in `Ralph-Site/app/views/pages/home.html.erb`, linking evaluators to three live third-party trust surfaces — ToolWise, SaaSHub, and TechTools Launchpad — before they inspect the primary **Codeberg** repo. I also updated the matching homepage request/system specs so this trust surface stays part of the page contract.
+- **Verification:** reviewed the local diff plus exact string/link checks with `git diff -- app/views/pages/home.html.erb spec/requests/pages_spec.rb spec/system/home_page_spec.rb` and `grep -n "Independent proof\|ToolWise review\|SaaSHub listing\|TechTools Launchpad" ...`, confirming the new hero proof strip and spec coverage are present. Full Rails/RSpec execution was blocked in this environment because the Ralph-Site gem bundle is not installed (`bin/rails runner` failed with `Bundler::GemNotFound`), so verification here is source-level rather than runtime.
+- **Why this action:** this is **REPAIRED / REPLACING** a failed tactic. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and broad directory submission alone has not moved Codeberg. The highest-leverage local repair left on the main conversion surface was to add immediate third-party trust proof on the homepage itself, so skeptical visitors can validate Ralph Workflow externally and then click into Codeberg with less hesitation.
+- **Expected outcome:** more qualified homepage visitors should trust the project faster, click through to the primary **Codeberg** repo with more intent, and convert at a higher rate into stars, watches, issues, or deeper repo inspection.
+- **Measurement window:** next 7 days for homepage engagement / trust-surface usage, next 14 days for **Codeberg** stars/watchers/forks/issues delta.
+- **Replace if it fails:** if Codeberg adoption is still flat through **2026-06-03**, stop spending the next cycle on homepage trust-copy polish alone and replace this lane with either a stronger public proof/demo asset on the same first screen or a warmer citation/distribution surface that can send higher-intent evaluators straight to Codeberg.
+
+## 2026-05-20 (Wednesday) — README third-party proof-link repair (17:08 UTC / 19:08 CEST)
+- **What I executed:** added a small curated `Independent places to inspect Ralph Workflow before you install` proof block to the main workspace `README.md` and the public mirror repo `repos/Ralph-Workflow/github-mirror/README.md`, pointing to the live ToolWise review page and live SaaSHub product page while keeping Codeberg as the primary repo and GitHub as the mirror.
+  - Verification: both README files now contain the ToolWise and SaaSHub links plus the Codeberg-primary wording; live fetches of `https://toolwise.ai/tools/ralph-workflow` and `https://www.saashub.com/ralph-workflow` returned HTTP `200`.
+  - Why: this is **REPAIRED / REPLACING**. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, the homepage already exposes third-party proof, and the README was still missing that trust shortcut on a first-touch repo surface. This is a higher-leverage conversion repair than another cooldown-era Reddit pass or another generic content draft.
+  - Expected outcome: more qualified repo visitors should get independent validation before bouncing, then choose the primary Codeberg repo action path with less trust friction.
+  - Measurement window: next 7 days for any evidence that proof links stay in place across repo entry surfaces; next 14 days (**through 2026-06-03**) for **Codeberg** stars/watchers/forks delta.
+  - Replace if it fails: if Codeberg is still flat through **2026-06-03**, stop spending more cycles on repo-surface proof-link tweaks and shift the next replacement move to warmer external citation/outreach or human-executed HN/Lobsters distribution.
+  - Docs review note: reviewed `README.md`, `START_HERE_RALPHWORKFLOW.md`, and confirmed there is no root `docs/README.md` in this workspace surface, so the proof block was kept small and non-duplicative instead of expanding the README into a link farm.
+- Type: **REPAIRED / REPLACING**

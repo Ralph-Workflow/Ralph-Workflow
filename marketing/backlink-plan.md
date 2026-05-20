@@ -78,3 +78,21 @@
 2. **Product Hunt launch** — best done at real launch moment with maker account
 3. **Guest post / competitor citation outreach** — when GitHub PAT becomes read-write (103 repos mention RW, 0 backlinks)
 4. **dir.cafe / similar niche directories** — worth checking if accessible
+
+## Updates — 2026-05-20 18:18 CEST
+
+### Telegraph Republished (was 404)
+- ✅ Claude Code Unattended — https://telegra.ph/Claude-Code-Unattended--What-Actually-Survives-the-Morning-05-20-4
+  - Previously 404: https://telegra.ph/Claude-Code-Unattended--What-the-Documentation-Does-Not-Tell-You-05-20
+
+### All 5 Telegraph Posts Now Live (2026-05-20 18:18 CEST)
+1. ✅ AI Agent Workflow Composer — https://telegra.ph/AI-Agent-Workflow-Composer-What-It-Actually-Means-and-Why-the-Distinction-Matters-05-20
+2. ✅ Claude Code Unattended — https://telegra.ph/Claude-Code-Unattended--What-Actually-Survives-the-Morning-05-20-4
+3. ✅ Spec-Driven AI Agents — https://telegra.ph/Spec-Driven-AI-Agents-Why-the-Handoff-Problem-Is-the-Real-Bottleneck-05-20
+4. ✅ AI Coding Workflow Automation — https://telegra.ph/AI-Coding-Workflow-Automation-That-Doesnt-Just-Move-Work-Downstream-05-20
+5. ✅ Claude Code Automation — https://telegra.ph/Claude-Code-Automation-Making-Unattended-Runs-Actually-Pay-Off-05-20
+
+### Homepage SEO — Already Done (committed & pushed 2026-05-20 18:08)
+- Title: "Unattended Coding Agent — AI Agent Orchestration CLI — Ralph Workflow" ✅ keyword-front-loaded
+- Meta description: ≤160 chars, targets primary keyword gaps ✅
+- Changes live in Ralph-Site/main, next Capistrano deploy will activate
