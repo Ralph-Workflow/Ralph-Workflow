@@ -1,11 +1,12 @@
 """AST-based policy tests enforcing the maintained structural rules.
 
-Scoped to ralph/ and tests/ only (excludes .venv, tmp/, docs/).
+Scoped to ralph/, tests/, and named repo-root standalone files (excludes .venv, tmp/, docs/).
 """
 
 from __future__ import annotations
 
 import ast
+import functools
 import io
 import tokenize
 import tomllib
@@ -20,22 +21,37 @@ RALPH_DIR = REPO_ROOT / "ralph"
 TESTS_DIR = REPO_ROOT / "tests"
 MYPY_INI_PATH = REPO_ROOT / "mypy.ini"
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
+_REPO_ROOT_STANDALONE_FILES: tuple[Path, ...] = (REPO_ROOT / "conftest.py",)
 
 _SKIP_DIRS = frozenset({"__pycache__", ".venv", "tmp"})
 _MAX_FILE_LINES = 1_000
 
 
-def _all_py_files(base: Path) -> list[Path]:
+@functools.cache
+def _all_py_files(base: Path) -> tuple[Path, ...]:
     result = []
     for path in base.rglob("*.py"):
         if any(part in _SKIP_DIRS for part in path.parts):
             continue
         result.append(path)
-    return sorted(result)
+    return tuple(sorted(result))
+
+
+@functools.cache
+def _read_path(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+@functools.cache
+def _parse_ast(path: Path) -> ast.Module | None:
+    try:
+        return ast.parse(_read_path(path))
+    except SyntaxError:
+        return None
 
 
 def _count_lines(path: Path) -> int:
-    return len(path.read_text(encoding="utf-8").splitlines())
+    return len(_read_path(path).splitlines())
 
 
 def _top_level_classes(path: Path) -> list[str]:
@@ -44,20 +60,16 @@ def _top_level_classes(path: Path) -> list[str]:
     TYPE_CHECKING-guarded classes are in ast.If body nodes, not tree.body,
     so they are naturally excluded by iterating tree.body directly.
     """
-    src = path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
+    tree = _parse_ast(path)
+    if tree is None:
         return []
     return [node.name for node in tree.body if isinstance(node, ast.ClassDef)]
 
 
 def _private_ralph_imports(path: Path) -> list[tuple[str, list[str]]]:
     """Return (module, [private_names]) for imports of private names from ralph.*."""
-    src = path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
+    tree = _parse_ast(path)
+    if tree is None:
         return []
 
     results = []
@@ -81,7 +93,7 @@ def _has_bypass_comment(path: Path) -> list[tuple[int, str]]:
 
     Uses tokenize to distinguish comment tokens from string literals.
     """
-    src = path.read_text(encoding="utf-8")
+    src = _read_path(path)
     results = []
     try:
         tokens = tokenize.generate_tokens(io.StringIO(src).readline)
@@ -160,10 +172,8 @@ def test_no_type_ignore_or_noqa_in_maintained_source() -> None:
 
 
 def _nested_classes_in_class_body(path: Path) -> list[tuple[int, str, str]]:
-    src = path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(src)
-    except SyntaxError:
+    tree = _parse_ast(path)
+    if tree is None:
         return []
     results = []
     for node in ast.walk(tree):
@@ -242,3 +252,29 @@ def test_pyproject_has_no_per_file_ignores() -> None:
         "All lint violations must be fixed, not suppressed per-file. "
         "Violations:\n" + "\n".join(violations)
     )
+
+
+def test_repo_root_standalone_py_files_structural_rules() -> None:
+    """conftest.py at repo root must satisfy structural rules identical to ralph/ and tests/.
+
+    docs/sphinx/conf.py is intentionally excluded: it is Sphinx documentation
+    tooling, not maintained application code, and the docs/ directory is
+    explicitly excluded per this module's scope.
+    """
+    violations: list[str] = []
+    for path in _REPO_ROOT_STANDALONE_FILES:
+        if not path.exists():
+            violations.append(f"Expected file not found: {path.relative_to(REPO_ROOT)}")
+            continue
+        n = _count_lines(path)
+        if n > _MAX_FILE_LINES:
+            violations.append(f"{n} lines (>{_MAX_FILE_LINES}): {path.relative_to(REPO_ROOT)}")
+        classes = _top_level_classes(path)
+        if len(classes) > 1:
+            violations.append(f"{len(classes)} classes: {path.relative_to(REPO_ROOT)}: {classes}")
+        for lineno, outer, inner in _nested_classes_in_class_body(path):
+            violations.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {outer}.{inner}")
+        for lineno, line in _has_bypass_comment(path):
+            violations.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {line}")
+    prefix = "Repo root standalone files structural violations:\n"
+    assert not violations, prefix + "\n".join(violations)
