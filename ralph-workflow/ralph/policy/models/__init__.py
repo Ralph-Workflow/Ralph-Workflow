@@ -8,6 +8,7 @@ from ralph.policy.models._artifact_history_policy import ArtifactHistoryPolicy
 from ralph.policy.models._artifact_proof_policy import ArtifactProofPolicy
 from ralph.policy.models._artifacts_policy import ArtifactsPolicy
 from ralph.policy.models._budget_counter_config import BudgetCounterConfig
+from ralph.policy.models._lifecycle_phase_policy import LifecyclePhasePolicy
 from ralph.policy.models._loop_counter_config import LoopCounterConfig
 from ralph.policy.models._phase_commit_policy import PhaseCommitPolicy
 from ralph.policy.models._phase_decision_route import PhaseDecisionRoute
@@ -19,6 +20,7 @@ from ralph.policy.models._phase_transition import PhaseTransition
 from ralph.policy.models._phase_verification_policy import PhaseVerificationPolicy
 from ralph.policy.models._phase_workflow_fallback import PhaseWorkflowFallback
 from ralph.policy.models._pipeline_policy import PipelinePolicy
+from ralph.policy.models._policy_block import GroupPolicyBlock, IndividualPolicyBlock, PolicyBlock
 from ralph.policy.models._policy_bundle import PolicyBundle
 from ralph.policy.models._post_commit_route import PostCommitRoute
 from ralph.policy.models._post_commit_route_when import PostCommitRouteWhen
@@ -36,6 +38,7 @@ __all__ = [
     "ArtifactsPolicy",
     "BudgetCounterConfig",
     "DrainName",
+    "LifecyclePhasePolicy",
     "LoopCounterConfig",
     "PhaseCommitPolicy",
     "PhaseDecisionRoute",
@@ -48,6 +51,9 @@ __all__ = [
     "PhaseVerificationPolicy",
     "PhaseWorkflowFallback",
     "PipelinePolicy",
+    "GroupPolicyBlock",
+    "IndividualPolicyBlock",
+    "PolicyBlock",
     "PolicyBundle",
     "PostCommitRoute",
     "PostCommitRouteWhen",

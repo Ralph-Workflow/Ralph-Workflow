@@ -731,6 +731,8 @@ def test_bundled_defaults_have_reviewless_phase_set() -> None:
         "development_analysis",
         "development_commit_cleanup",
         "development_commit",
+        "development_final_commit_cleanup",
+        "development_final_commit",
         "complete",
         "failed_terminal",
     }

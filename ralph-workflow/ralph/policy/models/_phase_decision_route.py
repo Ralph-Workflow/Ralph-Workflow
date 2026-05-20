@@ -12,3 +12,10 @@ class PhaseDecisionRoute(_FrozenPolicyModel):
 
     target: str = Field(...)
     reset_loop: bool = False
+    increments_counter: str | None = Field(
+        default=None,
+        description=(
+            "Budget counter key to increment when this decision route is taken. "
+            "None means no budget counter is incremented."
+        ),
+    )

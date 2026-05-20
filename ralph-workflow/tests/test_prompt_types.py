@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+<<<<<<< HEAD
+=======
+from ralph.mcp.tools.names import (
+    ARTIFACT_COORDINATE_TOOLS,
+    ARTIFACT_SUBMIT_TOOLS,
+    PLANNING_DRAFT_TOOLS,
+)
+>>>>>>> wt-120-prompt-refinement-helper
 from ralph.prompts.types import (
-    ARTIFACT_TOOLS,
     ENV_READ_TOOLS,
     GIT_DIFF_READ_TOOLS,
     GIT_STATUS_READ_TOOLS,
@@ -38,8 +45,12 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
+<<<<<<< HEAD
         Capability.ARTIFACT_PLAN_READ,
         Capability.ARTIFACT_PLAN_WRITE,
+=======
+        Capability.ARTIFACT_PLAN_SUBMIT,
+>>>>>>> wt-120-prompt-refinement-helper
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
         Capability.UPSTREAM_TOOL_USE,
@@ -55,7 +66,11 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_DIFF_READ,
         Capability.PROCESS_EXEC_BOUNDED,
         Capability.ARTIFACT_SUBMIT,
+<<<<<<< HEAD
         Capability.ARTIFACT_PLAN_READ,
+=======
+        Capability.ARTIFACT_PLAN_SUBMIT,
+>>>>>>> wt-120-prompt-refinement-helper
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
@@ -72,7 +87,11 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_DIFF_READ,
         Capability.PROCESS_EXEC_BOUNDED,
         Capability.ARTIFACT_SUBMIT,
+<<<<<<< HEAD
         Capability.ARTIFACT_PLAN_READ,
+=======
+        Capability.ARTIFACT_PLAN_SUBMIT,
+>>>>>>> wt-120-prompt-refinement-helper
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
@@ -85,7 +104,11 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
+<<<<<<< HEAD
         Capability.ARTIFACT_PLAN_READ,
+=======
+        Capability.ARTIFACT_PLAN_SUBMIT,
+>>>>>>> wt-120-prompt-refinement-helper
         Capability.RUN_REPORT_PROGRESS,
     }
 
@@ -119,6 +142,7 @@ def test_visible_mcp_tool_names_respects_enabled_capabilities() -> None:
             Capability.WORKSPACE_WRITE_TRACKED,
             Capability.PROCESS_EXEC_BOUNDED,
             Capability.ARTIFACT_SUBMIT,
+            Capability.ARTIFACT_PLAN_SUBMIT,
             Capability.RUN_REPORT_PROGRESS,
             Capability.ENV_READ,
         ]
@@ -130,7 +154,13 @@ def test_visible_mcp_tool_names_respects_enabled_capabilities() -> None:
         *GIT_DIFF_READ_TOOLS,
         *TRACKED_WRITE_TOOLS,
         *PROCESS_EXEC_TOOLS,
+<<<<<<< HEAD
         *ARTIFACT_TOOLS,
+=======
+        *ARTIFACT_SUBMIT_TOOLS,
+        *ARTIFACT_COORDINATE_TOOLS,
+        *PLANNING_DRAFT_TOOLS,
+>>>>>>> wt-120-prompt-refinement-helper
         *PROGRESS_TOOLS,
         *ENV_READ_TOOLS,
     ]

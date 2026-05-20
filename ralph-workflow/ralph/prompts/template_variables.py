@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.protocol.capability_mapping import Capability as RalphCapability
 from ralph.mcp.tools.names import (
-    ARTIFACT_TOOLS,
+    ARTIFACT_COORDINATE_TOOLS,
+    ARTIFACT_SUBMIT_TOOLS,
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
     DISCARD_PLAN_DRAFT_TOOL,
@@ -373,11 +374,11 @@ def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
         (RalphCapability.GIT_DIFF_READ, GIT_DIFF_READ_TOOLS),
         (RalphCapability.WORKSPACE_WRITE_TRACKED, TRACKED_WRITE_TOOLS),
         (RalphCapability.PROCESS_EXEC_BOUNDED, PROCESS_EXEC_TOOLS),
-        (RalphCapability.ARTIFACT_SUBMIT, ARTIFACT_TOOLS),
+        (RalphCapability.ARTIFACT_SUBMIT, ARTIFACT_SUBMIT_TOOLS),
         (RalphCapability.ARTIFACT_PLAN_READ, (GET_PLAN_DRAFT_TOOL,)),
         (
-            RalphCapability.ARTIFACT_PLAN_WRITE,
-            (SUBMIT_PLAN_SECTION_TOOL, FINALIZE_PLAN_TOOL, DISCARD_PLAN_DRAFT_TOOL),
+            RalphCapability.ARTIFACT_PLAN_SUBMIT,
+            (COORDINATE_TOOL, SUBMIT_PLAN_SECTION_TOOL, FINALIZE_PLAN_TOOL, DISCARD_PLAN_DRAFT_TOOL),
         ),
         (RalphCapability.RUN_REPORT_PROGRESS, PROGRESS_TOOLS),
         (RalphCapability.ENV_READ, ["read_env"]),

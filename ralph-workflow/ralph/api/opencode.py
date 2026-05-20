@@ -50,20 +50,46 @@ class _CatalogFetcher:
 
 
 def _parse_catalog_payload(payload: object) -> list[dict[str, object]]:
-    if not isinstance(payload, list):
-        msg = "Model catalog JSON must be a list"
-        logger.error(msg)
-        raise ValueError(msg)
+    if isinstance(payload, list):
+        parsed: list[dict[str, object]] = []
+        for entry in payload:
+            if not isinstance(entry, dict):
+                msg = "Model catalog entries must be JSON objects"
+                logger.error(msg)
+                raise ValueError(msg)
+            parsed.append({str(key): value for key, value in entry.items()})
+        return parsed
 
-    parsed: list[dict[str, object]] = []
-    for entry in payload:
-        if not isinstance(entry, dict):
-            msg = "Model catalog entries must be JSON objects"
-            logger.error(msg)
-            raise ValueError(msg)
-        parsed.append({str(key): value for key, value in entry.items()})
+    if isinstance(payload, dict):
+        parsed = []
+        for provider_key, provider_entry in payload.items():
+            if not isinstance(provider_entry, dict):
+                msg = "Model catalog provider entries must be JSON objects"
+                logger.error(msg)
+                raise ValueError(msg)
+            models = provider_entry.get("models")
+            if not isinstance(models, dict):
+                msg = "Model catalog provider entries must contain a models object"
+                logger.error(msg)
+                raise ValueError(msg)
+            for model_key, model_entry in models.items():
+                if not isinstance(model_entry, dict):
+                    msg = "Model catalog model entries must be JSON objects"
+                    logger.error(msg)
+                    raise ValueError(msg)
+                model_name = model_entry.get("name")
+                parsed.append(
+                    {
+                        "id": f"{provider_key}/{model_key}",
+                        "provider": str(provider_key),
+                        "name": str(model_name) if isinstance(model_name, str) else None,
+                    }
+                )
+        return parsed
 
-    return parsed
+    msg = "Model catalog JSON must be a list or provider map"
+    logger.error(msg)
+    raise ValueError(msg)
 
 
 fetch_catalog = _CatalogFetcher()

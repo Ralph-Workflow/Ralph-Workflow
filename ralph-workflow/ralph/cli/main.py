@@ -27,6 +27,7 @@ from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
 from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
+from ralph.cli.commands.prompt_helper import run_prompt_helper
 from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.smoke import smoke_interactive_claude_command
 from ralph.cli.options import display_agents_table, display_providers_table
@@ -329,6 +330,18 @@ def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
     console.print(text)
 
 
+def _handle_prompt_helper(
+    config: str | None,
+    cli_overrides: dict[str, object],
+) -> None:
+    """Handle --prompt-helper early-exit before pipeline."""
+    config_path = _config_path(config)
+    workspace_scope = None if config_path is not None else resolve_workspace_scope()
+    workspace_root = workspace_scope.root if workspace_scope else RuntimePath.cwd()
+    cfg = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+    run_prompt_helper(cfg, workspace_root)
+
+
 def _handle_early_exit_flags(
     *,
     version: bool,
@@ -549,6 +562,16 @@ def main(
             help="Validate the active policy and print a summary, then exit",
         ),
     ] = False,
+    prompt_helper: Annotated[
+        bool,
+        typer.Option(
+            "--prompt-helper",
+            help=(
+                "Launch interactive prompt-refinement helper. "
+                "Starts a PM-style agent that helps turn a vague idea into PROMPT.md."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation."""
     # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
@@ -645,6 +668,11 @@ def main(
     )
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
+
+    # Handle --prompt-helper before pipeline
+    if prompt_helper:
+        _handle_prompt_helper(config, cli_overrides)
+        raise typer.Exit()
 
     # If a subcommand was invoked, we're done
     if ctx.invoked_subcommand:

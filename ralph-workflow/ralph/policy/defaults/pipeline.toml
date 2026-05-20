@@ -136,7 +136,7 @@ continuation_template = "developer_iteration_continuation.jinja"
 display_style = "theme.phase.development"
 clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_analysis"]
 [phases.development.transitions]
-on_success = "development_analysis"
+on_success = "development_commit_cleanup"
 on_loopback = "development"
 [phases.development.artifact_history]
 enabled = true
@@ -163,12 +163,12 @@ enabled = true
 clear_on_fresh_entry = false
 
 [phases.development_analysis.transitions]
-on_success = "development_commit_cleanup"
+on_success = "development_final_commit_cleanup"
 on_loopback = "development"
 [phases.development_analysis.loop_policy]
 iteration_state_field = "development_analysis_iteration"
 [phases.development_analysis.decisions.completed]
-target = "development_commit_cleanup"
+target = "development_final_commit_cleanup"
 reset_loop = true
 [phases.development_analysis.decisions.request_changes]
 target = "development"
@@ -203,6 +203,36 @@ clear_on_fresh_entry = false
 on_success = "complete"
 on_failure = "failed_terminal"
 [phases.development_commit.commit_policy]
+requires_artifact = true
+skipped_advances_progress = false
+loop_resets = ["development_analysis_iteration", "commit_cleanup_iteration"]
+
+[phases.development_final_commit_cleanup]
+drain = "commit"
+role = "commit_cleanup"
+prompt_template = "commit_cleanup.jinja"
+display_style = "theme.phase.commit"
+[phases.development_final_commit_cleanup.transitions]
+on_success = "development_final_commit"
+on_loopback = "development_final_commit_cleanup"
+on_failure = "failed_terminal"
+[phases.development_final_commit_cleanup.loop_policy]
+iteration_state_field = "commit_cleanup_iteration"
+
+[phases.development_final_commit]
+drain = "development_commit"
+role = "commit"
+prompt_template = "commit_message.jinja"
+display_style = "theme.phase.development_commit"
+clear_drains_on_fresh_entry = ["development", "development_analysis"]
+[phases.development_final_commit.artifact_history]
+enabled = true
+clear_on_fresh_entry = false
+
+[phases.development_final_commit.transitions]
+on_success = "complete"
+on_failure = "failed_terminal"
+[phases.development_final_commit.commit_policy]
 requires_artifact = true
 skipped_advances_progress = true
 increments_counter = "iteration"
@@ -254,22 +284,23 @@ on_loopback = "failed_terminal"
 #   phase = "feature_commit"
 #   budget_state = "remaining"
 
+
 [[post_commit_routes]]
 target = "planning"
 [post_commit_routes.when]
-phase = "development_commit"
+phase = "development_final_commit"
 budget_state = "remaining"
 
 [[post_commit_routes]]
 target = "complete"
 [post_commit_routes.when]
-phase = "development_commit"
+phase = "development_final_commit"
 budget_state = "exhausted"
 
 [[post_commit_routes]]
 target = "complete"
 [post_commit_routes.when]
-phase = "development_commit"
+phase = "development_final_commit"
 budget_state = "no_review"
 
 # ---------------------------------------------------------------------------

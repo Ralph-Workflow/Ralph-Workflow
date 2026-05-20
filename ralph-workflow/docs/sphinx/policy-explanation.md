@@ -187,30 +187,20 @@ PHASES
     Drain      : development
     Chain      : development → agents: [claude, opencode]
     Retry      : up to 3 retries per agent, then fall back to next agent
-    On success → development_analysis
+    On success → development_commit_cleanup
     On failure → pipeline fails (no on_failure route)
     On loopback → development
 
-  Phase: development_analysis
-    Role       : analysis (agent reviews output, decides next step)
-    Drain      : development_analysis
-    Chain      : development_analysis → agents: [claude]
+  Phase: development_commit_cleanup
+    Role       : commit_cleanup (normalizes diff before commit)
+    Drain      : commit
     Retry      : up to 3 retries per agent, then fail
     On success → development_commit
-    On failure → pipeline fails (no on_failure route)
-    On loopback → development
-    Decisions:
-      completed            → development_commit
-      request_changes      → development
-      failed               → development
-    Loop       : counter='development_analysis_iteration', max=10
-Explanation: phase 'development_analysis' routes to 'development_commit' because the configured decision was 'completed'.
-Explanation: phase 'development_analysis' routes to 'development' because the configured decision was 'request_changes'.
-Explanation: phase 'development_analysis' routes to 'development' because the configured decision was 'failed'.
-Explanation: phase 'development_analysis' loops back to 'development' until 10 attempts are exhausted, after which the run terminates.
+    On failure → failed_terminal
+    On loopback → development_commit_cleanup
 
   Phase: development_commit
-    Role       : commit (agent commits changes)
+    Role       : commit (agent commits the current development pass)
     Drain      : development_commit
     Chain      : development_commit → agents: [claude]
     Retry      : up to 3 retries per agent, then fail
@@ -219,11 +209,49 @@ Explanation: phase 'development_analysis' loops back to 'development' until 10 a
     Commit     : increments 'iteration'
                  resets loop counters: ['development_analysis_iteration']
                  requires artifact: yes
-    When is commit required? When this phase is active and the agent
-      produces changes that need to be committed.
-Explanation: after commit phase 'development_commit' with budget_state 'remaining' → routes to 'planning' because the workflow policy declares this post_commit_route
-Explanation: after commit phase 'development_commit' with budget_state 'exhausted' → routes to 'complete' because the workflow policy declares this post_commit_route
-Explanation: after commit phase 'development_commit' with budget_state 'no_review' → routes to 'complete' because the workflow policy declares this post_commit_route
+Explanation: after commit phase 'development_commit' with budget_state 'remaining' → routes to 'development_analysis' because the workflow policy declares this post_commit_route
+Explanation: after commit phase 'development_commit' with budget_state 'exhausted' → routes to 'development_analysis' because the workflow policy declares this post_commit_route
+Explanation: after commit phase 'development_commit' with budget_state 'no_review' → routes to 'development_analysis' because the workflow policy declares this post_commit_route
+
+  Phase: development_analysis
+    Role       : analysis (agent reviews the committed development pass)
+    Drain      : development_analysis
+    Chain      : development_analysis → agents: [claude]
+    Retry      : up to 3 retries per agent, then fail
+    On success → development_final_commit_cleanup
+    On failure → pipeline fails (no on_failure route)
+    On loopback → development
+    Decisions:
+      completed            → development_final_commit_cleanup
+      request_changes      → development
+      failed               → development
+    Loop       : counter='development_analysis_iteration', max=10
+Explanation: phase 'development_analysis' routes to 'development_final_commit_cleanup' because the configured decision was 'completed'.
+Explanation: phase 'development_analysis' routes to 'development' because the configured decision was 'request_changes'.
+Explanation: phase 'development_analysis' routes to 'development' because the configured decision was 'failed'.
+Explanation: phase 'development_analysis' loops back to 'development' until 10 attempts are exhausted, after which the run terminates.
+
+  Phase: development_final_commit_cleanup
+    Role       : commit_cleanup (final pass before planning resumes)
+    Drain      : commit
+    Retry      : up to 3 retries per agent, then fail
+    On success → development_final_commit
+    On failure → failed_terminal
+    On loopback → development_final_commit_cleanup
+
+  Phase: development_final_commit
+    Role       : commit (final post-analysis commit before planning resumes)
+    Drain      : development_commit
+    Chain      : development_commit → agents: [claude]
+    Retry      : up to 3 retries per agent, then fail
+    On success → complete
+    On failure → failed_terminal
+    Commit     : increments 'iteration' only when it actually commits
+                 resets loop counters: ['development_analysis_iteration']
+                 requires artifact: yes
+Explanation: after commit phase 'development_final_commit' with budget_state 'remaining' → routes to 'planning' because the workflow policy declares this post_commit_route
+Explanation: after commit phase 'development_final_commit' with budget_state 'exhausted' → routes to 'complete' because the workflow policy declares this post_commit_route
+Explanation: after commit phase 'development_final_commit' with budget_state 'no_review' → routes to 'complete' because the workflow policy declares this post_commit_route
 
   Phase: complete [TERMINAL]
     Role       : terminal (pipeline ends here)

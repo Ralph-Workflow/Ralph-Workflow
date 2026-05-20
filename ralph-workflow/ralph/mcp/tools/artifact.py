@@ -48,6 +48,11 @@ from ralph.mcp.artifacts.plan import (
     save_plan_draft,
     validate_plan_section,
 )
+from ralph.mcp.artifacts.product_spec import (
+    PRODUCT_SPEC_ARTIFACT_TYPE,
+    ProductSpecValidationError,
+    normalize_product_spec_content,
+)
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
     SmokeTestResultValidationError,
@@ -95,6 +100,7 @@ _TYPED_ARTIFACT_TYPES = frozenset(
         "planning_analysis_decision",
         "review_analysis_decision",
         SMOKE_TEST_RESULT_ARTIFACT_TYPE,
+        PRODUCT_SPEC_ARTIFACT_TYPE,
     }
 )
 
@@ -817,6 +823,8 @@ def _normalize_typed_artifact_payload(
             return normalize_fix_result_content(parsed_content)
         if artifact_type == SMOKE_TEST_RESULT_ARTIFACT_TYPE:
             return normalize_smoke_test_result_content(parsed_content)
+        if artifact_type == PRODUCT_SPEC_ARTIFACT_TYPE:
+            return normalize_product_spec_content(parsed_content)
         allowed_statuses = _analysis_decision_vocabulary_for_artifact_type(
             artifact_type,
             workspace_root=workspace_root,
@@ -825,7 +833,11 @@ def _normalize_typed_artifact_payload(
             parsed_content,
             allowed_statuses=allowed_statuses,
         )
-    except (TypedArtifactValidationError, SmokeTestResultValidationError) as exc:
+    except (
+        TypedArtifactValidationError,
+        SmokeTestResultValidationError,
+        ProductSpecValidationError,
+    ) as exc:
         if workspace_root is not None:
             _raise_format_doc_error(artifact_type, workspace_root, backend, exc)
         raise InvalidParamsError(str(exc)) from exc

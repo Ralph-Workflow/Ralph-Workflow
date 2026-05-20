@@ -19,4 +19,11 @@ class PhaseCommitPolicy(_FrozenPolicyModel):
             "non-skipped commit. None means no counter is incremented."
         ),
     )
+    route_counter: str | None = Field(
+        default=None,
+        description=(
+            "Budget counter key used for post-commit routing. Defaults to "
+            "increments_counter when omitted."
+        ),
+    )
     loop_resets: list[str] = Field(default_factory=list)

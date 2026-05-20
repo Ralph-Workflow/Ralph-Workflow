@@ -504,7 +504,19 @@ def _handle_analysis_success(
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
         new_state, effects = _advance_phase(state, next_phase, policy)
-        return progress.apply_analysis_success(state, new_state, policy=policy), effects
+        progress_state = progress.apply_analysis_success(state, new_state, policy=policy)
+        phase_def = policy.phases.get(state.phase)
+        completed_route = (
+            phase_def.decisions.get("completed")
+            if phase_def is not None and phase_def.decisions is not None
+            else None
+        )
+        progress_state = progress.apply_budget_counter_increment(
+            state,
+            progress_state,
+            completed_route.increments_counter if completed_route is not None else None,
+        )
+        return progress_state, effects
     except ValueError as exc:
         return _advance_to_failed(
             state,
@@ -645,6 +657,12 @@ def _handle_analysis_decision(
                 max_iterations=max_iter,
                 review_outcome=lp.loopback_review_outcome,
             )
+
+    progress_state = progress.apply_budget_counter_increment(
+        state,
+        progress_state,
+        route.increments_counter,
+    )
 
     # Resolve target: route to terminal failure when target is the failed route,
     # otherwise advance to the declared target.

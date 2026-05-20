@@ -55,6 +55,18 @@ ralph -Q "add a /healthz endpoint"
 ralph -Q --prompt "add a /healthz endpoint"
 ```
 
+## Prompt helper
+
+The `--prompt-helper` flag launches a dedicated interactive prompt-refinement flow. Unlike the normal pipeline, this mode is simpler and does not use multi-stage workflows, drain, or fallback agents. Instead, it runs a single PM-style agent that asks you what you want to build and helps you refine the idea into a structured `PROMPT.md`.
+
+```bash
+ralph --prompt-helper
+```
+
+The helper asks follow-up questions about users, goals, constraints, success criteria, product behavior, and UX/UI expectations. It periodically shows you a polished draft and asks for review. When you approve, it writes a structured `PROMPT.md` to the workspace root.
+
+This is a simpler alternative to writing `PROMPT.md` by hand, not the standard pipeline. The resulting `PROMPT.md` can be used directly with the next `ralph` run.
+
 ## Thorough mode
 
 Use the thorough preset when you want a longer unattended run budget:

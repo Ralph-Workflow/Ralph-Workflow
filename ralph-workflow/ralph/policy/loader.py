@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 import ralph.policy
 from ralph.phases import register_role_handlers
@@ -29,7 +29,10 @@ from ralph.policy.models import (
     AgentDrainConfig,
     AgentsPolicy,
     ArtifactsPolicy,
+    GroupPolicyBlock,
+    IndividualPolicyBlock,
     PipelinePolicy,
+    PolicyBlock,
     PolicyBundle,
 )
 from ralph.policy.validation import (
@@ -84,28 +87,120 @@ _GLOBAL_POLICY_FILENAME_MAP = {
 }
 PIPELINE_POLICY_FIELDS = frozenset(
     {
+        "blocks",
+        "entry_block",
         "phases",
         "entry_phase",
         "terminal_phase",
         "loop_counters",
         "budget_counters",
         "post_commit_routes",
+        "lifecycle_phases",
         "default_phase_retry_policy",
         "recovery",
     }
 )
+_BLOCKS_ADAPTER = TypeAdapter(dict[str, PolicyBlock])
+
+
+def _phase_name_for_block(
+    block_name: str,
+    blocks: Mapping[str, PolicyBlock],
+    *,
+    path: tuple[str, ...] = (),
+) -> str:
+    block = blocks.get(block_name)
+    if block is None:
+        raise PolicyValidationError(
+            f"pipeline.toml block '{block_name}' is referenced but not defined",
+            source="pipeline",
+        )
+    if isinstance(block, IndividualPolicyBlock):
+        return block.phase_name
+    if block_name in path:
+        cycle = " -> ".join((*path, block_name))
+        raise PolicyValidationError(
+            f"pipeline.toml block graph contains a cycle: {cycle}",
+            source="pipeline",
+        )
+    if not block.child_blocks:
+        raise PolicyValidationError(
+            f"pipeline.toml group block '{block_name}' must declare at least one child_blocks entry",
+            source="pipeline",
+        )
+    return _phase_name_for_block(block.child_blocks[0], blocks, path=(*path, block_name))
+
+
+def _compile_block_pipeline_data(data: dict[str, object]) -> dict[str, object]:
+    raw_blocks = data.get("blocks")
+    if raw_blocks is None:
+        return data
+    if not isinstance(raw_blocks, Mapping):
+        raise PolicyValidationError(
+            "pipeline.toml blocks must be a mapping of block names to block definitions",
+            source="pipeline",
+        )
+
+    blocks = _BLOCKS_ADAPTER.validate_python(raw_blocks)
+    phases: dict[str, object] = {}
+    lifecycle_phases: dict[str, object] = {}
+
+    for block_name, block in blocks.items():
+        if isinstance(block, IndividualPolicyBlock):
+            if block.phase_name in phases:
+                raise PolicyValidationError(
+                    f"pipeline.toml phase_name '{block.phase_name}' is declared by more than one individual block",
+                    source="pipeline",
+                )
+            phases[block.phase_name] = block.phase
+            continue
+
+        for child_name in block.child_blocks:
+            if child_name not in blocks:
+                raise PolicyValidationError(
+                    f"pipeline.toml group block '{block_name}' references unknown child_blocks entry '{child_name}'",
+                    source="pipeline",
+                )
+        if block.completion_block not in block.child_blocks:
+            raise PolicyValidationError(
+                f"pipeline.toml group block '{block_name}' completion_block '{block.completion_block}' must also appear in child_blocks",
+                source="pipeline",
+            )
+        completion_phase = _phase_name_for_block(block.completion_block, blocks)
+        lifecycle_phases[completion_phase] = {
+            "lifecycle_name": block_name,
+            "completion_block": block.completion_block,
+            "increments_counter": block.increments_counter,
+            "loop_resets": list(block.loop_resets),
+            "before_complete": list(block.before_complete),
+            "after_complete": list(block.after_complete),
+        }
+
+    entry_block = data.get("entry_block")
+    if not isinstance(entry_block, str) or not entry_block:
+        raise PolicyValidationError(
+            "pipeline.toml block-authored policies must declare entry_block",
+            source="pipeline",
+        )
+    entry_phase = _phase_name_for_block(entry_block, blocks)
+
+    normalized = dict(data)
+    normalized["blocks"] = blocks
+    normalized["phases"] = phases
+    normalized["entry_phase"] = entry_phase
+    normalized["lifecycle_phases"] = lifecycle_phases
+    return normalized
 
 
 def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
-    """Accept legacy `[pipeline]` TOML wrappers as flat PipelinePolicy input."""
+    """Normalize pipeline data and reject obsolete authoring formats."""
     nested_pipeline = data.get("pipeline")
-    if not isinstance(nested_pipeline, Mapping):
-        return data
-
-    if PIPELINE_POLICY_FIELDS.intersection(data):
-        return data
-
-    return dict(cast("Mapping[str, object]", nested_pipeline))
+    if isinstance(nested_pipeline, Mapping) and not PIPELINE_POLICY_FIELDS.intersection(data):
+        raise PolicyValidationError(
+            "pipeline.toml uses the obsolete [pipeline] wrapper format. This redesign is a hard break; regenerate the policy with the new block-based schema.",
+            source="pipeline",
+        )
+    return _compile_block_pipeline_data(data)
 
 
 def format_validation_error_messages(exc: ValidationError) -> list[str]:
@@ -175,8 +270,9 @@ def _validate_pipeline(data: dict[str, object]) -> PipelinePolicy:
     Raises:
         PolicyValidationError: On validation failure.
     """
+    normalized = _normalize_pipeline_data(data)
     try:
-        return PipelinePolicy.model_validate(_normalize_pipeline_data(data))
+        return PipelinePolicy.model_validate(normalized)
     except ValidationError as exc:
         msgs = format_validation_error_messages(exc)
         raise PolicyValidationError(

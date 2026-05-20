@@ -373,7 +373,7 @@ class PlainLogRenderer(_PlainLogRendererBase):
             self._run_counters.thinking_blocks += 1
             if self._phase_counters is not None:
                 self._phase_counters.thinking_blocks += 1
-        elif kind == "tool_use":
+        elif kind in {"tool_use", "tool_result"}:
             self._run_counters.tool_calls += 1
             if self._phase_counters is not None:
                 self._phase_counters.tool_calls += 1

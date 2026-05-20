@@ -55,6 +55,46 @@ def test_fetch_catalog_validates_entries(monkeypatch: pytest.MonkeyPatch) -> Non
     assert catalog[1].provider == "openai"
 
 
+def test_fetch_catalog_accepts_provider_map_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        opencode.httpx,
+        "Client",
+        lambda timeout: _FakeClient(
+            lambda: _FakeResponse(
+                {
+                    "anthropic": {
+                        "id": "anthropic",
+                        "name": "Anthropic",
+                        "models": {
+                            "claude-sonnet-4": {"name": "Claude Sonnet 4"},
+                        },
+                    },
+                    "openai": {
+                        "id": "openai",
+                        "name": "OpenAI",
+                        "models": {
+                            "gpt-5": {"name": "GPT-5"},
+                            "o3": {},
+                        },
+                    },
+                }
+            )
+        ),
+    )
+
+    catalog = opencode.fetch_catalog()
+
+    assert [model.id for model in catalog] == [
+        "anthropic/claude-sonnet-4",
+        "openai/gpt-5",
+        "openai/o3",
+    ]
+    assert catalog[0].provider == "anthropic"
+    assert catalog[0].name == "Claude Sonnet 4"
+    assert catalog[2].provider == "openai"
+    assert catalog[2].name is None
+
+
 def test_fetch_catalog_caches_result(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = {"count": 0}
 

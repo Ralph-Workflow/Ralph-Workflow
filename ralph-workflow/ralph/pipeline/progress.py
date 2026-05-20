@@ -208,6 +208,17 @@ def _apply_commit_outcome_policy_driven(
     return result
 
 
+def apply_budget_counter_increment(
+    state: PipelineState,
+    advanced_state: PipelineState,
+    counter: str | None,
+) -> PipelineState:
+    """Increment a policy-declared budget counter when a lifecycle route completes."""
+    if counter is None or counter == "none":
+        return advanced_state
+    return advanced_state.with_outer_progress(counter, state.get_outer_progress(counter) + 1)
+
+
 def _tracked_budget_counters_in_commit_order(policy: PipelinePolicy) -> list[str]:
     """Return tracked budget counter names in the order their commit phases appear in BFS."""
     phases = policy.phases

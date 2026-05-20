@@ -74,6 +74,18 @@ def test_phase_close_trims_empty_produced() -> None:
     assert line.endswith(suffix), f"expected line to end with {suffix}, got: {line}"
 
 
+def test_phase_close_counts_tool_results_as_tool_calls() -> None:
+    renderer, buf = _make_renderer()
+
+    renderer.begin_phase("development_commit")
+    renderer.emit_activity_line("u", "tool_result", "tool finished")
+    renderer.emit_phase_close("development_commit", "")
+
+    out = buf.getvalue()
+    assert "tool_calls=1" in out
+    assert "errors=0" in out
+
+
 def test_phase_close_non_milestone_role_has_no_glyph() -> None:
     """Non-milestone roles (terminal, analysis) emit no glyph prefix."""
     renderer, buf = _make_renderer()

@@ -46,6 +46,9 @@ def _collect_reachable_phases(policy: PipelinePolicy) -> set[str]:
         candidates: list[str | None] = [t.on_success, t.on_failure, t.on_loopback]
         candidates.extend(phase_def.bypass_routes.values())
         candidates.extend(d.target for d in (phase_def.decisions or {}).values())
+        candidates.extend(
+            route.target for route in policy.post_commit_routes if route.when.phase == current
+        )
         v = phase_def.verification
         if v is not None and v.on_failure_route is not None:
             candidates.append(v.on_failure_route)
@@ -114,7 +117,7 @@ def _validate_post_commit_routes_complete(
     for phase_name, phase_def in policy.phases.items():
         if phase_def.role != "commit" or phase_def.commit_policy is None:
             continue
-        counter = phase_def.commit_policy.increments_counter
+        counter = phase_def.commit_policy.route_counter or phase_def.commit_policy.increments_counter
         if not counter or counter == "none":
             continue
         counter_cfg = policy.budget_counters.get(counter)

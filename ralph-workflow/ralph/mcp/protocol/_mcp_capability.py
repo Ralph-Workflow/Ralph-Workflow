@@ -34,6 +34,7 @@ class McpCapability(StrEnum):
     WEB_SEARCH = "WebSearch"
     WEB_VISIT = "WebVisit"
     MEDIA_READ = "MediaRead"
+    ARTIFACT_PLAN_SUBMIT = "ArtifactPlanSubmit"
 
 
 __all__ = ["McpCapability"]

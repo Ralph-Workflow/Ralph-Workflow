@@ -6,9 +6,11 @@ from pydantic import Field, model_validator
 
 from ralph.policy.models._budget_counter_config import BudgetCounterConfig
 from ralph.policy.models._frozen_policy_model import _FrozenPolicyModel
+from ralph.policy.models._lifecycle_phase_policy import LifecyclePhasePolicy
 from ralph.policy.models._loop_counter_config import LoopCounterConfig
 from ralph.policy.models._phase_definition import PhaseDefinition
 from ralph.policy.models._phase_retry_policy import PhaseRetryPolicy
+from ralph.policy.models._policy_block import PolicyBlock
 from ralph.policy.models._post_commit_route import PostCommitRoute
 from ralph.policy.models._recovery_policy import RecoveryPolicy
 
@@ -16,13 +18,21 @@ from ralph.policy.models._recovery_policy import RecoveryPolicy
 class PipelinePolicy(_FrozenPolicyModel):
     """Top-level pipeline.toml policy document."""
 
+    blocks: dict[str, PolicyBlock] = Field(
+        default_factory=dict,
+        description="Authoring-time block graph for block-oriented pipeline policies.",
+    )
     phases: dict[str, PhaseDefinition] = Field(
         default_factory=dict,
-        description="All phases in the pipeline graph",
+        description="All compiled runtime phases in the pipeline graph",
+    )
+    entry_block: str | None = Field(
+        default=None,
+        description="Authoring-time block where pipeline begins.",
     )
     entry_phase: str = Field(
         default="planning",
-        description="Phase where pipeline begins",
+        description="Compiled phase where pipeline begins",
     )
     terminal_phase: str = Field(
         default="complete",
@@ -45,6 +55,10 @@ class PipelinePolicy(_FrozenPolicyModel):
     post_commit_routes: list[PostCommitRoute] = Field(
         default_factory=list,
         description="Optional budget-guarded routes for commit success transitions",
+    )
+    lifecycle_phases: dict[str, LifecyclePhasePolicy] = Field(
+        default_factory=dict,
+        description="Lifecycle completion metadata keyed by compiled phase name.",
     )
     default_phase_retry_policy: PhaseRetryPolicy = Field(
         default_factory=PhaseRetryPolicy,

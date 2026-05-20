@@ -22,6 +22,7 @@ from ralph.mcp.artifacts.format_docs import (
     materialize_format_doc,
     materialize_format_index,
 )
+from ralph.mcp.artifacts.product_spec import normalize_product_spec_content
 from ralph.mcp.artifacts.smoke_test_result import normalize_smoke_test_result_content
 from ralph.mcp.artifacts.typed_artifacts import normalize_commit_cleanup_content
 from ralph.mcp.tools.artifact import handle_submit_artifact
@@ -118,7 +119,7 @@ def test_materialize_all_format_docs_materializes_every_supported_type() -> None
 
     paths = materialize_all_format_docs(workspace_root, backend=backend)
 
-    # 6 per-type docs + 1 index doc = 7
+    # Dynamic count: len(FORMAT_DOC_ARTIFACT_TYPES) per-type docs + 1 index doc
     assert len(paths) == len(FORMAT_DOC_ARTIFACT_TYPES) + 1
     for artifact_type in FORMAT_DOC_ARTIFACT_TYPES:
         expected_path = format_doc_workspace_path(artifact_type)
@@ -135,6 +136,7 @@ def test_bundled_examples_validate_through_real_normalizers(tmp_path: Path) -> N
         "development_result": normalize_development_result_content,
         "smoke_test_result": normalize_smoke_test_result_content,
         "commit_cleanup": normalize_commit_cleanup_content,
+        "product_spec": normalize_product_spec_content,
     }
     passthrough_types = {
         "issues",
@@ -201,6 +203,13 @@ def test_format_doc_mentions_required_fields() -> None:
             "actions",
             "action",
             "reason",
+        ],
+        "product_spec": [
+            "title",
+            "scope",
+            "goals",
+            "users",
+            "success_criteria",
         ],
     }
 

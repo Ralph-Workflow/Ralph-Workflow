@@ -86,13 +86,6 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
 
     state = _apply(state, PipelineEvent.AGENT_SUCCESS)
     visited_phases.append(state.phase)
-    assert state.phase == "development_analysis"
-    effect = determine_next_effect(state, bundle.pipeline, bundle.agents)
-    assert isinstance(effect, PreparePromptEffect)
-    assert effect.phase == "development_analysis"
-
-    state = _apply(state, PipelineEvent.ANALYSIS_SUCCESS)
-    visited_phases.append(state.phase)
     assert state.phase == "development_commit_cleanup"
     assert isinstance(
         determine_next_effect(state, bundle.pipeline, bundle.agents),
@@ -109,15 +102,40 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
 
     state = _apply(state, PipelineEvent.COMMIT_SUCCESS)
     visited_phases.append(state.phase)
+    assert state.phase == "development_analysis"
+    effect = determine_next_effect(state, bundle.pipeline, bundle.agents)
+    assert isinstance(effect, PreparePromptEffect)
+    assert effect.phase == "development_analysis"
+
+    state = _apply(state, PipelineEvent.ANALYSIS_SUCCESS)
+    visited_phases.append(state.phase)
+    assert state.phase == "development_final_commit_cleanup"
+    assert isinstance(
+        determine_next_effect(state, bundle.pipeline, bundle.agents),
+        CommitEffect | PreparePromptEffect,
+    )
+
+    state = _apply(state, PipelineEvent.AGENT_SUCCESS)
+    visited_phases.append(state.phase)
+    assert state.phase == "development_final_commit"
+    assert isinstance(
+        determine_next_effect(state, bundle.pipeline, bundle.agents),
+        CommitEffect | PreparePromptEffect,
+    )
+
+    state = _apply(state, PipelineEvent.COMMIT_SKIPPED)
+    visited_phases.append(state.phase)
     assert state.phase == "complete"
     assert determine_next_effect(state, bundle.pipeline, bundle.agents) == ExitSuccessEffect()
     assert visited_phases == [
         "planning",
         "planning_analysis",
         "development",
-        "development_analysis",
         "development_commit_cleanup",
         "development_commit",
+        "development_analysis",
+        "development_final_commit_cleanup",
+        "development_final_commit",
         "complete",
     ]
 

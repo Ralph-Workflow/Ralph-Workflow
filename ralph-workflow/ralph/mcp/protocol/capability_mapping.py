@@ -48,6 +48,7 @@ class Capability(StrEnum):
     WEB_SEARCH = "web.search"
     WEB_VISIT = "web.visit"
     MEDIA_READ = "media.read"
+    ARTIFACT_PLAN_SUBMIT = "artifact.plan_submit"
 
 
 MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
@@ -74,6 +75,7 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.WORKSPACE_METADATA_READ: Capability.WORKSPACE_METADATA_READ,
     McpCapability.WORKSPACE_EDIT: Capability.WORKSPACE_EDIT,
     McpCapability.WORKSPACE_DELETE: Capability.WORKSPACE_DELETE,
+    McpCapability.ARTIFACT_PLAN_SUBMIT: Capability.ARTIFACT_PLAN_SUBMIT,
 }
 
 _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
@@ -97,6 +99,7 @@ _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
     "artifact.plan_write": Capability.ARTIFACT_PLAN_WRITE,
     "workspace.edit": Capability.WORKSPACE_EDIT,
     "workspace.delete": Capability.WORKSPACE_DELETE,
+    "artifact.plan_submit": Capability.ARTIFACT_PLAN_SUBMIT,
 }
 
 _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
@@ -132,6 +135,7 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "workspace.metadata_read": McpCapability.WORKSPACE_METADATA_READ,
     "workspace.edit": McpCapability.WORKSPACE_EDIT,
     "workspace.delete": McpCapability.WORKSPACE_DELETE,
+    "artifact.plan_submit": McpCapability.ARTIFACT_PLAN_SUBMIT,
 }
 
 
@@ -455,6 +459,7 @@ def check_mcp_capability_policy(
         McpCapability.WORKSPACE_METADATA_READ,
         McpCapability.WORKSPACE_EDIT,
         McpCapability.WORKSPACE_DELETE,
+        McpCapability.ARTIFACT_PLAN_SUBMIT,
     }:
         return evaluate_mapped_capability(normalized_capability, mapped_outcome)
     return AccessDecision.deny(

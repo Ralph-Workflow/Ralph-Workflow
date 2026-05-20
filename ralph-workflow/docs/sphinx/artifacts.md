@@ -189,7 +189,7 @@ Each entry is a drain name. On genuine fresh phase entry Ralph Workflow deletes 
 
 **When clearing is suppressed:** Analysis loopbacks (planning_analysis → planning), same-phase retries, and resume (checkpoint restore).
 
-**Default pipeline behavior:** Fresh planning entry clears `planning` and `planning_analysis` drain artifacts. Fresh development entry clears `planning_analysis`, `development`, and `development_analysis` drain artifacts. Fresh development_commit entry clears `development` and `development_analysis` drain artifacts.
+**Default pipeline behavior:** Fresh planning entry clears `planning` and `planning_analysis` drain artifacts. Fresh development entry clears `planning_analysis`, `development`, and `development_analysis` drain artifacts. Fresh `development_commit` and `development_final_commit` entries both clear `development` and `development_analysis` drain artifacts so each commit phase sees only current-cycle evidence.
 
 ## Audit adapter
 

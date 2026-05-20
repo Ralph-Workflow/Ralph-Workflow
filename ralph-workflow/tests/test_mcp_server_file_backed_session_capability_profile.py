@@ -237,7 +237,14 @@ def test_file_backed_session_accepts_injected_fallback_id_factories() -> None:
 def test_build_fastmcp_server_falls_back_without_mcp_dependency(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = _session(capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress"})
+    session = _session(
+        capabilities={
+            "WorkspaceRead",
+            "ArtifactSubmit",
+            "ArtifactPlanSubmit",
+            "RunReportProgress",
+        }
+    )
 
     monkeypatch.setattr(server_runtime, "FastMCP", None)
     monkeypatch.setattr(server_runtime, "Tool", None)
