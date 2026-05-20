@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-20T02:05:36.099555",
+  "timestamp": "2026-05-20T02:50:55.146137",
   "results": [
     {
       "draft": "2026-05-20_orchestration_draft.md",
@@ -9,28 +9,54 @@
       "experiment_id": "2026-05-20-orchestration"
     },
     {
-      "date": "2026-05-20",
       "draft": "2026-05-20_ai-agent-workflow-composer_telegraph.md",
-      "title": "AI Agent Workflow Composer: What It Actually Means and Why the Distinction Matters",
-      "platform": "telegraph",
       "ok": true,
-      "status": "posted",
-      "url": "https://telegra.ph/AI-Agent-Workflow-Composer-What-It-Actually-Means-and-Why-the-Distinction-Matters-05-20",
-      "error": null,
+      "status": "already_posted",
       "draft_hash": "c5be97340566aca5bba2d79e20f5ac0a0f82ce2a830cb582d63ec0eeeda19596",
       "experiment_id": null
     },
     {
       "date": "2026-05-20",
-      "draft": "2026-05-20_claude-code-unattended_telegraph.md",
-      "title": "Run Claude Code Unattended \u2014 What the Documentation Does Not Tell You",
+      "draft": "2026-05-20_ai-coding-workflow-automation_telegraph.md",
+      "title": "AI Coding Workflow Automation: What Actually Makes It Useful",
       "platform": "telegraph",
       "ok": true,
       "status": "posted",
-      "url": "https://telegra.ph/Run-Claude-Code-Unattended--What-the-Documentation-Does-Not-Tell-You-05-20",
+      "url": "https://telegra.ph/AI-Coding-Workflow-Automation-What-Actually-Makes-It-Useful-05-20",
       "error": null,
+      "draft_hash": "c29deb08f114433d4f52667bd622366952a465fbba927632cfc746b765b91c24",
+      "experiment_id": "2026-05-20-ai-workflow-automation"
+    },
+    {
+      "date": "2026-05-20",
+      "draft": "2026-05-20_claude-code-automation_telegraph.md",
+      "title": "Claude Code Automation: What You Can Actually Delegate and What You Cannot",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Claude-Code-Automation-What-You-Can-Actually-Delegate-and-What-You-Cannot-05-20",
+      "error": null,
+      "draft_hash": "e25acf55fb121327f400e9e5f4950fe6adcc21cfd557164dad9fc1e7b43640ad",
+      "experiment_id": "2026-05-20-claude-automation"
+    },
+    {
+      "draft": "2026-05-20_claude-code-unattended_telegraph.md",
+      "ok": true,
+      "status": "already_posted",
       "draft_hash": "3f9341f2ee15b435ca8938036d2f4ffe9cdf523306a6874fd5e00cc78adbc50a",
       "experiment_id": null
+    },
+    {
+      "date": "2026-05-20",
+      "draft": "2026-05-20_spec-driven-ai-agent_telegraph.md",
+      "title": "Spec-Driven AI Agent: Why the Spec Is the Most Important Part of the Loop",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Spec-Driven-AI-Agent-Why-the-Spec-Is-the-Most-Important-Part-of-the-Loop-05-20",
+      "error": null,
+      "draft_hash": "5d2c747e90b89eeab81739fdd879b8e6d0eb09f975932ccf004bee08ac6be2c7",
+      "experiment_id": "2026-05-20-spec-driven"
     }
   ]
 }

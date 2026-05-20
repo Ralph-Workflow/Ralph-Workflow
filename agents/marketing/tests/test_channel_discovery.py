@@ -84,6 +84,37 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "noop_submit_surface")
         self.assertIn("client-side only", note)
 
+    def test_classifies_captcha_submit_surface_as_non_autonomous(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {
+                "probe_status": "ok",
+                "form_count": 1,
+                "input_count": 5,
+                "textarea_count": 1,
+                "select_count": 1,
+                "body_excerpt": "Submit your AI tool\nTool Name\nDescription\nContact Email",
+                "forms": [
+                    {
+                        "action": None,
+                        "method": None,
+                        "control_count": 7,
+                        "named_control_count": 4,
+                    }
+                ],
+            },
+            {
+                "probe_status": "ok",
+                "has_captcha_markers": True,
+                "has_network_submission_markers": True,
+            },
+            {
+                "probe_status": "ok",
+                "public_submit_detected": False,
+            },
+        )
+        self.assertEqual(status, "captcha_blocked")
+        self.assertIn("captcha", note.lower())
+
     def test_submission_probe_gate_only_triggers_for_real_submit_pages(self):
         self.assertTrue(channel_discovery.submission_surface_needs_form_probe(
             "https://www.toolhunter.cc/submit",

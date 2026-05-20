@@ -27,7 +27,8 @@
     "toolshelf",
     "agentdepot",
     "toolwise",
-    "aitoolsindex"
+    "aitoolsindex",
+    "tools-ai-online"
   ],
   "results": [
     {
@@ -494,6 +495,59 @@
         "post_body": "Method Not Allowed",
         "public_submit_detected": false
       }
+    },
+    {
+      "name": "tools-ai-online",
+      "url": "https://www.tools-ai.online/submit-tool",
+      "method": "submit",
+      "difficulty": "medium",
+      "timestamp": "2026-05-20T03:19:30.219760",
+      "http_code": "200",
+      "final_url": "https://www.tools-ai.online/submit-tool",
+      "status": "captcha_blocked",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 1,
+        "input_count": 285,
+        "textarea_count": 2,
+        "select_count": 1,
+        "body_excerpt": "Online Tools\nCategories\nAdded Today\nNews\nAbout\nContact Us\nSubmit Tool\nFeature Your Tool\nSubmit Your AI Tool\n\nShare your innovative AI tools with our community. Submit your tool today and help others discover your powerful solutions for better efficiency and productivity!\n\nTool Name *\nWebsite URL *\nTool Description *\n\nSupports Markdown formatting: **bold**, *italic*, [links](url), `code`, lists, etc.\n\nCharacters: 0\nCategories *\n\nChoose up to 3 categories.\n\nSelect categories\nTags *\n\nChoose up to 5 tags.\n\nSelect tags\nPricing *\nSelect Pricing\nFree\nFreemium\nGitHub\nGoogle Colab\nOpen Source\nOther\nPaid\nContact Email *\n\nWe\u275bll notify you when your submission is reviewed\n\nTool Icon (optional)\n\nDrag & drop your tool icon here or click to browse\n\nRecommended: 512x512px, PNG or SVG (Max: 2MB)\n\nFeatured ",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "Tool Name *\nWebsite URL *\nTool Description *\n\nSupports Markdown formatting: **bold**, *italic*, [links](url), `code`, lists, etc.\n\nCharacters: 0\nCategories *\n\nChoose up to 3 categories.\n\nSelect categories\nTags *\n\nChoose up to 5 tags.\n\nSelect tags\nPricing *\nSelect Pricing\nFree\nFreemium\nGitHub\nGoogle ",
+            "control_count": 8,
+            "named_control_count": 5
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 17,
+        "same_origin_script_count": 17,
+        "scripts_fetched": 12,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 0,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": false,
+        "has_captcha_markers": true,
+        "has_mailto_submission_markers": true,
+        "has_issue_handoff_markers": false
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://www.tools-ai.online/api/submit",
+        "get_code": 404,
+        "post_code": 404,
+        "post_body": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/0c85235b60c0b9a0.css\" da",
+        "public_submit_detected": false
+      },
+      "note": "submission requires a CAPTCHA-backed browser flow, not an autonomous public API"
     }
   ],
   "working": [

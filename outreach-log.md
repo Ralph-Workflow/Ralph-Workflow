@@ -1,5 +1,14 @@
 # Outreach Log
 
+## 2026-05-20 (Wednesday) — Tools AI Online false-positive distribution repair (01:19 UTC)
+- **Repaired the channel-discovery queue so it stops treating `tools-ai.online` as an executable backlink lane**: revalidated `https://www.tools-ai.online/submit-tool`, confirmed the shipped client depends on a CAPTCHA-backed browser flow (`grecaptcha` / `executeAsync`) with no autonomous public submit API, updated `agents/marketing/channel_discovery.py` to classify that pattern as `captcha_blocked`, added a regression test for CAPTCHA-gated submit surfaces, reran the targeted discovery probe, and rewrote the discovery log so `tools-ai-online` is no longer counted as actionable.
+  - Verification: `python3 -m unittest agents.marketing.tests.test_channel_discovery -v` passed (`10` tests). Fresh targeted probe now records `tools-ai-online` as `captcha_blocked` with note `submission requires a CAPTCHA-backed browser flow, not an autonomous public API`, and `build_working_channels(...)` no longer includes it.
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The audit still says the live bottleneck is `distribution_and_message_to_primary_repo_conversion`, but the loop had stale local memory implying `tools-ai-online` was an executable directory surface. That false positive would keep burning cycles on a blocked lane instead of the remaining real Codeberg-first distribution options. Fixing the queue was the highest-leverage same-run action once duplicate directory submissions and weak Reddit reuse were already ruled out.
+  - Expected outcome: future marketing loops should spend less time retrying CAPTCHA-gated submit surfaces and more time on truly executable Codeberg-routable distribution or conversion repairs.
+  - Measurement window: immediate success = future discovery runs keep `tools-ai-online` out of actionable channels; business check = next 14 days of **Codeberg** stars/watchers/issues movement (**through 2026-06-03**) because loop time should stay focused on real channels.
+  - Replace if it fails: if discovery still resurfaces CAPTCHA-gated false positives or Codeberg is still flat by **2026-06-03**, stop treating discovery cleanup alone as enough and shift the next move to a fresh verified external backlink/distribution surface or another direct conversion repair on owned Codeberg-first pages.
+  - Type: **REPAIRED / REPLACING**
+
 ## 2026-05-20 (Wednesday) — Marketing loop audit assessment (01:39 UTC)
 - **Verdict: infrastructure repairs shipped; backlink velocity is the remaining blocker.**
   - Codeberg still flat (9⭐ 2👁 2🍴, 0 delta in measurement window). GitHub mirror flat too.
@@ -2217,6 +2226,18 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Type:** CONTINUED / REPAIRED / REPLACING
 - **What I executed:** strengthened the Reddit autopost repair so the `approval` and `run until done` paths stop drifting back toward the stale handoff/diff/checks cadence that the latest audit still flagged. I replaced those category variants with fresher thread-native openings built around landing-state clarity (`finished code`, `tested code`, `what changed`, `what passed`, `would you merge it?`), expanded the recent-body comparison window from `5` to `8`, and added regression coverage for both thread types.
   - Files: `agents/marketing/reddit_autopost.py`, `agents/marketing/tests/test_reddit_autopost.py`
+
+### RalphWorkflow AIToolsMagic directory submission repair
+- **When:** 2026-05-20 02:34 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** submitted Ralph Workflow to AIToolsMagic's live public submission backend as a fresh developer-directory discovery surface, using **Codeberg as the primary listing URL**.
+  - Submission path: `POST https://formspree.io/f/mnjbbgdg` via `https://aitoolsmagic.com/submit-tool`
+  - Payload used: `toolName: Ralph Workflow`, `websiteURL: https://codeberg.org/RalphWorkflow/Ralph-Workflow`, `category: Code & Developer`, `pricingType: Free`
+- **Verification:** the live submission returned HTTP `200` with `{"next":"/thanks","ok":true}`.
+- **Why this action:** the latest audit still marks `distribution_and_message_to_primary_repo_conversion` as the main bottleneck and explicitly prioritizes replacing flat tactics with executable backlink/directory repairs. AIToolsMagic exposed a real submit backend from this environment, unlike several recent dead or blocked surfaces, and it allowed a **Codeberg-first** destination instead of forcing a homepage-only URL.
+- **Expected outcome:** if approved, AIToolsMagic should create a new qualified discovery path that sends evaluators straight to the primary Codeberg repo rather than the GitHub mirror.
+- **Measurement window:** next 7 days for listing approval / live discoverability; next 14 days for Codeberg stars/watchers delta.
+- **Replace if it fails:** if the listing is approved or indexed and Codeberg stars/watchers are still flat by `2026-06-03`, stop prioritizing one-off directory submissions and shift the next replacement move to a stronger conversion repair or warmer distribution surface.
 - **Verification:** `python3 -m unittest /home/mistlight/.openclaw/workspace/agents/marketing/tests/test_reddit_autopost.py` ✅ (`21` tests passed). I also rendered a sample `run until done` reply and confirmed it no longer uses the banned opener or the old `readable diff / sketchy note` body.
 - **Why this action:** this is **CONTINUED / REPAIRED / REPLACING** a failing tactic. The freshest audit still shows `repetitive_outreach` and a repeated opener on live Reddit comments, which means the earlier repair was not strong enough for the exact thread shapes now appearing. Tightening the generator again was the highest-leverage viable local fix still pending in this run.
 - **Expected outcome:** the next safe Reddit replies should read less templated, stop triggering repeated-opening audits, and preserve warmer trust for Codeberg-first product mentions when a thread is a real fit.
@@ -2633,3 +2654,32 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Measurement window:** next 7 days for repo-native evaluator-path usage / referral clues; next 14 days for **Codeberg** stars/watchers/issues delta.
 - **Replace if it fails:** if Codeberg stars/watchers/issues are still flat through `2026-06-03`, stop spending the next cycle on more first-run path polish and replace this lane with a fresh external distribution or competitor-citation move that sends net-new evaluators directly into the strongest Codeberg-first proof surface.
 - **Docs review note:** added the missing first-task guide to the three top evaluator surfaces (`README.md` → `START_HERE.md` → `docs/README.md`) because task choice sits closer to free-use conversion than another comparison page. I reused existing hosted-docs content instead of creating a second long explanation, so duplication stayed limited to one repo-root page that serves a distinct Codeberg-first job. No top-level link farm was added; one direct link was inserted where evaluators already decide whether to try Ralph Workflow at all. The top-level experience is better because the shortest path from “this sounds interesting” to “here is the right first task” is now visible on the repo itself.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 02:18:50
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### RalphWorkflow homepage SEO wording repair
+- **When:** 2026-05-20 02:27 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** tightened the hosted homepage source metadata around the exact high-intent phrases the audit called out by updating `ralph-workflow/docs/sphinx/index.rst` and `ralph-workflow/docs/sphinx/_themes/ralph-docs/page.html`.
+  - Title changed from `Free AI Agent Orchestration CLI | Ralph Workflow` to `Free unattended coding agent & AI agent orchestration CLI | Ralph Workflow`.
+  - Description now says Ralph Workflow is a **free and open-source unattended coding agent and AI agent orchestration CLI** and tells evaluators to run **one real backlog task** on their own machine and wake up to reviewable output.
+  - JSON-LD schema copy now repeats the same pairing (`unattended coding agent` + `AI agent orchestration CLI`) and adds the morning-after reviewable-output promise.
+  - Verification: `make docs` succeeded in `repos/Ralph-Workflow/github-mirror/ralph-workflow`, and the rendered `docs/sphinx/_build/html/index.html` now contains the new `<title>`, description, and schema text.
+- **Why this action:** this is **REPAIRED / REPLACING** a failing tactic. The audit's active repair order explicitly includes homepage title/description SEO tuning, while Codeberg adoption is still flat and Reddit is on repetition/cooldown risk. The live homepage was already decent, so the viable same-run improvement was not a broad rewrite — it was tightening the exact source-controlled title/meta/schema wording so the homepage captures both core keyword intents and points them at the Codeberg-first evaluation path.
+- **Expected outcome:** more qualified search/discovery traffic for `unattended coding agent` and `AI agent orchestration CLI`, plus clearer fit/why-now understanding for homepage visitors, which should increase **Codeberg** repo inspections and eventually stars/watchers/issues.
+- **Measurement window:** next 7 days for search snippet/indexing pickup; next 14 days for **Codeberg** stars/watchers/forks/issues delta (through `2026-06-03`).
+- **Replace if it fails:** if Codeberg is still flat on `2026-06-03`, stop spending the next loop on homepage wording alone and replace this lane with the next executable external trust/backlink move that can send warmer evaluators directly into the repaired Codeberg-first surfaces.
+- **Docs review note:** reviewed the public evaluator journey across `README.md` → `START_HERE.md` → `docs/README.md` before touching the hosted homepage source. I kept those repo-root surfaces untouched because they already contain in-flight edits and because this repair belongs on the hosted homepage metadata layer, not as more top-level copy sprawl. The top-level experience is better because the SEO wording is now tighter without adding another branch or link cluster.
+
+### RalphWorkflow website refresh — 2026-05-20 (00:28 UTC)
+- **What changed:** two new content sections added since the last site review (2026-05-19 18:18 UTC). No directional change detected.
+- **New: "What you can ship tonight"** — nine specific task types listed with one-line descriptions: feature, testing, refactor, internal tool, cleanup, API, documentation, migration, bug fix. Concrete and actionable; mirrors well into Reddit replies that match one of these shapes.
+- **New: Competitive comparison table** — Ralph Workflow vs Aider, Hermes, Conductor with ✓/~ on: runs completely unattended, plans before writing, verifies and retries, finished code ready to merge, open source, no subscription. First named competitive set on the homepage; use as a factual anchor in comparison threads rather than implying these tools are equivalent.
+- **Core messaging intact:** three-phase flow (Sharpen → Build/verify/fix → Land reviewable result), overnight promise, PR-review framing, "would you merge it?" evaluation, and "Other AI tools give you a start. Ralph Workflow gives you a finish." all confirmed live.
+- **REDDIT_LEARNINGS updated** with both new sections.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 02:42:31
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
