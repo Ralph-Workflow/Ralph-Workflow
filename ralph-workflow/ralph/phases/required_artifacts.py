@@ -18,6 +18,7 @@ from ralph.mcp.artifacts.typed_artifacts import (
     normalize_fix_result_content,
     normalize_issues_content,
 )
+from ralph.recovery.retry_prompt import build_retry_error_block
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -133,14 +134,18 @@ def build_retry_hint(
     """
     ra = registry.get(phase) if registry is not None else None
     if ra is None:
-        return (
-            f"PREVIOUS ATTEMPT FAILED: The agent did not submit the required "
-            f"artifact before declaring completion.\n\nDetails: {detail}"
+        return build_retry_error_block(
+            failure_summary=(
+                "the required artifact was not submitted before completion was declared"
+            ),
+            detail=detail,
         )
-    return (
-        f"PREVIOUS ATTEMPT FAILED: The agent did not submit the required "
-        f"'{ra.artifact_type}' artifact at '{ra.json_path}' before declaring completion.\n\n"
-        f"Details: {detail}"
+    return build_retry_error_block(
+        failure_summary=(
+            f"required artifact '{ra.artifact_type}' at '{ra.json_path}' "
+            "was not submitted or was invalid"
+        ),
+        detail=detail,
     )
 
 
@@ -163,9 +168,9 @@ def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str
 
 def build_proof_failure_hint(phase: str, detail: str) -> str:
     """Build a retry hint for a phase that submitted proof but failed validation."""
-    return (
-        f"PREVIOUS ATTEMPT FAILED: The agent submitted the artifact but the proof "
-        f"entries are incomplete or invalid.\n\nDetails: {detail}"
+    return build_retry_error_block(
+        failure_summary="proof entries are incomplete or invalid",
+        detail=detail,
     )
 
 

@@ -201,10 +201,8 @@ def test_steps_plan_fails_when_no_proof_is_submitted() -> None:
     assert failure_events[0].failure_category == FailureCategory.ARTIFACT_VALIDATION
     assert "PROOF INCOMPLETE" in failure_events[0].reason
     hint = workspace.read(".agent/tmp/last_retry_error_development.txt")
-    assert hint.startswith(
-        "PREVIOUS ATTEMPT FAILED: The agent submitted the artifact "
-        "but the proof entries are incomplete or invalid."
-    )
+    assert hint.splitlines()[0] == "ERROR RECOVERY REQUIRED"
+    assert "PREVIOUS ATTEMPT FAILED: proof entries are incomplete or invalid" in hint
 
 
 def test_proof_failure_preserves_same_session_via_recovery_controller() -> None:

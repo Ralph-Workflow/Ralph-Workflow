@@ -22,6 +22,7 @@ Why use it now? Because you can install it in minutes, hand it one real backlog 
 - [Choose Your First Ralph Workflow Task](docs/first-task-guide.md)
 - [Getting Started with Ralph Workflow](docs/sphinx/getting-started.md)
 - [Quickstart reference](docs/sphinx/quickstart.md)
+- [Sphinx docs source](docs/sphinx/README.md)
 - [AI Agent Orchestration CLI](docs/ai-agent-orchestration-cli.md)
 - [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md)
 - [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md)
@@ -42,7 +43,7 @@ Ralph Workflow is for when you need more than that:
 - **repo-native execution** instead of hidden product state
 - **real verification** as part of the workflow, not an afterthought
 
-This is why Ralph Workflow is not just “another agent wrapper.” It is an orchestration system built to scale the simple Ralph-loop idea into real software workflows.
+This is why Ralph Workflow is not just “another agent wrapper.” It is an orchestration system built to scale the simple Ralph Workflow loop idea into real software workflows.
 
 ## A fast way to tell whether Ralph Workflow fits
 

@@ -30,6 +30,7 @@ from ralph.phases.artifacts import (
     unwrap_phase_artifact_content,
 )
 from ralph.phases.required_artifacts import (
+    build_required_artifacts,
     build_retry_hint,
     resolve_required_artifact,
     retry_hint_path,
@@ -169,6 +170,10 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
             logger.info("Analysis phase '{}': plan is a no-op — skipping analysis", phase_name)
             return [AnalysisDecisionEvent(phase=phase_name, decision="completed")]
 
+        try:
+            registry = build_required_artifacts(ctx.artifacts_policy)
+        except AttributeError:
+            registry = None
         ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
         artifact_path = (
             ra.json_path if ra is not None else f".agent/artifacts/{drain_name}_decision.json"
@@ -187,7 +192,7 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
             with suppress(Exception):
                 ctx.workspace.write(
                     retry_hint_path(phase_name),
-                    build_retry_hint(phase_name, detail),
+                    build_retry_hint(phase_name, detail, registry=registry),
                 )
             return [artifact_validation_failure_event(phase=phase_name, reason=detail)]
 

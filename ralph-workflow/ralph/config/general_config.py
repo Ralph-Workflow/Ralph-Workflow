@@ -40,7 +40,7 @@ class GeneralConfig(RalphBaseModel):
     git_user_name: str | None = None
     git_user_email: str | None = None
     provider_fallback: dict[str, list[str]] = Field(default_factory=dict)
-    max_same_agent_retries: int = Field(default=2, ge=0)
+    max_same_agent_retries: int = Field(default=10, ge=0)
     max_commit_residual_retries: int = Field(default=10, ge=0)
     max_retries: int = Field(default=3, ge=0)
     retry_delay_ms: int = Field(default=1000, ge=0)

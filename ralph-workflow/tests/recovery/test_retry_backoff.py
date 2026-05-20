@@ -16,12 +16,14 @@ from ralph.policy.models import (
     PolicyBundle,
 )
 from ralph.recovery.budget import AgentBudgetRegistry
+from ralph.recovery.classified_failure import ClassifiedFailure
 from ralph.recovery.controller import (
     FailureContext,
     RecoveryController,
     RecoveryControllerOptions,
     compute_backoff_ms,
 )
+from ralph.recovery.failure_category import FailureCategory
 
 # Test constants for backoff computation
 _BASE_MS = 1000
@@ -426,3 +428,43 @@ def test_zero_retry_delay_skips_sleep() -> None:
     asyncio.run(_simulate_retry())
 
     assert sleep_calls == []  # No sleep when delay is 0
+
+
+def test_artifact_validation_retry_uses_global_technical_retry_cap() -> None:
+    bundle = _make_bundle_with_retry_delay(agents=["claude", "opencode"], max_retries=99)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            policy_bundle=bundle,
+            technical_retry_cap=2,
+        )
+    )
+    state = PipelineState(
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(
+                agents=["claude", "opencode"],
+                current_index=0,
+                retries=2,
+            )
+        },
+    )
+    failure = ClassifiedFailure(
+        category=FailureCategory.ARTIFACT_VALIDATION,
+        reason="Artifact validation fault: Missing required artifact",
+        attributed_agent=None,
+        attributed_phase="development",
+        counts_against_budget=False,
+        original_exception=None,
+        raw_message="Missing required artifact",
+    )
+
+    new_state, _, evt = controller.handle(
+        state,
+        "Missing required artifact",
+        FailureContext(phase="development", agent="claude", classified_failure=failure),
+    )
+
+    assert evt.category == "artifact_validation"
+    assert new_state.chain_for_phase("development").current_index == 1
+    assert new_state.chain_for_phase("development").retries == 0

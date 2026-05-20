@@ -44,6 +44,7 @@ from ralph.phases.artifacts import (
 from ralph.phases.required_artifacts import (
     build_missing_input_hint,
     build_proof_failure_hint,
+    build_required_artifacts,
     build_retry_hint,
     resolve_phase_required_artifact,
     resolve_required_artifact,
@@ -292,7 +293,15 @@ def _validate_output_artifact(
 
 def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
     hint_path = retry_hint_path(phase)
-    hint = build_retry_hint(phase, detail)
+    try:
+        registry = build_required_artifacts(ctx.artifacts_policy)
+    except AttributeError:
+        registry = None
+    hint = build_retry_hint(
+        phase,
+        detail,
+        registry=registry,
+    )
     with suppress(Exception):
         ctx.workspace.write(hint_path, hint)
 

@@ -95,6 +95,7 @@ class RecoveryController:
         self._registry = opts.budget_registry or AgentBudgetRegistry()
         self._policy_bundle = opts.policy_bundle
         self._backoff_attempts: dict[str, int] = opts.backoff_attempts or {}
+        self._technical_retry_cap = max(0, opts.technical_retry_cap)
 
     @property
     def event_bus(self) -> FailureEventBus:
@@ -163,8 +164,15 @@ class RecoveryController:
                 phase,
                 failure.reason[:200],
             )
-            # Environmental failures retry immediately without debiting budget or retries.
-            return new_state.copy_with(last_error=failure.reason), [], failure_evt
+            new_state = new_state.copy_with(last_error=failure.reason)
+            new_state, effects = self._handle_technical_retry_exhaustion(
+                new_state,
+                failure,
+                phase,
+                agent,
+                retry_in_session=retry_in_session,
+            )
+            return new_state, effects, failure_evt
 
         if failure.category in (
             FailureCategory.ARTIFACT_VALIDATION,
@@ -181,12 +189,15 @@ class RecoveryController:
                 phase,
                 failure.reason[:200],
             )
-            # Non-budget retries track retry count and may preserve session.
             new_state = new_state.copy_with(last_error=failure.reason)
-            new_state = self._increment_chain_retries(new_state, phase)
-            if retry_in_session and new_state.last_agent_session_id:
-                new_state = new_state.copy_with(session_preserve_retry_pending=True)
-            return new_state, [], failure_evt
+            new_state, effects = self._handle_technical_retry_exhaustion(
+                new_state,
+                failure,
+                phase,
+                agent,
+                retry_in_session=retry_in_session,
+            )
+            return new_state, effects, failure_evt
 
         if failure.category == FailureCategory.USER_CONFIG:
             logger.error(
@@ -246,6 +257,25 @@ class RecoveryController:
         if chain is None:
             return state
         return state.with_phase_chain(phase, chain.with_retry_increment())
+
+    def _handle_technical_retry_exhaustion(
+        self,
+        state: PipelineState,
+        failure: ClassifiedFailure,
+        phase: str,
+        agent: str | None,
+        *,
+        retry_in_session: bool = False,
+    ) -> tuple[PipelineState, list[Effect]]:
+        return self._handle_retry_progression(
+            state,
+            failure,
+            phase,
+            agent,
+            retry_in_session=retry_in_session,
+            max_retries=self._technical_retry_cap,
+            use_budget=False,
+        )
 
     def _apply_chain_retry(
         self,
@@ -332,6 +362,27 @@ class RecoveryController:
         retry_in_session: bool = False,
     ) -> tuple[PipelineState, list[Effect]]:
         """Handle agent failure with budget debit and chain progression."""
+        return self._handle_retry_progression(
+            state,
+            failure,
+            phase,
+            agent,
+            retry_in_session=retry_in_session,
+            max_retries=self._get_max_retries_for_chain(phase),
+            use_budget=True,
+        )
+
+    def _handle_retry_progression(
+        self,
+        state: PipelineState,
+        failure: ClassifiedFailure,
+        phase: str,
+        agent: str | None,
+        *,
+        retry_in_session: bool,
+        max_retries: int,
+        use_budget: bool,
+    ) -> tuple[PipelineState, list[Effect]]:
         chain = state.chain_for_phase(phase)
         if chain is None:
             return state, []
@@ -341,12 +392,10 @@ class RecoveryController:
             if chain.agents and chain.current_index < len(chain.agents)
             else None
         )
-
-        # Get max_retries from policy if available
-        max_retries = self._get_max_retries_for_chain(phase)
-
         budget_state = (
-            self._registry.get(phase, current_agent) if current_agent is not None else None
+            self._registry.get(phase, current_agent)
+            if use_budget and current_agent is not None
+            else None
         )
         should_retry_in_chain = current_agent is not None and (
             (budget_state is not None and not budget_state.exhausted)
@@ -377,17 +426,12 @@ class RecoveryController:
 
             new_state = (
                 state.with_phase_chain(phase, chain.with_advance())
-                .copy_with(
-                    # Fallover: reset retry delay for new agent
-                    last_retry_delay_ms=0,
-                )
+                .copy_with(last_retry_delay_ms=0)
                 .with_fallover_record(fallover_record)
             )
             return new_state, []
 
-        new_state = state.copy_with(
-            recovery_cycle_count=state.recovery_cycle_count + 1,
-        )
+        new_state = state.copy_with(recovery_cycle_count=state.recovery_cycle_count + 1)
         failed_state = self._enter_phase_failed(new_state, failure.reason, failure.category)
         return failed_state, []
 
@@ -412,6 +456,7 @@ class RecoveryController:
                 for (phase, agent), budget in self._registry.items()
             },
             "backoff_attempts": dict(self._backoff_attempts),
+            "technical_retry_cap": self._technical_retry_cap,
         }
 
     def _enter_phase_failed(

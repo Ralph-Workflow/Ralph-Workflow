@@ -320,6 +320,7 @@ def _emit_post_loop_result(
 def _build_recovery_controller(
     state: PipelineState,
     policy_bundle: PolicyBundle,
+    config: UnifiedConfig,
 ) -> tuple[RecoveryController, int]:
     """Build recovery controller from policy bundle; return (controller, cycle_cap)."""
     _cycle_cap: int = 200
@@ -327,11 +328,22 @@ def _build_recovery_controller(
     if isinstance(_raw_cycle_cap, int) and _raw_cycle_cap >= 1:
         _cycle_cap = _raw_cycle_cap
 
+    raw_technical_retry_cap: object = getattr(
+        config.general,
+        "max_same_agent_retries",
+        10,
+    )
+    technical_retry_cap = (
+        raw_technical_retry_cap
+        if isinstance(raw_technical_retry_cap, int) and raw_technical_retry_cap >= 0
+        else 10
+    )
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=_cycle_cap,
             policy_bundle=policy_bundle,
             budget_registry=_seed_budget_registry(policy_bundle),
+            technical_retry_cap=technical_retry_cap,
         )
     )
     return controller, _cycle_cap
@@ -529,7 +541,7 @@ def run(
     is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
     _sleep = _recovery_sleep or time.sleep
     connectivity_monitor, _monitor_stop = _setup_connectivity_monitor(connectivity_monitor)
-    _controller, _ = _build_recovery_controller(state, policy_bundle)
+    _controller, _ = _build_recovery_controller(state, policy_bundle, config)
     _unsubscribe_bus = _subscribe_recovery_logger(_controller)
     logger.info("Starting pipeline: phase={}, budget_caps={}", state.phase, state.budget_caps)
     if pipeline_subscriber is None:
