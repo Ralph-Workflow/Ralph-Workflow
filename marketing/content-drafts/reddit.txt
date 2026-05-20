@@ -3,35 +3,38 @@ Title: [Dev Tool] RalphWorkflow — turns Claude Code / Codex CLI into an unatte
 ---
 OPENING VARIANTS (pick one per post — never reuse across subreddits or within 3 posts of the same subreddit):
 
-[r/ClaudeCode — rate limit failure story] Opening N:
-Every Claude Code failure I can trace starts the same way: rate limit hits at 2am, script exits, and I have no idea where it stopped or what state the repo is in. The fix was not a better API key — it was making checkpoint resume and fallback chains the default behavior instead of an afterthought.
+[r/ClaudeCode — approval fatigue] Opening V:
+Three approval prompts in one session is not a workflow problem. It is a spec problem. If the task had a written finish contract before the first prompt, the agent would stop when done instead of when confused.
 
-[r/ClaudeCode — spec-first anti-hallucination] Opening O:
-I stopped trying to prompt my way out of hallucinations and started writing specs instead. Not prompts with caution language — actual specs with bounded scope, explicit constraints, and a finish contract. The model cannot argue with a written definition of done.
+[r/ClaudeCode — morning audit story] Opening W:
+The first thing I check in the morning is not the transcript. It is the diff. If the diff is empty or the checks did not run, the overnight run was a night spent.
 
-[r/ClaudeCode — morning handoff story] Opening P:
-The question I now ask at the start of every agent session: what will I actually see in my editor tomorrow morning? If I cannot answer that clearly, the session is not bounded. RalphWorkflow forces that answer before the first command runs.
+[r/ClaudeCode — spec-first constraint] Opening X:
+Specs do not solve hallucinations by being more careful. They solve them by defining done before the model ever starts. The model cannot debate a written boundary.
 
-[r/codex / r/ClaudeCode — finish contract framing] Opening Q:
-What I wanted from an AI coding tool was not "run longer" — it was "owe me a result." Not a transcript, not a confident summary, not an open-ended continuation. A bounded result I can open, review, and decide on in under five minutes.
+[r/ClaudeAI — autonomy definition] Opening Y:
+The autonomy question is not "can it run overnight." It is "what does it hand back when it stops." Anything less than a bounded diff and an explicit unresolved list is just a longer unattended session.
 
-[r/programming / r/Python / r/devops — overnight run failure modes] Opening R:
-Three things that kill overnight agent runs: rate limits mid-cycle, repo state corruption on resume, and unbounded scope creep. I have a CLI that addresses all three by design — not by hoping the agent self-corrects.
+[r/AI_Agents — multi-agent handoff] Opening Z:
+When two AI agents work the same repo, the failure is almost never in the generation. It is in the handoff — what one agent assumed, the other inherited as fact.
 
-[r/programming / r/AI_Agents / r/devops — artifact vs transcript] Opening S:
-The artifact of a good agent session is not the transcript. It is the diff, the test evidence, and a short list of what still needs a human call. Everything else is working material, not deliverable.
+[r/AI_Agents — permission boundary] Opening AA:
+The most common multi-agent failure I see is not capability — it is permission. One agent writes, another assumes, and the combined result is neither agent's fault and both agents' problem.
 
-[r/SideProject / r/startups / r/entrepreneur — bounded downside framing] Opening T:
-The overnight runs worth repeating are the ones where the downside is bounded before you close the laptop. Not "maybe it worked" — here is what changed, here is what passed, here is what still needs your call. That is the only version worth coming back to.
+[r/programming / r/Python — automation gap] Opening AB:
+The gap between "automated" and "actually useful" is the review step. If the output is not bounded enough to inspect quickly, automation just moves the work to the morning.
 
-[r/entrepreneur / r/startups / r/AI_Agents — fail-closed story] Opening U:
-The worst overnight run I ever had was not the one that failed visibly. It was the one that seemed to succeed but produced nothing I could actually use. I now require a finish receipt before calling any run a win.
+[r/programming / r/devops — failure story] Opening AC:
+Overnight agent runs fail in three predictable ways: rate limit exit, repo state loss on resume, and scope creep into adjacent files. A workflow that plans before running addresses all three.
 
-[r/ExperiencedDevF] Opening:
-Wanted a workflow that asks the one question that matters when an AI coding session finishes: would you actually merge this? Not did it generate code, did it finish the job in a way that holds up. Built RalphWorkflow around that bar — planning loop, dev loop, program loop, fallback chains, and a clean morning handoff. Posting here because this community tends to have the most honest takes on whether something actually solves a real problem or just automates the wrong thing.
+[r/Python — checkpoint story] Opening AD:
+I have stopped dreading the 3am rate limit crash. Checkpoint resume means I open the editor in the morning at the last clean state, not the beginning of a re-run.
 
-[r/Python] Opening:
-Building a CLI that wraps Claude Code / Codex / OpenCode into something that actually finishes overnight without you watching it. The core idea is simple: write the spec before the run, checkpoint as it goes, fall back to a secondary agent on rate limits, and hand you a diff you can open in your editor in the morning instead of a transcript to archaeology through. Sharing here because Python devs seem to have the most appetite for this kind of unattended workflow.
+[r/SideProject / r/startups — bounded downside] Opening AE:
+The side projects worth shipping are the ones where the downside is bounded before you close the laptop. Not "maybe it ran." Here is the diff, here is what passed, here is what still needs a call.
+
+[r/ExperiencedDevF — finish bar] Opening:
+Wanted a CLI that asks one question at session end: would you actually merge this? Not did it finish, did it generate code — did it produce something you would stand behind. Built RalphWorkflow around that bar. Posting here because this community does not tolerate solutions that look finished but are not.
 
 ---
 

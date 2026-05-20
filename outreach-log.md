@@ -1,5 +1,14 @@
 # Outreach Log
 
+## 2026-05-20 (Wednesday) — Live homepage metadata + Codeberg-first CTA repair (05:31 UTC)
+- **Repaired the actual live `ralphworkflow.com` homepage so the owned first-touch surface now matches the active distribution repair**: updated `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` to replace the stale `operating system for autonomous coding` title/meta with the exact evaluator terms `unattended coding agent` + `AI agent orchestration CLI`, rewrote the hero promise around `one bounded backlog task` → `reviewable diff`, changed the first CTA to **Inspect on Codeberg first**, added an explicit `Codeberg is the primary repo` note, and exposed GitHub only as the mirror.
+  - Verification: after `touch /home/mistlight/ralph_site/current/tmp/restart.txt`, live fetch of `https://ralphworkflow.com/` now returns the updated title `Unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode — Ralph Workflow`, the new meta description, plus visible `Inspect on Codeberg first` and `Codeberg is the primary repo` text.
+  - Why: this is **REPAIRED / REPLACING** a flat tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, and the cron explicitly prioritizes homepage title/description SEO tuning while Codeberg delta is flat. The strongest same-run move was to fix the live homepage itself, not keep tuning hosted-docs copy while the public site still led with stale install-first framing.
+  - Expected outcome: more qualified homepage/search visitors should understand the category fit immediately and choose the primary Codeberg repo as the first real project relationship instead of defaulting into generic install flow or mirror parity.
+  - Measurement window: next 7 days for live snippet / first-screen alignment and any homepage referral evidence; next 14 days for **Codeberg** stars/watchers/issues delta (through **2026-06-03**).
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat on **2026-06-03**, stop spending cycles on more homepage copy-only repairs and shift the next replacement move to a fresh executable external distribution/backlink surface or warmer discussion lane.
+  - Type: **REPAIRED / REPLACING**
+
 ## 2026-05-20 (Wednesday) — Homepage Codeberg-first SEO/message repair (04:58 UTC)
 - **Tightened the hosted-docs homepage source around the live priority keywords and the primary-repo action path**: updated `ralph-workflow/docs/sphinx/index.rst` and `ralph-workflow/docs/sphinx/_themes/ralph-docs/page.html` so the homepage title/social metadata now lead with `unattended coding agent` + `AI agent orchestration CLI`, the meta/snippet promise is `one bounded backlog task` → `reviewable diff`, and the hero now states above the fold that **Codeberg is the primary repo** while GitHub is only the mirror.
   - Verification: `make docs` passed in `repos/Ralph-Workflow/github-mirror/ralph-workflow` after the change.
@@ -2893,3 +2902,63 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-20 06:58:49
 - **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, aisotools, comeai. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — AI agent workflow composer exact-intent conversion repair (07:20 CEST)
+- **Executed a fresh Codeberg-first exact-intent docs repair**: added a new public `AI Agent Workflow Composer` evaluator page on both the repo-root docs surface and the hosted Sphinx docs surface, then linked it from the maintained docs entry points without expanding the top-level README path.
+  - Files changed:
+    - `repos/Ralph-Workflow/github-mirror/docs/ai-agent-workflow-composer.md`
+    - `repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/ai-agent-workflow-composer.md`
+    - `repos/Ralph-Workflow/github-mirror/docs/README.md`
+    - `repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/index.rst`
+  - Verification: `uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going` passed and `make verify` passed cleanly (`5584 passed, 6 skipped`).
+  - Why: this is **REPAIRED / REPLACING** a flat tactic. The latest SEO/audit context still showed `distribution_and_message_to_primary_repo_conversion` as the bottleneck, while the exact evaluator phrase **`AI agent workflow composer`** had no owned/public landing page yet. Creating the missing exact-intent page is higher leverage than repeating another already-used directory lane.
+  - Expected outcome: qualified evaluators searching for workflow-composition framing should now have a Codeberg-first page that explains the composable-loop story and routes the next public action to the primary repo instead of the GitHub mirror.
+  - Measurement window: next 7 days (**through 2026-05-27**) for crawlability / internal-surface discoverability; next 14 days (**through 2026-06-03**) for **Codeberg** stars/watchers/issues movement.
+  - Replace if it fails: if this new exact-intent page is live and discoverable but Codeberg is still flat by **2026-06-03**, stop spending the next cycle on another nearby docs keyword page and shift to a fresh external backlink/citation surface that sends traffic directly into the strongest Codeberg-first proof/comparison page.
+  - Type: **REPAIRED / REPLACING**
+  - Docs review note: reviewed the evaluator journey in order (`README.md` → `START_HERE.md` → `docs/README.md`). This belongs on the docs surfaces because it fills a missing exact-intent owned page rather than bloating top-level README routing. I pruned nothing from README/START_HERE because they stayed unchanged, added only one curated docs-index link, reduced duplication by reusing the existing evaluator-page pattern, and improved the top-level experience by covering a missing search/fit question without adding a new README link farm.
+
+## 2026-05-20 (Wednesday) — Telegraph keyword-gap publication repair + Reddit template refresh (05:20 UTC)
+- **Repaired two critical Telegraph keyword-gap posts that were logged as "done" in the backlink-plan but returned 404**: discovered the 05-20 Telegraph posts listed in the backlink-plan were never actually published (all returned HTTP 404). Immediately published the two repair-priority keyword-gap posts:
+  - `unattended coding agent` → https://telegra.ph/Unattended-Coding-Agent-What-It-Actually-Means-and-How-to-Run-One-Safely-05-20 (HTTP 200 ✅)
+  - `AI agent orchestration CLI` → https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20 (HTTP 200 ✅)
+  - Verification: both live, contain Codeberg-primary / GitHub-mirror CTA blocks
+- **Repaired the Reddit outreach template** (`marketing/content-drafts/reddit.txt`): replaced 8 stale openings (N through U + Additional Openings block) with 12 fresh openings (V through AE + r/ExperiencedDevF) targeting specific subreddit pain archetypes. New openings avoid the stale structural cadence (contrast opener → handoff framing → proof bundle → product close) that was flagged as repetitive.
+  - New opening families introduced: approval-fatigue (V), morning-audit story (W), spec-first constraint (X), autonomy definition (Y), multi-agent handoff chaos (Z), permission boundary (AA), automation gap (AB), overnight failure story (AC), checkpoint story (AD), bounded downside (AE), finish-bar (ExperiencedDevF)
+  - All new openings paired with updated BANNED_OPENING_PREFIXES to prevent regression
+- **Verified `mirror_repo_flat`**: Codeberg is already primary in `content-drafts/reddit.txt` (line 60: `https://codeberg.org/RalphWorkflow/Ralph-Workflow` primary, GitHub mirror secondary). No action needed.
+- **Verified `primary_repo_flat` — homepage SEO tuning**: completed 04:58 UTC today (hosted-docs homepage updated with `unattended coding agent` + `AI agent orchestration CLI` keywords, Codeberg-first hero, meta/OG tuning). Confirmed `make docs` passes.
+- **Audit note on backlink-plan discrepancy**: the 05-20 Telegraph posts were marked ✅ in the backlink-plan but returned 404 when checked — suggesting a silent failure in the publish step that was not surfaced. The two repair-priority keyword posts are now live. Other 05-20 telegraph posts (Claude Code Automation, Spec-Driven AI Agent Runs, Claude Code Unattended) also returned 404 and should be verified/republished in a future pass if still relevant.
+- **Why**: this is **REPAIRED / REPLACING** the `primary_repo_flat` repair and the `repetitive_outreach` repair. Telegraph keyword coverage for the two highest-intent search terms (`unattended coding agent`, `AI agent orchestration CLI`) is now live and Codeberg-routing. Reddit openings are fresh and structurally distinct from the stale cadence.
+- **Expected outcome**: qualified search/discovery traffic for `unattended coding agent` and `AI agent orchestration CLI` should now route to live Telegraph pages that close on Codeberg primary. Reddit posts using the refreshed template should not trigger the body-cadine repeat guard.
+- **Measurement window**: next 7 days for Telegraph indexing / referral evidence; next 14 days for Codeberg stars/watchers/issues delta (**through 2026-06-03**).
+- **Replace if it fails**: if Codeberg stars/watchers/issues are still flat on **2026-06-03**, stop spending cycles on additional content/telegraph tweaks and shift to a verified external backlink/distribution surface or direct human-level PR/outreach.
+- Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 07:31:49
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, aisotools, comeai. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Live homepage third-party-proof CTA repair (05:50 UTC)
+- **Added independent proof links directly to the live `ralphworkflow.com` hero so qualified evaluators can verify trust before install without drifting into mirror parity**: updated `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` to add a compact `Independent places to inspect Ralph Workflow` proof strip right under the Codeberg-primary note, linking to the live ToolWise review page and the live SaaSHub profile while keeping Codeberg framed as the primary repo and GitHub as the mirror only. Also removed a stray literal `+` artifact that had been left in the hero template.
+  - Verification: `touch /home/mistlight/ralph_site/current/tmp/restart.txt` reloaded the live site; direct HTML fetch confirmed all four markers are now live on `https://ralphworkflow.com/`: `Independent places to inspect Ralph Workflow`, `toolwise.ai/tools/ralph-workflow`, `saashub.com/ralph-workflow`, and `Codeberg is the primary repo.`
+  - Why: this is **REPAIRED / REPLACING**. The audit still says `distribution_and_message_to_primary_repo_conversion` is the bottleneck, homepage title/description tuning was already shipped, and the next strongest same-run repair with direct effect on Codeberg conversion was to add independent trust proof on the actual first-touch surface instead of repeating another content or directory loop.
+  - Expected outcome: more homepage visitors who are evaluating trust before install should inspect the primary Codeberg repo after seeing independent proof, increasing qualified Codeberg repo inspections and second-order trust actions.
+  - Measurement window: next 7 days for homepage trust-surface alignment and any referral evidence from ToolWise / SaaSHub; next 14 days for **Codeberg** stars/watchers/issues delta (through **2026-06-03**).
+  - Replace if it fails: if Codeberg stars/watchers/issues are still flat on **2026-06-03**, stop spending cycles on more homepage trust-strip tweaks and shift the next replacement move to a fresh external discussion/backlink surface or a stronger competitor-citation lane.
+  - Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 07:52:32
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, aisotools, comeai. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Live homepage first-evaluation path repair (06:12 UTC)
+- **Added a stronger Codeberg-first first-evaluation strip directly to the live `ralphworkflow.com` hero** so evaluators are told, in order, to inspect the primary Codeberg repo, run one bounded first pass, and judge the morning-after handoff before trusting the workflow.
+  - File changed: `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`
+  - New live copy centers the exact trust question: **“Would I merge this?”**
+  - Verification: direct fetch of `https://ralphworkflow.com/` after the repair confirmed all three live markers are present: `Best first evaluation`, `Do the shortest honest trust check tonight`, and `judge the morning-after handoff`.
+  - Why: this is **REPAIRED / REPLACING**. The active bottleneck is still `distribution_and_message_to_primary_repo_conversion`, and the strongest same-run local repair was not another shaky directory attempt but tightening the live homepage's first-screen evaluator path around Codeberg-first inspection, bounded first use, and merge-decision proof.
+  - Expected outcome: more qualified homepage visitors should click through to the primary Codeberg repo or continue into the first-run / review path with clearer trust framing, improving Codeberg-first evaluation quality and second-order star/watch/issue actions.
+  - Measurement window: next 7 days for live homepage behavior / trust-path alignment; next 14 days for **Codeberg** stars, watchers, forks, and issue activity (through **2026-06-03**).
+  - Replace if it fails: if Codeberg adoption is still flat by **2026-06-03**, stop spending the next cycle on more homepage trust-copy tweaks and replace this with a fresh executable backlink/citation/distribution surface that sends qualified traffic into the strongest Codeberg-first page.
+  - Type: **REPAIRED / REPLACING**
