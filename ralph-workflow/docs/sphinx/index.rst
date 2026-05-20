@@ -1,7 +1,7 @@
-.. title:: Free unattended coding agent & AI agent orchestration CLI | Ralph Workflow
+.. title:: Unattended coding agent & AI agent orchestration CLI for Claude Code and Codex
 
 .. meta::
-   :description: Free and open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Run one real backlog task on your own machine and wake up to reviewable output.
+   :description: Free open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Run one bounded backlog task overnight, inspect the primary Codeberg repo first, and wake up to a reviewable diff.
 
 Ralph Workflow
 ==============
@@ -9,14 +9,15 @@ Ralph Workflow
 .. raw:: html
 
    <section class="hero">
-     <h1 class="hero-headline">Run bigger AI coding tasks without babysitting the terminal</h1>
-     <p class="hero-subtitle">Ralph Workflow is a free and open-source unattended coding agent and AI agent orchestration CLI. It gives Claude Code, Codex, and OpenCode a spec-driven workflow on your own machine so you wake up to reviewable code instead of another transcript and a done claim.</p>
+     <h1 class="hero-headline">Run one bounded backlog task overnight without babysitting the terminal</h1>
+     <p class="hero-subtitle">Ralph Workflow is a free and open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode. It gives you a spec-driven, repo-native way to hand off real software work on your own machine and come back to a reviewable diff.</p>
      <div class="hero-actions">
        <a class="hero-cta" href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">Inspect on Codeberg first</a>
        <a class="hero-cta hero-cta-secondary" href="first-task-guide.html">Pick your first real task</a>
        <a class="hero-cta hero-cta-secondary" href="example-review-bundle.html">See a public review bundle first</a>
      </div>
      <p class="hero-proof-note">Best first evaluation: pick one real backlog task tonight, then ask tomorrow: <strong>would I merge this?</strong></p>
+     <p class="hero-proof-note"><strong>Codeberg is the primary repo.</strong> Start there for inspection, stars, watches, forks, and issues. Use GitHub only as the mirror if that is where you already follow projects.</p>
      <p class="hero-proof-note">Before you install, <a href="https://codeberg.org/RalphWorkflow/Ralph-Workflow">inspect the primary Codeberg repo first</a>. After your first run, use <a href="after-your-first-run.html">the short Codeberg-first scorecard</a> to decide whether the right public next step is a star/watch or a useful issue.</p>
    </section>
 
@@ -34,12 +35,12 @@ Choose the first path that matches how you already work tonight:
 - Already splitting work between **Claude Code and Codex**? Jump straight to :doc:`claude-code-codex-workflow`.
 - Already running **multiple agents** and wondering what actually breaks first? Read :doc:`what-breaks-first-with-multiple-coding-agents`.
 - Already using **worktrees** and still not trusting the morning-after result? Read :doc:`why-worktrees-are-not-enough`.
-- Want a clearer **merge decision** for the morning-after handoff? Read :doc:`review-ai-coding-output-before-merge`.
+- Want a clearer way to verify the software and checks after a run? Read :doc:`review-ai-coding-output-before-merge`.
 - Want the cleanest possible **finish receipt / re-entry path** before you trust the run? Read :doc:`what-a-good-ai-coding-finish-receipt-looks-like`.
 - Want unattended runs to stay **bounded and fail-closed** instead of drifting all night? Read :doc:`bounded-autonomy-for-unattended-coding`.
 - Keep reaching for **remote supervision** when the real problem is trusting the finish state? Read :doc:`remote-supervision-of-coding-agents`.
 - Searching for an **open-source AI coding orchestrator** you can inspect on Codeberg first? Read :doc:`open-source-ai-coding-orchestrator`.
-- Evaluating an **AI agent orchestration CLI** and want the practical difference? Read :doc:`ai-agent-orchestration-cli`.
+- Evaluating an **AI agent orchestration CLI** and want the practical difference in composable loops, phase routing, and real workflow structure? Read :doc:`ai-agent-orchestration-cli`.
 - Searching for **AI coding workflow automation** and need the morning-after handoff to be reviewable? Read :doc:`ai-coding-workflow-automation`.
 - Searching for an **unattended coding agent** you can actually trust? Read :doc:`unattended-coding-agent`.
 - Want a **spec-driven AI agent** instead of a prompt-first loop? Read :doc:`spec-driven-ai-agent`.
@@ -69,17 +70,18 @@ Keep the post-run branch simple:
    claude-code-run-until-done
    agents
 
-What a good first handoff looks like
+What a good first workflow looks like
 ======================================
 
-A strong first run should be easy to judge the next morning:
+A strong first run should be easy to judge the next morning, but the real point is the workflow shape:
 
 1. **One bounded brief** in ``PROMPT.md``
 2. **One unattended run** on your own machine with the agent you already use
 3. **Checks that actually ran** instead of a draft that stops halfway
 4. **Fixes attempted before handoff** so weak spots are not just pushed back to you
-5. **Readable repo-local artifacts** you can open without replaying a terminal transcript
-6. **One merge question:** *would I merge this?*
+5. **Composable phases** that can be swapped, routed, and extended instead of trapped in one agent session
+6. **Readable repo-local artifacts** you can open without replaying a terminal transcript
+7. **One merge question:** *would I merge this?*
 
 If that finish line is what you want, open the public :doc:`example-review-bundle`, follow
 :doc:`getting-started`, or inspect Ralph Workflow on the `primary Codeberg repo <https://codeberg.org/RalphWorkflow/Ralph-Workflow>`_.
@@ -90,17 +92,19 @@ What Ralph Workflow is for
 Ralph Workflow is a **free and open-source** orchestration CLI for developers and technical teams
 who want to hand off coding work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different from a normal AI coding chat is the handoff: Ralph Workflow is built to
-leave you with **reviewable output** in your repo — changed files, logs, artifacts, and review
-context you can inspect in your normal engineering process.
+What makes it different from a normal AI coding chat is not just the handoff. Ralph Workflow is
+built around **composable loops**: spec-first planning, implementation, verification, review, and
+agent routing inside one repo-native orchestration system. The shipped default workflow is already
+good for writing software, and the same loop model can be composed into more complex engineering
+flows when you need them.
 
 Why try it now? Because you can use the agents you already trust on your own machine, run one real
 backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
-If you prefer to inspect or follow open-source projects on GitHub, Ralph Workflow also has a synced
-public mirror there. But keep the first real project relationship on Codeberg: that is where stars,
-watches, forks, issues, and contribution history should accumulate. Use GitHub when it helps
-discovery; use Codeberg for the main project relationship.
+If GitHub is where you already discover or follow open-source tools, Ralph Workflow also has a synced
+public mirror there. But treat it strictly as the mirror: keep the first real project relationship on
+Codeberg, because that is where stars, watches, forks, issues, and contribution history should
+accumulate. Use GitHub for convenience; use Codeberg for the main project relationship.
 
 Important first-run expectation: Ralph Workflow is free and open source, but it does not replace
 the coding agents you already use. Before you start, have at least one supported agent CLI already
@@ -121,10 +125,10 @@ Do not start with a vague demo.
 
 Start with one real backlog task that is:
 
-- small enough to judge in one sitting
-- clear enough that success is easy to define
-- cheap to roll back if the run misses
-- real enough that you already wanted done
+- substantial enough to justify unattended work
+- defined enough that success is easy to evaluate afterward
+- detailed enough that you can write a serious product spec
+- real enough that you already want it shipped
 
 The evaluation question is simple:
 
@@ -221,7 +225,7 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
       :link: first-task-guide
       :link-type: doc
 
-      Pick a real backlog task that is small enough to judge, clear enough to verify, and worth trying tonight.
+      Pick a real backlog task that is substantial enough to deserve unattended work, defined enough to verify honestly, and important enough that you already want it shipped.
 
    .. grid-item-card:: Choose your first agent path
       :link: which-agent-should-i-start-with
@@ -275,7 +279,7 @@ If yes, put the public trust signal on the **primary Codeberg repo**. If no, rep
       :link: reviewable-output
       :link-type: doc
 
-      See the kind of diff, checks, notes, and merge decision a trustworthy unattended run should hand back.
+      See the kind of executable proof, checks, notes, and remaining uncertainty a trustworthy unattended run should hand back.
 
    .. grid-item-card:: Review AI output before merge
       :link: review-ai-coding-output-before-merge
@@ -387,6 +391,6 @@ Related Links
 
 - `Ralph Workflow website <https://ralphworkflow.com>`_
 - `Source code on Codeberg <https://codeberg.org/RalphWorkflow/Ralph-Workflow.git>`_
-- `GitHub mirror <https://github.com/Ralph-Workflow/Ralph-Workflow>`_
+- `GitHub mirror only <https://github.com/Ralph-Workflow/Ralph-Workflow>`_
 - `Issue tracker <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>`_
 - `License (AGPL-3.0) <https://www.gnu.org/licenses/agpl-3.0.html>`_

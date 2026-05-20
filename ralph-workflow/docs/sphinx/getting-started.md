@@ -8,7 +8,7 @@ Ralph Workflow is a **free and open-source** repo-native orchestration CLI for b
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different from a normal AI coding chat is the handoff: Ralph Workflow is built to leave you with a **reviewable result** in your repo instead of a long transcript and a claim that the task is done.
+What makes it different from a normal AI coding chat is the workflow model: Ralph Workflow extends the simple Ralph loop into a **composable orchestration system** with planning, implementation, verification, review, and agent routing inside your repo.
 
 Why use it now? Because you can try it with the agents you already trust on your own machine, on one real backlog task, and decide tomorrow whether the result is something you would actually merge.
 
@@ -22,17 +22,17 @@ Do not start with a vague demo.
 
 Start with one real backlog task that is:
 
-- small enough to judge in one sitting
-- clear enough that success is easy to define
-- cheap to roll back if the run misses
-- real enough that you already want it done
+- substantial enough to justify unattended work
+- defined enough that success is easy to evaluate afterward
+- detailed enough that you can write a serious spec
+- real enough that you already want it shipped
 
 Good first tasks:
 
-- a bounded feature slice
-- a narrow refactor with tests
-- a cleanup task with obvious verification
-- repetitive implementation work where `done` is easy to judge
+- a substantial feature slice with real product value
+- a serious refactor with tests
+- a cleanup or documentation initiative with obvious verification
+- repetitive multi-file implementation work where the product goal is already clear
 
 Bad first tasks:
 

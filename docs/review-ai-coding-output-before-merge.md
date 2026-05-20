@@ -14,7 +14,7 @@ Open the result in this order:
 
 1. **Open the diff first**
    - Do the changed files match the task you asked for?
-   - Is the scope still small enough to review in one sitting?
+   - Does the scope still match the defined product or engineering spec?
 
 2. **Read the finish receipt**
    - What changed?

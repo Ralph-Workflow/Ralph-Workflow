@@ -6,16 +6,16 @@
 
 If you are evaluating Ralph Workflow rather than maintaining it, start with the shortest repo-native path first:
 
-1. `../START_HERE.md` — shortest honest first-run path
-2. `first-task-guide.md` — fastest repo-native filter for choosing the right first backlog task
-3. `after-your-first-run.md` — shortest Codeberg-first scorecard after a real run
-4. `reviewable-output.md` — what a good morning-after handoff should look like
-4. `ai-agent-orchestration-cli.md` — practical evaluation path for orchestration-CLI intent
-5. `spec-driven-ai-agent.md` — practical evaluation path for spec-first intent
-6. `claude-code-automation.md` — practical evaluation path for Claude Code automation intent
-7. `claude-code-approval-mode.md` — practical evaluation path for Claude Code users stuck in approval-mode babysitting
-8. `ralph-workflow-vs-opencode.md` — comparison path for OpenCode users deciding whether a reviewable unattended handoff is missing
-9. `unattended-coding-agent.md` — category-intent page for developers searching for an unattended coding agent they can actually trust
+1. `ai-agent-orchestration-cli.md` — what Ralph Workflow is actually for
+2. `../START_HERE.md` — shortest honest first-run path
+3. `first-task-guide.md` — fastest repo-native filter for choosing the right first backlog task
+4. `spec-driven-ai-agent.md` — practical evaluation path for spec-first intent
+5. `ralph-workflow-vs-opencode.md` — comparison path for OpenCode users deciding whether composable orchestration is the missing layer
+6. `after-your-first-run.md` — shortest Codeberg-first scorecard after a real run
+7. `reviewable-output.md` — what a good finished run should actually prove
+8. `claude-code-automation.md` — practical evaluation path for Claude Code automation intent
+9. `claude-code-approval-mode.md` — practical evaluation path for Claude Code users stuck in approval-mode babysitting
+10. `unattended-coding-agent.md` — category-intent page for developers searching for an unattended coding agent they can actually trust
 
 Keep the first public project relationship on Codeberg:
 
@@ -23,13 +23,21 @@ Keep the first public project relationship on Codeberg:
 - **Rough first run** → open the matching first-run or docs/proof issue on Codeberg
 - **Need the scorecard first** → use `../docs/sphinx/after-your-first-run.md`
 
+## Third-party proof before setup
+
+If you want external inspection before your first run, use a short curated set instead of hunting around:
+
+- [ToolWise review page](https://toolwise.ai/tools/ralph-workflow)
+- [SaaSHub product page](https://www.saashub.com/ralph-workflow)
+- [TechTools Launchpad listing](https://techtools.cz/tools/launchpad/?tool=71)
+
 ## Best first docs for evaluators
 
+- `ai-agent-orchestration-cli.md` — fastest explanation of the product positioning
 - `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
 - `first-task-guide.md` — fastest repo-native filter for whether your first task is a good Ralph Workflow fit
 - `after-your-first-run.md` — convert a private first run into the right Codeberg-first action
-- `reviewable-output.md` — what a strong morning-after handoff should contain
-- `ai-agent-orchestration-cli.md` — practical evaluation path for orchestration-CLI intent
+- `reviewable-output.md` — what a strong finished run should contain once the orchestration itself is doing the right work
 - `spec-driven-ai-agent.md` — practical evaluation path for spec-first intent
 - `claude-code-automation.md` — practical evaluation path for Claude Code automation intent
 - `claude-code-approval-mode.md` — practical repo-native path if approval mode is still the thing keeping Claude Code from feeling unattended

@@ -14,10 +14,10 @@ The fastest honest test is one real backlog task you already care about.
 
 Choose something that is:
 
-- small enough to judge in one sitting
-- clear enough that success is easy to define
-- cheap to roll back if the run misses
-- real enough that you already want it done
+- substantial enough to justify unattended execution
+- defined enough that success is easy to evaluate afterward
+- detailed enough that you can write a serious product spec
+- real enough that you already want it shipped
 
 ## Good first tasks
 
@@ -81,10 +81,10 @@ Add a /health endpoint that returns HTTP 200 with {"status": "ok"}.
 
 Before you run, ask:
 
-1. Can I describe the task in one paragraph?
-2. Can I name the checks that prove it worked?
-3. Would a diff be enough for a reviewer to judge the result?
-4. If it misses, is the rollback cheap?
+1. Do I already know what the product outcome needs to be?
+2. Can I write a detailed enough spec that the agent should not have to invent the goal?
+3. Can I name the checks that prove it worked?
+4. Would the result matter enough that I actually want this work done?
 
 If the answer is yes to all four, it is probably a good Ralph Workflow task.
 

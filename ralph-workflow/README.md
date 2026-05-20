@@ -1,46 +1,55 @@
 # Ralph Workflow (Python)
 
-> **Write the spec. Wake up to reviewable output.**
+> **The operating system for autonomous coding.**
 >
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect, star, watch, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 > Use the GitHub mirror only as a secondary follow/read surface if GitHub is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
-Ralph Workflow is a **free and open-source** Python 3.12+ CLI that orchestrates the coding agents you already use **on your own machine** for substantial unattended work.
+Ralph Workflow is a **free and open-source** Python 3.12+ CLI for **AI agent orchestration** on your own machine.
 
-It is for developers and technical teams with engineering tasks that are **too big to babysit and too risky to trust blindly**.
+It extends the simple Ralph loop into a **composable loop framework** for real software engineering: planning, implementation, verification, review, and agent routing inside one repo-native workflow.
 
-What makes it different from a normal AI coding chat is the handoff: Ralph Workflow keeps the workflow in your repo, runs planning + implementation + review as one unattended pass, and leaves you with **code changes, logs, artifacts, and review context you can inspect in your normal git workflow**.
+The default workflow shipped with Ralph Workflow is already strong for writing software. You can use it as-is, or compose more complex workflows when one loop is not enough.
 
-Why use it now? Because you can install it in minutes, hand it one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+Use it for engineering tasks that are **too big to babysit and too risky to trust blindly**.
+
+Why use it now? Because you can install it in minutes, hand it one real backlog task tonight, and wake up to **completed code, real checks, or an honest blocked state**.
 
 **Start here:**
 
 - [Try Ralph Workflow on one real backlog task](START_HERE.md)
-- [After Your First Run](docs/after-your-first-run.md) — shortest Codeberg-first scorecard after a real evaluation
-- [Choose Your First Ralph Workflow Task](docs/first-task-guide.md) — fastest honest filter for what to run first
+- [Choose Your First Ralph Workflow Task](docs/first-task-guide.md)
 - [Getting Started with Ralph Workflow](docs/sphinx/getting-started.md)
 - [Quickstart reference](docs/sphinx/quickstart.md)
-- [AI Agent Orchestration CLI](docs/ai-agent-orchestration-cli.md) — practical repo-native path if you are comparing orchestration CLIs
-- [Spec-Driven AI Agent](docs/spec-driven-ai-agent.md) — practical repo-native path if your real question is spec-first execution
-- [Claude Code Automation](docs/claude-code-automation.md) — practical repo-native path if your real question is Claude Code automation
-- [Claude Code Approval Mode](docs/claude-code-approval-mode.md) — practical repo-native path if approval mode still turns "autonomous" work into transcript babysitting
-- [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md) — choose the agent already installed and authenticated on your machine
-- [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md) — decide when an interactive Claude session is enough and when an unattended reviewable handoff is better
-- [Ralph Workflow vs Aider](docs/sphinx/ralph-workflow-vs-aider.md) — decide when interactive pair-programming is enough and when an unattended morning-after handoff is better
-- [Ralph Workflow vs OpenCode](docs/ralph-workflow-vs-opencode.md) — decide when direct provider flexibility is enough and when a reviewable unattended handoff is better
-- [Claude Code + Codex Workflow](docs/sphinx/claude-code-codex-workflow.md) — keep the role split, but come back to a cleaner reviewable handoff
-- [What a Good AI Coding Finish Receipt Looks Like](docs/sphinx/what-a-good-ai-coding-finish-receipt-looks-like.md) — the short morning-after handoff that should tell you what changed, what passed, and what still needs judgment
-- [Example Review Bundle](docs/sphinx/example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts before your own first run
+- [AI Agent Orchestration CLI](docs/ai-agent-orchestration-cli.md)
+- [Which Agent Should I Start With?](docs/sphinx/which-agent-should-i-start-with.md)
+- [Ralph Workflow vs Claude Code](docs/sphinx/ralph-workflow-vs-claude-code.md)
+- [Ralph Workflow vs OpenCode](docs/ralph-workflow-vs-opencode.md)
+- [After Your First Run](docs/after-your-first-run.md)
 
 Ralph Workflow supports mixed-agent runs across planning, analysis, development, review, and commit phases. You might plan with Claude, route analysis through an OpenCode-backed GPT model, hand development to Codex or another OpenCode provider, and keep review on a different agent chain — all inside the same repo-native workflow.
 
+## What makes Ralph Workflow different
+
+Most agent tools help you run one coding session.
+
+Ralph Workflow is for when you need more than that:
+
+- a **default workflow** that is already good at writing software
+- **composable loops** instead of a single long session
+- **agent orchestration** across phases instead of one tool doing everything
+- **repo-native execution** instead of hidden product state
+- **real verification** as part of the workflow, not an afterthought
+
+This is why Ralph Workflow is not just “another agent wrapper.” It is an orchestration system built to scale the simple Ralph-loop idea into real software workflows.
+
 ## A fast way to tell whether Ralph Workflow fits
 
-1. Pick one real backlog task that is small enough to review in one sitting. If you want the filter first, use [Choose Your First Ralph Workflow Task](docs/first-task-guide.md).
-2. Write it down in `PROMPT.md` with clear acceptance criteria.
+1. Pick one real substantial backlog task with a defined product outcome. If you want the filter first, use [Choose Your First Ralph Workflow Task](docs/first-task-guide.md).
+2. Write it down in `PROMPT.md` with a detailed product or engineering spec and clear acceptance criteria.
 3. Run Ralph Workflow overnight.
-4. Come back and ask one question: **would you merge this?**
+4. Come back and check: did it produce working code, real verification, or an honest blocked state?
 
 If yes, give it a harder task next.
 If no, tighten the spec, checks, or task choice and run again.
@@ -52,16 +61,17 @@ If the first run teaches you something real either way, turn that result into th
 If you want the fastest trust check before a first run, open the public [Example Review Bundle](docs/sphinx/example-review-bundle.md).
 It shows the exact kind of morning-after handoff Ralph Workflow is trying to produce: a real `PROMPT.md`, result notes, review feedback, fix notes, and artifact files you can inspect before deciding whether to try Ralph Workflow on your own backlog.
 
-If your real question is "what should the morning-after handoff actually look like?", read [What Good Ralph Workflow Output Looks Like](docs/reviewable-output.md) before you install.
+If your real question is "what should a good finished run actually prove?", read [What Good Ralph Workflow Output Looks Like](docs/reviewable-output.md) before you install.
 
 ## What you get
 
 - **Spec-driven unattended runs** for real engineering work such as refactors, test generation, documentation sweeps, and migrations
 - **Repo-native workflow files** instead of hidden product state
-- **Agent-reviewed output** instead of a long interactive transcript
+- **Composable loops** built for real software work instead of one-shot agent sessions
 - **Flexible agent routing** across Claude Code, Codex CLI, OpenCode, and your own configured agents
 - **Phase-by-phase model selection** so planning, analysis, development, review, and commit can each use the best-fit agent chain
 - **A practical default workflow** you can use before inventing anything custom
+- **Completed code, real checks, or an honest blocked state** instead of vague “done” claims
 
 ## Install
 
@@ -164,7 +174,7 @@ ralph -T     # thorough: complex refactors, ten iterations
 
 ## Where the name comes from
 
-Ralph Workflow builds on the original Ralph idea: repeat a strong prompt until the model can make real progress. That loop was simple and powerful. In practice, Ralph Workflow is the Ralph loop on steroids: planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
+Ralph Workflow builds on the original Ralph idea: repeat a strong loop until the model can make real progress. That core idea stays simple. The difference is that Ralph Workflow turns it into a **composable orchestration system**: planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines that can scale from one strong default software workflow to much more complex autonomous engineering runs.
 
 ## Development and verification
 
@@ -197,6 +207,12 @@ This README intentionally leaves out deeper implementation details and defers to
 - **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 - **Issue tracker:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **PyPI package:** <https://pypi.org/project/ralph-workflow/>
+
+## Third-party places to inspect Ralph Workflow
+
+- **ToolWise review page:** <https://toolwise.ai/tools/ralph-workflow>
+- **SaaSHub product page:** <https://www.saashub.com/ralph-workflow>
+- **TechTools Launchpad listing:** <https://techtools.cz/tools/launchpad/?tool=71>
 
 ## License
 

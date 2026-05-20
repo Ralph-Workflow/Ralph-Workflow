@@ -9,8 +9,9 @@ Ralph Workflow is a **free and open-source** tool that orchestrates the coding a
 It is for developers and technical teams with engineering work that is **too big to babysit and too risky to trust blindly**.
 
 What makes it different from a normal agent session is the handoff: Ralph Workflow is built to bring back a **reviewable result** — a diff, checks, artifacts, and finish notes — instead of just a long transcript and a claim that the work is done.
+It works best when the task is already defined in enough detail that you can hand the run a serious, detailed product or engineering spec.
 
-Why use it now? Because you can try it tonight with the agents you already have, on one real task, for free.
+Why use it now? Because you can try it tonight with the agents you already have, on one real, substantial task, for free.
 
 Before you install anything, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
@@ -48,17 +49,17 @@ That is why Ralph Workflow focuses less on "let the agent run" and more on **wha
 
 Ralph Workflow is strongest when you want an unattended coding agent for work like:
 
-- a bounded feature slice
-- a narrow refactor with checks
-- a test-writing pass
-- a docs or cleanup task with clear acceptance criteria
-- a real overnight backlog item you can judge with a merge decision
+- a substantial feature slice with a clear product outcome
+- a serious refactor with checks and explicit constraints
+- a documentation or test initiative with real acceptance criteria
+- a real overnight backlog item that should leave behind a meaningful implementation head start
+- multi-file engineering work where the spec is already known before the run starts
 
 Good first runs share the same shape:
 
-- one real task
+- one real substantial task
+- a detailed product or engineering spec
 - clear acceptance criteria
-- cheap rollback if it misses
 - a reviewer who can honestly answer: **would I merge this?**
 
 If that is your use case, start with [Choose Your First Ralph Workflow Task](first-task-guide.md) and [First-Task Prompt Templates](first-task-prompt-templates.md).
@@ -87,8 +88,8 @@ That is the practical difference between "an agent session ran overnight" and "I
 Use one real backlog task tonight.
 
 1. Install Ralph Workflow
-2. Pick a task small enough to judge in one sitting
-3. Write a short `PROMPT.md` with acceptance criteria
+2. Pick a task that is substantial enough to deserve unattended work
+3. Write a detailed `PROMPT.md` with product requirements and acceptance criteria
 4. Run it overnight
 5. Review the diff, checks, and notes in the morning
 6. Ask: **would I merge this?**

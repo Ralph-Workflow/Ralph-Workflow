@@ -31,7 +31,7 @@ That matters most when the task is too big to babysit and too risky to trust bli
 3. come back to a real diff, checks, artifacts, and open questions
 4. decide whether you would merge it
 
-That is what makes it different from a normal AI coding chat. The point is not to produce a plausible answer. The point is to produce a reviewable result.
+That is what makes it different from a normal AI coding chat. The point is not to produce a plausible answer. The point is to run a real software workflow with executable proof and verification.
 
 ## Who this is for
 
@@ -57,7 +57,7 @@ Bad fit:
 3. Use [Choose Your First Ralph Workflow Task](first-task-guide.md) and [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) to judge the result honestly
 4. Turn that result into one public next step with [After Your First Ralph Workflow Run](after-your-first-run.md)
 
-If you already track projects on GitHub, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## Best next step on Codeberg if you want a spec-first overnight workflow
 

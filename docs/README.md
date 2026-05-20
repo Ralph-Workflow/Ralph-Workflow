@@ -33,7 +33,7 @@ If you are still deciding whether Ralph Workflow is worth trying, use these in o
 ### Product framing and comparisons
 
 - [agent-compatibility.md](./agent-compatibility.md)
-- [ralph-workflow-vs-claude-code.md](./ralph-workflow-vs-claude-code.md)
+- [claude-code-vs-ralph-workflow.md](./claude-code-vs-ralph-workflow.md)
 - [ralph-workflow-vs-opencode.md](./ralph-workflow-vs-opencode.md)
 
 ### Workflow and usage details

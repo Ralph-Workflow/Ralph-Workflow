@@ -4,7 +4,7 @@ Ralph Workflow is a **free and open-source** orchestration CLI that runs the cod
 
 It is for developers and technical teams with engineering work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different from a normal AI coding session is the handoff: Ralph Workflow is built to return a **reviewable result** in your repo instead of a long transcript and a claim that the task is done.
+What makes it different from a normal AI coding session is not just the handoff. Ralph Workflow turns the simple Ralph loop into a **composable workflow** with planning, implementation, verification, and review, and the default version of that workflow is already good for writing software.
 
 Why try it now? Because you can pick one real backlog task tonight, run it with the tools you already trust, and decide tomorrow whether the result is something you would actually merge — with one honest question: **would I merge this?**
 

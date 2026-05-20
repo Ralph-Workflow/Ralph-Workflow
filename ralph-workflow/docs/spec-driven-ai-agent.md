@@ -1,6 +1,6 @@
 # Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt
 
-Ralph Workflow is a **free and open-source** spec-driven AI agent workflow for developers who want results they can actually review instead of transcripts they have to decode.
+Ralph Workflow is a **free and open-source** spec-driven AI agent workflow built on **composable loops**.
 
 If an agent keeps saying it is done before the work actually holds up, the problem is often not raw model capability. The problem is the absence of a real spec.
 
@@ -17,12 +17,13 @@ That is the difference between hoping the run converges and giving it a real fin
 
 ## Where Ralph Workflow fits
 
-Ralph Workflow is built around a spec-first loop:
+Ralph Workflow is built around a spec-first loop that can be composed into larger workflows:
 
 1. write the task in `PROMPT.md`
 2. run planning, implementation, verification, and review
-3. come back to a real diff, checks, artifacts, and open questions
-4. decide whether you would merge it
+3. route different phases to the agents that fit them best
+4. come back to a real diff, checks, artifacts, and open questions
+5. decide whether you would merge it
 
 ## Best first evaluation path
 
@@ -31,7 +32,7 @@ Ralph Workflow is built around a spec-first loop:
 3. Use [What Good Ralph Workflow Output Looks Like](reviewable-output.md)
 4. Turn that result into one public next step with [After Your First Ralph Workflow Run](after-your-first-run.md)
 
-If you already track projects on GitHub, the mirror is here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## Best next step on Codeberg
 

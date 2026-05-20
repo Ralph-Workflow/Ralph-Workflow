@@ -6,7 +6,7 @@ It is for developers and technical teams with engineering work that is **too big
 
 What makes it different from a normal AI coding session is the handoff: Ralph Workflow returns a **reviewable result** in your repo — diff, checks, artifacts — instead of a long transcript and a confident done claim.
 
-Why try it now? Pick one real backlog task tonight, run it with the tools you already trust, and decide tomorrow whether the result is something you would actually merge.
+Why try it now? Pick one real, substantial backlog task tonight, run it with the tools you already trust, and decide tomorrow whether the result is something you would actually merge.
 
 ## Do not start with a vague demo
 
@@ -14,27 +14,27 @@ The fastest honest test is one real backlog task you already care about.
 
 Choose something that is:
 
-- small enough to judge in one sitting
-- clear enough that success is easy to define
-- cheap to roll back if the run misses
-- real enough that you already want it done
+- substantial enough to justify unattended execution
+- defined enough that success is easy to evaluate afterward
+- detailed enough that you can write a serious product spec
+- real enough that you already want it shipped
 
 ## Good first tasks
 
 These are strong first uses for Ralph Workflow:
 
-- a bounded feature slice
-- a narrow refactor with tests
-- a cleanup task with obvious verification
-- repetitive implementation work where `done` is easy to judge
-- a docs or test pass with a clear finish line
+- a substantial feature slice with real product value
+- a serious refactor with tests and explicit constraints
+- a documentation or test initiative with clear finish criteria
+- repetitive implementation work across multiple files where the product goal is already clear
+- a meaningful backlog item that should leave behind a reviewable implementation head start
 
 Why these work:
 
-- the scope is easy to describe
-- the checks are obvious
-- the diff is reviewable
-- failure is inexpensive to unwind
+- the product goal is already understood
+- the specification can be detailed without inventing the work mid-run
+- the checks are meaningful
+- the result can be judged against a real engineering outcome
 
 ## Bad first tasks
 
@@ -91,10 +91,10 @@ Add a /health endpoint that returns HTTP 200 with {"status": "ok"}.
 
 Before you run, ask:
 
-1. Can I describe the task in one paragraph?
-2. Can I name the checks that prove it worked?
-3. Would a diff be enough for a reviewer to judge the result?
-4. If it misses, is the rollback cheap?
+1. Do I already know what the product outcome needs to be?
+2. Can I write a detailed enough spec that the agent should not have to invent the goal?
+3. Can I name the checks that prove it worked?
+4. Would the result matter enough that I actually want this work done?
 
 If the answer is yes to all four, it is probably a good Ralph Workflow task.
 
@@ -104,8 +104,8 @@ Do not ask whether the agent looked smart.
 
 Ask:
 
-- does the diff match the task?
-- are the changes small enough to review?
+- does the diff match the product spec?
+- did the run cover a meaningful chunk of work?
 - did the checks really run?
 - **would I merge this?**
 

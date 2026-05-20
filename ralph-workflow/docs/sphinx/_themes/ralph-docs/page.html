@@ -18,6 +18,10 @@
 {%- block extrahead %}
 {{ super() }}
 {%- if pagename == 'index' %}
+<meta property="og:title" content="Unattended coding agent &amp; AI agent orchestration CLI for Claude Code and Codex">
+<meta property="og:description" content="Free open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Run one bounded backlog task overnight, inspect the primary Codeberg repo first, and wake up to a reviewable diff.">
+<meta name="twitter:title" content="Unattended coding agent &amp; AI agent orchestration CLI for Claude Code and Codex">
+<meta name="twitter:description" content="Free open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode. Run one bounded backlog task overnight, inspect the primary Codeberg repo first, and wake up to a reviewable diff.">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -26,7 +30,7 @@
       "@type": "SoftwareApplication",
       "name": "Ralph Workflow",
       "applicationCategory": "DeveloperApplication",
-      "applicationSubCategory": "Free unattended coding agent and AI agent orchestration CLI",
+      "applicationSubCategory": "Unattended coding agent and AI agent orchestration CLI for Claude Code and Codex",
       "operatingSystem": "Linux, macOS, Windows",
       "isAccessibleForFree": true,
       "offers": {
@@ -43,7 +47,7 @@
         "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
         "https://github.com/Ralph-Workflow/Ralph-Workflow"
       ],
-      "description": "Ralph Workflow is a free and open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode on your own machine, built to turn one real backlog task into reviewable output by morning.",
+      "description": "Ralph Workflow is a free and open-source unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode on your own machine, built to turn one bounded backlog task into a reviewable diff by morning.",
       "audience": {
         "@type": "Audience",
         "audienceType": "Developers and technical teams with work too big to babysit and too risky to trust blindly"
@@ -80,7 +84,7 @@
           "name": "Why is Ralph Workflow different?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "It is repo-native and built to hand back a reviewable result with changed files, checks, artifacts, and review context instead of just a transcript and a done claim."
+            "text": "It is repo-native and built around composable loops for planning, implementation, verification, review, and agent routing instead of a single transcript-driven coding session."
           }
         },
         {

@@ -4,7 +4,7 @@ Ralph Workflow is a **free and open-source** tool that orchestrates the coding a
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow is built to leave you with a **reviewable result** — a real diff, checks, artifacts, and a short finish receipt — instead of just a transcript and a confident done claim.
+What makes it different is not that it can summarize a run nicely. Ralph Workflow is built to leave you with **software you can actually evaluate** — executable behavior, real checks, artifacts, and a short finish receipt — instead of just a transcript and a confident done claim.
 
 Why read this now? The real question is not whether an agent looked smart. It is whether the morning-after result is something you would actually trust enough to review and merge.
 
@@ -12,25 +12,29 @@ Why read this now? The real question is not whether an agent looked smart. It is
 
 Open the result in this order:
 
-1. **Open the diff first**
-   - Do the changed files match the task you asked for?
-   - Is the scope still small enough to review in one sitting?
+1. **Run or inspect the actual behavior first**
+   - Does the software or executable path now do the requested thing?
+   - If the task was UI- or behavior-facing, is there real evidence of that behavior?
 
-2. **Read the finish receipt**
+2. **Open the diff**
+   - Do the changed files match the task you asked for?
+   - Does the scope still match the defined product or engineering spec?
+
+3. **Read the finish receipt**
    - What changed?
    - What checks ran?
    - What stayed uncertain?
    - What still needs a human judgment call?
 
-3. **Confirm the real checks**
+4. **Confirm the real checks**
    - Do not stop at a summary.
-   - Look for the actual test, lint, or build outputs that matter for this repo.
+   - Look for the actual test, lint, build, integration, or end-to-end outputs that matter for this repo.
 
-4. **Review shared boundaries carefully**
+5. **Review shared boundaries carefully**
    - Schemas, config, interfaces, migrations, auth, and build wiring break trust faster than isolated files.
    - If the task touched a shared boundary, make sure the merged state still holds up.
 
-5. **Ask one question**
+6. **Ask one question**
    - **Would I merge this?**
 
 If that answer is quick and boring, the handoff is strong. If you still need to reconstruct the whole night from logs, it is not.
@@ -39,7 +43,7 @@ If that answer is quick and boring, the handoff is strong. If you still need to 
 
 A useful unattended run should give you:
 
-- a bounded diff
+- working behavior you can verify
 - changed files that match the ask
 - checks that actually ran
 - a short finish receipt instead of a long transcript
@@ -74,7 +78,7 @@ Best first-task companions:
 - [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — what good output should look like
 - [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — shared-boundary drift, finish receipts, and clean re-entry
 
-If the morning-after result gives you a clean diff, real checks, and a merge decision you can make quickly, Ralph Workflow is doing useful work.
+If the morning-after result gives you working behavior, real checks, and a verification path you can evaluate quickly, Ralph Workflow is doing useful work.
 
 If that is the evaluation path you want, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 

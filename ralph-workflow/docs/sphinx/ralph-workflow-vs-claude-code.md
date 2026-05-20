@@ -3,7 +3,7 @@
 If you already know Claude Code, the simplest difference is this:
 
 - **Claude Code** is an interactive coding agent you drive directly.
-- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine** and hands back a **reviewable result** after an unattended run.
+- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine** inside a **composable loop workflow** for real software work.
 
 That means Ralph Workflow is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -27,7 +27,7 @@ Ralph Workflow is usually the better fit when you want to:
 - wake up to a large chunk of work instead of babysitting the terminal
 - keep Claude Code but add a stronger morning-after handoff
 - route different phases through different agents when needed
-- judge the result with a simple merge / no-merge decision
+- judge the result by whether it produced working software and real verification
 
 Typical good Ralph Workflow tasks:
 

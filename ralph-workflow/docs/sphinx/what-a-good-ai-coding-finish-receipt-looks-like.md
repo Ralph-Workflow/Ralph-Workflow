@@ -78,7 +78,7 @@ That is why Ralph Workflow focuses on **what comes back**, not just how many age
 
 Pick one real backlog task tonight.
 
-Run Ralph Workflow with a task small enough to review in one sitting.
+Run Ralph Workflow with a task substantial enough to deserve unattended work and defined enough to judge against a real spec.
 
 Tomorrow morning, open the diff and the finish receipt and ask:
 

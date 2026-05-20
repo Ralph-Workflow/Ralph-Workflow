@@ -27,7 +27,7 @@ Ralph Workflow is usually the better fit when you want to:
 - wake up to a large chunk of work instead of reopening the terminal all night
 - keep Codex CLI but add a stronger morning-after handoff
 - route planning, implementation, and review through different agents when needed
-- judge the result with a simple merge / no-merge decision
+- judge the result by whether it produced working software and real verification
 
 Typical good Ralph Workflow tasks:
 

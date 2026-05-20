@@ -9,7 +9,7 @@ It is this:
 This page is the shortest path from a private first run to a useful public next step on **Codeberg**.
 
 - Primary repo: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- GitHub mirror: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- GitHub mirror only if that is where you already follow projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Use Codeberg for the real project relationship: stars, watches, issues, and contribution history.
 

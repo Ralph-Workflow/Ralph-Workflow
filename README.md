@@ -1,8 +1,8 @@
 # Ralph Workflow
 
-> **Write the spec. Wake up to working software.**
->
 > **The operating system for autonomous coding.**
+>
+> **Write the spec. Wake up to working software.**
 
 [![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
@@ -11,103 +11,51 @@
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
-Ralph Workflow is a free and open-source orchestration CLI
-for AI coding agents on your own machine.
-You write the task in `PROMPT.md`, Ralph runs planning, coding,
-and review through the agents you choose,
-and you come back to a reviewable result:
-a real diff, checks, logs, and concrete artifacts.
+Ralph Workflow is a free and open-source **AI agent orchestration CLI** for real software engineering on your own machine.
 
-## Quick answer: is this for you?
+It takes the simple Ralph-loop idea and turns it into a **composable workflow system** for planning, implementation, verification, review, and agent routing.
 
-- **What is it?** A CLI for unattended, reviewable AI coding runs.
-- **Who is it for?** Developers and technical teams with work too big to babysit and too risky to trust blindly.
-- **Why is it different?** It is built to hand back a reviewable result, not just a transcript.
-- **Why use it now?** You can try one real backlog task tonight and decide tomorrow whether you would merge the outcome.
-- **If you cannot judge a diff or merge decision, this is probably not for you yet.**
+The core stays simple. That simplicity is what makes more complex workflows easier to build, easier to configure, and easier to extend.
 
-## The shortest evaluator path most people actually need
+Ralph Workflow also ships with a **strong default workflow for writing software**. You can use that default as-is, or build on top of it when you need something more advanced.
 
-1. **Inspect the primary repo on Codeberg first** — <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-2. **Choose one real first task** — [docs/first-task-guide.md](./docs/first-task-guide.md)
-3. **Run the shortest practical first run** — [START_HERE.md](./START_HERE.md)
-4. **Judge the handoff** — [docs/reviewable-output.md](./docs/reviewable-output.md)
-5. **Turn the result into a Codeberg action** — [docs/after-your-first-run.md](./docs/after-your-first-run.md)
+It is for developers and technical teams with work **too big to babysit and too risky to trust blindly**.
 
-If the blank page is the blocker, steal a starter spec from [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md).
+## Why it is different
 
-## What you should get back
+- **Simple at the center** — the Ralph-loop core stays understandable.
+- **Powerful in composition** — simple loops can be composed into much more complex workflows.
+- **Built for orchestration** — planning, coding, verification, and review can use different agents when needed.
+- **Strong default workflow** — you do not need to invent a workflow before getting value.
+- **Easy to extend** — the same simplicity that makes it understandable also makes it easier to customize.
 
-A useful run should be reviewable before you read a long log.
+## Start here
 
-```text
-Task: Add empty-project-name validation to the CLI create flow
+- [Try Ralph Workflow on one real backlog task](START_HERE.md)
+- [Choose Your First Ralph Workflow Task](docs/first-task-guide.md)
+- [AI Agent Orchestration CLI](docs/ai-agent-orchestration-cli.md)
+- [Spec-Driven AI Agent](docs/spec-driven-ai-agent.md)
+- [Getting Started](ralph-workflow/README.md)
 
-Changed files:
-- cli/create.py
-- tests/test_create.py
+## A fast way to tell whether Ralph Workflow fits
 
-Checks run:
-- unit tests for create flow
-- lint / formatting checks if applicable
+1. Pick one real substantial backlog task with a defined product outcome.
+2. Write it down in `PROMPT.md` with clear acceptance criteria.
+3. Run Ralph Workflow.
+4. Come back and check whether it produced **working software, real verification, or an honest blocked state**.
 
-Open questions:
-- should reserved names be rejected too?
-- should whitespace be trimmed before validation?
-```
+If yes, give it a harder task next.
+If no, tighten the spec, checks, or task choice and run again.
 
-That is the promise: a bounded diff, checks that actually ran, and a clear merge decision.
+## What a finished run should prove
 
-If the run feels unclear, shaky, or harder than it should, report it on Codeberg: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+A useful run should make three things obvious:
 
-## Tonight's first run in five minutes
+- **what changed**
+- **what now works, or what failed honestly**
+- **what verification actually ran**
 
-Prerequisites:
-
-- Python 3.12+
-- a git repo you can safely test in
-- at least one supported agent CLI already installed and authenticated
-
-If you are unsure which agent to start with,
-use the one already working on your machine,
-then read [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md).
-
-```bash
-pipx install ralph-workflow
-cd /path/to/your/project
-ralph --init
-ralph --diagnose
-$EDITOR PROMPT.md
-ralph
-```
-
-Paste a spec this small into `PROMPT.md`:
-
-```markdown
-# Goal
-
-Add validation so the CLI rejects empty project names before creating files.
-Keep the rest of the flow unchanged.
-
-## Acceptance criteria
-
-- Empty or whitespace-only project names fail with a clear error
-- No project files are created for invalid names
-- Existing valid-name behavior stays unchanged
-- Tests cover the new validation
-```
-
-Then ask one question:
-
-> **Would I merge this?**
-
-## Why teams use Ralph Workflow
-
-- **Write a spec, not a babysitting script.**
-- **Wake up to reviewable output.**
-- **Use the agents you already have.**
-- **Keep the workflow in the repo.**
-- **Aim past prototypes.**
+That is supporting proof, not the main product story. The point of Ralph Workflow is the workflow itself: a simple core that scales into stronger autonomous software workflows.
 
 ## Install
 
@@ -138,38 +86,40 @@ Requires Python 3.12+.
 
 ## Before your first run
 
-Make sure the agent CLIs you want Ralph to call are already installed and authenticated. Ralph Workflow does not manage provider login state or touch your credentials.
+Make sure the agent CLIs you want Ralph Workflow to call are already installed and authenticated.
 
-For detailed usage, start with the [crate README](ralph-workflow/README.md).
-For the short docs path, use [docs/quick-reference.md](docs/quick-reference.md).
+Ralph Workflow does not replace those coding agents. It orchestrates them.
 
-**What fits best**
-
-Good first tasks:
+## Good first tasks
 
 - a bounded feature slice
 - a narrow refactor with tests
 - a known cleanup task with clear checks
-- repetitive implementation work where done is easy to judge
+- repetitive implementation work where success is easy to verify
 
-Bad first tasks:
+## Bad first tasks
 
 - vague product exploration
 - risky production surgery
 - tiny tasks where setup overhead dominates
 - workflows that depend on unpredictable mid-run human input
 
+## Why teams use Ralph Workflow
+
+- **Write a spec, not a babysitting script.**
+- **Start with a strong default workflow.**
+- **Compose more complex workflows when you need them.**
+- **Use the agents you already have.**
+- **Keep the workflow in the repo.**
+- **Aim past prototypes.**
+
 ## Need one deeper answer?
 
-Keep this README for onboarding. Then choose only the nearest next page:
-
 - fastest first run — [START_HERE.md](./START_HERE.md)
-- handoff standard — [docs/reviewable-output.md](./docs/reviewable-output.md)
 - first task selection — [docs/first-task-guide.md](./docs/first-task-guide.md)
-- agent choice — [docs/which-agent-should-i-start-with.md](./docs/which-agent-should-i-start-with.md)
-
-If you still need the full map, use [docs/README.md](./docs/README.md).
-For the product site, use <https://ralphworkflow.com>.
+- orchestration framing — [docs/ai-agent-orchestration-cli.md](./docs/ai-agent-orchestration-cli.md)
+- full docs map — [docs/README.md](./docs/README.md)
+- package usage and commands — [ralph-workflow/README.md](./ralph-workflow/README.md)
 
 ## Third-party proof before you install
 
