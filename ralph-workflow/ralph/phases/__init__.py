@@ -25,6 +25,7 @@ from loguru import logger
 
 from ralph.phases import analysis as _analysis
 from ralph.phases import commit as _commit
+from ralph.phases import commit_cleanup as _commit_cleanup
 from ralph.phases import execution as _execution
 from ralph.phases import review as _review
 from ralph.phases import verification as _verification
@@ -118,6 +119,9 @@ def register_role_handlers(policy: PipelinePolicy) -> None:
         elif phase_def.role == "verification" and phase_name not in HANDLERS:
             logger.debug("Registering generic verification handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = _verification.handle_verification_phase
+        elif phase_def.role == "commit_cleanup" and phase_name not in HANDLERS:
+            logger.debug("Registering commit cleanup handler for phase '{}'", phase_name)
+            HANDLERS[phase_name] = _commit_cleanup.handle_commit_cleanup_phase
 
 
 def get_handler(phase_name: str) -> PhaseHandler:

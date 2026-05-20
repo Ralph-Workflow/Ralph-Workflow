@@ -15,6 +15,7 @@ from ralph.policy.validation._checkpoint_policy_mismatch_error import (
 )
 from ralph.policy.validation._phase_validators import (
     _validate_analysis_phase,
+    _validate_commit_cleanup_phase,
     _validate_commit_phase_loop_resets,
     _validate_commit_phase_post_commit_routes,
     _validate_parallelization_consistency,
@@ -197,6 +198,9 @@ def validate_policy_completeness(
 
         if role == "verification":
             _validate_verification_phase(phase_name, phase_def, policy, errors)
+
+        if role == "commit_cleanup":
+            _validate_commit_cleanup_phase(phase_name, phase_def, bundle, errors)
 
         _validate_skip_invocation_has_on_success(phase_name, phase_def, errors)
         _validate_parallelization_consistency(phase_name, phase_def, errors)

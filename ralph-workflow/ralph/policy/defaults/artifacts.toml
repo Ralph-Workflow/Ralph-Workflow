@@ -76,3 +76,10 @@ artifact_type = "commit_message"
 decision_vocabulary = []
 prompt_template = "commit_message.jinja"
 artifact_json_path = ".agent/tmp/commit_message.json"
+
+[artifacts.development_commit_cleanup_artifact]
+drain = "commit"
+artifact_type = "commit_cleanup"
+decision_vocabulary = []
+prompt_template = "commit_cleanup.jinja"
+artifact_json_path = ".agent/artifacts/commit_cleanup.json"

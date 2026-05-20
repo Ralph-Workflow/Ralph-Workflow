@@ -72,6 +72,10 @@ description = "Development analysis loop iteration counter"
 default_max = 3
 description = "Planning analysis loop iteration counter"
 
+[loop_counters.commit_cleanup_iteration]
+default_max = 3
+description = "Commit cleanup loop iteration counter"
+
 # ---------------------------------------------------------------------------
 # Budget counters (policy-declared outer-progress and budget tracking)
 # ---------------------------------------------------------------------------
@@ -159,12 +163,12 @@ enabled = true
 clear_on_fresh_entry = false
 
 [phases.development_analysis.transitions]
-on_success = "development_commit"
+on_success = "development_commit_cleanup"
 on_loopback = "development"
 [phases.development_analysis.loop_policy]
 iteration_state_field = "development_analysis_iteration"
 [phases.development_analysis.decisions.completed]
-target = "development_commit"
+target = "development_commit_cleanup"
 reset_loop = true
 [phases.development_analysis.decisions.request_changes]
 target = "development"
@@ -172,6 +176,18 @@ reset_loop = false
 [phases.development_analysis.decisions.failed]
 target = "development"
 reset_loop = false
+
+[phases.development_commit_cleanup]
+drain = "commit"
+role = "commit_cleanup"
+prompt_template = "commit_cleanup.jinja"
+display_style = "theme.phase.commit"
+[phases.development_commit_cleanup.transitions]
+on_success = "development_commit"
+on_loopback = "development_commit_cleanup"
+on_failure = "failed_terminal"
+[phases.development_commit_cleanup.loop_policy]
+iteration_state_field = "commit_cleanup_iteration"
 
 [phases.development_commit]
 drain = "development_commit"

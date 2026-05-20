@@ -12,12 +12,14 @@ import pytest
 from ralph.phases import HANDLERS, PhaseHandlerNotFoundError, handle_phase, register_role_handlers
 from ralph.phases.analysis import handle_generic_analysis_phase
 from ralph.phases.commit import handle_commit_phase
+from ralph.phases.commit_cleanup import handle_commit_cleanup_phase
 from ralph.phases.execution import handle_execution_phase
 from ralph.phases.review import handle_review
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
+    LoopCounterConfig,
     PhaseCommitPolicy,
     PhaseDecisionRoute,
     PhaseDefinition,
@@ -226,3 +228,40 @@ class TestRegisterRoleHandlers:
         with pytest.raises(PhaseHandlerNotFoundError) as exc_info:
             handle_phase(effect, MagicMock())
         assert "totally_unknown_phase" in str(exc_info.value)
+
+    def test_register_role_handlers_registers_commit_cleanup_phase(self) -> None:
+        """register_role_handlers adds handle_commit_cleanup_phase for commit_cleanup roles."""
+        policy = PipelinePolicy(
+            phases={
+                "my_custom_cleanup": PhaseDefinition(
+                    drain="commit",
+                    role="commit_cleanup",
+                    prompt_template="commit_cleanup.jinja",
+                    transitions=PhaseTransition(
+                        on_success="done",
+                        on_loopback="my_custom_cleanup",
+                        on_failure="done",
+                    ),
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="commit_cleanup_iteration"
+                    ),
+                ),
+                "done": PhaseDefinition(
+                    drain="done",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success="done", on_loopback="done"
+                    ),
+                ),
+            },
+            entry_phase="my_custom_cleanup",
+            terminal_phase="done",
+            loop_counters={
+                "commit_cleanup_iteration": LoopCounterConfig(default_max=3)
+            },
+        )
+        HANDLERS.pop("my_custom_cleanup", None)
+        register_role_handlers(policy)
+        assert HANDLERS.get("my_custom_cleanup") is handle_commit_cleanup_phase
+        HANDLERS.pop("my_custom_cleanup", None)

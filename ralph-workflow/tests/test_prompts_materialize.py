@@ -45,7 +45,6 @@ def test_resolve_fix_result_content_reads_fix_result_artifact(tmp_path: Path) ->
     assert "Applied fixes" in content
     assert path == str(tmp_path / ".agent" / "FIX_RESULT.md")
 
-
 def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: Path) -> None:
     workspace = FsWorkspace(tmp_path)
 
@@ -53,10 +52,8 @@ def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: P
     assert content == "(no fix result available)"
     assert path == ""
 
-
 def test_tool_name_prefix_for_claude_interactive() -> None:
     assert tool_name_prefix_for_transport(AgentTransport.CLAUDE_INTERACTIVE) == "mcp__ralph__"
-
 
 def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
     tmp_path: Path,
@@ -86,7 +83,6 @@ def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
         entry_phase="planning",
         terminal_phase="complete",
     )
-
     artifacts_policy = ArtifactsPolicy(
         artifacts={
             "development_result": ArtifactContract(
@@ -122,7 +118,6 @@ def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
     assert str(history_file) not in rendered
     assert history_file.exists() is False
 
-
 def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enabled(
     tmp_path: Path,
 ) -> None:
@@ -152,7 +147,6 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
         entry_phase="planning",
         terminal_phase="complete",
     )
-
     artifacts_policy = ArtifactsPolicy(
         artifacts={
             "development_result": ArtifactContract(
@@ -191,7 +185,6 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
 
     assert not archived_json.exists(), "archive json must be removed on fresh development entry"
     assert not index_file.exists(), "history index must be removed on fresh development entry"
-
 
 def test_development_analysis_loopback_preserves_development_artifact_history(
     tmp_path: Path,
@@ -272,7 +265,6 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
             }
         ),
     )
-
     # Create history files on disk
     artifact_dir = tmp_path / ".agent" / "artifacts"
     hist_dir = history_dir_for_artifact(artifact_dir, "development_result")
@@ -298,7 +290,6 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
 
     assert archived_json.exists(), "archive json must be preserved on development loopback"
     assert index_file.exists(), "history index must be preserved on development loopback"
-
 
 def test_development_prompt_includes_artifact_history_path_when_history_exists(
     tmp_path: Path,
@@ -366,7 +357,6 @@ def test_development_prompt_includes_artifact_history_path_when_history_exists(
     rendered = workspace.read(prompt_path)
     assert "ARTIFACT HISTORY" in rendered
     assert str(index_file) in rendered
-
 
 def test_fresh_planning_entry_clears_plan_history_preserves_analysis_history(
     tmp_path: Path,
@@ -468,8 +458,6 @@ def test_fresh_planning_entry_clears_plan_history_preserves_analysis_history(
     # planning_analysis_decision history is preserved (clear_on_fresh_entry=false)
     assert analysis_archived.exists(), "planning_analysis_decision archive must be preserved"
     assert analysis_index.exists(), "planning_analysis_decision history index must be preserved"
-
-
 def test_planning_analysis_to_development_clears_history_per_policy(
     tmp_path: Path,
 ) -> None:
@@ -537,7 +525,6 @@ def test_planning_analysis_to_development_clears_history_per_policy(
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement the feature")
     workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Do the thing\n")
-
     # Create plan history files
     artifact_dir = tmp_path / ".agent" / "artifacts"
     plan_hist_dir = history_dir_for_artifact(artifact_dir, "plan")
@@ -586,8 +573,6 @@ def test_planning_analysis_to_development_clears_history_per_policy(
     # development_result history is cleared (clear_on_fresh_entry=true for development)
     assert not dev_archived.exists(), "development_result archive must be removed"
     assert not dev_index.exists(), "development_result history index must be removed"
-
-
 def test_development_analysis_to_development_commit_clears_history_per_policy(
     tmp_path: Path,
 ) -> None:
@@ -697,7 +682,6 @@ def test_development_analysis_to_development_commit_clears_history_per_policy(
     dev_archived.write_text('{"type":"development_result"}', encoding="utf-8")
     dev_index = history_index_path(artifact_dir, "development_result")
     dev_index.write_text("# History", encoding="utf-8")
-
     # Create development_analysis_decision history files
     analysis_hist_dir = history_dir_for_artifact(artifact_dir, "development_analysis_decision")
     analysis_hist_dir.mkdir(parents=True, exist_ok=True)
@@ -729,9 +713,6 @@ def test_development_analysis_to_development_commit_clears_history_per_policy(
     # development_result history is cleared (clear_on_fresh_entry=true for development)
     assert not dev_archived.exists(), "development_result archive must be removed"
     assert not dev_index.exists(), "development_result history index must be removed"
-
-
-
 def test_planning_analysis_bypass_clears_history_per_policy(
     tmp_path: Path,
 ) -> None:
@@ -851,7 +832,6 @@ def test_planning_analysis_bypass_clears_history_per_policy(
     # development_result history is cleared (clear_on_fresh_entry=true for development)
     assert not dev_archived.exists(), "development_result archive must be removed on bypass"
     assert not dev_index.exists(), "development_result history index must be removed on bypass"
-
 
 def test_development_analysis_bypass_clears_history_per_policy(
     tmp_path: Path,
@@ -997,3 +977,24 @@ def test_development_analysis_bypass_clears_history_per_policy(
     # development_result history is cleared (clear_on_fresh_entry=true for development)
     assert not dev_archived.exists(), "development_result archive must be removed on bypass"
     assert not dev_index.exists(), "development_result history index must be removed on bypass"
+
+def test_commit_cleanup_phase_renders_prompt_successfully(tmp_path: Path) -> None:
+    p = PipelinePolicy(
+        phases={"development_commit_cleanup": PhaseDefinition(drain="commit", role="commit_cleanup",
+            prompt_template="commit_cleanup.jinja",
+            transitions=PhaseTransition(on_success="complete",
+                on_loopback="development_commit_cleanup", on_failure="failed_terminal"),
+            loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration")),
+          "complete": PhaseDefinition(drain="complete", role="terminal", terminal_outcome="success",
+            transitions=PhaseTransition(on_success="complete"))},
+        entry_phase="development_commit_cleanup", terminal_phase="complete",
+        loop_counters={"commit_cleanup_iteration": LoopCounterConfig(default_max=3)})
+    ws = MemoryWorkspace(root=str(tmp_path))
+    ws.write("PROMPT.md", "x")
+    ws.write(".agent/PLAN.md", "# Plan")
+    caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+    ctx = PromptPhaseContext(phase="development_commit_cleanup", workspace=ws, pipeline_policy=p,
+        session_caps=caps, workspace_root=tmp_path)
+    rendered = ws.read(materialize_prompt_for_phase(ctx,
+        PromptPhaseOptions(artifacts_policy=ArtifactsPolicy(artifacts={}), previous_phase=None)))
+    assert "ralph_submit_artifact" in rendered and "DIFF" in rendered

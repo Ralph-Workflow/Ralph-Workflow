@@ -227,3 +227,25 @@ def _validate_parallelization_consistency(
             f"work units makes the policy misleading. "
             f"Increase max_work_units or decrease max_parallel_workers."
         )
+
+
+def _validate_commit_cleanup_phase(
+    phase_name: str,
+    phase_def: object,
+    bundle: object,
+    errors: list[str],
+) -> None:
+    if not isinstance(phase_def, PhaseDefinition) or not isinstance(bundle, PolicyBundle):
+        return
+    if phase_def.loop_policy is None:
+        errors.append(
+            f"phases.{phase_name}: role='commit_cleanup' requires loop_policy "
+            f"(iteration_state_field for the cleanup iteration counter)"
+        )
+    else:
+        field = phase_def.loop_policy.iteration_state_field
+        if field not in bundle.pipeline.loop_counters:
+            errors.append(
+                f"phases.{phase_name}.loop_policy.iteration_state_field: "
+                f"'{field}' is not declared in pipeline.loop_counters."
+            )

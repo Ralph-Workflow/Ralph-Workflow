@@ -87,3 +87,31 @@ class TestDefaultPolicyLoading:
             assert phase_def.drain in bundle.agents.agent_drains, (
                 f"Phase '{phase_name}' uses unbound drain '{phase_def.drain}'"
             )
+
+    def test_development_commit_cleanup_phase_in_default_policy(self) -> None:
+        """Test that development_commit_cleanup phase exists with correct config."""
+        default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
+        bundle = load_policy(default_dir)
+
+        assert "development_commit_cleanup" in bundle.pipeline.phases
+        phase = bundle.pipeline.phases["development_commit_cleanup"]
+        assert phase.role == "commit_cleanup"
+        assert phase.drain == "commit"
+
+        # Verify both routing declarations are consistent
+        dev_analysis = bundle.pipeline.phases["development_analysis"]
+        assert dev_analysis.transitions.on_success == "development_commit_cleanup", (
+            f"transitions.on_success must point to cleanup phase, got: "
+            f"{dev_analysis.transitions.on_success}"
+        )
+        assert dev_analysis.decisions["completed"].target == "development_commit_cleanup", (
+            f"decisions.completed.target must point to cleanup phase, got: "
+            f"{dev_analysis.decisions['completed'].target}"
+        )
+        assert phase.loop_policy is not None, (
+            "development_commit_cleanup must have a loop_policy declared"
+        )
+        assert phase.loop_policy.iteration_state_field == "commit_cleanup_iteration", (
+            f"loop_policy.iteration_state_field must be 'commit_cleanup_iteration', "
+            f"got: {phase.loop_policy.iteration_state_field}"
+        )

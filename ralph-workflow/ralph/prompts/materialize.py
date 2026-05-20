@@ -33,6 +33,7 @@ from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
+from ralph.prompts.commit_cleanup import render_commit_cleanup_prompt
 from ralph.prompts.debug_dump import (
     dump_rendered_prompt,
     media_session_path,
@@ -310,6 +311,15 @@ def _render_prompt_for_phase(
                 output_dir=workspace_root / ".agent" / "tmp" / "prompt_payloads",
                 name_prefix=phase,
             ),
+        )
+
+    # Commit-cleanup prompt: commit_cleanup role
+    if phase_role == "commit_cleanup":
+        return render_commit_cleanup_prompt(
+            phase=phase, workspace_root=workspace_root,
+            worker_namespace=worker_namespace, prompt_content=prompt_content,
+            current_prompt_path=current_prompt_path, template_name=template_name,
+            tmpl_ctx=tmpl_ctx, session_caps=session_caps,
         )
 
     plan_content, plan_path = _resolve_required_plan_handoff(
@@ -982,9 +992,7 @@ def _pending_diff(workspace_root: Path) -> str:
 
 
 def _commit_phase_diff(workspace_root: Path) -> str:
-    diff = pending_diff(workspace_root).strip()
+    diff = _pending_diff(workspace_root).strip()
     return diff or "(no diff available)"
 
 
-pending_diff = _pending_diff
-git_diff = _git_diff

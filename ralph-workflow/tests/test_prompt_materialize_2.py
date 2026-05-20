@@ -341,7 +341,7 @@ def test_materialize_review_phase_references_plan_handoff_when_plan_exists(
 
     expected_plan_path = str(tmp_path / ".agent" / "PLAN.md")
 
-    with patch.object(materialize_module, "git_diff", return_value="diff --git a/src/app.py"):
+    with patch.object(materialize_module, "_git_diff", return_value="diff --git a/src/app.py"):
         prompt_path = materialize_prompt_for_phase(
             PromptPhaseContext(
                 phase="review",
@@ -372,7 +372,7 @@ def test_materialize_commit_phase_tolerates_empty_diff(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
 
-    monkeypatch.setattr(materialize_module, "pending_diff", lambda _workspace_root: "")
+    monkeypatch.setattr(materialize_module, "_pending_diff", lambda _workspace_root: "")
 
     prompt_path = materialize_prompt_for_phase(
         PromptPhaseContext(
@@ -398,7 +398,7 @@ def test_materialize_commit_phase_with_claude_prefix_includes_both_tool_aliases(
 
     monkeypatch.setattr(
         materialize_module,
-        "pending_diff",
+        "_pending_diff",
         lambda _workspace_root: "diff --git a/app.py b/app.py\n+hello",
     )
 
@@ -865,7 +865,7 @@ def test_git_diff_uses_start_commit_sha_when_present(tmp_git_repo: Path) -> None
     agent_dir.mkdir(parents=True, exist_ok=True)
     (agent_dir / "start_commit").write_text(baseline_sha + "\n")
 
-    diff = materialize_module.git_diff(tmp_git_repo)
+    diff = materialize_module._git_diff(tmp_git_repo)
 
     assert "feature.py" in diff
 
@@ -876,7 +876,7 @@ def test_git_diff_falls_back_to_head_when_start_commit_absent(tmp_git_repo: Path
         uncommitted.write_text("y = 2\n")
         repo.index.add(["work.py"])
 
-    diff = materialize_module.git_diff(tmp_git_repo)
+    diff = materialize_module._git_diff(tmp_git_repo)
 
     assert "work.py" in diff
 
@@ -893,7 +893,7 @@ def test_git_diff_cumulative_across_multiple_mid_cycle_commits(tmp_git_repo: Pat
         (tmp_git_repo / "file_c.py").write_text("c = 3\n")
         repo.index.add(["file_c.py"])
     write_cycle_baseline(tmp_git_repo, baseline_sha)
-    diff = materialize_module.git_diff(tmp_git_repo)
+    diff = materialize_module._git_diff(tmp_git_repo)
     assert "file_a.py" in diff
     assert "file_b.py" in diff
     assert "file_c.py" in diff
@@ -905,5 +905,5 @@ def test_git_diff_zero_mid_cycle_commits_only_uncommitted(tmp_git_repo: Path) ->
         write_cycle_baseline(tmp_git_repo, baseline_sha)
         (tmp_git_repo / "uncommitted.py").write_text("u = 99\n")
         repo.index.add(["uncommitted.py"])
-    diff = materialize_module.git_diff(tmp_git_repo)
+    diff = materialize_module._git_diff(tmp_git_repo)
     assert "uncommitted.py" in diff

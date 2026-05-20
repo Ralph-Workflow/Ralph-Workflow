@@ -378,7 +378,7 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
         "PREVIOUS ATTEMPT FAILED: missing decision artifact",
     )
 
-    with patch.object(materialize_module, "git_diff", return_value="diff"):
+    with patch.object(materialize_module, "_git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(
             PromptPhaseContext(
                 phase="development_analysis",
@@ -410,7 +410,7 @@ def test_development_proof_failure_uses_retry_hint_contract(
     assert failure_events[0].retry_in_session is True
     assert workspace.exists(retry_hint_path("development"))
 
-    with patch.object(materialize_module, "git_diff", return_value="diff"):
+    with patch.object(materialize_module, "_git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(
             PromptPhaseContext(
                 phase="development",
@@ -473,7 +473,7 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
     ra = REQUIRED_ARTIFACTS[phase]
     workspace.write(ra.json_path, _PHASE_VALID_ARTIFACT[phase])
 
-    with patch.object(materialize_module, "git_diff", return_value="diff"):
+    with patch.object(materialize_module, "_git_diff", return_value="diff"):
         prompt_path = materialize_module.materialize_prompt_for_phase(
             PromptPhaseContext(
                 phase=phase,

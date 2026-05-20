@@ -93,6 +93,14 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
 
     state = _apply(state, PipelineEvent.ANALYSIS_SUCCESS)
     visited_phases.append(state.phase)
+    assert state.phase == "development_commit_cleanup"
+    assert isinstance(
+        determine_next_effect(state, bundle.pipeline, bundle.agents),
+        CommitEffect | PreparePromptEffect,
+    )
+
+    state = _apply(state, PipelineEvent.AGENT_SUCCESS)
+    visited_phases.append(state.phase)
     assert state.phase == "development_commit"
     assert isinstance(
         determine_next_effect(state, bundle.pipeline, bundle.agents),
@@ -108,6 +116,7 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
         "planning_analysis",
         "development",
         "development_analysis",
+        "development_commit_cleanup",
         "development_commit",
         "complete",
     ]

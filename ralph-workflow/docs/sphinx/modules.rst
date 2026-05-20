@@ -915,6 +915,18 @@ ralph.pipeline.worker_status
 
 ----
 
+Git
+---
+
+ralph.git.commit_cleanup
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.git.commit_cleanup
+   :members:
+   :show-inheritance:
+
+----
+
 Phases
 ------
 
@@ -946,6 +958,13 @@ ralph.phases.commit
 ~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.phases.commit
+   :members:
+   :show-inheritance:
+
+ralph.phases.commit_cleanup
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.phases.commit_cleanup
    :members:
    :show-inheritance:
 

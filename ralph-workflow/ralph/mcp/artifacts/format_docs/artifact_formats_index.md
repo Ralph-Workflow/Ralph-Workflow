@@ -71,6 +71,7 @@ This example shows the minimum fields needed to submit each type:
 | artifact_type | Purpose | Format doc path |
 |--------------|---------|-----------------|
 | `commit_message` | Submit a git commit message | `.agent/artifact-formats/commit_message.md` |
+| `commit_cleanup` | Clean up files before committing | `.agent/artifact-formats/commit_cleanup.md` |
 | `development_result` | Report the outcome of a development task | `.agent/artifact-formats/development_result.md` |
 | `issues` | Report issues found during review | `.agent/artifact-formats/issues.md` |
 | `fix_result` | Report the outcome of a fix task | `.agent/artifact-formats/fix_result.md` |

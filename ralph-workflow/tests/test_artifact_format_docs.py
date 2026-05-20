@@ -23,6 +23,7 @@ from ralph.mcp.artifacts.format_docs import (
     materialize_format_index,
 )
 from ralph.mcp.artifacts.smoke_test_result import normalize_smoke_test_result_content
+from ralph.mcp.artifacts.typed_artifacts import normalize_commit_cleanup_content
 from ralph.mcp.tools.artifact import handle_submit_artifact
 from ralph.mcp.tools.coordination import InvalidParamsError
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
@@ -133,6 +134,7 @@ def test_bundled_examples_validate_through_real_normalizers(tmp_path: Path) -> N
         "commit_message": normalize_commit_message_content,
         "development_result": normalize_development_result_content,
         "smoke_test_result": normalize_smoke_test_result_content,
+        "commit_cleanup": normalize_commit_cleanup_content,
     }
     passthrough_types = {
         "issues",
@@ -168,9 +170,24 @@ def test_format_doc_mentions_required_fields() -> None:
         "development_result": ["status", "summary", "files_changed"],
         "issues": ["path", "severity", "summary"],
         "fix_result": ["summary", "files_changed"],
-        "development_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
-        "planning_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
-        "review_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
+        "development_analysis_decision": [
+            "status",
+            "summary",
+            "what_came_up_short",
+            "how_to_fix",
+        ],
+        "planning_analysis_decision": [
+            "status",
+            "summary",
+            "what_came_up_short",
+            "how_to_fix",
+        ],
+        "review_analysis_decision": [
+            "status",
+            "summary",
+            "what_came_up_short",
+            "how_to_fix",
+        ],
         "smoke_test_result": [
             "status",
             "summary",
@@ -178,6 +195,12 @@ def test_format_doc_mentions_required_fields() -> None:
             "observed_working",
             "observed_breaks",
             "headless_guide_checks",
+        ],
+        "commit_cleanup": [
+            "analysis_complete",
+            "actions",
+            "action",
+            "reason",
         ],
     }
 

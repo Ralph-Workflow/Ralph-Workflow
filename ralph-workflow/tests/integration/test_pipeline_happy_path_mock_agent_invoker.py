@@ -47,6 +47,13 @@ class TestMockAgentInvoker:
         event = invoker.invoke("claude", "development_commit")
         assert event == PipelineEvent.COMMIT_SUCCESS
 
+    def test_commit_cleanup_returns_agent_success(self) -> None:
+        """Test that commit_cleanup phases return AGENT_SUCCESS (not COMMIT_SUCCESS)."""
+        invoker = MockAgentInvoker(MemoryWorkspace())
+
+        event = invoker.invoke("claude", "development_commit_cleanup")
+        assert event == PipelineEvent.AGENT_SUCCESS
+
     def test_invoker_records_call_history(self) -> None:
         """Test that invoker records the call history."""
         invoker = MockAgentInvoker(MemoryWorkspace())

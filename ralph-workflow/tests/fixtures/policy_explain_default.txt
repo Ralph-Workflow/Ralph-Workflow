@@ -40,6 +40,16 @@
     >> RE-ENTRY at development
     |
     v
+[loop: counter=commit_cleanup_iteration, max=3]
++----------------------------+
+| development_commit_cleanup |
+|    role=commit_cleanup     |
++----------------------------+
+    <<==[loopback]== returns to 'development_commit_cleanup'
+    [LOOPBACK: counter=commit_cleanup_iteration, max=3]
+    >> RE-ENTRY at development_commit_cleanup
+    |
+    v
 +--------------------+
 | development_commit |
 |    role=commit     |

@@ -36,10 +36,23 @@ class MockAgentInvoker:
         if "analysis" in phase:
             return cast("PipelineEvent", PipelineEvent.ANALYSIS_SUCCESS)
 
-        if "commit" in phase:
+        if phase.endswith("_commit") or phase == "commit":
             return cast("PipelineEvent", PipelineEvent.COMMIT_SUCCESS)
 
         return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
 
     def count_for(self, phase: str) -> int:
         return self.call_counts.get(phase, 0)
+
+    def commit_event_for(self, phase: str) -> PipelineEvent:
+        """Return the event for commit phase completion.
+
+        Only actual commit phases (with role='commit') should return
+        COMMIT_SUCCESS. Phases like 'development_analysis_decision' that
+        happen to contain 'commit' in the name should return AGENT_SUCCESS
+        so they route through the normal analysis/execution flow.
+        """
+        # Actual commit phases end with '_commit' or are 'commit' itself
+        if phase.endswith("_commit") or phase == "commit":
+            return PipelineEvent.COMMIT_SUCCESS
+        return PipelineEvent.AGENT_SUCCESS

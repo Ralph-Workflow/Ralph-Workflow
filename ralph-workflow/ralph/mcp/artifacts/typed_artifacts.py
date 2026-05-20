@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal, Self, cast
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from ralph.mcp.artifacts._analysis_decision import AnalysisDecision
+from ralph.mcp.artifacts._commit_cleanup import CommitCleanup
 from ralph.mcp.artifacts._fix_result import FixResult
 from ralph.mcp.artifacts._issue_entry import _IssueEntry
 from ralph.mcp.artifacts._typed_artifact_validation_error import TypedArtifactValidationError
@@ -109,10 +110,16 @@ def normalize_analysis_decision_content(
     return normalized
 
 
+def normalize_commit_cleanup_content(content: dict[str, object]) -> dict[str, object]:
+    """Validate and normalize a raw commit_cleanup artifact content dict."""
+    return _validate(CommitCleanup, content)
+
+
 __all__ = [
     "_ANALYSIS_DECISION_VOCABULARY",
     "TypedArtifactValidationError",
     "normalize_analysis_decision_content",
+    "normalize_commit_cleanup_content",
     "normalize_fix_result_content",
     "normalize_issues_content",
 ]

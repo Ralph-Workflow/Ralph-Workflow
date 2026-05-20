@@ -54,7 +54,7 @@ def _render_development_analysis(
     workspace.write("PROMPT.md", prompt_content)
     _write_plan_handoff(workspace)
     workspace.write(".agent/artifacts/development_result.json", _MINIMAL_DEV_RESULT)
-    with patch.object(materialize_module, "git_diff", return_value="diff"):
+    with patch.object(materialize_module, "_git_diff", return_value="diff"):
         path = materialize_prompt_for_phase(
             PromptPhaseContext(
                 phase="development_analysis",

@@ -97,6 +97,10 @@ def _run_pipeline(
         analysis_phases = {"planning_analysis", "development_analysis"}
         if callable(analysis_event_for) and effect.phase in analysis_phases:
             return analysis_event_for(effect.phase)
+        # Handle commit phases using commit_event_for
+        commit_event_for = getattr(mock_agent_invoker, "commit_event_for", None)
+        if callable(commit_event_for):
+            return commit_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
 
     def capture_saved_state(state: PipelineState) -> None:
@@ -431,7 +435,8 @@ def test_development_analysis_runs_exactly_up_to_cap_then_skips_reentry(
     development_commit_state = next(
         state for state in saved_states if state.phase == "development_commit"
     )
-    assert development_commit_state.previous_phase == "development"
+    # development_analysis -> development_commit_cleanup -> development_commit
+    assert development_commit_state.previous_phase == "development_commit_cleanup"
     assert development_commit_state.get_loop_iteration("development_analysis_iteration") == 0
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
@@ -547,6 +552,14 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                     {"type": "development_analysis_decision", "content": {"status": decision}},
                 )
                 return PipelineEvent.AGENT_SUCCESS
+            if effect.phase == "development_commit_cleanup":
+                return (
+                    write_artifact(
+                        ".agent/artifacts/commit_cleanup.json",
+                        {"analysis_complete": True, "actions": []},
+                    )
+                    or PipelineEvent.AGENT_SUCCESS
+                )
             raise AssertionError(
                 f"Unexpected invoke phase before development_commit exit: {effect.phase}"
             )
@@ -590,7 +603,8 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
     development_commit_state = next(
         state for state in saved_states if state.phase == "development_commit"
     )
-    assert development_commit_state.previous_phase == "development"
+    # development_analysis -> development_commit_cleanup -> development_commit
+    assert development_commit_state.previous_phase == "development_commit_cleanup"
     assert development_commit_state.get_loop_iteration("development_analysis_iteration") == 0
 
 

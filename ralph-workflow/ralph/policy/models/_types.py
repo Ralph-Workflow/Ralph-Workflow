@@ -14,6 +14,7 @@ PhaseRole = Literal[
     "verification",
     "terminal",
     "fanout_join",
+    "commit_cleanup",
 ]
 
 ROLE_REVIEW: Final[Literal["review"]] = "review"

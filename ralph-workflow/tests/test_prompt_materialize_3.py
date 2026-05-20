@@ -169,7 +169,7 @@ def test_pending_diff_shows_only_uncommitted_work(tmp_git_repo: Path) -> None:
         (tmp_git_repo / "pending.py").write_text("pending = True\n")
         repo.index.add(["pending.py"])
 
-    diff = materialize_module.pending_diff(tmp_git_repo)
+    diff = materialize_module._pending_diff(tmp_git_repo)
 
     assert "pending.py" in diff
     assert "committed.py" not in diff
@@ -207,7 +207,7 @@ def test_commit_phase_prompt_excludes_mid_cycle_committed_files(
 
 
 def test_pending_diff_falls_back_when_not_a_git_repo(tmp_path: Path) -> None:
-    diff = materialize_module.pending_diff(tmp_path)
+    diff = materialize_module._pending_diff(tmp_path)
     assert diff == "(no diff available)"
 
 
@@ -227,7 +227,7 @@ def test_git_diff_strips_lone_surrogates_from_gitpython_output(
 
     monkeypatch.setattr(materialize_module, "Repo", _FakeRepo)
 
-    diff = materialize_module.git_diff(tmp_path)
+    diff = materialize_module._git_diff(tmp_path)
 
     assert "\udca4" not in diff
     diff.encode("utf-8")  # must not raise
@@ -243,7 +243,7 @@ def test_materialize_commit_phase_handles_surrogate_diff(
     surrogate_diff = "diff --git a/x.py b/x.py\n+\udca4\n"
     monkeypatch.setattr(
         materialize_module,
-        "pending_diff",
+        "_pending_diff",
         lambda _workspace_root: surrogate_diff,
     )
 
@@ -272,7 +272,7 @@ def test_materialize_commit_phase_with_oversized_surrogate_diff(
     big_surrogate = "\udca4" + ("x" * (100 * 1024 + 1))
     monkeypatch.setattr(
         materialize_module,
-        "pending_diff",
+        "_pending_diff",
         lambda _workspace_root: big_surrogate,
     )
 
@@ -334,7 +334,7 @@ def test_development_analysis_prompt_renders_without_development_result(
     )
     # Intentionally do NOT write development_result.json
 
-    with patch.object(materialize_module, "git_diff", return_value="diff --git a/x.py"):
+    with patch.object(materialize_module, "_git_diff", return_value="diff --git a/x.py"):
         prompt_path = materialize_prompt_for_phase(
             PromptPhaseContext(
                 phase="development_analysis",
@@ -496,7 +496,7 @@ def test_planning_loopback_from_analysis_preserves_history(
     index_file = history_index_path(artifact_dir, "plan")
     index_file.write_text("# History", encoding="utf-8")
 
-    with patch.object(materialize_module, "git_diff", return_value="diff"):
+    with patch.object(materialize_module, "_git_diff", return_value="diff"):
         materialize_prompt_for_phase(
             PromptPhaseContext(
                 phase="planning",

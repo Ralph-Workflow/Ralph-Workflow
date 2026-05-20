@@ -61,6 +61,7 @@ from ralph.mcp.artifacts.store import (
 from ralph.mcp.artifacts.typed_artifacts import (
     TypedArtifactValidationError,
     normalize_analysis_decision_content,
+    normalize_commit_cleanup_content,
     normalize_fix_result_content,
     normalize_issues_content,
 )
@@ -83,6 +84,7 @@ if TYPE_CHECKING:
 
 _TYPED_ARTIFACT_TYPES = frozenset(
     {
+        "commit_cleanup",
         "issues",
         "fix_result",
         "development_analysis_decision",
@@ -803,6 +805,8 @@ def _normalize_typed_artifact_payload(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> dict[str, object]:
     try:
+        if artifact_type == "commit_cleanup":
+            return normalize_commit_cleanup_content(parsed_content)
         if artifact_type == "issues":
             return normalize_issues_content(parsed_content)
         if artifact_type == "fix_result":
