@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-20T00:42:48.423727",
+  "generated_at": "2026-05-20T02:08:25.034210",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -20,7 +20,7 @@
       "stars": 9,
       "watchers": 2,
       "forks": 2,
-      "open_issues": 4,
+      "open_issues": 5,
       "html_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
     }
   ],

@@ -205,6 +205,8 @@ If clutter, duplication, or navigation anxiety increased, do not ship the docs c
 - If a docs/process audit is in progress, use the findings to strengthen the **process/governance rules first** before editing the public docs surfaces themselves. Do not drift from process repair into content cleanup until the new rules are codified.
 - Docs work is not done unless `README.md` and the docs it routes people into make sense **together**: clear roles, good information hierarchy, obvious next steps, low duplication, and copy that is easy to understand on a first pass.
 - When I set up or change a process, watchdog, cron, or other enforcement loop, I must verify the result with parallel third-party agents before calling it done. Do not stop at self-verification.
+- For any self-improvement loop, third-party verification is mandatory at every claimed improvement state. If a verifier fails, the loop must automatically trigger another remediation pass and then a fresh independent verifier. No self-improvement loop may self-certify success.
+- Any self-improvement loop must be registered in `agents/system/self_improvement_loops.json` with a checker, runner, verifier, runner artifact, verifier artifact, and scheduled runner/verifier entries. If it is not registered and audited, it is not a valid enforcement loop.
 
 **🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
 

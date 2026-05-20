@@ -1,16 +1,37 @@
 Title: [Dev Tool] RalphWorkflow — turns Claude Code / Codex CLI into an unattended engineering workflow with planning loops and agent fallback chains
 
 ---
-OPENING VARIANTS (pick one, do not reuse across subreddits):
+OPENING VARIANTS (pick one per post — never reuse across subreddits or within 3 posts of the same subreddit):
 
-[r/programming] Opening:
-Spent the last few months building something for myself and got tired of the same pattern: fire up an AI coding session, come back three hours later to find it descended into refactoring the test suite or just stalled on a rate limit. Wanted something closer to what a code review would catch — spec first, then build, then verify, then hand off. Sharing it here in case the pain resonates.
+[r/ClaudeCode — visceral failure / babysitting] Opening F:
+The pattern I see most is: you write a task, the agent starts, you answer a prompt, then another, it hallucinates, you correct it, and you are still there at midnight babysitting a tool that was supposed to save you time. The fix is not a better prompt — it is a clearer finish line.
 
-[r/Python] Opening:
-Building a CLI that wraps Claude Code / Codex / OpenCode into something that actually finishes overnight without you watching it. The core idea is simple: write the spec before the run, checkpoint as it goes, fall back to a secondary agent on rate limits, and hand you a diff you can open in your editor in the morning instead of a transcript to archaeology through. Sharing here because Python devs seem to have the most appetite for this kind of unattended workflow.
+[r/ClaudeCode — approval mode frustration] Opening J:
+Approval mode works until 2am when you're still clicking approve on runs that handed you a prompt instead of finished code. The fix is not fewer prompts — it is a finish contract that owes you finished code, test results, and a short explicit list of what still needs your call.
+
+[r/ClaudeCode — repo-state / finish anxiety] Opening K:
+The failure mode I care about is not whether the agent looked productive. It is whether I can open the repo later and understand exactly what changed, what passed, and what still needs a human call.
+
+[r/codex / r/ClaudeCode — finish-line contrast] Opening H:
+Most tooling talk focuses on the start — which model, which context window, which parallel branch. The part that actually determines whether you close the laptop is the finish: what changed, what ran, what still looks off. That is where the real workflow problem lives.
+
+[r/programming / r/Python / r/devops — what did you actually ship?] Opening G:
+The overnight run question is usually not "which agent should run longer" — it is "what will I actually be able to review in the morning." Most setups answer the first question and completely skip the second.
+
+[r/programming / r/AI_Agents / r/devops — anti-transcript] Opening L:
+A lot of agent workflow advice still assumes the transcript is the artifact. For real repo work, the artifact has to be the diff plus the proof bundle — otherwise you are doing transcript archaeology instead of review.
+
+[r/SideProject / r/startups / r/entrepreneur — bounded overnight wager] Opening M:
+The only overnight agent runs worth repeating are the ones with a bounded downside by morning. If I cannot tell what changed and what still looks risky in five minutes, the run was too open-ended.
+
+[r/entrepreneur / r/startups / r/AI_Agents — bounded-cost / fail-closed] Opening I:
+The overnight run I regret most was not the one that failed — it was the one that seemed to succeed. No visible diff, no clear receipt, just a quiet feeling that something had happened. Bounded cost with a reviewable result would have caught it.
 
 [r/ExperiencedDevF] Opening:
 Wanted a workflow that asks the one question that matters when an AI coding session finishes: would you actually merge this? Not did it generate code, did it finish the job in a way that holds up. Built RalphWorkflow around that bar — planning loop, dev loop, program loop, fallback chains, and a clean morning handoff. Posting here because this community tends to have the most honest takes on whether something actually solves a real problem or just automates the wrong thing.
+
+[r/Python] Opening:
+Building a CLI that wraps Claude Code / Codex / OpenCode into something that actually finishes overnight without you watching it. The core idea is simple: write the spec before the run, checkpoint as it goes, fall back to a secondary agent on rate limits, and hand you a diff you can open in your editor in the morning instead of a transcript to archaeology through. Sharing here because Python devs seem to have the most appetite for this kind of unattended workflow.
 
 ---
 
@@ -26,7 +47,7 @@ You want to let AI code overnight. You fire up Claude Code. Three hours in:
 RalphWorkflow adds the structure that glued scripts never get:
 
 → Planning loop: draft the spec, critique it, revise until it's solid before touching code
-→ Development loop: build, analyze, retry until the diff passes a quality gate  
+→ Development loop: build, analyze, retry until the diff passes a quality gate
 → Program loop: commit per pass, then fresh planning for next cycle
 → Fallback chains: if minimax times out, claude/sonnet continues automatically
 → Checkpoint resume: crash at hour 3, pick up where you left off
@@ -36,6 +57,20 @@ RalphWorkflow adds the structure that glued scripts never get:
 
 The workflow config lives in `.agent/ralph-workflow.toml` in your repo — it's versioned, forkable, and repo-native.
 
-Curious if this resonates with anyone else doing long unattended AI coding runs, or if I'm just solving a very specific pain point I have. Happy to answer questions.
+**Primary repo (Codeberg):** https://codeberg.org/RalphWorkflow/Ralph-Workflow
+**GitHub mirror:** https://github.com/Ralph-Workflow/Ralph-Workflow
 
-https://ralphworkflow.com
+---
+
+BANNED PHRASES (never appear in body):
+- "reviewable work units"
+- "for me the reliable pattern is"
+- "for me the reliable version is"
+- "if the run ends with a readable diff, checks, and unresolved decisions called out"
+- "if the run ends with one readable diff, real checks, and a short note about what still looks sketchy"
+- "the run ends with a confident summary"
+- "most of the pain is not raw generation"
+- "stale assumptions"
+- "lying to yourself about the result"
+
+FRESHNESS RULE: No opening from any list may appear in more than one subreddit in the same audit window. The live post tool rejects openings reused from the last 10 logged posts.

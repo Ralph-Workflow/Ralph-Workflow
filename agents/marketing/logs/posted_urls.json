@@ -268,7 +268,31 @@
       "error": null,
       "draft_hash": "manual-2026-05-19-ai-coding-workflow-automation-telegraph",
       "experiment_id": null
+    },
+    {
+      "date": "2026-05-20",
+      "draft": "2026-05-20_ai-agent-workflow-composer_telegraph.md",
+      "title": "AI Agent Workflow Composer: What It Actually Means and Why the Distinction Matters",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/AI-Agent-Workflow-Composer-What-It-Actually-Means-and-Why-the-Distinction-Matters-05-20",
+      "error": null,
+      "draft_hash": "c5be97340566aca5bba2d79e20f5ac0a0f82ce2a830cb582d63ec0eeeda19596",
+      "experiment_id": null
+    },
+    {
+      "date": "2026-05-20",
+      "draft": "2026-05-20_claude-code-unattended_telegraph.md",
+      "title": "Run Claude Code Unattended \u2014 What the Documentation Does Not Tell You",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Run-Claude-Code-Unattended--What-the-Documentation-Does-Not-Tell-You-05-20",
+      "error": null,
+      "draft_hash": "3f9341f2ee15b435ca8938036d2f4ffe9cdf523306a6874fd5e00cc78adbc50a",
+      "experiment_id": null
     }
   ],
-  "last_run": "2026-05-19T19:57:00Z"
+  "last_run": "2026-05-20T02:05:36.099555"
 }

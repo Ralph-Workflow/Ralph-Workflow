@@ -1,6 +1,6 @@
 # Adoption Metrics
 
-- Timestamp: 2026-05-20T00:26:42.216051
+- Timestamp: 2026-05-20T01:39:11.848556
 
 ## GitHub (mirror)
 - Stars: 0 (+0)
@@ -15,7 +15,7 @@
 - Stars: 9 (+0)
 - Watchers: 2 (+0)
 - Forks: 2 (+0)
-- Open issues: 4
+- Open issues: 5
 - Recent window samples: 9
 - Window deltas: stars +0, watchers +0, forks +0
 - URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow

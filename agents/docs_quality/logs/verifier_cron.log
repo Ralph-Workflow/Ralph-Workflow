@@ -1,0 +1,10 @@
+independent verifier failed signoff
+DOCS_QUALITY_FAIL
+- README.md:53: [link-farm-paragraph] Paragraph looks like a README/docs link farm and should be split, pruned, or moved down a layer.
+- README.md:250: [link-farm-paragraph] Paragraph looks like a README/docs link farm and should be split, pruned, or moved down a layer.
+independently verified pass
+CHECKER
+DOCS_QUALITY_OK
+
+EDITORIAL
+DOCS_EDITORIAL_OK
