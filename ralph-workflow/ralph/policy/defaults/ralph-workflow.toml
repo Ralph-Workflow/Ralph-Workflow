@@ -122,6 +122,15 @@
 # can_commit = false
 # display_name = "OpenCode"
 
+[agents.prompt-helper-agent]
+cmd = "claude"
+transport = "claude_interactive"
+yolo_flag = "--dangerously-skip-permissions"
+verbose_flag = "--verbose"
+json_parser = "claude"
+session_flag = "--resume {}"
+can_commit = false
+
 # ---------------------------------------------------------------------------
 # [agent_chains.*] — Named reusable chain definitions (list of agent names)
 # The active defaults below are the recommended starting point. They showcase
@@ -151,4 +160,7 @@ development_analysis = "analysis"
 development_commit = "commit"
 analysis = "analysis"
 commit = "commit"
+
+# [prompt_helper]
+# agent = "prompt-helper-agent"  # Override the default prompt-helper agent
 

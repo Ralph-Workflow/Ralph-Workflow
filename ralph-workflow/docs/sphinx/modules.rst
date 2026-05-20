@@ -257,6 +257,20 @@ ralph.cli.commands.explain
    :members:
    :show-inheritance:
 
+ralph.cli.commands.prompt_helper
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.prompt_helper
+   :members:
+   :show-inheritance:
+
+ralph.cli.commands.prompt_helper_prompt
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.prompt_helper_prompt
+   :members:
+   :show-inheritance:
+
 Config
 ------
 
@@ -364,6 +378,13 @@ ralph.config.pause_on_exit
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.config.pause_on_exit
+   :members:
+   :show-inheritance:
+
+ralph.config.prompt_helper_config
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.config.prompt_helper_config
    :members:
    :show-inheritance:
 
@@ -1465,6 +1486,13 @@ ralph.mcp.artifacts.smoke_test_result
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.artifacts.smoke_test_result
+   :members:
+   :show-inheritance:
+
+ralph.mcp.artifacts.product_spec
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.product_spec
    :members:
    :show-inheritance:
 

@@ -10,6 +10,7 @@ from ralph.pydantic_compat import RalphBaseModel
 from .agent_config import AgentConfig
 from .ccs_config import CcsAliasConfig, CcsConfig
 from .general_config import GeneralConfig
+from .prompt_helper_config import PromptHelperConfig
 
 
 def _normalize_chain_value(value: object) -> AgentChainConfig:
@@ -49,6 +50,7 @@ class UnifiedConfig(RalphBaseModel):
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
     agent_chains: dict[str, AgentChainConfig] = Field(default_factory=dict)
     agent_drains: dict[str, AgentDrainConfig] = Field(default_factory=dict)
+    prompt_helper: PromptHelperConfig = Field(default_factory=PromptHelperConfig)
 
     @model_validator(mode="before")
     @classmethod
