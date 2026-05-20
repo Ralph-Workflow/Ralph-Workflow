@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from ralph.mcp.tools.names import PLANNING_DRAFT_TOOLS
 from ralph.prompts.types import (
     ARTIFACT_TOOLS,
     ENV_READ_TOOLS,
@@ -39,6 +38,8 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
+        Capability.ARTIFACT_PLAN_READ,
+        Capability.ARTIFACT_PLAN_WRITE,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
         Capability.UPSTREAM_TOOL_USE,
@@ -54,6 +55,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_DIFF_READ,
         Capability.PROCESS_EXEC_BOUNDED,
         Capability.ARTIFACT_SUBMIT,
+        Capability.ARTIFACT_PLAN_READ,
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
@@ -70,6 +72,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_DIFF_READ,
         Capability.PROCESS_EXEC_BOUNDED,
         Capability.ARTIFACT_SUBMIT,
+        Capability.ARTIFACT_PLAN_READ,
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
@@ -82,6 +85,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
+        Capability.ARTIFACT_PLAN_READ,
         Capability.RUN_REPORT_PROGRESS,
     }
 
@@ -127,7 +131,6 @@ def test_visible_mcp_tool_names_respects_enabled_capabilities() -> None:
         *TRACKED_WRITE_TOOLS,
         *PROCESS_EXEC_TOOLS,
         *ARTIFACT_TOOLS,
-        *PLANNING_DRAFT_TOOLS,
         *PROGRESS_TOOLS,
         *ENV_READ_TOOLS,
     ]
@@ -151,10 +154,10 @@ def test_capability_template_variables_include_enabled_tools_and_flags() -> None
     assert variables["HAS_MCP_EXEC"] == "true"
     assert variables["HAS_MCP_GIT"] == "true"
     assert variables["SUBMIT_ARTIFACT_TOOL_NAME"] == "ralph_submit_artifact"
-    assert variables["SUBMIT_PLAN_SECTION_TOOL_NAME"] == "ralph_submit_plan_section"
-    assert variables["FINALIZE_PLAN_TOOL_NAME"] == "ralph_finalize_plan"
+    assert variables["SUBMIT_PLAN_SECTION_TOOL_NAME"] == ""
+    assert variables["FINALIZE_PLAN_TOOL_NAME"] == ""
     assert variables["GET_PLAN_DRAFT_TOOL_NAME"] == "ralph_get_plan_draft"
-    assert variables["DISCARD_PLAN_DRAFT_TOOL_NAME"] == "ralph_discard_plan_draft"
+    assert variables["DISCARD_PLAN_DRAFT_TOOL_NAME"] == ""
     assert variables["DECLARE_COMPLETE_TOOL_NAME"] == "declare_complete"
     assert variables["COORDINATE_TOOL_NAME"] == "coordinate"
     assert variables["REPORT_PROGRESS_TOOL_NAME"] == "report_progress"
@@ -181,7 +184,7 @@ def test_capability_template_variables_can_prefix_tool_names_for_claude_mcp() ->
     )
 
     assert variables["SUBMIT_ARTIFACT_TOOL_NAME"] == "mcp__ralph__ralph_submit_artifact"
-    assert variables["SUBMIT_PLAN_SECTION_TOOL_NAME"] == "mcp__ralph__ralph_submit_plan_section"
+    assert variables["SUBMIT_PLAN_SECTION_TOOL_NAME"] == ""
     assert variables["EXEC_TOOL_NAME"] == "mcp__ralph__exec"
     assert variables["WRITE_FILE_TOOL_REFERENCE"] == "`mcp__ralph__write_file` or bare `write_file`"
     assert variables["EXEC_TOOL_REFERENCE"] == "`mcp__ralph__exec` or bare `exec`"

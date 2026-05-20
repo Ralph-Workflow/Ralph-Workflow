@@ -360,6 +360,172 @@ def test_load_policy_for_workspace_scope_uses_global_policy_when_local_override_
     )
 
 
+def test_load_policy_for_workspace_scope_does_not_revive_default_only_phases_from_global_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    global_dir = tmp_path / "xdg"
+    global_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+    (global_dir / "ralph-workflow-pipeline.toml").write_text(
+        dedent(
+            """
+            entry_phase = "planning"
+            terminal_phase = "complete"
+
+            [loop_counters.development_analysis_iteration]
+            default_max = 10
+            description = "Development analysis loop iteration counter"
+
+            [loop_counters.planning_analysis_iteration]
+            default_max = 2
+            description = "Planning analysis loop iteration counter"
+
+            [budget_counters.iteration]
+            description = "Development iteration counter (developer cycles)"
+            tracks_budget = true
+            default_max = 5
+
+            [phases.planning]
+            drain = "planning"
+            role = "execution"
+            prompt_template = "planning.jinja"
+            loopback_prompt_template = "planning_edit.jinja"
+            [phases.planning.transitions]
+            on_success = "planning_analysis"
+
+            [phases.planning_analysis]
+            drain = "planning_analysis"
+            role = "analysis"
+            prompt_template = "planning_analysis.jinja"
+            [phases.planning_analysis.transitions]
+            on_success = "development"
+            on_loopback = "planning"
+            [phases.planning_analysis.loop_policy]
+            iteration_state_field = "planning_analysis_iteration"
+            [phases.planning_analysis.decisions.completed]
+            target = "development"
+            reset_loop = true
+            [phases.planning_analysis.decisions.request_changes]
+            target = "planning"
+            reset_loop = false
+            [phases.planning_analysis.decisions.failed]
+            target = "planning"
+            reset_loop = false
+
+            [phases.development]
+            drain = "development"
+            role = "execution"
+            prompt_template = "developer_iteration.jinja"
+            continuation_template = "developer_iteration_continuation.jinja"
+            [phases.development.transitions]
+            on_success = "development_analysis"
+            on_loopback = "development"
+
+            [phases.development.parallelization]
+            mode = "same_workspace"
+            max_parallel_workers = 8
+            max_work_units = 50
+            require_allowed_directories = true
+            post_fanout_verification = false
+
+            [phases.development_analysis]
+            drain = "development_analysis"
+            role = "analysis"
+            prompt_template = "development_analysis.jinja"
+            [phases.development_analysis.transitions]
+            on_success = "development_commit"
+            on_loopback = "development"
+            [phases.development_analysis.loop_policy]
+            iteration_state_field = "development_analysis_iteration"
+            [phases.development_analysis.decisions.completed]
+            target = "development_commit"
+            reset_loop = true
+            [phases.development_analysis.decisions.request_changes]
+            target = "development"
+            reset_loop = false
+            [phases.development_analysis.decisions.failed]
+            target = "development"
+            reset_loop = false
+
+            [phases.development_commit]
+            drain = "development_commit"
+            role = "commit"
+            prompt_template = "commit_message.jinja"
+            [phases.development_commit.transitions]
+            on_success = "complete"
+            on_failure = "failed_terminal"
+            [phases.development_commit.commit_policy]
+            requires_artifact = true
+            skipped_advances_progress = true
+            increments_counter = "iteration"
+            loop_resets = ["development_analysis_iteration"]
+
+            [phases.complete]
+            drain = "complete"
+            role = "terminal"
+            terminal_outcome = "success"
+            [phases.complete.transitions]
+            on_success = "complete"
+            on_loopback = "complete"
+
+            [phases.failed_terminal]
+            drain = "failed_terminal"
+            role = "terminal"
+            terminal_outcome = "failure"
+            [phases.failed_terminal.transitions]
+            on_success = "failed_terminal"
+            on_loopback = "failed_terminal"
+
+            [[post_commit_routes]]
+            target = "planning"
+            [post_commit_routes.when]
+            phase = "development_commit"
+            budget_state = "remaining"
+
+            [[post_commit_routes]]
+            target = "complete"
+            [post_commit_routes.when]
+            phase = "development_commit"
+            budget_state = "exhausted"
+
+            [[post_commit_routes]]
+            target = "complete"
+            [post_commit_routes.when]
+            phase = "development_commit"
+            budget_state = "no_review"
+
+            [default_phase_retry_policy]
+            max_retries = 3
+            retry_delay_ms = 1000
+            retry_in_session = false
+
+            [recovery]
+            cycle_cap = 200
+            failed_route = "failed_terminal"
+            terminal_failure_phase = "failed_terminal"
+            preserve_session_on_categories = ["agent"]
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    (global_dir / "ralph-workflow-artifacts.toml").write_text(
+        (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+
+    bundle = load_policy_for_workspace_scope(WorkspaceScope(workspace_root))
+
+    assert "development_commit_cleanup" not in bundle.pipeline.phases
+    assert (
+        bundle.pipeline.phases["development_analysis"].transitions.on_success
+        == "development_commit"
+    )
+
+
 def test_load_policy_for_workspace_scope_accepts_legacy_global_policy_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

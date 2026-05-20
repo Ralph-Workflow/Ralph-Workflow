@@ -26,6 +26,7 @@ _REQUIRED_TOOLS = {
     "git_show",
     "exec",
     "ralph_submit_artifact",
+    "ralph_get_plan_draft",
     "declare_complete",
     "coordinate",
 }

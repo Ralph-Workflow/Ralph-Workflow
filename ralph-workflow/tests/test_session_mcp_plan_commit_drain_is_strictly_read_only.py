@@ -216,6 +216,42 @@ def test_session_mcp_plan_grants_read_diff_and_exec_for_review_analysis(
     assert "workspace.write_tracked" not in plan.capabilities
 
 
+def test_session_mcp_plan_grants_read_only_plan_draft_access_for_planning_analysis(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    del isolated_home
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="analysis",
+        workspace_path=tmp_path,
+        agents_policy=_default_agents_policy(tmp_path),
+    )
+
+    assert "artifact.submit" in plan.capabilities
+    assert "artifact.plan_read" in plan.capabilities
+    assert "artifact.plan_write" not in plan.capabilities
+
+
+def test_session_mcp_plan_grants_full_plan_draft_access_for_planning(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    del isolated_home
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="planning",
+        workspace_path=tmp_path,
+        agents_policy=_default_agents_policy(tmp_path),
+    )
+
+    assert "artifact.submit" in plan.capabilities
+    assert "artifact.plan_read" in plan.capabilities
+    assert "artifact.plan_write" in plan.capabilities
+
+
 class TestCommitDrainIsStrictlyReadOnly:
     """Commit drains must not be able to modify git-tracked files or run processes.
 

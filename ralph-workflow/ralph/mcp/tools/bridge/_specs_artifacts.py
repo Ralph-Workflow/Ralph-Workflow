@@ -110,7 +110,7 @@ def artifact_specs() -> list[ToolSpec]:
                     },
                     "required": ["section", "content"],
                 },
-                required_capability="ArtifactSubmit",
+                required_capability="ArtifactPlanWrite",
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_submit_plan_section",
@@ -125,7 +125,7 @@ def artifact_specs() -> list[ToolSpec]:
                     "Example: {} validates and writes the plan."
                 ),
                 input_schema={"type": "object", "properties": {}},
-                required_capability="ArtifactSubmit",
+                required_capability="ArtifactPlanWrite",
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_finalize_plan",
@@ -140,7 +140,7 @@ def artifact_specs() -> list[ToolSpec]:
                     "Example: {} returns the current draft state."
                 ),
                 input_schema={"type": "object", "properties": {}},
-                required_capability="ArtifactSubmit",
+                required_capability="ArtifactPlanRead",
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_get_plan_draft",
@@ -154,7 +154,7 @@ def artifact_specs() -> list[ToolSpec]:
                     "Example: {} deletes the current draft."
                 ),
                 input_schema={"type": "object", "properties": {}},
-                required_capability="ArtifactSubmit",
+                required_capability="ArtifactPlanWrite",
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_discard_plan_draft",

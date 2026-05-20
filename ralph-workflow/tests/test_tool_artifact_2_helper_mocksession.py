@@ -8,4 +8,4 @@ class MockSession:
         self.drain = drain
 
     def check_capability(self, capability: str) -> object:
-        return capability == "artifact.submit"
+        return capability in {"artifact.submit", "artifact.plan_read", "artifact.plan_write"}

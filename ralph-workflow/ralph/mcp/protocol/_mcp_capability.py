@@ -13,6 +13,8 @@ class McpCapability(StrEnum):
     GIT_READ = "GitRead"
     PROCESS_EXEC = "ProcessExec"
     ARTIFACT_SUBMIT = "ArtifactSubmit"
+    ARTIFACT_PLAN_READ = "ArtifactPlanRead"
+    ARTIFACT_PLAN_WRITE = "ArtifactPlanWrite"
     WORKSPACE_COORDINATION = "WorkspaceCoordination"
     WORKSPACE_READ = "WorkspaceRead"
     WORKSPACE_WRITE_EPHEMERAL = "WorkspaceWriteEphemeral"

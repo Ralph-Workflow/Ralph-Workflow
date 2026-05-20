@@ -757,7 +757,7 @@ def test_materialize_planning_analysis_uses_markdown_plan_handoff(
             phase="planning_analysis",
             workspace=workspace,
             pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.ANALYSIS),
             workspace_root=tmp_path,
         ),
         PromptPhaseOptions(

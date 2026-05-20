@@ -82,6 +82,10 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import PipelinePolicy
 
+PLAN_DRAFT_READ_CAPABILITY = "artifact.plan_read"
+PLAN_DRAFT_WRITE_CAPABILITY = "artifact.plan_write"
+
+
 _TYPED_ARTIFACT_TYPES = frozenset(
     {
         "commit_cleanup",
@@ -226,7 +230,7 @@ def handle_submit_plan_section(
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
     """Validate a single plan section and merge it into the on-disk draft."""
-    require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Plan section submission")
+    require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan section submission")
 
     section = _required_string(params, "section")
     if section not in PLAN_SECTION_NAMES:
@@ -280,7 +284,7 @@ def handle_finalize_plan(
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
     """Validate the staged draft as a whole plan and write plan.json."""
-    require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Plan finalization")
+    require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan finalization")
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
 
@@ -400,7 +404,7 @@ def handle_get_plan_draft(
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
     """Return the current plan draft so an agent can resume after a restart."""
-    require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Plan draft read")
+    require_capability(session, PLAN_DRAFT_READ_CAPABILITY, "Plan draft read")
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
 
@@ -424,7 +428,7 @@ def handle_discard_plan_draft(
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
     """Delete the on-disk plan draft so the agent can start over."""
-    require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Plan draft discard")
+    require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan draft discard")
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
 

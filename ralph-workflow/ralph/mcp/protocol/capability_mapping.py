@@ -36,6 +36,8 @@ class Capability(StrEnum):
     PROCESS_EXEC_BOUNDED = "process.exec_bounded"
     PROCESS_EXEC_UNBOUNDED = "process.exec_unbounded"
     ARTIFACT_SUBMIT = "artifact.submit"
+    ARTIFACT_PLAN_READ = "artifact.plan_read"
+    ARTIFACT_PLAN_WRITE = "artifact.plan_write"
     RUN_REPORT_PROGRESS = "run.report_progress"
     GIT_STATUS_READ = "git.status_read"
     GIT_DIFF_READ = "git.diff_read"
@@ -53,6 +55,8 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.GIT_READ: Capability.GIT_STATUS_READ,
     McpCapability.PROCESS_EXEC: Capability.PROCESS_EXEC_BOUNDED,
     McpCapability.ARTIFACT_SUBMIT: Capability.ARTIFACT_SUBMIT,
+    McpCapability.ARTIFACT_PLAN_READ: Capability.ARTIFACT_PLAN_READ,
+    McpCapability.ARTIFACT_PLAN_WRITE: Capability.ARTIFACT_PLAN_WRITE,
     McpCapability.WORKSPACE_READ: Capability.WORKSPACE_READ,
     McpCapability.WORKSPACE_WRITE_EPHEMERAL: Capability.WORKSPACE_WRITE_EPHEMERAL,
     McpCapability.WORKSPACE_WRITE_TRACKED: Capability.WORKSPACE_WRITE_TRACKED,
@@ -89,6 +93,8 @@ _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
     "media_read": Capability.MEDIA_READ,
     "workspace.metadata_read": Capability.WORKSPACE_METADATA_READ,
     "workspace.metadata.read": Capability.WORKSPACE_METADATA_READ,
+    "artifact.plan_read": Capability.ARTIFACT_PLAN_READ,
+    "artifact.plan_write": Capability.ARTIFACT_PLAN_WRITE,
     "workspace.edit": Capability.WORKSPACE_EDIT,
     "workspace.delete": Capability.WORKSPACE_DELETE,
 }
@@ -98,6 +104,8 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "workspace.write_ephemeral": McpCapability.WORKSPACE_WRITE_EPHEMERAL,
     "workspace.write_tracked": McpCapability.WORKSPACE_WRITE_TRACKED,
     "artifact.submit": McpCapability.ARTIFACT_SUBMIT,
+    "artifact.plan_read": McpCapability.ARTIFACT_PLAN_READ,
+    "artifact.plan_write": McpCapability.ARTIFACT_PLAN_WRITE,
     "workspace.coordination": McpCapability.WORKSPACE_COORDINATION,
     "git.read": McpCapability.GIT_READ,
     "git.status.read": McpCapability.GIT_STATUS_READ,

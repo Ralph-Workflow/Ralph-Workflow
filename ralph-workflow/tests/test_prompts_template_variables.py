@@ -80,6 +80,7 @@ def test_specialized_analysis_drain_grants_read_and_exec_defaults() -> None:
         "declare_complete",
     ):
         assert required in tool_list, f"missing {required} in {tool_list}"
+    assert "ralph_get_plan_draft" in tool_list
 
 
 def test_review_analysis_drain_grants_read_and_exec_defaults() -> None:
@@ -108,6 +109,36 @@ def test_review_analysis_drain_grants_read_and_exec_defaults() -> None:
         "exec",
         "ralph_submit_artifact",
         "declare_complete",
+    ):
+        assert required in tool_list, f"missing {required} in {tool_list}"
+    assert "ralph_get_plan_draft" in tool_list
+
+
+def test_planning_analysis_drain_exposes_read_only_plan_draft_tooling() -> None:
+    caps, flags = template_variables.default_caps_and_flags_for_drain(SessionDrain.ANALYSIS)
+    vars_map = template_variables.capability_template_variables(caps, flags)
+
+    tool_list = vars_map["MCP_TOOLS_LIST"]
+    assert "ralph_get_plan_draft" in tool_list
+    assert "ralph_submit_plan_section" not in tool_list
+    assert "ralph_finalize_plan" not in tool_list
+    assert "ralph_discard_plan_draft" not in tool_list
+    assert vars_map["GET_PLAN_DRAFT_TOOL_REFERENCE"]
+    assert vars_map["SUBMIT_PLAN_SECTION_TOOL_REFERENCE"] == ""
+    assert vars_map["FINALIZE_PLAN_TOOL_REFERENCE"] == ""
+    assert vars_map["DISCARD_PLAN_DRAFT_TOOL_REFERENCE"] == ""
+
+
+def test_planning_drain_keeps_full_plan_edit_tooling() -> None:
+    caps, flags = template_variables.default_caps_and_flags_for_drain(SessionDrain.PLANNING)
+    vars_map = template_variables.capability_template_variables(caps, flags)
+
+    tool_list = vars_map["MCP_TOOLS_LIST"]
+    for required in (
+        "ralph_get_plan_draft",
+        "ralph_submit_plan_section",
+        "ralph_finalize_plan",
+        "ralph_discard_plan_draft",
     ):
         assert required in tool_list, f"missing {required} in {tool_list}"
 

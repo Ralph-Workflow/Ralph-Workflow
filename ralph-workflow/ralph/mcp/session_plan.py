@@ -216,14 +216,18 @@ def _base_capabilities_for_drain(
         "git.status_read",
         "git.diff_read",
         "artifact.submit",
+        "artifact.plan_read",
         "workspace.metadata_read",
     }
 
     cls_value = capability_cls.value
+    extras: set[str] = set(_CAPABILITY_PRESETS.get(cls_value, frozenset()))
+    if drain == "planning":
+        extras.add("artifact.plan_write")
     if cls_value in _CAPABILITY_PRESETS:
-        return base | _CAPABILITY_PRESETS[cls_value]
+        return base | extras
     # development and fix classes: full write surface
-    return base | _DEVELOPMENT_EXTRA
+    return base | _DEVELOPMENT_EXTRA | extras
 
 
 __all__ = [

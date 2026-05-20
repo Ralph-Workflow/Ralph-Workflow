@@ -226,6 +226,35 @@ def _merge_mapping_defaults(
     return merged
 
 
+def _merge_pipeline_defaults(
+    defaults: Mapping[str, object], overrides: Mapping[str, object]
+) -> dict[str, object]:
+    """Merge pipeline defaults while treating omitted override phases as removals.
+
+    Older generated pipeline files are typically full phase graphs. When they
+    intentionally omit a default-only phase, recursively unioning the ``phases``
+    mapping revives that phase and can make the resulting graph unreachable.
+    For pipeline phase overlays, preserve deep field inheritance *within* each
+    declared override phase, but do not inherit default phases that the override
+    omitted entirely.
+    """
+    merged = _merge_mapping_defaults(defaults, overrides)
+    override_phases = overrides.get("phases")
+    default_phases = defaults.get("phases")
+    if not isinstance(override_phases, Mapping) or not isinstance(default_phases, Mapping):
+        return merged
+
+    merged_phases: dict[str, object] = {}
+    for phase_name, override_phase in override_phases.items():
+        default_phase = default_phases.get(phase_name)
+        if isinstance(default_phase, Mapping) and isinstance(override_phase, Mapping):
+            merged_phases[phase_name] = _merge_mapping_defaults(default_phase, override_phase)
+        else:
+            merged_phases[phase_name] = override_phase
+    merged["phases"] = merged_phases
+    return merged
+
+
 def _config_defines_agent_policy(config: object) -> bool:
     chains: object = getattr(config, "agent_chains", None)
     drains: object = getattr(config, "agent_drains", None)
@@ -406,9 +435,9 @@ def _load_policy_from_paths(
         pipeline_data = local_pipeline_data or default_pipeline_data
     else:
         global_pipeline_data = _load_toml(global_pipeline_path)
-        pipeline_data = _merge_mapping_defaults(default_pipeline_data, global_pipeline_data)
+        pipeline_data = _merge_pipeline_defaults(default_pipeline_data, global_pipeline_data)
         if local_pipeline_data:
-            pipeline_data = _merge_mapping_defaults(pipeline_data, local_pipeline_data)
+            pipeline_data = _merge_pipeline_defaults(pipeline_data, local_pipeline_data)
 
     default_artifacts_data = _load_toml(default_policy_dir / "artifacts.toml")
     local_artifacts_data = _load_toml(artifacts_path)
