@@ -1,5 +1,17 @@
 # Outreach Log
 
+## 2026-05-20 (Wednesday) — Toolsland + AIPowerStacks submit-surface triage repair (09:01 UTC)
+- **Repaired the live directory-discovery queue so it stops treating two false-positive submit lanes as actionable Codeberg distribution paths**: updated `/home/mistlight/.openclaw/workspace/agents/marketing/channel_discovery.py` to add fresh submit targets `toolsland` and `aipowerstacks`, taught the classifier to distinguish login-required submit APIs from real public submission backends, marked `toolsland.ai` as broken in `BROKEN_AUTONOMOUS_SUBMIT_HOSTS`, added regression tests in `/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_channel_discovery.py`, reran the targeted probes, and rewrote `/home/mistlight/.openclaw/workspace/agents/marketing/logs/channel_discovery.json` with the corrected statuses.
+  - Verification: `python3 -m unittest agents.marketing.tests.test_channel_discovery -v` passed (`16` tests). Fresh targeted probe now records:
+    - `toolsland` → `broken_submit_surface` with note `real submit backend is broken from this environment: api.toolsland.ai/graphql presents a hostname-mismatched TLS certificate and direct POST probes return application not found / 404`
+    - `aipowerstacks` → `login_required` with note `submission requires account authentication`
+    - Working queue after repair: `saashub`, `toolshelf`, `toolwise`, `aitoolsindex`
+  - Why: this is **REPAIRED / REPLACING** a failed tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the live bottleneck, but repeated directory work only helps if the queue reflects channels that are truly executable right now. `toolsland` looked promising from page copy and GraphQL traces, and `aipowerstacks` exposed a likely `/api/submit`, but live verification showed one broken backend and one auth wall. Fixing the queue was the highest-leverage same-run repair once direct submission was no longer actually possible.
+  - Expected outcome: future marketing loops should stop wasting Codeberg-conversion cycles on `toolsland` and `aipowerstacks` false positives and spend the next distribution effort only on verified executable channels.
+  - Measurement window: immediate success = future discovery runs keep `toolsland` out of actionable channels and classify `aipowerstacks` as login-gated; business check = next 14 days of **Codeberg** stars/watchers/issues movement (through **2026-06-03**) because loop time should stay focused on real channels.
+  - Replace if it fails: if discovery still resurfaces these channels as actionable or Codeberg remains flat by **2026-06-03**, stop treating queue cleanup alone as enough and shift the next replacement move to a fresh verified external backlink/citation surface or another direct Codeberg-first conversion repair.
+  - Type: **REPAIRED / REPLACING**
+
 ## 2026-05-20 (Wednesday) — AI coding workflow automation Telegraph repair (07:41 UTC)
 - **Published a fresh Telegraph keyword-gap page for `AI coding workflow automation`**: shipped `AI Coding Workflow Automation Without Giving Up Control` to Telegraph with Codeberg first and GitHub second.
   - Live URL: `https://telegra.ph/AI-Coding-Workflow-Automation-Without-Giving-Up-Control-05-20`
@@ -3071,3 +3083,49 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Expected outcome:** searchers who see the homepage snippet should get a tighter category match and a clearer Codeberg-first promise, improving qualified click-through and reducing vague-orchestration confusion before they ever hit the page.
 - **Measurement window:** immediate check = live homepage keeps serving the shortened metadata; next 7 days (**through 2026-05-27**) for crawler/snippet refresh; primary business check = next 14 days of **Codeberg** stars/watchers/forks/issues delta (**through 2026-06-03**).
 - **Replace if it fails:** if the new metadata is live and **Codeberg** is still flat by **2026-06-03**, stop spending the next cycle on homepage snippet tuning and replace this lane with a fresh external backlink/citation or comparison/discussion surface that sends new qualified traffic directly into the repaired Codeberg-first pages.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 10:09:52
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, aisotools, comeai. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Hosted docs proof-surface GitDB leak repair (08:25 UTC)
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** repaired the live hosted docs index at `https://ralphworkflow.com/docs/` so one of the first evaluator surfaces no longer points trust-seeking visitors at a GitHub-native proof lane. I replaced the stale `GitDB project page` entry with the live `ToolWise review page`, removed the extra `SaaSHub alternatives` link to keep the proof block curated instead of sprawling, and updated both the hosted-docs source (`/home/mistlight/ralph_site/current/docs/sphinx_overrides/index.rst`) and the live published HTML (`/home/mistlight/ralph_site/current/public/docs/index.html`).
+- **Verification:** direct live fetch on **2026-05-20 08:25 UTC** confirmed `ToolWise review page` is present on `https://ralphworkflow.com/docs/`, while `GitDB project page` and `saashub.com/ralph-workflow-alternatives` are gone from the public page.
+- **Why this action:** this is **REPAIRED / REPLACING** a still-flat tactic. The audit still says `distribution_and_message_to_primary_repo_conversion` is the live bottleneck, fresh executable directory lanes were already exhausted or blocked, and the hosted docs index was quietly leaking high-intent evaluators toward a GitHub-native proof surface even after newer Codeberg-first proof work existed. Fixing that live trust surface has a more direct effect on qualified Codeberg routing than another repeated directory pass or risky Reddit reuse.
+- **Expected outcome:** more evaluators who reach the hosted docs index should click into a Codeberg-routable third-party proof surface, then continue to the primary Codeberg repo instead of reinforcing mirror-first inspection habits.
+- **Measurement window:** immediate check = hosted docs index keeps serving the repaired proof block; primary business check = next 14 days of **Codeberg** stars/watchers/issues delta (**through 2026-06-03**).
+- **Replace if it fails:** if the hosted docs page stays repaired but Codeberg is still flat on **2026-06-03**, stop spending another cycle on proof-block cleanup and replace this lane with a warmer external citation/discussion surface or another verified primary-repo conversion repair.
+- **Docs surface review note:**
+  - What changed: replaced the stale GitDB proof link with ToolWise and pruned the extra SaaSHub-alternatives link on the hosted docs index.
+  - Why it belongs here: `https://ralphworkflow.com/docs/` is one of the first public evaluator entry points, so proof-surface direction matters here before install.
+  - What was pruned / shortened: removed one redundant alternatives link and kept the proof block to three curated surfaces.
+  - Duplication: reduced live mismatch between hosted docs and the newer proof-link policy already used elsewhere.
+  - Why the top-level experience is better: less mirror bias, less link clutter, cleaner Codeberg-first trust path.
+
+## 2026-05-20 (Wednesday) — CodaOne false-positive directory-lane repair (08:38 UTC)
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** retired `codaone` from the actionable directory queue after re-validating its live submit flow and proving it is not an autonomous same-run backlink lane from this environment. I updated `agents/marketing/channel_discovery.py`, rewrote the regression test that previously treated CodaOne as a validated host, reran `python3 -m unittest agents.marketing.tests.test_channel_discovery -v`, and patched `agents/marketing/logs/channel_discovery.json` so `codaone` is now marked `broken_submit_surface` and removed from `working` channels.
+- **Verification:** browser probe of `https://www.codaone.ai/submit/` showed a hidden `cf-turnstile-response` field with no token issued; direct POST probe to `https://www.codaone.ai/api/submit-tool` returned `400 {"error":"Security verification required"}` for JSON payloads and `500 {"error":"Server error"}` for form/multipart attempts; the updated unit suite passed (`13` tests).
+- **Why this action:** this is **REPAIRED / REPLACING** a still-flat tactic. The audit says backlink building is the live repair path, but a false-positive “easy” directory lane is worse than no lane because it burns cycles that should go toward real Codeberg-routable channels. Once CodaOne failed live security verification, the highest-leverage same-run move was to fix the queue so future loops stop retrying it.
+- **Expected outcome:** future marketing runs should spend less time on blocked directory surfaces and more time on genuinely executable Codeberg-first distribution or conversion repairs.
+- **Measurement window:** immediate success = `codaone` stays out of `working` channels and future discovery runs keep classifying it as blocked from this environment; primary business check = next 14 days of **Codeberg** stars/watchers/issues delta (**through 2026-06-03**) because loop time should stay concentrated on real lanes.
+- **Replace if it fails:** if `codaone` resurfaces as actionable without a verified successful submission path, or if Codeberg is still flat on **2026-06-03**, stop treating discovery cleanup alone as enough and replace this lane with a fresh verified external backlink/citation surface or another direct Codeberg-first conversion repair.
+
+## 2026-05-20 (Wednesday) — Live homepage SERP + source-link chrome repair (08:48 UTC)
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** patched the live Rails homepage and shared source-link partial so the public site now exposes the right evaluator language and repo relationship on the first screen.
+  - Changed homepage title from `Unattended coding agent: Claude and Codex` / live rendered `Claude and Codex — Ralph Workflow` to **`Free unattended coding agent and AI agent orchestration CLI — Ralph Workflow`**.
+  - Tightened the homepage meta description to include **Claude Code, Codex, and OpenCode** plus the explicit action **inspect the primary Codeberg repo first**.
+  - Reordered the homepage hero source links to **Codeberg primary** first and **GitHub mirror only** second.
+  - Repaired the shared site nav/footer source-link partial to use the correct GitHub mirror URL (`https://github.com/Ralph-Workflow/Ralph-Workflow`) instead of the wrong `https://github.com/mistlight/Ralph-Workflow`, and relabeled those controls to **Codeberg primary** / **GitHub mirror only**.
+  - Restarted the live app with `systemctl --user restart ralph_site_puma_production.service`.
+- **Verification:** live fetch on `https://ralphworkflow.com` now returns title `Free unattended coding agent and AI agent orchestration CLI — Ralph Workflow`; live HTML now emits the repaired meta description; live homepage HTML exposes `Codeberg primary` and `GitHub mirror only`; no `github.com/mistlight/Ralph-Workflow` link remains in the homepage HTML.
+- **Why this action:** this is **REPAIRED / REPLACING** the audit's priority-1 homepage SEO tuning lane plus a remaining mirror-parity leak. The live homepage was still shipping stale SERP copy and even had a wrong GitHub URL in shared source chrome, which is a more direct Codeberg-conversion leak than another weak directory retry or another same-day content loop.
+- **Expected outcome:** more qualified evaluators who land on the homepage should see a clearer category match in search/social previews, then inspect **Codeberg first** instead of drifting into mirror ambiguity or a broken/incorrect GitHub path.
+- **Measurement window:** immediate success = live homepage keeps serving the repaired title/meta/link labels; primary business check = next 14 days of **Codeberg** stars/watchers/issues delta (**through 2026-06-03**).
+- **Replace if it fails:** if the repaired homepage stays live but Codeberg is still flat by **2026-06-03**, stop spending the next cycle on homepage chrome/copy alone and replace this lane with a freshly verified external backlink/citation surface that points directly into the strongest Codeberg-first evaluator page.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 10:49:05
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, codaone, aisotools, comeai. Cloudflare is cleared but Apollo still requires mailbox verification for this device.

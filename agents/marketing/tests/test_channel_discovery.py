@@ -148,7 +148,7 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "broken_submit_surface")
         self.assertIn("server error 500", note.lower())
 
-    def test_validated_submit_host_overrides_captcha_block_assumption(self):
+    def test_known_security_blocked_submit_host_overrides_false_positive_accessibility(self):
         status, note = channel_discovery.classify_submission_surface_probe(
             {
                 "probe_status": "ok",
@@ -177,8 +177,8 @@ class ChannelDiscoveryTests(unittest.TestCase):
             },
             page_url="https://www.codaone.ai/submit/",
         )
-        self.assertEqual(status, "accessible")
-        self.assertIn("validated json submit endpoint", note.lower())
+        self.assertEqual(status, "broken_submit_surface")
+        self.assertIn("security verification", note.lower())
 
     def test_known_broken_submit_host_overrides_false_positive_api_accessibility(self):
         status, note = channel_discovery.classify_submission_surface_probe(
@@ -213,6 +213,107 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "broken_submit_surface")
         self.assertIn("valid payload returns", note.lower())
 
+    def test_login_required_submit_api_overrides_public_form_copy(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {
+                "probe_status": "ok",
+                "form_count": 1,
+                "input_count": 6,
+                "textarea_count": 2,
+                "select_count": 2,
+                "body_excerpt": "Submit Your AI Tool\nTool Name\nWebsite URL\nCategory\nDescription\nPricing",
+                "forms": [
+                    {
+                        "action": None,
+                        "method": None,
+                        "control_count": 10,
+                        "named_control_count": 10,
+                    }
+                ],
+            },
+            {
+                "probe_status": "ok",
+                "has_network_submission_markers": True,
+            },
+            {
+                "probe_status": "ok",
+                "submit_url": "https://www.aipowerstacks.com/api/submit",
+                "post_code": 401,
+                "auth_required_detected": True,
+                "public_submit_detected": False,
+            },
+            page_url="https://www.aipowerstacks.com/submit",
+        )
+        self.assertEqual(status, "login_required")
+        self.assertIn("requires authentication", note.lower())
+
+    def test_login_interstitial_copy_is_marked_login_required(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {
+                "probe_status": "ok",
+                "form_count": 1,
+                "input_count": 1,
+                "textarea_count": 0,
+                "select_count": 0,
+                "body_excerpt": "Sign In to List Your AI Tool\nLog In\nCreate Account\nAfter login, you'll return here automatically.",
+                "forms": [
+                    {
+                        "action": None,
+                        "method": None,
+                        "control_count": 1,
+                        "named_control_count": 0,
+                    }
+                ],
+            },
+            {
+                "probe_status": "ok",
+                "has_auth_markers": True,
+                "has_network_submission_markers": True,
+            },
+            {
+                "probe_status": "ok",
+                "submit_url": "https://www.aipowerstacks.com/api/rss",
+                "post_code": 405,
+                "public_submit_detected": False,
+                "auth_required_detected": False,
+            },
+            page_url="https://www.aipowerstacks.com/submit",
+        )
+        self.assertEqual(status, "login_required")
+        self.assertIn("authentication", note.lower())
+
+    def test_known_broken_toolsland_host_is_marked_broken(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {
+                "probe_status": "ok",
+                "form_count": 1,
+                "input_count": 10,
+                "textarea_count": 1,
+                "select_count": 8,
+                "body_excerpt": "Submit your AI tool for free\nTool Name\nWebsite URL\nSelect Product Type\nSelect AI Type",
+                "forms": [
+                    {
+                        "action": None,
+                        "method": None,
+                        "control_count": 19,
+                        "named_control_count": 19,
+                    }
+                ],
+            },
+            {
+                "probe_status": "ok",
+                "has_network_submission_markers": True,
+            },
+            {
+                "probe_status": "partial",
+                "submit_url": "https://api.toolsland.ai/graphql",
+                "note": "hostname mismatch",
+            },
+            page_url="https://www.toolsland.ai/submit-ai-tool-free",
+        )
+        self.assertEqual(status, "broken_submit_surface")
+        self.assertIn("tls", note.lower())
+
     def test_submission_probe_gate_only_triggers_for_real_submit_pages(self):
         self.assertTrue(channel_discovery.submission_surface_needs_form_probe(
             "https://www.toolhunter.cc/submit",
@@ -244,6 +345,8 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertIn("codaone", active)
         self.assertIn("aisotools", active)
         self.assertIn("comeai", active)
+        self.assertIn("toolsland", active)
+        self.assertIn("aipowerstacks", active)
 
 
 if __name__ == "__main__":

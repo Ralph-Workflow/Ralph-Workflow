@@ -1,6 +1,6 @@
 {
-  "last_attempt_at": "2026-05-20T09:55:50.830134",
+  "last_attempt_at": "2026-05-20T11:05:25.713759",
   "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-20_0915.md",
-  "last_attempt_status": "fresh_opportunity_rate_limited",
-  "last_detail": "opportunity_state:fresh_rate_limited; opportunities:7"
+  "last_attempt_status": "positioning_blocked",
+  "last_detail": "missing core product framing"
 }

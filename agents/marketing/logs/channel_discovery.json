@@ -31,7 +31,9 @@
     "tools-ai-online",
     "codaone",
     "aisotools",
-    "comeai"
+    "comeai",
+    "toolsland",
+    "aipowerstacks"
   ],
   "results": [
     {
@@ -563,7 +565,7 @@
       "timestamp": "2026-05-20T04:00:26.610095",
       "http_code": "200",
       "final_url": "https://www.codaone.ai/submit/",
-      "status": "accessible",
+      "status": "broken_submit_surface",
       "surface_probe": {
         "probe_status": "error",
         "note": "Page.goto: Timeout 60000ms exceeded.\nCall log:\n  - navigating to \"https://www.codaone.ai/submit/\", waiting until \"networkidle\"\n"
@@ -580,18 +582,20 @@
         "submit_handler_has_network_markers": false,
         "submit_handler_has_success_markers": false,
         "has_auth_markers": false,
-        "has_captcha_markers": false,
+        "has_captcha_markers": true,
         "has_mailto_submission_markers": false,
         "has_issue_handoff_markers": false
       },
       "api_probe": {
         "probe_status": "ok",
-        "submit_url": "https://www.codaone.ai/api/submit",
-        "get_code": 404,
-        "post_code": 403,
-        "post_body": "{\"error\":\"Forbidden\"}",
-        "public_submit_detected": false
-      }
+        "submit_url": "https://www.codaone.ai/api/submit-tool",
+        "get_code": 405,
+        "post_code": 400,
+        "post_body": "{\"error\":\"Security verification required\"}",
+        "public_submit_detected": false,
+        "server_error_detected": false
+      },
+      "note": "submission currently requires security verification / turnstile from this environment; browser probe shows a turnstile field and direct POST probes return security-verification 400 or server-error 500"
     },
     {
       "name": "aisotools",
@@ -716,6 +720,129 @@
         "server_error_detected": false
       },
       "note": "real form submission with valid payload returns server error / 500 from this environment"
+    },
+    {
+      "name": "toolsland",
+      "url": "https://www.toolsland.ai/submit-ai-tool-free",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-20T11:04:18.697995",
+      "http_code": "200",
+      "final_url": "https://www.toolsland.ai/submit-ai-tool-free",
+      "status": "broken_submit_surface",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 2,
+        "input_count": 191,
+        "textarea_count": 1,
+        "select_count": 0,
+        "body_excerpt": "List My AI Tool\nLogin\nSubmit Your AI Tool for Free\n\nShowcase your AI tool on Toolsland.ai, the dedicated AI directory where developers, businesses, and enthusiasts come to discover the latest innovations. Listing is completely free, and our AI-powered recommendation engine helps match your tool with the right users based on their interests \u2014 boosting visibility, traffic, and growth.\n\nSignup?\n\nSigning up will allow you to update your AI tool later. Also It will make the process faster and easier.\n\nTool Name*\nWebsite URL*\nSelect Product Type\nAgent\nApplication\nDataset\nFramework\nHardware\nModel\nOther\nService\nTemplate\nToolkit\nSelect AI Type\nAnalytics Ai\nAutomation Ai\nCode Ai\nComputer Vision\nConversational Ai\nGenerative Ai\nMarketing Ai\nOther\nRecommendation Ai\nSearch Retrieval Ai\nSecurity Ai\nSpeec",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "",
+            "control_count": 1,
+            "named_control_count": 0
+          },
+          {
+            "index": 1,
+            "action": null,
+            "method": null,
+            "text": "Signup?\n\nSigning up will allow you to update your AI tool later. Also It will make the process faster and easier.\n\nTool Name*\nWebsite URL*\nSelect Product Type\nAgent\nApplication\nDataset\nFramework\nHardware\nModel\nOther\nService\nTemplate\nToolkit\nSelect AI Type\nAnalytics Ai\nAutomation Ai\nCode Ai\nComputer ",
+            "control_count": 191,
+            "named_control_count": 5
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 30,
+        "same_origin_script_count": 30,
+        "scripts_fetched": 12,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 0,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": false,
+        "has_captcha_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false,
+        "api_candidates": []
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://www.toolsland.ai/api/submit",
+        "get_code": 500,
+        "post_code": 500,
+        "post_body": "<!DOCTYPE html><html id=\"__next_error__\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_n",
+        "public_submit_detected": false,
+        "auth_required_detected": false,
+        "server_error_detected": true
+      },
+      "note": "real submit backend is broken from this environment: api.toolsland.ai/graphql presents a hostname-mismatched TLS certificate and direct POST probes return application not found / 404"
+    },
+    {
+      "name": "aipowerstacks",
+      "url": "https://www.aipowerstacks.com/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-20T11:04:23.112698",
+      "http_code": "200",
+      "final_url": "https://www.aipowerstacks.com/submit",
+      "status": "login_required",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 1,
+        "input_count": 1,
+        "textarea_count": 0,
+        "select_count": 0,
+        "body_excerpt": "Skip to content\nAIPowerStacks\nBrowse\nTracker\nCompare\nBlog\nMore\nSearch\u2026\n\u2318K\nLog in\nSign up\nCREATOR ONBOARDING\nSign In to List Your AI Tool\n\nA free account keeps listings spam-free and lets you manage, claim, or edit your tool anytime.\n\nLog In\nCreate Account\n\nAfter login, you'll return here automatically.\n\nAIPowerStacks\n\nDiscover and compare AI tools by use case, pricing, and integrations. Verified listings and real user reviews, updated every day.\n\nDIRECTORY\nAll AI Tools\nCompare Tools\nFree Tools\nFreemium Tools\nCategories\nSubmit a Tool\nCONTENT\nAI News\nFeatured Articles\nChangelog\nCOMPANY\nAbout\nAdvertise\nPrivacy Policy\nTerms of Service\nSubscribe\n\n\u00a9 2026 AIPowerStacks. All rights reserved.\n\nNew AI tool listings added daily.",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "Subscribe",
+            "control_count": 1,
+            "named_control_count": 0
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 21,
+        "same_origin_script_count": 21,
+        "scripts_fetched": 12,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 0,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": true,
+        "has_captcha_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false,
+        "api_candidates": [
+          "https://www.aipowerstacks.com/api/rss",
+          "https://www.aipowerstacks.com/api/rss\\"
+        ]
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://www.aipowerstacks.com/api/rss",
+        "get_code": 200,
+        "post_code": 405,
+        "post_body": "",
+        "public_submit_detected": false,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      },
+      "note": "submission requires account authentication"
     }
   ],
   "working": [
@@ -740,12 +867,6 @@
     {
       "name": "aitoolsindex",
       "url": "https://aitoolsindex.org/submit",
-      "method": "submit",
-      "difficulty": "easy"
-    },
-    {
-      "name": "codaone",
-      "url": "https://www.codaone.ai/submit/",
       "method": "submit",
       "difficulty": "easy"
     }
