@@ -299,6 +299,49 @@ PLANNING_EDIT_FALLBACK_HISTORY_GUIDANCE = (
 PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_GUIDANCE = (
     "If the defect scope is `repo_wide`, replace the summary, scope, and early steps"
 )
+DEVELOPER_SMALL_CHANGE_GUIDANCE = (
+    "Make the smallest self-contained change that solves the problem"
+)
+DEVELOPER_NATIVE_CHECKS_GUIDANCE = (
+    "Detect and use the repository's native formatter, linter, type checker, test runner, "
+    "and build checks"
+)
+DEVELOPER_NO_BYPASS_GUIDANCE = (
+    "Never weaken quality gates to get green: do not disable tests, bypass lint rules"
+)
+DEVELOPER_LOCAL_SUPPRESSION_GUIDANCE = (
+    "If a suppression is truly unavoidable, keep it local to the narrowest scope"
+)
+DEVELOPER_TESTABLE_DESIGN_GUIDANCE = (
+    "Prefer testable design: use dependency injection, explicit seams, pure logic"
+)
+DEVELOPER_REFACTOR_FOR_TESTABILITY_GUIDANCE = (
+    "If tests are hard to write or require real external I/O for routine coverage"
+)
+DEVELOPER_SAME_CHANGE_TESTS_GUIDANCE = (
+    "For behavior changes and bug fixes, add or update tests in the same change"
+)
+DEVELOPER_VERIFICATION_EVIDENCE_GUIDANCE = (
+    "Do not claim completion until the relevant verification commands actually pass"
+)
+DEVELOPER_ADD_QUALITY_STACK_GUIDANCE = (
+    "A finished change should leave behind a quality gate you would trust"
+)
+DEVELOPER_STRONG_QUALITY_BASELINE_GUIDANCE = (
+    "establish the ecosystem's best-practice baseline yourself"
+)
+DEVELOPER_BYPASS_GUARD_GUIDANCE = (
+    "Make casual bypasses visible in that gate"
+)
+DEVELOPER_CLEAR_OVER_CLEVER_GUIDANCE = (
+    "Prefer straightforward, maintainable code over clever tricks or premature abstraction"
+)
+DEVELOPER_NARROW_INTERFACES_GUIDANCE = (
+    "Keep interfaces narrow and explicit so behavior stays easy to understand"
+)
+DEVELOPER_DEPENDENCY_DISCIPLINE_GUIDANCE = (
+    "Add dependencies, abstractions, or layers only when they clearly reduce complexity"
+)
 
 
 def _assert_shared_analysis_guidance(
@@ -487,6 +530,37 @@ def test_fix_and_developer_iteration_templates_use_analysis_context_partial() ->
     assert "render_payload_section('ISSUES'" not in fix_template
     assert "render_payload_section('ANALYSIS FEEDBACK'" not in fix_template
     assert "render_payload_section('ANALYSIS FEEDBACK'" not in dev_template
+
+
+def test_developer_iteration_templates_include_universal_quality_guidance() -> None:
+    shared_guidance = (TEMPLATES_ROOT / "shared" / "_developer_iteration_guidance.jinja").read_text(
+        encoding="utf-8"
+    )
+    dev_template = (TEMPLATES_ROOT / "developer_iteration.jinja").read_text(encoding="utf-8")
+    continuation_template = (TEMPLATES_ROOT / "developer_iteration_continuation.jinja").read_text(
+        encoding="utf-8"
+    )
+    fallback_template = (TEMPLATES_ROOT / "developer_iteration_fallback.jinja").read_text(
+        encoding="utf-8"
+    )
+
+    assert DEVELOPER_SMALL_CHANGE_GUIDANCE in shared_guidance
+    assert DEVELOPER_NATIVE_CHECKS_GUIDANCE in shared_guidance
+    assert DEVELOPER_NO_BYPASS_GUIDANCE in shared_guidance
+    assert DEVELOPER_LOCAL_SUPPRESSION_GUIDANCE in shared_guidance
+    assert DEVELOPER_TESTABLE_DESIGN_GUIDANCE in shared_guidance
+    assert DEVELOPER_REFACTOR_FOR_TESTABILITY_GUIDANCE in shared_guidance
+    assert DEVELOPER_SAME_CHANGE_TESTS_GUIDANCE in shared_guidance
+    assert DEVELOPER_VERIFICATION_EVIDENCE_GUIDANCE in shared_guidance
+    assert DEVELOPER_ADD_QUALITY_STACK_GUIDANCE in shared_guidance
+    assert DEVELOPER_STRONG_QUALITY_BASELINE_GUIDANCE in shared_guidance
+    assert DEVELOPER_BYPASS_GUARD_GUIDANCE in shared_guidance
+    assert DEVELOPER_CLEAR_OVER_CLEVER_GUIDANCE in shared_guidance
+    assert DEVELOPER_NARROW_INTERFACES_GUIDANCE in shared_guidance
+    assert DEVELOPER_DEPENDENCY_DISCIPLINE_GUIDANCE in shared_guidance
+    assert "shared/_developer_iteration_guidance" in dev_template
+    assert "shared/_developer_iteration_guidance" in continuation_template
+    assert "shared/_developer_iteration_guidance" in fallback_template
 
 
 def test_review_and_fix_templates_define_explicit_review_handoff_contracts() -> None:

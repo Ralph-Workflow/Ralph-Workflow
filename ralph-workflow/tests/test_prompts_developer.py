@@ -130,6 +130,47 @@ PLANNING_EDIT_FALLBACK_HISTORY_TEXT = (
 PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_TEXT = (
     "If the defect scope is `repo_wide`, replace the summary, scope, and early steps"
 )
+DEVELOPER_SMALL_CHANGE_TEXT = "Make the smallest self-contained change that solves the problem"
+DEVELOPER_NATIVE_CHECKS_TEXT = (
+    "Detect and use the repository's native formatter, linter, type checker, test runner, "
+    "and build checks"
+)
+DEVELOPER_NO_BYPASS_TEXT = (
+    "Never weaken quality gates to get green: do not disable tests, bypass lint rules"
+)
+DEVELOPER_LOCAL_SUPPRESSION_TEXT = (
+    "If a suppression is truly unavoidable, keep it local to the narrowest scope"
+)
+DEVELOPER_TESTABLE_DESIGN_TEXT = (
+    "Prefer testable design: use dependency injection, explicit seams, pure logic"
+)
+DEVELOPER_REFACTOR_FOR_TESTABILITY_TEXT = (
+    "If tests are hard to write or require real external I/O for routine coverage"
+)
+DEVELOPER_SAME_CHANGE_TESTS_TEXT = (
+    "For behavior changes and bug fixes, add or update tests in the same change"
+)
+DEVELOPER_VERIFICATION_EVIDENCE_TEXT = (
+    "Do not claim completion until the relevant verification commands actually pass"
+)
+DEVELOPER_ADD_QUALITY_STACK_TEXT = (
+    "A finished change should leave behind a quality gate you would trust"
+)
+DEVELOPER_STRONG_QUALITY_BASELINE_TEXT = (
+    "establish the ecosystem's best-practice baseline yourself"
+)
+DEVELOPER_BYPASS_GUARD_TEXT = (
+    "Make casual bypasses visible in that gate"
+)
+DEVELOPER_CLEAR_OVER_CLEVER_TEXT = (
+    "Prefer straightforward, maintainable code over clever tricks or premature abstraction"
+)
+DEVELOPER_NARROW_INTERFACES_TEXT = (
+    "Keep interfaces narrow and explicit so behavior stays easy to understand"
+)
+DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT = (
+    "Add dependencies, abstractions, or layers only when they clearly reduce complexity"
+)
 
 
 def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_path: Path) -> None:
@@ -154,6 +195,20 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
     assert "development_result" in prompt
     assert "plan_items_proven" in prompt
     assert "content_path" not in prompt
+    assert DEVELOPER_SMALL_CHANGE_TEXT in prompt
+    assert DEVELOPER_NATIVE_CHECKS_TEXT in prompt
+    assert DEVELOPER_NO_BYPASS_TEXT in prompt
+    assert DEVELOPER_LOCAL_SUPPRESSION_TEXT in prompt
+    assert DEVELOPER_TESTABLE_DESIGN_TEXT in prompt
+    assert DEVELOPER_REFACTOR_FOR_TESTABILITY_TEXT in prompt
+    assert DEVELOPER_SAME_CHANGE_TESTS_TEXT in prompt
+    assert DEVELOPER_VERIFICATION_EVIDENCE_TEXT in prompt
+    assert DEVELOPER_ADD_QUALITY_STACK_TEXT in prompt
+    assert DEVELOPER_STRONG_QUALITY_BASELINE_TEXT in prompt
+    assert DEVELOPER_BYPASS_GUARD_TEXT in prompt
+    assert DEVELOPER_CLEAR_OVER_CLEVER_TEXT in prompt
+    assert DEVELOPER_NARROW_INTERFACES_TEXT in prompt
+    assert DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT in prompt
 
 
 def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work(
@@ -178,6 +233,22 @@ def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work
     assert "content_path" not in prompt
     assert "development_result" in prompt
     assert "analysis_items_addressed" in prompt
+    assert "UNATTENDED MODE" in prompt
+    assert "AVAILABLE TOOLS" in prompt
+    assert DEVELOPER_SMALL_CHANGE_TEXT in prompt
+    assert DEVELOPER_NATIVE_CHECKS_TEXT in prompt
+    assert DEVELOPER_NO_BYPASS_TEXT in prompt
+    assert DEVELOPER_LOCAL_SUPPRESSION_TEXT in prompt
+    assert DEVELOPER_TESTABLE_DESIGN_TEXT in prompt
+    assert DEVELOPER_REFACTOR_FOR_TESTABILITY_TEXT in prompt
+    assert DEVELOPER_SAME_CHANGE_TESTS_TEXT in prompt
+    assert DEVELOPER_VERIFICATION_EVIDENCE_TEXT in prompt
+    assert DEVELOPER_ADD_QUALITY_STACK_TEXT in prompt
+    assert DEVELOPER_STRONG_QUALITY_BASELINE_TEXT in prompt
+    assert DEVELOPER_BYPASS_GUARD_TEXT in prompt
+    assert DEVELOPER_CLEAR_OVER_CLEVER_TEXT in prompt
+    assert DEVELOPER_NARROW_INTERFACES_TEXT in prompt
+    assert DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT in prompt
 
 
 def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
@@ -435,6 +506,20 @@ def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path: Path
     assert "content_path" not in prompt
     assert "ralph_submit_artifact" not in prompt
     assert "<ralph-development-result>" not in prompt
+    assert DEVELOPER_SMALL_CHANGE_TEXT in prompt
+    assert DEVELOPER_NATIVE_CHECKS_TEXT in prompt
+    assert DEVELOPER_NO_BYPASS_TEXT in prompt
+    assert DEVELOPER_LOCAL_SUPPRESSION_TEXT in prompt
+    assert DEVELOPER_TESTABLE_DESIGN_TEXT in prompt
+    assert DEVELOPER_REFACTOR_FOR_TESTABILITY_TEXT in prompt
+    assert DEVELOPER_SAME_CHANGE_TESTS_TEXT in prompt
+    assert DEVELOPER_VERIFICATION_EVIDENCE_TEXT in prompt
+    assert DEVELOPER_ADD_QUALITY_STACK_TEXT in prompt
+    assert DEVELOPER_STRONG_QUALITY_BASELINE_TEXT in prompt
+    assert DEVELOPER_BYPASS_GUARD_TEXT in prompt
+    assert DEVELOPER_CLEAR_OVER_CLEVER_TEXT in prompt
+    assert DEVELOPER_NARROW_INTERFACES_TEXT in prompt
+    assert DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT in prompt
 
 
 def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(
