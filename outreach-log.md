@@ -3532,3 +3532,62 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on first-task copy polish alone and shift the next replacement move to a fresh executable external distribution/backlink lane or HN/Lobsters execution if that path opens.
 - **Type:** **REPAIRED / REPLACING**
 - **Docs review note:** reviewed the evaluator journey in order (`README.md` → `START_HERE_RALPHWORKFLOW.md` → supporting example asset). This belongs on these top-level surfaces because the current leak is task-choice and first-run ambiguity, not lack of deeper docs. I did not add new top-level branches; I made the existing first-run path more explicit, reduced inferential burden, and kept Codeberg as the primary next action.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 16:07:51
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, saashub, tools-ai-online, codaone, aisotools, comeai, toolsland, aipowerstacks. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Live homepage Claude Code + Codex conversion-path repair (14:27 UTC)
+- **Type:** **REPAIRED / REPLACING**
+- **What I executed:** updated the live homepage at `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` so the existing `Claude Code + Codex` proof page is no longer buried in docs-only navigation.
+  - Expanded the `What evaluators usually mean when they search` module from **2 cards to 3 cards**.
+  - Added a dedicated homepage card: **`Claude Code + Codex workflow and morning-after review`**.
+  - Wired that card to the live hosted guide at `https://ralphworkflow.com/docs/claude-code-codex-workflow.html` plus the public review proof asset at `https://ralphworkflow.com/docs/example-review-bundle.html`.
+  - Triggered a live refresh with `touch /home/mistlight/ralph_site/current/tmp/restart.txt`.
+- **Verification:** direct live fetch of `https://ralphworkflow.com` after restart confirmed the new homepage card text, the `/docs/claude-code-codex-workflow.html` link, and the new `copy-paste glue` pain-language are all present on the public page.
+- **Why this action:** this is **REPAIRED / REPLACING** the still-flat `distribution_and_message_to_primary_repo_conversion` bottleneck. Reddit is saturated, directory work is already heavily in flight, and the live site already has a strong Claude Code + Codex guide that was not exposed on the homepage search-intent layer. Surfacing that exact evaluator path on the homepage is a stronger same-run conversion repair than another weak outreach repetition.
+- **Expected outcome:** more visitors arriving with `Claude Code + Codex workflow` intent should enter a Codeberg-adjacent proof path faster, inspect the real workflow story, and convert into more **Codeberg** repo inspections / stars / watches instead of bouncing or staying at generic category copy.
+- **Measurement window:** next 7 days for homepage path visibility / guide-click behavior; next 14 days for **Codeberg** stars/watchers/issues delta (through **2026-06-03**).
+- **Replace if it fails:** if this homepage path is live and Codeberg is still flat on **2026-06-03**, stop spending another cycle on homepage path polish alone and replace the next move with a warmer external distribution/citation surface or an unblocked account-based outbound lane.
+
+### Apollo monitor
+- **When:** 2026-05-20 16:34:47
+- **Note:** Apollo status changed from `ato_email_verification_required` to `cloudflare_auth_blocked`.
+
+## 2026-05-20 (Wednesday) — Live homepage SERP keyword retune (14:44 UTC / 16:44 CEST)
+- **What I executed:** tightened the live homepage `<title>` and meta description in `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`, then triggered a deploy refresh via `tmp/restart.txt`.
+  - Title changed to **`Unattended coding agent CLI for Claude Code, Codex, and OpenCode — Ralph Workflow`**.
+  - Description changed to **`Free open-source unattended coding agent and AI agent orchestration CLI. Inspect the primary Codeberg repo, run one bounded backlog task overnight, and wake up to finished code ready to review.`**
+  - Verification: fetched `https://ralphworkflow.com` after restart and confirmed the live `<title>` and meta description match the new copy.
+- **Why this action:** this is **REPAIRED / REPLACING**. The current audit still flags `primary_repo_flat`, and the remaining highest-priority locally executable repair was homepage SEO tuning on the Codeberg-first owned entry surface. Telegraph keyword-gap coverage and directory/backlink work were already in flight; this was the strongest direct conversion/discovery repair I could complete immediately.
+- **Expected outcome:** better-qualified search clicks for `unattended coding agent CLI`, warmer evaluator recognition for Claude Code / Codex / OpenCode compatibility, and clearer SERP routing into the primary Codeberg repo path.
+- **Measurement window:** next 14 days (**through 2026-06-03**) for **Codeberg** stars/watchers/forks delta and any homepage-driven repo-inspection signal.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on homepage metadata tuning and shift the next replacement move to a fresh executable backlink / competitor-citation distribution lane.
+- **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 16:43:30
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, saashub, tools-ai-online, codaone, aisotools, comeai, toolsland, aipowerstacks. Cloudflare/auth protection blocks login.
+
+## 2026-05-20 (Wednesday) — Live homepage SEO repair: title/meta/schema alignment (14:53 UTC)
+- **What I executed:** strengthened the live `ralphworkflow.com` homepage metadata and structured-data wording in `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` and `/home/mistlight/ralph_site/current/app/helpers/application_helper.rb`, then restarted the app via `tmp/restart.txt`.
+  - Title now: **`Unattended coding agent and AI agent orchestration CLI for Claude Code, Codex, and OpenCode — Ralph Workflow`**
+  - Meta description now: **`Free and open-source unattended coding agent and AI agent orchestration CLI. Inspect the primary Codeberg repo first, run one substantial bounded task overnight, and wake up to finished code ready to review.`**
+  - JSON-LD `SoftwareSourceCode.description` now explicitly names **Claude Code, Codex, and OpenCode on your own machine**.
+  - Verification: live fetch of `https://ralphworkflow.com` confirmed the new title; direct HTML fetch confirmed the new meta description and updated `SoftwareSourceCode` JSON-LD are live.
+- **Why this action:** this is **REPAIRED / REPLACING**. The audit still marks `primary_repo_flat` as the top live repair, HN/Lobsters is still blocked from autonomous execution, Telegraph keyword-gap coverage is already at ceiling, and the remaining locally executable gap was the homepage SEO snippet/schema itself. This repair keeps the evaluator keywords and the Codeberg-first action path aligned on the owned first-touch surface.
+- **Expected outcome:** more qualified search visitors looking for an unattended coding agent or AI agent orchestration CLI should arrive on a clearer branded SERP snippet, understand the fit faster, and choose the primary Codeberg repo as the first real inspection path.
+- **Measurement window:** next 14 days (**through 2026-06-03**) for **Codeberg** stars/watchers/forks delta and any sign of stronger homepage-driven repo inspection.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on homepage metadata tuning and shift the next replacement move to fresh executable backlink / competitor-citation distribution once an unblocked surface is available.
+- **Type:** **REPAIRED / REPLACING**
+
+### RalphWorkflow docs proof-surface conversion repair
+- **When:** 2026-05-20 17:10 CEST
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** removed the stale `TechTools Launchpad` proof link from the live RalphWorkflow docs entry page so the public third-party proof block now keeps only the clearer surfaces (`ToolWise`, `SaaSHub`) instead of advertising a weaker / ambiguous directory lane.
+  - Files updated on the served site: `/home/mistlight/ralph_site/current/docs/sphinx_overrides/index.rst`, `/home/mistlight/ralph_site/current/public/docs/_sources/index.rst.txt`, `/home/mistlight/ralph_site/current/public/docs/index.html`
+- **Verification:** confirmed the served docs artifacts no longer contain `TechTools Launchpad listing` and still contain only `ToolWise review page` + `SaaSHub product page` via `grep` on the live source and public HTML artifacts.
+- **Why this action:** this was the strongest remaining same-run repair for `distribution_and_message_to_primary_repo_conversion`. The latest audit still says Codeberg adoption is flat and all public-facing content must route evaluators toward Codeberg first. The docs homepage was still surfacing a weak third-party proof link whose public page no longer read like a strong RalphWorkflow proof surface. Pruning that link is better than sending evaluators into a low-trust / potentially misrouted lane.
+- **Expected outcome:** docs visitors evaluating RalphWorkflow from the hosted docs entry page should now see a cleaner proof set with fewer off-path clicks, improving the chance that qualified visitors continue into the Codeberg-first repo path instead of leaking into a weaker directory surface.
+- **Measurement window:** immediate for docs-surface clarity (done), then next 7 days for cleaner evaluator-path behavior on the docs entry page, and next 14 days for **Codeberg** stars/watchers/forks/issues delta through `2026-06-03`.
+- **Replace if it fails:** if Codeberg adoption is still flat through `2026-06-03`, stop spending the next cycle on proof-link pruning and replace this lane with the next stronger external distribution or proof asset that can create net-new qualified Codeberg visits.

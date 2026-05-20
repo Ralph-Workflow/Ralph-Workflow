@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-20T12:33:22.558372+02:00",
-  "status": "ato_email_verification_required",
-  "final_url": "https://app.apollo.io/#/ato/verify-email",
+  "timestamp": "2026-05-20T16:34:47.789558+02:00",
+  "status": "cloudflare_auth_blocked",
+  "final_url": "https://app.apollo.io/#/login",
   "login_attempted": true,
-  "cloudflare_blocked": false,
-  "notes": "Cloudflare is cleared on the real-browser path, but Apollo still requires mailbox/email-code verification for this device.",
+  "cloudflare_blocked": true,
+  "notes": "Apollo auth endpoint returned 403. Apollo auth endpoint returned Cloudflare interstitial content.",
   "auth_endpoint_status_codes": [
-    200
+    403
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-20T16:03:16.985088",
+  "timestamp": "2026-05-20T17:01:10.864459",
   "results": [
     {
       "draft": "2026-05-20_orchestration_draft.md",
@@ -16,14 +16,9 @@
       "experiment_id": "2026-05-20-philosophy"
     },
     {
-      "date": "2026-05-20",
       "draft": "2026-05-20_spec_driven_draft.md",
-      "title": "Spec-Driven AI Agent: Why Explicit Contracts Change What Your Agent Produces",
-      "platform": "telegraph",
       "ok": true,
-      "status": "posted",
-      "url": "https://telegra.ph/Spec-Driven-AI-Agent-Why-Explicit-Contracts-Change-What-Your-Agent-Produces-05-20",
-      "error": null,
+      "status": "already_posted",
       "draft_hash": "a6e06c09ff6139388cde59f2e1dc0d981cb59bde83125bfc54565df55cbc8ac2",
       "experiment_id": "2026-05-20-spec_driven"
     },

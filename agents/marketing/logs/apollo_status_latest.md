@@ -1,9 +1,9 @@
 # Apollo Status
 
-- Timestamp: `2026-05-20T12:33:22.558372+02:00`
-- Status: `ato_email_verification_required`
-- Final URL: `https://app.apollo.io/#/ato/verify-email`
+- Timestamp: `2026-05-20T16:34:47.789558+02:00`
+- Status: `cloudflare_auth_blocked`
+- Final URL: `https://app.apollo.io/#/login`
 - Login attempted: `True`
-- Cloudflare/auth blocked: `False`
-- Auth endpoint status codes: `[200]`
-- Notes: Cloudflare is cleared on the real-browser path, but Apollo still requires mailbox/email-code verification for this device.
+- Cloudflare/auth blocked: `True`
+- Auth endpoint status codes: `[403]`
+- Notes: Apollo auth endpoint returned 403. Apollo auth endpoint returned Cloudflare interstitial content.
