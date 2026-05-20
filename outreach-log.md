@@ -1,5 +1,40 @@
 # Outreach Log
 
+## 2026-05-20 (Wednesday) — Marketing loop audit assessment (12:28 UTC)
+- **Verdict: infrastructure stack is complete; backlink velocity and Reddit repetition are the live problems.**
+  - Codeberg still flat (9⭐ 2👁 2🍴, 0 delta in measurement window). GitHub mirror flat too.
+  - All critical infrastructure repairs are shipped: Codeberg-first routing, homepage SEO metadata, Telegraph keyword-gap coverage (100%), directory submissions (AIToolsIndex, ToolShelf), conversion pages (approval-mode, remote-supervision, example-review-bundle, first-task path), owned-content cross-posts from write.as to Telegraph.
+  - Reddit monitors correctly returning no-post across 4 consecutive passes (structural cooldown respected).
+  - **Reddit repetition risk is confirmed worsening**: the banned opening `"Honestly the part I'd optimize first is the handoff, not the model stack."` was reused in the most recent Informal-Salt827 comment (2026-05-20 11:24 CEST, r/ClaudeCode "Claude Code + Codex Workflow?"). The broader stale cadence (contrast opener → handoff/reviewer framing → proof bundle → product/link close) is also confirmed structural repetition.
+  - **Backlinks: still 0 indexed backlinks**. Directory submissions from AIToolsIndex and ToolShelf are in-flight but not yet indexed. This remains the hardest unsolved problem.
+  - Four marketing questions: all correctly answered, no drift.
+- **What worked:** Infrastructure is solid. Messaging alignment holds. The stack is built.
+- **What failed:** Reddit repetition pattern — same opening used across multiple posts. Backlink velocity — 0 indexed backlinks, no search authority.
+- **What is repetitive:** Reddit body cadence converging toward a template. Repeated opening confirmed across informal-Salt827 comments.
+- **What is low leverage:** More owned-surface tweaks, more conversion-page additions, more Reddit monitor passes without fresh body drafts.
+- **Current bottleneck:** Backlink velocity (0 indexed) and Reddit body freshness (repetition risk confirmed).
+- **Next higher-leverage moves:**
+  1. **Write 3 fresh Reddit comment bodies** for the best known upcoming opportunities (`r/ClaudeCode approval loop`, `r/ClaudeCode how do you actually use CC+codex`, `r/ClaudeCode run until done`) — each with a genuinely new opening and no handoff/reviewer framing. These should be pre-positioned for when cooldown lifts, not executed immediately.
+  2. **Prepare and schedule HN/Lobsters submission** for the strongest existing content (the `ai agent orchestration CLI` Telegraph article is the best candidate — it directly answers the four marketing questions and hits the free/open-source positioning). HN/Lobsters can generate real indexed backlinks and genuine traffic if the post is well-positioned and submitted at the right time.
+  3. Reddit stays on cooldown unless a genuinely fresh thread opportunity surfaces.
+- **Measurement window:** next 14 days (**through 2026-06-03**) for Codeberg stars/watchers/issues delta.
+- **Replace if it fails:** if Codeberg is still flat through 2026-06-03 and HN/Lobsters has not produced any indexed backlink or referral signal, stop investing in owned distribution and shift to direct human-level outreach (AI tool curators, comparison-page backlink requests, or similar).
+- Type: **AUDIT / DIRECTION**
+
+## 2026-05-20 (Wednesday) — Reddit monitoring (10:20 UTC)
+- **Report:** `seo-reports/reddit_monitor_2026-05-20_1220.md`
+- **Scan summary:** 30 candidate Reddit threads/posts scanned, 8 shortlisted, 22 rejected.
+- **Current verdict:** Mixed — 8 credible discussion opportunities were found, but only 0-2 are honest RalphWorkflow mention fits and 0 are obvious high-confidence product mentions after prior-use, remote-supervision, authority/observability, and no-product-value filtering.
+- **Best current unused discussion fits:**
+  - `r/ClaudeCode` — "Claude Code stuck in \"approval loop\""
+  - `r/ClaudeCode` — "Claude Code needs real remote control from mobile"
+  - `r/ClaudeCode` — "How do you ACTUALLY use CC+codex?"
+  - `r/ClaudeCode` — "How are you actually running Claude Code at scale on real codebases?"
+- **Repeated pains worth tracking:** approval drag, morning-after review/reconstruction, cleanup noise on the human review surface, worktree isolation without finish-state trust, long-run drift / archaeology, and governance / output-authority concerns.
+- **Risk note:** repeat-pattern risk now includes a newer canned **brand-definition close** in addition to the older **contrast opener -> handoff/reviewer framing -> proof bundle -> product/link close** cadence. The 2026-05-20 11:24 CEST comment also drifted into a too-template product-definition sentence.
+- **Posting note:** No posting attempted from this monitor pass.
+
+
 ## 2026-05-20 (Wednesday) — Toolsland + AIPowerStacks submit-surface triage repair (09:01 UTC)
 - **Repaired the live directory-discovery queue so it stops treating two false-positive submit lanes as actionable Codeberg distribution paths**: updated `/home/mistlight/.openclaw/workspace/agents/marketing/channel_discovery.py` to add fresh submit targets `toolsland` and `aipowerstacks`, taught the classifier to distinguish login-required submit APIs from real public submission backends, marked `toolsland.ai` as broken in `BROKEN_AUTONOMOUS_SUBMIT_HOSTS`, added regression tests in `/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_channel_discovery.py`, reran the targeted probes, and rewrote `/home/mistlight/.openclaw/workspace/agents/marketing/logs/channel_discovery.json` with the corrected statuses.
   - Verification: `python3 -m unittest agents.marketing.tests.test_channel_discovery -v` passed (`16` tests). Fresh targeted probe now records:
@@ -3186,3 +3221,50 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Measurement window: next 7 days for snippet/index refresh; next 14 days for **Codeberg** stars/watchers/issues delta (through **2026-06-03**).
   - Replace if it fails: if the refreshed snippet is live and Codeberg stars/watchers/issues are still flat on **2026-06-03**, stop spending cycles on homepage metadata-only tuning and shift the next replacement move to a fresh executable backlink/citation surface.
   - Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 12:05:40
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, codaone, aisotools, comeai, toolsland, aipowerstacks. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-20 (Wednesday) — Live homepage first-task CTA ordering repair (10:23 UTC)
+- **What I executed:** repaired the live `ralphworkflow.com` hero CTA order so evaluators now get the intended conversion path **Codeberg first → first-task guide second → install third** instead of jumping from repo inspection straight into generic setup.
+  - Files: `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`
+  - Live changes:
+    - kept **Inspect on Codeberg first** as the primary hero action
+    - replaced the old secondary install CTA with **Pick your first task** linking to `/docs/first-task-guide.html`
+    - demoted install to the third, lower-pressure action
+    - tightened the helper copy to explicitly say: inspect the source first, then pick one bounded task you would care about by morning
+  - Verification: touched `/home/mistlight/ralph_site/current/tmp/restart.txt`, then fetched `https://ralphworkflow.com/` live and confirmed the homepage HTML now contains `Pick your first task`, the updated helper sentence, and the existing `Codeberg is the primary repo.` language.
+- **Why this action:** this is **REPAIRED / REPLACING** a still-flat tactic. The audit says the bottleneck is still conversion from interest to free use, and `ADOPTION_FUNNEL_NEXT.md` says the strongest next asset is the first-task path. After trying a fresh external directory lane and hitting Cloudflare, the highest-leverage viable same-run repair was to make the live homepage send warm evaluators into the bounded-task decision before install friction or generic docs wandering.
+- **Expected outcome:** more qualified homepage visitors should move from source inspection into the first-task guide, producing a higher-quality Codeberg-first evaluation flow and more primary-repo stars/watchers/issues if the path matches real intent.
+- **Measurement window:** immediate success = live homepage keeps serving the new CTA order; primary business check = next 14 days of **Codeberg** stars/watchers/issues delta (**through 2026-06-03**).
+- **Replace if it fails:** if the live CTA order is still up and Codeberg remains flat on **2026-06-03**, stop spending another cycle on homepage CTA ordering alone and replace this lane with a warmer external backlink/citation surface or a stronger proof asset wired into the same Codeberg-first path.
+- **Type:** **REPAIRED / REPLACING**
+
+## 2026-05-20 (Wednesday) — HN/Lobsters packet replacement around strongest current Telegraph asset (10:40 UTC)
+- **What I executed:** replaced the stale HN + Lobsters submission packets and their quick checklists so they now lead with the strongest current external asset — `AI Agent Orchestration CLI: A Practical Comparison for Developers` (`https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20`) — instead of the older `How to Tell if an AI Coding Task Is Actually Done` packet.
+  - Files updated: `drafts/2026-05-18_hackernews_post.txt`, `drafts/2026-05-18_lobsters_post.txt`, `drafts/checklist_2026-05-18_hackernews_post.txt`, `drafts/checklist_2026-05-18_lobsters_post.txt`
+  - Verification: grep confirmed all four files now use the live 2026-05-20 Telegraph URL and point readers to `https://codeberg.org/RalphWorkflow/Ralph-Workflow` first, with GitHub kept explicitly as the mirror.
+- **Why this action:** this is **REPLACING / REPAIRED**. The latest audit says Codeberg adoption is flat, Telegraph keyword-gap coverage is the active repair path, and the best next non-Reddit move is HN/Lobsters. Those channels are still blocked from direct posting here, so the highest-leverage action I could actually complete now was repairing the handoff packet itself so the next authenticated/manual submission is built around the current strongest category-fit article and a Codeberg-first CTA instead of an older trust-only asset.
+- **Expected outcome:** when HN or Lobsters becomes executable, the first non-Reddit distribution shot should attract warmer category-intent traffic and send more qualified evaluators into the **primary Codeberg repo**.
+- **Measurement window:** immediate success = the packet stays ready and aligned to the live 2026-05-20 asset; business check = 7 days for post visibility / referral evidence after eventual submission, and 14 days for **Codeberg** stars/watchers/issues delta.
+- **Replace if it fails:** if an HN/Lobsters submission using this packet goes live and Codeberg is still flat 14 days later, stop recycling Telegraph essays alone and shift to direct curator / competitor-citation outreach.
+- **Type:** **REPLACING / REPAIRED**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 12:41:33
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, tools-ai-online, codaone, aisotools, comeai, toolsland, aipowerstacks. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+
+### RalphWorkflow branded snippet metadata repair
+- **When:** 2026-05-20 13:05:11 +02:00
+- **Type:** REPAIRED / REPLACING
+- **What I executed:** repaired the live `ralphworkflow.com` shared metadata path so social/directory snippets stop dropping the Ralph Workflow brand on pages that only set a raw page title, while also avoiding double-brand titles on pages that already include `Ralph Workflow` in the source title.
+  - Patched `/home/mistlight/ralph_site/current/app/views/shared/_meta_tags.html.erb` to normalize `og:title`, `twitter:title`, and JSON-LD page/article names through a branded `meta_title`.
+  - Patched `/home/mistlight/ralph_site/current/app/helpers/application_helper.rb` so `<title>` uses the same normalization and no longer duplicates `Ralph Workflow` on pages like `/install`.
+  - Reloaded the live app via `touch /home/mistlight/ralph_site/current/tmp/restart.txt`.
+- **Verification:** direct live fetch now shows the homepage shipping `og:title` / `twitter:title` as `Unattended coding agent — Ralph Workflow`, and `/install` no longer renders the doubled browser title `Install Ralph Workflow — Ralph Workflow`. JSON-LD `WebPage.name` now matches the normalized page title.
+- **Why this action:** this is **REPAIRED / REPLACING** a still-flat tactic. The audit still names `distribution_and_message_to_primary_repo_conversion` as the bottleneck, and the strongest same-run public conversion fix left was to tighten snippet trust across owned surfaces instead of producing more generic content. Directory pages, social shares, and preview cards were leaking a weaker unbranded title even when the browser title was correct.
+- **Expected outcome:** cleaner branded snippets should improve qualified click-through and evaluator trust on shared/homepage entry points, leading more visitors to continue into the Codeberg-first repo path instead of bouncing on an ambiguous preview.
+- **Measurement window:** next 7 days for snippet/share consistency checks and any referral click quality clues; next 14 days (through **2026-06-03**) for **Codeberg** stars/watchers/issues movement.
+- **Replace if it fails:** if branded snippets are now consistent but **Codeberg** is still flat by **2026-06-03**, stop spending the next cycle on owned-surface metadata polish and replace this lane with a fresh external backlink/directory citation that can send new qualified traffic.

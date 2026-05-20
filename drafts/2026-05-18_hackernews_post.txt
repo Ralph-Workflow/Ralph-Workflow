@@ -1,39 +1,49 @@
 === HN SUBMISSION PACKET ===
 
+Action type: REPLACING / REPAIRED
+Expected outcome: a higher-intent HN click path into the primary Codeberg repo by leading with the strongest current category-fit article instead of the older trust-only piece.
+Measurement window: 7 days for post visibility / referral evidence after submission; 14 days for Codeberg stars/watchers/issues delta.
+Replace if it fails: if an HN submission based on this packet goes live and Codeberg is still flat after 14 days, stop recycling Telegraph essays on HN and shift to direct curator / competitor-citation outreach.
+
 Primary asset:
-- Article: How to Tell if an AI Coding Task Is Actually Done
-- Article URL: https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
+- Article: AI Agent Orchestration CLI: A Practical Comparison for Developers
+- Article URL: https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
 - Primary Codeberg repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 - GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 - Main site: https://ralphworkflow.com
 
+Why this is now the strongest HN asset:
+- directly matches the active repair directive: homepage SEO tuning + Telegraph keyword-gap coverage + Codeberg-first routing
+- category-intent is stronger than another trust essay because it catches people actively evaluating orchestration tooling
+- answers all four marketing questions without reading like a launch post
+- closes on Codeberg first and GitHub second
+
 Recommended submission type:
 - Link post
 
-Title:
-How to Tell if an AI Coding Task Is Actually Done
+Recommended title:
+AI Agent Orchestration CLI: A Practical Comparison for Developers
 
 URL:
-https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
-
-Why this asset:
-- strongest current trust/pain framing for HN
-- answers the real workflow question instead of pitching "more agents"
-- matches RalphWorkflow's core message: free and open source, runs on your own machine, built for work too big to babysit and too risky to trust blindly, reviewable morning-after output
+https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
 
 Suggested first comment:
-I wrote this because most AI coding discussion still focuses on model quality, but the workflow gap feels more important: agents say "done" before the result is something you'd actually merge.
+I wrote this because most AI coding discussion still gets stuck on model choice, while the harder question is whether the workflow ends in something you would actually inspect, test, and maybe merge.
 
-The product angle behind the piece is Ralph Workflow: a free and open-source tool that orchestrates the coding agents you already use on your own machine, so longer unattended runs end in something reviewable instead of just a transcript. Repo if you want to inspect the implementation: https://codeberg.org/RalphWorkflow/Ralph-Workflow (primary). If you mainly track projects on GitHub, the mirror is https://github.com/Ralph-Workflow/Ralph-Workflow
+The implementation behind the piece is Ralph Workflow: a free and open-source repo-native workflow for longer coding runs on your own machine. Primary repo is Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow . GitHub mirror if that is where you follow projects: https://github.com/Ralph-Workflow/Ralph-Workflow
 
-Likely reply angles if discussion starts:
-- worktrees solve file conflicts, not semantic trust
-- code review is still the bar; the workflow should hand you a reviewable diff instead of forcing you to reconstruct the run
-- unattended coding is only worth it when the morning-after result is small enough to inspect honestly
-- the point is not automation theater; it is proof the task holds up
+Likely HN reply angles:
+- the gap is not "can it call an agent?" but "does it end in a reviewable finish?"
+- worktrees help isolation; they do not prove the merged result holds up
+- review is still the bar, but the workflow should hand you finished code, tested code, and what changed instead of transcript archaeology
+- the best first use is one bounded backlog task, not open-ended autonomy theater
+- Codeberg is the primary repo because that is where first-run feedback and adoption are being centered
 
-Manual posting steps:
+Alt title if the main one feels too category-keyword heavy:
+What Developers Actually Need From an AI Agent Orchestration CLI
+
+Manual steps:
 1. Open https://news.ycombinator.com/submit
 2. Submit as a link post with the title and URL above
-3. If comments open, add the suggested first comment with the primary Codeberg repo link (and mention the GitHub mirror only if that context helps)
-4. Watch for early skepticism around worktrees / code review / hype and answer with the reply angles above
+3. Add the suggested first comment if comments are open
+4. If the thread starts skeptical, answer with the reply angles above and keep the conversation workflow-first, not promo-first

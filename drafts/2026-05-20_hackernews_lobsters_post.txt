@@ -1,0 +1,63 @@
+# HN/Lobsters Submission Draft — Ralph Workflow
+# Generated: 2026-05-20
+# Candidate: "Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For"
+# Telegraph source: https://telegra.ph/Open-Source-AI-Coding-Orchestrator-What-Ralph-Workflow-Is-Actually-For-05-19
+# Target: Hacker News, then Lobsters
+
+---
+
+TITLE (HN):
+Ask HN: How do you actually run AI coding agents on real overnight work?
+
+ALTERNATIVE TITLE (HN):
+Ask HN: What's your workflow for running AI agents on multi-hour tasks without babysitting?
+
+---
+
+TITLE (Lobsters):
+Show Lobsters: Ralph Workflow — open-source AI coding orchestrator with a strong default loop
+
+---
+
+SUBMISSION TEXT (HN — "Ask" style, conversational, non-promotional):
+
+You've been there: you set up a coding agent, give it a task, and then spend the next two hours answering prompts, approving intermediate steps, and trying to figure out whether it actually finished the thing you wanted.
+
+The model quality debate is overdone. The real gap is workflow.
+
+I've been building Ralph Workflow — a free, open-source AI orchestrator that structures a coding session as a loop: spec first, development iteration, review. You set the finish condition before you start, and the agent runs through the phases without needing a human in the loop every few minutes.
+
+The difference between "I supervised an agent for three hours" and "I woke up to a reviewable diff" is mostly workflow design.
+
+It's on Codeberg (primary), mirrors to GitHub. Works with Claude Code, Codex CLI, or OpenCode.
+
+Curious how others handle the overnight / unattended problem. What does your loop look like?
+
+---
+
+SUBMISSION TEXT (Lobsters — "Show" style, more direct):
+
+Ralph Workflow is an open-source AI coding orchestrator built around a simple idea: structure the session as a loop, not a prompt chain.
+
+- Planning loop: turns a task into a runnable spec
+- Development loop: executes against the spec, iterates, runs checks
+- Review loop: surfaces a clean diff you'd actually merge
+
+Works with Claude Code, Codex CLI, or OpenCode. Free and open source. No hosted component required.
+
+The default workflow works as-is for a real task today, or you build your own workflow on top.
+
+Repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+Docs: https://ralphworkflow.com/
+
+---
+
+VERIFICATION CHECKLIST before submitting:
+[ ] Title does not sound like a product launch
+[ ] No "we're building" or "I built" framing in the HN body
+[ ] Codeberg URL is the first link
+[ ] Four marketing questions are answered implicitly
+[ ] Not posted to HN from same account in last 30 days
+[ ] Not posted to Lobsters from same account in last 14 days
+
+---

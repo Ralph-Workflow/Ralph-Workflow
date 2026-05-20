@@ -1,42 +1,47 @@
 === LOBSTERS SUBMISSION PACKET ===
 
+Action type: REPLACING / REPAIRED
+Expected outcome: a more technical, less generic non-Reddit distribution path that routes evaluators from a workflow-first essay into the primary Codeberg repo.
+Measurement window: 7 days for story visibility / referral evidence after submission; 14 days for Codeberg stars/watchers/issues delta.
+Replace if it fails: if this story gets submitted and Codeberg is still flat after 14 days, stop trying to use broad owned essays alone and shift the next move to direct curator / competitor-citation outreach.
+
 Primary asset:
-- Article: How to Tell if an AI Coding Task Is Actually Done
-- Article URL: https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
+- Article: AI Agent Orchestration CLI: A Practical Comparison for Developers
+- Article URL: https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
 - Primary Codeberg repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 - GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 - Main site: https://ralphworkflow.com
+
+Why this is now the strongest Lobsters asset:
+- more technical and category-legible than the older trust-only article
+- centers on spec, verification, review, and merge judgment instead of product hype
+- gives a credible open-source implementation path on Codeberg without making the post itself an ad
 
 Recommended submission type:
 - Link post
 
 Title:
-How to Tell if an AI Coding Task Is Actually Done
+AI Agent Orchestration CLI: A Practical Comparison for Developers
 
 Tags:
 ai, programming, tools
 
 URL:
-https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
-
-Why this asset:
-- technical enough for Lobsters if kept workflow-first and non-promotional
-- centers on verification, reviewability, and merge judgment instead of model hype
-- gives interested readers a free/open-source implementation path on their own machine via the primary Codeberg repo, with GitHub available as a mirror
+https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
 
 Suggested story/comment framing:
-This is the workflow question I keep finding more useful than "which coding agent is best?" — what evidence do you need before an AI-generated change is actually ready to merge?
+This is the comparison question I keep finding more useful than "which coding agent is best?" — what should an orchestration CLI actually hand back before an AI-generated change is ready to inspect, test, and maybe merge?
 
-The implementation behind the essay is Ralph Workflow, a free and open-source tool that orchestrates existing coding agents on your own machine for unattended project-scale work and reviewable morning-after output. Source: https://codeberg.org/RalphWorkflow/Ralph-Workflow (primary repo). GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+The implementation behind the essay is Ralph Workflow, a free and open-source workflow that runs existing coding agents on your own machine and tries to end with finished code, tested code, and a clear review surface. Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow . GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
 
-Likely reply angles if discussion starts:
-- worktrees help isolation but do not prove the merged result holds up
-- verification should happen inside the run, not only after the agent declares victory
-- reviewable output matters more than verbose agent summaries
-- good unattended tasks are bounded backlog work, refactors with tests, and other changes you can judge honestly
+Likely Lobsters reply angles:
+- orchestration should be judged on the finish line, not the prompt wrapper
+- verification belongs inside the run, not only after a confident done claim
+- reviewable output matters more than agent summaries
+- good first unattended tasks are bounded backlog work, refactors with tests, and other changes you can judge honestly
 
-Manual posting steps:
+Manual steps:
 1. Open https://lobste.rs/stories/new
 2. Submit as a link post with the title, tags, and URL above
-3. Keep any follow-up explanation technical and workflow-first
-4. Avoid product-heavy replies unless someone explicitly asks how you implement the workflow
+3. Keep follow-up comments technical and workflow-first
+4. Avoid turning the thread into a product pitch unless someone explicitly asks for the implementation

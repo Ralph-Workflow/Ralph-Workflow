@@ -1,9 +1,6 @@
 {
-  "last_attempt_at": "2026-05-20T11:24:41.089706",
-  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-20_0915.md",
-  "last_thread_url": "<https://www.reddit.com/r/ClaudeCode/comments/1sz3u7k/claude_code_codex_workflow/>",
-  "last_comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1sz3u7k/claude_code_codex_workflow/omtznlu/",
-  "last_attempt_status": "posted",
-  "last_poster_status": "posted",
-  "last_detail": ""
+  "last_attempt_at": "2026-05-20T13:05:49.900384",
+  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-20_1220.md",
+  "last_attempt_status": "fresh_opportunity_rate_limited",
+  "last_detail": "opportunity_state:fresh_rate_limited; opportunities:8"
 }

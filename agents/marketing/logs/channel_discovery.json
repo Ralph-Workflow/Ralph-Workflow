@@ -153,7 +153,7 @@
       "url": "https://slashdot.org/submission",
       "method": "submit",
       "difficulty": "medium",
-      "timestamp": "2026-05-20T04:00:17.224173",
+      "timestamp": "2026-05-20T12:50:59.202832",
       "http_code": "200",
       "final_url": "https://slashdot.org/submission",
       "status": "login_required",
@@ -194,7 +194,7 @@
       "url": "https://saashub.com",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T04:00:15.753076",
+      "timestamp": "2026-05-20T12:50:57.812529",
       "http_code": "200",
       "final_url": "https://www.saashub.com/",
       "status": "accessible"
@@ -284,7 +284,7 @@
       "url": "https://toolshelf.dev/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T03:59:53.521670",
+      "timestamp": "2026-05-20T12:50:32.665468",
       "http_code": "200",
       "final_url": "https://toolshelf.dev/submit",
       "status": "accessible",
@@ -328,7 +328,12 @@
         "has_auth_markers": true,
         "has_captcha_markers": false,
         "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false
+        "has_issue_handoff_markers": false,
+        "api_candidates": [
+          "https://toolshelf.dev/api/broadcast",
+          "https://toolshelf.dev/api/submit",
+          "https://toolshelf.dev/api/newsletter"
+        ]
       },
       "api_probe": {
         "probe_status": "ok",
@@ -336,7 +341,9 @@
         "get_code": 405,
         "post_code": 400,
         "post_body": "{\"error\":\"Tool name is required.\"}",
-        "public_submit_detected": true
+        "public_submit_detected": true,
+        "auth_required_detected": false,
+        "server_error_detected": false
       },
       "note": "public submission API detected at https://toolshelf.dev/api/submit"
     },
@@ -397,7 +404,7 @@
       "url": "https://toolwise.ai/submit-tool",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T03:59:59.880550",
+      "timestamp": "2026-05-20T12:50:40.584984",
       "http_code": "200",
       "final_url": "https://toolwise.ai/submit-tool",
       "status": "accessible",
@@ -441,23 +448,29 @@
         "has_auth_markers": false,
         "has_captcha_markers": false,
         "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false
+        "has_issue_handoff_markers": false,
+        "api_candidates": [
+          "https://toolwise.ai/api/tools"
+        ]
       },
       "api_probe": {
         "probe_status": "ok",
-        "submit_url": "https://toolwise.ai/api/submit",
-        "get_code": 404,
-        "post_code": 404,
-        "post_body": "<!DOCTYPE html><!--rD2Uwpbz8ftUKqupLjQeQ--><html lang=\"en\" class=\"playfair_display_6a7e392e-module__Clh72G__variable dm_sans_416a0c70-module__PV3JlW__variable jetbrains_mono_d4338c62-module__8xQeuG__v",
-        "public_submit_detected": false
-      }
+        "submit_url": "https://toolwise.ai/api/tools",
+        "get_code": 200,
+        "post_code": 400,
+        "post_body": "{\"error\":\"Name and slug are required\"}",
+        "public_submit_detected": true,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      },
+      "note": "public submission API detected at https://toolwise.ai/api/tools"
     },
     {
       "name": "aitoolsindex",
       "url": "https://aitoolsindex.org/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T04:00:09.580640",
+      "timestamp": "2026-05-20T12:50:50.017273",
       "http_code": "200",
       "final_url": "https://aitoolsindex.org/submit",
       "status": "accessible",
@@ -493,16 +506,25 @@
         "has_auth_markers": false,
         "has_captcha_markers": false,
         "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false
+        "has_issue_handoff_markers": false,
+        "api_candidates": [
+          "https://aitoolsindex.org/api/query/get-categories",
+          "https://aitoolsindex.org/api/query/get-tools",
+          "https://aitoolsindex.org/api/submit/enqueue-tool-submission",
+          "https://aitoolsindex.org/api/submit/get-tool-submission?key="
+        ]
       },
       "api_probe": {
         "probe_status": "ok",
-        "submit_url": "https://aitoolsindex.org/api/submit",
-        "get_code": 404,
-        "post_code": 405,
-        "post_body": "Method Not Allowed",
-        "public_submit_detected": false
-      }
+        "submit_url": "https://aitoolsindex.org/api/submit/enqueue-tool-submission",
+        "get_code": 405,
+        "post_code": 400,
+        "post_body": "{\"success\":false,\"data\":null,\"message\":null,\"error\":\"Zod validation error: [\\n  {\\n    \\\"expected\\\": \\\"string\\\",\\n    \\\"code\\\": \\\"invalid_type\\\",\\n    \\\"path\\\": [\\n      \\\"tool_name\\\"\\n    ],\\n    \\\"m",
+        "public_submit_detected": true,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      },
+      "note": "public submission API detected at https://aitoolsindex.org/api/submit/enqueue-tool-submission"
     },
     {
       "name": "tools-ai-online",

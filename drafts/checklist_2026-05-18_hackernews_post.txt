@@ -1,29 +1,23 @@
-
 === HN POSTING CHECKLIST ===
 URL: https://news.ycombinator.com/submit
-Title: === HN SUBMISSION PACKET ===
-Text:
+Submission type: link post
+Title: AI Agent Orchestration CLI: A Practical Comparison for Developers
+Link URL: https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
+Primary repo to mention in comment: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror (secondary only): https://github.com/Ralph-Workflow/Ralph-Workflow
 
-Primary asset:
-- Article: How to Tell if an AI Coding Task Is Actually Done
-- Article URL: https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
-- Primary Codeberg repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
-- GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
-- Main site: https://ralphworkflow.com
+First comment:
+I wrote this because most AI coding discussion still gets stuck on model choice, while the harder question is whether the workflow ends in something you would actually inspect, test, and maybe merge.
 
-Recommended submission type:
-- Link post
+The implementation behind the piece is Ralph Workflow: a free and open-source repo-native workflow for longer coding runs on your own machine. Primary repo is Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow . GitHub mirror if that is where you follow projects: https://github.com/Ralph-Workflow/Ralph-Workflow
 
-Title:
-How to Tell if an AI Coding Task Is Actually Done
+Quick skeptic answers:
+- Worktrees help isolation, not merged-state trust.
+- The bar is still code review; the workflow should just return finished code, tested code, and what changed.
+- Best first use is one bounded backlog task, not open-ended autonomy.
 
-URL:
-https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
-
-Why this asset:
-- strongest current trust/pain framing for HN
-- answers the real workflow question instead of pitching "more agents"
----
+Steps:
 1. Open URL
-2. Fill form
+2. Paste title + link URL
 3. Submit
+4. Add first comment if comments are open

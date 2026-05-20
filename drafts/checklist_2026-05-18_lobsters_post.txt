@@ -1,45 +1,24 @@
-
 === LOBSTERS POSTING CHECKLIST ===
 URL: https://lobste.rs/stories/new
-Tags: coding, programming, ai, tools
-Title: === LOBSTERS SUBMISSION PACKET ===
-Story: === LOBSTERS SUBMISSION PACKET ===
+Submission type: link post
+Title: AI Agent Orchestration CLI: A Practical Comparison for Developers
+Tags: ai, programming, tools
+Link URL: https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
+Primary repo to mention in follow-up: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror (secondary only): https://github.com/Ralph-Workflow/Ralph-Workflow
 
-Primary asset:
-- Article: How to Tell if an AI Coding Task Is Actually Done
-- Article URL: https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
-- Primary Codeberg repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
-- GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
-- Main site: https://ralphworkflow.com
+Story framing:
+This is the comparison question I keep finding more useful than "which coding agent is best?" — what should an orchestration CLI actually hand back before an AI-generated change is ready to inspect, test, and maybe merge?
 
-Recommended submission type:
-- Link post
+The implementation behind the essay is Ralph Workflow, a free and open-source workflow that runs existing coding agents on your own machine and tries to end with finished code, tested code, and a clear review surface.
 
-Title:
-How to Tell if an AI Coding Task Is Actually Done
+Quick reply angles:
+- judge orchestration on the finish line, not the wrapper
+- verification belongs inside the run
+- good first unattended tasks are bounded and easy to review honestly
 
-Tags:
-ai, programming, tools
-
-URL:
-https://telegra.ph/How-to-Tell-if-an-AI-Coding-Task-Is-Actually-Done-05-19-2
-
-Why this asset:
-- technical enough for Lobsters if kept workflow-first and non-promotional
-- centers on verification, reviewability, and merge judgment instead of model hype
-- gives interested readers a free/open-source implementation path on their own machine via the primary Codeberg repo, with GitHub available as a mirror
-
-Suggested story/comment framing:
-This is the workflow question I keep finding more useful than "which coding agent is best?" — what evidence do you need before an AI-generated change is actually ready to merge?
-
-The implementation behind the essay is Ralph Workflow, a free and open-source tool that orchestrates existing coding agents on your own machine for unattended project-scale work and reviewable morning-after output. Source: https://codeberg.org/RalphWorkflow/Ralph-Workflow (primary repo). GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
-
-Likely reply angles if discussion starts:
-- worktrees help isolation but do not prove the merged result holds up
-- verification should happen inside the run, not only after the agent declares victory
-- reviewable output matters more than verbose agent summaries
-- good unattended tasks are boun
----
+Steps:
 1. Open URL
-2. Fill form
+2. Paste title + tags + link URL
 3. Submit
+4. Keep follow-ups technical, not launchy

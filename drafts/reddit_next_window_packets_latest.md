@@ -1,10 +1,10 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-20 10:09 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-20 13:05 CEST
 
 Live posting is **not** the move right now.
 
-Latest watchdog state references report `reddit_monitor_2026-05-20_0915.md`.
+Latest watchdog state references report `reddit_monitor_2026-05-20_1220.md`.
 - `status: fresh_opportunity_rate_limited`
-- `detail: opportunity_state:fresh_rate_limited; opportunities:7`
+- `detail: opportunity_state:fresh_rate_limited; opportunities:8`
 
 So this packet is optimized for the **next safe window**, not for forcing a post now.
 
@@ -18,26 +18,7 @@ Messaging guardrails preserved in every draft:
 
 ---
 
-## 1) `r/ClaudeCode` - Claude Code + Codex Workflow?
-- URL: <https://www.reddit.com/r/ClaudeCode/comments/1sz3u7k/claude_code_codex_workflow/>
-- Mention fit: medium-low
-- Best landing page to seed:
-  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
-- Why this stays in the packet:
-  - pain is already about approval drag, review surface, or what is actually safe to merge
-  - landing page keeps the reply anchored to proof and finish-state clarity
-  - best RalphWorkflow angle from the monitor: the loop matters more than the transport layer: finish with tested code and a review surface, not just another agent hop
-
-### Draft body A
-The multi-tool failure I kept hitting: one session sounds confident, the next session inherits contradictory assumptions, and the combined result quietly stops making sense.
-
-The fix is an explicit baton pass between sessions — scoped task, bounded diff, check evidence, named open decisions.
-
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai-coding-output-before-merge.md
-
----
-
-## 2) `r/ClaudeCode` - How do you ACTUALLY use CC+codex?
+## 1) `r/ClaudeCode` - How do you ACTUALLY use CC+codex?
 - URL: <https://www.reddit.com/r/ClaudeCode/comments/1tb7j36/how_do_you_actually_use_cccodex/>
 - Mention fit: medium-low
 - Best landing page to seed:
@@ -45,12 +26,14 @@ https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/review-ai
 - Why this stays in the packet:
   - thread naturally fits builder/reviewer phase boundaries and handoff discipline
   - landing page explains why mixed-agent flow only matters when the finish stays inspectable
-  - best RalphWorkflow angle from the monitor: use both only if the finish gets clearer: what changed, what passed, and who still needs to decide
+  - best RalphWorkflow angle from the monitor: use both only if the finish gets clearer: what changed, what passed, what still needs a decision
 
-### Draft body B
+### Draft body A
 The constraint that cleaned up our multi-agent runs: the second pass never re-implements. It only reviews and flags what the first pass left ambiguous.
 
 That separation alone removed most of the overlap confusion and made the morning result something I could actually grade.
+
+Ralph Workflow is free and open-source: it enforces that role separation so the morning result is reviewable.
 
 https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/claude-code-codex-workflow.md
 
