@@ -6,7 +6,7 @@
 
 | | **Ralph Workflow** | **Claude Code** |
 |---|---|---|
-| **What it is** | Unattended multi-agent orchestration | Anthropic's official CLI for agentic coding |
+| **What it is** | Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. | Anthropic's official CLI for agentic coding |
 | **License** | AGPL (source) / CC0 (outputs) | Included with Claude subscription |
 | **Setup** | TOML config files, no cloud required | Varies |
 | **Vendor lock-in** | None — own your config | Yes |
@@ -15,10 +15,10 @@
 
 **Ralph Workflow** is a **Claude Code** *alternative* for teams that want:
 
-- Multi-agent orchestration where different phases use different model families
+- A simple Ralph-loop core composed into bigger workflow stages
+- A strong default workflow for writing software
 - Cost control via model routing (cheap models where sufficient)
-- Policy-defined workflows anyone can read and version in git
-- True unattended execution with artifact-based completion criteria
+- A workflow you can use as-is or build on top
 
 **Claude Code** is better for:
 
@@ -39,22 +39,20 @@
 | Policy-defined config (TOML) | ✅ | ❌ |
 | Checkpoint / resume | ✅ | ⚠️ |
 | MCP support | ✅ | ⚠️ |
-| Artifact-based completion | ✅ | ❌ |
 | Parallel work units | ✅ | ❌ |
 | Open source | ✅ | ✅ |
 | Self-hosted | ✅ | ⚠️ |
 
 ## Why Choose Ralph Workflow Over Claude Code
 
-Claude Code is excellent for interactive, single-agent coding sessions. Ralph Workflow is designed for a
-fundamentally different use case: ** unattended multi-phase pipelines** where you define the workflow
-once and run it the same way every time.
+Claude Code is excellent for interactive, single-agent coding sessions. Ralph Workflow is built for a
+different use case: a composable workflow system with a simple core and a stronger default path for bigger software work.
 
 Key advantages:
-- **Multi-phase routing**: Claude plans, a cheap model writes, Claude reviews, a cheap model fixes
+- **Composable workflow**: planning, development, verification, and follow-up can each loop cleanly
 - **Cost arbitrage**: Route work to $0.003/1k tokens models where they're sufficient
 - **Policy as code**: Your workflow is a TOML file you diff, version, and audit
-- **Unattended by design**: Claude Code is interactive-first; Ralph Workflow is built to walk away from
+- **Default + extensible**: use the shipped workflow first, then extend it without replacing the core
 
 ## Try Ralph Workflow
 

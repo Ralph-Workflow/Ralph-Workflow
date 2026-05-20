@@ -6,7 +6,7 @@
 
 | | **Ralph Workflow** | **Aider** |
 |---|---|---|
-| **What it is** | Unattended multi-agent orchestration | Terminal-based AI pair programming in your git repo |
+| **What it is** | Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. | Terminal-based AI pair programming in your git repo |
 | **License** | AGPL (source) / CC0 (outputs) | Free / Open source |
 | **Setup** | TOML config files, no cloud required | Varies |
 | **Vendor lock-in** | None — own your config | Varies |
@@ -15,10 +15,10 @@
 
 **Ralph Workflow** is a **Aider** *alternative* for teams that want:
 
-- Multi-agent orchestration where different phases use different model families
+- A simple Ralph-loop core composed into bigger workflow stages
+- A strong default workflow for writing software
 - Cost control via model routing (cheap models where sufficient)
-- Policy-defined workflows anyone can read and version in git
-- True unattended execution with artifact-based completion criteria
+- A workflow you can use as-is or build on top
 
 **Aider** is better for:
 
@@ -39,15 +39,14 @@
 | Policy-defined config (TOML) | ✅ | ❌ |
 | Checkpoint / resume | ✅ | ⚠️ |
 | MCP support | ✅ | ⚠️ |
-| Artifact-based completion | ✅ | ❌ |
 | Parallel work units | ✅ | ❌ |
 | Open source | ✅ | ✅ |
 | Self-hosted | ✅ | ⚠️ |
 
 ## Why Choose Ralph Workflow Over Aider
 
-Aider is a terminal-based pair programming tool. Ralph Workflow is an unattended pipeline runner.
-They can actually be used together — Aider as an interactive editor, Ralph Workflow for overnight runs.
+Aider is a terminal-based pair programming tool. Ralph Workflow is a composable workflow system.
+They can actually be used together — Aider for interactive edits, Ralph Workflow for the broader workflow around them.
 
 ## Try Ralph Workflow
 

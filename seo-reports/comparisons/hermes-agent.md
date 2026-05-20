@@ -6,7 +6,7 @@
 
 | | **Ralph Workflow** | **Hermes Agent** |
 |---|---|---|
-| **What it is** | Unattended multi-agent orchestration | Self-improving agent that learns from experience |
+| **What it is** | Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. | Self-improving agent that learns from experience |
 | **License** | AGPL (source) / CC0 (outputs) | Free / Open source |
 | **Setup** | TOML config files, no cloud required | Varies |
 | **Vendor lock-in** | None — own your config | Varies |
@@ -15,10 +15,10 @@
 
 **Ralph Workflow** is a **Hermes Agent** *alternative* for teams that want:
 
-- Multi-agent orchestration where different phases use different model families
+- A simple Ralph-loop core composed into bigger workflow stages
+- A strong default workflow for writing software
 - Cost control via model routing (cheap models where sufficient)
-- Policy-defined workflows anyone can read and version in git
-- True unattended execution with artifact-based completion criteria
+- A workflow you can use as-is or build on top
 
 **Hermes Agent** is better for:
 
@@ -39,7 +39,6 @@
 | Policy-defined config (TOML) | ✅ | ❌ |
 | Checkpoint / resume | ✅ | ⚠️ |
 | MCP support | ✅ | ⚠️ |
-| Artifact-based completion | ✅ | ❌ |
 | Parallel work units | ✅ | ❌ |
 | Open source | ✅ | ✅ |
 | Self-hosted | ✅ | ⚠️ |
@@ -47,10 +46,15 @@
 ## Why Choose Ralph Workflow Over Hermes Agent
 
 Hermes Agent focuses on Self-improving agent that learns from experience.
-Ralph Workflow's focus is **multi-agent phase routing with cost arbitrage and policy-defined orchestration**.
+Ralph Workflow's focus is **a simple core loop composed into a stronger software workflow**.
 
-Ralph Workflow's key differentiator is the ability to compose multiple agents (Claude, Codex,
-OpenCode) into a single unattended pipeline where each phase uses the most cost-effective model.
+Ralph Workflow's key differentiator is that the core stays simple while the surrounding workflow remains composable,
+so teams can use the default path or build their own system on top.
+
+Key advantages:
+- **Cost arbitrage**: Route work to cheap models where sufficient, save frontier models for what matters
+- **Composable workflow**: planning, development, verification, and follow-up each loop cleanly
+- **Policy as code**: Your workflow is a TOML file you diff, version, and audit
 
 ## Try Ralph Workflow
 

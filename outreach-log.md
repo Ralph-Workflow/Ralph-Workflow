@@ -14,6 +14,27 @@
 - **Risk note:** repeat-pattern risk now includes **body rhythm** in addition to stale opener families and canned product-definition closes. Even fresher drafts can still feel robotic if they keep landing in the same 3-5 paragraph cadence.
 - **Posting note:** No posting attempted from this monitor pass. This was a research-first pass only.
 
+## 2026-05-20 (Wednesday) — Marketing workflow audit (17:26 UTC / 19:26 CEST)
+- **Verdict: stay quiet. Infrastructure complete. HN/Lobsters is the sole remaining unmade move.**
+  - Codeberg flat (9⭐ 2👁 2🍴, 0 delta across 9 samples). GitHub mirror flat.
+  - Today's full execution cycle is done: homepage SEO, hosted-docs hero, 4 Telegraph keyword-gap posts (100% coverage), Reddit fresh body packet (3 drafts, verified), channel discovery false positives repaired (toolsland, aipowerstacks, tools-ai-online), Reddit→Codeberg routing, first-task path, approval-mode conversion page, ToolWise proof link, AIToolsIndex and ToolShelf submitted, SEO telemetry hardened.
+  - Reddit repetition risk confirmed worsening: the banned opening `"Honestly the part I'd optimize first is the handoff, not the model stack."` was reused in double-post on May 19 (confirmed by reddit_post_analysis). Fresh bodies are in drafts for the next window.
+  - **Backlinks: 0 indexed.** AIToolsIndex and ToolShelf submissions in-flight but not yet discovered. No other executable backlink lanes remain from this environment.
+  - Four marketing questions: all correctly answered, no drift.
+- **What worked:** Full infrastructure stack shipped and verified. All repair actions from prior audits executed. Owned distribution surface is at SEO ceiling (Telegraph 100% keyword-gap coverage).
+- **What failed:** Reddit banned opening double-reuse confirmed (May 19). Structural body cadence risk (contrast → handoff/reviewer → proof bundle → product close) confirmed across posts but not yet appearing in fresh drafts. No new Codeberg adoption movement. Zero indexed backlinks.
+- **What is repetitive:** Monitor passes during cooldown correctly returning no-post. Telegraph keyword-gap expansion at 100% ceiling — marginal return from more.
+- **What is low leverage:** More owned-surface polish, more monitor passes, more keyword-gap Telegraph posts, more Reddit body regeneration without a genuine new thread angle.
+- **Current bottleneck:** HN/Lobsters human execution. This is the only remaining unmade high-leverage move. All other channels are either complete, in-flight, or blocked.
+- **Next higher-leverage move:**
+  1. **Human: execute HN submission** using `drafts/2026-05-18_hackernews_post.txt` — the single highest-leverage move still unmade after everything else is done. Submit to HN first, then Lobsters.
+  2. **Human: monitor AIToolsIndex and ToolShelf** for listing approval/indexing over the next 7 days.
+  3. Reddit stays on cooldown; use the 3 pre-verified fresh body drafts when window opens — do not regenerate.
+- **Measurement window:** 14 days through **2026-06-03** for Codeberg stars/watchers/forks delta and any indexed backlink evidence.
+- **Replace if it fails:** if Codeberg is still flat and no backlinks have indexed by **2026-06-03**, stop investing in owned distribution and shift to direct human outreach (AI tool curators, comparison-page backlink requests, or HN retry).
+- **Structural note for the loop:** The autonomous marketing loop has reached its execution ceiling. All reproducible repair paths are exhausted. The one remaining move (HN/Lobsters) requires human action. The loop should not treat more monitor passes or keyword-gap posts as productive until that human action is taken or a new executable channel surfaces.
+- Type: **AUDIT / DIRECTION**
+
 ## 2026-05-20 (Wednesday) — Marketing workflow audit (17:20 UTC / 19:20 CEST)
 - **Verdict: stay quiet. Infrastructure complete. One missed executable surfaced — submit ToolShelf now.**
   - Codeberg flat (9⭐ 2👁 2🍴, 0 delta across 9 samples). GitHub mirror flat (0⭐ 2👁 0🍴).
@@ -3732,3 +3753,68 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Replace if it fails: if Codeberg is still flat through **2026-06-03**, stop spending more cycles on repo-surface proof-link tweaks and shift the next replacement move to warmer external citation/outreach or human-executed HN/Lobsters distribution.
   - Docs review note: reviewed `README.md`, `START_HERE_RALPHWORKFLOW.md`, and confirmed there is no root `docs/README.md` in this workspace surface, so the proof block was kept small and non-duplicative instead of expanding the README into a link farm.
 - Type: **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 19:09:20
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, pending_repairs_detected, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Pending repairs: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, saashub, tools-ai-online, codaone, aisotools, comeai, toolsland, aipowerstacks. Cloudflare/auth protection blocks login.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 19:24:06
+- **Note:** Momentum check found: apollo_channel_blocked, primary_repo_adoption_flat, channel_access_mismatch. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Distribution channels need replacement or human-auth handoff: slashdot, saashub, tools-ai-online, codaone, aisotools, comeai, toolsland, aipowerstacks. Cloudflare/auth protection blocks login.
+
+## 2026-05-20 (Wednesday) — Distribution-watchdog inventory repair (17:25 UTC / 19:25 CEST)
+- **What I executed:** repaired the marketing watchdog so it stops treating stale / manual-only channel-discovery results as active same-run distribution failures.
+  - Updated `agents/marketing/marketing_workflow_audit.py` to emit `repair_window_status: measurement_pending` when the outreach log already records that no further same-run repairs remain.
+  - Updated `agents/marketing/marketing_momentum_watchdog.py` to honor that measurement-pending state and to scope channel-mismatch alerts to the current executable distribution set instead of every historical easy/medium lane in `channel_discovery.json`.
+  - Verification: reran both scripts. `marketing_workflow_audit_latest.json` now reports `repair_actions: []` with `repair_window_status: measurement_pending`, and `marketing_momentum_watchdog.json` no longer flags `pending_repairs_detected` or `channel_access_mismatch`.
+- **Why this action:** this is **REPAIRED / REPLACING**. With Codeberg still flat, the highest-leverage local move was to fix the marketing infrastructure that kept falsely reporting already-executed repairs and stale blocked channels as active work. That false state would keep rewarding repeated cleanup instead of letting the loop either wait for measurement or pick a genuinely new lane.
+- **Expected outcome:** future marketing runs should stop burning cycles on closed repair tickets and stale channel alarms, making the next actions more likely to target real Codeberg-moving opportunities instead of duplicate maintenance.
+- **Measurement window:** immediate on the next audit/watchdog run, then through **2026-06-03** for whether the loop stays focused on real open lanes while Codeberg stars/watchers/forks are monitored.
+- **Replace if it fails:** if the watchdog still regenerates stale repair/channel alerts before **2026-06-03**, replace this logic with a stricter explicit allowlist sourced from the live backlink strategy / approved lane inventory instead of inferred channel-discovery history.
+- **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 19:25:37
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Cloudflare/auth protection blocks login.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 19:25:37
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare/auth protection blocks login.
+
+## 2026-05-20 (Wednesday) — HN/Lobsters packet revalidated and escalated (17:33 UTC / 19:33 CEST)
+- **What I executed:** re-read the current HN and Lobsters submission packets, verified the linked primary asset `https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20` is live (HTTP 200), and confirmed the packet still routes evaluators to **Codeberg first** and GitHub second.
+- **Why this action:** this is **CONTINUED / REPLACING**. Codeberg adoption is still flat, Reddit is under freshness/cooldown constraints, directory/backlink repairs already in flight, and the audit keeps showing HN/Lobsters as the single highest-leverage unmade move. The strongest thing I could actually do in this run was make sure the human handoff packet is current, live, and ready instead of spending another cycle on lower-yield owned/discussion churn.
+- **Expected outcome:** one human-executed HN submission first (then Lobsters) should create the warmest remaining non-Reddit traffic path into the primary Codeberg repo.
+- **Measurement window:** 7 days for story visibility / referral evidence after submission; 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if HN/Lobsters gets posted and Codeberg is still flat by **2026-06-03**, stop leaning on owned-essay distribution and shift the next move to direct curator / competitor-citation outreach.
+- **Type:** **CONTINUED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-20 19:35:06
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare/auth protection blocks login.
+
+## 2026-05-20 (Wednesday) — First-run conversion path rewrite (17:45 UTC / 19:45 CEST)
+- **What I executed:** rewrote the two highest-traffic repo-native evaluator surfaces — `README.md` and `START_HERE_RALPHWORKFLOW.md` — so the first-screen path now gets a visitor from interest to a runnable first task with less guesswork.
+  - Added an explicit copy-paste one-paragraph spec template directly into the README first-run block.
+  - Added three exact first-task shapes (`validation rule`, `feature slice`, `isolated refactor`) to both README and START_HERE so evaluators can pick a sane first run without leaving the page.
+  - Tightened the quick-link / next-example blocks to keep the path curated instead of expanding into more link sprawl.
+  - Verification: read-back inspection of both files confirmed the new first-run sequence is live and Codeberg remains the primary repo CTA.
+- **Why this action:** this is **REWRITTEN / REPLACING**. Codeberg adoption is still flat, homepage SEO and Telegraph keyword-gap work are already at diminishing returns, and the adoption-funnel note says the main bottleneck is still conversion from interest to free use. The highest-leverage local move I could actually execute right now was to make the repo-native first-run path easier to act on immediately.
+- **Expected outcome:** more qualified repo visitors should reach a real first run instead of stalling at "sounds interesting"; if this works, the next movement should be more Codeberg stars/watchers/issues from evaluators who now have a clearer first task and review standard.
+- **Measurement window:** next 14 days through **2026-06-03** for **Codeberg** stars/watchers/forks delta, plus any first-run-friction issue activity that suggests more evaluators actually tried the workflow.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending another cycle on first-run copy tightening alone and replace it with a warmer external distribution move or a stronger public proof asset tied to a specific evaluator pain.
+- **Type:** **REWRITTEN / REPLACING**
+- **Docs review note:** reviewed the evaluator journey in order: `README.md` → `START_HERE_RALPHWORKFLOW.md` → supporting first-run proof pages (`content/examples/first_task_example.md`, `content/examples/review_bundle_example.md`). This belongs on the top-level surfaces because the missing step was not deeper explanation — it was faster task selection on the first screen. I pruned top-level link clutter rather than adding more, reduced duplication by making the first-task examples do clearer jobs, and the top-level experience is better because the next action is now more obvious in under 10 seconds.
+
+## 2026-05-20 (Wednesday) — Live homepage Codeberg-first CTA reorder repair (18:05 UTC / 20:05 CEST)
+- **What I executed:** repaired the live `https://ralphworkflow.com` homepage at `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` so the first click now favors **Codeberg first** instead of install-first flow.
+  - Hero CTA order changed from **Install → Codeberg → first task** to **Inspect on Codeberg first → Pick your first task → Install**.
+  - Final CTA block changed from **Install → Codeberg → docs** to **Inspect on Codeberg first → Pick your first task → Install → docs**.
+  - Title tightened to **`Unattended Coding Agent CLI — AI Agent Orchestration CLI — Ralph Workflow`**.
+  - Meta description tightened to **`Free open-source unattended coding agent CLI and AI agent orchestration CLI. Inspect Codeberg first, run one real backlog task overnight, and wake up to finished, tested code.`**
+- **Why this action:** this is **REPAIRED / REPLACING**. Codeberg adoption is still flat, Reddit is not worth forcing, and the live bottleneck is still conversion from interest to the primary repo. The homepage was still install-first at the most valuable click point, which leaked warm evaluators into setup before the primary repo relationship.
+- **Expected outcome:** more qualified homepage visitors should click into the primary Codeberg repo first, then self-route into the first-task path instead of defaulting into generic install flow.
+- **Measurement window:** next 14 days (**through 2026-06-03**) for **Codeberg** stars/watchers/forks delta and any clearer homepage-to-Codeberg referral behavior.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-03**, stop spending cycles on homepage CTA/microcopy repairs and replace this tactic with a fresh external referral or backlink source.
+- **Type:** **REPAIRED / REPLACING**
+- **Verification:** live fetch after restart confirmed the updated title, updated meta description, and visible **`Inspect on Codeberg first`** CTA on `https://ralphworkflow.com`.

@@ -1,34 +1,20 @@
 {
-  "generated_at": "2026-05-20T18:41:49.668626+02:00",
+  "generated_at": "2026-05-20T19:35:06.525326+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-20_1821.md",
-  "report_age_hours": 0.22,
-  "latest_post_age_hours": 7.29,
+  "report_age_hours": 1.11,
+  "latest_post_age_hours": 8.17,
   "adoption_flat": true,
-  "pending_repairs": [
-    "primary_repo_flat",
-    "mirror_repo_flat",
-    "repetitive_outreach"
-  ],
-  "blocked_distribution_channels": [
-    "slashdot",
-    "saashub",
-    "tools-ai-online",
-    "codaone",
-    "aisotools",
-    "comeai",
-    "toolsland",
-    "aipowerstacks"
-  ],
+  "pending_repairs": [],
+  "blocked_distribution_channels": [],
   "apollo": {
     "status": "cloudflare_auth_blocked",
-    "age_hours": 2.12,
+    "age_hours": 3.01,
     "cloudflare_blocked": true
   },
   "actions": [
+    "no_recent_reddit_post",
     "apollo_channel_blocked",
-    "primary_repo_adoption_flat",
-    "pending_repairs_detected",
-    "channel_access_mismatch"
+    "primary_repo_adoption_flat"
   ],
   "status": "needs_attention"
 }

@@ -6,7 +6,7 @@
 
 | | **Ralph Workflow** | **Cursor** |
 |---|---|---|
-| **What it is** | Unattended multi-agent orchestration | The AI code editor built for pair programming with AI |
+| **What it is** | Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. | The AI code editor built for pair programming with AI |
 | **License** | AGPL (source) / CC0 (outputs) | Free tier / $20/mo Pro |
 | **Setup** | TOML config files, no cloud required | Varies |
 | **Vendor lock-in** | None — own your config | Yes |
@@ -15,10 +15,10 @@
 
 **Ralph Workflow** is a **Cursor** *alternative* for teams that want:
 
-- Multi-agent orchestration where different phases use different model families
+- A simple Ralph-loop core composed into bigger workflow stages
+- A strong default workflow for writing software
 - Cost control via model routing (cheap models where sufficient)
-- Policy-defined workflows anyone can read and version in git
-- True unattended execution with artifact-based completion criteria
+- A workflow you can use as-is or build on top
 
 **Cursor** is better for:
 
@@ -39,15 +39,14 @@
 | Policy-defined config (TOML) | ✅ | ❌ |
 | Checkpoint / resume | ✅ | ⚠️ |
 | MCP support | ✅ | ⚠️ |
-| Artifact-based completion | ✅ | ❌ |
 | Parallel work units | ✅ | ❌ |
 | Open source | ✅ | ✅ |
 | Self-hosted | ✅ | ⚠️ |
 
 ## Why Choose Ralph Workflow Over Cursor
 
-Cursor is an AI-first IDE. Ralph Workflow is a CLI pipeline that runs headless.
-They address different needs: Cursor for interactive editing, Ralph Workflow for automated pipelines.
+Cursor is an AI-first IDE. Ralph Workflow is a workflow system for autonomous coding.
+They address different needs: Cursor for interactive editing, Ralph Workflow for structured, composable software workflows.
 
 ## Try Ralph Workflow
 
