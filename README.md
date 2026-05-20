@@ -23,12 +23,6 @@ You can use that default as-is, or build on top of it when you need something mo
 
 **Why it is different:** it does not stop at "the agent said done." The workflow is built to finish with **working software plus a review surface**: changed files, checks, and a clear handoff.
 
-- **Simple at the center** — the Ralph Workflow loop core stays understandable.
-- **Powerful in composition** — simple loops can be composed into much more complex workflows.
-- **Built for orchestration** — planning, coding, verification, and review can use different agents when needed.
-- **Strong default workflow** — you do not need to invent a workflow before getting value.
-- **Easy to extend** — the same simplicity that makes it understandable also makes it easier to customize.
-
 **Why use it now:** you can try the default workflow tonight on one real backlog task, judge it with a boring merge question, and keep or extend it from there.
 
 ## First honest path
