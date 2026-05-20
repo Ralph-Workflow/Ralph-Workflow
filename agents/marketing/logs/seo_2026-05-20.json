@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-20T04:29:27.841208",
+  "timestamp": "2026-05-20T06:47:21.983490",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -30,7 +30,7 @@
     },
     "sitemap": {
       "status": 200,
-      "url_count": 624,
+      "url_count": 69,
       "urls": [
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/privacy",
@@ -46,12 +46,12 @@
         "https://ralphworkflow.com/claude-code-automation",
         "https://ralphworkflow.com/docs/",
         "https://ralphworkflow.com/contact",
-        "https://ralphworkflow.com/docs/_modules/",
-        "https://ralphworkflow.com/docs/_modules/ralph/_logging_config",
-        "https://ralphworkflow.com/docs/_modules/ralph/_logging_paths",
-        "https://ralphworkflow.com/docs/_modules/ralph/_rich_group_proto",
-        "https://ralphworkflow.com/docs/_modules/ralph/_rich_panel_proto",
-        "https://ralphworkflow.com/docs/_modules/ralph/agents/activity"
+        "https://ralphworkflow.com/docs/after-your-first-run",
+        "https://ralphworkflow.com/docs/agents",
+        "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
+        "https://ralphworkflow.com/docs/ai-coding-workflow-automation",
+        "https://ralphworkflow.com/docs/artifacts",
+        "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding"
       ]
     }
   },

@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-05-20T04:37:24.490404",
+  "timestamp": "2026-05-20T06:52:29.896618",
   "results": {
     "sitemap": {
       "exists": true,
-      "url_count": 624
+      "url_count": 69
     },
     "robots": {
       "exists": true,
@@ -48,6 +48,51 @@
       {
         "name": "Product Hunt",
         "url": "https://producthunt.com/submit",
+        "listed": true
+      },
+      {
+        "name": "Futurepedia",
+        "url": "https://futurepedia.io/submit-tool",
+        "listed": true
+      },
+      {
+        "name": "FutureTools",
+        "url": "https://www.futuretools.io/submit",
+        "listed": true
+      },
+      {
+        "name": "TopAI.tools",
+        "url": "https://topai.tools/submit",
+        "listed": true
+      },
+      {
+        "name": "Dang.ai",
+        "url": "https://dang.ai/submit",
+        "listed": true
+      },
+      {
+        "name": "AI Scout",
+        "url": "https://aiscout.net/submit",
+        "listed": true
+      },
+      {
+        "name": "Toolify",
+        "url": "https://www.toolify.ai/submit-a-tool",
+        "listed": true
+      },
+      {
+        "name": "Ben's Bites",
+        "url": "https://news.bensbites.com/submit",
+        "listed": true
+      },
+      {
+        "name": "ListMyAI",
+        "url": "https://listmyai.net/submit",
+        "listed": true
+      },
+      {
+        "name": "Uneed",
+        "url": "https://uneed.best/submit",
         "listed": true
       }
     ],
