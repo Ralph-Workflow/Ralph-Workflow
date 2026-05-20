@@ -67,6 +67,14 @@ If the executor would need to stop and research basic repository structure, gues
 Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern.
 Do not use phrases like "run tests" unless you provide the exact command and the expected passing result.
 For every concrete requirement or acceptance criterion in the PROMPT, make sure the plan maps it to implementation steps and verification that prove the outcome.
+Infer the core user-facing workflows and prerequisite actions that must exist for the requested outcome to count as working, even when the PROMPT states them only implicitly.
+Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
+Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
+If one section change would invalidate another section, revise any dependent sections that must also change for the plan to become coherent before you finalize the draft.
+Your target is to submit a plan that planning analysis can approve on the first pass, not a draft that relies on a later repair cycle to become executor-ready.
+Before finalizing, use parallel agents for the planning-analysis pass when possible; otherwise do the next best thing and simulate it yourself. In either case, look for missing explicit requirements, missing implied workflows or prerequisites, weak verification, fake repo references, cross-section inconsistencies, and executor research burden, then fix those issues in the same planning pass.
+Before finalizing, verify the draft also covers concrete risks, safe parallelization, and handoff quality.
+If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles before you finalize it.
 
 Default submission flow:
 1. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`.

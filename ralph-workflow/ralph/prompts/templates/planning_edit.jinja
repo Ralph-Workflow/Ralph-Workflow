@@ -41,6 +41,9 @@ Preserve still-valid sections only after you have re-validated them against the 
 Do not localize your revision pass to only the sections explicitly cited by the analyzer.
 You must perform your own repo-grounded analysis before finalizing.
 Every analyzer issue must map to concrete revised sections or an explicit verified reason that a section truly remains valid unchanged.
+Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
+Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
+Build a closure ledger before finalizing the revised draft. At minimum, account for: (1) each analyzer-cited issue, (2) the adjacent or implied issues your own analysis discovered, (3) the exact revised sections that close each issue, and (4) any dependent sections that must also change for the plan to become coherent.
 Before revising any section, classify the feedback scope as one of:
 - local_section
 - cross_section
@@ -74,9 +77,10 @@ Recommended edit flow:
 3. If a canonical verification command or repo-wide audit already surfaces a blocker during replanning, that blocker immediately becomes in-scope plan work and must be reflected in the revised draft.
 4. When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example or the currently edited file cluster.
 5. Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before you decide the draft is ready.
-6. If the defect scope is `repo_wide` or `cross_section`, re-derive the full plan first, then replace every affected section with {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} using `mode="replace"`.
-7. Use `mode="append"` only when intentionally extending list sections such as `steps` after you have confirmed append is still globally coherent.
-8. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} only after the revised draft passes the self-audit below.
+6. If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles before you decide the draft is ready.
+7. If the defect scope is `repo_wide` or `cross_section`, re-derive the full plan first, then replace every affected section with {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} using `mode="replace"`.
+8. Use `mode="append"` only when intentionally extending list sections such as `steps` after you have confirmed append is still globally coherent.
+9. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} only after the revised draft passes the self-audit below.
 
 Do not edit `.agent/artifacts/plan.json` directly.
 If the defect scope is `repo_wide`, prefer a full atomic plan replacement over piecemeal section repair when that is the simplest way to restore global coherence.
@@ -89,13 +93,12 @@ When the task is repo-wide, implementation scope must come from an explicit repo
 Your revised plan must remain executor-ready for unattended development. The updated artifact must:
 - address every issue raised in the planning-analysis feedback
 - satisfy the ORIGINAL REQUEST, not only the latest feedback summary
+- add any implied core workflow, prerequisite action, or verification coverage that your own analysis finds is required for the product outcome to count as working
 - keep concrete ordered steps, critical files, risks, and exact verification commands
 - eliminate vague or unverifiable instructions
 - make the planning-to-development handoff explicit again after revision so the development agent can start without doing planning work
 - close all currently known analyzer findings in this pass rather than leaving obvious follow-up repairs for a later iteration
-- do not preserve prompt-violating tests, files, or workflows as justified exceptions unless the ORIGINAL REQUEST explicitly allows them
-
-Do not preserve prompt-violating tests, files, or workflows as justified exceptions unless the ORIGINAL REQUEST explicitly allows them.
+- Do not preserve prompt-violating tests, files, or workflows as justified exceptions unless the ORIGINAL REQUEST explicitly allows them
 - re-derive and fix all repo-grounded issues your own analysis finds in this revision pass, not only the analyzer's explicitly cited examples
 
 If the feedback says the plan is missing detail, add that detail.
@@ -106,6 +109,7 @@ Do not make transient .agent handoff files part of the revised plan's execution 
 Before `{{FINALIZE_PLAN_TOOL_NAME}}`, perform this self-audit:
 - Feedback closure: every currently known analyzer finding has been resolved in the revised draft or forced a broader section replacement; no known issue is left partially addressed
 - Issue-to-section mapping: every analyzer issue is tied to concrete revised sections or to an explicit verified reason that no section change was necessary
+- Closure ledger complete: you have accounted for analyzer-cited issues, the adjacent or implied issues your own analysis discovered, the revised sections that close them, and any dependent sections that had to move with them
 - Next-analyzer check: Before finalizing, proactively search for any additional repo-grounded failure the next planning-analysis pass could still raise against the ORIGINAL REQUEST, current repo state, or surfaced verification output
 - Non-localized closure: the revised draft resolves the analyzer's cited issues and every additional repo-grounded issue you found during replanning, not just the initially cited sections
 - Analyzer-pass standard: the draft is not ready unless you have tried to eliminate every repo-grounded issue the analyzer could still surface, not just the issues it already named

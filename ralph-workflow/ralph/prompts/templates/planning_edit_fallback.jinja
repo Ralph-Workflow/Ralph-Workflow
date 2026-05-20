@@ -10,7 +10,8 @@ Canonical request file: `{{PROMPT_PATH}}`
 Current plan context is provided inline below.
 Canonical analysis feedback file: `{{ANALYSIS_FEEDBACK_PATH}}`
 {% if ARTIFACT_HISTORY_PATH %}Canonical artifact history directory: `{{ARTIFACT_HISTORY_DIR}}`
-Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`{% endif %}
+Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`
+Inspect this history to understand what plans have been tried and rejected before{% endif %}
 
 ORIGINAL REQUEST:
 {{PROMPT}}
@@ -27,6 +28,9 @@ Use `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}` only when the existing plan is unsalvagea
 Your target is to submit the strongest revised plan you can so the next planning-analysis pass returns `completed`, not another partial patch cycle.
 Do not localize your revision pass to only the sections explicitly cited by the analyzer.
 You must perform your own repo-grounded analysis before finalizing.
+Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
+Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
+Build a closure ledger before finalizing the revised draft.
 
 Classify the defect scope as `local_section`, `cross_section`, or `repo_wide` before deciding what to preserve.
 This classification is diagnostic only. It does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
@@ -36,12 +40,15 @@ Do not preserve the prior target cluster as the starting scope in that case.
 If a canonical verification command or repo-wide audit already surfaces a blocker during replanning, that blocker immediately becomes in-scope plan work and must be reflected in the revised draft.
 When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example or the currently edited file cluster.
 Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before deciding the draft is ready.
-Replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files.
+If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles before deciding the draft is ready.
+Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL REQUEST to count as working, even when the prompt states them only implicitly.
+If the defect scope is `repo_wide`, replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files.
 When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
 Do not edit `.agent/artifacts/plan.json` directly.
-If fixing one section changes the truth of another section, replace every dependent section in the same draft so the finalized plan is internally consistent.
+If fixing one section changes the truth of another section, replace every dependent section in the same draft so the finalized plan is internally consistent, including any dependent sections that must also change for the plan to become coherent.
 Do not preserve prompt-violating tests, files, or workflows as justified exceptions unless the ORIGINAL REQUEST explicitly allows them.
 Do not finalize a draft that still has any known unresolved analyzer finding, even if some sections improved.
 Before finalizing, proactively search for any additional repo-grounded failure the next planning-analysis pass could still raise against the ORIGINAL REQUEST, current repo state, or surfaced verification output.
+Account for the adjacent or implied issues your own analysis discovered before deciding the draft is ready.
 The draft is not ready unless you have tried to eliminate every repo-grounded issue the analyzer could still surface, not just the issues it already named.
 Prefer a full atomic replacement over piecemeal repair when that is the simplest way to restore global coherence.

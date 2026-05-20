@@ -124,6 +124,12 @@ Judge the plan against the ORIGINAL PROMPT scope, not only against the most rece
 If the task is repository-wide, check that inventories, remediation scope, critical files, risks, and verification are repository-wide rather than example-scoped or subset-scoped.
 If defect scope is `repo_wide`, say explicitly that the next planning pass must re-derive the plan globally rather than patching only the cited sections.
 When describing remediation, target the planner's MCP revision workflow: tell it which plan sections to resubmit and what repository evidence those revised sections must incorporate. Do not tell the planner to edit `PLAN.md` or `.agent/artifacts/plan.json` directly.
+Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL PROMPT to count as working, even when the prompt states them only implicitly.
+Use this reasoning chain explicitly when needed: Goal → required workflow → prerequisite action/state → plan coverage. If a required workflow or prerequisite is missing from the plan, treat that as missing work rather than as an optional product idea.
+Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
+Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
+If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles before deciding it is sound.
+Use this exact string format for each `what_came_up_short` entry: `PA-### | Dimension: ... | Defect: ... | Evidence: ... | Missing: ...`.
 
 ### 1. PROMPT COMPLIANCE
 
@@ -151,6 +157,7 @@ Check for:
 Actively look for missing work and internal contradictions:
 - **Missing work**: does the plan leave out obvious implementation, migration, cleanup, rollback,
   or verification work required by the PROMPT?
+- **Implied core workflows**: for broad product outcomes, does the plan cover the minimum user-facing workflows and prerequisites required for the product to count as working, or does it only cover a safe subset?
 - **Contradictions or inconsistency**: do any steps, dependencies, critical files, risks,
   verification items, or work units conflict with each other?
 - **Traceability**: can you see how each major requirement flows into concrete implementation and
@@ -226,6 +233,7 @@ Return a JSON object.
 1. **List every gap found** across all dimensions. Do not stop after the first problem.
 
 2. **For each gap, include:**
+   - A stable gap ID that the replanner can preserve verbatim in the corresponding fix entry
    - The dimension it belongs to (Prompt Compliance / Executor Readiness / Gap Analysis and Consistency /
      Repository Accuracy / Risk Coverage / Verification Quality / Parallelization Safety / Maintainability)
    - Exact file path, plan section, or command if applicable
@@ -245,10 +253,12 @@ Return a JSON object.
 For every item in `what_came_up_short`, provide a corresponding fix entry:
 
 1. **Exact plan sections to resubmit via the MCP plan-edit tools.** If repository files matter, cite them as evidence the revised sections must incorporate, not as files the planner should edit.
-2. **Exact behaviors or details to add/change inside those plan sections.**
-3. **Step-by-step remediation using the planner's MCP flow** (`get_plan_draft` / `submit_plan_section` / `finalize_plan`, or restart only when truly unsalvageable).
-4. **Commands or checks to validate the revised plan.**
-5. **What passing evidence looks like.**
+2. **Use this shared defect vocabulary in both analysis findings and replanning fixes** so the planner can map each gap to the right revision class.
+3. **Preserve the same stable gap ID from the corresponding `what_came_up_short` entry** so the planner can prove closure without ambiguity.
+4. **Exact behaviors or details to add/change inside those plan sections, including any dependent sections that must also change for the plan to become coherent.**
+5. **Step-by-step remediation using the planner's MCP flow** (`get_plan_draft` / `submit_plan_section` / `finalize_plan`, or restart only when truly unsalvageable).
+6. **Commands or checks to validate the revised plan.**
+7. **What passing evidence looks like.**
 
 One gap, one fix entry. No grouping multiple gaps under one fix.
 

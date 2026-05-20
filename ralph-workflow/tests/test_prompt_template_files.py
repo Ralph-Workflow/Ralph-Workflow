@@ -160,6 +160,16 @@ PLANNING_NO_VAGUE_PATTERN_GUIDANCE = (
 PLANNING_LOW_RESEARCH_EXECUTOR_GUIDANCE = (
     "If the executor would need to stop and research basic repository structure"
 )
+PLANNING_FIRST_PASS_APPROVAL_GUIDANCE = (
+    "Your target is to submit a plan that planning analysis can approve on the first pass"
+)
+PLANNING_SELF_CRITIQUE_GUIDANCE = (
+    "Before finalizing, use parallel agents for the planning-analysis pass when possible; "
+    "otherwise do the next best thing and simulate it yourself"
+)
+PLANNING_CORE_WORKFLOW_PLANNING_GUIDANCE = (
+    "Infer the core user-facing workflows and prerequisite actions that must exist"
+)
 PLANNING_ANALYSIS_CRITIC_GUIDANCE = "You are a lightweight plan critic"
 PLANNING_ANALYSIS_MISSING_WORK_GUIDANCE = "Missing work"
 PLANNING_ANALYSIS_CONTRADICTIONS_GUIDANCE = "Contradictions or inconsistency"
@@ -250,6 +260,44 @@ PLANNING_EDIT_EXECUTION_PLAN_GUIDANCE = (
 )
 PLANNING_ANALYSIS_NO_DOWNSTREAM_REPLANNING_GUIDANCE = (
     "if the plan asks the executor to perform planning work mid-flight"
+)
+PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE = (
+    "Infer the core user-facing workflows and prerequisite actions that must exist"
+)
+PLANNING_ANALYSIS_PREREQUISITE_CHAIN_GUIDANCE = (
+    "Goal → required workflow → prerequisite action/state → plan coverage"
+)
+PLANNING_EDIT_CLOSURE_LEDGER_GUIDANCE = (
+    "Build a closure ledger before finalizing the revised draft"
+)
+PLANNING_EDIT_ADJACENT_ISSUES_GUIDANCE = (
+    "the adjacent or implied issues your own analysis discovered"
+)
+PLANNING_SHARED_DEFECT_VOCAB_GUIDANCE = (
+    "Use this shared defect vocabulary in both analysis findings and replanning fixes"
+)
+PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE = (
+    "any dependent sections that must also change for the plan to become coherent"
+)
+PLANNING_STABLE_ID_GUIDANCE = (
+    "Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry"
+)
+PLANNING_PARALLEL_ANALYSIS_GUIDANCE = (
+    "If multiple independent analysis or discovery threads would reduce uncertainty, "
+    "use parallel agents"
+)
+PLANNING_FIRST_PASS_RISK_AUDIT_GUIDANCE = (
+    "Before finalizing, verify the draft also covers concrete risks, safe parallelization, "
+    "and handoff quality"
+)
+PLANNING_ANALYSIS_FORMAT_GUIDANCE = (
+    "Use this exact string format for each `what_came_up_short` entry"
+)
+PLANNING_EDIT_FALLBACK_HISTORY_GUIDANCE = (
+    "Inspect this history to understand what plans have been tried and rejected before"
+)
+PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_GUIDANCE = (
+    "If the defect scope is `repo_wide`, replace the summary, scope, and early steps"
 )
 
 
@@ -347,6 +395,14 @@ def test_planning_prompt_requires_verified_low_research_executor_handoff() -> No
     assert PLANNING_DISCOVERY_PREFLIGHT_GUIDANCE in planning
     assert PLANNING_NO_VAGUE_PATTERN_GUIDANCE in planning
     assert PLANNING_LOW_RESEARCH_EXECUTOR_GUIDANCE in planning
+    assert PLANNING_FIRST_PASS_APPROVAL_GUIDANCE in planning
+    assert PLANNING_SELF_CRITIQUE_GUIDANCE in planning
+    assert PLANNING_CORE_WORKFLOW_PLANNING_GUIDANCE in planning
+    assert PLANNING_SHARED_DEFECT_VOCAB_GUIDANCE in planning
+    assert PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE in planning
+    assert PLANNING_STABLE_ID_GUIDANCE in planning
+    assert PLANNING_PARALLEL_ANALYSIS_GUIDANCE in planning
+    assert PLANNING_FIRST_PASS_RISK_AUDIT_GUIDANCE in planning
 
 
 def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_patching() -> None:
@@ -376,6 +432,12 @@ def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_pat
     assert PLANNING_EDIT_NOT_LOCAL_PATCH_GUIDANCE in planning_edit
     assert PLANNING_EDIT_SELF_ANALYSIS_GUIDANCE in planning_edit
     assert PLANNING_EDIT_ISSUE_MAPPING_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_CLOSURE_LEDGER_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_ADJACENT_ISSUES_GUIDANCE in planning_edit
+    assert PLANNING_SHARED_DEFECT_VOCAB_GUIDANCE in planning_edit
+    assert PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE in planning_edit
+    assert PLANNING_STABLE_ID_GUIDANCE in planning_edit
+    assert PLANNING_PARALLEL_ANALYSIS_GUIDANCE in planning_edit
     assert 'artifact_type="plan"' not in planning_edit
     assert "Not submitting the revised plan is a FAILURE." in planning_edit
 
@@ -391,6 +453,29 @@ def test_planning_analysis_prompt_demands_gap_and_consistency_critique() -> None
     assert PLANNING_ANALYSIS_VISIBLE_GAPS_GUIDANCE in planning_analysis
     assert PLANNING_ANALYSIS_MCP_REMEDIATION_GUIDANCE in planning_analysis
     assert PLANNING_ANALYSIS_SECTION_RESUBMIT_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_PREREQUISITE_CHAIN_GUIDANCE in planning_analysis
+    assert PLANNING_SHARED_DEFECT_VOCAB_GUIDANCE in planning_analysis
+    assert PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE in planning_analysis
+    assert PLANNING_STABLE_ID_GUIDANCE in planning_analysis
+    assert PLANNING_PARALLEL_ANALYSIS_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_FORMAT_GUIDANCE in planning_analysis
+
+
+def test_planning_edit_fallback_stays_aligned_with_main_replanning_contract() -> None:
+    planning_edit_fallback = (TEMPLATES_ROOT / "planning_edit_fallback.jinja").read_text(
+        encoding="utf-8"
+    )
+
+    assert PLANNING_EDIT_CLOSURE_LEDGER_GUIDANCE in planning_edit_fallback
+    assert PLANNING_EDIT_ADJACENT_ISSUES_GUIDANCE in planning_edit_fallback
+    assert PLANNING_SHARED_DEFECT_VOCAB_GUIDANCE in planning_edit_fallback
+    assert PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE in planning_edit_fallback
+    assert PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE in planning_edit_fallback
+    assert PLANNING_STABLE_ID_GUIDANCE in planning_edit_fallback
+    assert PLANNING_PARALLEL_ANALYSIS_GUIDANCE in planning_edit_fallback
+    assert PLANNING_EDIT_FALLBACK_HISTORY_GUIDANCE in planning_edit_fallback
+    assert PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_GUIDANCE in planning_edit_fallback
 
 
 def test_fix_and_developer_iteration_templates_use_analysis_context_partial() -> None:

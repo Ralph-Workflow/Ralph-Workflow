@@ -85,9 +85,54 @@ PLANNING_EDIT_SELF_ANALYSIS_TEXT = (
 PLANNING_EDIT_ISSUE_MAPPING_TEXT = (
     "Every analyzer issue must map to concrete revised sections or an explicit verified reason"
 )
+PLANNING_EDIT_CLOSURE_LEDGER_TEXT = (
+    "Build a closure ledger before finalizing the revised draft"
+)
+PLANNING_EDIT_ADJACENT_ISSUES_TEXT = (
+    "the adjacent or implied issues your own analysis discovered"
+)
+PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT = (
+    "Infer the core user-facing workflows and prerequisite actions that must exist"
+)
+PLANNING_ANALYSIS_PREREQUISITE_CHAIN_TEXT = (
+    "Goal → required workflow → prerequisite action/state → plan coverage"
+)
+PLANNING_FIRST_PASS_APPROVAL_TEXT = (
+    "Your target is to submit a plan that planning analysis can approve on the first pass"
+)
+PLANNING_SELF_CRITIQUE_TEXT = (
+    "Before finalizing, use parallel agents for the planning-analysis pass when possible; "
+    "otherwise do the next best thing and simulate it yourself"
+)
+PLANNING_SHARED_DEFECT_VOCAB_TEXT = (
+    "Use this shared defect vocabulary in both analysis findings and replanning fixes"
+)
+PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT = (
+    "any dependent sections that must also change for the plan to become coherent"
+)
+PLANNING_STABLE_ID_TEXT = (
+    "Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry"
+)
+PLANNING_PARALLEL_ANALYSIS_TEXT = (
+    "If multiple independent analysis or discovery threads would reduce uncertainty, "
+    "use parallel agents"
+)
+PLANNING_FIRST_PASS_RISK_AUDIT_TEXT = (
+    "Before finalizing, verify the draft also covers concrete risks, safe parallelization, "
+    "and handoff quality"
+)
+PLANNING_ANALYSIS_FORMAT_TEXT = (
+    "Use this exact string format for each `what_came_up_short` entry"
+)
+PLANNING_EDIT_FALLBACK_HISTORY_TEXT = (
+    "Inspect this history to understand what plans have been tried and rejected before"
+)
+PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_TEXT = (
+    "If the defect scope is `repo_wide`, replace the summary, scope, and early steps"
+)
 
 
-def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_path: object) -> None:
+def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -112,7 +157,7 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
 
 
 def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work(
-    tmp_path: object,
+    tmp_path: Path,
 ) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -135,7 +180,7 @@ def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work
     assert "analysis_items_addressed" in prompt
 
 
-def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: object) -> None:
+def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -152,9 +197,17 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: object) -> None:
     assert "ralph_submit_artifact" in prompt
     assert "ralph_submit_plan_section" in prompt
     assert "ralph_finalize_plan" in prompt
+    assert PLANNING_FIRST_PASS_APPROVAL_TEXT in prompt
+    assert PLANNING_SELF_CRITIQUE_TEXT in prompt
+    assert PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT in prompt
+    assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
+    assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
+    assert PLANNING_STABLE_ID_TEXT in prompt
+    assert PLANNING_PARALLEL_ANALYSIS_TEXT in prompt
+    assert PLANNING_FIRST_PASS_RISK_AUDIT_TEXT in prompt
 
 
-def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: object) -> None:
+def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -185,7 +238,7 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: 
     assert "`summary.scope_items` must contain at least 3 concrete items" in prompt
 
 
-def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: object) -> None:
+def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -226,6 +279,12 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: object) -
     assert PLANNING_EDIT_NOT_LOCAL_PATCH_TEXT in prompt
     assert PLANNING_EDIT_SELF_ANALYSIS_TEXT in prompt
     assert PLANNING_EDIT_ISSUE_MAPPING_TEXT in prompt
+    assert PLANNING_EDIT_CLOSURE_LEDGER_TEXT in prompt
+    assert PLANNING_EDIT_ADJACENT_ISSUES_TEXT in prompt
+    assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
+    assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
+    assert PLANNING_STABLE_ID_TEXT in prompt
+    assert PLANNING_PARALLEL_ANALYSIS_TEXT in prompt
     assert "Use `ralph_discard_plan_draft` only when the existing plan is unsalvageable" in prompt
     assert (
         "Do not make transient .agent handoff files part of the revised plan's execution inputs"
@@ -236,7 +295,65 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: object) -
     assert workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md") in prompt
 
 
-def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path: object) -> None:
+def test_planning_analysis_prompt_teaches_core_workflow_inference(tmp_path: Path) -> None:
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+
+    prompt = prompt_planning_xml_with_context(
+        context=context,
+        inputs=PlanningPromptInputs(prompt_content="Working music player"),
+        workspace=workspace,
+        session_caps=session_caps,
+        template_name="planning_analysis.jinja",
+    )
+
+    assert PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT in prompt
+    assert PLANNING_ANALYSIS_PREREQUISITE_CHAIN_TEXT in prompt
+    assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
+    assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
+    assert PLANNING_STABLE_ID_TEXT in prompt
+    assert PLANNING_PARALLEL_ANALYSIS_TEXT in prompt
+    assert PLANNING_ANALYSIS_FORMAT_TEXT in prompt
+
+
+def test_planning_edit_fallback_teaches_holistic_replanning_contract(tmp_path: Path) -> None:
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+    history_path = str(tmp_path / ".agent" / "artifacts" / "history" / "plan" / "index.md")
+    history_dir = str(Path(history_path).parent)
+
+    with patch(
+        "ralph.prompts.developer.render_template",
+        side_effect=TemplateRenderingError("boom"),
+    ):
+        prompt = prompt_planning_xml_with_context(
+            context=context,
+            inputs=PlanningPromptInputs(
+                prompt_content="Revise the plan",
+                analysis_feedback_content="The plan needs revisions.",
+                analysis_feedback_path=workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md"),
+                artifact_history_path=history_path,
+                artifact_history_dir=history_dir,
+            ),
+            workspace=workspace,
+            session_caps=session_caps,
+            template_name="planning_edit.jinja",
+        )
+
+    assert PLANNING_EDIT_CLOSURE_LEDGER_TEXT in prompt
+    assert PLANNING_EDIT_ADJACENT_ISSUES_TEXT in prompt
+    assert PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT in prompt
+    assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
+    assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
+    assert PLANNING_STABLE_ID_TEXT in prompt
+    assert PLANNING_PARALLEL_ANALYSIS_TEXT in prompt
+    assert PLANNING_EDIT_FALLBACK_HISTORY_TEXT in prompt
+    assert PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_TEXT in prompt
+
+
+def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
@@ -261,7 +378,7 @@ def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path: obj
     assert "<ralph-plan>" not in prompt
 
 
-def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: object) -> None:
+def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(
@@ -295,7 +412,7 @@ def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: object) -> 
     assert "{%" not in prompt
 
 
-def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path: object) -> None:
+def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path: Path) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -321,7 +438,7 @@ def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path: obje
 
 
 def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(
-    tmp_path: object,
+    tmp_path: Path,
 ) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -429,7 +546,7 @@ def test_planning_edit_prompt_with_artifact_history_path_includes_history(tmp_pa
 
 
 def test_developer_iteration_prompt_with_artifact_history_path_shows_history_section(
-    tmp_path: object,
+    tmp_path: Path,
 ) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -457,7 +574,7 @@ def test_developer_iteration_prompt_with_artifact_history_path_shows_history_sec
 
 
 def test_developer_iteration_prompt_without_history_path_omits_history_section(
-    tmp_path: object,
+    tmp_path: Path,
 ) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -477,7 +594,7 @@ def test_developer_iteration_prompt_without_history_path_omits_history_section(
 
 
 def test_developer_fallback_prompt_with_artifact_history_path_shows_history_section(
-    tmp_path: object,
+    tmp_path: Path,
 ) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -509,7 +626,7 @@ def test_developer_fallback_prompt_with_artifact_history_path_shows_history_sect
 
 
 def test_developer_fallback_prompt_without_history_path_omits_history_section(
-    tmp_path: object,
+    tmp_path: Path,
 ) -> None:
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
