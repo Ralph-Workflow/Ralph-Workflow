@@ -21,6 +21,14 @@ Have these ready:
 Ralph does **not** replace Claude Code, Codex CLI, or OpenCode.
 It orchestrates the agent you already have.
 
+## Outside proof first, if you want it
+
+If you want external proof before you install anything, use a short curated set:
+
+- [ToolWise review page](https://toolwise.ai/tools/ralph-workflow)
+- [SaaSHub product page](https://www.saashub.com/ralph-workflow)
+- [TechTools Launchpad listing](https://techtools.cz/tools/launchpad/?tool=71)
+
 ## Pick the right first task
 
 Do **not** start with a vague demo.

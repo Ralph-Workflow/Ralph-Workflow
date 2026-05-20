@@ -171,6 +171,14 @@ Keep this README for onboarding. Then choose only the nearest next page:
 If you still need the full map, use [docs/README.md](./docs/README.md).
 For the product site, use <https://ralphworkflow.com>.
 
+## Third-party proof before you install
+
+If you want outside validation before your first run, use a short curated set instead of hunting around:
+
+- [ToolWise review page](https://toolwise.ai/tools/ralph-workflow)
+- [SaaSHub product page](https://www.saashub.com/ralph-workflow)
+- [TechTools Launchpad listing](https://techtools.cz/tools/launchpad/?tool=71)
+
 ## License
 
 [AGPL-3.0-or-later](LICENSE).

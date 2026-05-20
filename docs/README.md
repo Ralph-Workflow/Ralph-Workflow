@@ -42,6 +42,14 @@ If you are still deciding whether Ralph Workflow is worth trying, use these in o
 - [unattended-coding-agent.md](./unattended-coding-agent.md)
 - [why-worktrees-are-not-enough.md](./why-worktrees-are-not-enough.md)
 
+## Third-party proof before setup
+
+If you want external inspection before your first run, use a short curated set instead of hunting around:
+
+- [ToolWise review page](https://toolwise.ai/tools/ralph-workflow)
+- [SaaSHub product page](https://www.saashub.com/ralph-workflow)
+- [TechTools Launchpad listing](https://techtools.cz/tools/launchpad/?tool=71)
+
 ## Keep the routing simple
 
 If you feel yourself opening many pages at once, stop.
