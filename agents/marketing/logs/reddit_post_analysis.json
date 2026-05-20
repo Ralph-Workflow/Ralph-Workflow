@@ -1,77 +1,66 @@
 {
-  "generated_at": "2026-05-20T11:05:25.702817",
-  "count": 24,
+  "generated_at": "2026-05-20T11:40:23.748829",
+  "count": 25,
   "recent_window_count": 6,
   "by_account": {
     "Informal-Salt827": 6
   },
   "by_community": {
-    "r/ClaudeAI": 1,
     "r/AI_Agents": 1,
-    "r/ClaudeCode": 4
+    "r/ClaudeCode": 5
   },
   "top_title_words": [
     "claude",
     "code",
     "mode",
-    "checkpoint",
-    "commits",
-    "polluting",
-    "history",
-    "handling",
+    "codex",
     "multi",
     "agent",
     "supervision",
     "becoming",
     "real",
     "autonomous",
-    "runs"
+    "runs",
+    "reality",
+    "approval",
+    "plan",
+    "questions"
   ],
   "top_body_tokens": [
-    "review",
-    "diff",
-    "checks",
-    "handoff",
-    "ralph",
-    "workflow",
     "making",
+    "diff",
+    "result",
     "ends",
     "readable",
+    "checks",
     "model",
     "about",
-    "surface",
-    "without",
-    "instead",
-    "result",
+    "scoped",
+    "task",
+    "explicit",
     "easy",
     "optimize",
+    "review",
     "it's",
+    "handoff",
     "real",
-    "short"
+    "short",
+    "assumptions",
+    "judge"
   ],
   "phrase_hits": {
-    "reviewable": 1,
-    "diff": 5,
-    "overnight": 1,
-    "handoff": 4,
     "done criteria": 1,
     "trust": 1,
-    "scope": 2,
-    "small scoped": 1
+    "scope": 3,
+    "small scoped": 1,
+    "diff": 5,
+    "handoff": 3
   },
   "repeated_openings": [
     "Honestly the part I'd optimize first is the handoff, not the model stack."
   ],
   "account_switches": [],
   "recent_posts": [
-    {
-      "timestamp": "2026-05-18T17:59:49.433267",
-      "account": "Informal-Salt827",
-      "community": "r/ClaudeAI",
-      "title": "Claude Code’s checkpoint commits are polluting my git history. How are you handling this?",
-      "comment_url": "https://old.reddit.com/r/ClaudeAI/comments/1taz6hd/claude_codes_checkpoint_commits_are_polluting_my/omi77jq/",
-      "opening_line": "My rule is that checkpoint commits are for recovery, not for the human review surface."
-    },
     {
       "timestamp": "2026-05-18T18:47:16.160831",
       "account": "Informal-Salt827",
@@ -111,6 +100,14 @@
       "title": "How do you ACTUALLY use CC+codex?",
       "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tb7j36/how_do_you_actually_use_cccodex/omshh9e/",
       "opening_line": "Forcing the handoff to be boring and explicit — that is what usually saves multi-tool runs, not another model hop."
+    },
+    {
+      "timestamp": "2026-05-20T11:24:40.993170",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Claude Code + Codex Workflow?",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1sz3u7k/claude_code_codex_workflow/omtznlu/",
+      "opening_line": "The multi-tool failure I kept hitting: one session sounds confident, the next session inherits contradictory assumptions, and the combined result quietly stops making sense."
     }
   ],
   "recommendations": [

@@ -1,3 +1,5 @@
-Forcing the handoff to be boring and explicit — that is what usually saves multi-tool runs, not another model hop.
+The multi-tool failure I kept hitting: one session sounds confident, the next session inherits contradictory assumptions, and the combined result quietly stops making sense.
 
-One scoped task, one readable diff, real checks, and a short receipt of anything still risky gives you something you can actually judge instead of just admire.
+The fix is an explicit baton pass between sessions — scoped task, bounded diff, check evidence, named open decisions.
+
+Ralph Workflow is free and open-source: it enforces that baton pass so sessions hand off cleanly.

@@ -25,7 +25,7 @@ The practical pattern that works:
 
 **During the run:** Let the agent work. If it hits a rate limit, a fallback agent continues. If it crashes, it resumes from the last checkpoint.
 
-**After the run:** You open your editor and see: a diff, test results, and a short receipt of what changed and what still needs attention. No transcript archaeology.
+**After the run:** You open your editor and see: a diff, test results, and a short receipt of what changed and what still needs attention. You are looking at the output, not reconstructing it.
 
 ## How Ralph Workflow Handles It
 
