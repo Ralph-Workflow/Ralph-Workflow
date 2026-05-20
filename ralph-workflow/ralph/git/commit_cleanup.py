@@ -22,7 +22,7 @@ def ensure_git_initialized(repo_root: Path | str) -> None:
     with suppress(InvalidGitRepositoryError):
         Repo(repo_root, search_parent_directories=False)
         return
-    Repo.init(repo_root)  # type:ignore[misc]
+    Repo.init(repo_root)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     logger.info("Initialized git repository at {}", repo_root)
 
 
