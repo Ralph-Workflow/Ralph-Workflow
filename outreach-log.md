@@ -4690,3 +4690,60 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Type:** **REPAIRED / REPLACING**
 - **Ralph-Site ownership note:** issue found on a Ralph-Site-owned public docs surface and repaired directly in Ralph-Site, not left as a passive note.
 - **Docs review note:** this belongs on the docs landing surface because it is a curated proof/discovery block, not repo documentation. The change pruned two weaker/staler entries, reduced mirror leakage, reduced clutter, and made the top-level evaluator path cleaner instead of adding more links.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:12:39
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:17:39
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:18:31
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:19:54
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Ralph-Site homepage proof-strip repair (20:41 UTC / 22:41 CEST)
+- **What I executed:** repaired the live Ralph-Site homepage hero in both the tracked source repo (`/home/mistlight/.openclaw/workspace/Ralph-Site/app/views/pages/home.html.erb`) and the deployed release (`/home/mistlight/ralph_site/releases/20260521203251/app/views/pages/home.html.erb`) so the primary Codeberg CTA is now immediately backed by current third-party proof links: **ToolWise review**, **SaaSHub product page**, and **SaaSHub alternatives**.
+  - Verification: restarted the app with `bin/rails restart`, then fetched `https://ralphworkflow.com` and confirmed the live HTML now renders the new `Third-party proof` strip directly under the Codeberg-first evaluator path copy.
+- **Why this action:** this is **REPAIRED / REPLACING** a failed tactic. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and the repaired backlink strategy explicitly says to reuse live proof surfaces in public CTAs while Codeberg adoption is flat. The homepage title/description is already healthy; the missing piece on the main owned surface was turning those live third-party listings into immediate trust support for the primary Codeberg click instead of leaving them buried deeper in docs.
+- **Expected outcome:** more trust-seeking evaluators should click through to the Codeberg repo from the homepage because the main conversion surface now pairs the primary CTA with visible third-party validation in the same above-the-fold decision zone.
+- **Measurement window:** immediate verification = live homepage HTML shows the proof strip now; business window = next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta, plus any lift in homepage-to-Codeberg referral traffic if available.
+- **Replace if it fails:** if Codeberg is still flat through **2026-06-04**, stop spending another cycle on homepage proof/CTA refinement alone and replace this lane with a fresh executable backlink source or warmer competitor-citation / curator outreach.
+- **Type:** **REPAIRED / REPLACING**
+- **Ralph-Site ownership note:** issue found on a Ralph-Site-owned homepage conversion surface and repaired directly in Ralph-Site, not left as a passive note.
+
+## 2026-05-21 (Thursday) — Marketing workflow audit (22:43 UTC / 00:43 CEST)
+- **Verdict: stay quiet. Execution ceiling confirmed. HN/Lobsters is still the only unmade high-leverage move. Reddit cadence is structurally failing.**
+  - Codeberg: 10⭐ 2👁 2🍴, +0 delta across 9-sample window (single +1 signal from May 20 has not compounded; treat as measurement noise pending follow-on).
+  - GitHub mirror: 0⭐ 2👁 0🍴, flat across full measurement window.
+  - **Banned opening still confirmed in logged posts**: `"Honestly the part I'd optimize first is the handoff, not the model stack."` — Reddit structural cadence failure is confirmed, not improving.
+  - Backlinks: 0 indexed. AIToolsIndex + ToolShelf still in-flight (7+ days, measurement window ending).
+  - Four marketing questions: all correctly answered, no drift.
+  - Market intelligence artifact: shared and consistent across all channels — no silo drift.
+  - **HN/Lobsters draft confirmed correct at `drafts/2026-05-21_hackernews_post.txt`** — this is the third consecutive cycle flagging this as the unmade move.
+- **What worked:** Infrastructure stack complete and holding. Proof-link/entry-path repairs may correlate with +1 Codeberg star. Market intelligence shared across channels.
+- **What failed:** Reddit structural cadence — the body rhythm problem survives fresh drafts. Zero indexed backlinks after 7+ days. HN/Lobsters still unmade for third consecutive cycle.
+- **What is repetitive:** Monitor passes during cooldown (correctly no output). Reddit body regeneration without structural cadence change. Audit flag for HN/Lobsters three cycles running without execution.
+- **What is low leverage:** More Reddit body drafts using the same 4-paragraph cadence. More monitor passes during cooldown. More owned-surface polish without new distribution.
+- **Current bottleneck:** HN/Lobsters human execution — and the pattern of deferring it for a third consecutive cycle.
+- **Next higher-leverage moves (priority order):**
+  1. **Human: execute HN/Lobsters from `drafts/2026-05-21_hackernews_post.txt`** — submit to HN first, then Lobsters. This is the third consecutive cycle this has been flagged. If it does not get executed this cycle, the distribution strategy is genuinely stuck.
+  2. **Reddit: stop multi-paragraph template fills — switch to one-paragraph thread-specific responses only.** Use site language (`merge or re-run`, `finished code`, `would you merge it?`) instead of handoff/diff/checks cadence.
+  3. **Escalate backlinks by 2026-05-28** — if AIToolsIndex + ToolShelf still show zero indexed backlinks, stop waiting and execute direct competitor citation outreach and directory submissions.
+- **Measurement window:** 7 days for HN/Lobsters visibility; 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta.
+- **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach.
+- **Structural note:** The loop has now correctly identified the same unmade move for three consecutive cycles without it being executed. If the human does not execute HN/Lobsters this cycle, the honest assessment is that the distribution strategy requires a human decision to move, not another loop iteration.
+- **Type:** **AUDIT / DIRECTION**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:44:39
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:58:55
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
