@@ -153,11 +153,20 @@ class TestReviewLoopBehavior:
             lambda *args, **kwargs: spec,
         )
 
-        # First Prompt.ask returns "Continue refining", second returns "Finish"
-        prompt_calls = ["Continue refining", "Finish"]
+        # First Prompt.ask returns the review action, then freeform feedback, then Finish
+        review_calls = [0]
 
         def mock_prompt_ask(*args: object, **kwargs: object) -> str:
-            return prompt_calls.pop(0)
+            raw_choices = kwargs.get("choices")
+            if raw_choices is None:
+                return "Please add tagging and search."
+            choices = raw_choices if isinstance(raw_choices, list) else []
+            if choices and choices[0] == "Continue refining":
+                if review_calls[0] == 0:
+                    review_calls[0] += 1
+                    return "Continue refining"
+                return "Finish"
+            return "Finish"
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.Prompt.ask",
@@ -312,11 +321,20 @@ class TestReviewLoopBehavior:
             lambda *args, **kwargs: spec,
         )
 
-        # First Prompt.ask returns "Update a section", second returns "Finish"
-        prompt_calls = ["Update a section", "Finish"]
+        # First Prompt.ask returns the review action, then section feedback, then Finish
+        review_calls = [0]
 
         def mock_prompt_ask(*args: object, **kwargs: object) -> str:
-            return prompt_calls.pop(0)
+            raw_choices = kwargs.get("choices")
+            if raw_choices is None:
+                return "Update the scope section to mention tags."
+            choices = raw_choices if isinstance(raw_choices, list) else []
+            if choices and choices[0] == "Continue refining":
+                if review_calls[0] == 0:
+                    review_calls[0] += 1
+                    return "Update a section"
+                return "Finish"
+            return "Finish"
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.Prompt.ask",

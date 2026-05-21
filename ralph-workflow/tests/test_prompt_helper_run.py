@@ -152,7 +152,16 @@ class TestRunPromptHelper:
             prompt_md_exists: bool,
             submit_artifact_tool_name: str,
             spec: dict[str, object],
+            session_id: str | None,
         ) -> None:
+            del (
+                workspace_root,
+                agent_config,
+                options,
+                prompt_md_exists,
+                submit_artifact_tool_name,
+                session_id,
+            )
             handle_called["called"] = True
             handle_called["spec"] = spec
 
