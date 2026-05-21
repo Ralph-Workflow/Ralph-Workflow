@@ -1646,6 +1646,13 @@ ralph.mcp.multimodal.resources
    :members:
    :show-inheritance:
 
+ralph.mcp.effective_session_mcp_plan
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.effective_session_mcp_plan
+   :members:
+   :show-inheritance:
+
 ralph.mcp.session_plan
 ~~~~~~~~~~~~~~~~~~~~~~
 

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 import ralph.mcp.transport.claude as claude_transport_module
+from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
 from ralph.mcp.transport import common as transport_common_module
 from ralph.mcp.upstream.agent_probe import AgentProbeReport, probe_agent_transports
 from ralph.mcp.upstream.validation import (
@@ -62,14 +63,13 @@ def _effective_session_mcp_servers_for_runner_validation(
     The runtime child ultimately consumes one combined session MCP set, so runner
     preflight must validate that effective set before agent invocation.
     """
-    custom_mcp_servers = transport_common_module.mcp_toml_as_upstreams(workspace_root)
-    claude_upstream_servers = claude_transport_module.load_existing_claude_upstream_servers(
-        workspace_root
+    effective_mcp = effective_session_mcp_plan_from_servers(
+        transport_common_module.mcp_toml_as_upstreams(workspace_root),
+        agent_upstream_servers=claude_transport_module.load_existing_claude_upstream_servers(
+            workspace_root
+        ),
     )
-    return transport_common_module.merge_mcp_toml_into_upstreams(
-        claude_upstream_servers,
-        custom_mcp_servers,
-    )
+    return effective_mcp.effective_servers
 
 
 def run_custom_mcp_validation(

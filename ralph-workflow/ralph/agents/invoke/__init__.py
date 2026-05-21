@@ -87,13 +87,16 @@ from ralph.mcp.protocol.startup import (
     post_http_jsonrpc_with_session,
     tools_list_request,
 )
+from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
 from ralph.mcp.tools.names import claude_tool_name
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
 from ralph.mcp.transport.common import (
     mcp_toml_as_upstreams,
-    merge_mcp_toml_into_upstreams,
     set_upstream_mcp_config,
+)
+from ralph.mcp.transport.common import (
+    merge_mcp_toml_into_upstreams as _merge_mcp_toml_into_upstreams,
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.process.child_liveness import ChildLivenessRegistry
@@ -312,10 +315,12 @@ def resolve_invocation_runtime(
             endpoint,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
-        mcp_toml = mcp_toml_as_upstreams(workspace_path)
-        merged_upstreams = merge_mcp_toml_into_upstreams(upstreams, mcp_toml)
-        set_upstream_mcp_config(runtime_env, merged_upstreams)
-        set_upstream_mcp_config(server_env, merged_upstreams)
+        effective_mcp = effective_session_mcp_plan_from_servers(
+            mcp_toml_as_upstreams(workspace_path),
+            agent_upstream_servers=upstreams,
+        )
+        set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
+        set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
         return ResolvedInvocationRuntime(
             agent_env=runtime_env,
             server_env=server_env or None,
@@ -331,10 +336,12 @@ def resolve_invocation_runtime(
             system_prompt_file=system_prompt_file,
         )
         runtime_env["CODEX_HOME"] = codex_home
-        mcp_toml = mcp_toml_as_upstreams(workspace_path)
-        merged_upstreams = merge_mcp_toml_into_upstreams(upstreams, mcp_toml)
-        set_upstream_mcp_config(runtime_env, merged_upstreams)
-        set_upstream_mcp_config(server_env, merged_upstreams)
+        effective_mcp = effective_session_mcp_plan_from_servers(
+            mcp_toml_as_upstreams(workspace_path),
+            agent_upstream_servers=upstreams,
+        )
+        set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
+        set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
         return ResolvedInvocationRuntime(
             agent_env=runtime_env,
             server_env=server_env or None,
@@ -342,11 +349,12 @@ def resolve_invocation_runtime(
         )
     if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         if endpoint:
-            existing = load_existing_claude_upstream_servers(workspace_path)
-            mcp_toml = mcp_toml_as_upstreams(workspace_path)
-            merged_upstreams = merge_mcp_toml_into_upstreams(existing, mcp_toml)
-            set_upstream_mcp_config(runtime_env, merged_upstreams)
-            set_upstream_mcp_config(server_env, merged_upstreams)
+            effective_mcp = effective_session_mcp_plan_from_servers(
+                mcp_toml_as_upstreams(workspace_path),
+                agent_upstream_servers=load_existing_claude_upstream_servers(workspace_path),
+            )
+            set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
+            set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
         return ResolvedInvocationRuntime(
             agent_env=runtime_env or None,
             server_env=server_env or None,
@@ -429,6 +437,7 @@ ProcessReaderCtx = _ProcessReaderCtx
 read_lines_from_process = _read_lines_from_process
 wait_for_descendants_then_recheck = _wait_for_descendants_then_recheck
 policy_from_options = _policy_from_options
+merge_mcp_toml_into_upstreams = _merge_mcp_toml_into_upstreams
 
 # Re-export all public types and error classes
 __all__ = [

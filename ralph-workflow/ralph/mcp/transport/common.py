@@ -16,11 +16,18 @@ from ralph.mcp.upstream.config import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.config.mcp_models import McpConfig
+
 
 def mcp_toml_as_upstreams(workspace_path: Path | None) -> tuple[UpstreamMcpServer, ...]:
     """Load .agent/mcp.toml and return the configured upstream MCP servers."""
     config_path = (workspace_path / ".agent" / "mcp.toml") if workspace_path is not None else None
     mcp_config = load_mcp_config(config_path=config_path)
+    return mcp_config_as_upstreams(mcp_config)
+
+
+def mcp_config_as_upstreams(mcp_config: McpConfig) -> tuple[UpstreamMcpServer, ...]:
+    """Convert loaded MCP config into Ralph custom upstream server records."""
     return tuple(
         UpstreamMcpServer(
             name=spec.name,
@@ -62,6 +69,7 @@ def set_upstream_mcp_config(
 
 
 __all__ = [
+    "mcp_config_as_upstreams",
     "mcp_toml_as_upstreams",
     "merge_mcp_toml_into_upstreams",
     "set_upstream_mcp_config",

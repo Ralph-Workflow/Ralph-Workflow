@@ -73,6 +73,38 @@ def test_diagnose_renders_custom_mcp_tables_with_real_stdio_fixture(
     assert "OpenCode" in output
 
 
+def test_diagnose_renders_effective_session_mcp_inventory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write_fake_stdio_mcp_toml(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
+    (tmp_path / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "native-memory": {
+                        "command": "npx",
+                        "args": ["-y", "memory-mcp"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    console, stream = _make_test_console()
+    ctx = make_display_context(console=console, env={})
+    workspace_scope = WorkspaceScope(tmp_path)
+
+    diagnose_module.check_mcp_servers(workspace_scope, display_context=ctx)
+
+    output = stream.getvalue()
+    assert "Effective Session MCP Inventory" in output
+    assert "fake_stdio" in output
+    assert "native-memory" in output
+    assert "custom" in output
+    assert "agent_upstream" in output
+
+
 def test_diagnose_handles_workspace_with_no_custom_mcp_servers(
     tmp_path: Path,
 ) -> None:

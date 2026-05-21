@@ -19,6 +19,8 @@ from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.git.operations import find_repo_root, is_repo_clean
+from ralph.mcp.session_plan import resolve_effective_session_mcp_plan
+from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.common import mcp_toml_as_upstreams
 from ralph.mcp.upstream.agent_probe import probe_agent_transports
 from ralph.mcp.upstream.validation import validate_upstream_mcp_servers
@@ -42,7 +44,10 @@ from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 if TYPE_CHECKING:
     from types import ModuleType
 
+    from rich.console import Console
+
     from ralph.display.context import DisplayContext
+    from ralph.mcp.upstream.config import UpstreamMcpServer
 
 
 def _module_attr(module: ModuleType, attribute: str) -> object:
@@ -412,14 +417,28 @@ def _check_mcp_servers(
     """
     c = display_context.console
 
+    _print_effective_session_mcp_inventory(c, workspace_scope.root)
+
+    ok, healthy_servers = _render_custom_mcp_server_table(c, workspace_scope.root)
+    if not ok or not healthy_servers:
+        return ok
+
+    _print_agent_transport_compatibility(c, healthy_servers, workspace_scope.root)
+    return True
+
+
+def _render_custom_mcp_server_table(
+    console: Console, workspace_root: Path
+) -> tuple[bool, tuple[UpstreamMcpServer, ...]]:
+    """Print custom MCP health table and return whether it succeeded."""
+    upstreams = mcp_toml_as_upstreams(workspace_root)
+
     server_table = Table(title="Custom MCP Servers")
     server_table.add_column("Server", style="theme.cat.meta")
     server_table.add_column("Transport")
     server_table.add_column("Status")
     server_table.add_column("Tools")
     server_table.add_column("Detail")
-
-    upstreams = mcp_toml_as_upstreams(workspace_scope.root)
     if not upstreams:
         server_table.add_row(
             "(none)",
@@ -428,8 +447,8 @@ def _check_mcp_servers(
             "-",
             "-",
         )
-        c.print(server_table)
-        return True
+        console.print(server_table)
+        return True, ()
 
     try:
         report = validate_upstream_mcp_servers(upstreams, strict=False)
@@ -441,8 +460,8 @@ def _check_mcp_servers(
             "-",
             "-",
         )
-        c.print(server_table)
-        return False
+        console.print(server_table)
+        return False, ()
 
     for entry in report.servers:
         status = (
@@ -462,20 +481,26 @@ def _check_mcp_servers(
             detail or "-",
         )
 
-    c.print(server_table)
+    console.print(server_table)
 
     healthy_names = {r.name for r in report.servers if r.ok}
     healthy_servers = tuple(s for s in upstreams if s.name in healthy_names)
-    if not healthy_servers:
-        return True
+    return True, healthy_servers
 
+
+def _print_agent_transport_compatibility(
+    console: Console,
+    healthy_servers: tuple[UpstreamMcpServer, ...],
+    workspace_root: Path,
+) -> None:
+    """Print per-agent MCP transport compatibility for healthy custom servers."""
     probe_table = Table(title="Agent Transport Compatibility")
     probe_table.add_column("Server", style="theme.cat.meta")
     probe_table.add_column("Claude")
     probe_table.add_column("Codex")
     probe_table.add_column("OpenCode")
 
-    probes = probe_agent_transports(healthy_servers, workspace_path=workspace_scope.root)
+    probes = probe_agent_transports(healthy_servers, workspace_path=workspace_root)
     by_server: dict[str, dict[str, Text]] = {}
     for probe in probes:
         if probe.note and probe.ok:
@@ -495,8 +520,36 @@ def _check_mcp_servers(
             cells.get("opencode", Text("-")),
         )
 
-    c.print(probe_table)
-    return True
+    console.print(probe_table)
+
+
+def _print_effective_session_mcp_inventory(console: Console, workspace_root: Path) -> None:
+    effective_mcp = resolve_effective_session_mcp_plan(
+        workspace_root,
+        agent_upstream_servers=load_existing_claude_upstream_servers(workspace_root),
+    )
+    inventory_table = Table(title="Effective Session MCP Inventory")
+    inventory_table.add_column("Server", style="theme.cat.meta")
+    inventory_table.add_column("Origin")
+    inventory_table.add_column("Transport")
+    inventory_table.add_column("Exposure")
+    if effective_mcp.effective_servers:
+        for server in effective_mcp.effective_servers:
+            inventory_table.add_row(
+                server.name,
+                server.origin,
+                server.transport,
+                _inventory_exposure(server.origin),
+            )
+    else:
+        inventory_table.add_row("(none)", "-", "-", "No effective session MCP servers")
+    console.print(inventory_table)
+
+
+def _inventory_exposure(origin: str) -> str:
+    if origin == "custom":
+        return "proxied via ralph_custom__*"
+    return "proxied via ralph_upstream__*"
 
 
 def _check_workspace_files(*, display_context: DisplayContext) -> bool:

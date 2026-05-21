@@ -53,6 +53,7 @@ from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._standalone_http_server import _StandaloneHttpServer
 from ralph.mcp.server.runtime_session import FileBackedSession, session_from_env
 from ralph.mcp.tools.bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
+from ralph.mcp.transport.common import mcp_config_as_upstreams, merge_mcp_toml_into_upstreams
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
     UpstreamMcpServer,
@@ -350,17 +351,7 @@ def _workspace_mcp_config_path(workspace_root: Path) -> Path:
 
 
 def _mcp_toml_upstream_servers(mcp_config: McpConfig) -> tuple[UpstreamMcpServer, ...]:
-    return tuple(
-        UpstreamMcpServer(
-            name=spec.name,
-            transport=spec.transport,
-            url=spec.url,
-            command=spec.command,
-            args=tuple(spec.args),
-            env=dict(spec.env),
-        )
-        for spec in mcp_config.mcp_servers.values()
-    )
+    return mcp_config_as_upstreams(mcp_config)
 
 
 def load_runtime_upstream_servers(
@@ -371,10 +362,7 @@ def load_runtime_upstream_servers(
     env_map = os.environ if env is None else env
     raw_upstream = env_map.get(UPSTREAM_MCP_CONFIG_ENV)
     env_servers = load_upstream_mcp_servers(raw_upstream)
-    merged: dict[str, UpstreamMcpServer] = {server.name: server for server in env_servers}
-    for server in _mcp_toml_upstream_servers(mcp_config):
-        merged[server.name] = server
-    return tuple(merged.values())
+    return merge_mcp_toml_into_upstreams(env_servers, _mcp_toml_upstream_servers(mcp_config))
 
 
 def run_standalone_server(

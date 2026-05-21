@@ -14,6 +14,7 @@ from ralph.api.opencode import get_model_by_id
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp._session_model_opts import SessionModelOpts
+from ralph.mcp.effective_session_mcp_plan import EffectiveSessionMcpPlan
 from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     MultimodalModelIdentity,
@@ -21,6 +22,7 @@ from ralph.mcp.multimodal.capabilities import (
     resolve_capability_profile,
 )
 from ralph.mcp.protocol.capability_mapping import DrainClass, drain_class_for_session
+from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.common import (
     mcp_toml_as_upstreams,
@@ -42,6 +44,7 @@ _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.policy.models import AgentsPolicy
 
 
@@ -103,6 +106,44 @@ def resolve_model_identity(
     )
 
 
+def resolve_effective_session_mcp_plan(
+    workspace_path: Path | None,
+    *,
+    agent_upstream_servers: tuple[UpstreamMcpServer, ...] = (),
+    provider_visible_server_names: tuple[str, ...] = (RALPH_MCP_SERVER_NAME,),
+) -> EffectiveSessionMcpPlan:
+    """Return the canonical effective MCP inventory for a session.
+
+    ``provider_visible_server_names`` captures the direct provider-visible MCP
+    entries (typically just ``ralph``), while ``effective_servers`` captures the
+    merged custom + agent-native upstream server set that Ralph will proxy.
+    """
+
+    custom_servers = mcp_toml_as_upstreams(workspace_path)
+    return effective_session_mcp_plan_from_servers(
+        custom_servers,
+        agent_upstream_servers=agent_upstream_servers,
+        provider_visible_server_names=provider_visible_server_names,
+    )
+
+
+def effective_session_mcp_plan_from_servers(
+    custom_servers: tuple[UpstreamMcpServer, ...],
+    *,
+    agent_upstream_servers: tuple[UpstreamMcpServer, ...] = (),
+    provider_visible_server_names: tuple[str, ...] = (RALPH_MCP_SERVER_NAME,),
+) -> EffectiveSessionMcpPlan:
+    """Build the canonical effective session MCP inventory from preloaded servers."""
+
+    effective_servers = merge_mcp_toml_into_upstreams(agent_upstream_servers, custom_servers)
+    return EffectiveSessionMcpPlan(
+        custom_servers=custom_servers,
+        agent_upstream_servers=agent_upstream_servers,
+        effective_servers=effective_servers,
+        provider_visible_server_names=provider_visible_server_names,
+    )
+
+
 def build_session_mcp_plan(
     *,
     transport: AgentTransport | None,
@@ -142,12 +183,14 @@ def build_session_mcp_plan(
         capabilities.add("media.read")
 
     server_env: dict[str, str] = {}
-    upstreams = mcp_toml_as_upstreams(workspace_path)
+    effective_mcp = resolve_effective_session_mcp_plan(workspace_path)
+    upstreams = effective_mcp.effective_servers
     if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
-        upstreams = merge_mcp_toml_into_upstreams(
-            load_existing_claude_upstream_servers(workspace_path),
-            upstreams,
+        effective_mcp = resolve_effective_session_mcp_plan(
+            workspace_path,
+            agent_upstream_servers=load_existing_claude_upstream_servers(workspace_path),
         )
+        upstreams = effective_mcp.effective_servers
         set_upstream_mcp_config(server_env, upstreams)
 
     if upstreams and not is_commit:
@@ -231,8 +274,11 @@ def _base_capabilities_for_drain(
 
 
 __all__ = [
+    "EffectiveSessionMcpPlan",
     "SessionMcpPlan",
     "SessionModelOpts",
     "build_session_mcp_plan",
+    "effective_session_mcp_plan_from_servers",
+    "resolve_effective_session_mcp_plan",
     "resolve_model_identity",
 ]

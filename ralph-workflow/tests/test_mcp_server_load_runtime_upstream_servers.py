@@ -970,3 +970,22 @@ class TestLoadRuntimeUpstreamServers:
         result = load_runtime_upstream_servers(config, env={UPSTREAM_MCP_CONFIG_ENV: serialized})
         assert len(result) == 1
         assert result[0].url == "http://toml:9"
+
+    def test_toml_server_collision_preserves_custom_origin(self) -> None:
+
+        shared = "shared-srv"
+        env_srv = UpstreamMcpServer(
+            name=shared,
+            transport="http",
+            url="http://env:9",
+            origin="agent_upstream",
+        )
+        serialized = serialize_upstream_mcp_servers([env_srv])
+        toml_spec = McpServerSpec(name=shared, transport="http", url="http://toml:9")
+        config = McpConfig(mcp_servers={shared: toml_spec})
+
+        result = load_runtime_upstream_servers(config, env={UPSTREAM_MCP_CONFIG_ENV: serialized})
+
+        assert len(result) == 1
+        assert result[0].url == "http://toml:9"
+        assert result[0].origin == "custom"
