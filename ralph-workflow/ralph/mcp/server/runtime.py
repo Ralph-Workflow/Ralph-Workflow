@@ -192,10 +192,10 @@ def build_standalone_http_server(
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
     upstream_servers = load_runtime_upstream_servers(mcp_cfg)
-    upstream_reg = _extras.upstream_registry or (
-        UpstreamRegistry.build(upstream_servers, on_unreachable="warn_and_skip")
+    upstream_reg = (
+        _extras.upstream_registry or UpstreamRegistry.build(upstream_servers)
         if upstream_servers
-        else None
+        else _extras.upstream_registry
     )
     registry = build_ralph_tool_registry(
         effective_session,
@@ -315,10 +315,10 @@ def build_fastmcp_server(
         else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
     upstream_servers = load_runtime_upstream_servers(mcp_cfg)
-    upstream_reg = _extras.upstream_registry or (
-        UpstreamRegistry.build(upstream_servers, on_unreachable="warn_and_skip")
+    upstream_reg = (
+        _extras.upstream_registry or UpstreamRegistry.build(upstream_servers)
         if upstream_servers
-        else None
+        else _extras.upstream_registry
     )
     registry = build_ralph_tool_registry(
         effective_session,

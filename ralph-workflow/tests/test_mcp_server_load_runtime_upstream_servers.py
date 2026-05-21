@@ -33,6 +33,7 @@ from ralph.mcp.upstream.config import (
 )
 from ralph.mcp.upstream.models import UpstreamCallError
 from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.mcp.upstream.validation import UpstreamValidationError
 from ralph.phases import PhaseContext
 from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline import runner as runner_module
@@ -772,6 +773,68 @@ def test_upstream_registry_catalog_excludes_unhealthy_upstream_servers() -> None
     assert len(definitions) == 1
     assert definitions[0].alias == "ralph_upstream__healthy__ping"
     assert not any("broken" in d.alias for d in definitions)
+
+
+@pytest.mark.parametrize(
+    ("builder_name", "extras_factory"),
+    [
+        (
+            "build_standalone_http_server",
+            lambda mcp_config: {"extras": server_runtime.McpServerExtras(mcp_config=mcp_config)},
+        ),
+        (
+            "build_fastmcp_server",
+            lambda mcp_config: {"extras": server_runtime.McpServerExtras(mcp_config=mcp_config)},
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    ("server_name", "spec", "upstream"),
+    [
+        (
+            "custom-http",
+            McpServerSpec(name="custom-http", transport="http", url="http://unused"),
+            UpstreamMcpServer(name="custom-http", transport="http", url="http://unused"),
+        ),
+        (
+            "custom-stdio",
+            McpServerSpec(name="custom-stdio", transport="stdio", command="custom-mcp"),
+            UpstreamMcpServer(name="custom-stdio", transport="stdio", command="custom-mcp"),
+        ),
+    ],
+)
+def test_mcp_server_builders_raise_when_any_configured_upstream_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    builder_name: str,
+    extras_factory: object,
+    server_name: str,
+    spec: McpServerSpec,
+    upstream: UpstreamMcpServer,
+) -> None:
+    mcp_config = McpConfig(mcp_servers={server_name: spec})
+
+    def fake_build(
+        servers: object,
+        *,
+        client_factory: object | None = None,
+        on_unreachable: str = "raise",
+    ) -> UpstreamRegistry:
+        del servers, client_factory
+        if on_unreachable == "warn_and_skip":
+            return UpstreamRegistry([], {})
+        raise UpstreamValidationError(
+            f"upstream MCP server '{server_name}' is unreachable: server unreachable"
+        )
+
+    monkeypatch.setattr(server_runtime, "load_runtime_upstream_servers", lambda cfg: (upstream,))
+    monkeypatch.setattr(server_runtime.UpstreamRegistry, "build", fake_build)
+
+    builder = getattr(server_runtime, builder_name)
+    kwargs = cast("dict[str, object]", extras_factory(mcp_config))
+
+    with pytest.raises(UpstreamValidationError, match=server_name):
+        builder(tmp_path, **kwargs)
 
 
 def test_upstream_policy_blocks_proxied_tools_without_upstream_capability(
