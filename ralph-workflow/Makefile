@@ -176,11 +176,13 @@ verify: packaging-smoke
 	@uv run python -m ralph.verify
 
 packaging-smoke:
-	@python -m venv tmp/packaging-smoke
-	@tmp/packaging-smoke/bin/pip install --quiet dist/ralph_workflow-*.whl
-	@ls -la tmp/packaging-smoke/bin/ralph-prompt
-	@tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"
-	@rm -rf tmp/packaging-smoke
+	@mkdir -p ../tmp
+	@python -m venv ../tmp/packaging-smoke
+	@../tmp/packaging-smoke/bin/pip install --quiet .
+	@ls -la ../tmp/packaging-smoke/bin/ralph-prompt
+	@../tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"
+	@uv run pytest -q tests/test_ralph_prompt_entry.py
+	@rm -rf ../tmp/packaging-smoke
 
 dist-binary:
 	@echo "Building PyInstaller binary..."
