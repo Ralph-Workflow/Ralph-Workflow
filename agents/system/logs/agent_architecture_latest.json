@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "mostly_healthy",
-    "primary_failure_mode": "The independent-verification boundaries are now real, but the marketing full-contract loop is still genuinely red because its owner path has not yet converted repeated failing signals into a demonstrated repaired pass state.",
-    "most_urgent_fix": "Make the marketing owner loop produce a real repaired state and fresh passing independent verification instead of staying in measurement_pending while repo adoption remains flat and Reddit repetition remains open."
+    "primary_failure_mode": "The system-level ownership and self-certification drift was repaired this run, but the marketing full-contract loop remains truthfully red: its runner bundle is still failing, its momentum watchdog is still needs_attention, and its independent verifier still fails closed.",
+    "most_urgent_fix": "Repair the marketing owner loop itself: restore real Reddit research input or an equivalent search path, execute the pending distribution/repetition repairs, and do not claim recovery until a fresh marketing independent-verification artifact passes."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -14,6 +14,7 @@
     "layers_to_audit": [
       "system prompt",
       "tool selection",
+      "tool execution",
       "hidden repair loops",
       "persistence",
       "ownership boundaries",
@@ -21,11 +22,13 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-21T20:48:55+02:00",
+    "checked_at": "2026-05-21T21:48:38+02:00",
     "cron_scheduler_enabled": true,
     "live_inventory_sources": [
-      "cron tool list attempt (restricted in this runtime; removal-only)",
-      "/home/mistlight/.openclaw/cron/jobs.json"
+      "/home/mistlight/.openclaw/cron/jobs.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
     ],
     "inspected_roots": [
       "/home/mistlight/.openclaw/workspace/agents/system",
@@ -36,108 +39,119 @@
     "relevant_live_jobs_checked": [
       "agent-architecture-watchdog",
       "ralph-workflow-docs-verifier-supervisor",
-      "marketing-momentum-watchdog",
+      "marketing-active-loop",
       "marketing-workflow-audit",
+      "marketing-momentum-watchdog",
+      "reddit-monitor",
+      "system-health-monitor",
       "blocked-channel-deep-review",
-      "system-health-monitor"
+      "ralph-site-owner-loop",
+      "Push research findings to git repo",
+      "codeberg-github-mirror-sync"
     ]
   },
   "findings": [
     {
       "severity": "high",
-      "title": "Marketing full-contract loop is honestly fail-closed, but still not producing a repaired pass state",
-      "mechanism": "The verifier boundary is now real and correctly reports fail, because the owner loop still shows flat primary-repo adoption, repeated Reddit style risk, and only measurement_pending repair states rather than demonstrated repaired outcomes.",
+      "title": "Marketing full-contract loop is still genuinely red, and the checker now truthfully fails instead of self-certifying over it",
+      "mechanism": "The runner bundle still returns ok=false because reddit_monitor.py is failing with search_provider_degraded, the momentum watchdog still reports needs_attention, and the independent verifier still fails closed. The checker gate was tightened this run so it now fails on those facts instead of printing MARKETING_LOOP_OK.",
       "source_layer": "hidden repair loops",
-      "root_cause": "The marketing owner path is generating diagnoses and pending measurements, but it has not yet turned those failures into fresh evidence strong enough for independent verification to pass.",
+      "root_cause": "The marketing owner path is still not converting failing signals into repaired outcomes, and its research input path is currently degraded enough to block fresh Reddit opportunity discovery.",
       "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json:41",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json:54",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json:88",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json:14"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ],
-      "confidence": 0.98,
-      "recommended_fix": "Keep the loop fail-closed and route repair ownership back into the marketing owner loop until it produces concrete repaired evidence: distinct non-repetitive Reddit execution, measurable Codeberg movement or a tactic replacement, and a fresh passing independent-verification artifact."
+      "confidence": 0.99,
+      "recommended_fix": "Repair the marketing owner loop itself: restore usable research/search coverage, execute the pending distribution and anti-repetition repairs, and require a fresh passing marketing independent-verification artifact before calling that path healthy."
     },
     {
       "severity": "medium",
-      "title": "System health monitor advertises a JSON artifact but actually writes append-only JSONL to that path",
-      "mechanism": "self_improvement_loops.json declares agents/system/logs/health_monitor.json as the monitor artifact, but health_monitor.py appends one JSON object per line to that file. That makes the declared artifact a log stream instead of a reliable current-state document.",
-      "source_layer": "persistence",
-      "root_cause": "The monitor mixed 'latest state' and 'history log' responsibilities into one file path.",
+      "title": "Architecture-scoped Gateway jobs had drifted outside the runtime registry and monitor coverage",
+      "mechanism": "Several enabled system-owned jobs were live in Gateway but were not explicitly owned in self_improvement_loops.json, which weakens ownership boundaries and lets live topology slip past registry-based audits. This run repaired that drift and added a durable registry-coverage invariant.",
+      "source_layer": "runtime cron topology",
+      "root_cause": "The runtime gained active support and marketing jobs faster than the watchdog registry and monitor key-job list were updated.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:84",
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py:13",
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py:255",
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py:263",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+        "/home/mistlight/.openclaw/cron/jobs.json"
       ],
-      "confidence": 0.94,
-      "recommended_fix": "Split the monitor outputs into a parseable latest-state artifact (for example health_monitor_latest.json) and a separate history log (for example health_monitor.jsonl), then refresh the monitor's independent verification artifact after the change."
+      "confidence": 0.97,
+      "recommended_fix": "Keep the registry as live truth for architecture-scoped jobs, and keep the loop-integrity coverage gate fail-closed so future active jobs cannot quietly bypass ownership accounting."
     },
     {
-      "severity": "low",
-      "title": "Stale blocked-channel-followup residue still survives in the health monitor after the unblocker topology was collapsed",
-      "mechanism": "The live cron inventory and registry now show one blocked-channel owner schedule, but health_monitor.py still treats blocked-channel-followup as a key job name. The overlap was repaired in topology, yet one monitoring surface still remembers the old split.",
-      "source_layer": "runtime cron topology",
-      "root_cause": "Architecture cleanup updated cron inventory and registry notes faster than secondary monitor code.",
+      "severity": "medium",
+      "title": "Learning promotion improved this run: the watchdog finding became runtime-enforced behavior instead of staying a prose-only note",
+      "mechanism": "The ownership-drift and fake-green findings were not left in markdown; they were promoted into code by expanding KEY_JOBS, making the registry explicit, and hardening the marketing checker and loop-integrity audit.",
+      "source_layer": "persistence",
+      "root_cause": "Previous audits identified drift and self-certification risks, but the guardrails were still too weak until this run translated them into executable checks.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/cron/jobs.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:98",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:107",
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py:27"
+        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py"
       ],
-      "confidence": 0.92,
-      "recommended_fix": "Remove the stale blocked-channel-followup key-job reference from health_monitor.py and refresh the health monitor's independent verification artifact after that code change."
+      "confidence": 0.95,
+      "recommended_fix": "Continue converting repeated audit findings into fail-closed runtime gates, especially anywhere a checker can still say OK while a runner bundle or verifier artifact is red."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Drive the marketing owner loop from measurement_pending to a demonstrably repaired state",
-      "why_now": "This is the only active full-contract loop whose independent verifier is still red.",
-      "expected_effect": "The marketing stack will stop reporting activity without closure and will only go green with real repaired evidence."
+      "goal": "Repair the marketing research/execution path until the marketing full-contract loop can earn a real pass",
+      "why_now": "It is the only active full-contract loop still red, and the new checker honesty makes that gap explicit rather than hidden.",
+      "expected_effect": "Marketing will stop reporting faux progress and will only return green once research input, action execution, and independent verification all line up."
     },
     {
       "order": 2,
-      "goal": "Separate system-health latest-state output from historical logging",
-      "why_now": "Current monitor persistence is fragile and undermines its declared artifact contract.",
-      "expected_effect": "Future monitors and audits will have one authoritative parseable health artifact plus separate history."
+      "goal": "Keep registry ownership and job-coverage gates current as new system-owned Gateway jobs appear",
+      "why_now": "This run repaired live topology drift, but the protection only stays valuable if the registry remains the maintained source of truth.",
+      "expected_effect": "Future loops will not escape architecture accounting or monitoring coverage by accident."
     },
     {
       "order": 3,
-      "goal": "Delete the stale blocked-channel-followup reference from the health monitor and reverify it",
-      "why_now": "The live topology is already collapsed; lingering stale names should not keep contaminating secondary monitors.",
-      "expected_effect": "Cleaner topology reads and less stale-boundary confusion."
+      "goal": "Harden any remaining checker surfaces that can still ignore red runner or verifier signals",
+      "why_now": "The marketing checker showed how easy it is for a green substring to survive after the real loop is red.",
+      "expected_effect": "Less hidden self-certification and faster fail-closed diagnosis across the runtime."
     }
   ],
   "repairs_applied_this_run": [
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/docs_quality/docs_stack_temp_watchdog_status.json",
-      "change": "Archived the disabled temporary docs-watchdog JSON artifact so it no longer presents itself as live unhealthy authority.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
+      "change": "Added explicit ownership for the live docs supervisor, expanded the marketing stack ownerCronJobs to cover the full active marketing topology, and registered the active research-findings and mirror-sync support loops.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/docs_quality/docs_stack_temp_watchdog_status.json",
-        "/home/mistlight/.openclaw/workspace/agents/docs_quality/docs_stack_temp_watchdog_status.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json"
       ]
     },
     {
-      "status": "verified_current_state",
-      "target": "blocked-channel recovery topology",
-      "change": "Confirmed the old deep-review/follow-up overlap is no longer live: cron inventory shows only blocked-channel-deep-review, and the registry records the loop as collapsed to one owner schedule.",
+      "status": "done",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
+      "change": "Added a fail-closed gateway-job-registry-coverage invariant so enabled architecture-scoped jobs cannot hide outside the registry.",
       "proof": [
-        "/home/mistlight/.openclaw/cron/jobs.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:102"
+        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ]
     },
     {
-      "status": "verified_current_state",
-      "target": "independent verifier contracts",
-      "change": "Confirmed that the architecture verifier is independently green and the marketing verifier is independently red for real evidence reasons rather than self-certification.",
+      "status": "done",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
+      "change": "Expanded KEY_JOBS to watch the previously uncovered active jobs marketing-research-daily, marketing-daily, and Push research findings to git repo.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
+      ]
+    },
+    {
+      "status": "done",
+      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
+      "change": "Removed the fake-green path by making the checker fail when the runner bundle is red or the momentum watchdog is not healthy.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ]
     }
   ],
@@ -145,13 +159,17 @@
     "status": "performed",
     "artifacts": [
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
     ],
-    "summary": "Architecture independent verification currently passes. Marketing independent verification currently fails for substantive loop-health reasons. No same-run repair in this pass modified a repair/recovery loop in a way that required spawning a fresh verifier before closing this artifact update.",
-    "checked_at": "2026-05-21T20:48:55+02:00"
+    "summary": "Fresh post-repair verification confirms the ownership/coverage and checker-honesty repairs. Marketing independent verification still fails for substantive reasons, so the overall architecture remains only mostly healthy.",
+    "checked_at": "2026-05-21T21:48:38+02:00"
   },
+  "what_still_needs_independent_verification": [
+    "The marketing owner loop itself still needs a fresh passing independent verification artifact after substantive repair; current verdict remains fail."
+  ],
   "highest_risk_unresolved_issue": {
-    "title": "The marketing loop is a real fail-closed contract now, but it still has not earned a pass",
-    "why": "That is the clearest remaining gap between 'self-improving loop exists' and 'self-improving loop is actually recovering from its own failing signals.'"
+    "title": "The marketing loop is now truthfully red across checker, runner, momentum, and independent verification surfaces",
+    "why": "That is the clearest remaining gap between having a self-improving owner loop and actually recovering from its failing signals."
   }
 }

@@ -1,0 +1,53 @@
+{
+  "checked_at": "2026-05-21T19:45:25Z",
+  "verdict": "pass",
+  "summary": "All four claimed architecture-surface repairs verify against the live registry, watchdog code, monitor code, and latest output artifacts. The gateway-job coverage invariant is present and currently satisfied, the added key jobs are present, and the only live monitor issue remains the real marketing independent-verification failure.",
+  "verified_repairs": [
+    "All enabled architecture-scoped Gateway jobs currently detected by loop_integrity_audit.py are explicitly owned in self_improvement_loops.json.",
+    "loop_integrity_audit.py now enforces a durable gateway-job-registry-coverage invariant for enabled architecture-scoped Gateway jobs.",
+    "health_monitor.py KEY_JOBS now includes marketing-research-daily, marketing-daily, and Push research findings to git repo.",
+    "Current outputs remain truthful: loop_integrity_latest.json shows no gateway-job-registry-coverage error, and health_monitor_latest.json reports exactly one issue: the marketing independent-verification failure."
+  ],
+  "remaining_blockers": [
+    "autonomous-marketing-stack still fails its verifier pass-phrase check in loop_integrity_latest.json.",
+    "health_monitor_latest.json still records the real marketing_independent_verification loop_verification_fail verdict."
+  ],
+  "evidence": [
+    {
+      "claim": 1,
+      "result": "verified",
+      "details": "autonomous-marketing-stack owns the 12 active marketing-scoped job IDs in self_improvement_loops.json lines 29-72; system-health-monitor, ralph-site-owner-loop, blocked-channel-recovery, agent-architecture-watchdog, research-findings-sync, and codeberg-github-mirror-sync each declare their enabled owner job IDs in lines 75-163. A read-only recomputation using loop_integrity_audit.py's own scope rule found 17 enabled architecture-scoped jobs and 0 uncovered IDs.",
+      "refs": [
+        "agents/system/self_improvement_loops.json:29-163",
+        "agents/system/loop_integrity_audit.py:91-111",
+        "agents/system/loop_integrity_audit.py:254-272"
+      ]
+    },
+    {
+      "claim": 2,
+      "result": "verified",
+      "details": "The audit script loads Gateway jobs, computes covered owner IDs from registry ownerCronJob/ownerCronJobs fields, and appends a gateway-job-registry-coverage error result whenever any enabled architecture-scoped Gateway job lacks registry ownership.",
+      "refs": [
+        "agents/system/loop_integrity_audit.py:81-111",
+        "agents/system/loop_integrity_audit.py:249-272"
+      ]
+    },
+    {
+      "claim": 3,
+      "result": "verified",
+      "details": "KEY_JOBS explicitly contains marketing-research-daily, marketing-daily, and Push research findings to git repo.",
+      "refs": [
+        "agents/system/health_monitor.py:17-30"
+      ]
+    },
+    {
+      "claim": 4,
+      "result": "verified",
+      "details": "loop_integrity_latest.json contains no gateway-job-registry-coverage entry; its live errors are limited here to autonomous-marketing-stack verifier pass-phrase failure. health_monitor_latest.json reports issues_found=1 and that single issue is marketing_independent_verification with verdict fail.",
+      "refs": [
+        "agents/system/logs/loop_integrity_latest.json:1-97",
+        "agents/system/logs/health_monitor_latest.json:1-18"
+      ]
+    }
+  ]
+}

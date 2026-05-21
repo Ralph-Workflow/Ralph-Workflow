@@ -1,47 +1,45 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-21T20:48:55+02:00
+- Checked: 2026-05-21T21:48:38+02:00
 - Verdict: **MOSTLY HEALTHY**
-- Primary failure mode: **independent-verification boundaries are now real, but the marketing full-contract loop is still genuinely red because its owner path has not yet produced a repaired pass state**
-- Most urgent fix: **make the marketing owner loop turn flat-adoption + repetitive-Reddit findings into real repaired evidence and a fresh passing independent verification artifact**
+- Primary failure mode: **system-level ownership drift and fake-green marketing checking were repaired this run, but the marketing full-contract loop itself is still truthfully red**
+- Most urgent fix: **repair the marketing owner loop until it can produce fresh research input, execute its pending repair actions, and earn a passing independent-verification artifact**
 
 ## Severity-ranked findings
 
-1. **[high] Marketing full-contract loop is honestly fail-closed, but still not producing a repaired pass state**
-   - Evidence: `agents/marketing/logs/marketing_loop_independent_verification.json`, `agents/marketing/logs/marketing_loop_verifier_latest.md`, `agents/marketing/logs/marketing_workflow_audit_latest.json:41-88`, `agents/marketing/logs/marketing_momentum_watchdog.json:14-19`
-   - Why it matters: the verifier is no longer fake-green. It is red for real reasons: flat primary-repo adoption, Reddit repetition risk, and repair states that are still only `measurement_pending`.
+1. **[high] Marketing full-contract loop is still genuinely red, and the checker now truthfully fails instead of self-certifying over it**
+   - Evidence: `agents/marketing/marketing_loop_checker.py`, `agents/marketing/logs/marketing_loop_runner_latest.json`, `agents/marketing/logs/marketing_momentum_watchdog.json`, `agents/marketing/logs/marketing_loop_independent_verification.json`, `agents/system/logs/loop_integrity_latest.json`
+   - Why it matters: the runner bundle is still `ok=false`, the Reddit research path is degraded, momentum is still `needs_attention`, and the independent verifier is still fail-closed.
 
-2. **[medium] System health monitor advertises a JSON artifact but actually writes append-only JSONL to that path**
-   - Evidence: `agents/system/self_improvement_loops.json:84-90`, `agents/system/health_monitor.py:13`, `agents/system/health_monitor.py:255-264`, `agents/system/logs/health_monitor.json`
-   - Why it matters: the declared artifact is acting like a history log, not a reliable latest-state contract.
+2. **[medium] Architecture-scoped Gateway jobs had drifted outside the runtime registry and monitor coverage**
+   - Evidence: `agents/system/self_improvement_loops.json`, `agents/system/loop_integrity_audit.py`, `agents/system/health_monitor.py`, `agents/system/logs/loop_integrity_latest.json`, `.openclaw/cron/jobs.json`
+   - Why it matters: unowned live jobs weaken ownership boundaries and let topology drift escape registry-based audits. This was repaired and hardened this run.
 
-3. **[low] Stale `blocked-channel-followup` residue still survives in the health monitor after the unblocker topology was collapsed**
-   - Evidence: live cron inventory now shows only `blocked-channel-deep-review`; registry note at `agents/system/self_improvement_loops.json:98-110`; stale reference at `agents/system/health_monitor.py:27-29`
-   - Why it matters: the real overlap was fixed, but one secondary monitor still carries the old topology in code.
+3. **[medium] The watchdog finding was promoted into executable behavior instead of staying a prose-only lesson**
+   - Evidence: `agents/system/health_monitor.py`, `agents/system/loop_integrity_audit.py`, `agents/marketing/marketing_loop_checker.py`
+   - Why it matters: the system now has stronger fail-closed gates for ownership coverage and fake-green checker paths.
 
 ## Repairs applied this run
 
-- Archived `agents/docs_quality/docs_stack_temp_watchdog_status.json` so the disabled temporary docs self-heal layer no longer presents a live unhealthy JSON authority.
-- Confirmed the blocked-channel overlap finding is no longer live:
-  - cron inventory shows only `blocked-channel-deep-review`
-  - `agents/system/self_improvement_loops.json` records the loop as collapsed to one owner schedule
-- Rechecked the independent verifier outputs:
-  - architecture = **independently verified pass**
-  - marketing = **independently verified fail**
+- Added explicit registry ownership for the live docs supervisor, the full active marketing topology, and the two active sync loops.
+- Added a fail-closed `gateway-job-registry-coverage` invariant to `agents/system/loop_integrity_audit.py`.
+- Expanded `agents/system/health_monitor.py` coverage to include `marketing-research-daily`, `marketing-daily`, and `Push research findings to git repo`.
+- Tightened `agents/marketing/marketing_loop_checker.py` so it now fails on a red runner bundle or unhealthy momentum status instead of printing `MARKETING_LOOP_OK`.
 
 ## Independent verification status
 
-- **Performed**
-- Architecture artifact: `agents/system/logs/agent_architecture_independent_verification.json` → pass
-- Marketing artifact: `agents/marketing/logs/marketing_loop_independent_verification.json` → fail
-- No same-run repair in this pass changed a repair/recovery loop enough to require a fresh spawned verifier before closing this artifact update.
+- **Performed for the repaired ownership/coverage/checker-honesty paths**
+- `agents/system/logs/agent_architecture_independent_verification.json` → pass
+- `agents/system/logs/health_monitor_independent_verification.json` → pass
+- `agents/marketing/logs/marketing_loop_independent_verification.json` → fail
+- The repaired guardrails are verified, but the marketing owner loop itself is still not healthy.
 
 ## Ordered fix plan
 
-1. Drive the marketing owner loop from `measurement_pending` to a demonstrably repaired state.
-2. Split system-health latest-state output from historical JSONL logging, then refresh that monitor's independent verification artifact.
-3. Remove the stale `blocked-channel-followup` reference from `agents/system/health_monitor.py` and reverify that monitor.
+1. Repair the marketing research/execution path until the marketing full-contract loop can earn a real pass.
+2. Keep registry ownership and job-coverage gates current as new system-owned Gateway jobs appear.
+3. Harden any remaining checker surfaces that can still ignore red runner or verifier signals.
 
 ## Highest-risk unresolved issue
 
-- **The marketing loop is a real fail-closed contract now, but it still has not earned a pass.**
+- **The marketing loop is now truthfully red across checker, runner, momentum, and independent verification surfaces.**

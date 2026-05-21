@@ -1,10 +1,10 @@
 # Agent Architecture Independent Verification
 
-- Checked: 2026-05-21T20:48:03.069271
+- Checked: 2026-05-21T22:04:46.822943
 - Status: independently verified pass
 - Independent artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
-- Independent check time: 2026-05-21T18:50:00+02:00
-- Summary: Architecture verifier now fails closed on the independent artifact, and current architecture evidence still supports a pass on that contract while leaving known unresolved topology risks explicitly documented.
+- Independent check time: 2026-05-21T21:48:38+02:00
+- Summary: Fresh post-repair verification confirms that architecture-scoped Gateway jobs are now explicitly owned in the loop registry, loop integrity now has a durable registry-coverage gate, and the marketing checker no longer self-certifies past a failing runner bundle. The marketing stack itself remains red for substantive owner-loop reasons.
 
 ## Verification result
 

@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-21 (Thursday) — Reddit monitoring (19:26 UTC / 21:26 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-21_2126.md`
+- **Scan summary:** 36 candidate Reddit threads/posts scanned, 8 shortlisted, 28 rejected.
+- **Current verdict:** **8** credible discussion opportunities were found, but only about **1-3** are honest RalphWorkflow mention fits after prior-use, thread-family saturation, plug-saturation, no-product-value, and repeat-pattern filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+  - `r/ClaudeAI` — "My Claude Code morning setup. 8 minutes. Cuts 2 hours of friction. What am I missing?"
+  - `r/ClaudeCode` — "Claude Code stuck in \"approval loop\""
+  - `r/codex` — "Am I using Codex wrong, or is it not actually pushing changes to GitHub?"
+- **Repeated pains worth tracking:** review tax, morning re-entry friction, blocked-on-you approval drag, summary-vs-visible-state trust, checkpoint/worktree archaeology, and long-run drift.
+- **Risk note:** the live posting risk is still structural. Prior bodies are still too close to the same handoff/diff/checks cadence, and product mentions still want to fall into the final slot.
+- **Posting note:** No posting attempted from this monitor pass. Research-first only.
+
 ## 2026-05-21 (Thursday) — HN/Lobsters handoff packet re-verified + structural handoff escalation (18:03 UTC / 20:03 CEST)
 - **What I executed:** re-checked the live homepage at `https://ralphworkflow.com` and re-read `drafts/2026-05-21_hackernews_post.txt` to verify the current highest-leverage blocked move is still correct, current, and Codeberg-first. The live site is healthy: it is serving the repaired title `Unattended coding agent — AI agent orchestration CLI — Ralph Workflow` plus the stronger finish-state/body copy. The HN/Lobsters packet is also still correct after the earlier content-confusion repair and is ready for immediate human execution.
 - **Why this action:** this is **REPLACING / HANDOFF**. Reddit is still structurally high-risk, owned-surface/Telegraph work is already at the local ceiling, and the loop cannot autonomously submit to HN/Lobsters from this environment. The highest-leverage action I could actually complete right now was to remove doubt: prove the live site is healthy, prove the packet is current, and hand off the exact blocked move instead of pretending another internal tweak would beat it.
@@ -4617,3 +4631,62 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta and any indexed backlink signal.
 - **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach (curator contact, competitor citation requests, AlternativeTo manual submission).
 - **Type:** **AUDIT / REPAIR EXECUTED**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 21:19:46
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 21:31:40
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 21:36:42
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 21:46:24
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 21:54:26
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 21:55:01
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 21:57:17
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 21:59:02
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:04:47
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:06:43
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:06:44
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 22:06:54
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Ralph-Site docs proof-surface repair (20:10 UTC / 22:10 CEST)
+- **What I executed:** repaired the public docs-landing proof block in `/home/mistlight/.openclaw/workspace/Ralph-Site/docs/sphinx_overrides/index.rst` so it stops sending evaluators toward stale / weaker third-party surfaces and instead highlights the current live proof set: **ToolWise review page**, **SaaSHub product page**, and **SaaSHub alternatives**. Removed the stale GitDB GitHub-native proof link and the weaker TechTools Launchpad listing from that curated block.
+  - Verification: direct source readback confirms the block now contains ToolWise + SaaSHub only, and `GitDB` / `TechTools Launchpad` no longer appear in the live source block.
+- **Why this action:** this is **REPAIRED / REPLACING** a failed tactic. The audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, and the active backlink strategy explicitly says to reuse **live proof surfaces in public CTAs** while Codeberg is flat. The homepage itself is already healthy; the live issue was on a Ralph-Site-owned docs/public-proof surface that was still curating a GitHub-native trust path instead of the stronger current third-party proof set.
+- **Expected outcome:** trust-seeking evaluators who enter through the docs landing page should see a cleaner, more current third-party proof block that better supports the Codeberg-first path instead of reinforcing mirror-oriented or weaker discovery surfaces.
+- **Measurement window:** next 7 days for this proof block to stay live in source / next docs deploy, and next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat through **2026-06-04**, stop spending another cycle on proof-block curation alone and shift the next replacement move to a warmer external distribution or competitor-citation lane.
+- **Type:** **REPAIRED / REPLACING**
+- **Ralph-Site ownership note:** issue found on a Ralph-Site-owned public docs surface and repaired directly in Ralph-Site, not left as a passive note.
+- **Docs review note:** this belongs on the docs landing surface because it is a curated proof/discovery block, not repo documentation. The change pruned two weaker/staler entries, reduced mirror leakage, reduced clutter, and made the top-level evaluator path cleaner instead of adding more links.

@@ -1,48 +1,35 @@
 {
-  "checked_at": "2026-05-21T21:14:30+02:00",
+  "checked_at": "2026-05-21T21:48:38+02:00",
   "verdict": "pass",
-  "summary": "Health monitor now honors its artifact contract, keeps latest state separate from history, and correctly reports the live marketing verifier failure instead of falsely reporting the system healthy.",
+  "summary": "Fresh post-repair verification confirms that the health monitor now watches the newly explicit active jobs and still reports only the real remaining marketing verification failure instead of inventing extra health. This is a pass on monitor truthfulness, not a claim that the whole system is green.",
   "verified_repairs": [
     {
-      "claim": "health_monitor.py writes a parseable latest-state artifact and a separate append-only history log.",
+      "claim": "health_monitor.py now includes marketing-research-daily, marketing-daily, and Push research findings to git repo in KEY_JOBS.",
       "status": "verified",
-      "details": "health_monitor.py now writes agents/system/logs/health_monitor_latest.json via LATEST_FILE and appends history to agents/system/logs/health_monitor.jsonl via HISTORY_FILE."
+      "details": "Direct source inspection shows all three active jobs are now part of the health monitor key-job set."
     },
     {
-      "claim": "health_monitor.py no longer carries the stale blocked-channel-followup topology residue.",
+      "claim": "Direct rerun still produces a truthful latest-state artifact after the coverage expansion.",
       "status": "verified",
-      "details": "Direct source inspection shows blocked-channel-followup is absent from agents/system/health_monitor.py while blocked-channel-deep-review remains the live key job."
-    },
-    {
-      "claim": "health_monitor.py detects live full-contract loop verification failures instead of falsely returning green.",
-      "status": "verified",
-      "details": "Direct run of python3 /home/mistlight/.openclaw/workspace/agents/system/health_monitor.py returned one loop_verification_fail issue for agents/marketing/logs/marketing_loop_independent_verification.json, and agents/system/logs/health_monitor_latest.json records issues_found=1 with verdict=fail for the marketing independent verifier artifact."
+      "details": "health_monitor_latest.json now shows jobs_checked=19, issues_found=1, and the only reported issue is the real marketing independent-verification failure."
     }
   ],
   "remaining_blockers": [
-    "The system is not globally healthy yet because agents/marketing/logs/marketing_loop_independent_verification.json still has verdict=fail.",
-    "Marketing remains blocked on real owner-loop evidence: marketing_momentum_watchdog.json reports status=needs_attention and marketing_workflow_audit_latest.json still shows repair_window_status=measurement_pending with failing tactics."
+    "The monitor remains correctly red on marketing because agents/marketing/logs/marketing_loop_independent_verification.json still has verdict=fail.",
+    "This verification pass covered monitor truthfulness after the repair; the marketing owner loop itself still needs substantive repair before the overall system can go green."
   ],
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-      "summary": "Source now uses health_monitor_latest.json for latest state, health_monitor.jsonl for history, and inspects marketing_loop_independent_verification.json for required verdict=pass."
+      "summary": "KEY_JOBS now includes marketing-research-daily, marketing-daily, and Push research findings to git repo."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Latest monitor run at 2026-05-21T21:13:30.013849 records issues_found=1 and surfaces the live marketing loop_verification_fail instead of reporting zero issues."
+      "summary": "Latest direct run records jobs_checked=19 and only one issue: loop_verification_fail on the marketing independent verification artifact."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
       "summary": "Current marketing independent verifier verdict is fail."
-    },
-    {
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "Current status is needs_attention with actions no_recent_reddit_post, apollo_channel_blocked, and primary_repo_adoption_flat."
-    },
-    {
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "Current audit still shows repair_window_status=measurement_pending and failing tactics for reddit_style_repetition and flat adoption windows."
     }
   ]
 }

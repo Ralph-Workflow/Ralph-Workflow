@@ -1,16 +1,22 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-21 10:56 UTC
+Timestamp: 2026-05-21 20:06 UTC
 
 ## ralph-docs-watchdog
 - Status: ok
-- Repairs:
-  - runner artifact was stale; executed runner
 - Checker: `DOCS_QUALITY_OK`
 
 ## autonomous-marketing-stack
-- Status: ok
-- Checker: `MARKETING_LOOP_OK`
+- Status: error
+- Repairs:
+  - checker failed; executed runner for remediation
+  - executed verifier after remediation
+- Errors:
+  - verifier failed after remediation
+  - checker still failing after remediation/verifier pass
+  - verifier artifact missing required pass phrase
+- Checker: `MARKETING_LOOP_FAIL: momentum watchdog status is needs_attention`
+- Checker after repair: `MARKETING_LOOP_FAIL: momentum watchdog status is needs_attention`
 
 ## ralph-site-owner-loop
 - Status: owner_only
@@ -29,11 +35,23 @@ Timestamp: 2026-05-21 10:56 UTC
 - Status: owner_only
 - Notes:
   - Generic blocked-channel ownership now lives under explicitly non-Reddit names to avoid marketing ownership leakage.
-  - Deep review and follow-up share one owner path today; future architecture work should split them only if they gain distinct code paths or verifier contracts.
+  - This loop was collapsed to one owner schedule after the old deep-review/follow-up split was found to share one runtime path and one result artifact.
 
 ## agent-architecture-watchdog
 - Status: ok
 - Checker: `AGENT_ARCHITECTURE_OK`
+
+## research-findings-sync
+- Status: owner_only
+- Notes:
+  - Owns pushing workspace research findings into the git repo with tests and sync proof.
+  - Operational support loop; not a self-certifying quality authority.
+
+## codeberg-github-mirror-sync
+- Status: owner_only
+- Notes:
+  - Gateway-owned Codeberg-to-GitHub mirror sync. Codeberg remains source of truth.
+  - Operational replication loop; ownership must stay explicit even though it is not a full verifier contract.
 
 ## user-crontab-ownership
 - Status: ok

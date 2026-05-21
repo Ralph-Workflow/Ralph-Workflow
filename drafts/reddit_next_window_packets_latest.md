@@ -1,10 +1,10 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-21 09:39 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-21 22:06 CEST
 
 Live posting is **not** the move right now.
 
-Latest watchdog state references report `reddit_monitor_2026-05-20_2123.md`.
-- `status: already_logged`
-- `detail: Thread already exists in outreach-log.md`
+Latest watchdog state references report `reddit_monitor_2026-05-21_2156.md`.
+- `status: no_unused_opportunity`
+- `detail: opportunity_state:fully_consumed; opportunities:0`
 
 So this packet is optimized for the **next safe window**, not for forcing a post now.
 
@@ -18,26 +18,6 @@ Messaging guardrails preserved in every draft:
 
 ---
 
-## 1) `r/ClaudeCode` - How do you ACTUALLY use CC+codex?
-- URL: <https://www.reddit.com/r/ClaudeCode/comments/1tb7j36/how_do_you_actually_use_cccodex/>
-- Mention fit: medium-low
-- Best landing page to seed:
-  - https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/claude-code-codex-workflow.md
-- Why this stays in the packet:
-  - thread naturally fits builder/reviewer phase boundaries and handoff discipline
-  - landing page explains why mixed-agent flow only matters when the finish stays inspectable
-  - best RalphWorkflow angle from the monitor: use both only if the finish gets clearer: what changed, what passed, what still needs a decision
+No medium-or-better unused opportunities were available from this report.
 
-### Draft body A
-I would rank this as a cleanup/re-entry problem before a tooling problem: if the run cannot come back ready to review, with finished code, tested code, and what changed named plainly, the workflow is still making you do the hard part. RalphWorkflow is my free/open-source operating system for autonomous coding built around that finish line, with the primary repo here: https://codeberg.org/RalphWorkflow/Ralph-Workflow
-
----
-
-## Posting discipline before using any of these
-1. Re-read the last 3 logged Reddit bodies first.
-2. Re-run `python3 agents/marketing/reddit_watchdog.py` before posting; do not trust this file alone on timing.
-3. If the thread shifted, rewrite the opener instead of forcing the draft.
-4. If the reply is useful without Ralph, keep Ralph secondary.
-5. Use one seeded proof/comparison link only - no link pile.
-6. Prefer only one post in the next safe window unless a second thread is clearly exceptional.
-7. Reject any draft that falls back into the same cadence as the last three bodies.
+Use the next safe window for a fresh monitor pass instead of forcing a weak-fit reply.
