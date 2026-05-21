@@ -1,5 +1,14 @@
 # Outreach Log
 
+## 2026-05-21 (Thursday) — HN/Lobsters handoff packet re-verified + structural handoff escalation (18:03 UTC / 20:03 CEST)
+- **What I executed:** re-checked the live homepage at `https://ralphworkflow.com` and re-read `drafts/2026-05-21_hackernews_post.txt` to verify the current highest-leverage blocked move is still correct, current, and Codeberg-first. The live site is healthy: it is serving the repaired title `Unattended coding agent — AI agent orchestration CLI — Ralph Workflow` plus the stronger finish-state/body copy. The HN/Lobsters packet is also still correct after the earlier content-confusion repair and is ready for immediate human execution.
+- **Why this action:** this is **REPLACING / HANDOFF**. Reddit is still structurally high-risk, owned-surface/Telegraph work is already at the local ceiling, and the loop cannot autonomously submit to HN/Lobsters from this environment. The highest-leverage action I could actually complete right now was to remove doubt: prove the live site is healthy, prove the packet is current, and hand off the exact blocked move instead of pretending another internal tweak would beat it.
+- **Expected outcome:** fastest path to a real distribution attempt on a category-legible surface, sending higher-intent traffic to the **primary Codeberg repo** if the human executes the packet.
+- **Measurement window:** 7 days for HN/Lobsters visibility or referral evidence; 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta and any indexed backlink signal.
+- **Replace if it fails:** if HN/Lobsters gets posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop leaning on owned/discussion distribution and switch to direct curator / competitor-citation outreach.
+- **Additional human review handoff:** the earlier HireAegis overwrite of the RalphWorkflow HN draft remains a product-identity contamination warning and should be reviewed as a structural loop-quality issue, not just a one-off draft bug.
+- **Type:** **REPLACING / HANDOFF**
+
 ## 2026-05-21 (Thursday) — Reddit monitoring (16:15 UTC / 18:15 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-21_1815.md`
 - **Scan summary:** 30 candidate Reddit threads/posts scanned, 8 shortlisted, 22 rejected.
@@ -4562,3 +4571,11 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach (curators, comparison backlink requests, competitor citation).
 - **Structural note for the loop:** Execution ceiling confirmed. The loop has reached the limit of what it can do autonomously. All reproducible paths are complete, in-flight, or blocked. The loop will correctly return stay-quiet on every monitor pass until human action is taken on HN/Lobsters, Reddit structural rework, or a new executable channel surfaces.
 - **Type:** **AUDIT / DIRECTION**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 19:05:26
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 19:35:06
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
