@@ -80,6 +80,29 @@ def _prompt_review_choice() -> ReviewAction:
     return _REVIEW_ACTION_MAP.get(choice, ReviewAction.FINISH)
 
 
+def _reinvoke_agent(
+    workspace_root: Path,
+    agent_config: AgentConfig,
+    options: InvokeOptions,
+    prompt_md_exists: bool,
+    submit_artifact_tool_name: str,
+    current_spec: dict[str, object] | None,
+) -> dict[str, object] | None:
+    """Re-invoke the agent with the given spec (or fresh intake if spec is None).
+
+    Returns the artifact spec if one was produced, or None if the agent did not
+    produce an artifact.
+    """
+    prompt_file = _update_prompt_file(
+        workspace_root,
+        submit_artifact_tool_name,
+        prompt_md_exists,
+        current_spec,
+    )
+    _run_single_invoke(agent_config, prompt_file, options)
+    return read_product_spec_artifact(workspace_root)
+
+
 def _write_prompt_md(workspace_root: Path, spec: dict[str, object]) -> None:
     """Write PROMPT.md from the given product spec."""
     console = Console()
@@ -137,14 +160,7 @@ def _handle_artifact_exists(
 ) -> None:
     """Handle the case where an artifact exists - present review choices to user."""
     console = Console()
-    choices = _build_review_prompt()
-    choice = Prompt.ask(
-        "What would you like to do? ",
-        console=console,
-        choices=choices,
-        default=choices[0],
-    )
-    action = _REVIEW_ACTION_MAP.get(choice, ReviewAction.FINISH)
+    action = _prompt_review_choice()
 
     if action == ReviewAction.FINISH:
         _write_prompt_md(workspace_root, spec)
@@ -152,6 +168,24 @@ def _handle_artifact_exists(
     elif action == ReviewAction.START_OVER:
         console.print(Text("Starting over with a fresh specification."))
         _clear_draft_artifact(workspace_root)
+        # Re-enter conversational intake with no draft
+        new_spec = _reinvoke_agent(
+            workspace_root,
+            agent_config,
+            options,
+            prompt_md_exists,
+            submit_artifact_tool_name,
+            None,
+        )
+        if new_spec is not None:
+            _handle_artifact_exists(
+                workspace_root,
+                agent_config,
+                options,
+                prompt_md_exists,
+                submit_artifact_tool_name,
+                new_spec,
+            )
         return
     elif action == ReviewAction.UPDATE_SECTION:
         console.print(Text("Tell me which section to update and what changes you'd like."))
@@ -177,14 +211,14 @@ def _continue_review_loop(
     current_spec: dict[str, object],
 ) -> None:
     """Continue the review loop by invoking the agent again."""
-    prompt_file = _update_prompt_file(
+    spec = _reinvoke_agent(
         workspace_root,
-        submit_artifact_tool_name,
+        agent_config,
+        options,
         prompt_md_exists,
+        submit_artifact_tool_name,
         current_spec,
     )
-    _run_single_invoke(agent_config, prompt_file, options)
-    spec = read_product_spec_artifact(workspace_root)
     if spec is not None:
         _handle_artifact_exists(
             workspace_root,
