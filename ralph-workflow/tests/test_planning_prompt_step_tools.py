@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ralph.policy.models import (
+    ArtifactContract,
+    ArtifactsPolicy,
+    LoopCounterConfig,
+    PhaseDecisionRoute,
+    PhaseDefinition,
+    PhaseLoopPolicy,
+    PhaseTransition,
+    PipelinePolicy,
+)
+from ralph.prompts.materialize import (
+    PromptPhaseContext,
+    PromptPhaseOptions,
+    materialize_prompt_for_phase,
+)
+from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.workspace.memory import MemoryWorkspace
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+_MINIMAL_PROMPT_PLAN_HANDOFF = "# Execution Plan\n\n1. Existing plan handoff.\n"
+
+_MINIMAL_PLANNING_ARTIFACTS_POLICY = ArtifactsPolicy(
+    artifacts={
+        "plan": ArtifactContract(drain="planning", artifact_type="plan"),
+        "planning_analysis_decision": ArtifactContract(
+            drain="analysis",
+            artifact_type="planning_analysis_decision",
+            decision_vocabulary=["approve", "request_changes"],
+        ),
+    }
+)
+
+_MINIMAL_PLANNING_POLICY = PipelinePolicy(
+    phases={
+        "planning": PhaseDefinition(
+            drain="planning",
+            role="execution",
+            prompt_template="planning.jinja",
+            transitions=PhaseTransition(on_success="planning_analysis"),
+        ),
+        "planning_analysis": PhaseDefinition(
+            drain="analysis",
+            role="analysis",
+            prompt_template="planning_analysis.jinja",
+            transitions=PhaseTransition(on_success="complete", on_loopback="planning"),
+            loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
+            decisions={
+                "approve": PhaseDecisionRoute(target="complete"),
+                "request_changes": PhaseDecisionRoute(target="planning"),
+            },
+        ),
+        "complete": PhaseDefinition(
+            drain="complete",
+            role="terminal",
+            terminal_outcome="success",
+            transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+        ),
+    },
+    entry_phase="planning",
+    terminal_phase="complete",
+    loop_counters={"planning_analysis_iteration": LoopCounterConfig(default_max=3)},
+)
+
+
+def test_planning_prompt_mentions_step_edit_tools(tmp_path: Path) -> None:
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Plan the work")
+
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=_MINIMAL_PLANNING_POLICY,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=_MINIMAL_PLANNING_ARTIFACTS_POLICY),
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "ralph_insert_plan_step" in rendered
+    assert "ralph_replace_plan_step" in rendered
+    assert "ralph_remove_plan_step" in rendered
+
+
+def test_planning_analysis_prompt_mentions_step_edit_remediation_flow(tmp_path: Path) -> None:
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Plan the work")
+    workspace.write(".agent/PLAN.md", _MINIMAL_PROMPT_PLAN_HANDOFF)
+
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning_analysis",
+            workspace=workspace,
+            pipeline_policy=_MINIMAL_PLANNING_POLICY,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.ANALYSIS),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=_MINIMAL_PLANNING_ARTIFACTS_POLICY),
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "ralph_insert_plan_step" in rendered
+    assert "ralph_replace_plan_step" in rendered
+    assert "ralph_remove_plan_step" in rendered

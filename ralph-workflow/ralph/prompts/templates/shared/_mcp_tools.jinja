@@ -26,6 +26,9 @@ EXECUTION:
 ARTIFACT SUBMISSION:
 - Use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} to submit structured results with a fresh `content` JSON string
 {% if SUBMIT_PLAN_SECTION_TOOL_NAME %}- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage plan sections incrementally{% endif %}
+{% if INSERT_PLAN_STEP_TOOL_NAME %}- Use {{INSERT_PLAN_STEP_TOOL_REFERENCE}} to insert a numbered plan step and automatically reindex the steps list{% endif %}
+{% if REPLACE_PLAN_STEP_TOOL_NAME %}- Use {{REPLACE_PLAN_STEP_TOOL_REFERENCE}} to replace a numbered plan step without rewriting the whole section{% endif %}
+{% if REMOVE_PLAN_STEP_TOOL_NAME %}- Use {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} to remove a numbered plan step and automatically reindex the remaining steps{% endif %}
 {% if FINALIZE_PLAN_TOOL_NAME %}- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} to finalize a staged plan draft{% endif %}
 {% if GET_PLAN_DRAFT_TOOL_NAME %}- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect a staged plan draft{% endif %}
 {% if DISCARD_PLAN_DRAFT_TOOL_NAME %}- Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} to discard a staged plan draft and restart{% endif %}

@@ -29,6 +29,10 @@ You MUST submit your plan via Ralph Workflow's planning MCP tools.
 Submission protocol:
 - Unless the plan is genuinely short, submit each required section separately.
 - Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage sections one by one and validate each section as you go.
+- Use {{INSERT_PLAN_STEP_TOOL_REFERENCE}} to insert a step at a specific numbered position when you are refining an existing staged draft.
+- Use {{REPLACE_PLAN_STEP_TOOL_REFERENCE}} to replace a specific numbered step when only one executor action needs revision.
+- Use {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} to remove a specific numbered step when the staged draft contains obsolete work.
+- The insert/remove step tools automatically reindex the full steps list; do not renumber steps manually.
 - Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if you need to confirm current state after an error or resume.
 - Use {{FINALIZE_PLAN_TOOL_REFERENCE}} only after every required section is staged and valid.
 - If the staged draft becomes unusable and you need to restart from step 1, use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}.
