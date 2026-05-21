@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-21T08:52:08.083458",
-  "current_bottleneck": "conversion_to_free_use",
+  "generated_at": "2026-05-21T09:53:38.605430",
+  "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
   "repeated_openings": [
@@ -33,28 +33,33 @@
     },
     "Codeberg": {
       "samples": 9,
-      "stars_delta_window": 1,
+      "stars_delta_window": 0,
       "watchers_delta_window": 0,
       "forks_delta_window": 0
     }
   },
   "adoption_evaluation": {
     "findings": [
+      "Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.",
       "GitHub mirror adoption is also flat across the recent measurement window.",
       "Codeberg remains the stronger adoption surface and should stay the primary evaluation target."
     ],
-    "failing_signals": [],
+    "failing_signals": [
+      "primary_repo_flat"
+    ],
     "next_focus": [
-      "Keep measuring adoption deltas and replace any tactic that stays flat across the window."
+      "Treat tactics that did not move Codeberg adoption as failing until they produce a measurable delta."
     ]
   },
   "failing_tactics": [
     "reddit_style_repetition",
+    "primary_repo_flat_window",
     "mirror_repo_flat_window"
   ],
   "repair_actions": [],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
+    "primary_repo_flat",
     "mirror_repo_flat",
     "repetitive_outreach"
   ],
@@ -62,6 +67,7 @@
   "reasons": [
     "Owned content and outreach exist, but repo/public adoption signals are still low.",
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
+    "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response."
   ],

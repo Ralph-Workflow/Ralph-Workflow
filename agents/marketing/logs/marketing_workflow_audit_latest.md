@@ -1,30 +1,33 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-21T08:52:08.083458
-- Current bottleneck: **conversion_to_free_use**
+- Generated: 2026-05-21T09:53:38.605430
+- Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
 
 ## Why this is the bottleneck
 - Owned content and outreach exist, but repo/public adoption signals are still low.
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
+- Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
 - Failing tactic detected: reddit_style_repetition
+- Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
 
 ## Outcome evaluation
 - GitHub: samples=9, stars +0, watchers +0, forks +0
-- Codeberg: samples=9, stars +1, watchers +0, forks +0
+- Codeberg: samples=9, stars +0, watchers +0, forks +0
+- Codeberg, the primary repo, has shown no star/watch/fork movement across the recent measurement window.
 - GitHub mirror adoption is also flat across the recent measurement window.
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
 
 ## Repair actions (execute in this run)
 - No same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
-- Measurement-pending reasons: mirror_repo_flat, repetitive_outreach
+- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, repetitive_outreach
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

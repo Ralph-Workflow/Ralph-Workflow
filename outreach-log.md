@@ -1,5 +1,18 @@
 # Outreach Log
 
+## 2026-05-21 (Thursday) — Reddit monitoring (07:27 UTC / 09:27 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-21_0927.md`
+- **Scan summary:** 28 candidate Reddit threads/posts scanned, 8 shortlisted, 20 rejected.
+- **Current verdict:** Mixed — **8** credible discussion opportunities were found, but only **1-2** are honest RalphWorkflow mention fits after prior-use, thread-family saturation, no-product-value, and body-shape freshness filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/ClaudeCode` — "Claude Code needs real remote control from mobile"
+  - `r/ClaudeCode` — "A practical way to run Claude Code tasks in parallel without turning your repo into chaos"
+  - `r/ClaudeAI` — "New in Claude Code: agent view."
+- **Repeated pains worth tracking:** approval drag, blocked-on-you state, remote-supervision-as-babysitting, review tax / reconstruction burden, parallel-worktree drift, plan-mode rot, and production reliability/state continuity.
+- **Risk note:** repeat-pattern risk is still mostly structural — even shorter comments can still collapse into the same thesis → handoff → diff/checks → soft brand close shape, and the sharper site phrases are still underused in actual Reddit output.
+- **Posting note:** No posting attempted from this monitor pass. Research-first only.
+
 ## 2026-05-21 (Thursday) — HN draft content error: repaired + restored (01:20 UTC / 03:20 CEST)
 - **What I executed:** found and repaired `drafts/2026-05-21_hackernews_post.txt` — the file had been overwritten with **HireAegis Interviewer** content (completely wrong product). Restored it to the correct RalphWorkflow HN/Lobsters submission packet anchored on the Telegraph comparison article (`AI Agent Orchestration CLI: A Practical Comparison for Developers`).
 - **Why this action:** this is **REPAIRED / REPLACING**. The content error meant the May 21 HN draft would have been handed off as "ready" while containing a completely different product. This had to be fixed before any human execution.
@@ -4321,3 +4334,20 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 08:51:56
 - **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 09:16:02
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+- 2026-05-21 09:40 CEST — **REPAIRED / REPLACING failed tactic**: fixed a Ralph-Site-owned docs conversion leak on the live high-intent page `/docs/what-a-good-ai-coding-finish-receipt-looks-like` and its build path. Root cause: `ralph_site/current/lib/tasks/docs.rake` staged the upstream Sphinx package but did **not** overlay markdown/content files from `docs/sphinx_overrides`, so the public page kept serving stale weaker copy/search presentation even though the site-owned override existed. Executed: patched `lib/tasks/docs.rake` to overlay all entries from `docs/sphinx_overrides` into the staged Sphinx source, then repaired the currently served `public/docs/what-a-good-ai-coding-finish-receipt-looks-like.html` (+ `_sources/...md.txt` and `searchindex.js`) so the live page now uses **Finish Receipt** / **reviewable result** framing and keeps the Codeberg-first CTA intact. Verified live at `https://ralphworkflow.com/docs/what-a-good-ai-coding-finish-receipt-looks-like.html` on 2026-05-21. Expected outcome: better conversion from high-intent trust/SEO traffic on this page into Codeberg inspect/star/watch/issue actions by aligning the public title, value prop, and morning-after test with the stronger site-owned evaluator framing. Measurement window: next 7 days of Codeberg traffic/adoption plus page-level search impressions/click-through if available. Replacement condition: if Codeberg delta is still flat after 7 days, stop spending more cycles on this page alone and shift the next move to a different owned-surface or executable distribution repair.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 09:39:38
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 09:59:56
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 10:04:19
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.

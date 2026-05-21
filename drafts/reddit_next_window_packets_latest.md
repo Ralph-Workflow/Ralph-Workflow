@@ -1,4 +1,4 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-21 00:31 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-21 09:39 CEST
 
 Live posting is **not** the move right now.
 
@@ -29,13 +29,7 @@ Messaging guardrails preserved in every draft:
   - best RalphWorkflow angle from the monitor: use both only if the finish gets clearer: what changed, what passed, what still needs a decision
 
 ### Draft body A
-The constraint that cleaned up our multi-agent runs: the second pass never re-implements. It only reviews and flags what the first pass left ambiguous.
-
-That separation alone removed most of the overlap confusion and made the morning result something I could actually grade.
-
-Ralph Workflow is free and open-source: it enforces that role separation so the morning result is reviewable.
-
-https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/docs/claude-code-codex-workflow.md
+I would rank this as a cleanup/re-entry problem before a tooling problem: if the run cannot come back ready to review, with finished code, tested code, and what changed named plainly, the workflow is still making you do the hard part. RalphWorkflow is my free/open-source operating system for autonomous coding built around that finish line, with the primary repo here: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 
 ---
 
