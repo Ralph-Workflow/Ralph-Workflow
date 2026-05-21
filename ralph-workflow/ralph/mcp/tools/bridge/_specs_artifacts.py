@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.tools.bridge._spec_helpers import (
     _EXAMPLE_PLAN_CONTENT,
     _EXAMPLE_STEPS_CONTENT,
@@ -110,7 +111,7 @@ def artifact_specs() -> list[ToolSpec]:
                     },
                     "required": ["section", "content"],
                 },
-                required_capability="ArtifactPlanSubmit",
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_submit_plan_section",
@@ -125,7 +126,7 @@ def artifact_specs() -> list[ToolSpec]:
                     "Example: {} validates and writes the plan."
                 ),
                 input_schema={"type": "object", "properties": {}},
-                required_capability="ArtifactPlanSubmit",
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_finalize_plan",
@@ -140,7 +141,7 @@ def artifact_specs() -> list[ToolSpec]:
                     "Example: {} returns the current draft state."
                 ),
                 input_schema={"type": "object", "properties": {}},
-                required_capability="ArtifactPlanRead",
+                required_capability=Capability.ARTIFACT_PLAN_READ.value,
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_get_plan_draft",
@@ -154,7 +155,7 @@ def artifact_specs() -> list[ToolSpec]:
                     "Example: {} deletes the current draft."
                 ),
                 input_schema={"type": "object", "properties": {}},
-                required_capability="ArtifactPlanSubmit",
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_discard_plan_draft",
@@ -288,7 +289,7 @@ def artifact_specs() -> list[ToolSpec]:
                     },
                     "required": ["action"],
                 },
-                required_capability="ArtifactPlanSubmit",
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
             module_name="ralph.mcp.tools.coordination",
             handler_name="handle_coordinate",

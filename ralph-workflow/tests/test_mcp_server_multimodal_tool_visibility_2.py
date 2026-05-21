@@ -188,7 +188,7 @@ class TestMultimodalToolVisibility:
         capabilities = {
         "WorkspaceRead",
         "ArtifactSubmit",
-        "ArtifactPlanSubmit",
+        "ArtifactPlanWrite",
         "RunReportProgress",
     }
 

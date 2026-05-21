@@ -58,7 +58,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.ARTIFACT_SUBMIT,
         RalphCapability.ARTIFACT_PLAN_READ,
-        RalphCapability.ARTIFACT_PLAN_SUBMIT,
+        RalphCapability.ARTIFACT_PLAN_WRITE,
         RalphCapability.WEB_SEARCH,
         RalphCapability.WEB_VISIT,
         RalphCapability.UPSTREAM_TOOL_USE,

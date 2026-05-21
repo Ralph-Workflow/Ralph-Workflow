@@ -70,6 +70,7 @@ from ralph.mcp.artifacts.typed_artifacts import (
     normalize_fix_result_content,
     normalize_issues_content,
 )
+from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.tools._submit_op import SubmitOp
 from ralph.mcp.tools.coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
@@ -87,8 +88,8 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import PipelinePolicy
 
-PLAN_DRAFT_READ_CAPABILITY = "artifact.plan_read"
-PLAN_DRAFT_WRITE_CAPABILITY = "artifact.plan_write"
+PLAN_DRAFT_READ_CAPABILITY = Capability.ARTIFACT_PLAN_READ.value
+PLAN_DRAFT_WRITE_CAPABILITY = Capability.ARTIFACT_PLAN_WRITE.value
 
 
 _TYPED_ARTIFACT_TYPES = frozenset(

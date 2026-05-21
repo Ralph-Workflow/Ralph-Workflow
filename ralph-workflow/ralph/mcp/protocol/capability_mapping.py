@@ -75,7 +75,8 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.WORKSPACE_METADATA_READ: Capability.WORKSPACE_METADATA_READ,
     McpCapability.WORKSPACE_EDIT: Capability.WORKSPACE_EDIT,
     McpCapability.WORKSPACE_DELETE: Capability.WORKSPACE_DELETE,
-    McpCapability.ARTIFACT_PLAN_SUBMIT: Capability.ARTIFACT_PLAN_SUBMIT,
+    # Legacy alias kept for backward-compatibility; canonical capability is plan_write.
+    McpCapability.ARTIFACT_PLAN_SUBMIT: Capability.ARTIFACT_PLAN_WRITE,
 }
 
 _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
@@ -99,7 +100,7 @@ _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
     "artifact.plan_write": Capability.ARTIFACT_PLAN_WRITE,
     "workspace.edit": Capability.WORKSPACE_EDIT,
     "workspace.delete": Capability.WORKSPACE_DELETE,
-    "artifact.plan_submit": Capability.ARTIFACT_PLAN_SUBMIT,
+    "artifact.plan_submit": Capability.ARTIFACT_PLAN_WRITE,
 }
 
 _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
@@ -135,7 +136,7 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "workspace.metadata_read": McpCapability.WORKSPACE_METADATA_READ,
     "workspace.edit": McpCapability.WORKSPACE_EDIT,
     "workspace.delete": McpCapability.WORKSPACE_DELETE,
-    "artifact.plan_submit": McpCapability.ARTIFACT_PLAN_SUBMIT,
+    "artifact.plan_submit": McpCapability.ARTIFACT_PLAN_WRITE,
 }
 
 

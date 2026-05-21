@@ -68,7 +68,7 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(prompt_content, encoding="utf-8")
 
-    # 4. Create standalone AgentSession with ARTIFACT_SUBMIT only (no ARTIFACT_PLAN_SUBMIT)
+    # 4. Create standalone AgentSession with ARTIFACT_SUBMIT only (no plan-draft write capability)
     session = AgentSession(
         session_id="prompt-helper-agent",
         run_id=str(uuid4()),

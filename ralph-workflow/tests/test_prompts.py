@@ -73,7 +73,7 @@ def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:
     capabilities.insert(cast("Capability", Capability.GIT_DIFF_READ))
     capabilities.insert(cast("Capability", Capability.PROCESS_EXEC_BOUNDED))
     capabilities.insert(cast("Capability", Capability.ARTIFACT_SUBMIT))
-    capabilities.insert(cast("Capability", Capability.ARTIFACT_PLAN_SUBMIT))
+    capabilities.insert(cast("Capability", Capability.ARTIFACT_PLAN_WRITE))
     capabilities.insert(cast("Capability", Capability.RUN_REPORT_PROGRESS))
 
     policy_flags = PolicyFlagSet()

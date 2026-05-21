@@ -376,7 +376,7 @@ def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
         (RalphCapability.ARTIFACT_SUBMIT, ARTIFACT_SUBMIT_TOOLS),
         (RalphCapability.ARTIFACT_PLAN_READ, (GET_PLAN_DRAFT_TOOL,)),
         (
-            RalphCapability.ARTIFACT_PLAN_SUBMIT,
+            RalphCapability.ARTIFACT_PLAN_WRITE,
             (
                 COORDINATE_TOOL,
                 SUBMIT_PLAN_SECTION_TOOL,

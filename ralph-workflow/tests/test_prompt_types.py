@@ -39,7 +39,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
         Capability.ARTIFACT_PLAN_READ,
-        Capability.ARTIFACT_PLAN_SUBMIT,
+        Capability.ARTIFACT_PLAN_WRITE,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
         Capability.UPSTREAM_TOOL_USE,
@@ -119,7 +119,7 @@ def test_visible_mcp_tool_names_respects_enabled_capabilities() -> None:
             Capability.WORKSPACE_WRITE_TRACKED,
             Capability.PROCESS_EXEC_BOUNDED,
             Capability.ARTIFACT_SUBMIT,
-            Capability.ARTIFACT_PLAN_SUBMIT,
+            Capability.ARTIFACT_PLAN_WRITE,
             Capability.RUN_REPORT_PROGRESS,
             Capability.ENV_READ,
         ]

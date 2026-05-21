@@ -239,7 +239,7 @@ def test_build_fastmcp_server_falls_back_without_mcp_dependency(
         capabilities={
             "WorkspaceRead",
             "ArtifactSubmit",
-            "ArtifactPlanSubmit",
+            "ArtifactPlanWrite",
             "RunReportProgress",
         }
     )
