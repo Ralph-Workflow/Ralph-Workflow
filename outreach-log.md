@@ -4351,3 +4351,23 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 10:04:19
 - **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 10:11:53
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Live homepage metadata regression repair (08:14 UTC / 10:14 CEST)
+- **What I executed:** repaired a live Ralph-Site-owned homepage SEO regression in `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`. The public site had drifted back to the generic title/description (`Composable loop framework for autonomous coding`) even though the active distribution repair requires exact search-intent language. I updated the homepage metadata to:
+  - Title: **`Unattended coding agent CLI — Ralph Workflow`**
+  - Meta description: **`Free open-source unattended coding agent and AI agent orchestration CLI. Run one backlog task overnight and wake up to finished, tested code ready to review.`**
+  Then I restarted the Rails app via `tmp/restart.txt`, verified the live page, caught a duplicated-brand title caused by the layout helper appending `— Ralph Workflow`, and repaired that too by removing the brand suffix from the page-level `content_for :title`.
+- **Why this action:** this is **REPAIRED / REPLACING**. Codeberg adoption is still flat, HN/Lobsters remains blocked from autonomous execution, and the strongest same-run action I could actually complete was fixing the live homepage search/result surface that directly affects qualified Codeberg-first traffic. The regression was on the Ralph-Site-owned layer, so I repaired it directly instead of leaving a passive note.
+- **Verification:** live fetch of `https://ralphworkflow.com` now returns `<title>Unattended coding agent CLI — Ralph Workflow</title>` and the new exact-intent meta description. `og:title` is now `Unattended coding agent CLI` without the duplicated brand suffix.
+- **Expected outcome:** warmer search/snippet alignment for **unattended coding agent** and **AI agent orchestration CLI**, with more qualified visitors reaching the homepage and then routing into the primary Codeberg repo instead of generic category traffic bouncing.
+- **Measurement window:** next 7 days for homepage snippet/search-intent alignment; next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-04**, stop spending another cycle on homepage metadata tuning and replace this with a fresh executable external distribution or backlink/citation move.
+- **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 10:35:06
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.

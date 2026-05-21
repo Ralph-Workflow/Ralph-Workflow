@@ -458,3 +458,11 @@
 {"ts": "2026-05-21T09:23:04.903891", "jobs_checked": 20, "issues_found": 2, "issues": [{"job_id": "5d2cc5b0-5c6c-4ff1-8865-a39dd24af854", "name": "marketing-active-loop", "category": "live_error", "consecutive_errors": 1, "last_status": "error", "last_error": "FailoverError: The AI service is temporarily overloaded. Please try again in a moment.", "timeout_seconds": 3600, "last_duration_ms": 158193, "likely_cause": "SERVICE_OVERLOADED: upstream AI service was overloaded; rerun or add retry/backoff if persistent"}, {"job_id": "a49ec2cc-8343-45bf-a52e-eff8b0975585", "name": "ralph-site-owner-loop", "category": "live_error", "consecutive_errors": 1, "last_status": "error", "last_error": "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.", "timeout_seconds": 3600, "last_duration_ms": 1664189, "likely_cause": "CONTEXT_OVERFLOW: prompt/runtime context exceeded safe model limit; reduce prompt size or split work"}], "repairs_attempted": []}
 {"ts": "2026-05-21T09:59:25.011536", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
 {"ts": "2026-05-21T09:59:36.826968", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
+{"ts": "2026-05-21T10:10:52.914292", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
+{"ts": "2026-05-21T10:11:03.668289", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
+{"ts": "2026-05-21T10:11:10.752652", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
+{"ts": "2026-05-21T10:11:17.821619", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
+{"ts": "2026-05-21T10:15:58.764870", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
+{"ts": "2026-05-21T10:31:06.949362", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
+{"ts": "2026-05-21T10:45:15.560569", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
+{"ts": "2026-05-21T11:00:17.082354", "jobs_checked": 20, "issues_found": 0, "issues": [], "repairs_attempted": []}
