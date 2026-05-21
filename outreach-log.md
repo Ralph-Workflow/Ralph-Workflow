@@ -1,5 +1,28 @@
 # Outreach Log
 
+## 2026-05-21 (Thursday) — Marketing workflow audit (17:20 UTC / 19:20 CEST)
+- **Verdict: stay quiet. Nothing materially changed. Execution ceiling confirmed. HN/Lobsters is still the only unmade high-leverage move.**
+  - Codeberg: 10⭐ 2👁 2🍴, +0 delta across 9-sample window. The +1 signal from May 20–21 has not compounded — treat it as measurement noise pending confirmation.
+  - GitHub mirror: 0⭐ 2👁 0🍴, flat across full window.
+  - **HN/Lobsters draft is at `drafts/2026-05-21_hackernews_post.txt` — confirmed correct after content-error repair earlier today.** This is still the only unmade high-leverage move.
+  - Reddit: degraded telemetry this pass (search provider challenged 24/24 queries). Prior passes confirmed cooldown + structural cadence risk. Fresh drafts are in inventory but cadence is not yet structurally broken — do not post until the rhythm is genuinely different.
+  - Backlinks: 0 indexed. AIToolsIndex + ToolShelf still in-flight.
+  - **New concern: content confusion error repeated?** The May 21 01:20 UTC log notes the HN draft was overwritten with HireAegis content. This is the same class of error that should not occur in a self-improving loop — the loop generating/saving the wrong product's content into a RalphWorkflow artifact. Flag for human review.
+  - Four marketing questions: all correctly answered, no drift.
+- **What worked:** Infrastructure stack holding. All owned surfaces consistent and live.
+- **What failed:** No adoption movement. Zero indexed backlinks. HN/Lobsters still unmade. Reddit degraded telemetry — not a clean no-opportunity day, just broken search coverage. Content confusion error (wrong product saved to HN draft) needs human review.
+- **What is repetitive:** Every prior audit saying "stay quiet, HN/Lobsters is the move." — the loop correctly identifies the bottleneck but cannot break through it autonomously. This is now a structural handoff problem, not a tactic problem.
+- **What is low leverage:** More monitor passes during degraded search. More owned-surface polish. More keyword-gap Telegraph posts (at ceiling).
+- **Current bottleneck:** HN/Lobsters human execution. The loop has hit its execution ceiling — all reproducible paths are complete, in-flight, or blocked.
+- **Next higher-leverage move:**
+  1. **Human: execute HN/Lobsters** from `drafts/2026-05-21_hackernews_post.txt` — submit to HN first, then Lobsters.
+  2. **Human: review the content confusion error** — the HN draft was overwritten with HireAegis content on May 21 01:20 UTC. Confirm whether the loop has a product-identity contamination risk.
+  3. Reddit: do not post until the structural cadence is genuinely broken and search coverage is restored.
+  4. Monitor AIToolsIndex + ToolShelf for indexing signal over the next 7 days.
+- **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta.
+- **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach (curators, comparison backlink requests, competitor citation).
+- **Type:** **AUDIT / DIRECTION**
+
 ## 2026-05-21 (Thursday) — Reddit monitoring (10:18 UTC / 12:18 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-21_1218.md`
 - **Scan summary:** 33 candidate Reddit threads/posts scanned, 7 shortlisted, 26 rejected.
@@ -4473,3 +4496,22 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 16:54:15
 - **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 17:06:31
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 17:35:06
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Live homepage title/description drift repair (16:04 UTC / 18:04 CEST)
+- **What I executed:** repaired the live Ralph-Site homepage SEO metadata in both the durable source repo (`/home/mistlight/.openclaw/workspace/Ralph-Site/app/views/pages/home.html.erb`) and the deployed release (`/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`), then restarted the app via `tmp/restart.txt`.
+  - `<title>` now resolves live as **`Unattended coding agent — AI agent orchestration CLI — Ralph Workflow`**.
+  - Meta description now resolves live as **`Free open-source unattended coding agent and AI agent orchestration CLI. Inspect Codeberg first, run one real backlog task overnight, and wake up to finished, tested code ready to review.`**
+- **Why this action:** this is **REPAIRED / REPLACING**. The audit still says primary-repo conversion is the bottleneck, the active repair directive prioritizes homepage title/description SEO work while Codeberg is flat, and the live homepage was still shipping the older generic title **`Composable loop framework for autonomous coding`** despite stronger conversion copy lower on the page.
+- **Verification:** fetched `https://ralphworkflow.com` after restart and confirmed the live title, description, and `og:title` now match the new keyword-intent framing. Also caught and corrected a duplicate-brand bug (`... — Ralph Workflow — Ralph Workflow`) caused by the title helper appending the site name.
+- **Expected outcome:** warmer search/snippet alignment for **unattended coding agent** and **AI agent orchestration CLI**, plus clearer Codeberg-first evaluator intent before mirror drift.
+- **Measurement window:** next 7 days for snippet/live-page pickup; next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-04**, stop spending another cycle on homepage metadata wording and replace it with a new executable backlink/distribution move.
+- **Type:** **REPAIRED / REPLACING**
