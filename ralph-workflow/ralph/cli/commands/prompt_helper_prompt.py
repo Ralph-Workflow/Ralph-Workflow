@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 _PROMPT_MD_EXISTS_BLOCK = """\
 **IMPORTANT: An existing `PROMPT.md` was found in this workspace.**
 
@@ -18,9 +20,21 @@ before starting the refinement conversation.
 
 """
 
+_DRAFT_CONTEXT_BLOCK = """\
+**CURRENT DRAFT SPECIFICATION:**
+
+The following product specification has already been submitted. Continue refining
+based on the user's feedback, or update specific sections as requested.
+
+```json
+{current_draft_json}
+```
+
+"""
+
 _POST_ARTIFACT_LOOP_BLOCK = """\
-After submitting the artifact, **do not call `declare_complete` immediately.**
-Instead, return to interactive mode and present the user with these choices:
+After submitting the artifact, **do not end the session on your own.**
+Instead, present the user with these choices and wait for their answer:
 
 > Your product specification has been submitted. What would you like to do next?
 > 1. **Continue refining** — keep discussing and updating the specification
@@ -28,15 +42,18 @@ Instead, return to interactive mode and present the user with these choices:
 > 3. **Start over** — discard this draft and begin a new specification
 > 4. **Finish** — write the final `PROMPT.md` and end the session
 
-If the user chooses option 4 (Finish), or explicitly says they are done, then
-call `declare_complete` to signal the end of the session.
+If the user chooses option 4 (Finish), respond with exactly the word **FINISH** and nothing else.
 For any other choice, continue the conversation and resubmit an updated artifact
 when the user is satisfied again.
 """
 
 
 def build_prompt_helper_prompt(
-    *, submit_artifact_tool_name: str, prompt_md_exists: bool = False
+    *,
+    submit_artifact_tool_name: str,
+    prompt_md_exists: bool = False,
+    has_draft: bool = False,
+    current_draft: dict[str, object] | None = None,
 ) -> str:
     """Build the system prompt for the prompt helper interactive agent.
 
@@ -51,10 +68,21 @@ def build_prompt_helper_prompt(
     prompt_md_exists : bool
         When True, prepend a block instructing the agent to ask the user whether
         to replace or refine the existing PROMPT.md before proceeding.
+    has_draft : bool
+        When True, include the current draft specification in the prompt so the
+        agent can continue refining from it.
+    current_draft : dict[str, object] | None
+        The current product_spec artifact content to include when has_draft is True.
     """
     existing_block = _PROMPT_MD_EXISTS_BLOCK if prompt_md_exists else ""
     pm_intro = "You are a product manager helping the user define what they want to build."
-    return f"""{existing_block}{pm_intro}
+
+    draft_block = ""
+    if has_draft and current_draft is not None:
+        draft_json = json.dumps(current_draft, indent=2)
+        draft_block = _DRAFT_CONTEXT_BLOCK.format(current_draft_json=draft_json)
+
+    return f"""{existing_block}{draft_block}{pm_intro}
 
 Start by asking the user: **What do you want to build or define?**
 Listen to their response and ask follow-up questions to clarify:

@@ -23,7 +23,6 @@ _REQUIRED_TOOLS = {
     "git_log",
     "git_show",
     "ralph_submit_artifact",
-    "declare_complete",
 }
 
 # Tools that MUST be ABSENT from the prompt-helper session

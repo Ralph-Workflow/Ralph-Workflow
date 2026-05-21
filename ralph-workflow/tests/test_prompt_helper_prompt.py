@@ -71,13 +71,6 @@ class TestBuildPromptHelperPrompt:
         assert different_tool_name in result2
         assert tool_name not in result2
 
-    def test_prompt_contains_declare_complete(self) -> None:
-        """Prompt contains declare_complete instruction."""
-        result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
-        )
-        assert "declare_complete" in result
-
     def test_prompt_contains_scale_adaptation_guidance(self) -> None:
         """Prompt contains scale-to-fit guidance for adapting structure to scope."""
         result = build_prompt_helper_prompt(
@@ -128,9 +121,43 @@ class TestBuildPromptHelperPrompt:
         )
         assert "read_file" in result
 
-    def test_prompt_instructs_agent_not_to_call_declare_complete_immediately(self) -> None:
-        """Prompt tells agent NOT to call declare_complete immediately after submission."""
+    def test_prompt_with_has_draft_includes_draft_context(self) -> None:
+        """When has_draft=True with a current_draft, prompt includes draft content."""
+        draft = {
+            "title": "Test Title",
+            "scope": "Test scope",
+            "goals": ["Goal 1"],
+            "users": ["User 1"],
+            "success_criteria": ["Criterion 1"],
+        }
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            has_draft=True,
+            current_draft=draft,
+        )
+        assert "CURRENT DRAFT SPECIFICATION" in result
+        assert "Test Title" in result
+
+    def test_prompt_without_has_draft_omits_draft_context(self) -> None:
+        """When has_draft=False, prompt does not include draft context."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            has_draft=False,
+        )
+        assert "CURRENT DRAFT SPECIFICATION" not in result
+
+    def test_prompt_does_not_reference_declare_complete(self) -> None:
+        """Prompt does not reference declare_complete tool."""
         result = build_prompt_helper_prompt(
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
         )
-        assert "do not call" in result.lower() or "do not" in result.lower()
+        assert "declare_complete" not in result.lower()
+
+    def test_prompt_ends_session_on_user_choice_not_tool_call(self) -> None:
+        """Prompt instructs agent to end session on user choice, not a tool call."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        # Should say user chooses Finish, not that agent calls a tool
+        assert "FINISH" in result
+        assert "respond with exactly the word" in result.lower()
