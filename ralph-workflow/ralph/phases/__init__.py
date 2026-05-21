@@ -105,22 +105,16 @@ def register_role_handlers(policy: PipelinePolicy) -> None:
     """
     for phase_name, phase_def in policy.phases.items():
         if phase_def.role == "execution" and phase_name not in HANDLERS:
-            logger.debug("Registering generic execution handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = _execution.handle_execution_phase
         elif phase_def.role == "commit" and phase_name not in HANDLERS:
-            logger.debug("Registering generic commit handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = _commit.handle_commit_phase
         elif phase_def.role == "analysis" and phase_name not in HANDLERS:
-            logger.debug("Registering generic analysis handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = _analysis.handle_generic_analysis_phase
         elif phase_def.role == "review" and phase_name not in HANDLERS:
-            logger.debug("Registering generic review handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = _review.handle_review
         elif phase_def.role == "verification" and phase_name not in HANDLERS:
-            logger.debug("Registering generic verification handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = _verification.handle_verification_phase
         elif phase_def.role == "commit_cleanup" and phase_name not in HANDLERS:
-            logger.debug("Registering commit cleanup handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = _commit_cleanup.handle_commit_cleanup_phase
 
 
