@@ -1,45 +1,50 @@
 {
-  "checked_at": "2026-05-21T21:48:38+02:00",
+  "checked_at": "2026-05-21T23:28:12+02:00",
   "verdict": "pass",
-  "summary": "Fresh post-repair verification confirms that architecture-scoped Gateway jobs are now explicitly owned in the loop registry, loop integrity now has a durable registry-coverage gate, and the marketing checker no longer self-certifies past a failing runner bundle. The marketing stack itself remains red for substantive owner-loop reasons.",
+  "summary": "Independent verification confirms the repaired marketing certification path now fails closed on mixed-era artifacts and the live full-contract loops currently pass with fresh, coherent evidence.",
   "verified_repairs": [
     {
-      "claim": "self_improvement_loops.json now explicitly owns the live docs supervisor, the active marketing support jobs, and the two active sync loops that were previously outside the registry.",
+      "claim": "marketing_loop_checker.py now rejects stale runner evidence when audit or momentum artifacts are newer.",
       "status": "verified",
-      "details": "The registry now includes ownerCronJob for ralph-docs-watchdog, an expanded ownerCronJobs list for autonomous-marketing-stack, plus research-findings-sync and codeberg-github-mirror-sync entries."
+      "details": "Current source adds a coherence gate and the live checker passed only after a fresh runner bundle was regenerated."
     },
     {
-      "claim": "loop_integrity_audit.py now fails closed if an enabled architecture-scoped Gateway job is missing from the registry.",
+      "claim": "marketing_loop_independent_verify.py now refuses to certify a marketing pass from mixed-era runner, momentum, and audit artifacts.",
       "status": "verified",
-      "details": "Current source reads /home/mistlight/.openclaw/cron/jobs.json, computes covered owner IDs from self_improvement_loops.json, and adds a gateway-job-registry-coverage invariant error if any enabled architecture-scoped job is unowned."
+      "details": "Current source blocks certification when the runner artifact lags peer artifacts by more than the allowed skew window."
     },
     {
-      "claim": "marketing_loop_checker.py no longer emits MARKETING_LOOP_OK when the runner bundle is failing or momentum is in needs_attention.",
+      "claim": "The refreshed marketing path now has fresh coherent pass evidence across runner, checker, verifier, and independent verification surfaces.",
       "status": "verified",
-      "details": "Current source now fails on runner ok=false and on momentum status outside {ok, healthy}; direct rerun now returns MARKETING_LOOP_FAIL: runner bundle still reports failure."
+      "details": "marketing_loop_runner_latest.json, marketing_momentum_watchdog.json, marketing_loop_independent_verification.json, and marketing_loop_verifier_latest.md are all fresh and aligned."
+    },
+    {
+      "claim": "Registry ownership and scheduler topology remain explicit with no uncovered architecture-scoped Gateway jobs or stray user crontab entries.",
+      "status": "verified",
+      "details": "loop_integrity_latest.json shows all registered loop surfaces healthy or explicitly owner/monitor-only, and user-crontab-ownership remains ok."
     }
   ],
-  "remaining_blockers": [
-    "agents/marketing/logs/marketing_loop_independent_verification.json still has verdict=fail.",
-    "agents/marketing/logs/marketing_loop_runner_latest.json still shows reddit_monitor.py failing with status=search_provider_degraded and the marketing runner bundle overall ok=false.",
-    "agents/marketing/logs/marketing_momentum_watchdog.json still reports status=needs_attention with no_recent_reddit_post, apollo_channel_blocked, and primary_repo_adoption_flat."
-  ],
+  "remaining_blockers": [],
   "evidence": [
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
-      "summary": "Registry now explicitly covers the live docs supervisor, expanded marketing stack jobs, research-findings-sync, and codeberg-github-mirror-sync."
-    },
-    {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
-      "summary": "Source now enforces enabled architecture-scoped Gateway job coverage against the registry."
-    },
-    {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
-      "summary": "Checker now fails when runner ok=false or momentum status is not healthy, eliminating the previous fake-green path."
+      "summary": "Checker now enforces runner-to-peer artifact coherence before allowing MARKETING_LOOP_OK."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_independent_verify.py",
+      "summary": "Independent verifier now enforces the same coherence guard before emitting verdict=pass."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "summary": "Fresh verdict=pass at 2026-05-21T23:27:50.697418+02:00."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-      "summary": "Current loop integrity audit shows no gateway-job-registry-coverage error and records autonomous-marketing-stack as error with truthful checker failure output."
+      "summary": "Fresh loop integrity audit shows all full-contract loops green and no registry-coverage or scheduler-ownership failures."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
+      "summary": "Fresh health monitor output reports issues_found=0."
     }
   ]
 }

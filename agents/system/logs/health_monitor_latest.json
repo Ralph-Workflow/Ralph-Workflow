@@ -1,18 +1,7 @@
 {
-  "ts": "2026-05-21T22:58:57.795019",
+  "ts": "2026-05-22T00:00:18.437055",
   "jobs_checked": 19,
-  "issues_found": 1,
-  "issues": [
-    {
-      "job_id": "__artifacts__",
-      "name": "marketing_independent_verification",
-      "category": "loop_verification_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "verdict": "fail",
-      "required_verdict": "pass",
-      "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact."
-    }
-  ],
+  "issues_found": 0,
+  "issues": [],
   "repairs_attempted": []
 }

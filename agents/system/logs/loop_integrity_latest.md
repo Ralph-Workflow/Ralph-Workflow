@@ -1,22 +1,14 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-21 20:06 UTC
+Timestamp: 2026-05-21 21:27 UTC
 
 ## ralph-docs-watchdog
 - Status: ok
 - Checker: `DOCS_QUALITY_OK`
 
 ## autonomous-marketing-stack
-- Status: error
-- Repairs:
-  - checker failed; executed runner for remediation
-  - executed verifier after remediation
-- Errors:
-  - verifier failed after remediation
-  - checker still failing after remediation/verifier pass
-  - verifier artifact missing required pass phrase
-- Checker: `MARKETING_LOOP_FAIL: momentum watchdog status is needs_attention`
-- Checker after repair: `MARKETING_LOOP_FAIL: momentum watchdog status is needs_attention`
+- Status: ok
+- Checker: `MARKETING_LOOP_OK`
 
 ## ralph-site-owner-loop
 - Status: owner_only

@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-05-22T00:06:27.910883+02:00",
+  "run_type": "marketing-active-loop",
+  "chosen_action": {
+    "type": "owned_content_publication",
+    "channel": "telegraph",
+    "title": "After Your First Ralph Workflow Run, Put the Signal on Codeberg",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_after-your-first-run-codeberg_telegraph.md",
+    "url": "https://telegra.ph/After-Your-First-Ralph-Workflow-Run-Put-the-Signal-on-Codeberg-05-21",
+    "experiment_id": "2026-05-22-after-first-run-codeberg"
+  },
+  "why_this_action": {
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg and GitHub adoption flat in recent window",
+      "reddit_autopost_state.json: no_unused_opportunity",
+      "reddit_post_analysis.md: repetition risk on Reddit",
+      "NON_REDDIT_CHANNELS_NEXT.md: owned content is the strongest immediately actionable path"
+    ],
+    "reasoning": "Top-of-funnel Telegraph explainers already existed, but the current bottleneck is conversion into public Codeberg signals. A post aimed at the moment right after a real first run is a closer move: it pushes qualified evaluators toward star/watch/issue actions on Codeberg instead of another abstract awareness piece."
+  },
+  "result": {
+    "status": "posted",
+    "platform": "telegraph",
+    "ok": true
+  },
+  "logging": {
+    "posting_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/posting_2026-05-22.json",
+    "posted_urls": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/posted_urls.json"
+  }
+}

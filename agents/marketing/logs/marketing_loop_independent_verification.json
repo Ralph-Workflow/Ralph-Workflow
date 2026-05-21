@@ -1,15 +1,15 @@
 {
-  "checked_at": "2026-05-21T22:58:55.945434+02:00",
+  "checked_at": "2026-05-22T00:06:32.395644+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-21T22:58:55.921843"
+      "summary": "runner ok=False generated_at=2026-05-22T00:06:25.258479"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=needs_attention; actions=['reddit_monitor_degraded', 'apollo_channel_blocked', 'primary_repo_adoption_flat']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_monitor_degraded', 'apollo_channel_blocked', 'primary_repo_adoption_flat']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
@@ -17,6 +17,9 @@
     }
   ],
   "blockers": [
-    "Momentum watchdog status is needs_attention with actions: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat."
+    "Marketing runner bundle is not healthy.",
+    "Momentum watchdog status is watch with actions: none.",
+    "Momentum watchdog still reports unresolved goal-level watch actions: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat.",
+    "Workflow audit shows the primary repo adoption goal is still flat in the current window."
   ]
 }

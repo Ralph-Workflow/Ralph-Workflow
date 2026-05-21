@@ -4747,3 +4747,129 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 22:58:55
 - **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 23:05:30
+- **Note:** Momentum check found: reddit_monitor_degraded, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit monitoring has degraded provider coverage, so lack of recent posting is not being treated as proof of a missed opportunity. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Marketing loop audit (23:25 UTC / 21:25 CEST)
+
+### What actually worked
+- **Owned surfaces healthy**: homepage, Telegraph, Codeberg README, first-task guide — all live, consistent, Codeberg-first. No regression.
+- **Competitor analysis fresh**: competitor analysis run today with 8 competitor pages documented; Ralph advantage keywords identified (unattended coding pipeline, multi-agent orchestration, etc.).
+- **Audit system functioning**: flat-repo signal correctly caught, failing tactics correctly identified, repair actions correctly scoped.
+- **HN/Lobsters packet**: still at `drafts/2026-05-21_hackernews_post.txt` — content-corrected, structurally sound, ready for human execution.
+
+### What did not work
+- **Codeberg flat**: 10⭐ 2👁 2🍴, +0 delta across 9-sample window. No movement whatsoever. Primary adoption signal is dead.
+- **GitHub mirror flat**: 0⭐ 2👁 0🍴, also +0. Mirror staying flat reinforces that nothing is converting anywhere.
+- **Reddit search degraded**: all 24 queries returned `fetch_error`. Last clean posting window was May 20. Zero distribution output from Reddit for two consecutive passes.
+- **Repetitive opening failure**: `"Honestly the part I'd optimize first is the handoff, not the model stack."` was posted twice by the same account on May 19 (09:37 and 16:01) with the same body. This is a direct REDDIT_LEARNINGS.md violation — the ban was logged May 17, the duplicate ran May 19. The posting layer is not consulting the learnings file before sending.
+- **Draft inventory bloat**: 40+ drafts exist. Most are variations on the same themes. Very few have been executed. Bloat creates noise, not distribution.
+- **Content confusion recurrence**: the May 21 01:20 UTC event (HN draft overwritten with HireAegis content) is the second known content contamination event. This is a loop-quality structural risk, not a one-off bug.
+
+### What is repetitive
+- **Reddit monitor passes**: 5+ passes today, each finding 0-8 shortlist candidates but producing zero posts. Research-only mode is correct but the volume of passes with degraded search is not adding signal.
+- **Telegraph keyword-gap posts**: 6+ Telegraph posts exist targeting keyword gaps. The ceiling is confirmed — further posts without distribution amplification will not move the needle.
+- **Draft generation**: the loop keeps producing draft variants (philosophy, orchestration, spec-driven, reddit bodies) without a path to execution. This is activity, not distribution.
+- **Repair action for Reddit body repetition**: flagged as `pending_measurement` but the underlying violation already happened. The repair should be immediate: hard-block that opening from the posting layer now, not after another audit.
+
+### What is low-signal
+- **More monitor passes during search outage**: the degraded search does not prove no opportunities exist. Running the monitor again during the same outage window burns compute with zero new output.
+- **Apollo.io workflow work**: still blocked by Cloudflare. Any work here is blocked until access is restored.
+- **GitHub mirror optimization**: if Codeberg (primary) is flat, the mirror is not the priority. Mirror investment should be near-zero.
+- **More owned-surface polish**: the homepage and docs are at a local ceiling for their audience. They cannot self-amplify.
+
+### What should change now
+
+**1. Execute HN/Lobsters immediately (human-required).**
+The HN/Lobsters packet at `drafts/2026-05-21_hackernews_post.txt` is the highest-leverage unmade move by far. The loop has been correctly identifying this since May 18. It cannot execute autonomously. The human needs to submit today. Measurement window: 14 days through 2026-06-04 for Codeberg delta.
+
+**2. Hard-block the banned opening from the posting layer now.**
+`"Honestly the part I'd optimize first is the handoff, not the model stack."` is permanently banned in REDDIT_LEARNINGS.md but was posted twice anyway. The next Reddit posting pipeline run must check the banned-openings list before sending, not after. Apply the fix to the reddit monitor/pipeline code directly — do not wait for another audit cycle.
+
+**3. Stop monitor passes during search outage.**
+The degraded search does not produce useful shortlists. Use the cooldown window for draft preparation (Reddit bodies, HN/Lobsters comment variants) instead of running another monitor pass that returns 0 results. Resume monitors only when search coverage is confirmed restored.
+
+**4. Kill stale repair action — homepage SEO is Ralph-Site work, not marketing work.**
+The repair action targeting "homepage title/description SEO tuning" belongs to the Ralph-Site owner loop per MARKETING_WORKFLOW_PRINCIPLES.md ownership rules. Marketing should not claim this repair internally — it must be handed off or the fix will sit as a passive note.
+
+**5. Reduce draft inventory and execution gap.**
+40+ drafts with <5% execution rate is a sign the loop is substituting draft volume for distribution progress. Next draft generation should only happen when a specific execution path exists (e.g., HN comment variant tied to a specific HN submission). Discard or archive drafts older than 7 days with no execution path.
+
+**6. Flag content contamination as a structural loop-quality issue.**
+The HireAegis-overwrite happened twice (May 20 and May 21). Both times the loop saved the wrong product's content into a RalphWorkflow artifact. This is not a one-off draft bug — it is a product-identity contamination risk that should be reviewed as a structural quality problem.
+
+**What stays the same**
+- Four marketing questions: correctly answered, no drift.
+- Codeberg-first routing: correct and permanent.
+- Reddit as selective distribution, not quota work: correct.
+- Measurement window discipline: correct (14 days through 2026-06-04).
+
+**Current bottleneck: distribution_and_message_to_primary_repo_conversion**
+All owned surfaces are at ceiling. Reddit is degraded. The only unmade high-leverage move is HN/Lobsters human execution. The loop has hit its execution ceiling — everything reproducible is done, in-flight, or blocked. The bottleneck is human action on the HN packet.
+
+**Next higher-leverage move (in priority order):**
+1. **Human: submit HN/Lobsters** — highest-leverage remaining move, human-only
+2. **Loop: hard-block banned opening in posting layer** — immediate structural fix
+3. **Loop: stop monitor passes during search outage** — redirect to draft prep
+4. **Ralph-Site: homepage SEO tuning** — hand off, do not own internally
+5. **Loop: archive stale drafts** — reduce noise and execution gap
+6. **Monitor: Apollo access unblock** — prerequisite for outbound work
+
+**Type:** AUDIT / DIRECTION
+
+---
+
+## Audit verdicts — 2026-05-21 23:25 CEST
+
+### What actually worked
+- **Owned surfaces**: all live and consistent. No regression.
+- **Competitor analysis**: fresh today, 8 competitors documented with positioning/signal data.
+- **Audit system**: correctly identifies flat-repo signal, failing tactics, and repair actions.
+- **HN/Lobsters packet**: structurally sound, content-corrected, ready for human execution.
+
+### What failed
+- **Codeberg flat** (10⭐ 2👁 2🍴, +0 across 9 samples). Nothing converted.
+- **Reddit search degraded** — zero posts two passes running. Not a clean no-opportunity day.
+- **Literal duplicate body posted** on May 19 (09:37 and 16:01) — `validate_body` and `body_needs_regeneration` were both bypassed because the pre-generated body in `fresh_ab` selection path didn't check the banned list. This is now fixed with a verbatim-emergency block in both `reddit_autopost.py` and `reddit_post.py`.
+- **Content contamination (second occurrence)**: HN draft overwritten with HireAegis content on May 21 01:20. Same class as May 20 contamination. This is a structural loop-quality risk.
+- **Draft inventory bloat**: 40+ drafts with <5% execution rate. Noise, not distribution.
+
+### Repetitive
+- Monitor passes during search outage (zero output, repeated).
+- Telegraph keyword-gap posts (at ceiling confirmed).
+- Draft generation without execution path.
+
+### Low-signal
+- Reddit during outage → zero useful shortlist.
+- GitHub mirror optimization while Codeberg (primary) is flat.
+- Apollo.io (still blocked by Cloudflare).
+- Owned-surface polish (at local ceiling).
+
+### What changed now
+1. **Emergency verbatim block** applied to `reddit_autopost.py` and `reddit_post.py` — exact duplicate body from May 19 now blocked at both the `body_needs_regeneration` level and the `validate_body` CLI level.
+2. **Outreach log updated** with honest audit verdicts (this entry).
+3. **Reddit learnings** already had the banned opening — the loop's own rules were correct but the posting layer bypassed them. The fix is now structural, not documentary.
+
+### What has not changed and why
+- **HN/Lobsters human handoff** remains the highest-leverage move. The loop cannot execute it. Every prior audit said this.
+- **Repair actions** from the audit system remain valid and pending measurement.
+- **Reddit cooldown** remains correct discipline during search outage.
+
+### Current bottleneck
+Distribution and message-to-primary-repo conversion. Owned surfaces at ceiling. Reddit degraded. HN/Lobsters is the only unmade high-leverage move — human execution required.
+
+**This audit is complete. The loop has hit its execution ceiling.**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:06:25
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:06:25
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:06:32
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
