@@ -1,5 +1,34 @@
 # Outreach Log
 
+## 2026-05-21 (Thursday) — HN draft content error: repaired + restored (01:20 UTC / 03:20 CEST)
+- **What I executed:** found and repaired `drafts/2026-05-21_hackernews_post.txt` — the file had been overwritten with **HireAegis Interviewer** content (completely wrong product). Restored it to the correct RalphWorkflow HN/Lobsters submission packet anchored on the Telegraph comparison article (`AI Agent Orchestration CLI: A Practical Comparison for Developers`).
+- **Why this action:** this is **REPAIRED / REPLACING**. The content error meant the May 21 HN draft would have been handed off as "ready" while containing a completely different product. This had to be fixed before any human execution.
+- **Root cause note:** the autonomous loop generated or saved the wrong product content into the RalphWorkflow HN draft file. The failure mode was content confusion rather than channel confusion — the loop appears to have drifted to HireAegis phrasing and saved it to the wrong file.
+- **Expected outcome:** the corrected draft is now at `drafts/2026-05-21_hackernews_post.txt` and routes correctly to Codeberg first, GitHub second, anchored on the Telegraph comparison article.
+- **Type:** **REPAIRED / REPLACING**
+
+## 2026-05-21 (Thursday) — Marketing workflow audit (00:20 UTC / 02:20 CEST)
+- **Verdict: stay quiet. Execution ceiling confirmed. HN/Lobsters is the only unmade high-leverage move. One content error found and repaired.**
+  - Codeberg: 10⭐ 2👁 2🍴, +1 single-star signal in recent window (first signal, directional, not confirmed causal). GitHub mirror flat (0⭐ 2👁 0🍴).
+  - All reproducible autonomous paths exhausted: homepage SEO live, repo README + first-task guide + proof links shipped, Telegraph keyword-gap at 100%, Reddit fresh body packet in inventory (but cadence is broken structurally), HN/Lobsters packet restored and ready.
+  - **Critical finding: `drafts/2026-05-21_hackernews_post.txt` was overwritten with HireAegis content. Repaired and restored to correct RalphWorkflow content.**
+  - Reddit structural cadence failure confirmed: the entire 4-paragraph body rhythm (contrast opener → handoff/reviewer framing → proof bundle → product/link close) is broken across all logged posts. Fresh body drafts (3 in inventory) fix openings but not the underlying cadence. This is a **failing tactic** that needs structural rework, not fresh drafts.
+  - Backlinks: 0 indexed. AIToolsIndex and ToolShelf in-flight.
+  - Four marketing questions: all correctly answered, no drift.
+  - **Core bottleneck is still `conversion_to_free_use` + `HN/Lobsters human execution`.**
+- **What worked:** Proof-link repairs and first-task guide rewrite may correlate with the +1 Codeberg star. Infrastructure stack holding. HN draft restored and ready for human execution.
+- **What failed:** Reddit structural cadence — the body rhythm is broken structurally, not lexically. Even fresh drafts preserve the cadence problem. The loop should not treat more fresh drafts as a fix for this. One content error (HireAegis overwriting the HN draft).
+- **What is repetitive:** Reddit body cadence (structural). Monitor passes during cooldown (correctly no output). Telegraph keyword-gap at 100% ceiling.
+- **What is low leverage:** More Reddit body regeneration. More monitor passes. More owned-surface polish.
+- **Current bottleneck:** HN/Lobsters human execution is the sole unmade high-leverage move. Reddit cadence is a failing tactic that needs structural rework before the next posting window.
+- **Next higher-leverage move:**
+  1. **Human: execute HN/Lobsters** from `drafts/2026-05-21_hackernews_post.txt` — the single highest-leverage move still unmade after everything else is done. Submit to HN first, then Lobsters.
+  2. Reddit: do not use the fresh body drafts until the underlying 4-paragraph cadence structure is broken. A Reddit post with fresh openings but the same rhythm is still a failed tactic.
+  3. Monitor AIToolsIndex and ToolShelf for indexing signal over the next 7 days.
+- **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta. The +1 star is one data point; confirm direction before treating it as causal.
+- **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat and no backlinks indexed by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach.
+- **Type:** **AUDIT / DIRECTION**
+
 ## 2026-05-21 (Thursday) — Live homepage hero search-intent + Codeberg-source clarity repair (00:08 UTC / 02:08 CEST)
 - **What I executed:** updated the deployed Ralph Workflow homepage hero in `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` to put the exact evaluator phrase **unattended coding agent** into the visible headline, sharpen the lede around **AI agent orchestration CLI** + overnight backlog work, rename the first-task CTA to **Choose your first backlog task**, and add a tighter morning-after evaluator path (`would I merge this?`). In the same run I updated `app/views/shared/_source_links.html.erb` so the Codeberg pills/nav/menu now say **Codeberg source** instead of the weaker generic `Source`, then restarted the Rails app with `tmp/restart.txt`.
 - **Verification:** confirmed the live source files contain the new strings and re-fetched `https://ralphworkflow.com`; raw HTML now includes `unattended coding agent`, `Choose your first backlog task`, `Codeberg source`, and `TechTools listing`.
@@ -4162,3 +4191,20 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 02:41:02
 - **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 03:05:29
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 03:35:06
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Agent compatibility page Codeberg-routing repair pushed to primary repo (02:04 UTC / 04:04 CEST)
+- **What I executed:** repaired the public repo docs page `docs/agent-compatibility.md` so it now states **Codeberg is the primary repo** near the top and routes compatibility feedback to the **Codeberg issue tracker** instead of the wrong GitHub destination. Pushed live to the primary repo on Codeberg in commit `fa5c3504` (`docs: route agent compatibility feedback to Codeberg`).
+- **Why this action:** this is **REPAIRED / REPLACING**. The current bottleneck is still `conversion_to_free_use`, HN/Lobsters remains human-blocked, and I found a live public conversion leak on a high-intent docs page in the repo docs map: evaluators reading agent support guidance were being told to report issues on GitHub even though Codeberg is the primary adoption surface.
+- **Verification:** confirmed the page now shows the Codeberg-primary note at the top and the Codeberg issues URL in the resources section, then rebased the change onto current `origin/main` and pushed successfully after the first push hit a non-fast-forward.
+- **Expected outcome:** more evaluators who inspect compatibility before trying Ralph Workflow should form the real project relationship on **Codeberg** — especially issues, follows, and source-of-truth browsing — instead of leaking into the GitHub mirror at a trust-critical moment.
+- **Measurement window:** next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks/issues movement, with GitHub mirror movement treated only as secondary evidence.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-04**, stop spending another cycle on deep-doc routing cleanup and replace it with a fresh executable distribution / backlink move.
+- **Type:** **REPAIRED / REPLACING**

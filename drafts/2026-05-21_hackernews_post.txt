@@ -1,13 +1,78 @@
-Show HN: I built a live coding interview platform with real-time AI visibility
+=== HN / LOBSTERS HUMAN HANDOFF PACKET ===
+Generated: 2026-05-21 03:20 CEST (REPAIRED — May 21 draft was incorrectly overwritten with HireAegis content; restored to RalphWorkflow content)
+Action type: REPAIRED / REPLACING
 
-We've been building HireAegis Interviewer — a platform where you watch candidates code in a real IDE with AI assistance and Docker live previews visible to both interviewer and candidate.
+Why this is the move now:
+- Codeberg is still flat across the active measurement window (10⭐ 2👁 2🍴, +1 single-star signal, not confirmed causal).
+- Reddit is on cooldown / structural cadence failure / repetition risk — do not use fresh drafts until cadence is broken.
+- All owned surfaces (homepage, repo README, first-task guide, proof links) are live and consistent.
+- Telegraph keyword-gap at 100% ceiling.
+- The remaining highest-leverage distribution move is a human-posted HN submission, with Lobsters second.
 
-The key differentiator: both parties see the AI suggestions in real-time. You watch how a candidate evaluates, accepts, or rejects AI recommendations. That tells you more than any whiteboard problem.
+Expected outcome:
+- higher-intent developer traffic into the primary Codeberg repo from a category-legible, workflow-first external surface
 
-After 200+ real interviews, we've learned a lot about what actually predicts job performance vs. what just looksimpressive.
+Measurement window:
+- 7 days for HN/Lobsters visibility or referral evidence
+- 14 days through 2026-06-04 for Codeberg stars/watchers/forks delta
 
-Free to try. No credit card required.
+Replace if it fails:
+- if this gets posted and Codeberg is still flat by 2026-06-04, stop leaning on owned/discussion distribution alone and switch to direct curator / competitor-citation outreach
 
-feedback welcome
+Primary asset:
+- Title/angle: AI Agent Orchestration CLI: A Practical Comparison for Developers
+- URL: https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
+- Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+- GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+- Main site: https://ralphworkflow.com
 
-Happy to answer questions about the tech stack (Rails 8 + React + Inertia + Docker for previews).
+Why this asset:
+- matches live homepage wording: unattended coding agent + AI agent orchestration CLI
+- answers the four marketing questions cleanly
+- routes to Codeberg first and GitHub second
+- feels category-legible for HN/Lobsters
+
+====================
+HACKER NEWS
+====================
+Submission type: Link post
+
+Title:
+AI Agent Orchestration CLI: A Practical Comparison for Developers
+
+URL:
+https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
+
+Suggested first comment:
+Most AI coding discussion still gets stuck on model choice. The question I care about more is whether the workflow actually ends in something you would inspect, test, and maybe merge.
+
+The implementation behind the piece is Ralph Workflow: a free and open-source repo-native workflow for longer coding runs on your own machine. Primary repo is Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow . GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Good reply angles if people push back:
+- the real bar is the finish line: finished code, tested code, and what changed
+- worktrees help isolation; they do not prove the merged result holds up
+- good first use is one bounded backlog task, not open-ended autonomy theater
+- Codeberg is primary because that is where first-run feedback and adoption are centered
+
+====================
+LOBSTERS
+====================
+Submission type: Link post
+Tags: ai, programming, tools
+
+Title:
+AI Agent Orchestration CLI: A Practical Comparison for Developers
+
+URL:
+https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
+
+Suggested story/comment framing:
+This is the comparison question I keep finding more useful than "which coding agent is best?" — what should an orchestration CLI actually hand back before an AI-generated change is ready to inspect, test, and maybe merge?
+
+The implementation behind the essay is Ralph Workflow, a free and open-source workflow that runs existing coding agents on your own machine and tries to end with finished code, tested code, and a clear review surface. Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow . GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Manual steps:
+1. Submit to HN first as a link post.
+2. If that is live, submit the same asset to Lobsters.
+3. Keep follow-up comments workflow-first, not promo-first.
+4. If asked for the repo, give Codeberg first and GitHub only as the mirror.
