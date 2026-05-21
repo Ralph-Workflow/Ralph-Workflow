@@ -166,6 +166,7 @@ analysis = "analysis"
 commit = "commit"
 
 # [prompt_helper]
-# agent = "opencode"  # Default prompt-helper agent (falls back to first configured agent)
-# Uncomment to use a custom agent:
-# agent = "claude"  # Use any agent name defined in [agents.*]
+# Omit agent = to use the first configured agent in [agents.*]; if no agents are
+# configured, Ralph Workflow falls back to the built-in "opencode" agent.
+# Uncomment and set agent = to force a specific agent instead:
+# agent = "claude"

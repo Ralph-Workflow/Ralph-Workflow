@@ -179,7 +179,7 @@ Configuration for the interactive prompt-refinement helper launched by `ralph --
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `agent` | `opencode` | Agent name to use for the prompt-helper session. Falls back to the first agent in `[agents.*]` when the named agent is not configured. |
+| `agent` | _(none)_ | Agent name to use for the prompt-helper session. Omitting this setting causes Ralph Workflow to use the first configured agent in `[agents.*]`. If no agents are configured at all, Ralph Workflow falls back to the built-in `opencode` agent. An explicitly named but unavailable agent raises an error instead of silently falling back. |
 
 Example:
 
