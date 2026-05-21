@@ -205,6 +205,137 @@ def merge_plan_section(
     return new_sections
 
 
+def _steps_from_sections(sections: dict[str, object]) -> list[dict[str, object]]:
+    raw_steps = sections.get("steps")
+    if raw_steps is None:
+        return []
+    if not isinstance(raw_steps, list):
+        raise PlanArtifactValidationError("section 'steps' must be a JSON array")
+
+    validated = validate_plan_section("steps", raw_steps, mode="replace")
+    return cast("list[dict[str, object]]", validated)
+
+
+def _normalize_step_edit_payload(
+    step_payload: object,
+    *,
+    synthetic_number: int,
+) -> dict[str, object]:
+    if not isinstance(step_payload, dict):
+        raise PlanArtifactValidationError("step payload must be a JSON object")
+    payload = dict(cast("dict[str, object]", step_payload))
+    payload["number"] = synthetic_number
+    fragment = validate_plan_section("steps", payload, mode="append")
+    return cast("dict[str, object]", fragment)
+
+
+def _reindex_plan_steps(
+    steps: list[dict[str, object]],
+    *,
+    removed_step_number: int | None = None,
+) -> list[dict[str, object]]:
+    old_numbers = [cast("int", step["number"]) for step in steps]
+    if len(set(old_numbers)) != len(old_numbers):
+        raise PlanArtifactValidationError("plan steps must have unique step numbers before edit")
+
+    number_map = {old_number: index for index, old_number in enumerate(old_numbers, start=1)}
+    updated_steps: list[dict[str, object]] = []
+    for step, old_number in zip(steps, old_numbers, strict=False):
+        remapped = dict(step)
+        remapped["number"] = number_map[old_number]
+        dependencies = step.get("depends_on", [])
+        if not isinstance(dependencies, list):
+            raise PlanArtifactValidationError("step depends_on must be a JSON array")
+
+        remapped_dependencies: list[int] = []
+        for dependency in dependencies:
+            if not isinstance(dependency, int):
+                raise PlanArtifactValidationError("step depends_on must contain integers")
+            if removed_step_number is not None and dependency == removed_step_number:
+                raise PlanArtifactValidationError(
+                    "cannot remove step "
+                    f"{removed_step_number}; another step depends on step "
+                    f"{removed_step_number}"
+                )
+            mapped_dependency = number_map.get(dependency)
+            if mapped_dependency is None:
+                raise PlanArtifactValidationError(
+                    f"step {old_number} depends on unknown step {dependency}"
+                )
+            remapped_dependencies.append(mapped_dependency)
+        remapped["depends_on"] = remapped_dependencies
+        updated_steps.append(remapped)
+
+    normalized = validate_plan_section("steps", updated_steps, mode="replace")
+    return cast("list[dict[str, object]]", normalized)
+
+
+def insert_plan_step(
+    sections: dict[str, object],
+    *,
+    index: int,
+    step_payload: object,
+) -> dict[str, object]:
+    steps = _steps_from_sections(sections)
+    if index < 1 or index > len(steps) + 1:
+        raise PlanArtifactValidationError(
+            f"step insert index must be between 1 and {len(steps) + 1}"
+        )
+
+    existing_numbers = [cast("int", step["number"]) for step in steps]
+    inserted_step = _normalize_step_edit_payload(
+        step_payload,
+        synthetic_number=max(existing_numbers, default=0) + 1,
+    )
+    steps.insert(index - 1, inserted_step)
+    updated_sections = dict(sections)
+    updated_sections["steps"] = _reindex_plan_steps(steps)
+    return updated_sections
+
+
+def replace_plan_step(
+    sections: dict[str, object],
+    *,
+    step_number: int,
+    step_payload: object,
+) -> dict[str, object]:
+    steps = _steps_from_sections(sections)
+    target_index = next(
+        (idx for idx, step in enumerate(steps) if step["number"] == step_number),
+        None,
+    )
+    if target_index is None:
+        raise PlanArtifactValidationError(f"step {step_number} does not exist")
+
+    existing_numbers = [cast("int", step["number"]) for step in steps]
+    replacement_step = _normalize_step_edit_payload(
+        step_payload,
+        synthetic_number=max(existing_numbers, default=0) + 1,
+    )
+    steps[target_index] = replacement_step
+    updated_sections = dict(sections)
+    updated_sections["steps"] = _reindex_plan_steps(steps)
+    return updated_sections
+
+
+def remove_plan_step(
+    sections: dict[str, object],
+    *,
+    step_number: int,
+) -> dict[str, object]:
+    steps = _steps_from_sections(sections)
+    remaining_steps = [step for step in steps if step["number"] != step_number]
+    if len(remaining_steps) == len(steps):
+        raise PlanArtifactValidationError(f"step {step_number} does not exist")
+
+    updated_sections = dict(sections)
+    updated_sections["steps"] = _reindex_plan_steps(
+        remaining_steps,
+        removed_step_number=step_number,
+    )
+    return updated_sections
+
+
 def finalize_plan_draft(draft: dict[str, object]) -> dict[str, object]:
     """Validate a draft's sections as a whole PlanArtifact.
 
@@ -513,13 +644,16 @@ __all__ = [
     "VerificationStep",
     "delete_plan_draft",
     "finalize_plan_draft",
+    "insert_plan_step",
     "is_noop_plan",
     "load_plan_artifact_sections",
     "load_plan_draft",
     "merge_plan_section",
     "new_plan_draft",
     "normalize_plan_artifact_content",
+    "remove_plan_step",
     "render_plan_markdown",
+    "replace_plan_step",
     "save_plan_draft",
     "validate_plan_section",
     "write_plan_markdown",

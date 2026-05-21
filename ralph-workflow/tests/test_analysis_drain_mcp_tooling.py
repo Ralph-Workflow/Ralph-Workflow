@@ -46,6 +46,9 @@ _ANALYSIS_FORBIDDEN_TOOLS = {
     "ralph_submit_plan_section",
     "ralph_finalize_plan",
     "ralph_discard_plan_draft",
+    "ralph_insert_plan_step",
+    "ralph_replace_plan_step",
+    "ralph_remove_plan_step",
 }
 
 _PLANNING_REQUIRED_TOOLS = {
@@ -53,6 +56,9 @@ _PLANNING_REQUIRED_TOOLS = {
     "ralph_submit_plan_section",
     "ralph_finalize_plan",
     "ralph_discard_plan_draft",
+    "ralph_insert_plan_step",
+    "ralph_replace_plan_step",
+    "ralph_remove_plan_step",
 }
 
 

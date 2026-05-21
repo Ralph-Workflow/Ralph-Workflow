@@ -229,6 +229,36 @@ def handle_submit_artifact(
     )
 
 
+def _load_or_create_plan_draft(
+    artifact_dir: Path,
+    *,
+    deps: ArtifactHandlerDeps,
+) -> dict[str, object]:
+    draft = load_plan_draft(artifact_dir, backend=deps.backend)
+    if draft is not None:
+        return draft
+
+    hydrated_sections = load_plan_artifact_sections(artifact_dir, backend=deps.backend)
+    draft = new_plan_draft(now_iso=deps.now_iso)
+    if hydrated_sections is not None:
+        draft["sections"] = hydrated_sections
+    return draft
+
+
+def _save_updated_plan_draft(
+    artifact_dir: Path,
+    draft: dict[str, object],
+    *,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    save_plan_draft(
+        artifact_dir,
+        draft,
+        backend=deps.backend,
+        now_iso=deps.now_iso,
+    )
+
+
 def handle_submit_plan_section(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -256,21 +286,11 @@ def handle_submit_plan_section(
         raise InvalidParamsError(f"[{section}] {exc}") from exc
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
-    draft = load_plan_draft(artifact_dir, backend=resolved_deps.backend)
-    if draft is None:
-        hydrated_sections = load_plan_artifact_sections(artifact_dir, backend=resolved_deps.backend)
-        draft = new_plan_draft(now_iso=resolved_deps.now_iso)
-        if hydrated_sections is not None:
-            draft["sections"] = hydrated_sections
+    draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
     current_sections = cast("dict[str, object]", draft.get("sections", {}))
     updated_sections = merge_plan_section(current_sections, section, fragment, mode)
     draft["sections"] = updated_sections
-    save_plan_draft(
-        artifact_dir,
-        draft,
-        backend=resolved_deps.backend,
-        now_iso=resolved_deps.now_iso,
-    )
+    _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
 
     staged = sorted(updated_sections.keys())
     return ToolResult(

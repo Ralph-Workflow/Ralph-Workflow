@@ -10,11 +10,14 @@ from ralph.mcp.artifacts.plan import (
     PlanArtifactValidationError,
     delete_plan_draft,
     finalize_plan_draft,
+    insert_plan_step,
     is_noop_plan,
     load_plan_draft,
     merge_plan_section,
     new_plan_draft,
     normalize_plan_artifact_content,
+    remove_plan_step,
+    replace_plan_step,
     save_plan_draft,
     validate_plan_section,
 )
@@ -258,6 +261,131 @@ def test_merge_plan_section_append_extends_existing_list() -> None:
     merged = merge_plan_section(merged, "steps", second, "append")
 
     assert merged["steps"] == [first, second]
+
+
+def test_insert_plan_step_reindexes_all_numbers() -> None:
+    sections = _valid_plan()
+    sections["steps"] = [
+        {
+            "number": 1,
+            "title": "First",
+            "content": "first content",
+            "depends_on": [],
+        },
+        {
+            "number": 2,
+            "title": "Third",
+            "content": "third content",
+            "depends_on": [1],
+        },
+    ]
+
+    updated = insert_plan_step(
+        sections,
+        index=2,
+        step_payload={
+            "number": 99,
+            "title": "Second",
+            "content": "second content",
+            "depends_on": [1],
+        },
+    )
+
+    assert [
+        step["number"] for step in cast("list[dict[str, object]]", updated["steps"])
+    ] == [1, 2, 3]
+    assert [step["title"] for step in cast("list[dict[str, object]]", updated["steps"])] == [
+        "First",
+        "Second",
+        "Third",
+    ]
+
+
+def test_remove_plan_step_reindexes_numbers_and_dependency_targets() -> None:
+    sections = _valid_plan()
+    sections["steps"] = [
+        {
+            "number": 1,
+            "title": "First",
+            "content": "first content",
+            "depends_on": [],
+        },
+        {
+            "number": 2,
+            "title": "Second",
+            "content": "second content",
+            "depends_on": [],
+        },
+        {
+            "number": 3,
+            "title": "Third",
+            "content": "third content",
+            "depends_on": [2],
+        },
+    ]
+
+    updated = remove_plan_step(sections, step_number=1)
+    steps = cast("list[dict[str, object]]", updated["steps"])
+
+    assert [step["number"] for step in steps] == [1, 2]
+    assert [step["title"] for step in steps] == ["Second", "Third"]
+    assert steps[0].get("depends_on", []) == []
+    assert steps[1].get("depends_on", []) == [1]
+
+
+def test_remove_plan_step_rejects_when_other_steps_depend_on_removed_step() -> None:
+    sections = _valid_plan()
+    sections["steps"] = [
+        {
+            "number": 1,
+            "title": "First",
+            "content": "first content",
+            "depends_on": [],
+        },
+        {
+            "number": 2,
+            "title": "Second",
+            "content": "second content",
+            "depends_on": [1],
+        },
+    ]
+
+    with pytest.raises(PlanArtifactValidationError, match="depends on step 1"):
+        remove_plan_step(sections, step_number=1)
+
+
+def test_replace_plan_step_preserves_position_and_reindexes_number() -> None:
+    sections = _valid_plan()
+    sections["steps"] = [
+        {
+            "number": 1,
+            "title": "First",
+            "content": "first content",
+            "depends_on": [],
+        },
+        {
+            "number": 2,
+            "title": "Second",
+            "content": "second content",
+            "depends_on": [1],
+        },
+    ]
+
+    updated = replace_plan_step(
+        sections,
+        step_number=2,
+        step_payload={
+            "number": 99,
+            "title": "Replacement",
+            "content": "replacement content",
+            "depends_on": [1],
+        },
+    )
+    steps = cast("list[dict[str, object]]", updated["steps"])
+
+    assert [step["number"] for step in steps] == [1, 2]
+    assert steps[1]["title"] == "Replacement"
+    assert steps[1]["depends_on"] == [1]
 
 
 def test_finalize_plan_draft_accepts_complete_sections() -> None:

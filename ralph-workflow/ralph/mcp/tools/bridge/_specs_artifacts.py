@@ -16,7 +16,10 @@ from ralph.mcp.tools.names import (
     DISCARD_PLAN_DRAFT_TOOL,
     FINALIZE_PLAN_TOOL,
     GET_PLAN_DRAFT_TOOL,
+    INSERT_PLAN_STEP_TOOL,
     READ_ENV_TOOL,
+    REMOVE_PLAN_STEP_TOOL,
+    REPLACE_PLAN_STEP_TOOL,
     REPORT_PROGRESS_TOOL,
     SUBMIT_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
@@ -115,6 +118,67 @@ def artifact_specs() -> list[ToolSpec]:
             ),
             module_name="ralph.mcp.tools.artifact",
             handler_name="handle_submit_plan_section",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=INSERT_PLAN_STEP_TOOL,
+                description=(
+                    "Insert one plan step at a 1-based index and automatically reindex the whole"
+                    " steps list. Required: index (integer), step (object). The provided"
+                    " step.number is ignored; numbering is recomputed deterministically."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "integer", "minimum": 1},
+                        "step": {"type": "object"},
+                    },
+                    "required": ["index", "step"],
+                },
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
+            ),
+            module_name="ralph.mcp.tools.plan_draft_edit",
+            handler_name="handle_insert_plan_step",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=REPLACE_PLAN_STEP_TOOL,
+                description=(
+                    "Replace one plan step by its current number and automatically reindex the"
+                    " whole steps list. Required: step_number (integer), step (object)."
+                    " The provided step.number is ignored."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "step_number": {"type": "integer", "minimum": 1},
+                        "step": {"type": "object"},
+                    },
+                    "required": ["step_number", "step"],
+                },
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
+            ),
+            module_name="ralph.mcp.tools.plan_draft_edit",
+            handler_name="handle_replace_plan_step",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=REMOVE_PLAN_STEP_TOOL,
+                description=(
+                    "Remove one plan step by its current number and automatically reindex the"
+                    " whole steps list. Required: step_number (integer)."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "step_number": {"type": "integer", "minimum": 1},
+                    },
+                    "required": ["step_number"],
+                },
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
+            ),
+            module_name="ralph.mcp.tools.plan_draft_edit",
+            handler_name="handle_remove_plan_step",
         ),
         ToolSpec(
             metadata=_metadata(

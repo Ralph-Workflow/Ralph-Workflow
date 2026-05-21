@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ralph.mcp.tools.names import ARTIFACT_COORDINATE_TOOLS, ARTIFACT_SUBMIT_TOOLS
+from ralph.mcp.tools.names import ARTIFACT_SUBMIT_TOOLS, PLAN_DRAFT_WRITE_TOOLS
 from ralph.prompts.types import (
     ENV_READ_TOOLS,
     GIT_DIFF_READ_TOOLS,
@@ -132,10 +132,7 @@ def test_visible_mcp_tool_names_respects_enabled_capabilities() -> None:
         *TRACKED_WRITE_TOOLS,
         *PROCESS_EXEC_TOOLS,
         *ARTIFACT_SUBMIT_TOOLS,
-        *ARTIFACT_COORDINATE_TOOLS,
-        "ralph_submit_plan_section",
-        "ralph_finalize_plan",
-        "ralph_discard_plan_draft",
+        *PLAN_DRAFT_WRITE_TOOLS,
         *PROGRESS_TOOLS,
         *ENV_READ_TOOLS,
     ]

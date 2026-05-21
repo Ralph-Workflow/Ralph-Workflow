@@ -1660,6 +1660,13 @@ ralph.mcp.tools.artifact
    :members:
    :show-inheritance:
 
+ralph.mcp.tools.plan_draft_edit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.tools.plan_draft_edit
+   :members:
+   :show-inheritance:
+
 ralph.mcp.tools.bridge
 ~~~~~~~~~~~~~~~~~~~~~~
 
