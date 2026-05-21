@@ -1,0 +1,28 @@
+
+=== HN POSTING CHECKLIST ===
+URL: https://news.ycombinator.com/submit
+Title: === HN / LOBSTERS HUMAN HANDOFF PACKET ===
+Text:
+Generated: 2026-05-21 03:20 CEST (REPAIRED — May 21 draft was incorrectly overwritten with HireAegis content; restored to RalphWorkflow content)
+Action type: REPAIRED / REPLACING
+
+Why this is the move now:
+- Codeberg is still flat across the active measurement window (10⭐ 2👁 2🍴, +1 single-star signal, not confirmed causal).
+- Reddit is on cooldown / structural cadence failure / repetition risk — do not use fresh drafts until cadence is broken.
+- All owned surfaces (homepage, repo README, first-task guide, proof links) are live and consistent.
+- Telegraph keyword-gap at 100% ceiling.
+- The remaining highest-leverage distribution move is a human-posted HN submission, with Lobsters second.
+
+Expected outcome:
+- higher-intent developer traffic into the primary Codeberg repo from a category-legible, workflow-first external surface
+
+Measurement window:
+- 7 days for HN/Lobsters visibility or referral evidence
+- 14 days through 2026-06-04 for Codeberg stars/watchers/forks delta
+
+Replace if it fails:
+- if this gets posted and Codeberg is still flat by 2026-06-04, stop leaning on owned/discussion distribution alone and switch to direct curator / competitor-citation outreach
+---
+1. Open URL
+2. Fill form
+3. Submit

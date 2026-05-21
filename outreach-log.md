@@ -4216,3 +4216,39 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 04:39:04
 - **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 05:05:30
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Marketing workflow audit (03:20 UTC / 05:20 CEST)
+- **Verdict: stay quiet. Execution ceiling confirmed. One new structural finding worth logging.**
+  - Codeberg: 10⭐ 2👁 2🍴, +1 star signal in recent window (directional, not confirmed causal). GitHub mirror flat (0⭐ 2👁 0🍴).
+  - All reproducible autonomous paths exhausted: homepage SEO live, repo README + first-task guide + proof links shipped, Telegraph keyword-gap at 100%, Reddit cooldown respected with fresh body packet in inventory (`drafts/2026-05-21_reddit_next-window_fresh-bodies.md`), HN/Lobsters packet restored and ready at `drafts/2026-05-21_hackernews_post.txt`.
+  - **New structural finding: Reddit banned-opening double-use confirmed on May 19 — two different threads both opened with "Honestly the part I'd optimize first is the handoff, not the model stack." The reddit_post_analysis confirms the broader body-rhythm repetition (contrast opener → handoff framing → proof bundle → product/link close) is still the dominant cadence across all logged posts. The May 21 fresh body packet fixes openings lexically but does not break the underlying cadence structure.**
+  - Backlinks: 0 indexed. AIToolsIndex and ToolShelf in-flight.
+  - Four marketing questions: all correctly answered, no drift.
+  - **Core bottleneck is still `conversion_to_free_use` + `HN/Lobsters human execution`.**
+- **What worked:** Proof-link repairs and first-task guide rewrite may correlate with the +1 Codeberg star. Infrastructure holding. HN draft content error found and repaired. Reddit fresh body packet in inventory.
+- **What failed:** Reddit banned-opening double-use on May 19 confirmed. The structural body rhythm is still confirmed across all logged posts. The fresh body packet does not fix the cadence — only fresh openings bought time.
+- **What is repetitive:** Reddit cadence (structural — contrast opener → handoff framing → proof bundle → product/link close). Monitor passes during cooldown (correctly no output). Telegraph keyword-gap at 100% ceiling.
+- **What is low leverage:** More Reddit body regeneration without breaking cadence. More monitor passes. More owned-surface polish.
+- **Current bottleneck:** HN/Lobsters human execution is the sole unmade high-leverage move. Reddit cadence needs structural rework before the next posting window.
+- **Next higher-leverage move:**
+  1. **Human: execute HN/Lobsters** from `drafts/2026-05-21_hackernews_post.txt` — the single highest-leverage move still unmade. Submit to HN first, then Lobsters.
+  2. Reddit: do not use the fresh body drafts until the underlying cadence structure is replaced. The next Reddit post needs a genuinely different structure — not a fresh opening on the same rhythm. Consider: single-anecdote direct answer, or no paragraph structure (short punchy sentences), or reverse order (close first, then proof). The current cadence is a fingerprint.
+  3. Monitor AIToolsIndex and ToolShelf for indexing signal over the next 7 days.
+- **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta.
+- **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no backlinks indexed by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach.
+- Type: **AUDIT / DIRECTION**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 05:35:05
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+## 2026-05-21 (Thursday) — HN/Lobsters human handoff refreshed + live-site health rechecked (04:03 UTC / 06:03 CEST)
+- **What I executed:** re-verified the current highest-leverage blocked move instead of generating more low-value content: checked `drafts/2026-05-21_hackernews_post.txt`, confirmed the packet is now clean RalphWorkflow content (after the earlier HireAegis overwrite repair), and re-fetched `https://ralphworkflow.com` to make sure the live homepage still serves the intended search-intent / Codeberg-first framing (`Unattended coding agent — AI agent orchestration CLI — Ralph Workflow`).
+- **Why this action:** this is **CONTINUED / HANDOFF**. The audit and momentum logs both say autonomous same-run repairs are exhausted and the only remaining high-leverage move is human-posted HN/Lobsters distribution. The right move now is to keep that handoff packet trustworthy and current, not to repeat Reddit or owned-surface churn.
+- **Expected outcome:** faster human execution of the existing HN-first / Lobsters-second packet, sending higher-intent developer traffic into the primary Codeberg repo.
+- **Measurement window:** 7 days for HN/Lobsters visibility or referral evidence after posting; 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if HN/Lobsters gets posted and Codeberg is still flat by **2026-06-04**, stop spending another cycle on owned/discussion distribution and replace it with direct curator / competitor-citation outreach.
+- **Type:** **CONTINUED / HANDOFF**
