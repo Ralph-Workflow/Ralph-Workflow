@@ -1,4 +1,4 @@
-.PHONY: help install dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs
+.PHONY: help install dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs packaging-smoke
 
 PYTEST_WORKERS ?= 4
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 30
@@ -172,8 +172,15 @@ dist-homebrew: build-wheel
 		echo "Note: Homebrew bottle creation requires macOS and Homebrew environment"
 
 # Distribution targets
-verify:
+verify: packaging-smoke
 	@uv run python -m ralph.verify
+
+packaging-smoke:
+	@python -m venv tmp/packaging-smoke
+	@tmp/packaging-smoke/bin/pip install --quiet dist/ralph_workflow-*.whl
+	@ls -la tmp/packaging-smoke/bin/ralph-prompt
+	@tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"
+	@rm -rf tmp/packaging-smoke
 
 dist-binary:
 	@echo "Building PyInstaller binary..."

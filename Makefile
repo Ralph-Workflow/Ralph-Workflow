@@ -3,7 +3,7 @@
 
 PY_DIR := ralph-workflow
 
-.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov test-subprocess-e2e clean install dev install-dev publish test-pypi twine-upload twine-upload-testpypi help docs serve-docs
+.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov test-subprocess-e2e clean install dev install-dev publish test-pypi twine-upload twine-upload-testpypi help docs serve-docs packaging-smoke
 
 all: verify
 
@@ -12,6 +12,9 @@ build:
 
 verify:
 	$(MAKE) -C $(PY_DIR) verify
+
+packaging-smoke:
+	$(MAKE) -C $(PY_DIR) packaging-smoke
 
 lint:
 	$(MAKE) -C $(PY_DIR) lint
