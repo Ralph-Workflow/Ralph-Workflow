@@ -52,13 +52,23 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
 
     # 1. Load agent from registry
     registry = AgentRegistry.from_config(config)
-    agent_config = registry.get(config.prompt_helper.agent)
-    if agent_config is None and config.agents:
+
+    # Resolve agent: explicit setting > first configured > built-in opencode
+    named_agent = config.prompt_helper.agent
+    if named_agent is not None:
+        # Explicit prompt-helper.agent setting — use it or fail
+        agent_config = registry.get(named_agent)
+    elif config.agents:
+        # No explicit setting — fall back to first configured agent
         first_agent_name = next(iter(config.agents))
         agent_config = registry.get(first_agent_name)
+    else:
+        # No explicit setting and no configured agents — last resort fallback
+        agent_config = registry.get("opencode")
+
     if agent_config is None:
         raise RuntimeError(
-            f"Prompt helper agent '{config.prompt_helper.agent}' is not configured "
+            f"Prompt helper agent '{named_agent or 'opencode'}' is not available "
             f"and no fallback agent is available in ralph-workflow.toml."
         )
 

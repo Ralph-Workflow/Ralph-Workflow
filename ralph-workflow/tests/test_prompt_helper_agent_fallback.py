@@ -38,12 +38,11 @@ class TestAgentFallback:
             lambda *args, **kwargs: None,
         )
 
-    def test_falls_back_to_first_configured_agent(
+    def test_explicit_nonexistent_agent_raises(
         self,
         workspace_root: Path,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """When configured agent is missing, falls back to first agent in config."""
+        """When explicitly set agent is unavailable and no fallback exists, raises RuntimeError."""
         config = UnifiedConfig(
             prompt_helper=PromptHelperConfig(agent="nonexistent-agent"),
             agents={
@@ -53,9 +52,8 @@ class TestAgentFallback:
                 )
             },
         )
-        self._stub_mcp_and_invoke(monkeypatch)
-        # Should not raise — fallback-agent is used instead
-        run_prompt_helper(config, workspace_root)
+        with pytest.raises(RuntimeError, match=r"nonexistent-agent.*not available"):
+            run_prompt_helper(config, workspace_root)
 
     def test_raises_when_no_fallback_agent_available(
         self,
@@ -68,3 +66,27 @@ class TestAgentFallback:
         )
         with pytest.raises(RuntimeError, match="no fallback agent is available"):
             run_prompt_helper(config, workspace_root)
+
+    def test_omitted_prompt_helper_section_uses_first_configured_agent(
+        self,
+        workspace_root: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When [prompt_helper] is absent and agents are configured, uses first agent."""
+        # agent=None signals that [prompt_helper] was absent/not overridden
+        config = UnifiedConfig(
+            prompt_helper=PromptHelperConfig(agent=None),
+            agents={
+                "first-agent": AgentConfig(
+                    cmd="claude",
+                    transport=AgentTransport.CLAUDE_INTERACTIVE,
+                ),
+                "second-agent": AgentConfig(
+                    cmd="opencode",
+                    transport=AgentTransport.OPENCODE,
+                ),
+            },
+        )
+        self._stub_mcp_and_invoke(monkeypatch)
+        # Should not raise — first-agent is used as fallback
+        run_prompt_helper(config, workspace_root)
