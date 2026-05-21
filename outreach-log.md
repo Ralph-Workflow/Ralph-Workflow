@@ -4208,3 +4208,11 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Measurement window:** next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks/issues movement, with GitHub mirror movement treated only as secondary evidence.
 - **Replace if it fails:** if Codeberg is still flat by **2026-06-04**, stop spending another cycle on deep-doc routing cleanup and replace it with a fresh executable distribution / backlink move.
 - **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 04:07:35
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 04:39:04
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
