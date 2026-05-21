@@ -1,6 +1,6 @@
 # Apollo Status
 
-- Timestamp: `2026-05-21T08:52:57.739253+02:00`
+- Timestamp: `2026-05-21T12:46:10.021615+02:00`
 - Status: `ato_email_verification_required`
 - Final URL: `https://app.apollo.io/#/ato/verify-email`
 - Login attempted: `True`

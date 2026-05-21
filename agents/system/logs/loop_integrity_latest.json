@@ -1,12 +1,15 @@
 {
-  "timestamp": "2026-05-21 07:40 UTC",
+  "timestamp": "2026-05-21 10:56 UTC",
   "results": [
     {
       "name": "ralph-docs-watchdog",
       "contractMode": "full",
-      "repairs": [],
+      "repairs": [
+        "runner artifact was stale; executed runner"
+      ],
       "errors": [],
       "status": "ok",
+      "runnerOutput": "BEFORE\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Coherent, well-separated docs system. The journey from README \\u2192 START_HERE \\u2192 docs/README \\u2192 Sphinx manual is clean. User questions about config are directly answered. Advanced operator docs exist for all real surfaces. Page roles are distinct. No internal leakage or process-receipt language on top-level surfaces. Sphinx feels like a maintained manual, not a page pile.\",\n  \"loopHealthy\": true,\n  \"criteria\": {\n    \"positioning\": \"pass\",\n    \"accuracy\": \"pass\",\n    \"userDocumentationCoverage\": \"pass\",\n    \"advancedConfigCoverage\": \"pass\",\n    \"userStoryRouting\": \"pass\",\n    \"pageRoleSeparation\": \"pass\",\n    \"internalLeakage\": \"pass\",\n    \"copyQuality\": \"pass\",\n    \"informationArchitecture\": \"pass\",\n    \"journeyCoherence\": \"pass\"\n  },\n  \"mustFix\": [],\n  \"strongestEvidence\": [\n    {\n      \"path\": \"repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/user-stories.md\",\n      \"reason\": \"Covers 14 distinct user goals with direct doc links \\u2014 brand-new users, overnight runs, config editing, agent selection, review, proof, baseline comparisons. This is the single strongest page for answerability.\"\n    },\n    {\n      \"path\": \"repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/configuration.md\",\n      \"reason\": \"Opens with 'Where do I edit ralph-workflow.toml?' and answers in the first substantive paragraph. Maps each TOML file to its purpose. Shows file precedence. Demonstrates the safe editing workflow. This is exactly what the rubric demands.\"\n    },\n    {\n      \"path\": \"repos/Ralph-Workflow/github-mirror/docs/README.md\",\n      \"reason\": \"A real docs map with route-by-question grouping, not a README clone. Clearly separates first-run, operator manual, and product-framing routes. Curates rather than dumps links.\"\n    }\n  ],\n  \"shouldUserNeedToRepeatThis\": false\n}\nAFTER\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"The docs system is mature, well-separated, and coherent. Every surface has an explicit page role, the journey is consistent, common questions are directly answerable, and proof pages are properly subordinated.\",\n  \"loopHealthy\": true,\n  \"criteria\": {\n    \"positioning\": \"pass\",\n    \"accuracy\": \"pass\",\n    \"userDocumentationCoverage\": \"pass\",\n    \"advancedConfigCoverage\": \"pass\",\n    \"userStoryRouting\": \"pass\",\n    \"pageRoleSeparation\": \"pass\",\n    \"internalLeakage\": \"pass\",\n    \"copyQuality\": \"pass\",\n    \"informationArchitecture\": \"pass\",\n    \"journeyCoherence\": \"pass\"\n  },\n  \"mustFix\": [],\n  \"strongestEvidence\": [\n    {\n      \"path\": \"github-mirror/README.md\",\n      \"reason\": \"Clear product pitch, install, and curated 4-step route. Does not try to do everything at once.\"\n    },\n    {\n      \"path\": \"github-mirror/START_HERE.md\",\n      \"reason\": \"Honest shortest first-run path with explicit task fit/non-fit. Prerequisites, exact commands, next pages.\"\n    },\n    {\n      \"path\": \"github-mirror/docs/README.md\",\n      \"reason\": \"Real docs map with route-by-question grouping, not another README clone. Proof pages demoted to secondary.\"\n    },\n    {\n      \"path\": \"github-mirror/ralph-workflow/docs/sphinx/index.rst\",\n      \"reason\": \"Maintained manual home with clear sections (first run, config, use-case routing). Not a link farm.\"\n    },\n    {\n      \"path\": \"github-mirror/ralph-workflow/docs/sphinx/configuration.md\",\n      \"reason\": \"Directly answers 'Where do I edit ralph-workflow.toml?' with global vs local paths, precedence, CLI commands, and common edits.\"\n    },\n    {\n      \"path\": \"github-mirror/ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md\",\n      \"reason\": \"Substantive advanced config page with which file to edit, validation commands, major sections, common mistakes, and safe editing workflow.\"\n    },\n    {\n      \"path\": \"github-mirror/ralph-workflow/docs/sphinx/user-stories.md\",\n      \"reason\": \"Comprehensive plain-English routing for 13 distinct user goals, from brand new to overnight use to baseline comparison.\"\n    },\n    {\n      \"path\": \"github-mirror/docs/reviewable-output.md\",\n      \"reason\": \"Proof page that immediately subordinates itself ('not the main product pitch'). Evidence order is correct: behavior first, artifacts last.\"\n    }\n  ],\n  \"shouldUserNeedToRepeatThis\": false\n}\nREPAIRS\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/quickstart.md\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/user-stories.md",
       "checkerResult": "DOCS_QUALITY_OK"
     },
     {
@@ -58,6 +61,16 @@
       "errors": [],
       "status": "ok",
       "checkerResult": "AGENT_ARCHITECTURE_OK"
+    },
+    {
+      "name": "user-crontab-ownership",
+      "contractMode": "invariant",
+      "repairs": [],
+      "errors": [],
+      "status": "ok",
+      "notes": [
+        "Gateway owns the active scheduler topology and no stray user-crontab entries were present."
+      ]
     }
   ]
 }

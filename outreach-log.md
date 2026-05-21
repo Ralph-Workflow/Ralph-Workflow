@@ -1,5 +1,20 @@
 # Outreach Log
 
+## 2026-05-21 (Thursday) — Reddit monitoring (10:18 UTC / 12:18 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-21_1218.md`
+- **Scan summary:** 33 candidate Reddit threads/posts scanned, 7 shortlisted, 26 rejected.
+- **Current verdict:** **7** credible discussion opportunities were found, but only **1-2** are honest RalphWorkflow mention fits after prior-use, thread-family saturation, no-product-value, and body-shape filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+  - `r/AI_Agents` — "I spent last 6 months talking to AI engineering teams about production agent failures"
+  - `r/AI_Agents` — "AI agents feel impressive until the workflow gets messy"
+  - `r/ClaudeAI` — "Claude Code's checkpoint commits are polluting my git history. How are you handling this?"
+  - `r/ClaudeCode` — "How are you actually running Claude Code at scale on real codebases?"
+- **Repeated pains worth tracking:** review tax, verification delay, silent partial failure, approval drag, worktree isolation without merge confidence, cleanup/checkpoint archaeology, long-run drift, and production observability/governance gaps.
+- **Risk note:** repeat-pattern risk is still mostly structural. Logged Reddit bodies still overuse **review / diff / checks / handoff** while underusing the sharper site phrases **finished code**, **tested code**, **ready to review**, **would you merge it?**, **open the result**, and **merge or re-run**.
+- **Posting note:** No posting attempted from this monitor pass. Research-first only.
+
 ## 2026-05-21 (Thursday) — Reddit monitoring (07:27 UTC / 09:27 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-21_0927.md`
 - **Scan summary:** 28 candidate Reddit threads/posts scanned, 8 shortlisted, 20 rejected.
@@ -4388,3 +4403,11 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Measurement window:** next 7 days for live snippet alignment / referral quality; next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta.
 - **Replace if it fails:** if Codeberg is still flat by **2026-06-04**, stop spending another cycle on homepage metadata/label repairs and replace this with a fresh executable backlink or curator/competitor-citation move.
 - **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 12:14:11
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 12:46:50
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.

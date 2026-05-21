@@ -1,9 +1,9 @@
 {
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
-    "overall_health": "degraded",
-    "primary_failure_mode": "The runtime is cleaner now, but blocked-channel recovery and loop-verifier contracts are still only partially normalized, so ownership and independent-signoff rules remain unevenly enforced.",
-    "most_urgent_fix": "Give blocked-channel recovery one explicit runtime contract: either one owner schedule or separate deep-review/followup entrypoints with distinct verifier evidence."
+    "overall_health": "mostly_healthy",
+    "primary_failure_mode": "The runtime now has explicit legacy-layer labeling and a hard user-crontab ownership guard, but blocked-channel recovery still runs two schedules against one owner path without a separate verifier boundary.",
+    "most_urgent_fix": "Decide whether blocked-channel recovery should collapse to one owner schedule or split into distinct deep-review/followup entrypoints with separate evidence."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -21,146 +21,126 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-21T06:58:56.893980+02:00",
+    "checked_at": "2026-05-21T12:57:59+02:00",
     "cron_scheduler_enabled": true,
     "cron_store_path": "/home/mistlight/.openclaw/cron/jobs.json",
-    "live_job_count": 26,
+    "live_inventory_sources": [
+      "openclaw cron list --json",
+      "/home/mistlight/.openclaw/cron/jobs.json",
+      "crontab -l"
+    ],
     "inspected_roots": [
       "/home/mistlight/.openclaw/workspace/agents/system",
       "/home/mistlight/.openclaw/workspace/agents/docs_quality",
       "/home/mistlight/.openclaw/workspace/agents/marketing",
       "/home/mistlight/.openclaw/workspace/agents/unblocker"
+    ],
+    "relevant_live_jobs_checked": [
+      "system-health-monitor",
+      "codeberg-github-mirror-sync",
+      "marketing-momentum-watchdog",
+      "ralph-workflow-docs-verifier-supervisor",
+      "agent-architecture-watchdog",
+      "blocked-channel-deep-review",
+      "blocked-channel-followup"
     ]
   },
   "findings": [
     {
       "severity": "medium",
-      "title": "Blocked-channel recovery still has two schedules driving one code path",
-      "mechanism": "`blocked-channel-deep-review` and `blocked-channel-followup` are now correctly unblocker-owned, but both still invoke the same unittest + `agents/unblocker/run.py` path without distinct verifier artifacts or clearly separate runtime contracts.",
+      "title": "Blocked-channel recovery still has two schedules driving one owner path",
+      "mechanism": "`blocked-channel-deep-review` and `blocked-channel-followup` are explicitly unblocker-owned, but both still invoke the same unittest + `agents/unblocker/run.py` path and still do not emit distinct verifier artifacts or separate runtime contracts.",
       "source_layer": "hidden repair loops",
-      "root_cause": "The ownership rename happened faster than the runtime split, so cadence differences exist without code-level role separation.",
+      "root_cause": "The ownership cleanup renamed the schedules and clarified their boundary faster than the runtime split was implemented.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/cron/jobs.json:272",
         "/home/mistlight/.openclaw/cron/jobs.json:412",
         "/home/mistlight/.openclaw/workspace/agents/unblocker/run.py:1",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:90"
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:97",
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:109"
       ],
-      "confidence": 0.93,
-      "recommended_fix": "Either collapse both schedules into one unblocker owner loop or create distinct deep-review/followup entrypoints plus separate verifier evidence so overlap becomes intentional and auditable."
-    },
-    {
-      "severity": "medium",
-      "title": "Most live repair/watchdog loops are only tracked in metadata, not enforced by full checker/runner/verifier contracts",
-      "mechanism": "`self_improvement_loops.json` now maps the live loop topology, but marketing, Ralph-Site, system-health, blocked-channel recovery, and the architecture watchdog are still `tracked_only`, so the stronger AGENTS rule exists mainly as governance text rather than a uniform runtime contract.",
-      "source_layer": "persistence",
-      "root_cause": "New runtime-owned loops were added faster than the full self-improvement contract was generalized beyond the docs stack.",
-      "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/AGENTS.md:170",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:27",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:78",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:108",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
-      ],
-      "confidence": 0.9,
-      "recommended_fix": "Promote each true self-improvement loop to a full contract with checker/runner/verifier artifacts, or explicitly classify it as monitoring/owner-only so the rule is enforced by schema rather than interpretation."
+      "confidence": 0.95,
+      "recommended_fix": "Either collapse both schedules into one unblocker owner loop or split deep-review and followup into distinct entrypoints with separate artifacts so overlap becomes intentional and auditable."
     },
     {
       "severity": "low",
-      "title": "OS-cron drift was repaired, but there is still no explicit allowlist guard against future non-Gateway scheduler creep",
-      "mechanism": "Legacy HireAegis/content/community/product cron entries and the OS-cron mirror-sync entry were removed this run, but no current audit step fails hard when unexpected user crontab entries reappear.",
+      "title": "Legacy disabled jobs are now clearly deactivated, but they still remain in the scheduler store as audit-history clutter",
+      "mechanism": "The disabled mixed-product/content/docs legacy jobs no longer read like active authorities, but keeping them in the live Gateway store still adds inventory surface that future audits must mentally filter.",
       "source_layer": "persistence",
-      "root_cause": "Scheduler ownership cleanup happened reactively instead of being enforced by an explicit runtime invariant.",
+      "root_cause": "Historical cleanup preserved disabled jobs for traceability instead of archiving or pruning them out of the runtime store.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py:28",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
-        "crontab -l (2026-05-21 06:56 Europe/Berlin)"
+        "/home/mistlight/.openclaw/cron/jobs.json:35",
+        "/home/mistlight/.openclaw/cron/jobs.json:61",
+        "/home/mistlight/.openclaw/cron/jobs.json:157",
+        "/home/mistlight/.openclaw/cron/jobs.json:186",
+        "/home/mistlight/.openclaw/cron/jobs.json:677",
+        "/home/mistlight/.openclaw/cron/jobs.json:753"
       ],
-      "confidence": 0.87,
-      "recommended_fix": "Add a small allowlist check for user crontab contents so future hidden scheduler layers fail the audit immediately instead of waiting for manual discovery."
+      "confidence": 0.84,
+      "recommended_fix": "Once audit-history retention is no longer needed, archive or remove the legacy disabled jobs instead of keeping them in the live scheduler inventory."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
       "goal": "Normalize blocked-channel recovery into one explicit runtime contract",
-      "why_now": "It is the largest remaining overlap in the live repair topology.",
+      "why_now": "It remains the highest-risk overlap in the live recovery topology.",
       "expected_effect": "Cleaner ownership, less duplicate recovery churn, and clearer verifier expectations."
     },
     {
       "order": 2,
-      "goal": "Extend the loop registry schema so non-docs loops are either fully contracted or explicitly non-self-improving",
-      "why_now": "The registry now reflects live topology, but its enforcement strength is still uneven.",
-      "expected_effect": "Machine-auditable verifier requirements instead of prompt-only governance."
+      "goal": "Prune or archive disabled legacy cron jobs once audit-history retention is no longer required",
+      "why_now": "The prompts are now safe, but the extra inventory still adds avoidable cognitive load and future drift surface.",
+      "expected_effect": "Less stale scheduler surface and fewer chances for legacy prompts to confuse future audits."
     },
     {
       "order": 3,
-      "goal": "Add an OS-crontab allowlist invariant to architecture/loop-integrity auditing",
-      "why_now": "This run found and repaired hidden scheduler drift that could otherwise return silently.",
-      "expected_effect": "Future scheduler contamination gets caught immediately."
+      "goal": "Keep the user-crontab ownership invariant strict and only add allowlist entries for explicitly justified OS-cron owners",
+      "why_now": "This run converted a previously soft governance expectation into a hard runtime check.",
+      "expected_effect": "Hidden scheduler drift fails fast instead of waiting for manual discovery."
     }
   ],
   "repairs_applied_this_run": [
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-      "change": "Kept the prior boundary fix in place: the system health monitor remains limited to cron/runtime health and does not own marketing-state remediation.",
+      "target": "/home/mistlight/.openclaw/cron/jobs.json",
+      "change": "Normalized five legacy disabled jobs plus the already-disabled docs self-heal entry so their descriptions/messages explicitly mark them as legacy/deactivated audit context rather than active authorities.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_independent_verification.json"
+        "/home/mistlight/.openclaw/cron/jobs.json:47",
+        "/home/mistlight/.openclaw/cron/jobs.json:73",
+        "/home/mistlight/.openclaw/cron/jobs.json:169",
+        "/home/mistlight/.openclaw/cron/jobs.json:198",
+        "/home/mistlight/.openclaw/cron/jobs.json:689",
+        "/home/mistlight/.openclaw/cron/jobs.json:766"
       ]
     },
     {
       "status": "done",
-      "target": "Gateway cron inventory",
-      "change": "Renamed the misleading Reddit-branded unblocker job to `blocked-channel-followup` and clarified both unblocker job descriptions as generic blocked-channel ownership.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
+      "change": "Added a hard user-crontab ownership invariant. Any meaningful user crontab entry is now treated as architecture drift unless explicitly allowlisted.",
       "proof": [
-        "/home/mistlight/.openclaw/cron/jobs.json:272",
-        "/home/mistlight/.openclaw/cron/jobs.json:412"
+        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py:27",
+        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py:35",
+        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py:219"
       ]
     },
     {
       "status": "done",
-      "target": "Disabled docs watchdog payload",
-      "change": "Normalized the disabled aggressive docs self-heal job into explicit legacy/deactivated language so it no longer reads like the active authority.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+      "change": "Reran the loop-integrity audit. The refreshed artifact now includes `user-crontab-ownership` with status `ok` and confirms no stray user-crontab entries were present at 2026-05-21 10:56 UTC.",
       "proof": [
-        "/home/mistlight/.openclaw/cron/jobs.json:752"
-      ]
-    },
-    {
-      "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py and self_improvement_loops.json",
-      "change": "Stopped the loop-integrity audit from restoring `REMOVED:` OS-cron docs entries and expanded the registry to track live repair/watchdog loops with explicit contract modes.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py:28",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:6",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
-      ]
-    },
-    {
-      "status": "done",
-      "target": "OS crontab / mirror-sync ownership",
-      "change": "Removed legacy HireAegis/content/community/product OS-cron entries, migrated Codeberg\u2192GitHub mirror sync into Gateway cron as `codeberg-github-mirror-sync`, and cleared the old OS-cron sync entry.",
-      "proof": [
-        "/home/mistlight/.openclaw/cron/jobs.json :: codeberg-github-mirror-sync",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json"
-      ]
-    },
-    {
-      "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/unblocker/AGENTS.md",
-      "change": "Removed the extreme 'human intervention forbidden' wording and replaced it with fail-closed proof and handoff rules.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/unblocker/AGENTS.md:1"
       ]
     }
   ],
   "independent_verification": {
     "status": "performed",
     "artifact": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
-    "summary": "A fresh isolated verifier reran the repaired architecture checks and passed after the Gateway mirror-sync migration and crontab cleanup.",
-    "checked_at": "2026-05-21T04:57:16Z"
+    "summary": "A fresh isolated verifier confirmed that disabled legacy jobs now read as deactivated audit context, that the loop-integrity audit enforces the new user-crontab invariant, and that the latest integrity artifact shows no stray crontab entries.",
+    "checked_at": "2026-05-21T10:57:42Z"
   },
   "highest_risk_unresolved_issue": {
     "title": "Shared blocked-channel code path with split schedules but no split verifier contract",
-    "why": "The ownership labels are now cleaner, but the runtime still has two cadences feeding one recovery implementation without distinct proof boundaries."
+    "why": "The ownership names are now clean, but the runtime still has two cadences feeding one recovery implementation without distinct proof boundaries."
   }
 }

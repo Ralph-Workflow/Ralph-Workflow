@@ -1,23 +1,43 @@
 {
-  "checked_at": "2026-05-21T04:57:16Z",
+  "checked_at": "2026-05-21T10:57:42Z",
   "verdict": "pass",
   "verified_repairs": [
-    "Live Gateway cron inventory uses generic blocked-channel ownership: job `blocked-channel-deep-review` is described as broad legitimacy-safe channel recovery and explicitly not Reddit-specific.",
-    "Legacy docs aggressive self-heal job is clearly marked deactivated: `docs-stack-aggressive-10min-self-heal` has `enabled: false` and a legacy/deactivated description.",
-    "`agents/system/loop_integrity_audit.py` only restores crontab lines that are non-empty and do not start with `REMOVED:`.",
-    "`agents/system/self_improvement_loops.json` marks the old OS-cron docs lines as `REMOVED:` placeholders, so the integrity audit will not re-add them.",
-    "User crontab no longer contains legacy HireAegis/content/community/product cron lines or the old OS-cron `sync_to_github` entry.",
-    "Gateway cron inventory includes replacement job `codeberg-github-mirror-sync` for Codeberg→GitHub mirror ownership.",
-    "`agents/unblocker/AGENTS.md` no longer contains the extreme 'human intervention forbidden' wording; it now allows human handoff when genuinely required."
+    {
+      "claim": "Disabled legacy cron jobs in jobs.json read as explicit legacy/deactivated context rather than active authorities.",
+      "status": "verified",
+      "details": "All 6 disabled jobs have enabled=false and their payload messages explicitly say they are disabled legacy/historical audit context, not active runtime/authority."
+    },
+    {
+      "claim": "loop_integrity_audit.py enforces a user-crontab ownership invariant that flags unexpected user crontab entries.",
+      "status": "verified",
+      "details": "The script defines unexpected_user_crontab_entries(), treats every meaningful user crontab line as unexpected because allowed_prefixes is empty, and appends a user-crontab-ownership error result when any such entry exists."
+    },
+    {
+      "claim": "loop_integrity_latest.json reflects that invariant and currently reports no stray user-crontab entries.",
+      "status": "verified",
+      "details": "The latest integrity log contains a user-crontab-ownership result with status=ok and note that no stray user-crontab entries were present; direct crontab -l output was empty."
+    }
   ],
   "remaining_blockers": [],
   "evidence": [
-    "`/home/mistlight/.openclaw/cron/jobs.json`: `blocked-channel-deep-review` description says 'Owns broad legitimacy-safe channel recovery, not Reddit-specific follow-up.'",
-    "`/home/mistlight/.openclaw/cron/jobs.json`: `docs-stack-aggressive-10min-self-heal` is `enabled: false` with description 'Disabled legacy aggressive docs self-heal watchdog retained only for audit history.'",
-    "`/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py`: `ensure_crontab_lines()` filters to lines that are not empty and do not start with `REMOVED:` before any restore action.",
-    "`/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json`: both `runnerCrontabLine` and `verifierCrontabLine` for `ralph-docs-watchdog` are `REMOVED: runtime now owned by the Gateway supervisor job; direct OS cron entry must stay absent`.",
-    "`crontab -l`: no entries for `HireAegis`, `Content Engine Agent`, `Community & Outreach Agent`, `product`, or `sync_to_github` were present.",
-    "`/home/mistlight/.openclaw/cron/jobs.json`: `codeberg-github-mirror-sync` is enabled and described as replacing the legacy OS-cron sync entry.",
-    "`/home/mistlight/.openclaw/workspace/agents/unblocker/AGENTS.md`: says 'If human intervention is genuinely required, mark the channel blocked with the exact blocker and prepare the cleanest possible handoff/checklist.'"
+    {
+      "source": "/home/mistlight/.openclaw/cron/jobs.json",
+      "lines": [35, 36, 47, 61, 62, 73, 157, 158, 169, 186, 187, 198, 677, 679, 689, 753, 755, 766],
+      "summary": "Disabled jobs include Content Engine Agent, Community & Outreach Agent, seo-weekly, marketing-reflection, ralph-workflow-full-house-docs-audit, and docs-stack-aggressive-10min-self-heal; each is enabled=false and its prompt marks it as disabled legacy/historical audit context rather than current authority."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
+      "lines": [35, 37, 40, 219, 222, 229, 234, 240],
+      "summary": "unexpected_user_crontab_entries() collects meaningful crontab lines, allowlists none, and the main flow emits a user-crontab-ownership error on any unexpected line or an ok note when none exist."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+      "lines": [2, 66, 72],
+      "summary": "Latest log timestamp is 2026-05-21 10:56 UTC and includes user-crontab-ownership with note that Gateway owns the active scheduler topology and no stray user-crontab entries were present."
+    },
+    {
+      "source": "crontab -l",
+      "summary": "Direct command output at check time was empty (USER=mistlight, then no crontab lines)."
+    }
   ]
 }
