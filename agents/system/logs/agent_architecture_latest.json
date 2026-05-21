@@ -1,9 +1,9 @@
 {
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
-    "overall_health": "healthy",
-    "primary_failure_mode": "The main architecture risk this run was mixed-era marketing certification evidence; that path is now fail-closed and freshly re-verified.",
-    "most_urgent_fix": "Keep the marketing coherence gate and registry-coverage guardrails in place as new loop surfaces and support jobs evolve."
+    "overall_health": "healthy_with_repairs",
+    "primary_failure_mode": "A full-contract marketing loop could be declared healthy even when its independent verification artifact predated newer repaired runtime evidence.",
+    "most_urgent_fix": "Keep full-contract verifier gates fail-closed against newer runner/audit artifacts so no repaired loop can self-certify on stale independent proof."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,33 +22,15 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-21T23:28:12+02:00",
-    "cron_scheduler_enabled": true,
-    "live_inventory_sources": [
-      "/home/mistlight/.openclaw/cron/jobs.json",
-      "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
-    ],
-    "inspection_note": "Direct cron tool inspection was restricted in this watchdog run, so the live Gateway jobs file plus current runtime artifacts and code were used as the mutable source of truth.",
+    "checked_at": "2026-05-22T01:09:50+02:00",
+    "scheduler_inspection_method": "direct `openclaw cron list --json` because the in-tool cron API is restricted inside this cron-run context",
+    "live_jobs_checked": 20,
     "inspected_roots": [
       "/home/mistlight/.openclaw/workspace/agents/system",
       "/home/mistlight/.openclaw/workspace/agents/docs_quality",
       "/home/mistlight/.openclaw/workspace/agents/marketing",
-      "/home/mistlight/.openclaw/workspace/agents/unblocker"
-    ],
-    "relevant_live_jobs_checked": [
-      "agent-architecture-watchdog",
-      "ralph-workflow-docs-verifier-supervisor",
-      "marketing-active-loop",
-      "marketing-workflow-audit",
-      "marketing-momentum-watchdog",
-      "reddit-monitor",
-      "system-health-monitor",
-      "blocked-channel-deep-review",
-      "ralph-site-owner-loop",
-      "Push research findings to git repo",
-      "codeberg-github-mirror-sync"
+      "/home/mistlight/.openclaw/workspace/agents/unblocker",
+      "/home/mistlight/.openclaw/workspace/Ralph-Site"
     ]
   },
   "responsibility_map": [
@@ -58,7 +40,7 @@
     },
     {
       "loop": "autonomous-marketing-stack",
-      "owns": ["research", "message testing", "momentum tracking", "marketing independent verification"]
+      "owns": ["research", "message testing", "distribution actions", "marketing independent verification"]
     },
     {
       "loop": "ralph-site-owner-loop",
@@ -79,99 +61,93 @@
     {
       "loop": "codeberg-github-mirror-sync",
       "owns": ["Codeberg-to-GitHub mirror replication"]
+    },
+    {
+      "loop": "agent-architecture-watchdog",
+      "owns": ["cross-loop architecture audit", "ownership-boundary verification", "repair-signoff enforcement"]
     }
   ],
   "findings": [
     {
-      "severity": "medium",
-      "title": "Marketing certification previously allowed mixed-era artifacts to support a pass decision",
-      "mechanism": "The checker and independent verifier could accept a healthy current momentum artifact while still trusting an older runner bundle, which weakened evidence coherence across the marketing full-contract loop.",
-      "source_layer": "persistence",
-      "root_cause": "Artifact freshness was checked, but cross-artifact temporal coherence was not enforced.",
+      "severity": "high",
+      "title": "Marketing full-contract verification could pass on stale independent proof after newer runtime repairs",
+      "mechanism": "The marketing verifier only checked age and pass/fail of `marketing_loop_independent_verification.json`, so a runner-triggered repair at 2026-05-22T00:57:25+02:00 could still be certified by independent proof from 2026-05-22T00:27:28+02:00.",
+      "source_layer": "hidden repair loops",
+      "root_cause": "The verifier gate lacked coherence checks against newer runner, momentum, and workflow-audit artifacts.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_independent_verify.py",
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:9-16",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:23-29",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:47-56"
       ],
-      "confidence": 0.96,
-      "recommended_fix": "Require the runner artifact to be coherent with newer peer artifacts before checker or independent verifier can issue a pass, then regenerate the runner bundle before certification."
+      "confidence": 0.99,
+      "recommended_fix": "Require the marketing verifier to fail closed when independent verification predates newer runtime evidence, then rerun independent verification after any material repair."
+    },
+    {
+      "severity": "medium",
+      "title": "Shared market-intelligence reuse is still partly prompt-enforced instead of runtime-enforced",
+      "mechanism": "The shared artifact declares intended downstream consumers including `reddit_monitor.py`, `run.py`, the Ralph-Site owner loop, and this watchdog, but direct code-level consumption was only evident in `competitor_analysis.py` and `run.py`; other paths currently rely on cron prompt instructions to read the artifact.",
+      "source_layer": "tool selection",
+      "root_cause": "Cross-loop reuse expectations are documented well, but not yet backed by uniform script-level proof hooks across every intended consumer.",
+      "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/competitor_analysis.py:46",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/run.py:31",
+        "/home/mistlight/.openclaw/cron/jobs.json"
+      ],
+      "confidence": 0.78,
+      "recommended_fix": "Add lightweight runtime proof that each intended consumer loaded or consciously skipped the shared market-intelligence artifact, instead of relying only on prompt prose."
     },
     {
       "severity": "low",
-      "title": "Architecture ownership boundaries are explicit and currently non-overlapping",
-      "mechanism": "The runtime registry covers live architecture-scoped Gateway jobs, full-contract loops have current pass artifacts, and owner-only support loops remain explicitly out of self-certifying roles.",
-      "source_layer": "runtime cron topology",
-      "root_cause": "Previous registry drift repairs remain effective and are now corroborated by fresh loop-integrity and health-monitor outputs.",
+      "title": "Retired docs and reflection jobs are disabled and clearly marked as legacy rather than live authority",
+      "mechanism": "Disabled topology is still present for audit history, but the payloads and descriptions explicitly identify them as non-live legacy surfaces.",
+      "source_layer": "persistence",
+      "root_cause": "Legacy retention is being handled explicitly rather than silently.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
+        "/home/mistlight/.openclaw/cron/jobs.json"
       ],
       "confidence": 0.95,
-      "recommended_fix": "Keep self_improvement_loops.json aligned with live Gateway jobs and preserve the fail-closed registry coverage invariant."
-    },
-    {
-      "severity": "low",
-      "title": "Learning promotion is working: repeated audit findings are landing as runtime gates instead of report-only prose",
-      "mechanism": "The marketing coherence issue was promoted directly into checker and independent-verifier code, then revalidated with fresh runner and loop-integrity outputs.",
-      "source_layer": "hidden repair loops",
-      "root_cause": "The runtime now converts discovered certification drift into executable guardrails instead of relying on future operator memory.",
-      "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_independent_verify.py",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
-      ],
-      "confidence": 0.97,
-      "recommended_fix": "Continue promoting repeated architecture findings into typed checks and fail-closed gates, especially when multiple artifacts can drift out of sync."
+      "recommended_fix": "Keep disabled legacy jobs explicitly labeled and non-authoritative so stale topology cannot regain silent ownership."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Preserve cross-artifact coherence gates on full-contract loops",
-      "why_now": "They prevent stale runner evidence from silently certifying a healthy-looking but mixed-era loop state.",
-      "expected_effect": "Independent verification remains evidence-coherent instead of passable from stitched-together artifacts."
+      "goal": "Fail closed when independent verification is older than repaired marketing runtime evidence",
+      "why_now": "This was a real hidden self-certification gap on a live full-contract loop.",
+      "expected_effect": "Same-run repairs now require fresh independent proof before the marketing path can be called healthy."
     },
     {
       "order": 2,
-      "goal": "Keep the loop registry synchronized with active Gateway jobs",
-      "why_now": "The topology is healthy now because the registry remains the authoritative ownership map.",
-      "expected_effect": "No hidden live loop can escape architecture accounting or create overlap silently."
+      "goal": "Add runtime-level consumption proof for shared market-intelligence artifacts",
+      "why_now": "Cross-loop learning should be provable behavior, not just prompt intent.",
+      "expected_effect": "Cleaner evidence that competitor/reddit/positioning learnings are actually reused by the loops that should act on them."
     },
     {
       "order": 3,
-      "goal": "Keep converting repeated audit discoveries into code-level gates",
-      "why_now": "That is the clearest proof that the runtime is actually learning instead of only rephrasing earlier findings.",
-      "expected_effect": "Better loop resilience, less self-certification drift, and faster recovery from future architecture regressions."
+      "goal": "Keep disabled topology explicitly retired and out of active ownership reasoning",
+      "why_now": "That remains the main protection against stale loop leakage returning through old scheduler surfaces.",
+      "expected_effect": "Lower risk of retired jobs or prompts silently regaining authority."
     }
   ],
   "repairs_applied_this_run": [
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
-      "change": "Added a fail-closed runner-to-peer coherence gate so the checker refuses mixed-era runner, audit, and momentum evidence.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py",
+      "change": "Added a runtime-coherence gate so the verifier fails if `marketing_loop_independent_verification.json` predates newer runner, momentum, or workflow-audit artifacts.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:23-29",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:51-56"
       ]
     },
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_independent_verify.py",
-      "change": "Added the same coherence guard to independent verification so a pass cannot be issued from mixed-era artifacts.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "change": "Reran the independent marketing verifier after the repaired runtime proof gate so the full-contract path has fresh post-repair signoff.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_independent_verify.py",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
-      ]
-    },
-    {
-      "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "change": "Regenerated the full marketing runner bundle after the coherence-gate repair so the live certification path is based on fresh aligned artifacts.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md"
       ]
     }
@@ -179,17 +155,17 @@
   "independent_verification": {
     "status": "performed",
     "artifacts": [
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
+      "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md"
     ],
-    "summary": "Fresh post-repair verification confirms the new marketing coherence guard, a fresh passing marketing independent-verification artifact, green loop-integrity output, and a zero-issue health monitor result.",
-    "checked_at": "2026-05-21T23:28:12+02:00"
+    "summary": "The repaired marketing verifier first failed closed against stale proof, then passed only after a fresh independent marketing verification was produced at 2026-05-22T01:09:25.420760+02:00. A fresh loop-integrity run then returned `MARKETING_LOOP_OK`.",
+    "checked_at": "2026-05-22T01:09:50+02:00"
   },
   "what_still_needs_independent_verification": [],
   "highest_risk_unresolved_issue": {
-    "title": "Owner-only loops still rely on owner-local proof surfaces rather than a single normalized registry-wide verifier contract",
-    "why": "That is acceptable by design today, but it remains the loosest part of the architecture compared with the full-contract loops."
+    "title": "Shared market-intelligence consumption is not uniformly runtime-proven across every intended consumer",
+    "why": "The architecture now blocks stale independent certification on the repaired marketing path, but cross-loop learning reuse is still partially enforced by prompt prose rather than uniform script-level proof."
   }
 }

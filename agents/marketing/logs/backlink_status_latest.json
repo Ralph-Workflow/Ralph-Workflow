@@ -1,0 +1,137 @@
+{
+  "generated_at": "2026-05-21T22:51:05.631085",
+  "source": "backlink_status.py",
+  "directories": {
+    "AIToolsIndex": {
+      "directory": "AIToolsIndex",
+      "listing_url": "https://aitoolsindex.com/tools/ralph-workflow",
+      "submit_url": "https://aitoolsindex.com/submit/",
+      "check_results": [
+        {
+          "url": "https://aitoolsindex.com/ai-tools/ralph-workflow",
+          "status": null,
+          "ok": false,
+          "error": "<urlopen error [Errno -5] No address associated with hostname>"
+        },
+        {
+          "url": "https://aitoolsindex.com/tools/ralph-workflow",
+          "status": null,
+          "ok": false,
+          "error": "<urlopen error [Errno -5] No address associated with hostname>"
+        }
+      ],
+      "listing_live": false
+    },
+    "ToolShelf": {
+      "directory": "ToolShelf",
+      "listing_url": "https://toolshelf.io/tool/ralph-workflow",
+      "submit_url": "https://toolshelf.io/submit",
+      "check_results": [
+        {
+          "url": "https://toolshelf.io/tools/ralph-workflow",
+          "status": null,
+          "ok": false,
+          "error": "<urlopen error timed out>"
+        }
+      ],
+      "listing_live": false
+    },
+    "SaaSHub": {
+      "directory": "SaaSHub",
+      "listing_url": "https://saashub.com/ralph-workflow",
+      "submit_url": "https://saashub.com/add_url",
+      "check_results": [
+        {
+          "url": "https://saashub.com/ralph-workflow",
+          "status": 200,
+          "ok": true
+        }
+      ],
+      "listing_live": true
+    },
+    "ToolWise": {
+      "directory": "ToolWise",
+      "listing_url": "https://www.toolwise.com/tools/ralph-workflow",
+      "submit_url": "https://www.toolwise.com/submit-tool/",
+      "check_results": [
+        {
+          "url": "https://www.toolwise.com/ralph-workflow",
+          "status": null,
+          "ok": false,
+          "error": "<urlopen error [Errno -3] Temporary failure in name resolution>"
+        }
+      ],
+      "listing_live": false
+    },
+    "MadeWithStack": {
+      "directory": "MadeWithStack",
+      "listing_url": "https://www.madewithstack.com/project/ralph-workflow",
+      "submit_url": "https://www.madewithstack.com/submit",
+      "check_results": [],
+      "listing_live": false
+    },
+    "DevToolCenter": {
+      "directory": "DevToolCenter",
+      "listing_url": "https://www.devtoolcenter.com/tools/ralph-workflow",
+      "submit_url": "https://www.devtoolcenter.com/submit",
+      "check_results": [],
+      "listing_live": false
+    }
+  },
+  "google_index": {
+    "site:codeberg.org RalphWorkflow": {
+      "query": "site:codeberg.org RalphWorkflow",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "site:github.com RalphWorkflow Ralph Workflow": {
+      "query": "site:github.com RalphWorkflow Ralph Workflow",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralphworkflow.com": {
+      "query": "ralphworkflow.com",
+      "indexed": true,
+      "found_urls": [
+        "ralphworkflow.com"
+      ],
+      "status": 200
+    },
+    "ralph workflow aitoolsindex": {
+      "query": "ralph workflow aitoolsindex",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow toolshelf": {
+      "query": "ralph workflow toolshelf",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow saashub": {
+      "query": "ralph workflow saashub",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow toolwise": {
+      "query": "ralph workflow toolwise",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    }
+  },
+  "summary": {
+    "directories_with_live_listings": 1,
+    "queries_indexed": 1,
+    "total_queries": 7,
+    "check_urls": [
+      "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+      "https://github.com/Ralph-Workflow/Ralph-Workflow",
+      "ralphworkflow.com"
+    ]
+  }
+}

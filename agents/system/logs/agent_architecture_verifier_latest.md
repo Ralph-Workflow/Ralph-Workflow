@@ -1,10 +1,10 @@
 # Agent Architecture Independent Verification
 
-- Checked: 2026-05-21T23:29:36.600055
+- Checked: 2026-05-22T01:11:24.952032
 - Status: independently verified pass
 - Independent artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
-- Independent check time: 2026-05-21T23:28:12+02:00
-- Summary: Independent verification confirms the repaired marketing certification path now fails closed on mixed-era artifacts and the live full-contract loops currently pass with fresh, coherent evidence.
+- Independent check time: 2026-05-22T01:09:50+02:00
+- Summary: Independent verification confirms the repaired marketing full-contract path no longer accepts stale independent proof after newer runtime evidence, and fresh post-repair marketing signoff is present.
 
 ## Verification result
 

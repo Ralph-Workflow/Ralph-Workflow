@@ -1,50 +1,37 @@
 {
-  "checked_at": "2026-05-21T23:28:12+02:00",
+  "checked_at": "2026-05-22T01:09:50+02:00",
   "verdict": "pass",
-  "summary": "Independent verification confirms the repaired marketing certification path now fails closed on mixed-era artifacts and the live full-contract loops currently pass with fresh, coherent evidence.",
+  "summary": "Independent verification confirms the repaired marketing full-contract path no longer accepts stale independent proof after newer runtime evidence, and fresh post-repair marketing signoff is present.",
   "verified_repairs": [
     {
-      "claim": "marketing_loop_checker.py now rejects stale runner evidence when audit or momentum artifacts are newer.",
+      "claim": "The marketing verifier now fails closed when independent proof predates newer runner, momentum, or workflow-audit artifacts.",
       "status": "verified",
-      "details": "Current source adds a coherence gate and the live checker passed only after a fresh runner bundle was regenerated."
+      "details": "A pre-rerun execution of `python3 agents/marketing/marketing_loop_verifier.py` failed with a stale-proof error, and the patched code now enforces that check in `agents/marketing/marketing_loop_verifier.py`."
     },
     {
-      "claim": "marketing_loop_independent_verify.py now refuses to certify a marketing pass from mixed-era runner, momentum, and audit artifacts.",
+      "claim": "Fresh independent verification was produced after the repaired runtime evidence.",
       "status": "verified",
-      "details": "Current source blocks certification when the runner artifact lags peer artifacts by more than the allowed skew window."
+      "details": "`agents/marketing/logs/marketing_loop_independent_verification.json` now shows `checked_at=2026-05-22T01:09:25.420760+02:00` with `verdict=pass`."
     },
     {
-      "claim": "The refreshed marketing path now has fresh coherent pass evidence across runner, checker, verifier, and independent verification surfaces.",
+      "claim": "The broader loop-integrity surface accepts the marketing path only after the fresh signoff.",
       "status": "verified",
-      "details": "marketing_loop_runner_latest.json, marketing_momentum_watchdog.json, marketing_loop_independent_verification.json, and marketing_loop_verifier_latest.md are all fresh and aligned."
-    },
-    {
-      "claim": "Registry ownership and scheduler topology remain explicit with no uncovered architecture-scoped Gateway jobs or stray user crontab entries.",
-      "status": "verified",
-      "details": "loop_integrity_latest.json shows all registered loop surfaces healthy or explicitly owner/monitor-only, and user-crontab-ownership remains ok."
+      "details": "A fresh `python3 agents/system/loop_integrity_audit.py` run wrote `agents/system/logs/loop_integrity_latest.json` with `autonomous-marketing-stack` at `MARKETING_LOOP_OK`."
     }
   ],
   "remaining_blockers": [],
   "evidence": [
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
-      "summary": "Checker now enforces runner-to-peer artifact coherence before allowing MARKETING_LOOP_OK."
-    },
-    {
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_independent_verify.py",
-      "summary": "Independent verifier now enforces the same coherence guard before emitting verdict=pass."
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py",
+      "summary": "Verifier now checks runtime coherence against runner, momentum, and workflow-audit artifacts."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "summary": "Fresh verdict=pass at 2026-05-21T23:27:50.697418+02:00."
+      "summary": "Fresh post-repair independent pass artifact written at 2026-05-22T01:09:25.420760+02:00."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-      "summary": "Fresh loop integrity audit shows all full-contract loops green and no registry-coverage or scheduler-ownership failures."
-    },
-    {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Fresh health monitor output reports issues_found=0."
+      "summary": "Fresh loop-integrity audit reports `autonomous-marketing-stack` as `MARKETING_LOOP_OK`."
     }
   ]
 }

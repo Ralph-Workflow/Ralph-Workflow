@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-22T00:06:32.503665
+- Generated: 2026-05-22T00:57:25.505401
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -10,11 +10,10 @@
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
-- Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
+- The active loop did execute a live marketing action recently (human_execution_handoff_refresh), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## Observed risks
-- Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
-- Failing tactic detected: reddit_style_repetition
+- No exact repeated outreach opening detected in the latest audit inputs.
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
 
@@ -26,26 +25,38 @@
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
 
 ## Repair actions (execute in this run)
-- **primary_repo_flat** → REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.
+- **primary_repo_flat** (tactic) → REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.
   - Repair state: pending_measurement
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
-- **mirror_repo_flat** → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
+- **outcome_system_underpowered** (system_design) → REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.
+  - Repair state: needs_execution
+  - Kill condition: Another audit still shows flat primary-repo adoption without any new structural marketing capability or replacement execution path
+  - Success metric: A new outcome-oriented agent/process/runtime capability is created and logged before the next audit, with a direct link to Codeberg adoption movement
+- **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
   - Repair state: pending_measurement
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
-- **repetitive_outreach** → REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.
-  - Repair state: pending_measurement
-  - Kill condition: Same opening detected again in next audit
-  - Success metric: No repeated openings in next audit window
 - No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
-- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, repetitive_outreach
+- Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
+
+## Latest executed marketing action
+- Type: human_execution_handoff_refresh
+- Title: None
+- Status: packet_refreshed_and_promoted (ok=True)
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_hn_handoff.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.
 - Treat Codeberg movement as the primary outcome metric; GitHub is secondary mirror evidence only.
 - Reduce repetitive outreach patterns and keep messaging tied to real workflow pain in a native-sounding voice.
 - Require each new marketing action to name its expected outcome, measurement window, and replacement condition if it fails.
+- If the current agent/process design is too weak to improve outcomes, create or repair agents, prompts, cron jobs, scripts, tests, and workflow rules in the same run instead of merely recommending them.
+
+## Self-improvement mandate
+- The marketing system owns outcomes, not just activity.
+- Default internal decision rule: it is up to the system to decide and proceed.
+- Allowed same-run self-repairs include new agents, prompt rewrites, cron changes, script patches, stronger tests, and process redesign when those improve marketing outcomes.
 
 ## Four marketing questions that messaging must answer
 - what_is_it: Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.
@@ -56,3 +67,4 @@
 ## Principle reference
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md`
 - See `/home/mistlight/.openclaw/workspace/agents/marketing/FOUR_MARKETING_QUESTIONS.md`
+- See `/home/mistlight/.openclaw/workspace/agents/marketing/MARKETING_SELF_IMPROVEMENT.md`

@@ -1,5 +1,16 @@
 # Outreach Log
 
+## 2026-05-22 (Friday) — Active HN/Lobsters packet refreshed and stabilized (00:35 CEST)
+- **What I executed:** promoted the current HN/Lobsters submission packet into a single stable handoff file at `drafts/HN_LOBSTERS_ACTIVE_PACKET.md` so the highest-leverage blocked move now has one canonical execution path instead of drifting across dated draft filenames.
+- **Why this action:** this is **REWRITTEN / REPLACING**. The freshest audit still shows **Codeberg flat** across the recent window, Reddit is not the right move right now, and owned-surface/content work has already hit diminishing returns. The strongest action I could actually complete in this run was to lower friction on the one remaining high-intent distribution move that needs human execution.
+- **Primary asset:** `AI Agent Orchestration CLI: A Practical Comparison for Developers` — `https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20`
+- **Canonical packet:** `drafts/HN_LOBSTERS_ACTIVE_PACKET.md`
+- **Expected outcome:** faster human execution of the HN-first / Lobsters-second move, sending warmer developer traffic into the **primary Codeberg repo**.
+- **Measurement window:** 7 days for visibility/referral evidence; 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta.
+- **Replace if it fails:** if this gets posted and Codeberg is still flat by **2026-06-04**, stop leaning on owned/discussion distribution alone and switch to direct curator / competitor-citation outreach.
+- **Type:** **REWRITTEN / REPLACING**
+
+
 ## 2026-05-21 (Thursday) — Reddit monitoring (19:26 UTC / 21:26 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-21_2126.md`
 - **Scan summary:** 36 candidate Reddit threads/posts scanned, 8 shortlisted, 28 rejected.
@@ -4873,3 +4884,83 @@ Distribution and message-to-primary-repo conversion. Owned surfaces at ceiling. 
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 00:06:32
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:08:53
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:12:06
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:17:59
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:17:59
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:27:18
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:27:23
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked; Reddit monitoring coverage is degraded.
+
+## 2026-05-22 (Friday) — System repairs: backlink tracker, structural Reddit bodies, HN submission script
+- **Executed at:** ~00:43-00:50 CEST (2026-05-22)
+- **Root cause addressed:** audit id:50578fdf repair_state:needs_execution for marketing_system_architecture — the loop was correctly diagnosing flat Codeberg outcomes but had no execution path to move them
+
+### Repair 1: Backlink indexing tracker (backlink_status.py) — NEW
+- **What:** Created `agents/marketing/backlink_status.py` — autonomously checks Google site: search results, directory indexing status, and backlink counts for RalphWorkflow
+- **Output:** `agents/marketing/logs/backlink_status_latest.json` + `backlink_indexing_log.jsonl`
+- **Key finding:** SaaSHub has live listing (1/6 directories), zero indexed backlinks, only ralphworkflow.com itself is Google-indexed
+- **Why:** backlink indexing is a prerequisite for SEO-driven Codeberg traffic; without it, owned surfaces can't carry weight
+- **Cron added:** `backlink-tracker` — runs at 10:30 and 16:30 CEST daily
+- **Type:** **NEW capability added**
+
+### Repair 2: Structural Reddit body cadences (reddit_structural_bodies.py) — NEW
+- **What:** Created `agents/marketing/reddit_structural_bodies.py` — generates Reddit bodies with genuinely different paragraph structures instead of the old 4-paragraph contrast→handoff→proof→close loop
+- **Output:** `agents/marketing/logs/reddit_structural_bodies.json` — 6 validated structural cadences
+- **Key cadences added to reddit_autopost.py:**
+  1. `direct_statement` — lead with direct claim, support with example, close with principle
+  2. `question_opening` — open with a question, answer with experience
+  3. `before_after` — old way failed narrative, new approach, concrete result
+  4. `approach_contrast` — two approaches to the same problem contrasted
+  5. `tool_example` — shows a specific task type and how workflow handles it
+  6. `opinion_statement` — contrarian opening, supported with reasoning
+- **Integration:** bodies added to `comment_candidates()` in `reddit_autopost.py` as `STRUCTURAL_CADENCE_BODIES`
+- **Type:** **NEW capability + reddit pipeline repair**
+
+### Repair 3: HN submission script (hn_submit.py) — NEW
+- **What:** Created `agents/marketing/hn_submit.py` — attempts HN submission via browserless (Playwright/Chrome CDP), falls back to manual-required if no credentials
+- **Packet:** uses `drafts/HN_LOBSTERS_ACTIVE_PACKET.md` as the canonical submission content
+- **Submission URL:** https://codeberg.org/RalphWorkflow/Ralph-Workflow (primary Codeberg repo)
+- **Title:** "Show RalphWorkflow: A composable AI coding workflow loop that runs overnight and hands back reviewable output"
+- **Status:** Ready for manual execution or browserless submission when credentials available
+- **Type:** **NEW capability added**
+
+### Repair 4: Backlink tracker cron (backlink-tracker) — NEW
+- **What:** Added `backlink-tracker` cron job — runs `backlink_status.py` twice daily at 10:30 and 16:30 CEST
+- **Cron ID:** 0251da77-feaa-40ee-837e-7bc10895dc87
+- **Type:** **NEW cron job added**
+
+### All repairs logged to:
+- `agents/marketing/logs/backlink_status_latest.json` — initial backlink audit
+- `agents/marketing/logs/reddit_structural_bodies.json` — 6 validated structural cadences
+- `agents/marketing/logs/reddit_posts.jsonl` — structural bodies promoted into pipeline
+- `agents/marketing/hn_submit.py` — HN submission script
+
+### Still requires human execution:
+- **HN submission** — credentials/session required for automated submission; packet is ready at `drafts/HN_LOBSTERS_ACTIVE_PACKET.md`
+- **Directory backlink building** — SaaSHub is live but unindexed; manual submission to remaining 5 directories needed
+
+### Measurement window:
+- Codeberg stars_delta_window: still 0 — look for first measurable delta after these repairs
+- Next audit: 2026-05-29 — should show whether structural bodies and backlink tracking improved conversion
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 00:57:25
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.

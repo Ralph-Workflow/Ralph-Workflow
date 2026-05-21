@@ -1,11 +1,9 @@
 {
-  "generated_at": "2026-05-22T00:06:32.503665",
+  "generated_at": "2026-05-22T00:57:25.505401",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
-  "repeated_openings": [
-    "Honestly the part I'd optimize first is the handoff, not the model stack."
-  ],
+  "repeated_openings": [],
   "adoption_metrics": [
     {
       "platform": "GitHub",
@@ -52,7 +50,6 @@
     ]
   },
   "failing_tactics": [
-    "reddit_style_repetition",
     "primary_repo_flat_window",
     "mirror_repo_flat_window"
   ],
@@ -60,6 +57,7 @@
     {
       "target_tactic": "content_distribution",
       "failure_type": "primary_repo_flat",
+      "repair_kind": "tactic",
       "action": "REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.",
       "kill_condition": "Still no Codeberg delta after 7 days of new approach",
       "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
@@ -67,29 +65,30 @@
       "repair_state": "pending_measurement"
     },
     {
+      "target_tactic": "marketing_system_architecture",
+      "failure_type": "outcome_system_underpowered",
+      "repair_kind": "system_design",
+      "action": "REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.",
+      "kill_condition": "Another audit still shows flat primary-repo adoption without any new structural marketing capability or replacement execution path",
+      "success_metric": "A new outcome-oriented agent/process/runtime capability is created and logged before the next audit, with a direct link to Codeberg adoption movement",
+      "priority": 1,
+      "repair_state": "needs_execution"
+    },
+    {
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
+      "repair_kind": "tactic",
       "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
       "kill_condition": "N/A (mirror, not primary)",
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
-      "repair_state": "pending_measurement"
-    },
-    {
-      "target_tactic": "reddit_post_style",
-      "failure_type": "repetitive_outreach",
-      "action": "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
-      "kill_condition": "Same opening detected again in next audit",
-      "success_metric": "No repeated openings in next audit window",
-      "priority": 2,
       "repair_state": "pending_measurement"
     }
   ],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "primary_repo_flat",
-    "mirror_repo_flat",
-    "repetitive_outreach"
+    "mirror_repo_flat"
   ],
   "has_failing_tactics": true,
   "reasons": [
@@ -97,18 +96,44 @@
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
-    "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response."
+    "The active loop did execute a live marketing action recently (human_execution_handoff_refresh), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
     "Treat Codeberg movement as the primary outcome metric; GitHub is secondary mirror evidence only.",
     "Reduce repetitive outreach patterns and keep messaging tied to real workflow pain in a native-sounding voice.",
-    "Require each new marketing action to name its expected outcome, measurement window, and replacement condition if it fails."
+    "Require each new marketing action to name its expected outcome, measurement window, and replacement condition if it fails.",
+    "If the current agent/process design is too weak to improve outcomes, create or repair agents, prompts, cron jobs, scripts, tests, and workflow rules in the same run instead of merely recommending them."
   ],
+  "self_improvement_mandate": {
+    "owner": "marketing_system",
+    "goal": "improve real marketing outcomes, not just technical health",
+    "default_decision_rule": "it is up to the system to decide and proceed",
+    "required_when_outcomes_are_flat": [
+      "create_new_agents",
+      "repair_existing_agents",
+      "rewrite_prompts",
+      "change_cron_jobs",
+      "patch_marketing_scripts",
+      "add_or_tighten_tests",
+      "change_development_process",
+      "retire_stale_paths",
+      "generate_new_distribution_assets"
+    ],
+    "technical_repairs_alone_are_insufficient": true
+  },
   "four_marketing_questions": {
     "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
     "who_is_it_for": "Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.",
     "why_different": "It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.",
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
+  },
+  "latest_executed_action": {
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_hn_handoff.json",
+    "type": "human_execution_handoff_refresh",
+    "title": null,
+    "status": "packet_refreshed_and_promoted",
+    "ok": true,
+    "url": null
   }
 }

@@ -1,0 +1,105 @@
+{
+  "generated_at": "2026-05-21T22:48:11.955167+00:00",
+  "source": "promote_structural_bodies.py",
+  "total_cadences": 6,
+  "ready_count": 0,
+  "freshness_blocked": 6,
+  "cadences": [
+    {
+      "ts": "2026-05-21T22:48:11.955026+00:00",
+      "type": "structural_body_promoted",
+      "cadence_id": "direct_statement",
+      "cadence_label": "Direct Statement",
+      "description": "Lead with a direct claim, support with one concrete example, close with a principle",
+      "body": "The most useful constraint I found for longer AI coding runs is: the output has to be something I would actually merge.\n\nNot just 'the agent said it was done.' Not a confident summary. An actual diff I can read in five minutes, check evidence that ran, and a short named list of what still needs a call.\n\nThe difference between that and most unattended runs is mostly whether you defined the finish line before starting. The few times this actually worked for me on real backlog work, it was because I wrote a one-paragraph spec first and the agent's output had to match it.\n\nFor the kind of work that matters \u2014 not demo code, real repo work \u2014 a spec-first run with a clear finish line is a different category than 'prompt, hope, review the blob.'\n\nThe project behind this is Ralph Workflow: free, open-source, runs existing AI coding tools on your own machine and tries to end with finished code, tested code, and a review surface instead of a confident summary.\n\nhttps://codeberg.org/RalphWorkflow/Ralph-Workflow / https://github.com/Ralph-Workflow/Ralph-Workflow",
+      "opening": "The most useful constraint I found for longer AI coding runs is: the output has to be something I wo",
+      "freshness_score": 0.0,
+      "validation": {
+        "never_use_violations": [],
+        "repetitive_sentence_starts": [],
+        "passed": true
+      },
+      "ready_for_use": false
+    },
+    {
+      "ts": "2026-05-21T22:48:11.955057+00:00",
+      "type": "structural_body_promoted",
+      "cadence_id": "question_opening",
+      "cadence_label": "Question Opening",
+      "description": "Open with a question the audience is already asking themselves, answer it with experience",
+      "body": "What's the actual test for whether an AI coding run was worth it?\n\nFor me it became: did the morning-after review take less time than doing it myself would have? Not 'was the agent confident' \u2014 did the output survive contact with my actual codebase.\n\nThat question started mattering more when I moved from one-off prompts to overnight runs on real backlog work. The agent is never the product. The merged result is.\n\nWhat changed my setup was separating the spec from the execution. Write what 'done' looks like before starting. Let the agent work. Judge the result against the spec in the morning, not the agent's self-assessment.\n\nThat's what Ralph Workflow does \u2014 it's a free open-source workflow that runs existing AI coding tools toward a spec'd finish line on your own machine. Not a new model. A more honest finish line.\n\nhttps://codeberg.org/RalphWorkflow/Ralph-Workflow / https://github.com/Ralph-Workflow/Ralph-Workflow",
+      "opening": "What's the actual test for whether an AI coding run was worth it?",
+      "freshness_score": 0.0,
+      "validation": {
+        "never_use_violations": [],
+        "repetitive_sentence_starts": [],
+        "passed": true
+      },
+      "ready_for_use": false
+    },
+    {
+      "ts": "2026-05-21T22:48:11.955063+00:00",
+      "type": "structural_body_promoted",
+      "cadence_id": "before_after",
+      "cadence_label": "Before/After Narrative",
+      "description": "Narrative structure: old way failed, new approach, concrete result",
+      "body": "I used to spend the first twenty minutes of every morning reconstructing what an overnight AI coding run had actually done.\n\nWhich files changed. Which checks ran. What still needed a call. The agent was confident. The result was a mess.\n\nThe thing that fixed it wasn't a better model or a longer prompt. It was moving the finish line definition to the start of the run instead of the end.\n\nPick one real backlog task. Write a one-paragraph spec. Run the agent against that spec. Judge the output against it in the morning: would I merge this?\n\nRalph Workflow is a free open-source repo that runs existing AI coding tools through that pattern \u2014 spec-first, evidence-based finish, your judgment at the end. It runs on your own machine. Primary repo:\n\nhttps://codeberg.org/RalphWorkflow/Ralph-Workflow\n\nMirror: https://github.com/Ralph-Workflow/Ralph-Workflow",
+      "opening": "I used to spend the first twenty minutes of every morning reconstructing what an overnight AI coding",
+      "freshness_score": 0.0,
+      "validation": {
+        "never_use_violations": [],
+        "repetitive_sentence_starts": [],
+        "passed": true
+      },
+      "ready_for_use": false
+    },
+    {
+      "ts": "2026-05-21T22:48:11.955068+00:00",
+      "type": "structural_body_promoted",
+      "cadence_id": "approach_contrast",
+      "cadence_label": "Approach Contrast",
+      "description": "Two approaches to the same problem, with clear differentiation on outcome",
+      "body": "There are two ways to run AI coding agents on real repo work.\n\nThe first looks like: give the agent a task, wait for confidence, spend the morning reconstructing what actually happened. The diff is unclear, the checks are unverified, the open calls are unnamed.\n\nThe second starts differently: define the finish line before running. A bounded spec. A named finish criterion. Then after the run: open the diff, read the checks, and make only the calls that actually need a human.\n\nThe first approach produces confident summaries. The second produces mergeable output.\n\nRalph Workflow is an open-source implementation of the second approach. It runs existing AI coding tools on your own machine with a spec-first workflow toward a real finish line. Free. Primary repo:\n\nhttps://codeberg.org/RalphWorkflow/Ralph-Workflow\n\nMirror: https://github.com/Ralph-Workflow/Ralph-Workflow",
+      "opening": "There are two ways to run AI coding agents on real repo work.",
+      "freshness_score": 0.0,
+      "validation": {
+        "never_use_violations": [],
+        "repetitive_sentence_starts": [],
+        "passed": true
+      },
+      "ready_for_use": false
+    },
+    {
+      "ts": "2026-05-21T22:48:11.955072+00:00",
+      "type": "structural_body_promoted",
+      "cadence_id": "tool_example",
+      "cadence_label": "Concrete Tool Example",
+      "description": "Shows a specific task type and how the workflow handles it end-to-end",
+      "body": "The task type where this becomes most obvious: a bounded refactor across three files with tests.\n\nYou already know the spec. The agent should produce: changed files, test output, and a named list of what it couldn't finish. In the morning you open the diff, run the tests, and make three calls instead of spending an hour reconstructing what happened.\n\nWhat most AI coding tools skip is the 'named list of what still needs a call.' Without that, you're auditing intent instead of reviewing output.\n\nRalph Workflow builds that in: it tries to end every run with finished code, check evidence, and a short open-decisions list instead of a confident blob. Runs on your own machine. Free and open source.\n\nhttps://codeberg.org/RalphWorkflow/Ralph-Workflow / https://github.com/Ralph-Workflow/Ralph-Workflow",
+      "opening": "The task type where this becomes most obvious: a bounded refactor across three files with tests.",
+      "freshness_score": 0.0,
+      "validation": {
+        "never_use_violations": [],
+        "repetitive_sentence_starts": [],
+        "passed": true
+      },
+      "ready_for_use": false
+    },
+    {
+      "ts": "2026-05-21T22:48:11.955077+00:00",
+      "type": "structural_body_promoted",
+      "cadence_id": "opinion_statement",
+      "cadence_label": "Opinion Statement",
+      "description": "Contrarian opening opinion, supported with reasoning, connected to the workflow",
+      "body": "Most AI coding agents are better at seeming done than at actually being done.\n\nThe confidence is not the product. The diff you can read in five minutes, the check evidence that actually ran, the named list of what still needs a call \u2014 that's the product.\n\nThe shift that made overnight runs worth it for me: stop treating 'the agent said it was done' as a finish signal. Treat 'would I merge this' as the finish signal. The agent's job is to produce something mergeable, not something confident.\n\nRalph Workflow is an open-source workflow that tries to enforce exactly that: run existing AI coding tools against a real spec, end with mergeable output and a short open-decisions list. On your own machine. Free.\n\nhttps://codeberg.org/RalphWorkflow/Ralph-Workflow / https://github.com/Ralph-Workflow/Ralph-Workflow",
+      "opening": "Most AI coding agents are better at seeming done than at actually being done.",
+      "freshness_score": 0.0,
+      "validation": {
+        "never_use_violations": [],
+        "repetitive_sentence_starts": [],
+        "passed": true
+      },
+      "ready_for_use": false
+    }
+  ]
+}
