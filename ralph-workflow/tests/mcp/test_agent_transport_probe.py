@@ -74,8 +74,8 @@ def test_probe_emits_claude_http_config_and_reaches_server(
     captured = _stub_http_handshake_pass(monkeypatch)
     captured_blobs: list[tuple[str, object]] = []
 
-    def spy_claude(endpoint: str, **kw: object) -> str:
-        blob = real_claude_config(endpoint, **kw)
+    def spy_claude(endpoint: str, *, workspace_path: Path | None = None) -> str:
+        blob = real_claude_config(endpoint, workspace_path=workspace_path)
         captured_blobs.append((endpoint, blob))
         return blob
 
@@ -152,6 +152,42 @@ def test_probe_emits_opencode_config_with_remote_mcp_entry(
 
 def test_claude_interactive_in_default_probe_transports() -> None:
     assert AgentTransport.CLAUDE_INTERACTIVE in DEFAULT_TRANSPORTS
+
+
+def test_probe_codex_reuses_existing_native_server_without_duplicate_table(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    server = _stdio_server(name="memory")
+    _stub_server_handshake_pass(monkeypatch)
+    monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
+
+    def fake_prepare(
+        endpoint: str | None,
+        *,
+        workspace_path: Path | None,
+        existing_home: str | None,
+        system_prompt_file: str | None,
+    ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
+        del endpoint, workspace_path, existing_home, system_prompt_file
+        codex_home = tmp_path / "codex-home"
+        codex_home.mkdir()
+        (codex_home / "config.toml").write_text(
+            '[mcp_servers.memory]\ncommand = "my-mcp"\nenabled = true\n',
+            encoding="utf-8",
+        )
+        return str(codex_home), (server,)
+
+    monkeypatch.setattr(
+        "ralph.mcp.transport.codex.prepare_codex_home_with_upstreams",
+        fake_prepare,
+    )
+
+    reports = probe_agent_transports(
+        [server], transports=(AgentTransport.CODEX,), workspace_path=tmp_path
+    )
+
+    assert len(reports) == 1
+    assert reports[0].ok is True
 
 
 def test_probe_reports_failure_when_server_unreachable(
