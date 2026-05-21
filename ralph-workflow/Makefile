@@ -172,17 +172,20 @@ dist-homebrew: build-wheel
 		echo "Note: Homebrew bottle creation requires macOS and Homebrew environment"
 
 # Distribution targets
-verify: packaging-smoke
+verify: packaging-smoke policy-loader-smoke
 	@uv run python -m ralph.verify
 
+policy-loader-smoke:
+	@python -c "import sys; sys.stderr = open('/dev/null', 'w'); from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
+
 packaging-smoke:
-	@mkdir -p ../tmp
-	@python -m venv ../tmp/packaging-smoke
-	@../tmp/packaging-smoke/bin/pip install --quiet .
-	@ls -la ../tmp/packaging-smoke/bin/ralph-prompt
-	@../tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"
+	@mkdir -p $(shell realpath .)/../tmp
+	@python -m venv $(shell realpath .)/../tmp/packaging-smoke
+	@$(shell realpath .)/../tmp/packaging-smoke/bin/pip install --quiet .
+	@ls -la $(shell realpath .)/../tmp/packaging-smoke/bin/ralph-prompt
+	@$(shell realpath .)/../tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"
 	@uv run pytest -q tests/test_ralph_prompt_entry.py
-	@rm -rf ../tmp/packaging-smoke
+	@rm -rf $(shell realpath .)/../tmp/packaging-smoke
 
 dist-binary:
 	@echo "Building PyInstaller binary..."
