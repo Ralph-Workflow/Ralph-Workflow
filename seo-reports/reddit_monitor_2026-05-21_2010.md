@@ -1,11 +1,11 @@
-# Reddit monitor — RalphWorkflow — 2026-05-21 20:55 Europe/Berlin
+# Reddit monitor — RalphWorkflow — 2026-05-21 20:10 Europe/Berlin
 
 ## Snapshot
-- **Threads/posts scanned:** 0
+- **Threads/posts scanned:** 1
 - **Shortlisted:** 0
-- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 0
+- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 1
 - **Query attempts:** 24
-- **Search diagnostics:** provider_challenge=24
+- **Search diagnostics:** ok=1, parsed_zero=1, provider_challenge=22
 - **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`
 - **Messaging ground truth used:** <https://ralphworkflow.com>
 - **Search mode:** content-first across Reddit via broad query families; subreddit is a weak secondary hint only
@@ -40,9 +40,9 @@ Broad content-first search across Reddit around:
 - If providers challenge or under-return, that is a monitor fault and should not be treated as a clean “no opportunities” day.
 
 ## Today’s bottom line
-- **No reliable coverage yet**: the monitor is currently being challenged by the search provider, so this pass does **not** prove there were no opportunities.
-- The search space is **not** bounded to a fixed subreddit list anymore; the remaining issue is provider access quality, not subreddit coverage design.
-- This pass should be treated as degraded telemetry until search coverage is restored.
+- **Yes**, I found **0** credible discussion opportunities through content-first Reddit search.
+- The search space is **not** bounded to a fixed subreddit list anymore; subreddit only affects tie-breaking after content scoring.
+- A thread can win even in a broader dev or AI community if the post itself matches the real workflow pain strongly enough.
 
 ## Next self-improving adjustment
 - Keep expanding query families when new pain clusters appear; do not solve search coverage by hardcoding more subreddit names.

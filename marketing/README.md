@@ -1,16 +1,15 @@
 # Marketing Research — Master Index
 
-> All marketing research, competitor intel, SEO, and content strategy for RalphWorkflow and HireAegis.
-> Last updated: 2026-05-10
+> All marketing research, competitor intel, SEO, and content strategy for RalphWorkflow.
+> Last updated: 2026-05-21
 
 ## 📁 Directory Structure
 
 ```
 marketing/
 ├── README.md                          ← This file
-├── REVENUE_LOOP.md                    ← Full revenue loop analysis
-├── MONETIZATION.md                    ← Monetization strategy
-├── hireaegis-monetization-analysis.md ← Detailed HireAegis monetization
+├── REVENUE_LOOP.md                    ← RalphWorkflow revenue loop analysis
+├── MONETIZATION.md                    ← RalphWorkflow monetization strategy
 │
 ├── competitor-research/
 │   └── ralphworkflow-competitive-analysis.md  ← Competitor landscape
@@ -44,11 +43,9 @@ marketing/
     └── platform-outreach-notes.txt
 ```
 
-## 🎯 Products in Scope
+## 🎯 Product in Scope
 
 1. **RalphWorkflow** (ralphworkflow.com) — CLI orchestrator for AI coding agents
-2. **HireAegis Interviewer** (interview.hireaegis.com) — Live coding interview platform
-3. **HireAegis Bot Detection** (hireaegis.com) — Anti-spam job application filter
 
 ## 🔍 Research Areas
 
@@ -71,7 +68,7 @@ Run: `blogwatcher scan` to check for new articles.
 
 ## ⚡ Quick Stats
 
-- **Domain authority:** Low (new sites)
-- **Content published:** 0 blog posts live
-- **Social accounts:** Not yet set up
-- **SEO issues:** No OG tags, no structured data, thin content
+- **Domain authority:** Low (new site)
+- **Content published:** focused on RalphWorkflow surfaces
+- **Social/distribution:** managed by the active RalphWorkflow marketing loop
+- **SEO issues:** track only RalphWorkflow-owned surfaces here

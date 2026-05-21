@@ -1,0 +1,146 @@
+{
+  "generated_at": "2026-05-21T20:35:51.150225",
+  "source": "competitor_analysis.py",
+  "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
+  "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-21.md",
+  "monitoring_snapshot": "/home/mistlight/.openclaw/workspace/seo-reports/competitors/monitoring_2026-05-21.json",
+  "comparison_pages": [
+    {
+      "slug": "hermes-agent",
+      "name": "Hermes Agent",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md"
+    },
+    {
+      "slug": "conductor-oss",
+      "name": "Conductor OSS",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md"
+    },
+    {
+      "slug": "conductor-teams",
+      "name": "Conductor (Teams)",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md"
+    },
+    {
+      "slug": "aider",
+      "name": "Aider",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md"
+    },
+    {
+      "slug": "continue",
+      "name": "Continue",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md"
+    },
+    {
+      "slug": "cursor",
+      "name": "Cursor",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md"
+    },
+    {
+      "slug": "claude-code",
+      "name": "Claude Code",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md"
+    },
+    {
+      "slug": "copilot",
+      "name": "GitHub Copilot",
+      "path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md"
+    }
+  ],
+  "competitors": {
+    "hermes-agent": {
+      "name": "Hermes Agent",
+      "positioning": "Self-improving agent that learns from experience",
+      "site_status": 200,
+      "github_stars": 161243,
+      "key_features_found": [
+        "Persistent memory"
+      ]
+    },
+    "conductor-oss": {
+      "name": "Conductor OSS",
+      "positioning": "Enterprise-grade workflow orchestration for AI agents",
+      "site_status": 200,
+      "github_stars": 31838,
+      "key_features_found": [
+        "Durable execution"
+      ]
+    },
+    "conductor-teams": {
+      "name": "Conductor (Teams)",
+      "positioning": "Markdown-native local-first orchestration for coding teams",
+      "site_status": 200,
+      "github_stars": null,
+      "key_features_found": [
+        "Local-first"
+      ]
+    },
+    "aider": {
+      "name": "Aider",
+      "positioning": "Terminal-based AI pair programming in your git repo",
+      "site_status": 200,
+      "github_stars": 45115,
+      "key_features_found": []
+    },
+    "continue": {
+      "name": "Continue",
+      "positioning": "The leading AI code assistant inside your IDE",
+      "site_status": 200,
+      "github_stars": 33309,
+      "key_features_found": []
+    },
+    "cursor": {
+      "name": "Cursor",
+      "positioning": "The AI code editor built for pair programming with AI",
+      "site_status": 200,
+      "github_stars": null,
+      "key_features_found": [
+        "Composer",
+        "Context-aware"
+      ]
+    },
+    "claude-code": {
+      "name": "Claude Code",
+      "positioning": "Anthropic's official CLI for agentic coding",
+      "site_status": 0,
+      "github_stars": null,
+      "key_features_found": []
+    },
+    "copilot": {
+      "name": "GitHub Copilot",
+      "positioning": "Your AI pair programmer embedded in GitHub and your IDE",
+      "site_status": 200,
+      "github_stars": null,
+      "key_features_found": [
+        "Inline suggestions"
+      ]
+    }
+  },
+  "ralph_core_truths": {
+    "what_is_it": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.",
+    "who_is_it_for": "Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session.",
+    "why_different": "It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.",
+    "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
+  },
+  "ralph_advantage_keywords": [
+    "unattended coding pipeline",
+    "multi-agent orchestration",
+    "Claude Code workflow",
+    "AI agent review loop",
+    "vendor-neutral AI coding",
+    "cost arbitrage AI coding",
+    "policy-defined agent workflow",
+    "TOML agent configuration",
+    "parallel AI coding agents",
+    "AI agent checkpoint resume"
+  ],
+  "discovered_candidates": [],
+  "reuse_contract": {
+    "intended_consumers": [
+      "agents/marketing/run.py",
+      "agents/marketing/reddit_monitor.py",
+      "ralph-site-owner-loop",
+      "agent-architecture-watchdog"
+    ],
+    "purpose": "Shared market and competitor findings artifact for site updates, positioning checks, and marketing tactics."
+  }
+}

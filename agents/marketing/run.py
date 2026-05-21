@@ -28,6 +28,7 @@ STRATEGY_FILE = AGENTS_DIR / "STRATEGY.md"
 POSTED_FILE = LOG_DIR / "posted_urls.json"
 SEO_REPORTS_DIR = Path("/home/mistlight/.openclaw/workspace/seo-reports")
 ADOPTION_FILE = LOG_DIR / "adoption_metrics_latest.json"
+MARKET_INTELLIGENCE_FILE = LOG_DIR / "market_intelligence_latest.json"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 BLOCKED_CHANNELS = {
@@ -171,6 +172,16 @@ def load_adoption_data() -> dict | None:
         return None
     try:
         return json.loads(ADOPTION_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def load_market_intelligence() -> dict | None:
+    """Load the shared competitor/positioning findings artifact when available."""
+    if not MARKET_INTELLIGENCE_FILE.exists():
+        return None
+    try:
+        return json.loads(MARKET_INTELLIGENCE_FILE.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -517,6 +528,24 @@ def main() -> int:
         competitor_data = run_competitor_analysis()
         print(f"[run.py] Competitor analysis: {competitor_data.get('competitor_count', 0)} competitors tracked", flush=True)
 
+    market_intelligence = load_market_intelligence()
+    if competitor_data is None and market_intelligence:
+        competitor_data = {
+            "report_path": market_intelligence.get("summary_report"),
+            "competitor_count": len(market_intelligence.get("competitors", {})),
+            "competitors": {
+                slug: {
+                    "status": data.get("site_status"),
+                    "stars": data.get("github_stars"),
+                    "features_found": data.get("key_features_found", [])[:3],
+                }
+                for slug, data in market_intelligence.get("competitors", {}).items()
+            },
+            "comparison_pages": len(market_intelligence.get("comparison_pages", [])),
+            "comparison_pages_list": [item.get("slug") for item in market_intelligence.get("comparison_pages", [])],
+            "shared_artifact": str(MARKET_INTELLIGENCE_FILE),
+        }
+
     adoption_data = load_adoption_data()
 
     # Decisions should update whenever the primary repo is flat, not only on Mondays.
@@ -587,6 +616,7 @@ def main() -> int:
             "competitor_analysis": competitor_data,
         },
         "adoption": adoption_data,
+        "market_intelligence": market_intelligence,
         "failure_signals": [d["action"] for d in decisions if d.get("is_failing_signal")],
         "marketing_status": "failing" if any(d.get("is_failing_signal") for d in decisions) else "mixed" if decisions else "initial",
         "content_generation": {

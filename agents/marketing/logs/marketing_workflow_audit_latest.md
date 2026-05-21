@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-21T19:20:06.053623
+- Generated: 2026-05-21T20:55:33.784462
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -26,7 +26,19 @@
 - Codeberg remains the stronger adoption surface and should stay the primary evaluation target.
 
 ## Repair actions (execute in this run)
-- No same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
+- **primary_repo_flat** → REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.
+  - Repair state: pending_measurement
+  - Kill condition: Still no Codeberg delta after 7 days of new approach
+  - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
+- **mirror_repo_flat** → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
+  - Repair state: pending_measurement
+  - Kill condition: N/A (mirror, not primary)
+  - Success metric: GitHub mirror shows any adoption delta
+- **repetitive_outreach** → REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.
+  - Repair state: pending_measurement
+  - Kill condition: Same opening detected again in next audit
+  - Success metric: No repeated openings in next audit window
+- No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, repetitive_outreach
 
 ## Next highest-leverage moves

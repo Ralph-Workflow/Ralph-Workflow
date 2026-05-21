@@ -1,55 +1,47 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-21T18:53:15+02:00
-- Verdict: **HIGH RISK**
-- Primary failure mode: **two “full” loops were relying on local self-certification instead of an enforced independent-artifact boundary; the repaired marketing verifier now exposes a missing artifact instead of pretending green**
-- Most urgent fix: **finish the spawned independent verifier, keep marketing red until it writes a fresh artifact, then normalize blocked-channel recovery into one clear runtime contract or two genuinely separate ones**
+- Checked: 2026-05-21T20:48:55+02:00
+- Verdict: **MOSTLY HEALTHY**
+- Primary failure mode: **independent-verification boundaries are now real, but the marketing full-contract loop is still genuinely red because its owner path has not yet produced a repaired pass state**
+- Most urgent fix: **make the marketing owner loop turn flat-adoption + repetitive-Reddit findings into real repaired evidence and a fresh passing independent verification artifact**
 
 ## Severity-ranked findings
 
-1. **[high] Marketing loop now correctly fails closed because its independent-verification artifact does not exist**
-   - Evidence: `agents/system/self_improvement_loops.json:41-50`, `agents/marketing/marketing_loop_verifier.py:23-35`, `agents/marketing/logs/marketing_loop_verifier_latest.md:3-9`
-   - Why it matters: the loop was claiming a full verifier contract, but the first real fail-closed verifier run on **2026-05-21 18:49 Europe/Berlin** immediately surfaced a missing artifact.
+1. **[high] Marketing full-contract loop is honestly fail-closed, but still not producing a repaired pass state**
+   - Evidence: `agents/marketing/logs/marketing_loop_independent_verification.json`, `agents/marketing/logs/marketing_loop_verifier_latest.md`, `agents/marketing/logs/marketing_workflow_audit_latest.json:41-88`, `agents/marketing/logs/marketing_momentum_watchdog.json:14-19`
+   - Why it matters: the verifier is no longer fake-green. It is red for real reasons: flat primary-repo adoption, Reddit repetition risk, and repair states that are still only `measurement_pending`.
 
-2. **[medium] Architecture watchdog verifier had the same self-certification defect and still needs a fresh post-repair recheck**
-   - Evidence: `agents/system/self_improvement_loops.json:114-127`, `agents/system/agent_architecture_verifier.py:23-35`, `agents/system/logs/agent_architecture_verifier_latest.md:3-10`
-   - Why it matters: the verifier contract is repaired, but the referenced independent artifact was last checked at **2026-05-21 10:57:42 UTC**, before this repair landed.
+2. **[medium] System health monitor advertises a JSON artifact but actually writes append-only JSONL to that path**
+   - Evidence: `agents/system/self_improvement_loops.json:84-90`, `agents/system/health_monitor.py:13`, `agents/system/health_monitor.py:255-264`, `agents/system/logs/health_monitor.json`
+   - Why it matters: the declared artifact is acting like a history log, not a reliable latest-state contract.
 
-3. **[medium] Blocked-channel deep review and follow-up still share one code path and one result artifact**
-   - Evidence: `~/.openclaw/cron/jobs.json:272-284`, `~/.openclaw/cron/jobs.json:412-426`, `agents/unblocker/run.py:24-27`, `agents/system/self_improvement_loops.json:97-110`
-   - Why it matters: two owner schedules still feed the same runtime path, so overlap remains a prompt convention rather than an enforced contract.
-
-4. **[low] Disabled docs self-heal residue still leaves a stale unhealthy status artifact in the active workspace**
-   - Evidence: `agents/docs_quality/docs_stack_temp_watchdog_status.md:3-35`, `agents/docs_quality/docs_stack_parallel_signoff.json:4-10`
-   - Why it matters: the stale unhealthy artifact can still contaminate future audits even though the active docs authority moved to the Gateway verifier-supervisor path.
+3. **[low] Stale `blocked-channel-followup` residue still survives in the health monitor after the unblocker topology was collapsed**
+   - Evidence: live cron inventory now shows only `blocked-channel-deep-review`; registry note at `agents/system/self_improvement_loops.json:98-110`; stale reference at `agents/system/health_monitor.py:27-29`
+   - Why it matters: the real overlap was fixed, but one secondary monitor still carries the old topology in code.
 
 ## Repairs applied this run
 
-- Patched `agents/marketing/marketing_loop_verifier.py` so it now requires a fresh independent verification artifact and fails closed when it is missing.
-- Patched `agents/system/agent_architecture_verifier.py` the same way.
-- Added explicit `independentVerificationArtifact` fields for both loops in `agents/system/self_improvement_loops.json`.
-- Re-ran both verifier scripts:
-  - marketing now reports **independently verified fail** with a concrete missing-artifact error
-  - architecture now reports **independently verified pass** only because an external artifact still exists and is within freshness
-- Spawned isolated independent verifier run `2ea95b60-a12b-4415-a16f-1653862b1475` to refresh the repaired verifier-contract state.
+- Archived `agents/docs_quality/docs_stack_temp_watchdog_status.json` so the disabled temporary docs self-heal layer no longer presents a live unhealthy JSON authority.
+- Confirmed the blocked-channel overlap finding is no longer live:
+  - cron inventory shows only `blocked-channel-deep-review`
+  - `agents/system/self_improvement_loops.json` records the loop as collapsed to one owner schedule
+- Rechecked the independent verifier outputs:
+  - architecture = **independently verified pass**
+  - marketing = **independently verified fail**
 
 ## Independent verification status
 
-- **Pending refresh**
-- Spawned run: `2ea95b60-a12b-4415-a16f-1653862b1475`
-- Child session: `agent:main:subagent:6202ee2b-5cae-4a4c-9053-986d79900150`
-- Current state at artifact write:
-  - marketing independent artifact still missing
-  - architecture independent artifact exists, but predates the verifier-contract repair
-- I did **not** declare either repaired verifier path fully healthy yet.
+- **Performed**
+- Architecture artifact: `agents/system/logs/agent_architecture_independent_verification.json` → pass
+- Marketing artifact: `agents/marketing/logs/marketing_loop_independent_verification.json` → fail
+- No same-run repair in this pass changed a repair/recovery loop enough to require a fresh spawned verifier before closing this artifact update.
 
 ## Ordered fix plan
 
-1. Complete fresh independent verification for the repaired marketing and architecture verifier contracts.
-2. Keep the marketing loop fail-closed until `agents/marketing/logs/marketing_loop_independent_verification.json` exists and is fresh.
-3. Collapse blocked-channel recovery to one owner schedule or split it into distinct entrypoints/artifacts.
-4. Archive or relabel disabled docs-watchdog residue so stale unhealthy artifacts stop contaminating audits.
+1. Drive the marketing owner loop from `measurement_pending` to a demonstrably repaired state.
+2. Split system-health latest-state output from historical JSONL logging, then refresh that monitor's independent verification artifact.
+3. Remove the stale `blocked-channel-followup` reference from `agents/system/health_monitor.py` and reverify that monitor.
 
 ## Highest-risk unresolved issue
 
-- **Marketing full-contract loop is now honestly red because no independent verification artifact exists yet.**
+- **The marketing loop is a real fail-closed contract now, but it still has not earned a pass.**

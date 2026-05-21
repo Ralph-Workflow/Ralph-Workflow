@@ -4579,3 +4579,41 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 19:35:06
 - **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 20:05:39
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 20:43:00
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 20:46:10
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 20:55:17
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Marketing workflow audit (20:55 UTC / 22:55 CEST)
+- **Verdict: stay quiet. Execution ceiling confirmed. Repair executed: reddit_monitor cooldown gate added.**
+- Codeberg: 10⭐ 2👁 2🍴, +0 delta across 9-sample window. GitHub mirror: 0⭐ 2👁 0🍴, flat. No change.
+- **Repair executed this cycle:** `reddit_monitor.py` now exits early with `cooldown_skip` status when the autoposter's state file shows `cooldown_skip` or a post within the last 45 minutes. This prevents the monitor from burning cycles generating zero-output reports during cooldown windows — a waste pattern confirmed across today's 3+ monitor passes.
+- **Content contamination (HN draft / HireAegis):** confirmed repaired. HN draft at `drafts/2026-05-21_hackernews_post.txt` is clean RalphWorkflow content.
+- **Banned openings:** confirmed in posts from May 16–19 (before the ban was added to `reddit_autopost.py` on May 19–20). The banned-opening gate IS now in place in `reddit_autopost.py` (`BANNED_OPENING_PREFIXES` + `opening_is_repetitive()`). The most recent posts (May 20) use clean openings. No live violation — the failure was historical.
+- **Reddit cadence:** genuinely stalled. Cooldown is not the blocker — cooldown is lifted (last attempt 7h ago, status was `no_unused_opportunity`). The autoposter is finding zero fresh opportunities, not being blocked by cooldown. The pool of usable Reddit pain-thread opportunities for this account/angle is depleted. More monitor passes will not fix this.
+- **Backlinks:** 0 indexed. AIToolsIndex + ToolShelf + MadeWithStack + DevTool Center in-flight (submitted via API, editorial review pending). These are directory indexing timelines (7–14 days), not execution failures.
+- **Four marketing questions:** all correctly answered, no drift.
+- **What worked:** cooldown gate added to reddit_monitor.py (prevents wasted zero-output cycles); owned surfaces consistent; market intelligence reuse contract healthy.
+- **What failed:** Reddit autoposter finding no unused opportunities (not a cooldown issue — cooldown is lifted); no Codeberg adoption movement; zero indexed backlinks.
+- **What is repetitive:** same "execution ceiling / HN is the move" audit finding across multiple cycles. This is a correct self-assessment, not a productive action. The loop needs to stop rewarding itself for correctly identifying a bottleneck it cannot break.
+- **What is low leverage:** more monitor passes during Reddit depletion; more owned-surface polish; more directory submissions (already in-flight).
+- **Current bottleneck:** HN/Lobsters human execution + Reddit angle depletion. The loop can execute the former but not the latter. Everything else is at ceiling or in-flight.
+- **Next higher-leverage move:**
+  1. **Human: execute HN/Lobsters** from `drafts/2026-05-21_hackernews_post.txt` — submit to HN first, then Lobsters. This remains the only unmade high-leverage distribution move.
+  2. **Human: Reddit angle refresh** — the current angle (review/diff/handoff cadence) has produced 25 posts with diminishing returns. A genuinely different angle is needed to break through. Options: (a) pivot to a more concrete "here's a real task I ran overnight and the output was X" format, (b) try genuinely non-promotional comments that happen to mention Ralph Workflow only as an aside, (c) wait for fresh pain threads that don't overlap with the existing post history.
+  3. **Monitor** AIToolsIndex + ToolShelf indexing signal over the next 7–14 days.
+- **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta and any indexed backlink signal.
+- **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach (curator contact, competitor citation requests, AlternativeTo manual submission).
+- **Type:** **AUDIT / REPAIR EXECUTED**

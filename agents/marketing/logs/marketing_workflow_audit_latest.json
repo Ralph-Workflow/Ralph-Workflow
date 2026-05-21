@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-21T19:20:06.053623",
+  "generated_at": "2026-05-21T20:55:33.784462",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -56,7 +56,35 @@
     "primary_repo_flat_window",
     "mirror_repo_flat_window"
   ],
-  "repair_actions": [],
+  "repair_actions": [
+    {
+      "target_tactic": "content_distribution",
+      "failure_type": "primary_repo_flat",
+      "action": "REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.",
+      "kill_condition": "Still no Codeberg delta after 7 days of new approach",
+      "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
+      "priority": 1,
+      "repair_state": "pending_measurement"
+    },
+    {
+      "target_tactic": "github_mirror_outreach",
+      "failure_type": "mirror_repo_flat",
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
+      "kill_condition": "N/A (mirror, not primary)",
+      "success_metric": "GitHub mirror shows any adoption delta",
+      "priority": 3,
+      "repair_state": "pending_measurement"
+    },
+    {
+      "target_tactic": "reddit_post_style",
+      "failure_type": "repetitive_outreach",
+      "action": "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
+      "kill_condition": "Same opening detected again in next audit",
+      "success_metric": "No repeated openings in next audit window",
+      "priority": 2,
+      "repair_state": "pending_measurement"
+    }
+  ],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "primary_repo_flat",
