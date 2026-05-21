@@ -28,18 +28,6 @@
 <<< REJOIN >>>
     |
     v
-[loop: counter=development_analysis_iteration, max=10]
-+----------------------+
-| development_analysis |
-|    role=analysis     |
-+----------------------+
-    +--[failed]-----------> development
-    +--[request_changes]--> development
-    <<==[loopback]== returns to 'development'
-    [LOOPBACK: counter=development_analysis_iteration, max=10]
-    >> RE-ENTRY at development
-    |
-    v
 [loop: counter=commit_cleanup_iteration, max=3]
 +----------------------------+
 | development_commit_cleanup |
@@ -54,6 +42,34 @@
 | development_commit |
 |    role=commit     |
 +--------------------+
+    |
+    v
+[loop: counter=development_analysis_iteration, max=10]
++----------------------+
+| development_analysis |
+|    role=analysis     |
++----------------------+
+    +--[failed]-----------> development
+    +--[request_changes]--> development
+    <<==[loopback]== returns to 'development'
+    [LOOPBACK: counter=development_analysis_iteration, max=10]
+    >> RE-ENTRY at development
+    |
+    v
+[loop: counter=commit_cleanup_iteration, max=3]
++----------------------------------+
+| development_final_commit_cleanup |
+|       role=commit_cleanup        |
++----------------------------------+
+    <<==[loopback]== returns to 'development_final_commit_cleanup'
+    [LOOPBACK: counter=commit_cleanup_iteration, max=3]
+    >> RE-ENTRY at development_final_commit_cleanup
+    |
+    v
++--------------------------+
+| development_final_commit |
+|       role=commit        |
++--------------------------+
     |
     v
 +---------------+

@@ -28,14 +28,17 @@ If you only want a pass/fail validation without the full explanation output, use
 ralph --check-policy
 ```
 
-This validates the same policy source as `--explain-policy` and prints a brief summary:
+This validates the same policy source as `--explain-policy` and prints a brief summary of both the authored block model and the compiled runtime phases:
 
 ```
 Policy OK: /path/to/.agent
-  phases: 7
+  entry block: developer_iteration
+  blocks: 10
+  lifecycle completion phases: 1
+  phases: 10
   drains: 11
-  artifact contracts: 5
-  loop counters: 2
+  artifact contracts: 6
+  loop counters: 3
   budget counters: 1
   workflow fallbacks: 0
   terminal failure phase: failed_terminal
@@ -53,9 +56,12 @@ The explanation covers all policy-declared elements:
 | Section | What it contains |
 |---------|-----------------|
 | **WORKFLOW DIAGRAM** | ASCII diagram showing phases, routing edges, decision branches, loopbacks, and terminal markers |
-| **Entry phase** | The phase where every run starts |
-| **Terminal phase** | The phase that marks successful completion |
-| **Phases** | Each declared phase with its role, drain, and key routing |
+| **Entry block** | The authored block where the workflow starts |
+| **Entry phase** | The compiled runtime phase where every run starts |
+| **Terminal phase** | The compiled phase that marks successful completion |
+| **Authored blocks** | The user-authored block names preserved by the policy loader |
+| **Lifecycle completion** | Which compiled phase completes each lifecycle block and advances budget |
+| **Phases** | Each compiled runtime phase with its role, drain, and key routing |
 | **Loop counters** | Iteration counters with their names and caps |
 | **Budget counters** | Outer-progress counters with names and budget-tracking flag |
 | **Terminal outcomes** | All phases declared as terminal with their outcome type |
@@ -168,8 +174,30 @@ The second section provides the full structured breakdown:
 RALPH WORKFLOW — ACTIVE POLICY EXPLANATION
 ======================================================================
 
+Entry block  : developer_iteration
 Entry phase  : planning
 Terminal phase: complete
+
+----------------------------------------------------------------------
+AUTHORED BLOCKS
+----------------------------------------------------------------------
+  developer_iteration
+  planning
+  planning_analysis
+  development
+  development_commit_cleanup
+  development_commit
+  development_analysis
+  development_final_commit_cleanup
+  development_final_commit
+  complete
+  failed_terminal
+
+----------------------------------------------------------------------
+LIFECYCLE COMPLETION
+----------------------------------------------------------------------
+  developer_iteration: completion block 'development_final_commit' compiles to phase 'development_final_commit' and increments iteration
+    before_complete: development_commit_cleanup, development_commit, development_final_commit_cleanup
 
 Terminal outcomes:
   success    → complete

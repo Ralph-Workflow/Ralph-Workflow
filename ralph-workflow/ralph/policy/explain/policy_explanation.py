@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .budget_counter_explanation import BudgetCounterExplanation
+    from .lifecycle_explanation import LifecycleExplanation
     from .loop_counter_explanation import LoopCounterExplanation
     from .parallel_explanation import ParallelExplanation
     from .phase_explanation import PhaseExplanation
@@ -21,6 +22,9 @@ class PolicyExplanation:
 
     entry_phase: str
     terminal_phase: str
+    entry_block: str | None = None
+    authored_blocks: list[str] = field(default_factory=list)
+    lifecycle_explanations: list[LifecycleExplanation] = field(default_factory=list)
     phases: list[PhaseExplanation] = field(default_factory=list)
     loop_counters: list[LoopCounterExplanation] = field(default_factory=list)
     budget_counters: list[BudgetCounterExplanation] = field(default_factory=list)

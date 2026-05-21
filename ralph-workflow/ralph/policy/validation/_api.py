@@ -323,6 +323,17 @@ def validate_checkpoint_against_policy(
     bundle: PolicyBundle,
 ) -> None:
     """Validate a checkpoint state against the current policy bundle."""
+    try:
+        entry_block = bundle.pipeline.entry_block
+    except AttributeError:
+        entry_block = None
+    if entry_block is not None and state.policy_format_version != 2:
+        raise PolicyValidationError(
+            "Cannot resume from this obsolete checkpoint: it was saved before "
+            "the block-based policy format redesign. Preserve the checkpoint "
+            "for inspection and start fresh with --no-resume or regenerate "
+            "policy/config before rerunning."
+        )
     validate_phase_exists_in_policy(state.phase, bundle.pipeline)
     if state.current_drain is not None and state.current_drain not in bundle.agents.agent_drains:
         raise PolicyValidationError(

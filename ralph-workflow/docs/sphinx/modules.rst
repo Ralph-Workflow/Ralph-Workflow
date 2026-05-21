@@ -478,6 +478,13 @@ ralph.policy.explain.loop_counter_explanation
    :members:
    :show-inheritance:
 
+ralph.policy.explain.lifecycle_explanation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.policy.explain.lifecycle_explanation
+   :members:
+   :show-inheritance:
+
 ralph.policy.explain.loop_policy_explanation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

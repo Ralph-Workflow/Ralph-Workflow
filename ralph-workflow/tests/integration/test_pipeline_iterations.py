@@ -85,8 +85,13 @@ def _run_pipeline(
             return PipelineEvent.AGENT_SUCCESS
         if isinstance(effect, CommitEffect):
             commit_event_for = getattr(mock_agent_invoker, "commit_event_for", None)
-            if callable(commit_event_for):
-                return commit_event_for(getattr(mock_agent_invoker, "last_phase", None))
+            last_phase = getattr(mock_agent_invoker, "last_phase", None)
+            if (
+                callable(commit_event_for)
+                and isinstance(last_phase, str)
+                and (last_phase.endswith("_commit") or last_phase == "commit")
+            ):
+                return commit_event_for(last_phase)
             return PipelineEvent.COMMIT_SUCCESS
         msg = f"Unexpected effect type: {type(effect)!r}"
         raise AssertionError(msg)
@@ -131,6 +136,25 @@ def _state_with_phase(saved_states: list[PipelineState], phase: str) -> Pipeline
         if state.phase == phase:
             return state
     raise AssertionError(f"expected a saved state for phase {phase!r}")
+
+
+def test_default_policy_saved_states_mark_block_policy_format(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    mock_agent_invoker: MockAgentInvoker,
+) -> None:
+    result, saved_states = _run_pipeline(
+        monkeypatch,
+        tmp_path,
+        mock_agent_invoker,
+        _config(),
+        counter_overrides={"iteration": 1},
+    )
+
+    assert result == 0
+    assert saved_states
+    assert saved_states[-1].policy_format_version == 2
+    assert any(state.policy_format_version == 2 for state in saved_states)
 
 
 def test_dev_runs_exactly_2_cycles_with_d2(
@@ -198,7 +222,7 @@ def test_analysis_loopback_preserves_budget(
 
     assert result == 0
     assert invoker.count_for("development") == DEVELOPMENT_CYCLES_THREE
-    assert invoker.count_for("development_commit") == DEVELOPMENT_CYCLES_TWO
+    assert invoker.count_for("development_commit") == DEVELOPMENT_CYCLES_THREE
     starting_budget = DEVELOPMENT_CYCLES_TWO
     loopback_state = next(
         state
@@ -435,12 +459,12 @@ def test_development_analysis_runs_exactly_up_to_cap_then_skips_reentry(
     assert [
         state.get_loop_iteration("development_analysis_iteration") for state in loopback_states
     ] == expected_loopback_counters
-    development_commit_state = next(
-        state for state in saved_states if state.phase == "development_commit"
+    development_final_commit_state = next(
+        state for state in saved_states if state.phase == "development_final_commit"
     )
-    # development_analysis -> development_commit_cleanup -> development_commit
-    assert development_commit_state.previous_phase == "development_commit_cleanup"
-    assert development_commit_state.get_loop_iteration("development_analysis_iteration") == 0
+    # development_analysis -> development_final_commit_cleanup -> development_final_commit
+    assert development_final_commit_state.previous_phase == "development_final_commit_cleanup"
+    assert development_final_commit_state.get_loop_iteration("development_analysis_iteration") == 0
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
     assert final_state.get_outer_progress("iteration") == 1
@@ -501,13 +525,13 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
     development_analysis_calls = 0
     original_determine = runner.call_determine_effect_from_policy
 
-    def stop_at_development_commit(
+    def stop_at_development_final_commit(
         state: PipelineState,
         bundle: object,
         workspace_scope: object,
         config: UnifiedConfig,
     ) -> object:
-        if state.phase == "development_commit":
+        if state.phase == "development_final_commit":
             return ExitSuccessEffect()
         return original_determine(state, bundle, workspace_scope, config)
 
@@ -555,7 +579,10 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                     {"type": "development_analysis_decision", "content": {"status": decision}},
                 )
                 return PipelineEvent.AGENT_SUCCESS
-            if effect.phase == "development_commit_cleanup":
+            if effect.phase in {
+                "development_commit_cleanup",
+                "development_final_commit_cleanup",
+            }:
                 return (
                     write_artifact(
                         ".agent/artifacts/commit_cleanup.json",
@@ -563,11 +590,29 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                     )
                     or PipelineEvent.AGENT_SUCCESS
                 )
+            if effect.phase == "development_commit":
+                return (
+                    write_artifact(
+                        ".agent/tmp/commit_message.json",
+                        {
+                            "name": "commit_message",
+                            "type": "commit_message",
+                            "content": {
+                                "type": "commit",
+                                "subject": "fix: continue development analysis loop",
+                            },
+                            "created_at": "STATIC",
+                            "updated_at": "STATIC",
+                            "metadata": {},
+                        },
+                    )
+                    or PipelineEvent.AGENT_SUCCESS
+                )
             raise AssertionError(
-                f"Unexpected invoke phase before development_commit exit: {effect.phase}"
+                f"Unexpected invoke phase before development_final_commit exit: {effect.phase}"
             )
         if isinstance(effect, CommitEffect):
-            raise AssertionError("Should not reach commit before stopping at development_commit")
+            return PipelineEvent.COMMIT_SUCCESS
         raise AssertionError(f"Unexpected effect type: {type(effect)!r}")
 
     def capture_saved_state(state: PipelineState) -> None:
@@ -578,7 +623,11 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
     monkeypatch.setattr(runner, "materialize_prepared_prompt", lambda *args, **kwargs: None)
     monkeypatch.setattr(runner, "materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
     monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
-    monkeypatch.setattr(runner, "call_determine_effect_from_policy", stop_at_development_commit)
+    monkeypatch.setattr(
+        runner,
+        "call_determine_effect_from_policy",
+        stop_at_development_final_commit,
+    )
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)
 

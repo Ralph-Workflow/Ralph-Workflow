@@ -49,6 +49,8 @@ def check_policy_command(
         if counter_overrides:
             validate_policy_completeness(bundle, cli_counter_overrides=counter_overrides)
 
+        block_count = len(bundle.pipeline.blocks)
+        lifecycle_count = len(bundle.pipeline.lifecycle_phases)
         phase_count = len(bundle.pipeline.phases)
         drain_count = len(bundle.agents.agent_drains)
         artifact_count = len(bundle.artifacts.artifacts)
@@ -60,6 +62,10 @@ def check_policy_command(
         terminal_failure_phase = bundle.pipeline.recovery.terminal_failure_phase
 
         print(f"Policy OK: {resolved_dir}")
+        if bundle.pipeline.entry_block is not None:
+            print(f"  entry block: {bundle.pipeline.entry_block}")
+        print(f"  blocks: {block_count}")
+        print(f"  lifecycle completion phases: {lifecycle_count}")
         print(f"  phases: {phase_count}")
         print(f"  drains: {drain_count}")
         print(f"  artifact contracts: {artifact_count}")

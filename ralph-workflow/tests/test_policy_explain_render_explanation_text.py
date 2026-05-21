@@ -130,3 +130,14 @@ class TestRenderExplanationText:
         text = render_explanation_text(exp)
         if exp.budget_counters:
             assert "BUDGET COUNTERS" in text
+
+    def test_default_policy_renders_block_and_lifecycle_sections(self) -> None:
+        bundle = load_policy(_DEFAULT_POLICY_DIR)
+        exp = explain_policy(bundle)
+        text = render_explanation_text(exp)
+
+        assert "Entry block" in text
+        assert "developer_iteration" in text
+        assert "AUTHORED BLOCKS" in text
+        assert "LIFECYCLE COMPLETION" in text
+        assert "development_final_commit" in text

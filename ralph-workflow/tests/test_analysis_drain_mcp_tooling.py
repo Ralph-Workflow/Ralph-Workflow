@@ -28,7 +28,6 @@ _REQUIRED_TOOLS = {
     "ralph_submit_artifact",
     "ralph_get_plan_draft",
     "declare_complete",
-    "coordinate",
 }
 
 _FORBIDDEN_TOOLS = {"write_file"}

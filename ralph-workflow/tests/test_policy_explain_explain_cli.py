@@ -6,6 +6,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from ralph.cli.commands.check_policy import check_policy_command
 from ralph.cli.commands.explain import explain_command
 from ralph.cli.main import app
 from ralph.policy.models import (
@@ -82,3 +83,23 @@ class TestExplainCLI:
         )
         assert result.exit_code == 0
         assert "planning" in result.output.lower() or "PHASES" in result.output
+
+    def test_cli_explain_policy_shows_block_lifecycle_metadata(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["--explain-policy", "--explain-policy-dir", str(_DEFAULT_POLICY_DIR)],
+        )
+
+        assert result.exit_code == 0
+        assert "Entry block" in result.output
+        assert "developer_iteration" in result.output
+        assert "development_final_commit" in result.output
+
+    def test_check_policy_command_reports_block_summary(self, capsys: object) -> None:
+        rc = check_policy_command(_DEFAULT_POLICY_DIR)
+
+        captured = capsys.readouterr()
+        assert rc == 0
+        assert "blocks:" in captured.out
+        assert "lifecycle completion phases:" in captured.out

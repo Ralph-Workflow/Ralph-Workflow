@@ -11,7 +11,10 @@ class LifecyclePhasePolicy(_FrozenPolicyModel):
     """Lifecycle-owned accounting metadata keyed by compiled completion phase."""
 
     lifecycle_name: str = Field(..., description="Authored group-block name")
-    completion_block: str = Field(..., description="Authored individual block that completes lifecycle")
+    completion_block: str = Field(
+        ...,
+        description="Authored individual block that completes lifecycle",
+    )
     increments_counter: str | None = Field(
         default=None,
         description="Budget counter incremented when this lifecycle completes.",

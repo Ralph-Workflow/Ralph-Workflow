@@ -1,68 +1,14 @@
 # Default pipeline policy for Ralph Workflow.
 #
-# PURPOSE: Defines the phase graph that drives the configurable orchestration layer.
-#
-# LOCATION: This file is the canonical default. Ralph Workflow reads overrides from:
-#   - .agent/pipeline.toml (project-local, takes precedence over this file)
-#
-# REGENERATION: Run `ralph --regenerate-config` to refresh from this default.
-#
-# POLICY-DRIVEN ORCHESTRATION
-# ===========================
-# All workflow behavior is declared here. The runtime is a generic policy interpreter
-# that enforces these declarations without any hardcoded phase knowledge.
-#
-# Phase routing is driven entirely by this file — no hardcoded phase transitions
-# exist in the reducer. Each phase references a drain bound in agents.toml
-# and defines routing rules for success, failure, and loopback signals.
-#
-# KEY FIELDS:
-#   role             - Phase behavior class (execution|analysis|review|commit|verification|terminal|fanout_join)
-#   skip_invocation  - When true, routes directly without invoking an agent
-#   decisions        - For role='analysis': maps decision vocabulary to routing targets
-#   loop_policy      - For role='analysis': bounds the analysis iteration loop
-#   commit_policy    - For role='commit': declares commit counter and loop reset behavior
-#   bypass_routes    - Named outcome bypasses (e.g. clean -> review_commit)
-#   clean_outcome    - For role='review': bypass_routes key that signals a clean review
-#   issues_outcome   - For role='review': value set as review_outcome when issues are found
-#   terminal_outcome - For role='terminal': declares success or failure
-#   parallelization  - Per-phase same-workspace fan-out policy
-#
-# LOOP COUNTERS AND BUDGET COUNTERS
-# ==================================
-# Loop counters and budget counters are declared in this file and referenced by
-# phase loop_policy and commit_policy respectively. This makes iteration tracking
-# and budget management fully policy-owned.
-#
-# [loop_counters.*]    - Declared loop iteration counters (keyed by iteration_state_field)
-# [budget_counters.*]  - Declared budget counters (keyed by increments_counter)
-#
-# RETRY AND RECOVERY:
-#   [default_phase_retry_policy] - Default retry settings for all phases
-#   [recovery]                   - Pipeline-wide cycle cap and recovery routing
-#
-# POLICY COMPLETENESS:
-# The runtime validates that every phase satisfies its role contract at startup.
-# Missing required fields cause startup rejection with an actionable error.
-# Required fields per role:
-#   execution    - transitions.on_success
-#   analysis     - loop_policy, decisions (covering all artifact decision_vocabulary entries)
-#   review       - transitions.on_success, issues_outcome; clean_outcome when bypass_routes set
-#   commit       - commit_policy (requires_artifact, increments_counter, loop_resets)
-#   terminal     - terminal_outcome
-# See ralph/policy/validation.py:validate_policy_completeness for authoritative checks.
-#
-# Parallelization is transition-scoped: only phases that declare a [parallelization]
-# block can fan out parallel workers. The default enables same-workspace parallelism
-# on the development phase only.
+# This bundled default is authored as explicit blocks and compiled by the loader
+# into the flat runtime phase graph used by reducer/checkpoint/display code.
+
+entry_block = "developer_iteration"
+terminal_phase = "complete"
 
 # ---------------------------------------------------------------------------
-# Loop counters (policy-declared iteration tracking for analysis loops)
+# Loop counters
 # ---------------------------------------------------------------------------
-#
-# Each entry declares a named loop counter referenced by phase loop_policy.
-# The key must match the iteration_state_field value used in each analysis phase.
-# default_max: default cap used at pipeline start (overridable via config)
 
 [loop_counters.development_analysis_iteration]
 default_max = 10
@@ -77,12 +23,8 @@ default_max = 3
 description = "Commit cleanup loop iteration counter"
 
 # ---------------------------------------------------------------------------
-# Budget counters (policy-declared outer-progress and budget tracking)
+# Budget counters
 # ---------------------------------------------------------------------------
-#
-# Each entry declares a named budget counter referenced by phase commit_policy.
-# The key must match the increments_counter value used in each commit phase.
-# tracks_budget: if true, remaining budget affects post-commit routing
 
 [budget_counters.iteration]
 description = "Development iteration counter (developer cycles)"
@@ -90,200 +32,221 @@ tracks_budget = true
 default_max = 5
 
 # ---------------------------------------------------------------------------
-# Phase definitions
+# Block-authored default workflow
 # ---------------------------------------------------------------------------
 
-[phases.planning]
+[blocks.developer_iteration]
+kind = "group"
+child_blocks = [
+  "planning",
+  "planning_analysis",
+  "development",
+  "development_commit_cleanup",
+  "development_commit",
+  "development_analysis",
+  "development_final_commit_cleanup",
+  "development_final_commit",
+  "complete",
+  "failed_terminal",
+]
+completion_block = "development_final_commit"
+before_complete = [
+  "development_commit_cleanup",
+  "development_commit",
+  "development_final_commit_cleanup",
+]
+increments_counter = "iteration"
+loop_resets = ["development_analysis_iteration", "commit_cleanup_iteration"]
+
+[blocks.planning]
+kind = "individual"
+phase_name = "planning"
+[blocks.planning.phase]
 drain = "planning"
 role = "execution"
 prompt_template = "planning.jinja"
 loopback_prompt_template = "planning_edit.jinja"
 display_style = "theme.phase.planning"
 clear_drains_on_fresh_entry = ["planning", "planning_analysis"]
-[phases.planning.transitions]
+[blocks.planning.phase.transitions]
 on_success = "planning_analysis"
-[phases.planning.artifact_history]
+[blocks.planning.phase.artifact_history]
 enabled = true
 clear_on_fresh_entry = true
 
-[phases.planning_analysis]
+[blocks.planning_analysis]
+kind = "individual"
+phase_name = "planning_analysis"
+[blocks.planning_analysis.phase]
 drain = "planning_analysis"
 role = "analysis"
 prompt_template = "planning_analysis.jinja"
-[phases.planning_analysis.transitions]
+[blocks.planning_analysis.phase.transitions]
 on_success = "development"
 on_loopback = "planning"
-[phases.planning_analysis.artifact_history]
+[blocks.planning_analysis.phase.artifact_history]
 enabled = true
 clear_on_fresh_entry = false
-[phases.planning_analysis.loop_policy]
+[blocks.planning_analysis.phase.loop_policy]
 iteration_state_field = "planning_analysis_iteration"
-[phases.planning_analysis.decisions.completed]
+[blocks.planning_analysis.phase.decisions.completed]
 target = "development"
 reset_loop = true
-[phases.planning_analysis.decisions.request_changes]
+[blocks.planning_analysis.phase.decisions.request_changes]
 target = "planning"
 reset_loop = false
-[phases.planning_analysis.decisions.failed]
+[blocks.planning_analysis.phase.decisions.failed]
 target = "planning"
 reset_loop = false
 
-[phases.development]
+[blocks.development]
+kind = "individual"
+phase_name = "development"
+[blocks.development.phase]
 drain = "development"
 role = "execution"
 prompt_template = "developer_iteration.jinja"
 continuation_template = "developer_iteration_continuation.jinja"
 display_style = "theme.phase.development"
 clear_drains_on_fresh_entry = ["planning_analysis", "development", "development_analysis"]
-[phases.development.transitions]
+[blocks.development.phase.transitions]
 on_success = "development_commit_cleanup"
 on_loopback = "development"
-[phases.development.artifact_history]
+[blocks.development.phase.artifact_history]
 enabled = true
 clear_on_fresh_entry = true
-
-[phases.development.parallelization]
+[blocks.development.phase.parallelization]
 mode = "same_workspace"
 max_parallel_workers = 8
 max_work_units = 50
 require_allowed_directories = true
 post_fanout_verification = false
-
-[phases.development.artifact_proof_policy]
+[blocks.development.phase.artifact_proof_policy]
 require_plan_proof = true
 require_analysis_proof = true
 
-[phases.development_analysis]
+[blocks.development_commit_cleanup]
+kind = "individual"
+phase_name = "development_commit_cleanup"
+[blocks.development_commit_cleanup.phase]
+drain = "commit"
+role = "commit_cleanup"
+prompt_template = "commit_cleanup.jinja"
+display_style = "theme.phase.commit"
+[blocks.development_commit_cleanup.phase.transitions]
+on_success = "development_commit"
+on_loopback = "development_commit_cleanup"
+on_failure = "failed_terminal"
+[blocks.development_commit_cleanup.phase.loop_policy]
+iteration_state_field = "commit_cleanup_iteration"
+
+[blocks.development_commit]
+kind = "individual"
+phase_name = "development_commit"
+[blocks.development_commit.phase]
+drain = "development_commit"
+role = "commit"
+prompt_template = "commit_message.jinja"
+display_style = "theme.phase.development_commit"
+clear_drains_on_fresh_entry = ["development", "development_analysis"]
+[blocks.development_commit.phase.artifact_history]
+enabled = true
+clear_on_fresh_entry = false
+[blocks.development_commit.phase.transitions]
+on_success = "development_analysis"
+on_failure = "failed_terminal"
+[blocks.development_commit.phase.commit_policy]
+requires_artifact = true
+skipped_advances_progress = false
+loop_resets = ["commit_cleanup_iteration"]
+
+[blocks.development_analysis]
+kind = "individual"
+phase_name = "development_analysis"
+[blocks.development_analysis.phase]
 drain = "development_analysis"
 role = "analysis"
 prompt_template = "development_analysis.jinja"
 display_style = "theme.phase.development_analysis"
-[phases.development_analysis.artifact_history]
+[blocks.development_analysis.phase.artifact_history]
 enabled = true
 clear_on_fresh_entry = false
-
-[phases.development_analysis.transitions]
+[blocks.development_analysis.phase.transitions]
 on_success = "development_final_commit_cleanup"
 on_loopback = "development"
-[phases.development_analysis.loop_policy]
+[blocks.development_analysis.phase.loop_policy]
 iteration_state_field = "development_analysis_iteration"
-[phases.development_analysis.decisions.completed]
+[blocks.development_analysis.phase.decisions.completed]
 target = "development_final_commit_cleanup"
 reset_loop = true
-[phases.development_analysis.decisions.request_changes]
+[blocks.development_analysis.phase.decisions.request_changes]
 target = "development"
 reset_loop = false
-[phases.development_analysis.decisions.failed]
+[blocks.development_analysis.phase.decisions.failed]
 target = "development"
 reset_loop = false
 
-[phases.development_commit_cleanup]
+[blocks.development_final_commit_cleanup]
+kind = "individual"
+phase_name = "development_final_commit_cleanup"
+[blocks.development_final_commit_cleanup.phase]
 drain = "commit"
 role = "commit_cleanup"
 prompt_template = "commit_cleanup.jinja"
 display_style = "theme.phase.commit"
-[phases.development_commit_cleanup.transitions]
-on_success = "development_commit"
-on_loopback = "development_commit_cleanup"
-on_failure = "failed_terminal"
-[phases.development_commit_cleanup.loop_policy]
-iteration_state_field = "commit_cleanup_iteration"
-
-[phases.development_commit]
-drain = "development_commit"
-role = "commit"
-prompt_template = "commit_message.jinja"
-display_style = "theme.phase.development_commit"
-clear_drains_on_fresh_entry = ["development", "development_analysis"]
-[phases.development_commit.artifact_history]
-enabled = true
-clear_on_fresh_entry = false
-
-[phases.development_commit.transitions]
-on_success = "complete"
-on_failure = "failed_terminal"
-[phases.development_commit.commit_policy]
-requires_artifact = true
-skipped_advances_progress = false
-loop_resets = ["development_analysis_iteration", "commit_cleanup_iteration"]
-
-[phases.development_final_commit_cleanup]
-drain = "commit"
-role = "commit_cleanup"
-prompt_template = "commit_cleanup.jinja"
-display_style = "theme.phase.commit"
-[phases.development_final_commit_cleanup.transitions]
+[blocks.development_final_commit_cleanup.phase.transitions]
 on_success = "development_final_commit"
 on_loopback = "development_final_commit_cleanup"
 on_failure = "failed_terminal"
-[phases.development_final_commit_cleanup.loop_policy]
+[blocks.development_final_commit_cleanup.phase.loop_policy]
 iteration_state_field = "commit_cleanup_iteration"
 
-[phases.development_final_commit]
+[blocks.development_final_commit]
+kind = "individual"
+phase_name = "development_final_commit"
+[blocks.development_final_commit.phase]
 drain = "development_commit"
 role = "commit"
 prompt_template = "commit_message.jinja"
 display_style = "theme.phase.development_commit"
 clear_drains_on_fresh_entry = ["development", "development_analysis"]
-[phases.development_final_commit.artifact_history]
+[blocks.development_final_commit.phase.artifact_history]
 enabled = true
 clear_on_fresh_entry = false
-
-[phases.development_final_commit.transitions]
+[blocks.development_final_commit.phase.transitions]
 on_success = "complete"
 on_failure = "failed_terminal"
-[phases.development_final_commit.commit_policy]
+[blocks.development_final_commit.phase.commit_policy]
 requires_artifact = true
 skipped_advances_progress = true
 increments_counter = "iteration"
 loop_resets = ["development_analysis_iteration", "commit_cleanup_iteration"]
 
-# The 'complete' phase is the terminal marker — it has no transitions
-# because the pipeline ends when it reaches terminal_phase.
-# No drain is needed for the terminal state.
-[phases.complete]
+[blocks.complete]
+kind = "individual"
+phase_name = "complete"
+[blocks.complete.phase]
 drain = "complete"
 role = "terminal"
 terminal_outcome = "success"
-[phases.complete.transitions]
+[blocks.complete.phase.transitions]
 on_success = "complete"
 on_loopback = "complete"
 
-# The 'failed_terminal' phase is the declared terminal failure phase.
-# A MUST be declared when recovery.failed_route points to a phase-based route;
-# the legacy pseudo-phases 'phase_failed' and 'exit_failure' are no longer accepted.
-[phases.failed_terminal]
+[blocks.failed_terminal]
+kind = "individual"
+phase_name = "failed_terminal"
+[blocks.failed_terminal.phase]
 drain = "failed_terminal"
 role = "terminal"
 terminal_outcome = "failure"
-[phases.failed_terminal.transitions]
+[blocks.failed_terminal.phase.transitions]
 on_success = "failed_terminal"
 on_loopback = "failed_terminal"
 
 # ---------------------------------------------------------------------------
 # Post-commit budget-guarded routing
 # ---------------------------------------------------------------------------
-#
-# These routes apply after any commit-role phase completes successfully.
-# The runtime matches routes by the POLICY-DECLARED phase name (when.phase)
-# and the computed budget state (when.budget_state). There is no hardcoded
-# recognition of "development_commit" in the runtime — the name here is an
-# example from the default workflow and can be replaced with any custom
-# commit-role phase name in a user-defined pipeline.
-#
-# Budget state is derived from commit_policy.increments_counter and budget_remaining:
-#   remaining  = budget counter > 0 (continue iterating)
-#   exhausted  = this counter = 0 but other counters still have budget
-#   no_review  = all tracked budget counters exhausted
-#
-# Custom workflows: any commit-role phase may declare matching post_commit_routes.
-# Example for a custom phase named "feature_commit":
-#   [[post_commit_routes]]
-#   target = "planning"
-#   [post_commit_routes.when]
-#   phase = "feature_commit"
-#   budget_state = "remaining"
-
 
 [[post_commit_routes]]
 target = "planning"
@@ -304,14 +267,7 @@ phase = "development_final_commit"
 budget_state = "no_review"
 
 # ---------------------------------------------------------------------------
-# Pipeline entry and terminal configuration
-# ---------------------------------------------------------------------------
-
-entry_phase = "planning"
-terminal_phase = "complete"
-
-# ---------------------------------------------------------------------------
-# Default retry policy (applies to all phases without explicit retry_policy)
+# Default retry policy
 # ---------------------------------------------------------------------------
 
 [default_phase_retry_policy]
@@ -325,10 +281,6 @@ retry_in_session = false
 
 [recovery]
 cycle_cap = 200
-# failed_route: phase to route to on terminal pipeline failure.
-# Must reference a real phase declared above with role='terminal' and
-# terminal_outcome='failure'. The values 'failed', 'phase_failed', and
-# 'exit_failure' are all rejected at startup with a validation error.
 failed_route = "failed_terminal"
 terminal_failure_phase = "failed_terminal"
 preserve_session_on_categories = ["agent"]

@@ -144,6 +144,7 @@ class PipelineState(_FrozenPipelineStateModel):
 
     # Policy-derived fields (set at startup and after phase transitions)
     policy_entry_phase: PipelinePhase = _UNSET_PHASE
+    policy_format_version: int | None = None
     current_drain: str | None = None
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
@@ -179,6 +180,7 @@ class PipelineState(_FrozenPipelineStateModel):
         payload: dict[str, object] = {
             "phase": policy.entry_phase,
             "policy_entry_phase": policy.entry_phase,
+            "policy_format_version": 2 if policy.entry_block is not None else 1,
             **overrides,
         }
         return cls.model_validate(payload)

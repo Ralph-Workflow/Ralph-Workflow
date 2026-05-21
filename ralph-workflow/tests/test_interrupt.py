@@ -161,7 +161,11 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
     tmp_path: Path,
 ) -> None:
     saved_states: list[PipelineState] = []
-    resumed_state = PipelineState(phase="development", interrupted_by_user=False)
+    resumed_state = PipelineState(
+        phase="development",
+        interrupted_by_user=False,
+        policy_format_version=2,
+    )
 
     (tmp_path / ".agent").mkdir()
     (tmp_path / "PROMPT.md").write_text("# Goal\n\nResume the pipeline.\n", encoding="utf-8")

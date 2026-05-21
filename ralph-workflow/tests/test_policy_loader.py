@@ -130,7 +130,7 @@ def test_load_policy_reports_missing_entry_phase(tmp_path: Path) -> None:
     assert excinfo.value.source == "pipeline"
 
 
-def test_load_policy_accepts_legacy_nested_pipeline_table(tmp_path: Path) -> None:
+def test_load_policy_rejects_legacy_nested_pipeline_table(tmp_path: Path) -> None:
     _copy_default_policy_files(tmp_path)
     (tmp_path / "pipeline.toml").write_text(
         dedent(
@@ -160,9 +160,10 @@ def test_load_policy_accepts_legacy_nested_pipeline_table(tmp_path: Path) -> Non
         )
     )
 
-    bundle = load_policy(tmp_path)
-    assert bundle.pipeline.entry_phase == "planning"
-    assert set(bundle.pipeline.phases) == {"planning", "complete"}
+    with pytest.raises(LoaderPolicyValidationError) as excinfo:
+        load_policy(tmp_path)
+    assert "obsolete [pipeline] wrapper format" in excinfo.value.message
+    assert excinfo.value.source == "pipeline"
 
 
 def test_load_policy_ignores_invalid_agents_toml_when_unified_config_is_provided(
@@ -360,7 +361,7 @@ def test_load_policy_for_workspace_scope_uses_global_policy_when_local_override_
     )
 
 
-def test_load_policy_for_workspace_scope_does_not_revive_default_only_phases_from_global_override(
+def test_load_policy_for_workspace_scope_rejects_obsolete_global_phase_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -517,13 +518,14 @@ def test_load_policy_for_workspace_scope_does_not_revive_default_only_phases_fro
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
 
-    bundle = load_policy_for_workspace_scope(WorkspaceScope(workspace_root))
+    with pytest.raises(LoaderPolicyValidationError) as excinfo:
+        load_policy_for_workspace_scope(WorkspaceScope(workspace_root))
 
-    assert "development_commit_cleanup" not in bundle.pipeline.phases
     assert (
-        bundle.pipeline.phases["development_analysis"].transitions.on_success
-        == "development_commit"
+        "development_final_commit" in excinfo.value.message
+        or "entry_block" in excinfo.value.message
     )
+    assert excinfo.value.source in {"pipeline", "completeness"}
 
 
 def test_load_policy_for_workspace_scope_accepts_legacy_global_policy_names(

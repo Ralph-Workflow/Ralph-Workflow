@@ -120,6 +120,42 @@ def test_validate_checkpoint_against_policy_fails_when_phase_missing() -> None:
         validate_checkpoint_against_policy(state, bundle)
 
 
+def test_validate_checkpoint_against_policy_rejects_obsolete_checkpoint_format() -> None:
+    """Block-authored policies reject checkpoints saved without the new format marker."""
+    bundle = PolicyBundle(
+        agents=AgentsPolicy(
+            agent_chains={"main": AgentChainConfig(agents=["claude"])},
+            agent_drains={
+                "planning": AgentDrainConfig(chain="main", drain_class="planning"),
+                "complete": AgentDrainConfig(chain="main", drain_class="planning"),
+            },
+        ),
+        artifacts=ArtifactsPolicy(artifacts={}),
+        pipeline=PipelinePolicy(
+            blocks={},
+            phases={
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                ),
+            },
+            entry_block="developer_iteration",
+            entry_phase="planning",
+            terminal_phase="complete",
+        ),
+    )
+    state = PipelineState(phase="planning")
+
+    with pytest.raises(PolicyValidationError, match="obsolete checkpoint"):
+        validate_checkpoint_against_policy(state, bundle)
+
+
 def test_validation_error_message_is_actionable() -> None:
     """Validation error messages should tell the user what to fix."""
     bundle = _FakeBundle(

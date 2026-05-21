@@ -53,7 +53,21 @@ class TestDefaultPolicyLoading:
         default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
         bundle = load_policy(default_dir)
 
+        assert bundle.pipeline.entry_block == "developer_iteration"
         assert bundle.pipeline.entry_phase == "planning"
+
+    def test_default_pipeline_exposes_lifecycle_completion_metadata(self) -> None:
+        """Bundled defaults should be block-authored and compile lifecycle metadata."""
+        default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
+        bundle = load_policy(default_dir)
+
+        lifecycle = bundle.pipeline.lifecycle_phases["development_final_commit"]
+        assert lifecycle.lifecycle_name == "developer_iteration"
+        assert lifecycle.completion_block == "development_final_commit"
+        assert lifecycle.increments_counter == "iteration"
+        assert "development_commit_cleanup" in lifecycle.before_complete
+        assert "development_commit" in lifecycle.before_complete
+        assert "development_final_commit_cleanup" in lifecycle.before_complete
 
     def test_default_pipeline_terminal_phase(self) -> None:
         """Test that default pipeline has complete as terminal phase."""
@@ -144,20 +158,17 @@ class TestDefaultPolicyLoading:
         assert final_commit.commit_policy.skipped_advances_progress is True
         assert final_commit.commit_policy.increments_counter == "iteration"
 
-    def test_development_commit_loop_resets_contains_commit_cleanup_iteration(self) -> None:
-        """Test that development commit policies reset commit cleanup loop counters."""
+    def test_commit_loop_resets_follow_compiled_hook_semantics(self) -> None:
+        """Pre-analysis and final commit hooks reset only the counters they own."""
         default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
         bundle = load_policy(default_dir)
 
-        for phase_name in ("development_commit", "development_final_commit"):
-            dev_commit = bundle.pipeline.phases[phase_name]
-            assert dev_commit.commit_policy is not None
-            loop_resets = dev_commit.commit_policy.loop_resets
-            assert "commit_cleanup_iteration" in loop_resets, (
-                f"{phase_name} loop_resets must include "
-                f"'commit_cleanup_iteration', got: {loop_resets}"
-            )
-            assert "development_analysis_iteration" in loop_resets, (
-                f"{phase_name} loop_resets must include "
-                f"'development_analysis_iteration', got: {loop_resets}"
-            )
+        pre_analysis_commit = bundle.pipeline.phases["development_commit"]
+        assert pre_analysis_commit.commit_policy is not None
+        assert pre_analysis_commit.commit_policy.loop_resets == ["commit_cleanup_iteration"]
+
+        final_commit = bundle.pipeline.phases["development_final_commit"]
+        assert final_commit.commit_policy is not None
+        loop_resets = final_commit.commit_policy.loop_resets
+        assert "commit_cleanup_iteration" in loop_resets
+        assert "development_analysis_iteration" in loop_resets

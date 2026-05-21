@@ -117,7 +117,10 @@ def _validate_post_commit_routes_complete(
     for phase_name, phase_def in policy.phases.items():
         if phase_def.role != "commit" or phase_def.commit_policy is None:
             continue
-        counter = phase_def.commit_policy.route_counter or phase_def.commit_policy.increments_counter
+        counter = (
+            phase_def.commit_policy.route_counter
+            or phase_def.commit_policy.increments_counter
+        )
         if not counter or counter == "none":
             continue
         counter_cfg = policy.budget_counters.get(counter)

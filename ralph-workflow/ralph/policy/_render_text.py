@@ -21,61 +21,110 @@ def render_explanation_text(exp: object) -> str:
         return ""
 
     lines: list[str] = []
-
-    lines.append("=" * 70)
-    lines.append("RALPH WORKFLOW — ACTIVE POLICY EXPLANATION")
-    lines.append("=" * 70)
-    lines.append("")
-    lines.append(f"Entry phase  : {exp.entry_phase}")
-    lines.append(f"Terminal phase: {exp.terminal_phase}")
-
-    if exp.terminal_outcomes:
-        lines.append("")
-        lines.append("Terminal outcomes:")
-        lines.extend(f"  {to.outcome:10s} → {to.phase}" for to in exp.terminal_outcomes)
-
-    lines.append("")
-
-    lines.append("-" * 70)
-    lines.append("PHASES")
-    lines.append("-" * 70)
-
-    for phase in exp.phases:
-        _render_phase_text(phase, lines)
-
-    if exp.loop_counters:
-        lines.append("")
-        lines.append("-" * 70)
-        lines.append("LOOP COUNTERS")
-        lines.append("-" * 70)
-        for lc in exp.loop_counters:
-            desc = f" — {lc.description}" if lc.description else ""
-            lines.append(f"  {lc.name}: max={lc.default_max}{desc}")
-
-    if exp.budget_counters:
-        lines.append("")
-        lines.append("-" * 70)
-        lines.append("BUDGET COUNTERS")
-        lines.append("-" * 70)
-        for bc in exp.budget_counters:
-            tracked = "tracked (exhaustion matters)" if bc.tracks_budget else "not tracked"
-            desc = f" — {bc.description}" if bc.description else ""
-            lines.append(f"  {bc.name}: {tracked}, default_max={bc.default_max}{desc}")
+    _render_header(exp, lines)
+    _render_authored_blocks_text(exp, lines)
+    _render_lifecycle_text(exp, lines)
+    _render_terminal_outcomes_text(exp, lines)
+    _render_phases_text(exp, lines)
+    _render_loop_counters_text(exp, lines)
+    _render_budget_counters_text(exp, lines)
 
     if exp.post_commit_routes:
         _render_post_commit_routes_text(exp, lines)
-
     if exp.parallel_executions:
         _render_parallel_executions_text(exp, lines)
     elif exp.parallel_execution is not None:
         _render_parallel_text(exp, lines)
-
     if exp.recovery is not None:
         _render_recovery_text(exp, lines)
 
     lines.append("")
     lines.append("=" * 70)
     return "\n".join(lines)
+
+
+def _render_header(exp: PolicyExplanation, lines: list[str]) -> None:
+    lines.append("=" * 70)
+    lines.append("RALPH WORKFLOW — ACTIVE POLICY EXPLANATION")
+    lines.append("=" * 70)
+    lines.append("")
+    if exp.entry_block:
+        lines.append(f"Entry block  : {exp.entry_block}")
+    lines.append(f"Entry phase  : {exp.entry_phase}")
+    lines.append(f"Terminal phase: {exp.terminal_phase}")
+
+
+def _render_authored_blocks_text(exp: PolicyExplanation, lines: list[str]) -> None:
+    if not exp.authored_blocks:
+        return
+    lines.append("")
+    lines.append("-" * 70)
+    lines.append("AUTHORED BLOCKS")
+    lines.append("-" * 70)
+    lines.extend(f"  {block_name}" for block_name in exp.authored_blocks)
+
+
+def _render_lifecycle_text(exp: PolicyExplanation, lines: list[str]) -> None:
+    if not exp.lifecycle_explanations:
+        return
+    lines.append("")
+    lines.append("-" * 70)
+    lines.append("LIFECYCLE COMPLETION")
+    lines.append("-" * 70)
+    for lifecycle in exp.lifecycle_explanations:
+        counter = lifecycle.increments_counter or "(none)"
+        lines.append(
+            "  "
+            f"{lifecycle.lifecycle_name}: completion block "
+            f"'{lifecycle.completion_block}' compiles to phase "
+            f"'{lifecycle.completion_phase}' and increments {counter}"
+        )
+        if lifecycle.before_complete:
+            lines.append(f"    before_complete: {', '.join(lifecycle.before_complete)}")
+        if lifecycle.after_complete:
+            lines.append(f"    after_complete : {', '.join(lifecycle.after_complete)}")
+
+
+def _render_terminal_outcomes_text(exp: PolicyExplanation, lines: list[str]) -> None:
+    if not exp.terminal_outcomes:
+        return
+    lines.append("")
+    lines.append("Terminal outcomes:")
+    lines.extend(f"  {to.outcome:10s} → {to.phase}" for to in exp.terminal_outcomes)
+
+
+def _render_phases_text(exp: PolicyExplanation, lines: list[str]) -> None:
+    lines.append("")
+    lines.append("-" * 70)
+    lines.append("PHASES")
+    lines.append("-" * 70)
+    for phase in exp.phases:
+        _render_phase_text(phase, lines)
+
+
+def _render_loop_counters_text(exp: PolicyExplanation, lines: list[str]) -> None:
+    if not exp.loop_counters:
+        return
+    lines.append("")
+    lines.append("-" * 70)
+    lines.append("LOOP COUNTERS")
+    lines.append("-" * 70)
+    for lc in exp.loop_counters:
+        desc = f" — {lc.description}" if lc.description else ""
+        lines.append(f"  {lc.name}: max={lc.default_max}{desc}")
+
+
+def _render_budget_counters_text(exp: PolicyExplanation, lines: list[str]) -> None:
+    if not exp.budget_counters:
+        return
+    lines.append("")
+    lines.append("-" * 70)
+    lines.append("BUDGET COUNTERS")
+    lines.append("-" * 70)
+    for bc in exp.budget_counters:
+        tracked = "tracked (exhaustion matters)" if bc.tracks_budget else "not tracked"
+        desc = f" — {bc.description}" if bc.description else ""
+        lines.append(f"  {bc.name}: {tracked}, default_max={bc.default_max}{desc}")
 
 
 def render_explanation_sentences(phase: PhaseExplanation) -> list[str]:

@@ -172,11 +172,17 @@ def _compute_budget_state(state: PipelineState, pipeline_policy: PipelinePolicy)
         'no_review'  — this counter is at 0 and no other tracked counter has budget
         None         — no tracked budget counter governs this phase
     """
-    phase_def = pipeline_policy.phases.get(state.phase)
-    if phase_def is None or phase_def.commit_policy is None:
-        return None
-
-    counter = phase_def.commit_policy.route_counter or phase_def.commit_policy.increments_counter
+    lifecycle = pipeline_policy.lifecycle_phases.get(state.phase)
+    if lifecycle is not None:
+        counter = lifecycle.increments_counter
+    else:
+        phase_def = pipeline_policy.phases.get(state.phase)
+        if phase_def is None or phase_def.commit_policy is None:
+            return None
+        counter = (
+            phase_def.commit_policy.route_counter
+            or phase_def.commit_policy.increments_counter
+        )
     if not counter or counter == "none":
         return None
 

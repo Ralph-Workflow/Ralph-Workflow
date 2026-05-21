@@ -22,7 +22,7 @@ Ralph Workflow is invoked as `ralph` (or `python -m ralph`). Running `ralph` wit
 ralph --check-policy
 ```
 
-This validates the active pipeline policy and prints a summary of the phases, drains, artifact contracts, and routing limits Ralph Workflow will use.
+This validates the active pipeline policy and prints a summary of the authored block model, compiled phases, drains, artifact contracts, and routing limits Ralph Workflow will use.
 
 Use `--explain-policy-dir` to point at a custom policy directory:
 

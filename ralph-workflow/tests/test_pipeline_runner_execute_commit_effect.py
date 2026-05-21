@@ -14,6 +14,7 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.pipeline import commit_executor as commit_executor_module
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
@@ -367,6 +368,11 @@ class TestExecuteCommitEffect:
         text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
         monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
         monkeypatch.setattr(effect_executor_module, "stage_files", stage_files)
+        monkeypatch.setattr(
+            commit_executor_module,
+            "_changed_commit_paths",
+            lambda _repo_root: ["src/feature.py", "tests/test_feature.py"],
+        )
         message_file.write_text(
             json.dumps(
                 {
@@ -399,6 +405,95 @@ class TestExecuteCommitEffect:
             ["src/feature.py", "tests/test_feature.py"],
         )
         create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
+
+    def test_rejects_commit_artifact_files_with_parent_traversal(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        stage_all = MagicMock()
+        stage_files = MagicMock()
+        create_commit = MagicMock(return_value="sha")
+        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(effect_executor_module, "stage_files", stage_files)
+        message_file.write_text(
+            json.dumps(
+                {
+                    "name": "commit_message",
+                    "type": "commit_message",
+                    "content": {
+                        "type": "commit",
+                        "subject": "fix: pipeline artifact message",
+                        "files": ["src/feature.py", "../secrets.txt"],
+                    },
+                    "created_at": "STATIC",
+                    "updated_at": "STATIC",
+                    "metadata": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner_module.execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            create_commit,
+            stage_all,
+            tmp_path,
+        )
+
+        assert result == PipelineEvent.COMMIT_FAILURE
+        stage_all.assert_not_called()
+        stage_files.assert_not_called()
+        create_commit.assert_not_called()
+
+    def test_rejects_commit_artifact_files_not_in_changed_set(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        stage_all = MagicMock()
+        stage_files = MagicMock()
+        create_commit = MagicMock(return_value="sha")
+        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
+        monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+        monkeypatch.setattr(effect_executor_module, "stage_files", stage_files)
+        monkeypatch.setattr(
+            commit_executor_module,
+            "_changed_commit_paths",
+            lambda _repo_root: ["src/feature.py"],
+        )
+        message_file.write_text(
+            json.dumps(
+                {
+                    "name": "commit_message",
+                    "type": "commit_message",
+                    "content": {
+                        "type": "commit",
+                        "subject": "fix: pipeline artifact message",
+                        "files": ["src/feature.py", "docs/guide.md"],
+                    },
+                    "created_at": "STATIC",
+                    "updated_at": "STATIC",
+                    "metadata": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner_module.execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            create_commit,
+            stage_all,
+            tmp_path,
+        )
+
+        assert result == PipelineEvent.COMMIT_FAILURE
+        stage_all.assert_not_called()
+        stage_files.assert_not_called()
+        create_commit.assert_not_called()
 
     def test_renders_commit_message_before_cleanup_when_display_is_available(
         self, tmp_path: Path, monkeypatch: MonkeyPatch

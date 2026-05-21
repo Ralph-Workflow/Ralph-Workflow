@@ -924,7 +924,9 @@ def _find_work_artifact(
         if pdef is None:
             continue
         role = pdef.role
-        skip = role in ("commit", "analysis") or (role == "execution" and pdef.skip_invocation)
+        skip = role in ("commit", "commit_cleanup", "analysis") or (
+            role == "execution" and pdef.skip_invocation
+        )
         if skip:
             queue.extend(_predecessors(current, pipeline_policy))
         else:

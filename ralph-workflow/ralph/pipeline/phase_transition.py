@@ -69,10 +69,10 @@ def _find_commit_counter_from_phase(
     phase_name: str,
     policy: PipelinePolicy,
 ) -> str | None:
-    """Trace on_success transitions from phase_name to the nearest commit phase.
+    """Trace on_success transitions to the nearest lifecycle or commit counter owner.
 
-    Returns the increments_counter name from that commit phase, or None if not found.
-    Used to derive policy-declared counter names for display without hardcoding.
+    Returns the lifecycle-owned counter name when the phase graph declares one,
+    otherwise falls back to the nearest commit phase increments_counter.
     """
     visited: set[str] = set()
     current: str | None = phase_name
@@ -81,6 +81,10 @@ def _find_commit_counter_from_phase(
         phase_def = policy.phases.get(current)
         if phase_def is None:
             break
+        lifecycle = policy.lifecycle_phases.get(current)
+        if lifecycle is not None:
+            counter = lifecycle.increments_counter
+            return counter if counter and counter != "none" else None
         if phase_def.role == "commit" and phase_def.commit_policy is not None:
             counter = phase_def.commit_policy.increments_counter
             return counter if counter and counter != "none" else None

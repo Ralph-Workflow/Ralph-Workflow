@@ -57,8 +57,8 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         assert new_state.phase == "development"
         assert new_state.get_loop_iteration("development_analysis_iteration") == _DEV_MAX_ANALYSIS
 
-    def test_dev_analysis_commit_resets_counter_and_increments_iteration(self) -> None:
-        """COMMIT_SUCCESS after cap resets analysis_iteration and increments iteration."""
+    def test_dev_analysis_commit_preserves_counter_without_incrementing_iteration(self) -> None:
+        """Pre-analysis commit success preserves analysis_iteration and budget."""
         policy = _load_default_policy()
         state = PipelineState(
             phase="development_commit",
@@ -68,6 +68,9 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         )
 
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
-        expected_iteration = state.get_outer_progress("iteration") + 1
-        assert new_state.get_outer_progress("iteration") == expected_iteration
-        assert new_state.get_loop_iteration("development_analysis_iteration") == 0
+        assert new_state.phase == "development_analysis"
+        assert new_state.get_outer_progress("iteration") == state.get_outer_progress("iteration")
+        assert (
+            new_state.get_loop_iteration("development_analysis_iteration")
+            == state.get_loop_iteration("development_analysis_iteration")
+        )

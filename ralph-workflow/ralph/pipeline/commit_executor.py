@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol, cast
 
 from git import Repo
@@ -130,17 +130,42 @@ def _stage_commit_scope(
 def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[str] | None:
     raw_files = payload.get("files")
     if isinstance(raw_files, list):
-        return [path for path in raw_files if isinstance(path, str)]
+        changed = _changed_commit_paths(repo_root)
+        normalized_changed = {_normalize_repo_relative_path(path) for path in changed}
+        include_paths: list[str] = []
+        for raw_path in raw_files:
+            if not isinstance(raw_path, str):
+                continue
+            normalized = _normalize_repo_relative_path(raw_path)
+            if normalized not in normalized_changed:
+                raise ValueError(
+                    "Commit artifact requested file "
+                    f"'{normalized}' that is not part of the current changed set"
+                )
+            if normalized not in include_paths:
+                include_paths.append(normalized)
+        return include_paths
     raw_excluded = payload.get("excluded_files")
     if not isinstance(raw_excluded, list):
         return None
     excluded = {
-        path.strip()
+        _normalize_repo_relative_path(path)
         for item in raw_excluded
         if isinstance(item, dict) and isinstance((path := item.get("path")), str) and path.strip()
     }
-    changed = _changed_commit_paths(repo_root)
-    return [path for path in changed if path not in excluded]
+    return [path for path in changed if _normalize_repo_relative_path(path) not in excluded]
+
+
+def _normalize_repo_relative_path(raw_path: str) -> str:
+    path = PurePosixPath(raw_path.strip())
+    if not raw_path.strip():
+        raise ValueError("Commit artifact paths must not be empty")
+    if path.is_absolute() or any(part == ".." for part in path.parts):
+        raise ValueError(f"Commit artifact path '{raw_path}' must stay inside the repository root")
+    normalized = path.as_posix()
+    if normalized in {".", ""}:
+        raise ValueError("Commit artifact paths must reference a concrete repository file")
+    return normalized
 
 
 def _changed_commit_paths(repo_root: Path) -> list[str]:

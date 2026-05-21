@@ -130,15 +130,14 @@ def _load_cleanup_artifact(
 def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Handle the commit cleanup phase.
 
-    This handler:
-    1. Returns PROMPT_PREPARED for PreparePromptEffect
-    2. Returns empty list for non-Agent effects
-    3. For InvokeAgentEffect:
-       - Ensures git is initialized
-       - Loads and validates the commit_cleanup artifact
-       - Applies cleanup actions (gitignore, git_exclude, delete_file)
-       - Returns AGENT_SUCCESS if analysis_complete=True, else ANALYSIS_LOOPBACK
-       - Returns PhaseFailureEvent if artifact is missing or actions fail
+    Behavior summary:
+
+    * ``PreparePromptEffect`` returns ``PROMPT_PREPARED``.
+    * non-agent effects return ``[]``.
+    * ``InvokeAgentEffect`` ensures git exists, validates the commit-cleanup
+      artifact, applies cleanup actions, and returns ``AGENT_SUCCESS`` when
+      ``analysis_complete=True`` or ``ANALYSIS_LOOPBACK`` otherwise.
+    * missing artifacts or failed cleanup actions return ``PhaseFailureEvent``.
     """
     if isinstance(effect, PreparePromptEffect):
         return [PipelineEvent.PROMPT_PREPARED]

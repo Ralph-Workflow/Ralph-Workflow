@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from .budget_counter_explanation import BudgetCounterExplanation
 from .commit_policy_explanation import CommitPolicyExplanation
+from .lifecycle_explanation import LifecycleExplanation
 from .loop_counter_explanation import LoopCounterExplanation
 from .loop_policy_explanation import LoopPolicyExplanation
 from .parallel_explanation import ParallelExplanation
@@ -130,10 +131,24 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
     explanation = PolicyExplanation(
         entry_phase=pipeline.entry_phase,
         terminal_phase=pipeline.terminal_phase,
+        entry_block=pipeline.entry_block,
+        authored_blocks=sorted(pipeline.blocks.keys()),
     )
 
     for phase_name, phase_def in pipeline.phases.items():
         explanation.phases.append(_explain_phase(phase_name, phase_def, pipeline, agents))
+
+    for completion_phase, lifecycle in pipeline.lifecycle_phases.items():
+        explanation.lifecycle_explanations.append(
+            LifecycleExplanation(
+                lifecycle_name=lifecycle.lifecycle_name,
+                completion_phase=completion_phase,
+                completion_block=lifecycle.completion_block,
+                increments_counter=lifecycle.increments_counter,
+                before_complete=list(lifecycle.before_complete),
+                after_complete=list(lifecycle.after_complete),
+            )
+        )
 
     for phase_name, phase_def in pipeline.phases.items():
         if phase_def.role == "terminal" and phase_def.terminal_outcome is not None:
@@ -200,6 +215,7 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
 __all__ = [
     "BudgetCounterExplanation",
     "CommitPolicyExplanation",
+    "LifecycleExplanation",
     "LoopCounterExplanation",
     "LoopPolicyExplanation",
     "ParallelExplanation",

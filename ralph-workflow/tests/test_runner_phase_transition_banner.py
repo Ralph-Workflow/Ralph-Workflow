@@ -413,14 +413,15 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
     # - previous_phase role is "execution" or "review"
     # - on_success target is an analysis phase with exhausted loop counter
     #
-    # In the default policy, development (role=execution) has on_success=development_analysis.
+    # In the default policy, development_commit (role=commit) has on_success=development_analysis.
     # When development_analysis_iteration hits cap, we skip development_analysis and go
-    # to development_commit_cleanup. So we set state.phase="development_commit_cleanup" (the
-    # actual phase we transitioned to) which differs from previous_phase="development".
+    # to development_final_commit_cleanup. So we set
+    # state.phase="development_final_commit_cleanup" which differs from
+    # previous_phase="development_commit".
     display = _StubDisplay()
     state = PipelineState(
-        phase="development_commit_cleanup",  # Actual phase after skipping analysis
-        previous_phase="development",  # Previous phase (execution role)
+        phase="development_final_commit_cleanup",  # Actual phase after skipping analysis
+        previous_phase="development_commit",  # Previous phase whose success target was analysis
         budget_caps={"iteration": 1},
         # Set loop iteration to cap to trigger skipped analysis
         loop_iterations={"development_analysis_iteration": 5},
@@ -437,7 +438,7 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
     with console_print_patch:
         runner_module.emit_phase_transition_if_changed(
             cast("runner_module.ParallelDisplay | runner_module.LegacyConsoleDisplay", display),
-            "development",
+            "development_commit",
             state,
             verbosity=runner_module.Verbosity.VERBOSE,
             pipeline_policy=_DEFAULT_POLICY.pipeline,

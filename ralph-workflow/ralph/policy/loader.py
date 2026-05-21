@@ -29,7 +29,6 @@ from ralph.policy.models import (
     AgentDrainConfig,
     AgentsPolicy,
     ArtifactsPolicy,
-    GroupPolicyBlock,
     IndividualPolicyBlock,
     PipelinePolicy,
     PolicyBlock,
@@ -125,7 +124,8 @@ def _phase_name_for_block(
         )
     if not block.child_blocks:
         raise PolicyValidationError(
-            f"pipeline.toml group block '{block_name}' must declare at least one child_blocks entry",
+            "pipeline.toml group block "
+            f"'{block_name}' must declare at least one child_blocks entry",
             source="pipeline",
         )
     return _phase_name_for_block(block.child_blocks[0], blocks, path=(*path, block_name))
@@ -149,7 +149,8 @@ def _compile_block_pipeline_data(data: dict[str, object]) -> dict[str, object]:
         if isinstance(block, IndividualPolicyBlock):
             if block.phase_name in phases:
                 raise PolicyValidationError(
-                    f"pipeline.toml phase_name '{block.phase_name}' is declared by more than one individual block",
+                    "pipeline.toml phase_name "
+                    f"'{block.phase_name}' is declared by more than one individual block",
                     source="pipeline",
                 )
             phases[block.phase_name] = block.phase
@@ -158,12 +159,15 @@ def _compile_block_pipeline_data(data: dict[str, object]) -> dict[str, object]:
         for child_name in block.child_blocks:
             if child_name not in blocks:
                 raise PolicyValidationError(
-                    f"pipeline.toml group block '{block_name}' references unknown child_blocks entry '{child_name}'",
+                    "pipeline.toml group block "
+                    f"'{block_name}' references unknown child_blocks entry '{child_name}'",
                     source="pipeline",
                 )
         if block.completion_block not in block.child_blocks:
             raise PolicyValidationError(
-                f"pipeline.toml group block '{block_name}' completion_block '{block.completion_block}' must also appear in child_blocks",
+                "pipeline.toml group block "
+                f"'{block_name}' completion_block '{block.completion_block}' "
+                "must also appear in child_blocks",
                 source="pipeline",
             )
         completion_phase = _phase_name_for_block(block.completion_block, blocks)
@@ -197,7 +201,9 @@ def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
     nested_pipeline = data.get("pipeline")
     if isinstance(nested_pipeline, Mapping) and not PIPELINE_POLICY_FIELDS.intersection(data):
         raise PolicyValidationError(
-            "pipeline.toml uses the obsolete [pipeline] wrapper format. This redesign is a hard break; regenerate the policy with the new block-based schema.",
+            "pipeline.toml uses the obsolete [pipeline] wrapper format. "
+            "This redesign is a hard break; regenerate the policy with the "
+            "new block-based schema.",
             source="pipeline",
         )
     return _compile_block_pipeline_data(data)

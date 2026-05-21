@@ -7,7 +7,7 @@ handling file deletion, gitignore updates, and git exclude patterns.
 from __future__ import annotations
 
 from contextlib import suppress
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
@@ -33,13 +33,30 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
         repo_root: Path to the repository root.
         relative_path: Path relative to repo_root of the file to delete.
     """
-    target = Path(repo_root) / relative_path
+    repo_root_path = Path(repo_root).resolve()
+    path = PurePath(relative_path)
+    if path.is_absolute() or any(part == ".." for part in path.parts):
+        raise ValueError(
+            f"Refusing to delete path outside repository root: {relative_path!r}"
+        )
+    target = (repo_root_path / path).resolve(strict=False)
+    try:
+        target.relative_to(repo_root_path)
+    except ValueError as exc:
+        raise ValueError(
+            f"Refusing to delete path outside repository root: {relative_path!r}"
+        ) from exc
+    if target.is_symlink():
+        raise ValueError(
+            "Refusing to delete symlink path during commit cleanup: "
+            f"{relative_path!r}"
+        )
     if not target.exists():
         logger.debug("File {} does not exist, nothing to delete", relative_path)
         return
 
     with suppress(InvalidGitRepositoryError):
-        repo = Repo(repo_root)
+        repo = Repo(repo_root_path)
         with suppress(Exception):
             repo.git.rm("--cached", "--", relative_path)
 

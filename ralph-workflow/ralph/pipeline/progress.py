@@ -27,7 +27,12 @@ from typing import TYPE_CHECKING
 
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.state import CommitState, PipelineState
-from ralph.policy.models import PhaseCommitPolicy, PhaseDefinition, PhaseLoopPolicy
+from ralph.policy.models import (
+    LifecyclePhasePolicy,
+    PhaseCommitPolicy,
+    PhaseDefinition,
+    PhaseLoopPolicy,
+)
 
 if TYPE_CHECKING:
     from ralph.checkpoint.run_context import RunContext
@@ -165,18 +170,37 @@ def apply_commit_outcome(
 ) -> PipelineState:
     """Apply canonical outer-progress semantics for commit success vs skip.
 
-    Policy is required. The counter and loop resets are driven by commit_policy.
-    When commit_policy is absent on the phase, returns advanced_state unchanged.
+    Policy is required. Lifecycle-owned accounting takes precedence when the
+    current phase is declared in pipeline.lifecycle_phases. Otherwise commit_policy
+    drives the legacy fallback behavior.
     """
     if policy is None:
         msg = f"apply_commit_outcome requires PipelinePolicy for commit-role phase {state.phase!r}"
         raise ValueError(msg)
+    lifecycle = policy.lifecycle_phases.get(state.phase)
+    if lifecycle is not None:
+        return _apply_lifecycle_completion_policy(state, advanced_state, lifecycle)
     phase_def = policy.phases.get(state.phase)
     if phase_def is not None and phase_def.commit_policy is not None:
         return _apply_commit_outcome_policy_driven(
             state, advanced_state, skipped, phase_def.commit_policy
         )
     return advanced_state
+
+
+def _apply_lifecycle_completion_policy(
+    state: PipelineState,
+    advanced_state: PipelineState,
+    lifecycle: LifecyclePhasePolicy,
+) -> PipelineState:
+    """Apply lifecycle-owned counter and loop-reset semantics."""
+    result = advanced_state
+    for field_name in lifecycle.loop_resets:
+        result = result.with_loop_iteration(field_name, 0)
+    counter = lifecycle.increments_counter
+    if counter is None or counter == "none":
+        return result
+    return result.with_outer_progress(counter, state.get_outer_progress(counter) + 1)
 
 
 def _apply_commit_outcome_policy_driven(
@@ -234,17 +258,21 @@ def _tracked_budget_counters_in_commit_order(policy: PipelinePolicy) -> list[str
         visited.add(current)
         phase_def = phases[current]
 
-        if phase_def.role == "commit" and phase_def.commit_policy is not None:
+        counter: str | None = None
+        lifecycle = policy.lifecycle_phases.get(current)
+        if lifecycle is not None:
+            counter = lifecycle.increments_counter
+        elif phase_def.role == "commit" and phase_def.commit_policy is not None:
             counter = phase_def.commit_policy.increments_counter
-            if (
-                counter
-                and counter != "none"
-                and counter not in seen
-                and counter in policy.budget_counters
-                and policy.budget_counters[counter].tracks_budget
-            ):
-                result.append(counter)
-                seen.add(counter)
+        if (
+            counter
+            and counter != "none"
+            and counter not in seen
+            and counter in policy.budget_counters
+            and policy.budget_counters[counter].tracks_budget
+        ):
+            result.append(counter)
+            seen.add(counter)
 
         t = phase_def.transitions
         next_phases: list[str] = [

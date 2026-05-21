@@ -291,3 +291,61 @@ def test_delete_unsafe_file_returns_failure_event(
     assert len(result) == 1
     assert isinstance(result[0], PhaseFailureEvent)
     assert target.exists()  # file must NOT be deleted
+
+
+def test_delete_file_with_parent_traversal_returns_failure_event(
+    tmp_git_repo: Path,
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    outside = tmp_path / "outside.bin"
+    outside.write_text("binary")
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "../outside.bin"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace, registry=object(), chain_manager=object(),
+        pipeline_policy=object(), artifacts_policy=object(), agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+
+    result = handle_commit_cleanup_phase(effect, ctx)
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert outside.exists()
+
+
+def test_delete_file_with_absolute_path_returns_failure_event(
+    tmp_git_repo: Path,
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_git_repo)
+    outside = tmp_path / "absolute.bin"
+    outside.write_text("binary")
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": str(outside)}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace, registry=object(), chain_manager=object(),
+        pipeline_policy=object(), artifacts_policy=object(), agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+
+    result = handle_commit_cleanup_phase(effect, ctx)
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert outside.exists()
