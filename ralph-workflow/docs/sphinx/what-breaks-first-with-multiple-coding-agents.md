@@ -4,7 +4,7 @@ Ralph Workflow is a free and open-source AI agent orchestrator built around a si
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams who already know how to run Claude Code, Codex, OpenCode, worktrees, or parallel branches — but still do not trust the morning-after result when the task is **too big to babysit and too risky to trust blindly**.
 

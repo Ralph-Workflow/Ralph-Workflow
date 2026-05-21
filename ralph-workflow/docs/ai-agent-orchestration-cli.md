@@ -1,6 +1,6 @@
 # AI Agent Orchestration CLI: Practical Evaluation Path
 
-Ralph Workflow is a **free and open-source** AI agent orchestration CLI for developers who want work that is **too big to babysit and too risky to trust blindly**.
+Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** for developers who want work that is **too big to babysit and too risky to trust blindly**.
 
 If you are comparing orchestration CLIs, the useful question is not whether a tool can call an agent or dump a reviewable-looking result. The useful question is whether it gives you a real **workflow model** for software engineering.
 

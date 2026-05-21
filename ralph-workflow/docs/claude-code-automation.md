@@ -4,7 +4,7 @@ If you are searching for **Claude Code automation**, the real question is not ju
 
 The real question is whether you come back to a **reviewable result** instead of a long session and a confident done claim.
 
-Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 

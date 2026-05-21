@@ -3,7 +3,7 @@
 Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
 This page is supporting proof for that composable workflow system and its strong default workflow, not the main product pitch.
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -50,7 +50,7 @@ That lets you judge the thing that matters most: not whether the agent looked cl
 2. Open `DEVELOPMENT_RESULT.md` and check whether the changed files match the ask.
 3. Open `ISSUES.md` and `FIX_RESULT.md` to see whether review feedback tightened the result.
 4. Glance at the JSON artifacts to see the machine-readable trail.
-5. Ask one question: **would I merge this?**
+5. Ask one question: **does the implementation hold up?**
 
 If that review path feels boring and fast, the workflow is doing its job.
 If it feels vague, the handoff is still too weak.

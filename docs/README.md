@@ -1,15 +1,12 @@
 # Documentation Map
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
-That simple core composes into a stronger workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
 
-This page is the authoritative map for the **current maintained Python** documentation set.
-Use it after [README.md](../README.md) and [START_HERE.md](../START_HERE.md) to distinguish current guidance from historical or narrower family-specific material.
 
-## Current vs archival status
-
-- **Current / maintained / Python:** the repo-root README, `START_HERE.md`, the guides in this `docs/` directory, and the maintained Sphinx source under `../ralph-workflow/docs/sphinx/`.
-- **Historical / archival / Rust-era:** any older page that still describes cargo, xtask, or non-Python workflow setup should be treated as historical context rather than current operating guidance.
+Use this page after [README.md](../README.md) and [START_HERE.md](../START_HERE.md).
+Those pages explain what Ralph Workflow is and how to judge one honest first run.
+This page routes you to the next page that best matches your question.
 
 ## Choose one route
 
@@ -31,18 +28,6 @@ Use it after [README.md](../README.md) and [START_HERE.md](../START_HERE.md) to 
 - [AI agent orchestration CLI](./ai-agent-orchestration-cli.md)
 - [Why the spec still matters](./spec-driven-ai-agent.md)
 - [What unattended use should mean](./unattended-coding-agent.md)
-
-## Documentation families and status
-
-The maintained Python path is the current route.
-If a page looks historical, archival, or Rust-era, prefer the maintained Python manual and guide families below first.
-
-- `docs/agents/` — current maintainer and verification guidance
-- `docs/code-style/` — current Python code style and implementation rules
-- `docs/tooling/` — current tooling references
-- `docs/performance/` — current performance baselines and monitoring guidance
-- `docs/architecture/` — current deeper implementation and runtime design docs
-- `docs/RFC/` — historical design records and background context, not the first-run path
 
 ## Keep proof secondary
 

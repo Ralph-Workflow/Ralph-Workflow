@@ -3,7 +3,7 @@
 New to Ralph Workflow? This page takes you from install to one honest unattended run in a repository you already care about.
 If you already know the shape of the product and just want the shortest checklist, use [Quickstart](quickstart.md).
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator built around a simple Ralph-loop core.
 It turns that simple structure into a stronger composable workflow for substantial, well-specified repo work by moving through planning, implementation, and verification instead of stopping at one long agent session.
 The default workflow is already strong for writing software; start there first, then extend later only when you know why.
 
@@ -19,8 +19,6 @@ Use this guide when you want the full first-run path, not just the short version
 
 If you need config answers while reading, open [Configuration Reference](configuration.md).
 If you want docs routed by use case instead of by document type, open [End-User Stories](user-stories.md).
-If you want deeper conceptual background, open [Concepts](concepts.md).
-If something goes wrong later, keep [Troubleshooting](troubleshooting.md) nearby.
 
 ## Before you run Ralph Workflow
 
@@ -39,27 +37,8 @@ If you are unsure what counts as a good task, use [First Task Guide](first-task-
 1. Install Ralph Workflow and confirm the CLI is available.
 2. Pick one real repo and one task with a clear finish line.
 3. Start with the default workflow instead of customizing immediately.
-4. Let Ralph Workflow plan, implement, and verify the change.
+4. Let Ralph plan, implement, and verify the change.
 5. Judge the result by the software change and the checks, not by transcript confidence alone.
-
-## Minimal commands
-
-```bash
-pipx install ralph-workflow
-cd /path/to/your/project
-ralph --init
-ralph --diagnose
-$EDITOR PROMPT.md
-ralph
-```
-
-## Minimal `PROMPT.md` shape
-
-```md
-# Goal
-
-Add one real, testable improvement to this repository.
-```
 
 That flow matters because Ralph Workflow is designed to give you a stronger unattended coding loop than a single long agent session.
 The point of the first run is to see whether the default loop improves the repo in a way you can actually review.
@@ -70,4 +49,3 @@ The point of the first run is to see whether the default loop improves the repo 
 - Need to inspect what trustworthy output looks like? Use [What Good Ralph Workflow Output Looks Like](../../../docs/reviewable-output.md).
 - Need to change settings or file locations? Use [Configuration Reference](configuration.md).
 - Need docs by goal instead of by section? Use [End-User Stories](user-stories.md).
-- Need help recovering from a bad run? Use [Troubleshooting](troubleshooting.md).

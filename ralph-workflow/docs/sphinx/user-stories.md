@@ -1,6 +1,6 @@
 # End-User Stories
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
 That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
@@ -39,7 +39,7 @@ Short answer:
 - repo-specific override → `.agent/ralph-workflow.toml`
 - workflow structure changes → `.agent/pipeline.toml`
 
-## I want to change which agents Ralph Workflow uses
+## I want to change which agents Ralph uses
 
 - [Configuration Reference](configuration.md)
 - [Which Agent Should I Start With?](which-agent-should-i-start-with.md)

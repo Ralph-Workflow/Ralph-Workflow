@@ -19,23 +19,11 @@ The core stays simple. That simplicity is what makes more complex workflows easi
 Ralph Workflow also ships with a **strong default workflow for writing software**.
 You can use that default as-is, or build on top of it when you need something more advanced.
 
-**Who it is for:** developers and technical teams with repo work that is **too big to babysit and too risky to trust blindly**.
+## The route to use
 
-**Why it is different:** it does not stop at "the agent said done." The workflow is built to finish with **working software plus a review surface**: changed files, checks, and a clear handoff.
-
-**Why use it now:** you can try the default workflow tonight on one real backlog task, judge it with a boring merge question, and keep or extend it from there.
-
-## First honest path
-
-1. Inspect the **primary repo on Codeberg**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-2. Read [START_HERE.md](START_HERE.md) — shortest honest first run
-3. Pick one real task you would actually care about merging tonight: feature slice, refactor with tests, verification pass, or cleanup with a concrete finish line
-4. Ask one question after the run: **would you merge it?**
-
-## Go deeper only if you need to
-
-1. [docs/README.md](docs/README.md) — curated docs switchboard
-2. [ralph-workflow/docs/sphinx/index.rst](ralph-workflow/docs/sphinx/index.rst) — operator manual and configuration reference
+1. [START_HERE.md](START_HERE.md) — shortest honest first run
+2. [docs/README.md](docs/README.md) — curated docs switchboard
+3. [ralph-workflow/docs/sphinx/index.rst](ralph-workflow/docs/sphinx/index.rst) — operator manual and configuration reference
 
 ## Install
 

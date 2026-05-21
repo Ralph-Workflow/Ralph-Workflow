@@ -4,7 +4,7 @@ If you are looking for an **unattended coding agent**, the useful question is no
 
 The real question is: **can I hand off a real backlog task, walk away, and come back to something reviewable?**
 
-Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
+Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with engineering work that is **too big to babysit and too risky to trust blindly**.
 

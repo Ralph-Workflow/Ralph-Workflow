@@ -1,10 +1,11 @@
 # Quickstart
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything. If you need config answers, open [Configuration Reference](configuration.md). If you want docs routed by use case, open [End-User Stories](user-stories.md).
 
+
 Use this page when you already understand the product story and want the shortest path to one honest first run in a real repository.
-Ralph Workflow gives you a strong default unattended coding workflow built from a simple core loop inspired by the original Ralph loop; the point of this page is to use that default safely before you customize anything.
+Ralph Workflow gives you a strong default unattended coding workflow built from a simple Ralph-loop core; the point of this page is to use that default safely before you customize anything.
 If you need fuller explanation, task-selection help, or more context for why the default flow works, go back to [Getting Started](getting-started.md).
 
 ## Quickstart checklist
@@ -14,27 +15,6 @@ If you need fuller explanation, task-selection help, or more context for why the
 3. Run Ralph Workflow on that task.
 4. Judge the result by the repo change and the checks that ran.
 5. Only customize after you know what the default loop already does well enough.
-
-## Minimal commands
-
-```bash
-pipx install ralph-workflow
-cd /path/to/your/project
-ralph --init
-ralph --diagnose
-ralph
-```
-
-## Local config is explicit opt-in
-
-Use `ralph --init` for the standard project support files.
-If you explicitly want a project-local main config override, run:
-
-```bash
-ralph --init-local-config
-```
-
-That command creates `.agent/ralph-workflow.toml` for repo-local overrides.
 
 ## Good first-task shape
 

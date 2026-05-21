@@ -10,7 +10,7 @@ The useful question is this:
 
 > **When it stops, do you get something you can actually review and decide to merge?**
 
-Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 

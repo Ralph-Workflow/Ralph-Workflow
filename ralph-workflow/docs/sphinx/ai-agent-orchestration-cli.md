@@ -4,7 +4,7 @@ Ralph Workflow is a free and open-source AI agent orchestrator built around a si
 That simple core composes into a stronger composable workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is a **free and open-source** AI agent orchestration CLI for developers who want work that is **too big to babysit and too risky to trust blindly** and need more than a single agent session.
+Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** for developers who want work that is **too big to babysit and too risky to trust blindly** and need more than a single agent session.
 
 If you are searching for an AI agent orchestration CLI, the real question is not whether a tool can call an agent. It is whether the tool can turn longer coding work into something you would actually inspect, test, and maybe merge.
 
