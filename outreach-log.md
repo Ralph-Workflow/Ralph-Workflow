@@ -4411,3 +4411,19 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 12:46:50
 - **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 13:07:40
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 13:35:05
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Live homepage metadata drift repair (12:03 UTC / 14:03 CEST)
+- **What I executed:** found that the live Ralph Workflow homepage was still serving the older title `Composable loop framework for autonomous coding — Ralph Workflow` and the older description, despite prior homepage SEO repair notes. I repaired the live Ralph-Site-owned file at `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb`, updated the homepage metadata to target **unattended coding agent** and **AI agent orchestration CLI**, touched `/home/mistlight/ralph_site/current/tmp/restart.txt`, and re-fetched the live site to verify the deployed title is now `Unattended coding agent — AI agent orchestration CLI — Ralph Workflow` with the new Codeberg-first description.
+- **Why this action:** this is **REPAIRED / REPLACING**. The audit still says primary-repo conversion is the live bottleneck, the active distribution repair explicitly prioritizes homepage title/description SEO tuning while Codeberg is flat, and a live metadata regression on the homepage is a stronger same-run fix than more low-yield Reddit or owned-content churn.
+- **Expected outcome:** warmer search/snippet alignment for evaluator intent around **unattended coding agent** and **AI agent orchestration CLI**, plus a clearer Codeberg-first evaluation path before mirror drift.
+- **Measurement window:** next 7 days for snippet alignment / referral quality; next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-04**, stop spending another cycle on homepage metadata tuning and replace it with a fresh external distribution or backlink move.
+- **Type:** **REPAIRED / REPLACING**
