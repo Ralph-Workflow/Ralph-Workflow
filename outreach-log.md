@@ -4282,3 +4282,42 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 06:35:05
 - **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 07:06:12
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Marketing workflow audit (05:20 UTC / 07:20 CEST)
+- **Verdict: stay quiet. Execution ceiling confirmed. Nothing materially changed since last cycle.**
+  - Codeberg: 10⭐ 2👁 2🍴, +1 single-star signal (single data point, directional only, not confirmed causal). GitHub: 0⭐ 2👁 0🍴, flat across all 9 samples.
+  - All reproducible autonomous paths exhausted. No new same-run repair actions available. Infrastructure stack holding.
+  - Reddit structural cadence failure confirmed — the `contrast opener → handoff/reviewer framing → proof bundle → product/link close` shape is structural, not lexical. Fresh draft inventory (3 bodies) fixes openings but does not eliminate the cadence. **Do not post from the fresh draft inventory until the cadence is broken at the structural level.**
+  - Backlinks: 0 indexed. AIToolsIndex + ToolShelf in-flight.
+  - **HN/Lobsters remains the single highest-leverage unmade move.** Packet is written and verified correct (content-confusion repair executed). Human action required.
+  - Secondary finding: the HN draft experienced a content-confusion failure this cycle — it was overwritten with HireAegis product content and caught only by audit inspection. The loop should self-verify draft product attribution (e.g., grep for known Ralph vs. HireAegis token strings) before presenting any future human handoffs. This is a trust-integrity risk, not just a correctness risk.
+  - Four marketing questions: all correctly answered, no drift.
+- **What worked:** Codeberg +1 star is the first measurable signal in the current window. Infrastructure holding. HN draft verified correct after content-confusion repair.
+- **What failed:** Reddit structural cadence — confirmed unsolvable with fresh drafts alone. GitHub mirror flat. Backlinks still 0 indexed. HN/Lobsters still blocked from autonomous execution.
+- **What is repetitive:** Monitor passes (correctly no output during cooldown). Every "stay quiet" audit verdict has identical structure to prior cycles.
+- **What is low leverage:** More owned-surface polish, more monitor passes, more draft regeneration without structural cadence change.
+- **Current bottleneck:** HN/Lobsters human execution. Autonomous ceiling confirmed.
+- **Next higher-leverage move:**
+  1. **Human: execute HN/Lobsters** from `drafts/2026-05-21_hackernews_post.txt` — submit to HN first, then Lobsters. Codeberg first, GitHub second.
+  2. Reddit: do not post until the structural cadence is broken. A Reddit post with fresh openings but the same rhythm is still a failed tactic.
+  3. Loop self-verification improvement: add a draft product-attribution check before presenting human handoffs (e.g., verify the draft contains known RalphWorkflow tokens and excludes HireAegis tokens).
+  4. Monitor AIToolsIndex and ToolShelf for indexing signal over the next 7 days.
+- **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta and indexed backlink evidence.
+- **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach (curators, competitor-citation backlinks, comparison page outreach).
+- **Type:** AUDIT / DIRECTION
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 07:35:06
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 08:06:34
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 08:51:56
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.

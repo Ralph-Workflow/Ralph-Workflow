@@ -1,0 +1,152 @@
+{
+  "timestamp": "2026-05-21T09:04:18.637929",
+  "weekly_mode": false,
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "robots": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    },
+    "sitemap": {
+      "ok": true,
+      "status": 200,
+      "method": "HEAD"
+    }
+  },
+  "totals": {
+    "posts_last_30d": 33,
+    "views_last_30d": 0
+  },
+  "content_summary": {
+    "philosophy": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "seo-guide": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "technical": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "unknown": {
+      "posts": 29,
+      "views": 0,
+      "avg_views": 0.0
+    },
+    "usecase": {
+      "posts": 1,
+      "views": 0,
+      "avg_views": 0.0
+    }
+  },
+  "decisions": [],
+  "blocked_channels": {
+    "dev.to": "Needs API key or OAuth",
+    "twitter": "Login/session blocked",
+    "reddit": "Account u/Informal-Salt827 verified and active (21 posts published May 16-18). Manual follow-up replies needed to avoid thread necromancy flags.",
+    "hackernews": "Needs account",
+    "lobsters": "Needs invite/account",
+    "producthunt": "Protected flow / manual launch required"
+  },
+  "seo": {
+    "score": "70/100 (C)",
+    "ranked_keywords": 0,
+    "backlinks_approx": 0,
+    "domain_rating": null,
+    "trends": {
+      "rank_delta": 0.0,
+      "backlinks_delta": 0.0,
+      "domain_rating": null,
+      "prev_avg_ranks": 0.0,
+      "prev_avg_bl": 0.0
+    },
+    "priority_actions": [
+      "Fix top on-page SEO issues (current score: 70/100)",
+      "Create content targeting: unattended coding agent, AI agent orchestration CLI, spec-driven AI agent",
+      "Build backlinks: submit to directories, guest post, earn citations"
+    ],
+    "report": "/home/mistlight/.openclaw/workspace/seo-reports/2026-05-21.md",
+    "seo_daily_error": "",
+    "sitemap_urls": 0,
+    "competitor_analysis": null
+  },
+  "adoption": {
+    "timestamp": "2026-05-21T08:12:23.083552",
+    "metrics": [
+      {
+        "platform": "GitHub",
+        "stars": 0,
+        "watchers": 2,
+        "forks": 0,
+        "open_issues": 0,
+        "html_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+      },
+      {
+        "platform": "Codeberg",
+        "stars": 10,
+        "watchers": 2,
+        "forks": 2,
+        "open_issues": 5,
+        "html_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
+      }
+    ],
+    "deltas": {
+      "GitHub": {
+        "stars_delta": 0,
+        "watchers_delta": 0,
+        "forks_delta": 0
+      },
+      "Codeberg": {
+        "stars_delta": 0,
+        "watchers_delta": 0,
+        "forks_delta": 0
+      }
+    },
+    "recent_window": {
+      "GitHub": {
+        "samples": 9,
+        "stars_delta_window": 0,
+        "watchers_delta_window": 0,
+        "forks_delta_window": 0
+      },
+      "Codeberg": {
+        "samples": 9,
+        "stars_delta_window": 1,
+        "watchers_delta_window": 0,
+        "forks_delta_window": 0
+      }
+    },
+    "evaluation": {
+      "findings": [
+        "GitHub mirror adoption is also flat across the recent measurement window.",
+        "Codeberg remains the stronger adoption surface and should stay the primary evaluation target."
+      ],
+      "failing_signals": [],
+      "next_focus": [
+        "Keep measuring adoption deltas and replace any tactic that stays flat across the window."
+      ]
+    }
+  },
+  "failure_signals": [],
+  "marketing_status": "initial",
+  "content_generation": {
+    "returncode": 0,
+    "stdout": "[generate_content.py] SEO match: using topic 'spec_driven' for gap keyword 'spec-driven AI agent'\n[ContentGen] Created: /home/mistlight/.openclaw/workspace/drafts/2026-05-21_spec_driven_draft.md",
+    "stderr": ""
+  },
+  "posting": {
+    "returncode": 0,
+    "stdout": "{\n  \"timestamp\": \"2026-05-21T09:04:30.142936\",\n  \"results\": [\n    {\n      \"draft\": \"2026-05-21_spec_driven_draft.md\",\n      \"ok\": true,\n      \"status\": \"already_posted\",\n      \"draft_hash\": \"a6e06c09ff6139388cde59f2e1dc0d981cb59bde83125bfc54565df55cbc8ac2\",\n      \"experiment_id\": \"2026-05-21-spec_driven\"\n    }\n  ]\n}",
+    "stderr": ""
+  }
+}
