@@ -10,6 +10,7 @@ This directory has not yet been fully ported to the Python implementation. Many 
 
 Use these instead when working on the maintained package:
 
+- `docs/code-style/documentation-rubric.md` — canonical documentation rubric for every docs-related change
 - `ralph-workflow/pyproject.toml` — tool configuration (`ruff`, `mypy`, packaging)
 - `ralph-workflow/CONTRIBUTING.md` — contributor workflow
 - public module docstrings under `ralph-workflow/ralph/` — API expectations for pydoc

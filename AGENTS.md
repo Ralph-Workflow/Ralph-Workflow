@@ -39,6 +39,7 @@ If instructions conflict, follow the stricter one.
 - Feature or bugfix: use the `test-driven-development` skill first.
 - Debugging or failing verification: use the `systematic-debugging` skill first.
 - Any test work: read `docs/agents/testing-guide.md` first.
+- Any README/docs/public-doc change: read `docs/code-style/documentation-rubric.md` first and treat it as mandatory.
 - Any commit work: dogfood Ralph itself by using `ralph --generate-commit`.
 
 ## Commit rule

@@ -18,6 +18,8 @@ make verify
 
 Verification passes only when all checks complete with **no ERROR/WARNING diagnostics**. If any step fails, fix the issue immediately and rerun. `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md`.
 
+If the change touches README, docs, START_HERE, the manual, or any public-doc route, read `docs/code-style/documentation-rubric.md` first and check the edited surface against it before calling the docs work done.
+
 For full verification (including docs build and subprocess E2E tests):
 
 ```bash
