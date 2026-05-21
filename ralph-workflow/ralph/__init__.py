@@ -9,6 +9,7 @@ Useful pydoc entry points:
 - ``ralph.config`` for configuration models and loading
 - ``ralph.pipeline`` for orchestration state and reducer/orchestrator logic
 - ``ralph.phases`` for phase dispatch
+- ``ralph.session_runtime`` for host-owned mini-pipeline / standalone session runtime helpers
 - ``ralph.mcp`` for the MCP bridge and standalone server helpers
 - ``ralph.git`` for GitPython-backed repository operations
 - ``ralph.workspace`` for filesystem abstractions used by production code and tests

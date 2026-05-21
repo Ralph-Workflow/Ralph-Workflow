@@ -4,19 +4,14 @@ from __future__ import annotations
 
 import json
 
-_PROMPT_MD_EXISTS_BLOCK = """\
-**IMPORTANT: An existing `PROMPT.md` was found in this workspace.**
+_EXISTING_PROMPT_CONTEXT_BLOCK = """\
+**CURRENT PROMPT CONTEXT:**
 
-Before doing anything else, ask the user:
+The workspace already has a `PROMPT.md`. Treat the content below as background
+context that the user wants to refine. Use it to understand the current product
+shape before you ask follow-up questions, but do not assume it is fully correct.
 
-> I found an existing `PROMPT.md` in this workspace. Would you like to:
-> 1. **Replace it** — start fresh with a new product specification
-> 2. **Refine it** — continue working on the existing specification
-
-Wait for their answer before proceeding.
-
-If the user chooses **Refine it**, use `read_file` to read the current `PROMPT.md`
-before starting the refinement conversation.
+{existing_prompt_context_block}
 
 """
 
@@ -26,17 +21,29 @@ _DRAFT_CONTEXT_BLOCK = """\
 The following product specification has already been submitted. Continue refining
 based on the user's feedback, or update specific sections as requested.
 
-```json
-{current_draft_json}
-```
+{current_draft_block}
 
 """
+
+
+def _fenced_block(content: str, *, info: str) -> str:
+    """Return a fenced markdown block that remains valid even when content contains backticks."""
+    longest_run = 0
+    current_run = 0
+    for char in content:
+        if char == "`":
+            current_run += 1
+            longest_run = max(longest_run, current_run)
+        else:
+            current_run = 0
+    fence = "`" * max(3, longest_run + 1)
+    return f"{fence}{info}\n{content}\n{fence}"
 
 
 def build_prompt_helper_prompt(
     *,
     submit_artifact_tool_name: str,
-    prompt_md_exists: bool = False,
+    existing_prompt_context: str | None = None,
     has_draft: bool = False,
     current_draft: dict[str, object] | None = None,
 ) -> str:
@@ -50,22 +57,28 @@ def build_prompt_helper_prompt(
     submit_artifact_tool_name : str
         The MCP tool name to use when submitting the product_spec artifact,
         e.g. "mcp__ralph__ralph_submit_artifact".
-    prompt_md_exists : bool
-        When True, prepend a block instructing the agent to ask the user whether
-        to replace or refine the existing PROMPT.md before proceeding.
+    existing_prompt_context : str | None
+        Existing PROMPT.md content injected by the host when the user chooses to
+        refine an existing prompt before the first helper turn.
     has_draft : bool
         When True, include the current draft specification in the prompt so the
         agent can continue refining from it.
     current_draft : dict[str, object] | None
         The current product_spec artifact content to include when has_draft is True.
     """
-    existing_block = _PROMPT_MD_EXISTS_BLOCK if prompt_md_exists else ""
+    existing_block = ""
+    if existing_prompt_context is not None:
+        existing_block = _EXISTING_PROMPT_CONTEXT_BLOCK.format(
+            existing_prompt_context_block=_fenced_block(existing_prompt_context, info="md")
+        )
     pm_intro = "You are a product manager helping the user define what they want to build."
 
     draft_block = ""
     if has_draft and current_draft is not None:
         draft_json = json.dumps(current_draft, indent=2)
-        draft_block = _DRAFT_CONTEXT_BLOCK.format(current_draft_json=draft_json)
+        draft_block = _DRAFT_CONTEXT_BLOCK.format(
+            current_draft_block=_fenced_block(draft_json, info="json")
+        )
 
     return f"""{existing_block}{draft_block}{pm_intro}
 

@@ -85,26 +85,22 @@ class TestBuildPromptHelperPrompt:
         )
         assert "chunk" in result.lower() or "regroup" in result.lower()
 
-    def test_prompt_with_existing_prompt_md_asks_about_existing(self) -> None:
-        """When prompt_md_exists=True, prompt asks user about existing PROMPT.md."""
+    def test_prompt_with_existing_prompt_context_includes_context_not_menu(self) -> None:
+        """Existing prompt context is injected as background, not an agent-owned menu."""
         result = build_prompt_helper_prompt(
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
-            prompt_md_exists=True,
+            existing_prompt_context="# Existing prompt\nBuild a notes app.",
         )
-        assert "PROMPT.md" in result
-        assert "replace" in result.lower() or "refine" in result.lower()
+        assert "Build a notes app." in result
+        assert "Replace it" not in result
+        assert "Refine it" not in result
 
-    def test_prompt_without_existing_prompt_md_omits_existing_block(self) -> None:
-        """When prompt_md_exists=False (default), prompt does not mention existing PROMPT.md."""
-        result_default = build_prompt_helper_prompt(
+    def test_prompt_without_existing_prompt_context_omits_existing_block(self) -> None:
+        """Without existing context, the helper prompt stays focused on fresh intake."""
+        result = build_prompt_helper_prompt(
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
         )
-        result_explicit = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
-            prompt_md_exists=False,
-        )
-        assert result_default == result_explicit
-        assert "existing" not in result_default.lower() or "existing" not in result_explicit.lower()
+        assert "CURRENT PROMPT CONTEXT" not in result
 
     def test_prompt_does_not_contain_post_artifact_agent_side_menu(self) -> None:
         """Prompt does not instruct agent to present post-artifact choices.
@@ -121,13 +117,27 @@ class TestBuildPromptHelperPrompt:
         assert "Your product specification has been submitted" not in result
         assert "What would you like to do next" not in result
 
-    def test_prompt_with_existing_prompt_md_includes_read_file_instruction(self) -> None:
-        """When prompt_md_exists=True, prompt instructs agent to use read_file."""
+    def test_prompt_with_existing_prompt_context_does_not_delegate_file_reading_to_agent(
+        self,
+    ) -> None:
+        """Existing prompt text is injected by the host, so the agent is not told to read files."""
         result = build_prompt_helper_prompt(
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
-            prompt_md_exists=True,
+            existing_prompt_context="# Existing prompt\nBuild a notes app.",
         )
-        assert "read_file" in result
+        assert "read_file" not in result
+
+    def test_prompt_with_existing_prompt_context_uses_safe_fence_for_embedded_backticks(
+        self,
+    ) -> None:
+        """Existing prompt context stays inside the wrapper block when it contains fences."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            existing_prompt_context="Before\n```py\nprint('x')\n```\nAfter",
+        )
+        assert "````md" in result
+        assert "```py" in result
+        assert "\n````\n\nYou are a product manager" in result
 
     def test_prompt_with_has_draft_includes_draft_context(self) -> None:
         """When has_draft=True with a current_draft, prompt includes draft content."""

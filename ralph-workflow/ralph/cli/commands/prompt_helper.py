@@ -2,26 +2,40 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-from enum import Enum
+from enum import StrEnum
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING
-from uuid import uuid4
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from collections.abc import Callable, Iterable
+    from typing import Protocol
+
+    from ralph.agents.idle_watchdog import WaitingStatusEvent
+    from ralph.config.models import UnifiedConfig
+    from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.session_runtime import ManagedAgentSessionRequest, ManagedAgentSessionRuntime
+
+    class _ManagedSessionRuntime(Protocol):
+        def invoke_prompt_file(
+            self,
+            prompt_file: str | Path,
+            *,
+            session_id: str | None = None,
+            required_artifact: RequiredArtifact | None = None,
+            waiting_listener: Callable[[WaitingStatusEvent], None] | None = None,
+            permission_prompt_listener: Callable[[str], None] | None = None,
+            extra_env: dict[str, str] | None = None,
+        ) -> Iterable[str]: ...
+
+else:
+    _ManagedSessionRuntime = object
 
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.text import Text
 
-from ralph.agents.invoke import (
-    InvokeOptions,
-    InvokeRuntimeOptions,
-    OpenCodeResumableExitError,
-    build_invoke_options_from_config,
-    invoke_agent,
-)
+from ralph.agents.invoke import OpenCodeResumableExitError
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.prompt_helper_prompt import build_prompt_helper_prompt
 from ralph.config.enums import AgentTransport
@@ -30,30 +44,56 @@ from ralph.mcp.artifacts.product_spec import (
     render_product_spec_as_prompt,
 )
 from ralph.mcp.protocol.capability_mapping import Capability
-from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, AgentSession
-from ralph.mcp.server.lifecycle import McpServerExtras, start_mcp_server
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
 from ralph.workspace.fs import FsWorkspace
+
+_session_runtime_module = import_module("ralph.session_runtime")
+ManagedAgentSessionRequestCtor = cast(
+    "type[ManagedAgentSessionRequest]",
+    _session_runtime_module.ManagedAgentSessionRequest,
+)
+ManagedAgentSessionRuntimeType = cast(
+    "type[ManagedAgentSessionRuntime]",
+    _session_runtime_module.ManagedAgentSessionRuntime,
+)
 
 PROMPT_HELPER_TMP_DIR = Path(".agent/tmp")
 PROMPT_HELPER_PROMPT_FILE = PROMPT_HELPER_TMP_DIR / "prompt_helper_prompt.md"
 
 
-class ReviewAction(Enum):
-    """User choices after an artifact is submitted."""
+class _PromptHelperAction(StrEnum):
+    """Shared action enum for prompt-helper review and existing-prompt choices."""
 
     CONTINUE = "continue"
     UPDATE_SECTION = "update"
     START_OVER = "start_over"
     FINISH = "finish"
+    REPLACE = "replace"
+    REFINE = "refine"
 
+
+ReviewAction = _PromptHelperAction
+ExistingPromptAction = _PromptHelperAction
+
+
+_REVIEW_CONTINUE = ReviewAction.CONTINUE
+_REVIEW_UPDATE_SECTION = ReviewAction.UPDATE_SECTION
+_REVIEW_START_OVER = ReviewAction.START_OVER
+_REVIEW_FINISH = ReviewAction.FINISH
+_EXISTING_PROMPT_REPLACE = ExistingPromptAction.REPLACE
+_EXISTING_PROMPT_REFINE = ExistingPromptAction.REFINE
 
 # Map review choice strings to ReviewAction values
 _REVIEW_ACTION_MAP: dict[str, ReviewAction] = {
-    "Continue refining": ReviewAction.CONTINUE,
-    "Update a section": ReviewAction.UPDATE_SECTION,
-    "Start over": ReviewAction.START_OVER,
-    "Finish": ReviewAction.FINISH,
+    "Continue refining": _REVIEW_CONTINUE,
+    "Update a section": _REVIEW_UPDATE_SECTION,
+    "Start over": _REVIEW_START_OVER,
+    "Finish": _REVIEW_FINISH,
+}
+
+_EXISTING_PROMPT_ACTION_MAP: dict[str, ExistingPromptAction] = {
+    "Replace it": _EXISTING_PROMPT_REPLACE,
+    "Refine it": _EXISTING_PROMPT_REFINE,
 }
 
 
@@ -69,6 +109,24 @@ def _build_review_prompt() -> list[str]:
     return ["Continue refining", "Update a section", "Start over", "Finish"]
 
 
+def _build_existing_prompt_prompt() -> list[str]:
+    """Build the existing-PROMPT choice options for the console prompt."""
+    return ["Replace it", "Refine it"]
+
+
+def _prompt_existing_prompt_choice() -> ExistingPromptAction:
+    """Prompt the user before the first agent turn when PROMPT.md already exists."""
+    console = Console()
+    choices = _build_existing_prompt_prompt()
+    choice = Prompt.ask(
+        "I found an existing PROMPT.md in this workspace. What should prompt-helper do?",
+        console=console,
+        choices=choices,
+        default=choices[1],
+    )
+    return _EXISTING_PROMPT_ACTION_MAP.get(choice, _EXISTING_PROMPT_REFINE)
+
+
 def _prompt_review_choice() -> ReviewAction:
     """Prompt user for review action and return the chosen action."""
     console = Console()
@@ -79,7 +137,7 @@ def _prompt_review_choice() -> ReviewAction:
         choices=choices,
         default=choices[0],
     )
-    return _REVIEW_ACTION_MAP.get(choice, ReviewAction.FINISH)
+    return _REVIEW_ACTION_MAP.get(choice, _REVIEW_FINISH)
 
 
 def _prompt_for_user_input(prompt_text: str) -> str:
@@ -89,10 +147,9 @@ def _prompt_for_user_input(prompt_text: str) -> str:
 
 def _reinvoke_agent(
     workspace_root: Path,
-    agent_config: AgentConfig,
-    options: InvokeOptions,
-    prompt_md_exists: bool,
+    runtime: _ManagedSessionRuntime,
     submit_artifact_tool_name: str,
+    existing_prompt_context: str | None,
     current_spec: dict[str, object] | None,
     user_input: str,
     session_id: str | None,
@@ -101,16 +158,12 @@ def _reinvoke_agent(
     prompt_file = _write_follow_up_prompt_file(
         workspace_root,
         submit_artifact_tool_name,
-        prompt_md_exists,
+        existing_prompt_context,
         current_spec,
         user_input,
         session_id=session_id,
     )
-    resumable_session_id = _run_single_invoke(
-        agent_config,
-        prompt_file,
-        _options_for_session(options, session_id),
-    )
+    resumable_session_id = _run_single_invoke(runtime, prompt_file, session_id=session_id)
     next_session_id = resumable_session_id or session_id
     return read_product_spec_artifact(workspace_root), next_session_id
 
@@ -142,13 +195,14 @@ def _display_agent_line(line: str) -> None:
 
 
 def _run_single_invoke(
-    agent_config: AgentConfig,
+    runtime: _ManagedSessionRuntime,
     prompt_file: Path,
-    options: InvokeOptions,
+    *,
+    session_id: str | None = None,
 ) -> str | None:
     """Run a single agent turn and preserve resumable sessions for host-owned loops."""
     try:
-        for line in invoke_agent(agent_config, str(prompt_file), options=options):
+        for line in runtime.invoke_prompt_file(prompt_file, session_id=session_id):
             _display_agent_line(line)
     except OpenCodeResumableExitError as exc:
         return exc.resumable_session_id
@@ -166,13 +220,13 @@ def _write_prompt_file(workspace_root: Path, prompt_content: str) -> Path:
 def _update_prompt_file(
     workspace_root: Path,
     submit_artifact_tool_name: str,
-    prompt_md_exists: bool,
+    existing_prompt_context: str | None,
     spec: dict[str, object] | None,
 ) -> Path:
     """Build and write the initial helper instructions, returning the path."""
     prompt_content = build_prompt_helper_prompt(
         submit_artifact_tool_name=submit_artifact_tool_name,
-        prompt_md_exists=prompt_md_exists,
+        existing_prompt_context=existing_prompt_context,
         has_draft=spec is not None,
         current_draft=spec,
     )
@@ -182,7 +236,7 @@ def _update_prompt_file(
 def _write_follow_up_prompt_file(
     workspace_root: Path,
     submit_artifact_tool_name: str,
-    prompt_md_exists: bool,
+    existing_prompt_context: str | None,
     current_spec: dict[str, object] | None,
     user_input: str,
     *,
@@ -194,7 +248,7 @@ def _write_follow_up_prompt_file(
 
     prompt_content = build_prompt_helper_prompt(
         submit_artifact_tool_name=submit_artifact_tool_name,
-        prompt_md_exists=prompt_md_exists,
+        existing_prompt_context=existing_prompt_context,
         has_draft=current_spec is not None,
         current_draft=current_spec,
     )
@@ -202,38 +256,29 @@ def _write_follow_up_prompt_file(
     return _write_prompt_file(workspace_root, prompt_content)
 
 
-def _options_for_session(options: InvokeOptions, session_id: str | None) -> InvokeOptions:
-    """Return invoke options that continue a resumable agent session when available."""
-    if session_id is None:
-        return options
-    return replace(options, session_id=session_id, initial_session_id=session_id)
-
-
 def _run_conversational_intake(
     workspace_root: Path,
-    agent_config: AgentConfig,
-    options: InvokeOptions,
-    prompt_md_exists: bool,
+    runtime: _ManagedSessionRuntime,
+    existing_prompt_context: str | None,
     submit_artifact_tool_name: str,
 ) -> tuple[dict[str, object] | None, str | None]:
     """Run the intake loop until an artifact exists or the agent can no longer resume."""
     prompt_file = _update_prompt_file(
         workspace_root,
         submit_artifact_tool_name,
-        prompt_md_exists,
+        existing_prompt_context,
         None,
     )
-    session_id = _run_single_invoke(agent_config, prompt_file, options)
+    session_id = _run_single_invoke(runtime, prompt_file)
     spec = read_product_spec_artifact(workspace_root)
 
     while spec is None and session_id is not None:
         user_input = _prompt_for_user_input("Your response")
         spec, session_id = _reinvoke_agent(
             workspace_root,
-            agent_config,
-            options,
-            prompt_md_exists,
+            runtime,
             submit_artifact_tool_name,
+            existing_prompt_context,
             None,
             user_input,
             session_id,
@@ -244,9 +289,8 @@ def _run_conversational_intake(
 
 def _handle_artifact_exists(
     workspace_root: Path,
-    agent_config: AgentConfig,
-    options: InvokeOptions,
-    prompt_md_exists: bool,
+    runtime: _ManagedSessionRuntime,
+    existing_prompt_context: str | None,
     submit_artifact_tool_name: str,
     spec: dict[str, object],
     session_id: str | None,
@@ -255,32 +299,30 @@ def _handle_artifact_exists(
     console = Console()
     action = _prompt_review_choice()
 
-    if action == ReviewAction.FINISH:
+    if action == _REVIEW_FINISH:
         _write_prompt_md(workspace_root, spec)
         return
-    if action == ReviewAction.START_OVER:
+    if action == _REVIEW_START_OVER:
         console.print(Text("Starting over with a fresh specification."))
         _clear_draft_artifact(workspace_root)
         new_spec, new_session_id = _run_conversational_intake(
             workspace_root,
-            agent_config,
-            options,
-            prompt_md_exists,
+            runtime,
+            existing_prompt_context,
             submit_artifact_tool_name,
         )
         if new_spec is not None:
             _handle_artifact_exists(
                 workspace_root,
-                agent_config,
-                options,
-                prompt_md_exists,
+                runtime,
+                existing_prompt_context,
                 submit_artifact_tool_name,
                 new_spec,
                 new_session_id,
             )
         return
 
-    if action == ReviewAction.UPDATE_SECTION:
+    if action == _REVIEW_UPDATE_SECTION:
         user_input = _prompt_for_user_input(
             "Which section should be updated, and what should change?"
         )
@@ -289,9 +331,8 @@ def _handle_artifact_exists(
 
     _continue_review_loop(
         workspace_root,
-        agent_config,
-        options,
-        prompt_md_exists,
+        runtime,
+        existing_prompt_context,
         submit_artifact_tool_name,
         spec,
         user_input,
@@ -301,9 +342,8 @@ def _handle_artifact_exists(
 
 def _continue_review_loop(
     workspace_root: Path,
-    agent_config: AgentConfig,
-    options: InvokeOptions,
-    prompt_md_exists: bool,
+    runtime: _ManagedSessionRuntime,
+    existing_prompt_context: str | None,
     submit_artifact_tool_name: str,
     current_spec: dict[str, object],
     user_input: str,
@@ -312,10 +352,9 @@ def _continue_review_loop(
     """Continue the review loop by sending user feedback back to the agent."""
     spec, next_session_id = _reinvoke_agent(
         workspace_root,
-        agent_config,
-        options,
-        prompt_md_exists,
+        runtime,
         submit_artifact_tool_name,
+        existing_prompt_context,
         current_spec,
         user_input,
         session_id,
@@ -323,23 +362,52 @@ def _continue_review_loop(
     if spec is not None:
         _handle_artifact_exists(
             workspace_root,
-            agent_config,
-            options,
-            prompt_md_exists,
+            runtime,
+            existing_prompt_context,
             submit_artifact_tool_name,
             spec,
             next_session_id,
         )
 
 
+def _prompt_helper_session_request() -> ManagedAgentSessionRequest:
+    """Return the managed-session request used by prompt-helper."""
+    return ManagedAgentSessionRequestCtor(
+        session_id_prefix="prompt-helper",
+        drain="standalone",
+        capabilities=frozenset(
+            {
+                Capability.WORKSPACE_READ.value,
+                Capability.WORKSPACE_METADATA_READ.value,
+                Capability.GIT_STATUS_READ.value,
+                Capability.GIT_DIFF_READ.value,
+                Capability.ARTIFACT_SUBMIT.value,
+            }
+        ),
+    )
+
+
+def _existing_prompt_context_for_intake(workspace_root: Path) -> str | None:
+    """Return existing PROMPT.md content when the user chooses to refine it."""
+    prompt_md_path = workspace_root / "PROMPT.md"
+    if not prompt_md_path.exists():
+        return None
+    action = _prompt_existing_prompt_choice()
+    if action == _EXISTING_PROMPT_REPLACE:
+        _clear_draft_artifact(workspace_root)
+        return None
+    return FsWorkspace(workspace_root).read("PROMPT.md")
+
+
 def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
     """Run the interactive prompt helper.
 
     This is a host-owned state machine that:
-    1. Starts a conversational intake turn with the agent
-    2. Prompts the user for freeform replies between resumable turns
-    3. After artifact submission, presents review choices to the user
-    4. Only writes PROMPT.md when the user explicitly chooses Finish
+    1. Resolves existing PROMPT.md choices before the first agent turn
+    2. Starts a conversational intake turn with the agent
+    3. Prompts the user for freeform replies between resumable turns
+    4. After artifact submission, presents review choices to the user
+    5. Only writes PROMPT.md when the user explicitly chooses Finish
     """
     registry = AgentRegistry.from_config(config)
 
@@ -361,58 +429,29 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
         raise RuntimeError(msg)
 
     submit_artifact_tool_name = _submit_artifact_tool_name_for_transport(agent_config.transport)
+    existing_prompt_context = _existing_prompt_context_for_intake(workspace_root)
 
-    session = AgentSession(
-        session_id="prompt-helper-agent",
-        run_id=str(uuid4()),
-        drain="standalone",
-        capabilities={
-            Capability.WORKSPACE_READ.value,
-            Capability.WORKSPACE_METADATA_READ.value,
-            Capability.GIT_STATUS_READ.value,
-            Capability.GIT_DIFF_READ.value,
-            Capability.ARTIFACT_SUBMIT.value,
-        },
-    )
-
-    workspace = FsWorkspace(workspace_root)
-    bridge = start_mcp_server(
-        session,
-        workspace,
-        extras=McpServerExtras(extra_env={}),
-    )
-
-    try:
-        options = build_invoke_options_from_config(
-            config.general,
-            InvokeRuntimeOptions(
-                verbose=False,
-                show_progress=False,
-                workspace_path=workspace_root,
-                extra_env={MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri()},
-            ),
-        )
-
-        prompt_md_exists = (workspace_root / "PROMPT.md").exists()
+    with ManagedAgentSessionRuntimeType.open(
+        config=config,
+        workspace_root=workspace_root,
+        agent_config=agent_config,
+        request=_prompt_helper_session_request(),
+    ) as runtime:
         spec, session_id = _run_conversational_intake(
             workspace_root,
-            agent_config,
-            options,
-            prompt_md_exists,
+            runtime,
+            existing_prompt_context,
             submit_artifact_tool_name,
         )
         if spec is not None:
             _handle_artifact_exists(
                 workspace_root,
-                agent_config,
-                options,
-                prompt_md_exists,
+                runtime,
+                existing_prompt_context,
                 submit_artifact_tool_name,
                 spec,
                 session_id,
             )
-    finally:
-        bridge.shutdown()
 
 
 __all__ = ["run_prompt_helper"]

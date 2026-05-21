@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from importlib import import_module
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -13,25 +13,35 @@ from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.config.prompt_helper_config import PromptHelperConfig
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
+
+
+def _session_runtime() -> object:
+    return import_module("ralph.session_runtime")
 
 
 class TestAgentFallback:
     """Tests for agent fallback behaviour in run_prompt_helper."""
 
-    def _stub_mcp_and_invoke(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def _stub_runtime(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _FakeRuntime:
+            def __enter__(self) -> _FakeRuntime:
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                del exc_type, exc, tb
+
+            def invoke_prompt_file(
+                self, *args: object, **kwargs: object
+            ) -> Iterator[str]:
+                del args, kwargs
+                return iter(())
+
         monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.invoke_agent",
-            MagicMock(return_value=iter([])),
-        )
-        mock_bridge = MagicMock()
-        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
-        mock_bridge.shutdown.return_value = None
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.start_mcp_server",
-            lambda *args, **kwargs: mock_bridge,
+            cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
+            "open",
+            classmethod(lambda cls, **kwargs: _FakeRuntime()),
         )
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
@@ -87,6 +97,6 @@ class TestAgentFallback:
                 ),
             },
         )
-        self._stub_mcp_and_invoke(monkeypatch)
+        self._stub_runtime(monkeypatch)
         # Should not raise — first-agent is used as fallback
         run_prompt_helper(config, workspace_root)

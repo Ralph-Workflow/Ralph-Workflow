@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from importlib import import_module
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
 
 from ralph.cli.commands.prompt_helper import run_prompt_helper
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     import pytest
@@ -15,27 +17,45 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
 
+def _session_runtime() -> object:
+    return import_module("ralph.session_runtime")
+
+
 class TestReviewLoopBehavior:
     """Tests for the post-artifact review loop state machine."""
 
-    def _setup_base_mocks(
+    def _setup_base_runtime(
         self,
         monkeypatch: pytest.MonkeyPatch,
+        *,
+        outputs: list[str] | None = None,
     ) -> MagicMock:
-        """Set up common mocks for review loop tests."""
-        mock_invoke_agent = MagicMock(return_value=iter([]))
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.invoke_agent", mock_invoke_agent
-        )
+        """Set up a fake managed-session runtime for review loop tests."""
+        mock_invoke_runtime = MagicMock(return_value=iter(outputs or []))
 
-        mock_bridge = MagicMock()
-        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
-        mock_bridge.shutdown.return_value = None
+        class _FakeRuntime:
+            def __enter__(self) -> _FakeRuntime:
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                del exc_type, exc, tb
+
+            def invoke_prompt_file(
+                self,
+                prompt_file: object,
+                *,
+                session_id: str | None = None,
+                required_artifact: object | None = None,
+            ) -> Iterator[str]:
+                del prompt_file, session_id, required_artifact
+                return mock_invoke_runtime()
+
         monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.start_mcp_server",
-            lambda *args, **kwargs: mock_bridge,
+            cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
+            "open",
+            classmethod(lambda cls, **kwargs: _FakeRuntime()),
         )
-        return mock_invoke_agent
+        return mock_invoke_runtime
 
     def test_finish_action_writes_prompt_md(
         self,
@@ -44,7 +64,7 @@ class TestReviewLoopBehavior:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Choosing Finish writes PROMPT.md from the artifact."""
-        self._setup_base_mocks(monkeypatch)
+        self._setup_base_runtime(monkeypatch)
 
         spec = {
             "title": "Test Title",
@@ -92,17 +112,7 @@ class TestReviewLoopBehavior:
             "SUBMITTING ARTIFACT: product_spec",
         ])
 
-        mock_bridge = MagicMock()
-        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
-        mock_bridge.shutdown.return_value = None
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.start_mcp_server",
-            lambda *args, **kwargs: mock_bridge,
-        )
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.invoke_agent",
-            lambda *args, **kwargs: streaming_output,
-        )
+        self._setup_base_runtime(monkeypatch, outputs=list(streaming_output))
 
         spec = {
             "title": "Test Title",
@@ -138,7 +148,7 @@ class TestReviewLoopBehavior:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Choosing Continue refining re-invokes agent with current draft spec."""
-        mock_invoke_agent = self._setup_base_mocks(monkeypatch)
+        mock_invoke_agent = self._setup_base_runtime(monkeypatch)
 
         spec = {
             "title": "Test Title",
@@ -190,7 +200,7 @@ class TestReviewLoopBehavior:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Choosing Start over re-invokes agent with fresh intake (no draft)."""
-        mock_invoke_agent = self._setup_base_mocks(monkeypatch)
+        mock_invoke_agent = self._setup_base_runtime(monkeypatch)
 
         spec = {
             "title": "Test Title",
@@ -240,7 +250,7 @@ class TestReviewLoopBehavior:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Choosing Start over does NOT write PROMPT.md until explicit Finish."""
-        mock_invoke_agent = self._setup_base_mocks(monkeypatch)
+        mock_invoke_agent = self._setup_base_runtime(monkeypatch)
 
         spec = {
             "title": "Test Title",
@@ -306,7 +316,7 @@ class TestReviewLoopBehavior:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Choosing Update a section re-invokes agent with current draft spec."""
-        mock_invoke_agent = self._setup_base_mocks(monkeypatch)
+        mock_invoke_agent = self._setup_base_runtime(monkeypatch)
 
         spec = {
             "title": "Test Title",

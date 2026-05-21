@@ -2,21 +2,50 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from importlib import import_module
+from typing import TYPE_CHECKING, Any, cast
+
+import pytest
 
 from ralph.cli.commands.prompt_helper import ReviewAction, run_prompt_helper
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
-
-    import pytest
 
     from ralph.config.models import UnifiedConfig
 
 
+def _session_runtime() -> object:
+    return import_module("ralph.session_runtime")
+
+
 class TestRunPromptHelper:
     """Tests for run_prompt_helper."""
+
+    def _stub_runtime(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _FakeRuntime:
+            def __enter__(self) -> _FakeRuntime:
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                del exc_type, exc, tb
+
+            def invoke_prompt_file(
+                self,
+                prompt_file: Path,
+                *,
+                session_id: str | None = None,
+                required_artifact: object | None = None,
+            ) -> Iterator[str]:
+                del prompt_file, session_id, required_artifact
+                return iter(())
+
+        monkeypatch.setattr(
+            cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
+            "open",
+            classmethod(lambda cls, **kwargs: _FakeRuntime()),
+        )
 
     def test_creates_prompt_file(
         self,
@@ -25,18 +54,7 @@ class TestRunPromptHelper:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """run_prompt_helper creates prompt file at .agent/tmp/prompt_helper_prompt.md."""
-        mock_invoke_agent = MagicMock(return_value=iter([]))
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.invoke_agent", mock_invoke_agent
-        )
-
-        mock_bridge = MagicMock()
-        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
-        mock_bridge.shutdown.return_value = None
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.start_mcp_server",
-            lambda *args, **kwargs: mock_bridge,
-        )
+        self._stub_runtime(monkeypatch)
 
         # No artifact - session ends silently
         monkeypatch.setattr(
@@ -56,18 +74,7 @@ class TestRunPromptHelper:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Prompt file contains the submit_artifact_tool_name."""
-        mock_invoke_agent = MagicMock(return_value=iter([]))
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.invoke_agent", mock_invoke_agent
-        )
-
-        mock_bridge = MagicMock()
-        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
-        mock_bridge.shutdown.return_value = None
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.start_mcp_server",
-            lambda *args, **kwargs: mock_bridge,
-        )
+        self._stub_runtime(monkeypatch)
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
@@ -87,18 +94,7 @@ class TestRunPromptHelper:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """When no product_spec artifact, PROMPT.md is NOT written."""
-        mock_invoke_agent = MagicMock(return_value=iter([]))
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.invoke_agent", mock_invoke_agent
-        )
-
-        mock_bridge = MagicMock()
-        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
-        mock_bridge.shutdown.return_value = None
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.start_mcp_server",
-            lambda *args, **kwargs: mock_bridge,
-        )
+        self._stub_runtime(monkeypatch)
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
@@ -117,18 +113,7 @@ class TestRunPromptHelper:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """When artifact exists, _handle_artifact_exists is invoked."""
-        mock_invoke_agent = MagicMock(return_value=iter([]))
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.invoke_agent", mock_invoke_agent
-        )
-
-        mock_bridge = MagicMock()
-        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
-        mock_bridge.shutdown.return_value = None
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.start_mcp_server",
-            lambda *args, **kwargs: mock_bridge,
-        )
+        self._stub_runtime(monkeypatch)
 
         spec = {
             "title": "Test Title",
@@ -147,18 +132,16 @@ class TestRunPromptHelper:
 
         def mock_handle(
             workspace_root: Path,
-            agent_config: object,
-            options: object,
-            prompt_md_exists: bool,
+            runtime: object,
+            existing_prompt_context: str | None,
             submit_artifact_tool_name: str,
             spec: dict[str, object],
             session_id: str | None,
         ) -> None:
             del (
                 workspace_root,
-                agent_config,
-                options,
-                prompt_md_exists,
+                runtime,
+                existing_prompt_context,
                 submit_artifact_tool_name,
                 session_id,
             )
@@ -182,18 +165,7 @@ class TestRunPromptHelper:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """When no artifact exists, _handle_artifact_exists is NOT invoked."""
-        mock_invoke_agent = MagicMock(return_value=iter([]))
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.invoke_agent", mock_invoke_agent
-        )
-
-        mock_bridge = MagicMock()
-        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
-        mock_bridge.shutdown.return_value = None
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.start_mcp_server",
-            lambda *args, **kwargs: mock_bridge,
-        )
+        self._stub_runtime(monkeypatch)
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
@@ -217,9 +189,75 @@ class TestRunPromptHelper:
             "_handle_artifact_exists was called but should not have been"
         )
 
+    def test_prompt_helper_uses_managed_agent_session_runtime(
+        self,
+        workspace_root: Path,
+        config_with_helper_agent: UnifiedConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Prompt-helper runs through the public managed-session runtime."""
+        runtime_calls: list[tuple[str, str | None]] = []
+
+        class _FakeRuntime:
+            def __enter__(self) -> _FakeRuntime:
+                return self
+
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                del exc_type, exc, tb
+
+            def invoke_prompt_file(
+                self,
+                prompt_file: Path,
+                *,
+                session_id: str | None = None,
+                required_artifact: object | None = None,
+            ) -> Iterator[str]:
+                del required_artifact
+                runtime_calls.append((prompt_file.read_text(encoding="utf-8"), session_id))
+                return iter(())
+
+        monkeypatch.setattr(
+            cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
+            "open",
+            classmethod(lambda cls, **kwargs: _FakeRuntime()),
+        )
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
+            lambda *args, **kwargs: None,
+        )
+
+        run_prompt_helper(config_with_helper_agent, workspace_root)
+
+        assert len(runtime_calls) == 1
+        assert "What do you want to build or define?" in runtime_calls[0][0]
+        assert runtime_calls[0][1] is None
+
     def test_review_action_enum_values(self) -> None:
         """ReviewAction enum has expected values."""
         assert ReviewAction.CONTINUE.value == "continue"
         assert ReviewAction.UPDATE_SECTION.value == "update"
         assert ReviewAction.START_OVER.value == "start_over"
         assert ReviewAction.FINISH.value == "finish"
+
+    def test_refine_rejects_prompt_md_symlink_outside_workspace(
+        self,
+        workspace_root: Path,
+        config_with_helper_agent: UnifiedConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Refine flow must not read a PROMPT.md symlink that escapes the workspace."""
+        self._stub_runtime(monkeypatch)
+        outside_prompt = workspace_root.parent / "outside-prompt.md"
+        outside_prompt.write_text("secret", encoding="utf-8")
+        (workspace_root / "PROMPT.md").symlink_to(outside_prompt)
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
+            lambda *args, **kwargs: None,
+        )
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.Prompt.ask",
+            lambda *args, **kwargs: "Refine it",
+        )
+
+        with pytest.raises(ValueError, match="outside workspace root"):
+            run_prompt_helper(config_with_helper_agent, workspace_root)

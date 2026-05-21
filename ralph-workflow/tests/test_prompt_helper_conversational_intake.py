@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from importlib import import_module
+from typing import TYPE_CHECKING, Any, cast
 
 from ralph.agents.invoke import OpenCodeResumableExitError
 from ralph.cli.commands.prompt_helper import run_prompt_helper
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
     import pytest
 
     from ralph.config.models import UnifiedConfig
+
+
+def _session_runtime() -> object:
+    return import_module("ralph.session_runtime")
 
 
 class TestPromptHelperConversationalIntake:
@@ -28,7 +32,7 @@ class TestPromptHelperConversationalIntake:
     ) -> None:
         """A pre-artifact Claude turn must return control to the user, not fail."""
         prompt_payloads: list[str] = []
-        session_ids: list[tuple[str | None, str | None]] = []
+        session_ids: list[str | None] = []
         artifact_reads = {"count": 0}
         spec = {
             "title": "Notes App",
@@ -38,44 +42,40 @@ class TestPromptHelperConversationalIntake:
             "success_criteria": ["A user can create and organize notes"],
         }
 
-        def fake_invoke_agent(
-            agent_config: object,
-            prompt_file: str,
-            *,
-            options: object,
-        ) -> Iterator[str]:
-            del agent_config
-            prompt_payloads.append(Path(prompt_file).read_text(encoding="utf-8"))
-            session_ids.append(
-                (
-                    getattr(options, "session_id", None),
-                    getattr(options, "initial_session_id", None),
-                )
-            )
+        class _FakeRuntime:
+            def __enter__(self) -> _FakeRuntime:
+                return self
 
-            if len(prompt_payloads) == 1:
-                def _first_turn() -> Iterator[str]:
-                    yield "What do you want to build?"
+            def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+                del exc_type, exc, tb
+
+            def invoke_prompt_file(
+                self,
+                prompt_file: Path,
+                *,
+                session_id: str | None = None,
+                required_artifact: object | None = None,
+            ) -> Iterator[str]:
+                del required_artifact
+                prompt_payloads.append(prompt_file.read_text(encoding="utf-8"))
+                session_ids.append(session_id)
+                if len(prompt_payloads) == 1:
+                    def _first_turn() -> Iterator[str]:
+                        yield "What do you want to build?"
+                        raise OpenCodeResumableExitError("claude", session_id="resume-123")
+
+                    return _first_turn()
+
+                def _second_turn() -> Iterator[str]:
+                    yield "Thanks — I turned that into a draft specification."
                     raise OpenCodeResumableExitError("claude", session_id="resume-123")
 
-                return _first_turn()
+                return _second_turn()
 
-            def _second_turn() -> Iterator[str]:
-                yield "Thanks — I turned that into a draft specification."
-                raise OpenCodeResumableExitError("claude", session_id="resume-123")
-
-            return _second_turn()
-
-        mock_bridge = MagicMock()
-        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
-        mock_bridge.shutdown.return_value = None
         monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.start_mcp_server",
-            lambda *args, **kwargs: mock_bridge,
-        )
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.invoke_agent",
-            fake_invoke_agent,
+            cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
+            "open",
+            classmethod(lambda cls, **kwargs: _FakeRuntime()),
         )
 
         def fake_read_product_spec_artifact(
@@ -114,7 +114,7 @@ class TestPromptHelperConversationalIntake:
         assert len(prompt_payloads) == 2
         assert "What do you want to build or define?" in prompt_payloads[0]
         assert "A notes app with tags and search." in prompt_payloads[1]
-        assert session_ids[1][0] == "resume-123"
+        assert session_ids[1] == "resume-123"
         assert prompt_calls[0][1] is None
         assert prompt_calls[1][1] is not None
         assert (workspace_root / "PROMPT.md").exists()
