@@ -88,12 +88,11 @@ source = "code"
 path = "ralph/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ralph"]
+packages = ["ralph", "ralph.cli"]
 include = [
   "ralph/prompts/templates/**/*.jinja",
   "ralph/policy/defaults/*.toml",
   "ralph/mcp/artifacts/format_docs/*.md",
-  "ralph/cli/_prompt_helper_entry.py",
 ]
 
 [tool.hatch.build.targets.sdist]
