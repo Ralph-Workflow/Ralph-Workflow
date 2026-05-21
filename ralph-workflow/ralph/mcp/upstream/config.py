@@ -14,6 +14,7 @@ from ralph.mcp.upstream.upstream_config_error import UpstreamConfigError
 logger = logging.getLogger(__name__)
 
 UPSTREAM_MCP_CONFIG_ENV = "RALPH_UPSTREAM_MCP_CONFIG"
+McpServerOrigin = Literal["custom", "agent_upstream"]
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class UpstreamMcpServer:
     command: str | None = None
     args: tuple[str, ...] = ()
     env: dict[str, str] = field(default_factory=dict)
+    origin: McpServerOrigin = "agent_upstream"
 
 
 def normalize_upstream_mcp_servers(
@@ -55,6 +57,7 @@ def normalize_upstream_mcp_servers(
                     transport="http",
                     url=url,
                     env=_env_mapping(entry.get("env")),
+                    origin="agent_upstream",
                 )
             )
             continue
@@ -67,6 +70,7 @@ def normalize_upstream_mcp_servers(
                     command=command,
                     args=_args_tuple(entry.get("args")),
                     env=_env_mapping(entry.get("env")),
+                    origin="agent_upstream",
                 )
             )
 
@@ -84,6 +88,7 @@ def serialize_upstream_mcp_servers(servers: Iterable[UpstreamMcpServer]) -> str:
             "command": server.command,
             "args": list(server.args),
             "env": dict(server.env),
+            "origin": server.origin,
         }
         for server in servers
     ]
@@ -122,6 +127,7 @@ def load_upstream_mcp_servers(raw: str | None) -> tuple[UpstreamMcpServer, ...]:
                 command=_optional_str(item_map.get("command")),
                 args=_args_tuple(item_map.get("args")),
                 env=_env_mapping(item_map.get("env")),
+                origin=_origin_value(item_map.get("origin")),
             )
         )
     return tuple(servers)
@@ -141,3 +147,9 @@ def _env_mapping(raw_env: object) -> dict[str, str]:
 
 def _optional_str(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _origin_value(value: object) -> McpServerOrigin:
+    if isinstance(value, str) and value in {"custom", "agent_upstream"}:
+        return cast("McpServerOrigin", value)
+    return "agent_upstream"

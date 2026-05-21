@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
-from ralph.mcp.tools.names import upstream_proxy_tool_name
+from ralph.mcp.tools.names import custom_proxy_tool_name
 from ralph.mcp.transport.claude import claude_mcp_config
 from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
 from ralph.mcp.transport.common import mcp_toml_as_upstreams
 from ralph.mcp.transport.opencode import build_opencode_provider_config
-from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamClientFactory, UpstreamRegistry
 from tests.fixtures.mcp_test_harness import FAKE_TOOL, make_stub_client_factory
 
 _FAKE_URL = "http://127.0.0.1:9999/mcp"
@@ -48,11 +49,14 @@ def test_single_server_entry_produces_non_empty_tool_definitions(
     _write_mcp_toml(tmp_path, "my-custom-server", _FAKE_URL)
 
     upstreams = mcp_toml_as_upstreams(tmp_path)
-    registry = UpstreamRegistry.build(upstreams, client_factory=make_stub_client_factory())
+    registry = UpstreamRegistry.build(
+        upstreams,
+        client_factory=cast("UpstreamClientFactory", make_stub_client_factory()),
+    )
     tool_defs = registry.tool_definitions()
 
     assert len(tool_defs) > 0
-    expected_alias = upstream_proxy_tool_name("my-custom-server", FAKE_TOOL.name)
+    expected_alias = custom_proxy_tool_name("my-custom-server", FAKE_TOOL.name)
     aliases = {t.alias for t in tool_defs}
     assert expected_alias in aliases, f"Expected alias {expected_alias!r} not found in {aliases}"
 
@@ -64,7 +68,10 @@ def test_single_server_entry_appears_in_ralph_transport_configs(
     _write_mcp_toml(tmp_path, "my-custom-server", _FAKE_URL)
 
     upstreams = mcp_toml_as_upstreams(tmp_path)
-    registry = UpstreamRegistry.build(upstreams, client_factory=make_stub_client_factory())
+    registry = UpstreamRegistry.build(
+        upstreams,
+        client_factory=cast("UpstreamClientFactory", make_stub_client_factory()),
+    )
     tool_defs = registry.tool_definitions()
 
     ralph_endpoint = "http://127.0.0.1:9999/mcp"
@@ -73,7 +80,7 @@ def test_single_server_entry_appears_in_ralph_transport_configs(
     assert "mcpServers" in parsed
     assert "ralph" in parsed["mcpServers"]
 
-    custom_alias = upstream_proxy_tool_name("my-custom-server", FAKE_TOOL.name)
+    custom_alias = custom_proxy_tool_name("my-custom-server", FAKE_TOOL.name)
     registry_aliases = {t.alias for t in tool_defs}
     assert custom_alias in registry_aliases, (
         f"Custom server tool {custom_alias!r} not in registry: {registry_aliases}"
@@ -130,9 +137,12 @@ def test_single_server_entry_surfaces_in_all_transport_paths(
     upstreams = mcp_toml_as_upstreams(tmp_path)
     assert len(upstreams) == 1
 
-    registry = UpstreamRegistry.build(upstreams, client_factory=make_stub_client_factory())
+    registry = UpstreamRegistry.build(
+        upstreams,
+        client_factory=cast("UpstreamClientFactory", make_stub_client_factory()),
+    )
     tool_defs = registry.tool_definitions()
-    custom_alias = upstream_proxy_tool_name("my-custom-server", FAKE_TOOL.name)
+    custom_alias = custom_proxy_tool_name("my-custom-server", FAKE_TOOL.name)
     registry_aliases = {t.alias for t in tool_defs}
 
     ralph_endpoint = "http://127.0.0.1:9999/mcp"

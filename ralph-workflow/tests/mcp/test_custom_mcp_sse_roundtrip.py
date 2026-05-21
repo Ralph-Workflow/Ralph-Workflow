@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
-from ralph.mcp.tools.names import upstream_proxy_tool_name
+from ralph.mcp.tools.names import custom_proxy_tool_name
 from ralph.mcp.transport.common import mcp_toml_as_upstreams
 from ralph.mcp.upstream.agent_probe import probe_agent_transports
 from ralph.mcp.upstream.registry import UpstreamRegistry
@@ -43,7 +43,7 @@ def test_sse_entry_surfaces_in_upstream_registry(tmp_path: Path) -> None:
     )
     aliases = {t.alias for t in registry.tool_definitions()}
 
-    expected = upstream_proxy_tool_name("docs-sse", FAKE_TOOL.name)
+    expected = custom_proxy_tool_name("docs-sse", FAKE_TOOL.name)
     assert expected in aliases
 
 
@@ -75,7 +75,7 @@ def test_sse_registry_call_tool_round_trip(tmp_path: Path) -> None:
         upstreams, client_factory=make_stub_client_factory(call_result=SSE_CALL_RESULT)
     )
     definitions = list(registry.tool_definitions())
-    alias = upstream_proxy_tool_name("docs-sse", FAKE_TOOL.name)
+    alias = custom_proxy_tool_name("docs-sse", FAKE_TOOL.name)
     assert any(item.alias == alias for item in definitions)
 
     result = registry.call_tool(alias, {})

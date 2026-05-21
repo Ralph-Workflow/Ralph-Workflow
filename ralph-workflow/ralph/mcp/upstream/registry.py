@@ -13,7 +13,7 @@ from typing import Literal
 
 from loguru import logger
 
-from ralph.mcp.tools.names import upstream_proxy_tool_name
+from ralph.mcp.tools.names import proxied_mcp_tool_name
 from ralph.mcp.upstream._proxied_tool import ProxiedTool
 from ralph.mcp.upstream._registry_collision_error import RegistryCollisionError
 from ralph.mcp.upstream.client import (
@@ -59,20 +59,23 @@ class UpstreamRegistry:
 
         for server in servers:
             client = _factory(server)
+            server_kind = (
+                "custom MCP server" if server.origin == "custom" else "upstream MCP server"
+            )
             try:
                 tools = client.list_tools()
             except UpstreamCallError as exc:
                 if on_unreachable == "raise":
                     env_key_repr = f" env_keys={sorted(server.env.keys())}" if server.env else ""
                     raise UpstreamValidationError(
-                        f"upstream MCP server '{server.name}'{env_key_repr} is unreachable: {exc}"
+                        f"{server_kind} '{server.name}'{env_key_repr} is unreachable: {exc}"
                     ) from exc
-                logger.warning("Skipping upstream MCP server {}: {}", server.name, exc)
+                logger.warning("Skipping {} {}: {}", server_kind, server.name, exc)
                 continue
 
             clients[server.name] = client
             for tool in tools:
-                alias = upstream_proxy_tool_name(server.name, tool.name)
+                alias = proxied_mcp_tool_name(server.name, tool.name, origin=server.origin)
                 if alias in seen_aliases:
                     prev_server, prev_tool = seen_aliases[alias]
                     raise RegistryCollisionError(

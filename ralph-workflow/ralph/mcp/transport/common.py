@@ -29,6 +29,7 @@ def mcp_toml_as_upstreams(workspace_path: Path | None) -> tuple[UpstreamMcpServe
             command=spec.command,
             args=tuple(spec.args),
             env=dict(spec.env),
+            origin="custom",
         )
         for spec in mcp_config.mcp_servers.values()
     )

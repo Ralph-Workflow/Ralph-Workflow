@@ -250,6 +250,23 @@ def claude_tool_name_prefix(*, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
     return f"mcp__{server_name}__"
 
 
+def custom_proxy_tool_name(server_name: str, tool_name: str) -> str:
+    """Return the stable proxy alias for a Ralph custom MCP server tool."""
+    return f"ralph_custom__{server_name}__{tool_name}"
+
+
 def upstream_proxy_tool_name(server_name: str, tool_name: str) -> str:
-    """Return the stable proxy alias for an upstream server's tool."""
+    """Return the stable proxy alias for an agent-native upstream MCP server tool."""
     return f"ralph_upstream__{server_name}__{tool_name}"
+
+
+def proxied_mcp_tool_name(
+    server_name: str,
+    tool_name: str,
+    *,
+    origin: str,
+) -> str:
+    """Return the stable proxy alias for a proxied MCP server tool."""
+    if origin == "custom":
+        return custom_proxy_tool_name(server_name, tool_name)
+    return upstream_proxy_tool_name(server_name, tool_name)

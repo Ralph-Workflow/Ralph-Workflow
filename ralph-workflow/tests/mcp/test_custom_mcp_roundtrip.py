@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
-from ralph.mcp.tools.names import upstream_proxy_tool_name
+from ralph.mcp.tools.names import custom_proxy_tool_name
 from ralph.mcp.transport.claude import claude_mcp_config
 from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
 from ralph.mcp.transport.common import mcp_toml_as_upstreams
@@ -48,7 +48,7 @@ def test_mcp_toml_entry_surfaces_in_upstream_registry(
     registry = UpstreamRegistry.build(upstreams, client_factory=make_stub_client_factory())
     aliases = {t.alias for t in registry.tool_definitions()}
 
-    expected = upstream_proxy_tool_name("angular-docs", FAKE_TOOL.name)
+    expected = custom_proxy_tool_name("angular-docs", FAKE_TOOL.name)
     assert expected in aliases
 
 

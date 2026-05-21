@@ -89,7 +89,7 @@ def run_custom_mcp_validation(
     try:
         upstream_report = validate_fn(upstreams, strict=strict)
     except UpstreamValidationError as exc:
-        logger.error("Custom MCP servers failed startup validation:\n{}", exc)
+        logger.error("Session MCP server validation failed:\n{}", exc)
         return 1
 
     healthy_names = {r.name for r in upstream_report.servers if r.ok}
