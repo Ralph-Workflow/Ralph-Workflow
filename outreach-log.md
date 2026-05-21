@@ -4465,3 +4465,11 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
   - Expected outcome: better keyword alignment and a stronger Codeberg-first search snippet should improve qualified homepage clicks and downstream Codeberg repo visits from search/discovery traffic.
   - Measurement window: next 7 days of homepage search impressions/click behavior and any change in Codeberg referral-style visits / stars / watchers during the same window.
   - Replacement condition: if Codeberg adoption and search-facing engagement remain flat after the next measurement window, replace more homepage-only tuning with the next executable backlink/citation move instead of repeating metadata edits.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 16:07:06
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 16:54:15
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
