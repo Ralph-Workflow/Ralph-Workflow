@@ -4158,3 +4158,7 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 01:48:51
 - **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 02:41:02
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
