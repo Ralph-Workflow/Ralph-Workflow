@@ -3,6 +3,8 @@
 Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
+> **Codeberg is the primary repo for Ralph Workflow.**
+> Inspect, follow, and report compatibility issues there first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
 This guide documents compatibility between Ralph Workflow and various AI coding agents in its configurable review orchestration. Ralph's review phase is designed to be agent-agnostic in its prompts, but different agents may have varying levels of success due to differences in JSON output format, tool execution behavior, and agent-specific quirks.
 
@@ -728,4 +730,5 @@ If you test Ralph with an agent not listed here, please contribute your findings
 
 - **Main README**: [../README.md](../README.md)
 - **Configuration Guide**: See `ralph --help` for CLI options
-- **Issue Tracker**: Report compatibility issues on GitHub
+- **Issue Tracker**: Report compatibility issues on Codeberg: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **GitHub mirror only**: <https://github.com/Ralph-Workflow/Ralph-Workflow>
