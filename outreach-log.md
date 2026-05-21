@@ -4435,3 +4435,33 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 ### Marketing momentum watchdog
 - **When:** 2026-05-21 14:35:05
 - **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 15:05:31
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+
+## 2026-05-21 (Thursday) — Reddit monitoring (13:17 UTC / 15:17 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-21_1517.md`
+- **Scan summary:** 46 candidate Reddit threads/posts scanned, 8 shortlisted, 38 rejected.
+- **Current verdict:** **8** credible discussion opportunities were found, but only **1-2** are honest RalphWorkflow mention fits after prior-use, thread-family saturation, no-product-value, and body-shape filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AI_Agents` — "AI agents feel impressive until the workflow gets messy"
+  - `r/ClaudeAI` — "My setup for running Claude Code across the full software dev lifecycle"
+  - `r/ClaudeAI` — "New in Claude Code: agent view."
+  - `r/ClaudeCode` — "Claude Code needs real remote control from mobile"
+- **Repeated pains worth tracking:** review tax, silent partial failure, blocked-on-you state, run-state visibility, long-run drift, worktree isolation without merge confidence, cleanup/checkpoint archaeology, and production observability / authority boundaries.
+- **Risk note:** repeat-pattern risk is still mostly structural, but thread-family saturation is now clearer too. CC+Codex, approval-loop, and remote-control threads remain useful research while often failing honest mention-fit.
+- **Posting note:** No posting attempted from this monitor pass. Research-first only.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 15:35:06
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+- **REPAIRED — live Ralph-Site homepage SEO metadata drift blocking the active distribution-repair loop**: verified at 2026-05-21 14:04 UTC that `https://ralphworkflow.com` was still serving the stale title `Composable loop framework for autonomous coding — Ralph Workflow` and the older generic description, which weakens keyword-match and public search presentation for the current priority terms **unattended coding agent** and **AI agent orchestration CLI**.
+  - What I executed: repaired the Ralph-Site-owned homepage metadata in both `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` and `/home/mistlight/.openclaw/workspace/Ralph-Site/app/views/pages/home.html.erb`, updating the live title to **`Unattended coding agent — AI agent orchestration CLI — Ralph Workflow`** and the description to **`Free open-source unattended coding agent and AI agent orchestration CLI. Inspect Codeberg first, run one real backlog task overnight, and wake up to finished, tested code ready to review.`** I also updated the corresponding request specs in both Ralph-Site copies, touched `/home/mistlight/ralph_site/current/tmp/restart.txt`, and re-fetched the live homepage.
+  - Verification: the post-restart live fetch returned the new title and the new Codeberg-first description immediately.
+  - Why this was the highest-leverage action right now: the momentum watchdog still shows flat adoption and the active repair directive explicitly prioritizes homepage title/description SEO tuning before more low-signal repetition. Fixing the live search snippet is a direct conversion-surface repair on the primary owned property.
+  - Expected outcome: better keyword alignment and a stronger Codeberg-first search snippet should improve qualified homepage clicks and downstream Codeberg repo visits from search/discovery traffic.
+  - Measurement window: next 7 days of homepage search impressions/click behavior and any change in Codeberg referral-style visits / stars / watchers during the same window.
+  - Replacement condition: if Codeberg adoption and search-facing engagement remain flat after the next measurement window, replace more homepage-only tuning with the next executable backlink/citation move instead of repeating metadata edits.
