@@ -7,7 +7,7 @@ Merge order (lowest → highest priority):
   3. Project-local    - .agent/mcp.toml  (resolved via WorkspaceScope)
 
 Unlike the main config loader, TOML parse errors here are fail-fast: any
-malformed file triggers SystemExit(1) rather than a silent empty-dict fallback.
+malformed file triggers a typed exit rather than a silent empty-dict fallback.
 """
 
 from __future__ import annotations
@@ -29,6 +29,18 @@ if TYPE_CHECKING:
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
 _LOCAL_MCP_FILENAME = "mcp.toml"
 _TOML_DECODE_ERROR = cast("type[ValueError]", tomllib.TOMLDecodeError)
+
+
+class McpConfigError(SystemExit):
+    """Typed fail-fast exit for invalid MCP configuration."""
+
+    def __init__(self, message: str, *, code: int = 1) -> None:
+        super().__init__(code)
+        self.message = message
+        self.code = code
+
+    def __str__(self) -> str:
+        return self.message
 
 
 def bundled_default_mcp_config_path() -> Path:
@@ -60,22 +72,22 @@ def _load_mcp_toml(path: Path) -> dict[str, object]:
         try:
             data: dict[str, object] = tomllib.load(fh)
         except _TOML_DECODE_ERROR as exc:
-            logger.error("MCP config parse error at {}: {}", path, exc)
-            raise SystemExit(1) from exc
+            message = f"MCP config parse error at {path}: {exc}"
+            logger.error(message)
+            raise McpConfigError(message) from exc
     return data
 
 
 def _validate_fallback_backends(config: McpConfig) -> None:
     for entry in config.web_search.fallback:
         if entry != "ddgs" and entry not in config.web_search.backends:
-            logger.error(
-                "MCP config: fallback backend '{}' is not configured in"
-                " [web_search.backends]; add a [web_search.backends.{}] section"
-                " or remove it from the fallback list",
-                entry,
-                entry,
+            message = (
+                f"MCP config: fallback backend '{entry}' is not configured in"
+                f" [web_search.backends]; add a [web_search.backends.{entry}] section"
+                " or remove it from the fallback list"
             )
-            raise SystemExit(1)
+            logger.error(message)
+            raise McpConfigError(message)
 
 
 def _inject_mcp_server_names(merged: dict[str, object]) -> None:
@@ -102,8 +114,8 @@ def load_mcp_config(
         Validated McpConfig.
 
     Raises:
-        SystemExit: On TOML parse error, schema validation failure, or unknown
-            fallback backend reference.
+        McpConfigError: On TOML parse error, schema validation failure, or
+            unknown fallback backend reference.
     """
     bundled = _load_mcp_toml(bundled_default_mcp_config_path())
     global_data = _load_mcp_toml(global_mcp_config_path())
@@ -122,8 +134,9 @@ def load_mcp_config(
     try:
         config = McpConfig.model_validate(merged)
     except ValidationError as exc:
-        logger.error("MCP config validation failed:\n{}", exc)
-        raise SystemExit(1) from exc
+        message = f"MCP config validation failed:\n{exc}"
+        logger.error(message)
+        raise McpConfigError(message) from exc
 
     logger.debug(
         "MCP config loaded: {} server(s), web_search.enabled={}",

@@ -14,6 +14,7 @@ from rich.console import Console
 from ralph.config.enums import (
     AgentTransport,
 )
+from ralph.config.mcp_loader import McpConfigError
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import effect_executor as effect_executor_module
@@ -328,6 +329,34 @@ class TestExecuteAgentEffectA:
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
+
+    def test_execute_agent_effect_propagates_mcp_config_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        monkeypatch.setattr(
+            effect_executor_module,
+            "build_session_mcp_plan",
+            lambda **_kwargs: (_ for _ in ()).throw(
+                McpConfigError("fallback backend 'searxng' is not configured")
+            ),
+        )
+
+        with pytest.raises(McpConfigError):
+            runner_module.execute_agent_effect(
+                effect,
+                self._config(),
+                runner_module.AgentExecutionDeps(
+                    invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                    agent_invocation_error=AgentError,
+                    agent_registry=registry,
+                ),
+                WorkspaceScope("/tmp/worktree"),
+                display_context=make_display_context(),
+            )
 
     @pytest.mark.parametrize(
         ("phase", "artifact_paths"),

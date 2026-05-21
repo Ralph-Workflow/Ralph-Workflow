@@ -6,6 +6,7 @@ import io
 
 from loguru import logger
 
+from ralph.config.mcp_loader import McpConfigError
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
@@ -134,6 +135,19 @@ def test_artifact_validation_failure_is_not_flagged_as_ambiguous() -> None:
         assert "flagged_for_review" not in sink.getvalue().lower()
     finally:
         logger.remove(handler_id)
+
+
+def test_mcp_config_error_is_user_config_not_ambiguous() -> None:
+    classifier = FailureClassifier()
+
+    failure = classifier.classify(
+        McpConfigError("fallback backend 'searxng' is not configured"),
+        phase="development",
+        agent="claude",
+    )
+
+    assert failure.category == FailureCategory.USER_CONFIG
+    assert failure.counts_against_budget is False
 
 
 def test_connection_refused_is_not_ambiguous() -> None:

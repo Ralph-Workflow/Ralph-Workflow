@@ -17,6 +17,7 @@ from ralph.agents.invoke import (
     extract_session_id,
 )
 from ralph.config.enums import Verbosity
+from ralph.config.mcp_loader import McpConfigError
 from ralph.git.operations import stage_files
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
@@ -222,6 +223,8 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
                 return result.event
             attempt_prompt_file = result.next_prompt_file
             resume_session_id = result.next_session_id
+    except McpConfigError:
+        raise
     except Exception:
         logger.exception("Unexpected error during agent invocation: {}")
         return PipelineEvent.AGENT_FAILURE

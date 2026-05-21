@@ -14,6 +14,7 @@ import pytest
 from loguru import logger
 
 from ralph.config.mcp_loader import (
+    McpConfigError,
     bundled_default_mcp_config_path,
     global_mcp_config_path,
     load_mcp_config,
@@ -249,6 +250,24 @@ def test_load_mcp_config_unknown_fallback_backend_exits(
     with pytest.raises(SystemExit) as exc_info:
         load_mcp_config(config_path=cfg)
     assert exc_info.value.code == 1
+
+
+def test_load_mcp_config_unknown_fallback_backend_raises_typed_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    cfg = tmp_path / "mcp.toml"
+    cfg.write_text(
+        textwrap.dedent("""\
+            [web_search]
+            fallback = ["phantom_engine"]
+        """),
+        encoding="utf-8",
+    )
+    with pytest.raises(McpConfigError) as exc_info:
+        load_mcp_config(config_path=cfg)
+    assert exc_info.value.code == 1
+    assert "fallback backend 'phantom_engine'" in str(exc_info.value)
 
 
 def test_load_mcp_config_ddgs_in_fallback_always_allowed(

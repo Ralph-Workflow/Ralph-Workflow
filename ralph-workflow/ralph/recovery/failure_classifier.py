@@ -82,6 +82,7 @@ def _is_user_config_exc(exc: BaseException) -> bool:
         "CheckpointPolicyMismatchError",
         "PolicyValidationError",
         "UnknownAgentError",
+        "McpConfigError",
     }
 
 

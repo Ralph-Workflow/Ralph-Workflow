@@ -14,6 +14,7 @@ from rich.console import Console
 from ralph.config.enums import (
     Verbosity,
 )
+from ralph.config.mcp_loader import McpConfigError
 from ralph.display.context import make_display_context
 from ralph.pipeline import phase_agent_handler as phase_agent_handler_module
 from ralph.pipeline import prompt_prep as prompt_prep_module
@@ -30,6 +31,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
@@ -410,6 +412,70 @@ class TestPipelineRunnerLoop:
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
         assert "boom" in recovered_state.last_error
+
+    def test_run_pipeline_step_treats_mcp_config_error_as_user_config_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        workspace_scope = WorkspaceScope(tmp_path)
+        state = PipelineState(
+            phase="development",
+            phase_chains={"development": AgentChainState(agents=["claude/haiku"])},
+        )
+        effect = InvokeAgentEffect(
+            agent_name="claude/haiku",
+            phase="development",
+            prompt_file=".agent/tmp/development_prompt.md",
+        )
+
+        monkeypatch.setattr(
+            runner_module,
+            "call_determine_effect_from_policy",
+            lambda *_args, **_kwargs: effect,
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "materialize_agent_prompt_if_needed",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "invoke_execute_effect_with_optional_display",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                McpConfigError("fallback backend 'searxng' is not configured")
+            ),
+        )
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+
+        recovery = RecoveryController(
+            options=RecoveryControllerOptions(policy_bundle=bundle, cycle_cap=10)
+        )
+        display_context = make_display_context()
+        display = runner_module.LegacyConsoleDisplay(display_context)
+        registry = MagicMock()
+        registry.get.return_value = None
+
+        result = runner_module.run_pipeline_step(
+            state=state,
+            policy_bundle=bundle,
+            workspace_scope=workspace_scope,
+            config=MagicMock(),
+            display=display,
+            display_context=display_context,
+            verbosity=Verbosity.QUIET,
+            registry=registry,
+            pipeline_subscriber=None,
+            recovery_controller=recovery,
+        )
+
+        assert isinstance(result, PipelineState)
+        assert result.phase == bundle.pipeline.recovery.failed_route
+        assert result.previous_phase == "development"
+        assert result.last_failure_category == "user_config"
+        assert result.last_error is not None
+        assert "fallback backend 'searxng'" in result.last_error
 
     def test_run_converts_system_exit_during_effect_determination_into_recovery(
         self, monkeypatch: pytest.MonkeyPatch
