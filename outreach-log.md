@@ -7,6 +7,28 @@
 - **Expected outcome:** the corrected draft is now at `drafts/2026-05-21_hackernews_post.txt` and routes correctly to Codeberg first, GitHub second, anchored on the Telegraph comparison article.
 - **Type:** **REPAIRED / REPLACING**
 
+## 2026-05-21 (Thursday) — Marketing workflow audit (04:25 UTC / 06:25 CEST)
+- **Verdict: stay quiet. Execution ceiling confirmed. HN/Lobsters is the only unmade high-leverage move.**
+  - Codeberg: 10⭐ 2👁 2🍴, +1 single-star signal in recent window (directional, single data point, not confirmed causal). GitHub mirror flat (0⭐ 2👁 0🍴, flat across all 9 samples).
+  - All reproducible autonomous paths remain exhausted and shipped: homepage SEO, repo README, first-task guide, proof links, Telegraph 100% keyword-gap, AIToolsIndex + ToolShelf in-flight, fresh Reddit body drafts in inventory.
+  - **HN/Lobsters draft at `drafts/2026-05-21_hackernews_post.txt` is confirmed restored and correct** (content error from prior cycle repaired). Human action required.
+  - Reddit structural cadence failure is a **failing tactic** — the 4-paragraph rhythm is structural, not lexical. Fresh drafts fix openings but not the cadence. No posting until the angle is genuinely different.
+  - Backlinks: 0 indexed. AIToolsIndex + ToolShelf in-flight.
+  - Four marketing questions: all correctly answered, no drift.
+  - **Core bottleneck is still `conversion_to_free_use` + `HN/Lobsters human execution`.**
+- **What worked:** Infrastructure stack holding. Proof-link/entry-path repairs may correlate with +1 Codeberg star (directional only). HN draft is ready for human execution.
+- **What failed:** Reddit structural cadence — the body rhythm is broken structurally, not lexically. GitHub mirror flat across full measurement window. HN/Lobsters still unmade.
+- **What is repetitive:** Monitor passes during cooldown (correctly no output). Telegraph keyword-gap at 100% ceiling. More owned-surface polish.
+- **What is low leverage:** More monitor passes, more Reddit body regeneration, more owned-surface work without new distribution channels.
+- **Current bottleneck:** HN/Lobsters human execution is the sole unmade high-leverage move. All reproducible autonomous paths complete.
+- **Next higher-leverage move:**
+  1. **Human: execute HN/Lobsters** from `drafts/2026-05-21_hackernews_post.txt` — submit to HN first, then Lobsters. Codeberg first, GitHub second.
+  2. Reddit: do not post until the structural cadence is broken. Use fresh drafts with genuinely thread-specific threading, not template fills.
+  3. Monitor AIToolsIndex and ToolShelf for indexing signal over the next 7 days.
+- **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta.
+- **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop investing in owned distribution and shift to direct curator/competitor-citation outreach.
+- **Type:** **AUDIT / DIRECTION**
+
 ## 2026-05-21 (Thursday) — Marketing workflow audit (00:20 UTC / 02:20 CEST)
 - **Verdict: stay quiet. Execution ceiling confirmed. HN/Lobsters is the only unmade high-leverage move. One content error found and repaired.**
   - Codeberg: 10⭐ 2👁 2🍴, +1 single-star signal in recent window (first signal, directional, not confirmed causal). GitHub mirror flat (0⭐ 2👁 0🍴).
@@ -4252,3 +4274,11 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Measurement window:** 7 days for HN/Lobsters visibility or referral evidence after posting; 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta.
 - **Replace if it fails:** if HN/Lobsters gets posted and Codeberg is still flat by **2026-06-04**, stop spending another cycle on owned/discussion distribution and replace it with direct curator / competitor-citation outreach.
 - **Type:** **CONTINUED / HANDOFF**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 06:05:33
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 06:35:05
+- **Note:** Momentum check found: reddit_monitor_stale, no_recent_reddit_post, apollo_channel_blocked. Repairs are already live; waiting on measurement for: mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.

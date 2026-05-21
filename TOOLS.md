@@ -64,8 +64,8 @@ Add whatever helps you do your job. This is your cheat sheet.
 ### Apollo.io
 - **Login username:** `ken@hireaegis.com`
 - **Password:** `ngzcz!tS*jWo4dY1QjlZ@cxAd2r2c$Tf`
-- **Verification mailbox:** `ken@ralphworkflow.com`
-  - Rule: Apollo login uses `ken@hireaegis.com`, but device/email verification codes are expected in `ken@ralphworkflow.com`.
+- **Verification mailbox:** `ken@hireaegis.com`
+  - Rule: Apollo login and verification codes should be checked in `ken@hireaegis.com`.
 
 ### IONOS Webmail
 - **Login username:** `ken@hireaegis.com`

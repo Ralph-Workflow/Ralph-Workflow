@@ -1,47 +1,46 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-21T04:49:13.764280+02:00
+- Checked: 2026-05-21T06:58:56.893980+02:00
 - Verdict: **DEGRADED**
-- Primary failure mode: **ownership leakage and duplicate recovery layers can hide behind green cron state**
-- Most urgent fix: **consolidate the unblocker path so one clearly-owned loop handles blocked-channel recovery**
+- Primary failure mode: **the runtime is cleaner now, but blocked-channel recovery and loop-verifier contracts are still only partially normalized**
+- Most urgent fix: **give blocked-channel recovery one explicit runtime contract: one owner schedule, or separate entrypoints with separate verifier evidence**
 
 ## Severity-ranked findings
 
-1. **[high] Repaired this run — system-health monitor had a hidden cross-owner repair path into marketing**
-   - Why it matters: the system repair loop was able to inspect marketing-state artifacts and trigger marketing-active-loop itself, which violated owner boundaries and created a hidden second-pass mutation path.
-   - Evidence: `agents/system/health_monitor.py` was narrowed; `python3 agents/system/health_monitor.py` now returns `✅ System health OK - no issues detected`; independent verification passed in `agents/system/logs/health_monitor_independent_verification.json`.
+1. **[medium] Blocked-channel recovery still has two schedules driving one code path**
+   - Why it matters: `blocked-channel-deep-review` and `blocked-channel-followup` are now clearly unblocker-owned, but both still run the same unblocker path, so cadence overlap remains more implicit than enforced.
+   - Evidence: `/home/mistlight/.openclaw/cron/jobs.json:272`, `/home/mistlight/.openclaw/cron/jobs.json:412`, `/home/mistlight/.openclaw/workspace/agents/unblocker/run.py:1`, `/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:90`.
 
-2. **[high] Live unblocker overlap remains: `blocked-channel-review` and `reddit-autopost-followup` both drive `agents/unblocker/run.py`**
-   - Why it matters: one job is generically named and one is Reddit-branded, but both run the same blocked-channel recovery path, so ownership is blurred and duplicate recovery/noise risk remains.
-   - Evidence: both enabled cron jobs in `~/.openclaw/cron/jobs.json` point to the unblocker unittest + `agents/unblocker/run.py`; `agents/unblocker/BLOCKED_CHANNELS.json` covers non-Reddit channels too.
+2. **[medium] Most live repair/watchdog loops are still metadata-tracked rather than full checker/runner/verifier contracts**
+   - Why it matters: the registry now reflects the real topology, but most non-docs loops are still `tracked_only`, so the stronger loop-governance rule is not yet uniformly runtime-enforced.
+   - Evidence: `/home/mistlight/.openclaw/workspace/AGENTS.md:170`, `/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:27`, `:78`, `:108`, and `/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json`.
 
-3. **[medium] Disabled docs watchdog still carries a live-sounding permanent prompt**
-   - Why it matters: `docs-stack-aggressive-10min-self-heal` is disabled, but its payload still calls itself the permanent docs watchdog even though the independent verifier-supervisor is the active authority.
-   - Evidence: disabled job payload in `~/.openclaw/cron/jobs.json`; healthy current state in `agents/docs_quality/docs_stack_temp_watchdog_status.json` and active independent verifier job `ralph-workflow-docs-verifier-supervisor`.
-
-4. **[medium] The self-improvement registry is incomplete relative to the live cron topology**
-   - Why it matters: `agents/system/self_improvement_loops.json` only registers docs, marketing, and Ralph-Site, while live repair/watchdog loops such as `system-health-monitor`, `blocked-channel-review`, and `agent-architecture-watchdog` remain outside the declared registry/verifier map.
-   - Evidence: `agents/system/self_improvement_loops.json` vs live cron inventory in `~/.openclaw/cron/jobs.json`.
+3. **[low] OS-cron drift was repaired, but there is no explicit allowlist guard yet**
+   - Why it matters: this run removed hidden legacy scheduler entries, but a future stray user-crontab job could still return unless an audit guard fails hard on unexpected entries.
+   - Evidence: `/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py:28`, `crontab -l` checked on **May 21, 2026**, and `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`.
 
 ## Repairs applied this run
 
-- Patched `agents/system/health_monitor.py` to remove marketing artifact inspection and cross-owner triggering.
-- Verified the repaired script locally:
-  - Command: `python3 /home/mistlight/.openclaw/workspace/agents/system/health_monitor.py`
-  - Result: `✅ System health OK - no issues detected`
+- Kept the system health monitor inside runtime/cron scope; no cross-owner marketing repair path remains.
+- Renamed and clarified the unblocker cron ownership so the live jobs are `blocked-channel-deep-review` and `blocked-channel-followup`, not Reddit-branded generic recovery.
+- Rewrote the disabled docs aggressive self-heal job into explicit legacy/deactivated language.
+- Patched `loop_integrity_audit.py` so `REMOVED:` docs OS-cron placeholders are never restored, and expanded `self_improvement_loops.json` to track the live repair/watchdog topology.
+- Removed legacy HireAegis/content/community/product OS-cron entries.
+- Migrated Codeberg→GitHub mirror sync into Gateway cron as `codeberg-github-mirror-sync` and removed the old OS-cron sync entry.
+- Replaced the unblocker AGENTS prompt contamination with proof/handoff rules that allow explicit human-required blockers when genuinely necessary.
 
 ## Independent verification status
 
 - **Performed**
-- Artifact: `agents/system/logs/health_monitor_independent_verification.json`
-- Result: pass — independent check confirmed the repaired health monitor no longer reads marketing audit/adoption/sync artifacts and still executes cleanly.
+- Artifact: `/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json`
+- Result: **pass** at **2026-05-21T04:57:16Z** after the mirror-sync migration and crontab cleanup.
 
 ## Ordered fix plan
 
-1. Consolidate or split the unblocker schedules so the generic blocked-channel loop has one owner and the Reddit name is only used for genuinely Reddit-specific work.
-2. Normalize or retire the disabled docs aggressive self-heal payload so stale prompt language cannot contaminate future audits/reactivation.
-3. Expand `agents/system/self_improvement_loops.json` into a complete registry for live repair/watchdog loops with explicit owner + verifier contracts.
+1. Normalize blocked-channel recovery into one explicit runtime contract.
+2. Upgrade non-docs self-improvement loops to full contracts, or explicitly classify them as non-self-improving/monitor-only in schema and audits.
+3. Add an OS-crontab allowlist invariant so hidden scheduler layers fail audits immediately.
 
 ## Highest-risk unresolved issue
 
-- **Duplicate unblocker scheduling with misleading Reddit ownership.**
+- **Shared blocked-channel code path with split schedules but no split verifier contract.**

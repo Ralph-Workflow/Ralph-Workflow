@@ -1,12 +1,78 @@
 {
-  "timestamp": "2026-05-20 01:51 UTC",
+  "timestamp": "2026-05-21 04:54 UTC",
   "results": [
     {
       "name": "ralph-docs-watchdog",
+      "contractMode": "full",
+      "repairs": [
+        "runner artifact was stale; executed runner",
+        "checker failed; executed runner for remediation",
+        "executed verifier after remediation"
+      ],
+      "errors": [
+        "runner failed while repairing stale state"
+      ],
+      "status": "error",
+      "runnerOutput": "BEFORE\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Clean pass. The docs system is well-structured, consistent, and deliberately engineered per the positioning doc and rubric. Every page has a clear role, the journey is coherent, common questions are directly answerable, advanced config surfaces are fully documented, and no internal plumbing leaks into top-level surfaces.\",\n  \"loopHealthy\": true,\n  \"criteria\": {\n    \"positioning\": \"pass\",\n    \"accuracy\": \"pass\",\n    \"userDocumentationCoverage\": \"pass\",\n    \"advancedConfigCoverage\": \"pass\",\n    \"userStoryRouting\": \"pass\",\n    \"pageRoleSeparation\": \"pass\",\n    \"internalLeakage\": \"pass\",\n    \"copyQuality\": \"pass\",\n    \"informationArchitecture\": \"pass\",\n    \"journeyCoherence\": \"pass\"\n  },\n  \"mustFix\": [],\n  \"strongestEvidence\": [\n    {\n      \"path\": \"github-mirror/README.md\",\n      \"reason\": \"Opens with 'The operating system for autonomous coding'; clearly marks GitHub as mirror; routes README -> START_HERE -> docs/README -> Sphinx in order.\"\n    },\n    {\n      \"path\": \"github-mirror/START_HERE.md\",\n      \"reason\": \"Good task/not-task framing; realistic first-run advice; clear success criteria; no internal plumbing.\"\n    },\n    {\n      \"path\": \"github-mirror/docs/README.md\",\n      \"reason\": \"Real docs map with route-by-question grouping; clearly separates tutorial/how-to/reference/proof; proof is explicitly positioned as secondary.\"\n    },\n    {\n      \"path\": \"github-mirror/ralph-workflow/docs/sphinx/configuration.md\",\n      \"reason\": \"Directly answers 'where do I edit ralph-workflow.toml?' with explicit file paths, precedence table, and validation commands; includes 'which file should I edit' decision guide.\"\n    },\n    {\n      \"path\": \"github-mirror/ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md\",\n      \"reason\": \"Full coverage of pipeline.toml with sections, examples, common mistakes, and safe editing workflow.\"\n    },\n    {\n      \"path\": \"github-mirror/ralph-workflow/docs/sphinx/user-stories.md\",\n      \"reason\": \"Routes by real user goals (new user, overnight runs, config edits, agent selection, result review); direct links to the right next page for each.\"\n    },\n    {\n      \"path\": \"github-mirror/docs/reviewable-output.md\",\n      \"reason\": \"Correctly self-identifies as supporting proof; leads with working behavior and real checks, not logs or transcripts; positioned as secondary to the product story.\"\n    }\n  ],\n  \"shouldUserNeedToRepeatThis\": false\n}\nAFTER\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Well-architected docs system with clean page-role separation, strong positioning alignment, direct task answerability, and no internal leakage. The rubric is satisfied as a whole.\",\n  \"loopHealthy\": true,\n  \"criteria\": {\n    \"positioning\": \"pass\",\n    \"accuracy\": \"pass\",\n    \"userDocumentationCoverage\": \"pass\",\n    \"advancedConfigCoverage\": \"pass\",\n    \"userStoryRouting\": \"pass\",\n    \"pageRoleSeparation\": \"pass\",\n    \"internalLeakage\": \"pass\",\n    \"copyQuality\": \"pass\",\n    \"informationArchitecture\": \"pass\",\n    \"journeyCoherence\": \"pass\"\n  },\n  \"mustFix\": [],\n  \"strongestEvidence\": [\n    {\n      \"path\": \".openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md\",\n      \"reason\": \"Leads with 'operating system for autonomous coding', frames Codeberg as primary, gives clean install path, separates role clearly.\"\n    },\n    {\n      \"path\": \".openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md\",\n      \"reason\": \"Real docs map with route-by-question grouping, not a README clone.\"\n    },\n    {\n      \"path\": \".openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/configuration.md\",\n      \"reason\": \"Directly answers 'edit ralph-workflow.toml' with global vs local split, precedence, and validation.\"\n    },\n    {\n      \"path\": \".openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/user-stories.md\",\n      \"reason\": \"Comprehensive use-case routing covering brand-new users, overnight runs, agent comparison, config edits, proof-seeking.\"\n    }\n  ],\n  \"shouldUserNeedToRepeatThis\": false\n}\nREPAIRS\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/reviewable-output.md\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/quickstart.md\n- /home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/user-stories.md",
+      "checkerResult": "DOCS_QUALITY_FAIL\n- /home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json:1: [watchdog-repeat-failure] Agentic review says the user should need to repeat the same docs instruction again; process is broken.",
+      "verifierOutput": "independently verified pass\nSTOP_REASON: initial verification already passed\nCHECKER\nDOCS_QUALITY_OK\n\nEDITORIAL\nDOCS_EDITORIAL_OK\n\nAGENTIC\n{\n  \"status\": \"pass\",\n  \"summary\": \"Docs system is coherent, positioned correctly, and routes cleanly from README through Sphinx. No hard rubric failures. Minor copy repetition across Sphinx pages (same opening paragraph verbatim on 5+ pages) but does not violate any criterion.\",\n  \"loopHealthy\": true,\n  \"criteria\": {\n    \"positioning\": \"pass\",\n    \"accuracy\": \"pass\",\n    \"userDocumentationCoverage\": \"pass\",\n    \"advancedConfigCoverage\": \"pass\",\n    \"userStoryRouting\": \"pass\",\n    \"pageRoleSeparation\": \"pass\",\n    \"internalLeakage\": \"pass\",\n    \"copyQuality\": \"pass\",\n    \"informationArchitecture\": \"pass\",\n    \"journeyCoherence\": \"pass\"\n  },\n  \"mustFix\": [],\n  \"strongestEvidence\": [\n    {\n      \"path\": \"repos/Ralph-Workflow/github-mirror/README.md\",\n      \"reason\": \"Correctly frames product as orchestrator, explicitly calls GitHub mirror status, routes clearly through START_HERE \\u2192 docs/README \\u2192 Sphinx\"\n    },\n    {\n      \"path\": \"repos/Ralph-Workflow/github-mirror/docs/README.md\",\n      \"reason\": \"Clear route-by-question map with distinct role from README and START_HERE\"\n    },\n    {\n      \"path\": \"repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/user-stories.md\",\n      \"reason\": \"Comprehensive user-goal routing covers every common question from first-run to overnight use to config editing\"\n    },\n    {\n      \"path\": \"repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/configuration.md\",\n      \"reason\": \"Directly answers 'where do I edit ralph-workflow.toml' with file paths, precedence, and which-file-to-edit guidance\"\n    },\n    {\n      \"path\": \"repos/Ralph-Workflow/github-mirror/ralph-workflow/docs/sphinx/advanced-pipeline-configuration.md\",\n      \"reason\": \"Substantive advanced operator doc for pipeline.toml with sections, examples, and safe-editing workflow\"\n    }\n  ],\n  \"shouldUserNeedToRepeatThis\": false\n}",
+      "checkerResultAfterRepair": "DOCS_QUALITY_OK"
+    },
+    {
+      "name": "autonomous-marketing-stack",
+      "contractMode": "tracked_only",
       "repairs": [],
       "errors": [],
-      "status": "ok",
-      "checkerResult": "DOCS_QUALITY_OK"
+      "status": "tracked_only",
+      "notes": [
+        "Tracked as a live self-improving owner loop, but verification currently lives in its own artifacts and cron topology rather than the old checker/runner/verifier contract.",
+        "Architecture audits must verify marketing ownership boundaries and independent verification behavior directly from live artifacts."
+      ]
+    },
+    {
+      "name": "ralph-site-owner-loop",
+      "contractMode": "tracked_only",
+      "repairs": [],
+      "errors": [],
+      "status": "tracked_only",
+      "notes": [
+        "Tracked owner loop for repo-boundary enforcement.",
+        "Independent verification is expected through Ralph-Site's own owner-loop outputs rather than this registry file."
+      ]
+    },
+    {
+      "name": "system-health-monitor",
+      "contractMode": "tracked_only",
+      "repairs": [],
+      "errors": [],
+      "status": "tracked_only",
+      "notes": [
+        "Runtime health monitor with bounded repair authority only.",
+        "Must not inspect content-loop outcome artifacts or trigger cross-owner remediation except explicit timeout reruns on the affected job.",
+        "Any material change to this monitor requires fresh independent verification."
+      ]
+    },
+    {
+      "name": "blocked-channel-recovery",
+      "contractMode": "tracked_only",
+      "repairs": [],
+      "errors": [],
+      "status": "tracked_only",
+      "notes": [
+        "Generic blocked-channel ownership now lives under explicitly non-Reddit names to avoid marketing ownership leakage.",
+        "Deep review and follow-up share one owner path today; future architecture work should split them only if they gain distinct code paths or verifier contracts."
+      ]
+    },
+    {
+      "name": "agent-architecture-watchdog",
+      "contractMode": "tracked_only",
+      "repairs": [],
+      "errors": [],
+      "status": "tracked_only",
+      "notes": [
+        "Whole-system audit loop that verifies architecture health across owner boundaries.",
+        "When it repairs another repair/recovery loop, it must also arrange fresh independent verification before claiming that path healthy."
+      ]
     }
   ]
 }

@@ -1,0 +1,23 @@
+{
+  "checked_at": "2026-05-21T04:57:16Z",
+  "verdict": "pass",
+  "verified_repairs": [
+    "Live Gateway cron inventory uses generic blocked-channel ownership: job `blocked-channel-deep-review` is described as broad legitimacy-safe channel recovery and explicitly not Reddit-specific.",
+    "Legacy docs aggressive self-heal job is clearly marked deactivated: `docs-stack-aggressive-10min-self-heal` has `enabled: false` and a legacy/deactivated description.",
+    "`agents/system/loop_integrity_audit.py` only restores crontab lines that are non-empty and do not start with `REMOVED:`.",
+    "`agents/system/self_improvement_loops.json` marks the old OS-cron docs lines as `REMOVED:` placeholders, so the integrity audit will not re-add them.",
+    "User crontab no longer contains legacy HireAegis/content/community/product cron lines or the old OS-cron `sync_to_github` entry.",
+    "Gateway cron inventory includes replacement job `codeberg-github-mirror-sync` for Codeberg→GitHub mirror ownership.",
+    "`agents/unblocker/AGENTS.md` no longer contains the extreme 'human intervention forbidden' wording; it now allows human handoff when genuinely required."
+  ],
+  "remaining_blockers": [],
+  "evidence": [
+    "`/home/mistlight/.openclaw/cron/jobs.json`: `blocked-channel-deep-review` description says 'Owns broad legitimacy-safe channel recovery, not Reddit-specific follow-up.'",
+    "`/home/mistlight/.openclaw/cron/jobs.json`: `docs-stack-aggressive-10min-self-heal` is `enabled: false` with description 'Disabled legacy aggressive docs self-heal watchdog retained only for audit history.'",
+    "`/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py`: `ensure_crontab_lines()` filters to lines that are not empty and do not start with `REMOVED:` before any restore action.",
+    "`/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json`: both `runnerCrontabLine` and `verifierCrontabLine` for `ralph-docs-watchdog` are `REMOVED: runtime now owned by the Gateway supervisor job; direct OS cron entry must stay absent`.",
+    "`crontab -l`: no entries for `HireAegis`, `Content Engine Agent`, `Community & Outreach Agent`, `product`, or `sync_to_github` were present.",
+    "`/home/mistlight/.openclaw/cron/jobs.json`: `codeberg-github-mirror-sync` is enabled and described as replacing the legacy OS-cron sync entry.",
+    "`/home/mistlight/.openclaw/workspace/agents/unblocker/AGENTS.md`: says 'If human intervention is genuinely required, mark the channel blocked with the exact blocker and prepare the cleanest possible handoff/checklist.'"
+  ]
+}
