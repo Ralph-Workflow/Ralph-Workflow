@@ -41,6 +41,7 @@ class RedditWatchdogTests(unittest.TestCase):
                  patch.object(reddit_watchdog, "STATE_PATH", state_path), \
                  patch.object(reddit_watchdog, "AUTOpOST", root / "agents/marketing/reddit_autopost.py"), \
                  patch.object(reddit_watchdog, "NEXT_WINDOW_PACKET", root / "agents/marketing/reddit_next_window_packet.py"), \
+                 patch("agents.marketing.reddit_watchdog.report_is_fresh", return_value=True), \
                  patch("agents.marketing.reddit_watchdog.subprocess.run", side_effect=fake_run), \
                  patch("builtins.print") as mock_print:
                 rc = reddit_watchdog.main()

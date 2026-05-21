@@ -1,5 +1,51 @@
 # Outreach Log
 
+## 2026-05-21 (Thursday) — Live homepage hero search-intent + Codeberg-source clarity repair (00:08 UTC / 02:08 CEST)
+- **What I executed:** updated the deployed Ralph Workflow homepage hero in `/home/mistlight/ralph_site/current/app/views/pages/home.html.erb` to put the exact evaluator phrase **unattended coding agent** into the visible headline, sharpen the lede around **AI agent orchestration CLI** + overnight backlog work, rename the first-task CTA to **Choose your first backlog task**, and add a tighter morning-after evaluator path (`would I merge this?`). In the same run I updated `app/views/shared/_source_links.html.erb` so the Codeberg pills/nav/menu now say **Codeberg source** instead of the weaker generic `Source`, then restarted the Rails app with `tmp/restart.txt`.
+- **Verification:** confirmed the live source files contain the new strings and re-fetched `https://ralphworkflow.com`; raw HTML now includes `unattended coding agent`, `Choose your first backlog task`, `Codeberg source`, and `TechTools listing`.
+- **Why this action:** this is **REPAIRED / REPLACING**. The active bottleneck is still `conversion_to_free_use`, backlink work is already mostly in measurement, and the strongest same-run repair still available was the first screen itself: make search-intent language visible above the fold while making the primary repo destination unmistakably Codeberg.
+- **Expected outcome:** better match between search intent and first-screen copy, clearer evaluator routing into the primary Codeberg repo, and fewer visitors leaking into a vague install/docs path before they understand the product and next step.
+- **Measurement window:** next 7 days for homepage pickup / behavior alignment; next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta, with GitHub mirror movement treated only as secondary evidence.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-04**, stop spending another cycle on homepage wording/label polish and replace it with a fresh executable distribution or backlink move.
+- **Type:** **REPAIRED / REPLACING**
+
+## 2026-05-21 (Thursday) — Marketing workflow audit (23:49 UTC / 01:49 CEST)
+- **Verdict: stay quiet. Execution ceiling confirmed. Measurement window active. First Codeberg signal detected.**
+  - **Codeberg +1 star** (9→10) — first measurable adoption signal in the current window, correlating with the proof-link repairs and first-task guide shipped between 22:10–23:36 UTC. Single data point: treat as directional, not confirmed causal.
+  - GitHub mirror flat (0⭐ 2👁 0🍴, 0 delta).
+  - All reproducible autonomous paths exhausted again: homepage SEO live, owned surfaces consistent, Telegraph keyword-gap at 100%, Reddit cooldown respected with fresh body packet ready (`drafts/2026-05-21_reddit_next_window_packets.md`), HN/Lobsters packet at `drafts/2026-05-21_hackernews_post.txt`.
+  - Backlinks: still 0 indexed. AIToolsIndex and ToolShelf in-flight.
+  - Reddit structural cadence risk is contained for this cycle — fresh drafts use genuinely different openings and avoid the banned lines. Broader body rhythm risk remains but is not active.
+  - Four marketing questions: all correctly answered, no drift.
+  - **Core bottleneck is still `conversion_to_free_use` + `HN/Lobsters human execution`.**
+- **What worked:** Proof-link repairs and first-task guide correlate with the first Codeberg star delta. Infrastructure stack holding. Reddit fresh body packet in good shape.
+- **What failed:** Nothing new. Backlinks still 0 indexed. HN/Lobsters still blocked from autonomous execution.
+- **What is repetitive:** Monitor passes during cooldown (correctly no output). Telegraph keyword-gap at 100% ceiling.
+- **What is low leverage:** More owned-surface polish, more monitor passes, more keyword-gap posts.
+- **Current bottleneck:** HN/Lobsters human execution is the sole unmade high-leverage move. The +1 Codeberg star is a single signal — wait for the full measurement window.
+- **Next higher-leverage move:**
+  1. **Human: execute HN/Lobsters** from `drafts/2026-05-21_hackernews_post.txt` — the single highest-leverage move still unmade after everything else is done.
+  2. Monitor AIToolsIndex and ToolShelf for indexing signal over the next 7 days.
+  3. Reddit stays on cooldown; use the pre-verified fresh body drafts when window opens — do not regenerate.
+- **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta. The +1 star is one data point; confirm direction before treating it as causal.
+- **Replace if it fails:** if Codeberg is still flat and no backlinks indexed by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach.
+- Type: **AUDIT / DIRECTION**
+
+## 2026-05-21 (Thursday) — Codeberg +1 star signal (23:49 UTC / 01:49 CEST)
+- **What happened:** Codeberg stars ticked up from 9→10 (1-star delta in recent window). GitHub remains flat (0 stars, 2 watchers).
+- **Interpretation:** This is the first measurable adoption signal since the README + proof-link repairs shipped earlier tonight (~23:36 UTC). Single star is lightweight but directionally positive — the Codeberg-first proof path and sharpened README may be contributing.
+- **Measurement window:** watch for follow-on stars/forks over the next 7 days through **2026-05-28**. If Codeberg goes flat again, revert to evaluating whether the proof-link/entry-path changes had any effect by **2026-06-04** before committing more effort there.
+- **Type:** **SIGNAL / POSITIVE**
+
+## 2026-05-21 (Thursday) — Example review bundle proof-link repair pushed to Codeberg + GitHub mirror (23:36 UTC / 01:36 CEST)
+- **What I executed:** repaired the hosted-docs source page `docs/sphinx/example-review-bundle.md`, replacing broken repo-relative proof links (`../../../...`) with direct **Codeberg** source URLs for the bundle files and artifacts, then replaced the broken `START_HERE.md` jump with a direct Codeberg guide link plus live hosted-docs URLs for the next proof pages. I pushed the change to **Codeberg first** and then the **GitHub mirror** in commit `3b34b9b4` (`Fix example review bundle proof links`).
+- **Verification:** confirmed the source file no longer contains `../../../` proof links, verified the commit was pushed successfully to both remotes, and confirmed the public hosted-docs page had been leaking evaluators through broken `#../../../...` style proof links before this repair.
+- **Why this action:** this is **REPAIRED / REPLACING**. The current bottleneck is still `distribution_and_message_to_primary_repo_conversion`, Reddit remains structurally high-risk, and a proof page that answers a high-intent trust question was currently sending evaluators into broken links instead of a usable Codeberg-first proof path.
+- **Expected outcome:** more evaluators who reach the example review bundle can actually inspect the proof artifacts, continue into the primary repo on **Codeberg**, and convert into visible primary-repo actions instead of dropping at a broken trust step.
+- **Measurement window:** next 7 days for docs pickup / proof-path usage; next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta, with GitHub mirror movement treated only as secondary evidence.
+- **Replace if it fails:** if Codeberg is still flat by **2026-06-04**, stop spending another cycle on proof-link cleanup and replace it with a fresh executable distribution / backlink action.
+- **Type:** **REPAIRED / REPLACING**
+
 ## 2026-05-21 (Thursday) — Repo README top-fold conversion repair pushed to Codeberg + GitHub mirror (22:34 UTC / 00:34 CEST)
 - **What I executed:** rewrote the top conversion section of the primary repo `README.md` to answer the four marketing questions faster and route evaluators into a **Codeberg-first** “first honest path” instead of a scattered docs hunt. The new top fold now makes the audience explicit (**repo work too big to babysit and too risky to trust blindly**), states the differentiator (**working software plus a review surface**), adds a **why use it now** line, and gives a 4-step evaluator path: inspect Codeberg, read `START_HERE.md`, pick one real task, and ask **would you merge it?** I pushed it live to **Codeberg first** and then the **GitHub mirror** in commit `2226a2ad` (`docs: sharpen repo README conversion path`).
 - **Verification:** confirmed the updated README content in the repo after push and verified both remotes accepted the commit after safely replaying it on top of current `origin/main` in a clean worktree when the first Codeberg push hit a non-fast-forward.
@@ -4104,3 +4150,11 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Expected outcome:** fewer wasted discovery cycles and cleaner focus on genuinely executable distribution surfaces, which should improve the odds that the next external action is a real Codeberg-linking placement instead of another dead-end submit attempt.
 - **Measurement window:** next 7 days / next 1-2 autonomous marketing loops.
 - **Replacement condition if flat:** if no new real autonomous listing lane or Codeberg delta appears after the next 2 loops, switch from discovery repair to a fresh public conversion asset or new keyword-gap distribution piece instead of more directory sweeps.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 01:37:31
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 01:48:51
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Cloudflare is cleared but Apollo still requires mailbox verification for this device.

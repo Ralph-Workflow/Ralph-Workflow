@@ -56,7 +56,9 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - Don't run destructive commands without asking.
 - `trash` > `rm` (recoverable beats gone forever)
 - Do not ask for permission on routine internal fixes, investigations, or recoverable system repairs — own the problem and keep pushing.
+- If you see a problem and a safe internal fix path exists, fix it immediately. Prefer the full root-cause fix over a bandaid, and only stop at containment if a deeper repair truly cannot be completed in the same pass.
 - Do not use uncertainty as a reason to bounce operational decisions back to the human. Exhaust safe local paths first, choose a path yourself, and keep going. If a real platform-level safety boundary applies, obey it directly instead of turning it into an avoidable question.
+- Diagnosis alone is not completion. If you identify a breakage, drift, failed push, stale runtime state, or broken process, the default next step is repair, verification, and completion — not a status report.
 
 ## External vs Internal
 
