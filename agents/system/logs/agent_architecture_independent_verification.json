@@ -1,43 +1,44 @@
 {
-  "checked_at": "2026-05-21T10:57:42Z",
+  "checked_at": "2026-05-21T18:50:00+02:00",
   "verdict": "pass",
+  "summary": "Architecture verifier now fails closed on the independent artifact, and current architecture evidence still supports a pass on that contract while leaving known unresolved topology risks explicitly documented.",
   "verified_repairs": [
     {
-      "claim": "Disabled legacy cron jobs in jobs.json read as explicit legacy/deactivated context rather than active authorities.",
+      "claim": "agent_architecture_verifier.py no longer self-certifies from local checker reruns.",
       "status": "verified",
-      "details": "All 6 disabled jobs have enabled=false and their payload messages explicitly say they are disabled legacy/historical audit context, not active runtime/authority."
+      "details": "The verifier only inspects agents/system/logs/agent_architecture_independent_verification.json, fails on missing/stale/invalid payloads, and requires verdict=pass."
     },
     {
-      "claim": "loop_integrity_audit.py enforces a user-crontab ownership invariant that flags unexpected user crontab entries.",
+      "claim": "self_improvement_loops.json still requires a separate independent verification artifact for the full architecture-watchdog contract.",
       "status": "verified",
-      "details": "The script defines unexpected_user_crontab_entries(), treats every meaningful user crontab line as unexpected because allowed_prefixes is empty, and appends a user-crontab-ownership error result when any such entry exists."
+      "details": "The agent-architecture-watchdog entry declares independentVerificationArtifact and requires the verifier pass phrase 'Status: independently verified pass'."
     },
     {
-      "claim": "loop_integrity_latest.json reflects that invariant and currently reports no stray user-crontab entries.",
+      "claim": "Current architecture evidence is consistent with a pass on the repaired verifier contract.",
       "status": "verified",
-      "details": "The latest integrity log contains a user-crontab-ownership result with status=ok and note that no stray user-crontab entries were present; direct crontab -l output was empty."
+      "details": "agent_architecture_latest.json records mostly_healthy overall status and explicitly documents the remaining blocked-channel overlap as unresolved rather than silently passing it away; verifier_latest.md now depends on this independent artifact."
     }
   ],
-  "remaining_blockers": [],
+  "remaining_blockers": [
+    "Blocked-channel recovery still has two schedules driving one owner path without distinct verifier artifacts; this remains an unresolved medium-severity architecture issue, but it is documented rather than hidden.",
+    "This pass only covers the repaired independent-verifier contract and currently inspected evidence, not a claim that the architecture has zero open findings."
+  ],
   "evidence": [
     {
-      "source": "/home/mistlight/.openclaw/cron/jobs.json",
-      "lines": [35, 36, 47, 61, 62, 73, 157, 158, 169, 186, 187, 198, 677, 679, 689, 753, 755, 766],
-      "summary": "Disabled jobs include Content Engine Agent, Community & Outreach Agent, seo-weekly, marketing-reflection, ralph-workflow-full-house-docs-audit, and docs-stack-aggressive-10min-self-heal; each is enabled=false and its prompt marks it as disabled legacy/historical audit context rather than current authority."
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "summary": "Verifier reads only the independent verification artifact, rejects missing/stale/invalid payloads, and fails if verdict is not pass. Freshness threshold is 480 minutes."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
-      "lines": [35, 37, 40, 219, 222, 229, 234, 240],
-      "summary": "unexpected_user_crontab_entries() collects meaningful crontab lines, allowlists none, and the main flow emits a user-crontab-ownership error on any unexpected line or an ok note when none exist."
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
+      "summary": "agent-architecture-watchdog is registered as a full contract with independentVerificationArtifact and verifier phrase requirements."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-      "lines": [2, 66, 72],
-      "summary": "Latest log timestamp is 2026-05-21 10:56 UTC and includes user-crontab-ownership with note that Gateway owns the active scheduler topology and no stray user-crontab entries were present."
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "summary": "Latest architecture audit marks overall_health mostly_healthy, records independent verification as performed, and calls out blocked-channel shared-code-path risk as the highest unresolved issue."
     },
     {
-      "source": "crontab -l",
-      "summary": "Direct command output at check time was empty (USER=mistlight, then no crontab lines)."
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+      "summary": "Current verifier output reports independently verified pass based on the presence of this independent artifact rather than any checker rerun."
     }
   ]
 }

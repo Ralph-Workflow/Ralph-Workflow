@@ -1,5 +1,20 @@
 # Outreach Log
 
+## 2026-05-21 (Thursday) — Reddit monitoring (16:15 UTC / 18:15 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-21_1815.md`
+- **Scan summary:** 30 candidate Reddit threads/posts scanned, 8 shortlisted, 22 rejected.
+- **Current verdict:** **8** credible discussion opportunities were found, but only **1-2** are honest RalphWorkflow mention fits after prior-use, thread-family saturation, plug-saturation, no-product-value, and repeat-pattern filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/ClaudeAI` — "My setup for running Claude Code across the full software dev lifecycle"
+  - `r/ClaudeAI` — "My Claude Code morning setup. 8 minutes. Cuts 2 hours of friction. What am I missing?"
+  - `r/ClaudeAI` — "Claude Code's checkpoint commits are polluting my git history. How are you handling this?"
+  - `r/ClaudeCode` — "How are you handling merge safety when running multiple coding agents on the same repo?"
+- **Repeated pains worth tracking:** review tax, blocked-on-you state, visible finish state, checkpoint archaeology, merged-state confidence, long-run drift, and ownership gaps on shared boundaries.
+- **Risk note:** repeat-pattern risk is still structural, and a new filter is needed for threads already crowded with obvious tool plugs or vendor promotion.
+- **Posting note:** No posting attempted from this monitor pass. Research-first only.
+
+
 ## 2026-05-21 (Thursday) — Marketing workflow audit (17:20 UTC / 19:20 CEST)
 - **Verdict: stay quiet. Nothing materially changed. Execution ceiling confirmed. HN/Lobsters is still the only unmade high-leverage move.**
   - Codeberg: 10⭐ 2👁 2🍴, +0 delta across 9-sample window. The +1 signal from May 20–21 has not compounded — treat it as measurement noise pending confirmation.
@@ -4515,3 +4530,35 @@ If Codeberg stars/watchers/forks are still flat through 2026-06-02 after:
 - **Measurement window:** next 7 days for snippet/live-page pickup; next 14 days through **2026-06-04** for **Codeberg** stars/watchers/forks delta.
 - **Replace if it fails:** if Codeberg is still flat by **2026-06-04**, stop spending another cycle on homepage metadata wording and replace it with a new executable backlink/distribution move.
 - **Type:** **REPAIRED / REPLACING**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 18:06:43
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-21 18:37:36
+- **Note:** Momentum check found: no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, measurement_pending_without_repairs. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Failing tactics are still present with no live repair actions: reddit_style_repetition, primary_repo_flat_window, mirror_repo_flat_window. Cloudflare is cleared but Apollo still requires mailbox verification for this device.
+
+## 2026-05-21 (Thursday) — Marketing workflow audit (16:37 UTC / 18:37 CEST)
+- **Verdict: stay quiet. Execution ceiling confirmed. Nothing materially changed.**
+  - Codeberg: 10⭐ 2👁 2🍴, +0 delta across the full 9-sample window. The earlier single-star signal has not compounded — treat as measurement noise pending confirmation.
+  - GitHub mirror: 0⭐ 2👁 0🍴, flat across full window.
+  - All reproducible autonomous paths remain exhausted: owned surfaces shipped and live, Telegraph keyword-gap at ceiling, Reddit on cooldown with structural cadence failure confirmed, fresh body drafts in inventory, HN/Lobsters packet at `drafts/2026-05-21_hackernews_post.txt` still unmade.
+  - Reddit structural cadence is still broken at the paragraph-rhythm level, not just the opening line — fresh drafts fix openings but not the underlying `contrast opener → handoff framing → proof bundle → product close` shape. This remains a failing tactic until it is structurally reworked.
+  - Backlinks: 0 indexed. AIToolsIndex + ToolShelf in-flight.
+  - Content confusion error (HireAegis content overwriting the HN draft) was repaired this morning — loop caught and fixed it, but the error class itself (wrong product content saved to wrong artifact) is a systemic concern worth flagging.
+  - Four marketing questions: all correctly answered, no drift.
+- **What worked:** Infrastructure holding. All owned surfaces live and consistent.
+- **What failed:** No adoption movement. Reddit cadence is structurally broken. HN/Lobsters still unmade. Zero indexed backlinks. Content confusion error class surfaced again.
+- **What is repetitive:** Every prior audit saying "stay quiet, HN/Lobsters is the move." The loop correctly identifies the bottleneck but cannot execute it autonomously. This is now a confirmed execution ceiling, not a tactic problem.
+- **What is low leverage:** More monitor passes, more owned-surface polish, more Reddit body regeneration without structural rework, more Telegraph keyword-gap posts.
+- **Current bottleneck:** HN/Lobsters human execution. Reddit structural cadence rework (requires human angle change, not more drafts). Loop execution ceiling confirmed.
+- **Next higher-leverage move:**
+  1. **Human: execute HN/Lobsters** from `drafts/2026-05-21_hackernews_post.txt` — the sole unmade high-leverage move. Submit to HN first, then Lobsters. Codeberg first, GitHub second.
+  2. **Human: rework Reddit cadence** — the body rhythm is broken structurally, not lexically. A Reddit post with fresh openings but the same paragraph shape is still a failed tactic. The fix requires a genuinely different reply angle, not a template fill.
+  3. **Human: review content confusion risk** — the HN draft was overwritten with HireAegis content on May 21 01:20 UTC. The loop generated or saved the wrong product's content into the wrong artifact. This is the second occurrence of this error class. Confirm whether the loop has a product-identity contamination risk in its generation/save path.
+  4. Monitor AIToolsIndex + ToolShelf for indexing signal over the next 7 days.
+- **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta and indexed backlink evidence.
+- **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach (curators, comparison backlink requests, competitor citation).
+- **Structural note for the loop:** Execution ceiling confirmed. The loop has reached the limit of what it can do autonomously. All reproducible paths are complete, in-flight, or blocked. The loop will correctly return stay-quiet on every monitor pass until human action is taken on HN/Lobsters, Reddit structural rework, or a new executable channel surfaces.
+- **Type:** **AUDIT / DIRECTION**

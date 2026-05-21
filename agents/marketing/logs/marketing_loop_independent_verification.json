@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-05-21T18:50:00+02:00",
+  "verdict": "fail",
+  "summary": "Marketing verifier now fails closed on missing, stale, or non-pass independent artifacts, but current live marketing evidence is not healthy enough to issue a pass artifact.",
+  "evidence": [
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py",
+      "summary": "Verifier only reads agents/marketing/logs/marketing_loop_independent_verification.json, fails on missing/stale/invalid artifacts, and does not rerun the checker or self-certify from local evidence. Freshness threshold is 240 minutes."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
+      "summary": "autonomous-marketing-stack declares a full contract with a separate independentVerificationArtifact and requires verifier phrase 'Status: independently verified pass'."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
+      "summary": "Current status is needs_attention with actions no_recent_reddit_post, apollo_channel_blocked, primary_repo_adoption_flat, and measurement_pending_without_repairs."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "summary": "Audit still shows failing_tactics for reddit_style_repetition, primary_repo_flat_window, and mirror_repo_flat_window with repair_window_status measurement_pending and no repair_actions."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
+      "summary": "Latest runner bundle includes a failed marketing_momentum_watchdog run and no fresh independent verification artifact was present at check time."
+    }
+  ],
+  "blockers": [
+    "Live marketing evidence is still unhealthy: momentum watchdog is in needs_attention state.",
+    "Workflow audit still records failing tactics and only measurement_pending status, not a demonstrated repaired pass state.",
+    "Primary repo adoption remains flat and outbound distribution has an active Apollo channel block.",
+    "No prior independent verification artifact existed, so the verifier would correctly fail closed until a fresh independent verdict is written."
+  ]
+}

@@ -1,9 +1,9 @@
 {
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
-    "overall_health": "mostly_healthy",
-    "primary_failure_mode": "The runtime now has explicit legacy-layer labeling and a hard user-crontab ownership guard, but blocked-channel recovery still runs two schedules against one owner path without a separate verifier boundary.",
-    "most_urgent_fix": "Decide whether blocked-channel recovery should collapse to one owner schedule or split into distinct deep-review/followup entrypoints with separate evidence."
+    "overall_health": "high_risk",
+    "primary_failure_mode": "Two loops that claimed full verification were relying on local self-certification instead of an enforced independent-artifact boundary. This run converted both verifier contracts to fail closed, which immediately exposed that the marketing loop still has no live independent verification artifact.",
+    "most_urgent_fix": "Finish the spawned independent verifier, keep the marketing loop red until it writes a fresh pass/fail artifact, then either collapse or truly split blocked-channel recovery so its two schedules stop sharing one undifferentiated owner path."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -21,11 +21,10 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-21T12:57:59+02:00",
+    "checked_at": "2026-05-21T18:53:15+02:00",
     "cron_scheduler_enabled": true,
-    "cron_store_path": "/home/mistlight/.openclaw/cron/jobs.json",
     "live_inventory_sources": [
-      "openclaw cron list --json",
+      "openclaw cron list --all --json",
       "/home/mistlight/.openclaw/cron/jobs.json",
       "crontab -l"
     ],
@@ -36,111 +35,168 @@
       "/home/mistlight/.openclaw/workspace/agents/unblocker"
     ],
     "relevant_live_jobs_checked": [
-      "system-health-monitor",
-      "codeberg-github-mirror-sync",
-      "marketing-momentum-watchdog",
-      "ralph-workflow-docs-verifier-supervisor",
       "agent-architecture-watchdog",
+      "ralph-workflow-docs-verifier-supervisor",
+      "marketing-momentum-watchdog",
       "blocked-channel-deep-review",
       "blocked-channel-followup"
     ]
   },
   "findings": [
     {
-      "severity": "medium",
-      "title": "Blocked-channel recovery still has two schedules driving one owner path",
-      "mechanism": "`blocked-channel-deep-review` and `blocked-channel-followup` are explicitly unblocker-owned, but both still invoke the same unittest + `agents/unblocker/run.py` path and still do not emit distinct verifier artifacts or separate runtime contracts.",
+      "severity": "high",
+      "title": "Marketing loop now correctly fails closed because its independent-verification artifact does not exist",
+      "mechanism": "The marketing loop was registered as a full contract with an independent verifier, but the live verifier only became real in this run. As soon as the verifier was converted to require an independent artifact, it turned red because no such artifact was present.",
       "source_layer": "hidden repair loops",
-      "root_cause": "The ownership cleanup renamed the schedules and clarified their boundary faster than the runtime split was implemented.",
+      "root_cause": "The loop definition required independent verification in prose/registry, but runtime enforcement and artifact production were never wired together.",
+      "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:41",
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:46",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:23",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:35",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md:3",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md:9"
+      ],
+      "confidence": 0.99,
+      "recommended_fix": "Keep the loop fail-closed, let the spawned independent verifier write /agents/marketing/logs/marketing_loop_independent_verification.json, and make the marketing owner path refresh that artifact continuously instead of treating verifier prose as enough."
+    },
+    {
+      "severity": "medium",
+      "title": "Architecture watchdog verifier had the same self-certification defect and now needs a fresh post-repair recheck",
+      "mechanism": "The architecture verifier was also just rerunning a local checker. This run converted it to an independent-artifact gate, but the currently referenced independent artifact was last checked at 2026-05-21T10:57:42Z, before the verifier-contract repair landed.",
+      "source_layer": "hidden repair loops",
+      "root_cause": "The watchdog required independent signoff conceptually, but its verifier implementation had drifted into checker replay rather than contract enforcement.",
+      "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:119",
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:123",
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py:23",
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py:35",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md:3",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md:6"
+      ],
+      "confidence": 0.96,
+      "recommended_fix": "Refresh the independent architecture artifact so it explicitly covers the repaired verifier contract, then keep the verifier fail-closed going forward."
+    },
+    {
+      "severity": "medium",
+      "title": "Blocked-channel deep review and follow-up still share one code path and one result artifact",
+      "mechanism": "Two live cron schedules still invoke the same unittest + run.py path, and run.py writes a single unblock_results.json output with no mode split or separate verifier boundary.",
+      "source_layer": "runtime cron topology",
+      "root_cause": "Ownership cleanup renamed the jobs, but runtime separation never advanced beyond prompt wording.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/cron/jobs.json:272",
+        "/home/mistlight/.openclaw/cron/jobs.json:284",
         "/home/mistlight/.openclaw/cron/jobs.json:412",
-        "/home/mistlight/.openclaw/workspace/agents/unblocker/run.py:1",
+        "/home/mistlight/.openclaw/cron/jobs.json:426",
+        "/home/mistlight/.openclaw/workspace/agents/unblocker/run.py:24",
+        "/home/mistlight/.openclaw/workspace/agents/unblocker/run.py:27",
         "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:97",
-        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:109"
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:110"
       ],
       "confidence": 0.95,
-      "recommended_fix": "Either collapse both schedules into one unblocker owner loop or split deep-review and followup into distinct entrypoints with separate artifacts so overlap becomes intentional and auditable."
+      "recommended_fix": "Either collapse the unblocker to one owner schedule or split deep-review and follow-up into distinct entrypoints/artifacts so overlap becomes explicit and auditable."
     },
     {
       "severity": "low",
-      "title": "Legacy disabled jobs are now clearly deactivated, but they still remain in the scheduler store as audit-history clutter",
-      "mechanism": "The disabled mixed-product/content/docs legacy jobs no longer read like active authorities, but keeping them in the live Gateway store still adds inventory surface that future audits must mentally filter.",
+      "title": "Disabled docs self-heal residue still leaves a stale unhealthy status artifact in the active workspace",
+      "mechanism": "The disabled temporary docs watchdog still leaves a visible unhealthy status file showing a fingerprint mismatch, even though the independent deactivation signoff artifact says deactivation was approved for the later clean fingerprint.",
       "source_layer": "persistence",
-      "root_cause": "Historical cleanup preserved disabled jobs for traceability instead of archiving or pruning them out of the runtime store.",
+      "root_cause": "Legacy watchdog artifacts were left live in-place after authority moved to the Gateway verifier-supervisor path.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/cron/jobs.json:35",
-        "/home/mistlight/.openclaw/cron/jobs.json:61",
-        "/home/mistlight/.openclaw/cron/jobs.json:157",
-        "/home/mistlight/.openclaw/cron/jobs.json:186",
-        "/home/mistlight/.openclaw/cron/jobs.json:677",
-        "/home/mistlight/.openclaw/cron/jobs.json:753"
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/docs_stack_temp_watchdog_status.md:3",
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/docs_stack_temp_watchdog_status.md:35",
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/docs_stack_parallel_signoff.json:4",
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/docs_stack_parallel_signoff.json:10"
       ],
-      "confidence": 0.84,
-      "recommended_fix": "Once audit-history retention is no longer needed, archive or remove the legacy disabled jobs instead of keeping them in the live scheduler inventory."
+      "confidence": 0.8,
+      "recommended_fix": "Archive or explicitly relabel the disabled watchdog status artifacts so future audits do not mistake them for the live docs authority path."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Normalize blocked-channel recovery into one explicit runtime contract",
-      "why_now": "It remains the highest-risk overlap in the live recovery topology.",
-      "expected_effect": "Cleaner ownership, less duplicate recovery churn, and clearer verifier expectations."
+      "goal": "Complete fresh independent verification for the repaired marketing and architecture verifier contracts",
+      "why_now": "This run intentionally removed fake green behavior; the marketing loop is now honestly red until a real independent artifact exists.",
+      "expected_effect": "The two full-contract loops will stop self-certifying and will only go green with separate evidence."
     },
     {
       "order": 2,
-      "goal": "Prune or archive disabled legacy cron jobs once audit-history retention is no longer required",
-      "why_now": "The prompts are now safe, but the extra inventory still adds avoidable cognitive load and future drift surface.",
-      "expected_effect": "Less stale scheduler surface and fewer chances for legacy prompts to confuse future audits."
+      "goal": "Normalize blocked-channel recovery into one explicit topology or two truly distinct ones",
+      "why_now": "It remains the clearest live overlap/ownership ambiguity after the verifier repair.",
+      "expected_effect": "Less duplicate churn, clearer recovery evidence, and cleaner ownership boundaries."
     },
     {
       "order": 3,
-      "goal": "Keep the user-crontab ownership invariant strict and only add allowlist entries for explicitly justified OS-cron owners",
-      "why_now": "This run converted a previously soft governance expectation into a hard runtime check.",
-      "expected_effect": "Hidden scheduler drift fails fast instead of waiting for manual discovery."
+      "goal": "Archive or relabel disabled docs watchdog residue",
+      "why_now": "The stale unhealthy artifact still contaminates architectural reads even though the active authority moved elsewhere.",
+      "expected_effect": "Lower stale-artifact confusion during future audits."
     }
   ],
   "repairs_applied_this_run": [
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/cron/jobs.json",
-      "change": "Normalized five legacy disabled jobs plus the already-disabled docs self-heal entry so their descriptions/messages explicitly mark them as legacy/deactivated audit context rather than active authorities.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py",
+      "change": "Replaced checker-rerun self-certification with a fail-closed gate that requires a fresh independent verification artifact.",
       "proof": [
-        "/home/mistlight/.openclaw/cron/jobs.json:47",
-        "/home/mistlight/.openclaw/cron/jobs.json:73",
-        "/home/mistlight/.openclaw/cron/jobs.json:169",
-        "/home/mistlight/.openclaw/cron/jobs.json:198",
-        "/home/mistlight/.openclaw/cron/jobs.json:689",
-        "/home/mistlight/.openclaw/cron/jobs.json:766"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:11",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:23",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:57",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md:4",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md:9"
       ]
     },
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
-      "change": "Added a hard user-crontab ownership invariant. Any meaningful user crontab entry is now treated as architecture drift unless explicitly allowlisted.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "change": "Replaced checker-rerun self-certification with the same fail-closed independent-artifact gate.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py:27",
-        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py:35",
-        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py:219"
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py:11",
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py:23",
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py:57",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md:4",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md:10"
       ]
     },
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-      "change": "Reran the loop-integrity audit. The refreshed artifact now includes `user-crontab-ownership` with status `ok` and confirms no stray user-crontab entries were present at 2026-05-21 10:56 UTC.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json",
+      "change": "Added explicit independentVerificationArtifact fields for the marketing and architecture loops so the contract is visible in the registry instead of living only in prompt prose.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:46",
+        "/home/mistlight/.openclaw/workspace/agents/system/self_improvement_loops.json:123"
+      ]
+    },
+    {
+      "status": "done",
+      "target": "live verifier execution",
+      "change": "Re-ran both verifier scripts after patching. Marketing now fails with a concrete missing-artifact error instead of self-certifying; architecture verifier passes only because an external artifact exists and is still within freshness.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md:4",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md:9",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md:4",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md:6"
+      ]
+    },
+    {
+      "status": "done",
+      "target": "isolated independent verifier spawn",
+      "change": "Spawned an isolated independent verifier run to refresh the repaired verifier contracts and write/update the marketing and architecture independent verification artifacts.",
+      "proof": [
+        "runId:2ea95b60-a12b-4415-a16f-1653862b1475",
+        "childSessionKey:agent:main:subagent:6202ee2b-5cae-4a4c-9053-986d79900150"
       ]
     }
   ],
   "independent_verification": {
-    "status": "performed",
-    "artifact": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
-    "summary": "A fresh isolated verifier confirmed that disabled legacy jobs now read as deactivated audit context, that the loop-integrity audit enforces the new user-crontab invariant, and that the latest integrity artifact shows no stray crontab entries.",
-    "checked_at": "2026-05-21T10:57:42Z"
+    "status": "pending_refresh",
+    "artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+    "summary": "A fresh isolated verifier was spawned in this run because both verifier contracts were materially repaired. At artifact-write time, the marketing independent artifact still did not exist and the architecture independent artifact predated the verifier-contract patch.",
+    "checked_at": "2026-05-21T18:53:15+02:00",
+    "pending_run_id": "2ea95b60-a12b-4415-a16f-1653862b1475",
+    "pending_child_session_key": "agent:main:subagent:6202ee2b-5cae-4a4c-9053-986d79900150"
   },
   "highest_risk_unresolved_issue": {
-    "title": "Shared blocked-channel code path with split schedules but no split verifier contract",
-    "why": "The ownership names are now clean, but the runtime still has two cadences feeding one recovery implementation without distinct proof boundaries."
+    "title": "Marketing full-contract loop is now honestly red because no independent verification artifact exists yet",
+    "why": "This is the strongest remaining proof that the old verifier contract was fake: once fail-closed enforcement was added, the loop could no longer certify itself."
   }
 }
