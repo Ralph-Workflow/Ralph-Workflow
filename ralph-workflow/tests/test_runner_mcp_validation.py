@@ -63,6 +63,10 @@ def test_returns_zero_when_no_custom_mcp_servers_configured(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: ())
+    monkeypatch.setattr(
+        "ralph.mcp.transport.claude.load_existing_claude_upstream_servers",
+        lambda _p: (),
+    )
     validate_mock = MagicMock()
     probe_mock = MagicMock()
     monkeypatch.setattr(runner_module, "VALIDATE_MCP", validate_mock)
@@ -73,6 +77,36 @@ def test_returns_zero_when_no_custom_mcp_servers_configured(
     assert rc == 0
     assert validate_mock.called is False
     assert probe_mock.called is False
+
+
+def test_healthy_claude_native_upstreams_and_probes_return_zero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    native = _stdio_server("native")
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: ())
+    monkeypatch.setattr(
+        "ralph.mcp.transport.claude.load_existing_claude_upstream_servers",
+        lambda _p: (native,),
+    )
+
+    validate_mock = MagicMock(return_value=_ok_report((native,)))
+    monkeypatch.setattr(runner_module, "VALIDATE_MCP", validate_mock)
+
+    probe_mock = MagicMock(return_value=())
+    monkeypatch.setattr(runner_module, "PROBE_AGENT_TRANSPORTS", probe_mock)
+
+    rc = runner_module.validate_custom_mcp_servers(tmp_path)
+
+    assert rc == 0
+    validate_mock.assert_called_once()
+    validated_servers, kwargs = validate_mock.call_args
+    assert validated_servers[0] == (native,)
+    assert kwargs == {"strict": True}
+    probe_mock.assert_called_once()
+    forwarded_servers, probe_kwargs = probe_mock.call_args
+    assert forwarded_servers[0] == (native,)
+    assert probe_kwargs == {"workspace_path": tmp_path}
+
 
 
 def test_healthy_upstreams_and_probes_return_zero(

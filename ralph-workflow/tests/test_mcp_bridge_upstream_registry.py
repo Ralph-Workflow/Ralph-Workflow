@@ -32,6 +32,27 @@ class TestUpstreamRegistry:
 
         return caller
 
+    def test_custom_mcp_registry_uses_custom_namespace(self) -> None:
+        custom_server = UpstreamMcpServer(
+            name="filesystem",
+            transport="http",
+            url="http://unused",
+            origin="custom",
+        )
+
+        custom_caller = self._make_tools_caller(
+            [{"name": "read_file", "description": "Read a file", "inputSchema": {}}]
+        )
+
+        registry = UpstreamRegistry.build(
+            [custom_server],
+            client_factory=lambda server: HttpUpstreamClient(server, caller=custom_caller),
+        )
+        aliases = {t.alias for t in registry.tool_definitions()}
+
+        assert "ralph_custom__filesystem__read_file" in aliases
+        assert "ralph_upstream__filesystem__read_file" not in aliases
+
     def test_upstream_registry_namespaces_tools_by_server(self) -> None:
         fs_server = UpstreamMcpServer(name="filesystem", transport="http", url="http://unused")
         gh_server = UpstreamMcpServer(name="github", transport="http", url="http://unused")

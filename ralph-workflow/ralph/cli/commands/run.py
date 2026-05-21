@@ -109,6 +109,14 @@ _GENERATED_AGENT_STATE_DIRS: tuple[str, ...] = (
     "workers",
 )
 
+def _validate_custom_mcp_servers(workspace_root: Path) -> int:
+    module = import_module("ralph.pipeline.runner")
+    return cast("int", module.validate_custom_mcp_servers(workspace_root))
+
+
+validate_custom_mcp_servers = _validate_custom_mcp_servers
+
+
 _GENERATED_AGENT_STATE_FILES: tuple[str, ...] = (
     "CURRENT_PROMPT.md",
     "PLAN.md",
@@ -326,6 +334,13 @@ def _run_preflight_checks(
             validate_required_inputs(request.workspace_scope)
         except PolicyValidationError as e:
             console.print(_preflight_error_text(e.message), soft_wrap=True)
+            return _EXIT_PREFLIGHT
+
+        if validate_custom_mcp_servers(request.workspace_scope.root) != _EXIT_SUCCESS:
+            console.print(
+                _preflight_error_text("Custom MCP validation failed — see logs"),
+                soft_wrap=True,
+            )
             return _EXIT_PREFLIGHT
 
     # Only run policy-based validations if we have a loaded policy bundle.

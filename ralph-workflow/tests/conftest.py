@@ -71,6 +71,16 @@ def pytest_runtest_call(item: pytest.Item) -> Generator[None, object, None]:
         signal.signal(signal.SIGALRM, previous_handler)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_user_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    fake_home = tmp_path / "autouse-home"
+    fake_home.mkdir(exist_ok=True)
+    fake_xdg = fake_home / ".config"
+    fake_xdg.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_xdg))
+
+
 @pytest.fixture(scope="session")
 def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a reusable template git repository for fast per-test copies."""

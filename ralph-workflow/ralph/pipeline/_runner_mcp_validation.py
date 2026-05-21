@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+import ralph.mcp.transport.claude as claude_transport_module
 from ralph.mcp.transport import common as transport_common_module
 from ralph.mcp.upstream.agent_probe import AgentProbeReport, probe_agent_transports
 from ralph.mcp.upstream.validation import (
@@ -48,16 +49,39 @@ def default_probe_agent_transports(
     return probe_agent_transports(servers, workspace_path=workspace_path)
 
 
+def _effective_session_mcp_servers_for_runner_validation(
+    workspace_root: Path,
+) -> tuple[UpstreamMcpServer, ...]:
+    """Return the effective session MCP server set used by agent transports.
+
+    Product terminology:
+    - servers from ``mcp.toml`` are Ralph custom MCP servers
+    - servers imported from agent-native config (for example Claude ``.mcp.json``)
+      are upstream MCP servers
+
+    The runtime child ultimately consumes one combined session MCP set, so runner
+    preflight must validate that effective set before agent invocation.
+    """
+    custom_mcp_servers = transport_common_module.mcp_toml_as_upstreams(workspace_root)
+    claude_upstream_servers = claude_transport_module.load_existing_claude_upstream_servers(
+        workspace_root
+    )
+    return transport_common_module.merge_mcp_toml_into_upstreams(
+        claude_upstream_servers,
+        custom_mcp_servers,
+    )
+
+
 def run_custom_mcp_validation(
     workspace_root: Path,
     validate_fn: _ValidateMcpFn,
     probe_fn: _ProbeTransportsFn,
 ) -> int:
-    """Validate custom MCP servers and agent transports.
+    """Validate the effective session MCP server set and agent transports.
 
     Returns the exit code the runner should propagate (0 to continue, 1 to abort).
     """
-    upstreams = transport_common_module.mcp_toml_as_upstreams(workspace_root)
+    upstreams = _effective_session_mcp_servers_for_runner_validation(workspace_root)
     if not upstreams:
         return 0
 
