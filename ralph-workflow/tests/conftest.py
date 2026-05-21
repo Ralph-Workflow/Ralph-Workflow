@@ -11,6 +11,9 @@ import pytest
 from git import Repo
 from typer.testing import CliRunner
 
+from ralph.config.enums import AgentTransport
+from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.config.prompt_helper_config import PromptHelperConfig
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -378,3 +381,23 @@ def default_policy() -> tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy]:
 def cli_runner() -> CliRunner:
     """Provide a Typer CLI test runner."""
     return CliRunner()
+
+
+@pytest.fixture
+def workspace_root(tmp_path: Path) -> Path:
+    """Return a temporary workspace root."""
+    return tmp_path
+
+
+@pytest.fixture
+def config_with_helper_agent() -> UnifiedConfig:
+    """Return a UnifiedConfig with prompt-helper-agent in the agents dict."""
+    return UnifiedConfig(
+        prompt_helper=PromptHelperConfig(agent="prompt-helper-agent"),
+        agents={
+            "prompt-helper-agent": AgentConfig(
+                cmd="claude",
+                transport=AgentTransport.CLAUDE_INTERACTIVE,
+            )
+        },
+    )

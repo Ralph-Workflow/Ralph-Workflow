@@ -27,4 +27,4 @@ agent = "custom-agent"
 """
         data = tomllib.loads(toml_content.decode("utf-8"))
         config = UnifiedConfig.model_validate(data)
-        assert config.prompt_helper.agent == "prompt-helper-agent"
+        assert config.prompt_helper.agent == "opencode"

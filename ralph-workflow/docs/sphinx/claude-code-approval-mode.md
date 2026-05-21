@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Claude Code Approval Mode Is Not an Unattended Workflow
 
 Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.

@@ -258,14 +258,14 @@ ralph.cli.commands.explain
    :show-inheritance:
 
 ralph.cli.commands.prompt_helper
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.cli.commands.prompt_helper
    :members:
    :show-inheritance:
 
 ralph.cli.commands.prompt_helper_prompt
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.cli.commands.prompt_helper_prompt
    :members:

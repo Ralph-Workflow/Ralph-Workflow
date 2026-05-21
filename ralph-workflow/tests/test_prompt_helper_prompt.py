@@ -91,3 +91,46 @@ class TestBuildPromptHelperPrompt:
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
         )
         assert "chunk" in result.lower() or "regroup" in result.lower()
+
+    def test_prompt_with_existing_prompt_md_asks_about_existing(self) -> None:
+        """When prompt_md_exists=True, prompt asks user about existing PROMPT.md."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            prompt_md_exists=True,
+        )
+        assert "PROMPT.md" in result
+        assert "replace" in result.lower() or "refine" in result.lower()
+
+    def test_prompt_without_existing_prompt_md_omits_existing_block(self) -> None:
+        """When prompt_md_exists=False (default), prompt does not mention existing PROMPT.md."""
+        result_default = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        result_explicit = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            prompt_md_exists=False,
+        )
+        assert result_default == result_explicit
+        assert "existing" not in result_default.lower() or "existing" not in result_explicit.lower()
+
+    def test_prompt_contains_post_artifact_interactive_choices(self) -> None:
+        """Prompt instructs agent to offer interactive choices after artifact submission."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        assert "continue refin" in result.lower() or "start over" in result.lower()
+
+    def test_prompt_with_existing_prompt_md_includes_read_file_instruction(self) -> None:
+        """When prompt_md_exists=True, prompt instructs agent to use read_file."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            prompt_md_exists=True,
+        )
+        assert "read_file" in result
+
+    def test_prompt_instructs_agent_not_to_call_declare_complete_immediately(self) -> None:
+        """Prompt tells agent NOT to call declare_complete immediately after submission."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        assert "do not call" in result.lower() or "do not" in result.lower()

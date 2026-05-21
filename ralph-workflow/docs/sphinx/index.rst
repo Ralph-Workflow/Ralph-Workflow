@@ -48,12 +48,7 @@ Use-case routing
    getting-started
    quickstart
    first-task-guide
-   configuration
    reference
-   advanced-pipeline-configuration
-   advanced-artifact-configuration
-   advanced-mcp-configuration
    policy-explanation
-   user-stories
    which-agent-should-i-start-with
    when-unattended-coding-fits

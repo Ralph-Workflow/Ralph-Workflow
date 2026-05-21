@@ -2,8 +2,42 @@
 
 from __future__ import annotations
 
+_PROMPT_MD_EXISTS_BLOCK = """\
+**IMPORTANT: An existing `PROMPT.md` was found in this workspace.**
 
-def build_prompt_helper_prompt(*, submit_artifact_tool_name: str) -> str:
+Before doing anything else, ask the user:
+
+> I found an existing `PROMPT.md` in this workspace. Would you like to:
+> 1. **Replace it** — start fresh with a new product specification
+> 2. **Refine it** — continue working on the existing specification
+
+Wait for their answer before proceeding.
+
+If the user chooses **Refine it**, use `read_file` to read the current `PROMPT.md`
+before starting the refinement conversation.
+
+"""
+
+_POST_ARTIFACT_LOOP_BLOCK = """\
+After submitting the artifact, **do not call `declare_complete` immediately.**
+Instead, return to interactive mode and present the user with these choices:
+
+> Your product specification has been submitted. What would you like to do next?
+> 1. **Continue refining** — keep discussing and updating the specification
+> 2. **Update a section** — revise a specific part of the draft
+> 3. **Start over** — discard this draft and begin a new specification
+> 4. **Finish** — write the final `PROMPT.md` and end the session
+
+If the user chooses option 4 (Finish), or explicitly says they are done, then
+call `declare_complete` to signal the end of the session.
+For any other choice, continue the conversation and resubmit an updated artifact
+when the user is satisfied again.
+"""
+
+
+def build_prompt_helper_prompt(
+    *, submit_artifact_tool_name: str, prompt_md_exists: bool = False
+) -> str:
     """Build the system prompt for the prompt helper interactive agent.
 
     The returned prompt instructs the agent to act as a product manager helping
@@ -14,8 +48,13 @@ def build_prompt_helper_prompt(*, submit_artifact_tool_name: str) -> str:
     submit_artifact_tool_name : str
         The MCP tool name to use when submitting the product_spec artifact,
         e.g. "mcp__ralph__ralph_submit_artifact".
+    prompt_md_exists : bool
+        When True, prepend a block instructing the agent to ask the user whether
+        to replace or refine the existing PROMPT.md before proceeding.
     """
-    return f"""You are a product manager helping the user define what they want to build.
+    existing_block = _PROMPT_MD_EXISTS_BLOCK if prompt_md_exists else ""
+    pm_intro = "You are a product manager helping the user define what they want to build."
+    return f"""{existing_block}{pm_intro}
 
 Start by asking the user: **What do you want to build or define?**
 Listen to their response and ask follow-up questions to clarify:
@@ -85,6 +124,4 @@ The content should include: title, scope, goals (non-empty list), users
 constraints, product_behavior, ux_ui_requirements, scope_boundaries,
 open_questions.
 
-When you have submitted the artifact and the user has approved, call
-`declare_complete` to signal you are done.
-"""
+{_POST_ARTIFACT_LOOP_BLOCK}"""

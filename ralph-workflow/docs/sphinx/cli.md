@@ -67,6 +67,14 @@ The helper asks follow-up questions about users, goals, constraints, success cri
 
 This is a simpler alternative to writing `PROMPT.md` by hand, not the standard pipeline. The resulting `PROMPT.md` can be used directly with the next `ralph` run.
 
+The `ralph-prompt` executable is an alternate entrypoint for the same experience. Both `ralph --prompt-helper` and `ralph-prompt` launch identical interactive sessions:
+
+```bash
+ralph-prompt
+```
+
+`ralph-prompt` ships with Ralph Workflow and is installed automatically by `pip install ralph-workflow`. No separate install is needed.
+
 ## Thorough mode
 
 Use the thorough preset when you want a longer unattended run budget:

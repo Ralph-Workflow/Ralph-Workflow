@@ -10,10 +10,10 @@ from ralph.config.prompt_helper_config import PromptHelperConfig
 class TestPromptHelperConfig:
     """Tests for PromptHelperConfig."""
 
-    def test_default_agent_is_prompt_helper_agent(self) -> None:
-        """Default agent value is 'prompt-helper-agent'."""
+    def test_default_agent_is_opencode(self) -> None:
+        """Default agent value is 'opencode'."""
         config = PromptHelperConfig()
-        assert config.agent == "prompt-helper-agent"
+        assert config.agent == "opencode"
 
     def test_rejects_extra_fields(self) -> None:
         """Config rejects extra fields."""

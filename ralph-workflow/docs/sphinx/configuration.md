@@ -173,6 +173,23 @@ verbosity = 1
 |-----|---------|-------------|
 | `checkpoint_enabled` | `true` | Enable checkpoint/resume support |
 
+### `[prompt_helper]`
+
+Configuration for the interactive prompt-refinement helper launched by `ralph --prompt-helper` or `ralph-prompt`.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `agent` | `opencode` | Agent name to use for the prompt-helper session. Falls back to the first agent in `[agents.*]` when the named agent is not configured. |
+
+Example:
+
+```toml
+[prompt_helper]
+agent = "claude"
+```
+
+The helper does not support drain, fallback chains, or agent chains — it uses a single interactive agent only. See the [CLI Reference](cli.md) for usage.
+
 ## Agent chains and drains
 
 Most operator customization happens in `[agent_chains]` and `[agent_drains]` inside `ralph-workflow.toml`.

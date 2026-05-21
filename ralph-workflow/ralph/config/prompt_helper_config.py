@@ -12,7 +12,7 @@ class PromptHelperConfig(RalphBaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    agent: str = Field(default="prompt-helper-agent", min_length=1)
+    agent: str = Field(default="opencode", min_length=1)
 
 
 __all__ = ["PromptHelperConfig"]

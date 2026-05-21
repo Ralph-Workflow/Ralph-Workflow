@@ -5,33 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-import pytest
-
 from ralph.cli.commands.prompt_helper import run_prompt_helper
-from ralph.config.enums import AgentTransport
-from ralph.config.models import AgentConfig, UnifiedConfig
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
 
-@pytest.fixture
-def workspace_root(tmp_path: Path) -> Path:
-    """Return a temporary workspace root."""
-    return tmp_path
-
-
-@pytest.fixture
-def config_with_helper_agent() -> UnifiedConfig:
-    """Return a UnifiedConfig with prompt-helper-agent in the agents dict."""
-    return UnifiedConfig(
-        agents={
-            "prompt-helper-agent": AgentConfig(
-                cmd="claude",
-                transport=AgentTransport.CLAUDE_INTERACTIVE,
-            )
-        }
-    )
+    from ralph.config.models import UnifiedConfig
 
 
 class TestRunPromptHelper:

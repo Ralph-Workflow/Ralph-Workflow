@@ -53,17 +53,24 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
     # 1. Load agent from registry
     registry = AgentRegistry.from_config(config)
     agent_config = registry.get(config.prompt_helper.agent)
+    if agent_config is None and config.agents:
+        first_agent_name = next(iter(config.agents))
+        agent_config = registry.get(first_agent_name)
     if agent_config is None:
         raise RuntimeError(
             f"Prompt helper agent '{config.prompt_helper.agent}' is not configured "
-            f"in ralph-workflow.toml."
+            f"and no fallback agent is available in ralph-workflow.toml."
         )
 
     # 2. Determine submit_artifact_tool_name from transport
     submit_artifact_tool_name = _submit_artifact_tool_name_for_transport(agent_config.transport)
 
     # 3. Build prompt and write to workspace
-    prompt_content = build_prompt_helper_prompt(submit_artifact_tool_name=submit_artifact_tool_name)
+    prompt_md_exists = (workspace_root / "PROMPT.md").exists()
+    prompt_content = build_prompt_helper_prompt(
+        submit_artifact_tool_name=submit_artifact_tool_name,
+        prompt_md_exists=prompt_md_exists,
+    )
     prompt_file = workspace_root / PROMPT_HELPER_PROMPT_FILE
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text(prompt_content, encoding="utf-8")
