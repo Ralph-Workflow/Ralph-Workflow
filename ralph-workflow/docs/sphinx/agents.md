@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Agents
 
 Ralph Workflow can supervise multiple coding agents, but the contract stays the same: the workflow is built for **unattended** orchestration that still comes back reviewable in the morning.

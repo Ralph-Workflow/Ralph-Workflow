@@ -20,11 +20,11 @@ agent = "custom-agent"
         config = UnifiedConfig.model_validate(data)
         assert config.prompt_helper.agent == "custom-agent"
 
-    def test_toml_without_prompt_helper_section_uses_defaults(self) -> None:
-        """TOML without [prompt_helper] section uses default values."""
+    def test_toml_without_prompt_helper_section_uses_none_agent(self) -> None:
+        """TOML without [prompt_helper] section leaves agent as None."""
         toml_content = b"""
 [general]
 """
         data = tomllib.loads(toml_content.decode("utf-8"))
         config = UnifiedConfig.model_validate(data)
-        assert config.prompt_helper.agent == "prompt-helper-agent"
+        assert config.prompt_helper.agent is None

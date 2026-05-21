@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # What Good Ralph Workflow Output Looks Like
 
 Use this page after you understand the workflow and want a review standard for the morning-after handoff.

@@ -75,6 +75,7 @@ bundle = ["pyinstaller>=6.0"]
 [project.scripts]
 ralph = "ralph.cli.main:app"
 ralph-mcp = "ralph.mcp.server.runtime:main"
+ralph-prompt = "ralph.cli._prompt_helper_entry:main"
 
 [project.urls]
 Homepage = "https://ralphworkflow.com"

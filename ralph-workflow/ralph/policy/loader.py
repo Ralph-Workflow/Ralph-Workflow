@@ -63,13 +63,11 @@ def _load_toml(path: Path) -> dict[str, object]:
         PolicyValidationError: If TOML parsing fails.
     """
     if not path.exists():
-        logger.debug("Policy file not found, using defaults: {}", path)
         return {}
 
     try:
         with path.open("rb") as fh:
             data: dict[str, object] = tomllib.load(fh)
-        logger.debug("Loaded policy from {}", path)
         return data
     except Exception as exc:
         raise PolicyValidationError(

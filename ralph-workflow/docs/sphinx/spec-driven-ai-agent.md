@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt
 
 Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.

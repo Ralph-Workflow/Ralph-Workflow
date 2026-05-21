@@ -39,6 +39,9 @@ advanced-mcp-configuration
 user-stories
 mcp-tools
 local-web-access
+concepts
+recovery
+developer-reference
 ```
 
 ## Related pages

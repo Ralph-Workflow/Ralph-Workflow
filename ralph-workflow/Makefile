@@ -1,4 +1,4 @@
-.PHONY: help install dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs
+.PHONY: help install dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs packaging-smoke
 
 PYTEST_WORKERS ?= 4
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 30
@@ -172,8 +172,20 @@ dist-homebrew: build-wheel
 		echo "Note: Homebrew bottle creation requires macOS and Homebrew environment"
 
 # Distribution targets
-verify:
+verify: packaging-smoke policy-loader-smoke
 	@uv run python -m ralph.verify
+
+policy-loader-smoke:
+	@python -c "import sys; sys.stderr = open('/dev/null', 'w'); from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
+
+packaging-smoke:
+	@mkdir -p $(shell realpath .)/../tmp
+	@python -m venv $(shell realpath .)/../tmp/packaging-smoke
+	@PYTHONPATH="" $(shell realpath .)/../tmp/packaging-smoke/bin/pip install --quiet $(shell realpath .)/../ralph-workflow/
+	@ls -la $(shell realpath .)/../tmp/packaging-smoke/bin/ralph-prompt
+	@PYTHONPATH="" $(shell realpath .)/../tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"
+	@uv run pytest -q tests/test_ralph_prompt_entry.py
+	@rm -rf $(shell realpath .)/../tmp/packaging-smoke
 
 dist-binary:
 	@echo "Building PyInstaller binary..."

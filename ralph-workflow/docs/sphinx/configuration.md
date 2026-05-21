@@ -173,6 +173,23 @@ verbosity = 1
 |-----|---------|-------------|
 | `checkpoint_enabled` | `true` | Enable checkpoint/resume support |
 
+### `[prompt_helper]`
+
+Configuration for the interactive prompt-refinement helper launched by `ralph --prompt-helper` or `ralph-prompt`.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `agent` | _(none)_ | Agent name to use for the prompt-helper session. Omitting this setting causes Ralph Workflow to use the first configured agent in `[agents.*]`. If no agents are configured at all, Ralph Workflow falls back to the built-in `opencode` agent. An explicitly named but unavailable agent raises an error instead of silently falling back. |
+
+Example:
+
+```toml
+[prompt_helper]
+agent = "claude"
+```
+
+The helper does not expose drain configuration, fallback chains, or agent chains — it uses a single interactive agent with an internal standalone session only. See the [CLI Reference](cli.md) for usage.
+
 ## Agent chains and drains
 
 Most operator customization happens in `[agent_chains]` and `[agent_drains]` inside `ralph-workflow.toml`.

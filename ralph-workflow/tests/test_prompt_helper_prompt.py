@@ -71,13 +71,6 @@ class TestBuildPromptHelperPrompt:
         assert different_tool_name in result2
         assert tool_name not in result2
 
-    def test_prompt_contains_declare_complete(self) -> None:
-        """Prompt contains declare_complete instruction."""
-        result = build_prompt_helper_prompt(
-            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
-        )
-        assert "declare_complete" in result
-
     def test_prompt_contains_scale_adaptation_guidance(self) -> None:
         """Prompt contains scale-to-fit guidance for adapting structure to scope."""
         result = build_prompt_helper_prompt(
@@ -91,3 +84,93 @@ class TestBuildPromptHelperPrompt:
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
         )
         assert "chunk" in result.lower() or "regroup" in result.lower()
+
+    def test_prompt_with_existing_prompt_md_asks_about_existing(self) -> None:
+        """When prompt_md_exists=True, prompt asks user about existing PROMPT.md."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            prompt_md_exists=True,
+        )
+        assert "PROMPT.md" in result
+        assert "replace" in result.lower() or "refine" in result.lower()
+
+    def test_prompt_without_existing_prompt_md_omits_existing_block(self) -> None:
+        """When prompt_md_exists=False (default), prompt does not mention existing PROMPT.md."""
+        result_default = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        result_explicit = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            prompt_md_exists=False,
+        )
+        assert result_default == result_explicit
+        assert "existing" not in result_default.lower() or "existing" not in result_explicit.lower()
+
+    def test_prompt_does_not_contain_post_artifact_agent_side_menu(self) -> None:
+        """Prompt does not instruct agent to present post-artifact choices.
+
+        The post-artifact review menu is owned by the host (Ralph Workflow CLI)
+        via Prompt.ask, not by the agent. The agent submits the artifact and
+        the session continues; the host presents the review choices.
+        """
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        # The agent should not be told to present post-artifact choices
+        # (those are shown by the host via Prompt.ask)
+        assert "Your product specification has been submitted" not in result
+        assert "What would you like to do next" not in result
+
+    def test_prompt_with_existing_prompt_md_includes_read_file_instruction(self) -> None:
+        """When prompt_md_exists=True, prompt instructs agent to use read_file."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            prompt_md_exists=True,
+        )
+        assert "read_file" in result
+
+    def test_prompt_with_has_draft_includes_draft_context(self) -> None:
+        """When has_draft=True with a current_draft, prompt includes draft content."""
+        draft = {
+            "title": "Test Title",
+            "scope": "Test scope",
+            "goals": ["Goal 1"],
+            "users": ["User 1"],
+            "success_criteria": ["Criterion 1"],
+        }
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            has_draft=True,
+            current_draft=draft,
+        )
+        assert "CURRENT DRAFT SPECIFICATION" in result
+        assert "Test Title" in result
+
+    def test_prompt_without_has_draft_omits_draft_context(self) -> None:
+        """When has_draft=False, prompt does not include draft context."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            has_draft=False,
+        )
+        assert "CURRENT DRAFT SPECIFICATION" not in result
+
+    def test_prompt_does_not_reference_declare_complete(self) -> None:
+        """Prompt does not reference declare_complete tool."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        assert "declare_complete" not in result.lower()
+
+    def test_prompt_does_not_direct_agent_to_emit_finish_signal(self) -> None:
+        """Prompt does not instruct agent to emit a FINISH signal after artifact.
+
+        The post-artifact review loop is owned by the host (Ralph Workflow CLI),
+        not by the agent. The agent submits the artifact and the session continues;
+        the host presents the review choices via Prompt.ask.
+        """
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        # The FINISH contract no longer exists - host owns the review loop
+        assert "FINISH" not in result
+        assert "respond with exactly the word" not in result.lower()

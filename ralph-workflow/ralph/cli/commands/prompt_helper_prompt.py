@@ -2,8 +2,44 @@
 
 from __future__ import annotations
 
+import json
 
-def build_prompt_helper_prompt(*, submit_artifact_tool_name: str) -> str:
+_PROMPT_MD_EXISTS_BLOCK = """\
+**IMPORTANT: An existing `PROMPT.md` was found in this workspace.**
+
+Before doing anything else, ask the user:
+
+> I found an existing `PROMPT.md` in this workspace. Would you like to:
+> 1. **Replace it** — start fresh with a new product specification
+> 2. **Refine it** — continue working on the existing specification
+
+Wait for their answer before proceeding.
+
+If the user chooses **Refine it**, use `read_file` to read the current `PROMPT.md`
+before starting the refinement conversation.
+
+"""
+
+_DRAFT_CONTEXT_BLOCK = """\
+**CURRENT DRAFT SPECIFICATION:**
+
+The following product specification has already been submitted. Continue refining
+based on the user's feedback, or update specific sections as requested.
+
+```json
+{current_draft_json}
+```
+
+"""
+
+
+def build_prompt_helper_prompt(
+    *,
+    submit_artifact_tool_name: str,
+    prompt_md_exists: bool = False,
+    has_draft: bool = False,
+    current_draft: dict[str, object] | None = None,
+) -> str:
     """Build the system prompt for the prompt helper interactive agent.
 
     The returned prompt instructs the agent to act as a product manager helping
@@ -14,8 +50,24 @@ def build_prompt_helper_prompt(*, submit_artifact_tool_name: str) -> str:
     submit_artifact_tool_name : str
         The MCP tool name to use when submitting the product_spec artifact,
         e.g. "mcp__ralph__ralph_submit_artifact".
+    prompt_md_exists : bool
+        When True, prepend a block instructing the agent to ask the user whether
+        to replace or refine the existing PROMPT.md before proceeding.
+    has_draft : bool
+        When True, include the current draft specification in the prompt so the
+        agent can continue refining from it.
+    current_draft : dict[str, object] | None
+        The current product_spec artifact content to include when has_draft is True.
     """
-    return f"""You are a product manager helping the user define what they want to build.
+    existing_block = _PROMPT_MD_EXISTS_BLOCK if prompt_md_exists else ""
+    pm_intro = "You are a product manager helping the user define what they want to build."
+
+    draft_block = ""
+    if has_draft and current_draft is not None:
+        draft_json = json.dumps(current_draft, indent=2)
+        draft_block = _DRAFT_CONTEXT_BLOCK.format(current_draft_json=draft_json)
+
+    return f"""{existing_block}{draft_block}{pm_intro}
 
 Start by asking the user: **What do you want to build or define?**
 Listen to their response and ask follow-up questions to clarify:
@@ -83,8 +135,4 @@ Submit with:
 The content should include: title, scope, goals (non-empty list), users
 (non-empty list), success_criteria (non-empty list), and optionally:
 constraints, product_behavior, ux_ui_requirements, scope_boundaries,
-open_questions.
-
-When you have submitted the artifact and the user has approved, call
-`declare_complete` to signal you are done.
-"""
+open_questions."""

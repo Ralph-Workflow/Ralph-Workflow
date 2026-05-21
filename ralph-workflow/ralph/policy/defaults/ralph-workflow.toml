@@ -122,14 +122,14 @@
 # can_commit = false
 # display_name = "OpenCode"
 
-[agents.prompt-helper-agent]
-cmd = "claude"
-transport = "claude_interactive"
-yolo_flag = "--dangerously-skip-permissions"
-verbose_flag = "--verbose"
-json_parser = "claude"
-session_flag = "--resume {}"
-can_commit = false
+# [agents.prompt-helper-agent]
+# cmd = "claude"
+# transport = "claude_interactive"
+# yolo_flag = "--dangerously-skip-permissions"
+# verbose_flag = "--verbose"
+# json_parser = "claude"
+# session_flag = "--resume {}"
+# can_commit = false
 
 # ---------------------------------------------------------------------------
 # [agent_chains.*] — Named reusable chain definitions (list of agent names)
@@ -166,4 +166,7 @@ analysis = "analysis"
 commit = "commit"
 
 # [prompt_helper]
-# agent = "prompt-helper-agent"  # Override the default prompt-helper agent
+# Omit agent = to use the first configured agent in [agents.*]; if no agents are
+# configured, Ralph Workflow falls back to the built-in "opencode" agent.
+# Uncomment and set agent = to force a specific agent instead:
+# agent = "claude"

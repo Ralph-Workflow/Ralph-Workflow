@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict
 
 from ralph.pydantic_compat import RalphBaseModel
 
@@ -12,7 +12,7 @@ class PromptHelperConfig(RalphBaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    agent: str = Field(default="prompt-helper-agent", min_length=1)
+    agent: str | None = None
 
 
 __all__ = ["PromptHelperConfig"]

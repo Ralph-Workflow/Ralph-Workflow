@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For
 
 Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.

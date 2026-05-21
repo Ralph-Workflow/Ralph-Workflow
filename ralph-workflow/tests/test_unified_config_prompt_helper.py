@@ -15,9 +15,9 @@ class TestUnifiedConfigPromptHelper:
         assert hasattr(config, "prompt_helper")
         assert isinstance(config.prompt_helper, PromptHelperConfig)
 
-    def test_unified_config_prompt_helper_agent_defaults_to_prompt_helper_agent(
+    def test_unified_config_prompt_helper_agent_defaults_to_none(
         self,
     ) -> None:
-        """UnifiedConfig.prompt_helper.agent defaults to 'prompt-helper-agent'."""
+        """UnifiedConfig.prompt_helper.agent defaults to None."""
         config = UnifiedConfig()
-        assert config.prompt_helper.agent == "prompt-helper-agent"
+        assert config.prompt_helper.agent is None

@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 # Example Review Bundle: What a Morning-After Ralph Workflow Handoff Looks Like
 
 Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
