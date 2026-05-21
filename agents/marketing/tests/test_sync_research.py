@@ -8,19 +8,22 @@ from agents.marketing.sync_research import SyncPlan, build_sync_plan, execute_sy
 
 
 class FakeRunner:
-    def __init__(self, diff_cached_returncode=0):
+    def __init__(self, diff_cached_returncode=0, status_stdout=""):
         self.calls = []
         self.diff_cached_returncode = diff_cached_returncode
+        self.status_stdout = status_stdout
 
     def run(self, args, check=True):
         self.calls.append(list(args))
 
         class Result:
-            def __init__(self, returncode=0):
+            def __init__(self, stdout="", returncode=0):
                 self.returncode = returncode
-                self.stdout = ""
+                self.stdout = stdout
                 self.stderr = ""
 
+        if args[:2] == ["status", "--short"]:
+            return Result(stdout=self.status_stdout, returncode=0)
         if args[:3] == ["diff", "--cached", "--quiet"]:
             return Result(returncode=self.diff_cached_returncode)
         return Result(returncode=0)
@@ -76,7 +79,7 @@ class SyncResearchTests(unittest.TestCase):
         self.assertIsInstance(plan, SyncPlan)
         self.assertTrue(plan.has_changes)
         self.assertEqual(plan.commit_message, "test commit")
-        self.assertIn(["add", "AGENTS.md", "agents/seo/logs"], runner.calls)
+        self.assertIn(["add", "-A", "--", "AGENTS.md", "agents/seo/logs"], runner.calls)
         self.assertIn(["diff", "--cached", "--quiet"], runner.calls)
 
     def test_build_sync_plan_reports_no_changes_when_diff_is_clean(self):
@@ -112,6 +115,16 @@ class SyncResearchTests(unittest.TestCase):
         self.assertTrue(result["has_changes"])
         self.assertIn(["status", "--short", "--", "AGENTS.md"], runner.calls)
         self.assertNotIn(["add", "AGENTS.md"], runner.calls)
+
+    def test_build_sync_plan_uses_specs_to_capture_deleted_paths(self):
+        runner = FakeRunner(diff_cached_returncode=1, status_stdout=" D agents/product/logs/daily_audit_2026-05-09.md\n")
+        missing_logs_spec = "agents/product/logs"
+
+        plan = build_sync_plan(self.workspace, [missing_logs_spec], "test commit", runner=runner)
+
+        self.assertTrue(plan.has_changes)
+        self.assertEqual(plan.resolved_paths, [])
+        self.assertIn(["add", "-A", "--", "agents/product/logs/daily_audit_2026-05-09.md"], runner.calls)
 
 
 if __name__ == "__main__":

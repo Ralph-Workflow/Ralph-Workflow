@@ -62,6 +62,38 @@ class GitRunner:
         )
 
 
+def git_pathspecs(specs: Iterable[str]) -> list[str]:
+    pathspecs: list[str] = []
+    for spec in specs:
+        if any(ch in spec for ch in "*?[]"):
+            pathspecs.append(f":(glob){spec}")
+        else:
+            pathspecs.append(spec)
+    return pathspecs
+
+
+def parse_status_paths(stdout: str) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    for raw_line in stdout.splitlines():
+        if len(raw_line) < 4:
+            continue
+        payload = raw_line[3:].strip()
+        candidates = payload.split(" -> ") if " -> " in payload else [payload]
+        for candidate in candidates:
+            if candidate and candidate not in seen:
+                seen.add(candidate)
+                paths.append(candidate)
+    return paths
+
+
+def changed_paths(runner: GitRunner, pathspecs: Sequence[str]) -> list[str]:
+    if not pathspecs:
+        return []
+    result = runner.run(["status", "--short", "--", *git_pathspecs(pathspecs)], check=False)
+    return parse_status_paths(result.stdout)
+
+
 def resolve_sync_paths(workspace: Path, specs: Iterable[str]) -> list[str]:
     resolved: list[str] = []
     seen: set[str] = set()
@@ -88,11 +120,8 @@ def has_staged_changes(runner: GitRunner) -> bool:
     return result.returncode != 0
 
 
-def has_uncommitted_changes(runner: GitRunner, paths: Sequence[str]) -> bool:
-    if not paths:
-        return False
-    result = runner.run(["status", "--short", "--", *paths], check=False)
-    return bool(result.stdout.strip())
+def has_uncommitted_changes(runner: GitRunner, pathspecs: Sequence[str]) -> bool:
+    return bool(changed_paths(runner, pathspecs))
 
 
 def build_commit_message() -> str:
@@ -101,14 +130,16 @@ def build_commit_message() -> str:
 
 
 def build_sync_plan(workspace: Path, specs: Iterable[str], commit_message: str, runner: GitRunner | None = None) -> SyncPlan:
-    resolved = resolve_sync_paths(workspace, specs)
+    spec_list = list(specs)
+    resolved = resolve_sync_paths(workspace, spec_list)
     if runner is None:
         has_changes = False
     else:
-        if resolved:
-            runner.run(["add", *resolved])
+        stage_paths = list(dict.fromkeys([*resolved, *changed_paths(runner, spec_list)]))
+        if stage_paths:
+            runner.run(["add", "-A", "--", *stage_paths])
         has_changes = has_staged_changes(runner)
-    return SyncPlan(specs=list(specs), resolved_paths=resolved, has_changes=has_changes, commit_message=commit_message)
+    return SyncPlan(specs=spec_list, resolved_paths=resolved, has_changes=has_changes, commit_message=commit_message)
 
 
 def execute_sync(workspace: Path, specs: Iterable[str], dry_run: bool = False) -> dict:
@@ -121,7 +152,7 @@ def execute_sync(workspace: Path, specs: Iterable[str], dry_run: bool = False) -
             "ok": True,
             "dry_run": True,
             "resolved_paths": resolved,
-            "has_changes": has_uncommitted_changes(runner, resolved),
+            "has_changes": has_uncommitted_changes(runner, list(specs)),
             "commit_message": commit_message,
         }
 
