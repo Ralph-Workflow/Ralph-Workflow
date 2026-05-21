@@ -108,7 +108,12 @@ def test_maintained_docs_only_use_canonical_repo_urls() -> None:
                 is_github_repo_url = "Ralph-Workflow/Ralph-Workflow" in url
                 if not is_codeberg_repo_url and not is_github_repo_url:
                     continue
-                if url not in allowed_urls:
+                is_allowed = (
+                    url in allowed_urls
+                    or url.startswith(f"{module.CODEBERG_REPOSITORY_URL}/")
+                    or url.startswith(f"{module.GITHUB_MIRROR_URL}/")
+                )
+                if not is_allowed:
                     mismatches.append(f"{path.relative_to(WORKSPACE_ROOT)} -> {url}")
 
     assert not mismatches, (

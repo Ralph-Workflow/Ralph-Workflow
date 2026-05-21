@@ -308,7 +308,7 @@ def _resolve_global_policy_source(
 
     legacy_global_path = global_dir / local_policy_filename
     if legacy_global_path.exists():
-        return legacy_global_path
+        return _get_bundled_defaults_dir() / local_policy_filename
 
     return _get_bundled_defaults_dir() / local_policy_filename
 

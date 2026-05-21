@@ -361,7 +361,7 @@ def test_load_policy_for_workspace_scope_uses_global_policy_when_local_override_
     )
 
 
-def test_load_policy_for_workspace_scope_rejects_obsolete_global_phase_override(
+def test_load_policy_for_workspace_scope_rejects_phase_authored_global_override_before_merge(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -521,14 +521,14 @@ def test_load_policy_for_workspace_scope_rejects_obsolete_global_phase_override(
     with pytest.raises(LoaderPolicyValidationError) as excinfo:
         load_policy_for_workspace_scope(WorkspaceScope(workspace_root))
 
-    assert (
-        "development_final_commit" in excinfo.value.message
-        or "entry_block" in excinfo.value.message
-    )
-    assert excinfo.value.source in {"pipeline", "completeness"}
+    assert "phase-authored" in excinfo.value.message
+    assert "must not be merged" in excinfo.value.message
+    assert "Remove the outdated file" in excinfo.value.message
+    assert "ralph-workflow-pipeline.toml" in excinfo.value.message
+    assert excinfo.value.source == "pipeline"
 
 
-def test_load_policy_for_workspace_scope_accepts_legacy_global_policy_names(
+def test_load_policy_for_workspace_scope_ignores_legacy_global_policy_names(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -557,8 +557,9 @@ def test_load_policy_for_workspace_scope_accepts_legacy_global_policy_names(
     assert bundle.pipeline.phases["development"].parallelization is not None
     assert (
         bundle.pipeline.phases["development"].parallelization.max_parallel_workers
-        == _LEGACY_GLOBAL_POLICY_MAX_PARALLEL_WORKERS
+        != _LEGACY_GLOBAL_POLICY_MAX_PARALLEL_WORKERS
     )
+    assert bundle.pipeline.entry_block == "developer_iteration"
 
 
 def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> None:

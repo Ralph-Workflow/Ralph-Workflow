@@ -101,20 +101,26 @@ def test_ensure_global_policy_configs_create_branded_global_policy_files(tmp_pat
     assert [result.path.name for result in results] == list(expected_files)
 
 
-def test_ensure_global_policy_configs_migrate_legacy_global_policy_files(tmp_path: Path) -> None:
+def test_ensure_global_policy_configs_ignore_legacy_global_policy_files(
+    tmp_path: Path,
+) -> None:
+    defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
     legacy_pipeline = tmp_path / "pipeline.toml"
     legacy_artifacts = tmp_path / "artifacts.toml"
-    legacy_pipeline.write_text("# legacy pipeline\n", encoding="utf-8")
+    legacy_pipeline.write_text(
+        "[phases.planning]\ndrain = \"planning\"\nrole = \"execution\"\n",
+        encoding="utf-8",
+    )
     legacy_artifacts.write_text("# legacy artifacts\n", encoding="utf-8")
 
     results = ensure_global_policy_configs(tmp_path)
 
     assert (tmp_path / "ralph-workflow-pipeline.toml").read_text(
         encoding="utf-8"
-    ) == "# legacy pipeline\n"
+    ) == (defaults_dir / "pipeline.toml").read_text(encoding="utf-8")
     assert (tmp_path / "ralph-workflow-artifacts.toml").read_text(
         encoding="utf-8"
-    ) == "# legacy artifacts\n"
+    ) == (defaults_dir / "artifacts.toml").read_text(encoding="utf-8")
     assert all(result.action == "created" for result in results)
 
 

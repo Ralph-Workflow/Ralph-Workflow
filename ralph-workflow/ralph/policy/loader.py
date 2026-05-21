@@ -357,6 +357,48 @@ def _merge_pipeline_defaults(
     return merged
 
 
+def _is_phase_authored_pipeline_data(data: Mapping[str, object]) -> bool:
+    """Return whether a pipeline TOML uses the legacy phase-authored schema."""
+    if not data:
+        return False
+    has_phases = isinstance(data.get("phases"), Mapping)
+    has_blocks = isinstance(data.get("blocks"), Mapping)
+    has_entry_block = isinstance(data.get("entry_block"), str)
+    return has_phases and not has_blocks and not has_entry_block
+
+
+def _reject_phase_authored_pipeline_override(*, scope: str, path: Path) -> None:
+    raise PolicyValidationError(
+        f"{scope} pipeline.toml at '{path}' uses the obsolete phase-authored schema and must "
+        f"not be merged with the bundled block-authored default pipeline. Remove the outdated "
+        f"file so Ralph Workflow falls back to the current default pipeline template.",
+        source="pipeline",
+    )
+
+
+def _resolve_pipeline_data(
+    *,
+    default_policy_dir: Path,
+    pipeline_path: Path,
+    global_pipeline_path: Path | None,
+) -> dict[str, object]:
+    default_pipeline_data = _load_toml(default_policy_dir / "pipeline.toml")
+    local_pipeline_data = _load_toml(pipeline_path)
+    if global_pipeline_path is None:
+        return local_pipeline_data or default_pipeline_data
+
+    global_pipeline_data = _load_toml(global_pipeline_path)
+    if _is_phase_authored_pipeline_data(global_pipeline_data):
+        _reject_phase_authored_pipeline_override(scope="User-global", path=global_pipeline_path)
+    if _is_phase_authored_pipeline_data(local_pipeline_data):
+        _reject_phase_authored_pipeline_override(scope="Workspace-local", path=pipeline_path)
+
+    pipeline_data = _merge_pipeline_defaults(default_pipeline_data, global_pipeline_data)
+    if local_pipeline_data:
+        pipeline_data = _merge_pipeline_defaults(pipeline_data, local_pipeline_data)
+    return pipeline_data
+
+
 def _config_defines_agent_policy(config: object) -> bool:
     chains: object = getattr(config, "agent_chains", None)
     drains: object = getattr(config, "agent_drains", None)
@@ -531,15 +573,11 @@ def _load_policy_from_paths(
         global_policy_paths if global_policy_paths is not None else (None, None)
     )
     default_policy_dir = default_dir()
-    default_pipeline_data = _load_toml(default_policy_dir / "pipeline.toml")
-    local_pipeline_data = _load_toml(pipeline_path)
-    if global_pipeline_path is None:
-        pipeline_data = local_pipeline_data or default_pipeline_data
-    else:
-        global_pipeline_data = _load_toml(global_pipeline_path)
-        pipeline_data = _merge_pipeline_defaults(default_pipeline_data, global_pipeline_data)
-        if local_pipeline_data:
-            pipeline_data = _merge_pipeline_defaults(pipeline_data, local_pipeline_data)
+    pipeline_data = _resolve_pipeline_data(
+        default_policy_dir=default_policy_dir,
+        pipeline_path=pipeline_path,
+        global_pipeline_path=global_pipeline_path,
+    )
 
     default_artifacts_data = _load_toml(default_policy_dir / "artifacts.toml")
     local_artifacts_data = _load_toml(artifacts_path)
@@ -629,19 +667,11 @@ def default_dir() -> Path:
 
 
 def _global_policy_path(filename: str) -> Path:
-    """Return the effective user-global policy path for a runtime policy TOML."""
+    """Return the canonical user-global path for a runtime policy TOML."""
     xdg_config_home = getenv("XDG_CONFIG_HOME")
     base_dir = Path(xdg_config_home) if xdg_config_home else Path.home() / ".config"
     preferred_name = _GLOBAL_POLICY_FILENAME_MAP.get(filename, filename)
-    preferred_path = base_dir / preferred_name
-    if preferred_path.exists():
-        return preferred_path
-
-    legacy_path = base_dir / filename
-    if legacy_path.exists():
-        return legacy_path
-
-    return preferred_path
+    return base_dir / preferred_name
 
 
 def load_policy_or_die(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:
