@@ -106,12 +106,20 @@ class TestBuildPromptHelperPrompt:
         assert result_default == result_explicit
         assert "existing" not in result_default.lower() or "existing" not in result_explicit.lower()
 
-    def test_prompt_contains_post_artifact_interactive_choices(self) -> None:
-        """Prompt instructs agent to offer interactive choices after artifact submission."""
+    def test_prompt_does_not_contain_post_artifact_agent_side_menu(self) -> None:
+        """Prompt does not instruct agent to present post-artifact choices.
+
+        The post-artifact review menu is owned by the host (Ralph Workflow CLI)
+        via Prompt.ask, not by the agent. The agent submits the artifact and
+        the session continues; the host presents the review choices.
+        """
         result = build_prompt_helper_prompt(
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
         )
-        assert "continue refin" in result.lower() or "start over" in result.lower()
+        # The agent should not be told to present post-artifact choices
+        # (those are shown by the host via Prompt.ask)
+        assert "Your product specification has been submitted" not in result
+        assert "What would you like to do next" not in result
 
     def test_prompt_with_existing_prompt_md_includes_read_file_instruction(self) -> None:
         """When prompt_md_exists=True, prompt instructs agent to use read_file."""
@@ -153,11 +161,16 @@ class TestBuildPromptHelperPrompt:
         )
         assert "declare_complete" not in result.lower()
 
-    def test_prompt_ends_session_on_user_choice_not_tool_call(self) -> None:
-        """Prompt instructs agent to end session on user choice, not a tool call."""
+    def test_prompt_does_not_direct_agent_to_emit_finish_signal(self) -> None:
+        """Prompt does not instruct agent to emit a FINISH signal after artifact.
+
+        The post-artifact review loop is owned by the host (Ralph Workflow CLI),
+        not by the agent. The agent submits the artifact and the session continues;
+        the host presents the review choices via Prompt.ask.
+        """
         result = build_prompt_helper_prompt(
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
         )
-        # Should say user chooses Finish, not that agent calls a tool
-        assert "FINISH" in result
-        assert "respond with exactly the word" in result.lower()
+        # The FINISH contract no longer exists - host owns the review loop
+        assert "FINISH" not in result
+        assert "respond with exactly the word" not in result.lower()

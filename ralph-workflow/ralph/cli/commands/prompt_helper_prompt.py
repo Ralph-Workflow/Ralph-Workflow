@@ -32,21 +32,6 @@ based on the user's feedback, or update specific sections as requested.
 
 """
 
-_POST_ARTIFACT_LOOP_BLOCK = """\
-After submitting the artifact, **do not end the session on your own.**
-Instead, present the user with these choices and wait for their answer:
-
-> Your product specification has been submitted. What would you like to do next?
-> 1. **Continue refining** — keep discussing and updating the specification
-> 2. **Update a section** — revise a specific part of the draft
-> 3. **Start over** — discard this draft and begin a new specification
-> 4. **Finish** — write the final `PROMPT.md` and end the session
-
-If the user chooses option 4 (Finish), respond with exactly the word **FINISH** and nothing else.
-For any other choice, continue the conversation and resubmit an updated artifact
-when the user is satisfied again.
-"""
-
 
 def build_prompt_helper_prompt(
     *,
@@ -150,6 +135,4 @@ Submit with:
 The content should include: title, scope, goals (non-empty list), users
 (non-empty list), success_criteria (non-empty list), and optionally:
 constraints, product_behavior, ux_ui_requirements, scope_boundaries,
-open_questions.
-
-{_POST_ARTIFACT_LOOP_BLOCK}"""
+open_questions."""

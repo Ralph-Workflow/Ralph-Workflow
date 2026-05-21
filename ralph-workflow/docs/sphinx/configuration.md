@@ -188,7 +188,7 @@ Example:
 agent = "claude"
 ```
 
-The helper does not support drain, fallback chains, or agent chains — it uses a single interactive agent only. See the [CLI Reference](cli.md) for usage.
+The helper does not expose drain configuration, fallback chains, or agent chains — it uses a single interactive agent with an internal standalone session only. See the [CLI Reference](cli.md) for usage.
 
 ## Agent chains and drains
 
