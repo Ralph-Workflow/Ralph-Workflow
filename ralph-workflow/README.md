@@ -63,7 +63,7 @@ The prompt helper:
 - Handles both small feature requests and large PRD-style product definitions
 - Writes `PROMPT.md` only when you choose to finalize
 
-To configure a dedicated agent for prompt-helper mode, add a `prompt_helper_agent` entry to `ralph-workflow.toml`. If omitted, it falls back to the first configured agent.
+To configure a dedicated agent for prompt-helper mode, add a `[prompt_helper]` section to `ralph-workflow.toml` with `agent = "your-agent"`. If omitted, it falls back to the first configured agent (or the built-in `opencode` agent if no agents are configured).
 
 ## Verification
 
