@@ -70,6 +70,67 @@ class TestReviewLoopBehavior:
         prompt_md_file = workspace_root / "PROMPT.md"
         assert prompt_md_file.exists(), "PROMPT.md should be written on Finish"
 
+    def test_post_artifact_transition_with_realistic_agent_output(
+        self,
+        workspace_root: Path,
+        config_with_helper_agent: UnifiedConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Post-artifact transition works with realistic streaming agent output.
+
+        Even when invoke_agent returns representative streaming output (not empty
+        iterator), the review loop correctly transitions because the host, not
+        the agent, owns the post-artifact state machine. The agent produces
+        output and submits the artifact; the host checks for the artifact and
+        presents Prompt.ask choices.
+        """
+        # Representative streaming output from the agent
+        streaming_output = iter([
+            "Let me help you define this product specification...",
+            "I have a few questions to clarify your requirements.",
+            "Based on your input, I'll structure the specification...",
+            "SUBMITTING ARTIFACT: product_spec",
+        ])
+
+        mock_bridge = MagicMock()
+        mock_bridge.agent_endpoint_uri.return_value = "http://127.0.0.1:9999/mcp"
+        mock_bridge.shutdown.return_value = None
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.start_mcp_server",
+            lambda *args, **kwargs: mock_bridge,
+        )
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.invoke_agent",
+            lambda *args, **kwargs: streaming_output,
+        )
+
+        spec = {
+            "title": "Test Title",
+            "scope": "Test scope",
+            "goals": ["Goal 1"],
+            "users": ["User 1"],
+            "success_criteria": ["Criterion 1"],
+        }
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
+            lambda *args, **kwargs: spec,
+        )
+
+        # User chooses Finish at the review prompt
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.Prompt.ask",
+            lambda *args, **kwargs: "Finish",
+        )
+
+        run_prompt_helper(config_with_helper_agent, workspace_root)
+
+        # PROMPT.md should be written because user chose Finish
+        prompt_md_file = workspace_root / "PROMPT.md"
+        assert prompt_md_file.exists(), (
+            "PROMPT.md should be written when user chooses Finish, "
+            "regardless of agent streaming output"
+        )
+
     def test_continue_refining_reinvokes_agent_with_current_draft(
         self,
         workspace_root: Path,
