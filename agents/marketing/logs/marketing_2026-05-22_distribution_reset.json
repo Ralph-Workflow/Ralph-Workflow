@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-05-22T16:27:15.230999",
+  "timestamp": "2026-05-22T17:07:23.911289",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
-    "channel": "comparison_backlink_outreach",
-    "title": "Distribution lane decision: comparison_backlink_outreach",
+    "channel": "distribution_reset",
+    "title": "Distribution lane decision: distribution_reset",
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_action_brief.md"
   },
   "why_this_action": {
@@ -14,13 +14,14 @@
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
-    "reasoning": "Curator queue prep is already full; ship a fresh comparison/backlink outreach asset instead of another follow-through note.",
+    "reasoning": "Curator and comparison queues are both saturated; ship a new queue-reset/discovery packet instead of pretending a fresh outreach asset exists.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "6 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
-      "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset."
+      "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
+      "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity."
     ]
   },
   "result": {

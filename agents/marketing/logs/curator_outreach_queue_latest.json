@@ -71,8 +71,11 @@
       "priority": "HIGH \u2014 fresh May 2026 curation, clear category fit, alternative intake path",
       "subject": "Ralph Workflow for 6. QAInsights/awesome-ai-tools",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_6-qainsights-awesome-ai-tools.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-05"
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-05",
+      "last_contact_at": "2026-05-22T14:11:56Z",
+      "last_contact_path": "email:hello@qainsights.com",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_141156_qainsights_curator_email.json"
     },
     {
       "target": "7. 0xWelt/Awesome-Vibe-Coding",

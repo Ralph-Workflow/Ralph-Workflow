@@ -1,0 +1,41 @@
+{
+  "timestamp_utc": "2026-05-22T14:11:56Z",
+  "run_type": "marketing-active-loop",
+  "chosen_action": {
+    "type": "curator_email_outreach",
+    "channel": "email",
+    "title": "QAInsights awesome-ai-tools curator outreach",
+    "target": "https://github.com/QAInsights/awesome-ai-tools",
+    "recipient": "hello@qainsights.com",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_qainsights_curator_email.txt"
+  },
+  "why_this_action": {
+    "shared_findings_used": [
+      "distribution_lane_latest.json: comparison_backlink_outreach / curator follow-through is the live replacement lane while Codeberg adoption is flat",
+      "adoption_metrics_latest.json: Codeberg remains flat at 10 stars / 2 watchers / 2 forks, so another owned-content draft would be lower leverage than a fresh external inclusion lane",
+      "curator_outreach_queue_latest.json: QAInsights/awesome-ai-tools was a prepared untouched high-priority target",
+      "market_intelligence_latest.json: reuse canonical positioning and comparison truths instead of inventing a new pitch"
+    ],
+    "reasoning": "GitHub-authenticated submission is unavailable from this runtime, so the strongest legitimate same-run path was public email outreach to QAInsights using the exact listing text and a hook tied to their recent Claude Code coverage."
+  },
+  "expected_outcome": {
+    "primary_metric": "curated-list inclusion or maintainer reply that creates a new Codeberg-first backlink path",
+    "secondary_metric": "qualified evaluator traffic from AI coding tool readers",
+    "measurement_window": "14 days",
+    "kill_condition": "If no reply or listing signal arrives by 2026-06-05, replace this target with a different untouched curator lane or a higher-trust citation path instead of re-sending the same pitch."
+  },
+  "result": {
+    "status": "sent",
+    "ok": true,
+    "log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_141156_qainsights_curator_email.json"
+  },
+  "repairs_applied": [
+    {
+      "file": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_outreach_queue_latest.json",
+      "change": "Updated queue state so completed QAInsights email-fallback outreach is not left falsely marked as prepared."
+    }
+  ],
+  "verification": [
+    "python3 /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py --to hello@qainsights.com ... -> sent"
+  ]
+}

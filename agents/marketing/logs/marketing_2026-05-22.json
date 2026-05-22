@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T14:30:38.319697",
+  "timestamp": "2026-05-22T17:07:23.911289",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-22T14:24:48.116575",
+    "timestamp": "2026-05-22T16:13:08.504254",
     "metrics": [
       {
         "platform": "GitHub",
@@ -410,14 +410,15 @@
     }
   },
   "distribution_lane": {
-    "lane": "comparison_backlink_outreach",
-    "reason": "Curator queue prep is already full; ship a fresh comparison/backlink outreach asset instead of another follow-through note.",
+    "lane": "distribution_reset",
+    "reason": "Curator and comparison queues are both saturated; ship a new queue-reset/discovery packet instead of pretending a fresh outreach asset exists.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
-      "7 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
-      "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset."
+      "6 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
+      "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity."
     ],
     "owned_content_posts_last_36h": 2,
     "unsubmitted_directory_channels": [],
@@ -430,15 +431,17 @@
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_action_brief.md"
   },
   "distribution_execution": {
-    "lane": "comparison_backlink_outreach",
-    "action_type": "comparison_backlink_outreach_execution",
+    "lane": "distribution_reset",
+    "action_type": "distribution_reset_execution",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_comparison_backlink_outreach_execution.md",
-    "summary": "Prepared comparison-led backlink outreach assets from shared market intelligence so the loop ships a fresh distribution capability instead of queue housekeeping.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_reset_execution.md",
+    "summary": "Shipped a queue-reset/discovery packet so the loop expands into new targets instead of logging saturated follow-through as progress.",
     "targets_prepared": [
-      "Conductor OSS",
-      "Cursor",
-      "GitHub Copilot"
+      "Agent-Analytics/awesome-multi-agent-orchestrators",
+      "dariubs/awesome-workflow-automation",
+      "no-fluff/awesome-vibe-coding",
+      "vivy-yi/awesome-agent-orchestration",
+      "hesreallyhim/awesome-claude-code"
     ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
@@ -453,12 +456,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: lane=comparison_backlink_outreach",
+    "stdout": "skipped: lane=distribution_reset",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: lane=comparison_backlink_outreach",
+    "stdout": "skipped: lane=distribution_reset",
     "stderr": ""
   }
 }

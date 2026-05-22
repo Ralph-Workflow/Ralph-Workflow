@@ -1,42 +1,10 @@
 {
-  "checked_at": "2026-05-22T16:00:11.430461+02:00",
+  "checked_at": "2026-05-22T16:20:58.191211+02:00",
   "verdict": "fail",
   "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
-  "verified_repairs": [
-    {
-      "claim": "Architecture report refresh captured the verifier repair state before fresh independent signoff.",
-      "status": "verified",
-      "details": "agent_architecture_latest.json recorded pending architecture independent verification after the verifier repair."
-    },
-    {
-      "claim": "architecture audit metadata matches the live Gateway cron topology",
-      "status": "verified",
-      "details": "openclaw cron list --json reports 20 live jobs, 20 enabled, 0 disabled, and the architecture artifact matches that state."
-    },
-    {
-      "claim": "architecture verifier now fails closed on stale independent verification",
-      "status": "verified",
-      "details": "agent_architecture_verifier.py now compares the independent artifact against newer architecture/runtime evidence including loop integrity, docs-verifier output, and market-intelligence consumption artifacts, while separately checking health-monitor state."
-    },
-    {
-      "claim": "loop integrity still recognizes the architecture watchdog as a valid covered loop",
-      "status": "verified",
-      "details": "loop_integrity_latest.json reports agent-architecture-watchdog status=ok with no ownership or topology errors."
-    },
-    {
-      "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
-      "status": "verified",
-      "details": "market_intelligence_consumption_latest.json contains acceptable runtime proof for agents/marketing/run.py and agents/marketing/reddit_monitor.py."
-    },
-    {
-      "claim": "marketing learning remains outcome-driven rather than activity-only",
-      "status": "verified",
-      "details": "marketing_workflow_audit_latest.json keeps the bottleneck explicit and ties repairs to Codeberg adoption movement."
-    }
-  ],
+  "verified_repairs": [],
   "remaining_blockers": [
-    "architecture report overall health is not healthy: 'high_risk'",
-    "health monitor has non-architecture issues: system-health-monitor:live_error"
+    "stale evidence: /home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json"
   ],
   "evidence": [
     {
@@ -45,7 +13,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "summary": "Architecture audit refreshed with overall_health='high_risk'."
+      "summary": "Architecture audit refreshed with overall_health=None."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
@@ -53,7 +21,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=20 and issues_found=3."
+      "summary": "Health monitor reports jobs_checked=None and issues_found=None."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
@@ -61,11 +29,11 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "Marketing audit keeps the current bottleneck explicit as 'distribution_and_message_to_primary_repo_conversion'."
+      "summary": "Marketing audit keeps the current bottleneck explicit as None."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "summary": "Marketing independent verification verdict='pass'."
+      "summary": "Marketing independent verification verdict=None."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
