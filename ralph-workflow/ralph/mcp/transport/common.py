@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import json
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -24,6 +25,18 @@ def mcp_toml_as_upstreams(workspace_path: Path | None) -> tuple[UpstreamMcpServe
     config_path = (workspace_path / ".agent" / "mcp.toml") if workspace_path is not None else None
     mcp_config = load_mcp_config(config_path=config_path)
     return mcp_config_as_upstreams(mcp_config)
+
+
+def _parse_json_config_file(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        raw_payload: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw_payload, dict):
+        return {}
+    return cast("dict[str, object]", raw_payload)
 
 
 def mcp_config_as_upstreams(mcp_config: McpConfig) -> tuple[UpstreamMcpServer, ...]:

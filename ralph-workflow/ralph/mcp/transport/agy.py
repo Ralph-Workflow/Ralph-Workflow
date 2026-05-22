@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
+from ralph.mcp.transport.common import _parse_json_config_file
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 # AGY home config directory name within its default config root
@@ -113,19 +114,6 @@ def _agy_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
         *workspace_paths,
         Path.home() / ".gemini" / _AGY_HOME_SUBDIR / "mcp_config.json",
     )
-
-
-def _parse_json_config_file(path: Path) -> dict[str, object]:
-    """Parse a JSON config file, returning empty dict on error."""
-    if not path.exists():
-        return {}
-    try:
-        raw_payload: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(raw_payload, dict):
-        return {}
-    return cast("dict[str, object]", raw_payload)
 
 
 __all__ = [

@@ -32,7 +32,7 @@ def test_agent_registry_from_config_loads_all_agents() -> None:
 
     registry = AgentRegistry.from_config(config)
 
-    assert set(registry.list_agents()) >= {"claude", "claude-headless", "codex", "opencode"}
+    assert set(registry.list_agents()) >= {"claude", "claude-headless", "codex", "opencode", "agy"}
     assert registry.get("opencode") == AgentConfig(cmd="opencode", can_commit=True)
 
 

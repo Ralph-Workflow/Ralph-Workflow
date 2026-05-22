@@ -75,3 +75,36 @@ def test_load_existing_agy_upstream_servers_parses_http_entry(
     assert len(http_servers) == 1
     assert http_servers[0].name == "github"
     assert http_servers[0].url == "https://api.githubcopilot.com/mcp/"
+
+
+def test_load_existing_agy_upstream_servers_reads_workspace_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """It reads workspace-level .agents/mcp_config.json before global config."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    agents_dir = workspace / ".agents"
+    agents_dir.mkdir()
+    config_file = agents_dir / "mcp_config.json"
+    config_file.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "ws-upstream": {
+                        "serverUrl": "http://workspace-upstream:7777/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = load_existing_agy_upstream_servers(workspace_path=workspace)
+
+    names = {s.name for s in result}
+    assert "ws-upstream" in names
+    http_servers = [s for s in result if s.name == "ws-upstream"]
+    assert len(http_servers) == 1
+    assert http_servers[0].url == "http://workspace-upstream:7777/mcp"

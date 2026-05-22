@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
+from ralph.mcp.transport.common import _parse_json_config_file
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 
@@ -50,18 +51,6 @@ def _claude_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
         Path.home() / ".claude.json",
         *workspace_paths,
     )
-
-
-def _parse_json_config_file(path: Path) -> dict[str, object]:
-    if not path.exists():
-        return {}
-    try:
-        raw_payload: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(raw_payload, dict):
-        return {}
-    return cast("dict[str, object]", raw_payload)
 
 
 __all__ = [
