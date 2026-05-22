@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-05-22T03:13:27.003722+02:00",
+  "checked_at": "2026-05-22T05:38:03.940291+02:00",
   "verdict": "pass",
   "summary": "Independent verifier found the marketing owner loop healthy enough to certify while keeping active watchpoints open.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-22T03:13:20.956028"
+      "summary": "runner ok=True generated_at=2026-05-22T05:38:03.917265"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",

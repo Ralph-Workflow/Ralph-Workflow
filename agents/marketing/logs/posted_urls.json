@@ -431,7 +431,31 @@
       "keyword": "Ralph Workflow first task guide",
       "cta": "codeberg_primary_repo",
       "hypothesis": "A concrete first-task guide should convert evaluator interest into a real first run and increase the odds of later Codeberg star/watch/issue signals."
+    },
+    {
+      "date": "2026-05-22",
+      "draft": "2026-05-22_after-your-first-run-codeberg_telegraph.md",
+      "title": "After Your First Ralph Workflow Run, Put the Signal on Codeberg",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/After-Your-First-Ralph-Workflow-Run-Put-the-Signal-on-Codeberg-05-22",
+      "error": null,
+      "draft_hash": "814b17c5d6c1c8346a19243a6d2ea5011a3c0309f02bfab85b34d97e35575089",
+      "experiment_id": "2026-05-22-after-first-run-codeberg"
+    },
+    {
+      "date": "2026-05-22",
+      "draft": "2026-05-22_ai-coding-tool-comparison_telegraph.md",
+      "title": "AI Coding Tool Comparison: Claude Code, Cursor, Aider, and the Workflow Layer Most Teams Actually Need",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/AI-Coding-Tool-Comparison-Claude-Code-Cursor-Aider-and-the-Workflow-Layer-Most-Teams-Actually-Need-05-22",
+      "error": null,
+      "draft_hash": "bc23f5c6f1c7860d8f32df82386933f02b200e279f5890aecda797945c0cc7b1",
+      "experiment_id": "2026-05-22-comparison-asset"
     }
   ],
-  "last_run": "2026-05-22T02:05:42.604488+02:00"
+  "last_run": "2026-05-22T06:06:17.115086"
 }

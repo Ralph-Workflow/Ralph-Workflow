@@ -87,9 +87,23 @@ def digest_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def already_posted_successfully(posted: dict, draft_hash: str, platform: str = None) -> bool:
+def already_posted_successfully(
+    posted: dict,
+    draft_hash: str,
+    platform: str = None,
+    draft_name: str | None = None,
+) -> bool:
     for item in posted.get("posts", []):
-        if (platform is None or item.get("platform") == platform) and item.get("ok") and item.get("draft_hash") == draft_hash:
+        if platform is not None and item.get("platform") != platform:
+            continue
+        if not item.get("ok"):
+            continue
+        if item.get("draft_hash") == draft_hash:
+            return True
+        # 2026-05-22 repair: avoid accidental duplicate Telegraph pages when a same-day
+        # draft gets lightly edited after an earlier successful post. For this workflow,
+        # draft identity matters more than tiny body changes once the public page exists.
+        if draft_name is not None and item.get("draft") == draft_name:
             return True
     return False
 
@@ -226,7 +240,7 @@ def main() -> int:
             continue
 
         draft_hash = digest_text(body)
-        if already_posted_successfully(posted, draft_hash, "telegraph"):
+        if already_posted_successfully(posted, draft_hash, "telegraph", draft.name):
             results.append({
                 "draft": draft.name,
                 "ok": True,

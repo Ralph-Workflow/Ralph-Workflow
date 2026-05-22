@@ -82,7 +82,7 @@ Most agent setups optimize for output volume. Ralph Workflow optimizes for the q
 
 **Proof:**
 - First-task guide on Codeberg: https://codeberg.org/RalphWorkflow/Ralph-Workflow
-- Comparison essay: https://telegra.ph/AI-Agent-Orchestration-CLI-A-Practical-Comparison-for-Developers-05-20
+- Comparison essay: https://telegra.ph/AI-Coding-Tool-Comparison-Claude-Code-Cursor-Aider-and-the-Workflow-Layer-Most-Teams-Actually-Need-05-22
 - Start-here guide: https://telegra.ph/Start-Here-Try-Ralph-Workflow-on-One-Real-Backlog-Task-05-22
 
 **What to ask for:**

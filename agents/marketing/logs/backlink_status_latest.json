@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-21T23:47:31.506167",
+  "generated_at": "2026-05-22T03:36:02.270350+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -18,9 +18,17 @@
           "status": null,
           "ok": false,
           "error": "<urlopen error [Errno -5] No address associated with hostname>"
+        },
+        {
+          "url": "https://aitoolsindex.com/",
+          "status": null,
+          "ok": false,
+          "error": "ENOTFOUND \u2014 domain does not resolve. Site is dead as of 2026-05-22.",
+          "confirmed_dead_at": "2026-05-22T03:36:02.270322+00:00"
         }
       ],
-      "listing_live": false
+      "listing_live": false,
+      "status_override": "DEAD \u2014 domain does not resolve (ENOTFOUND). Do not re-submit or re-check."
     },
     "ToolShelf": {
       "directory": "ToolShelf",
@@ -34,7 +42,8 @@
           "error": "<urlopen error timed out>"
         }
       ],
-      "listing_live": false
+      "listing_live": false,
+      "status_override": "BLOCKED \u2014 connection timeout from this environment. Submission may exist but cannot be verified."
     },
     "SaaSHub": {
       "directory": "SaaSHub",

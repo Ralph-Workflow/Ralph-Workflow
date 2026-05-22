@@ -5192,3 +5192,43 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 - **Measurement window:** 14 days for any referral signal; 30 days for indexed backlinks or Codeberg delta.
 - **Replace if it fails:** If 30 days produce no Codeberg delta and no indexed backlinks from new assets, escalate to a structural redesign of the distribution architecture — not another round of owned content.
 - **Type:** **REPLACING / DISTRIBUTION_CEILING_BREAK**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 05:14:14
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+## 2026-05-22 (Friday) — Marketing workflow audit + structural execution (03:26 UTC / 05:26 CEST)
+- **Verdict: structural ceiling persists. Executing new distribution lane. Critical channel findings updated.**
+  - Codeberg: **10⭐ 2👁 2🍴, 0 delta across 9-sample window** — still flat.
+  - GitHub mirror: **0⭐ 2👁 0🍴, 0 delta** — flat.
+  - **Critical finding: AIToolsIndex.com is DEAD.** Domain returns ENOTFOUND (no address associated). The "in-flight" tracking is wrong — the submission is not pending, the site is unreachable. Treat this channel as dead, not in-flight.
+  - **Critical finding: SaaSHub listing exists** (status 200) but links to ralphworkflow.com, NOT the Codeberg repo. This is a weak backlink at best — it doesn't pass link equity to the primary repo. Do not count SaaSHub as a meaningful backlink channel.
+  - **ToolShelf**: still unreachable from this environment (connection timeout). Treat as blocked, not in-flight.
+  - **GitHub curated list PR**: prepared git commit at `/tmp/awesome-ai-coding-tools/` with Ralph Workflow added to the Coding Agents section. Cannot push/submit PR without GitHub auth. This is a new distribution lane that remains unmade pending auth.
+  - **3 fresh Reddit bodies** added to structural bodies inventory: `outcome_first`, `mechanism_first`, `pure_howto`. These break the `contrast opener → handoff framing → proof bundle → product close` cadence that was confirmed broken across all 6 prior bodies. `direct_statement` cadence is now flagged as broken (3/4 cadence phases detected).
+  - **Structural cadence validator patched** in `agents/marketing/reddit_structural_bodies.py` — now detects and flags the broken cadence pattern. Previously only checked banned openings and sentence-start repetition, missing the structural shape entirely.
+  - Reddit: still structurally broken per audit rule. Do not post until genuinely fresh thread-specific angle surfaces from the 3 new bodies.
+  - **HN/Lobsters packet** still at `drafts/HN_LOBSTERS_ACTIVE_PACKET.md` — still the highest-leverage unmade move. Human action required.
+  - **New curator outreach lane**: GitHub curated lists PR approach added to distribution inventory. Ready to execute pending GitHub auth.
+  - Four marketing questions: all correctly answered, no drift.
+- **What worked:** New distribution lane created (curated list PR). Structural cadence validator patched. 3 genuinely fresh Reddit bodies added to inventory.
+- **What failed:** AIToolsIndex.com is dead (not "in-flight"). SaaSHub backlink is weak. GitHub PR can't be submitted without auth. Reddit cadence structurally broken — fresh bodies provided but posting still suspended per audit rule.
+- **What is repetitive:** "Monitor AIToolsIndex and ToolShelf" — both are now confirmed dead/blocked, not in-flight. This tracking should stop.
+- **What is low leverage:** More backlink monitoring passes for dead/blocked directories. More owned-surface polish without new distribution.
+- **Current bottleneck:** HN/Lobsters human execution (7+ cycles). GitHub auth for curated list PR. Both are human-dependent, not autonomously executable from this environment.
+- **Next higher-leverage move:**
+  1. **Human: execute HN/Lobsters** from `drafts/HN_LOBSTERS_ACTIVE_PACKET.md` — highest-leverage unmade move, 7+ cycles.
+  2. **Human: provide GitHub auth token** to enable curated list PR submission to awesome-ai-coding-tools and other GitHub-hosted lists.
+  3. Reddit: use `outcome_first`, `mechanism_first`, or `pure_howto` bodies when a genuinely thread-specific fit surfaces — these break the cadence pattern.
+  4. Stop monitoring AIToolsIndex (dead) and ToolShelf (blocked). Reallocate that tracking effort.
+- **Measurement window:** 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta.
+- **Replace if it fails:** if HN/Lobsters posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, shift to direct human outreach (competitor citation, comparison page outreach, or evaluator-path experiments).
+- **Type:** **AUDIT / EXECUTION**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 05:38:03
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 05:39:21
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-21T23:41:31.342365",
+  "generated_at": "2026-05-22T03:34:44.690735",
   "source": "reddit_structural_bodies.py",
   "cadences": [
     {
@@ -10,7 +10,17 @@
       "validation": {
         "never_use_violations": [],
         "repetitive_sentence_starts": [],
-        "passed": true
+        "structural_cadence": {
+          "phases_triggered": [
+            "contrast_opener",
+            "handoff_framing",
+            "proof_bundle"
+          ],
+          "cadence_score": 3,
+          "is_broken": true,
+          "note": "3/4 cadence phases \u2014 BROKEN (do not use)"
+        },
+        "passed": false
       }
     },
     {
@@ -21,6 +31,14 @@
       "validation": {
         "never_use_violations": [],
         "repetitive_sentence_starts": [],
+        "structural_cadence": {
+          "phases_triggered": [
+            "handoff_framing"
+          ],
+          "cadence_score": 1,
+          "is_broken": false,
+          "note": "1/4 cadence phases \u2014 OK"
+        },
         "passed": true
       }
     },
@@ -32,6 +50,15 @@
       "validation": {
         "never_use_violations": [],
         "repetitive_sentence_starts": [],
+        "structural_cadence": {
+          "phases_triggered": [
+            "contrast_opener",
+            "handoff_framing"
+          ],
+          "cadence_score": 2,
+          "is_broken": false,
+          "note": "2/4 cadence phases \u2014 OK"
+        },
         "passed": true
       }
     },
@@ -43,6 +70,15 @@
       "validation": {
         "never_use_violations": [],
         "repetitive_sentence_starts": [],
+        "structural_cadence": {
+          "phases_triggered": [
+            "contrast_opener",
+            "handoff_framing"
+          ],
+          "cadence_score": 2,
+          "is_broken": false,
+          "note": "2/4 cadence phases \u2014 OK"
+        },
         "passed": true
       }
     },
@@ -54,6 +90,14 @@
       "validation": {
         "never_use_violations": [],
         "repetitive_sentence_starts": [],
+        "structural_cadence": {
+          "phases_triggered": [
+            "handoff_framing"
+          ],
+          "cadence_score": 1,
+          "is_broken": false,
+          "note": "1/4 cadence phases \u2014 OK"
+        },
         "passed": true
       }
     },
@@ -65,8 +109,71 @@
       "validation": {
         "never_use_violations": [],
         "repetitive_sentence_starts": [],
+        "structural_cadence": {
+          "phases_triggered": [
+            "contrast_opener",
+            "handoff_framing"
+          ],
+          "cadence_score": 2,
+          "is_broken": false,
+          "note": "2/4 cadence phases \u2014 OK"
+        },
         "passed": true
       }
+    },
+    {
+      "id": "outcome_first",
+      "label": "Outcome First",
+      "description": "Concrete result leads, mechanism follows, product context closes",
+      "body": "Three hours of real backlog work, done by 7am. Not a demo task \u2014 an actual three-file refactor with a test suite update.\n\nWhat made it possible was not a better model. It was defining the finish line before starting: one paragraph spec, bounded scope, named finish criterion. Then the agent worked, and in the morning the output was a diff I could read, test evidence I could verify, and a short named list of what still needed a call.\n\nMost AI coding discussions focus on the model. The more useful variable is the spec at the start and the review surface at the end.\n\nRalph Workflow is free open-source software that runs existing AI coding tools (Claude Code, Codex CLI, OpenCode) through that pattern on your own machine. Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+      "validation": {
+        "never_use_violations": [],
+        "repetitive_sentence_starts": [],
+        "structural_cadence": {
+          "phases_triggered": [],
+          "cadence_score": 0,
+          "is_broken": false,
+          "note": "0/4 cadence phases \u2014 intentionally fresh structure"
+        },
+        "passed": true
+      },
+      "source": "drafts/2026-05-22_reddit_fresh_bodies.md"
+    },
+    {
+      "id": "mechanism_first",
+      "label": "Mechanism First",
+      "description": "How-to frame leads, step sequence, product closes",
+      "body": "The failure mode I see most often with AI coding agents is not the agent itself \u2014 it's that nobody defined what success looks like before starting.\n\nGive an agent an underspecified task and it will confidently finish before the task is actually done. The confidence is not a signal. The diff is.\n\nThe setup that changed this for me: write the finish line before running. Not a long prompt. A one-paragraph spec with a named finish criterion. Run the agent. In the morning, open the diff, not the summary.\n\nRalph Workflow is a free open-source workflow that enforces exactly this \u2014 spec-first, evidence-based finish, your judgment at the end. On your own machine. Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+      "validation": {
+        "never_use_violations": [],
+        "repetitive_sentence_starts": [],
+        "structural_cadence": {
+          "phases_triggered": [],
+          "cadence_score": 0,
+          "is_broken": false,
+          "note": "0/4 cadence phases \u2014 intentionally fresh structure"
+        },
+        "passed": true
+      },
+      "source": "drafts/2026-05-22_reddit_fresh_bodies.md"
+    },
+    {
+      "id": "pure_howto",
+      "label": "Pure How-To",
+      "description": "Numbered steps sequence, no before/after narrative, product at end of steps",
+      "body": "How to set up a coding agent for overnight backlog work:\n\n1. Write a one-paragraph spec before starting. Not a prompt \u2014 a finish-line definition. What does 'done' look like, specifically?\n\n2. Run the agent against that spec. Let it work unsupervised.\n\n3. In the morning: open the diff first, not the summary. Read the checks. Make the calls that actually need a human.\n\nStep 3 is where most setups fail \u2014 they end in a confident blob instead of a review surface. Ralph Workflow is built around step 3: it tries to end every run with finished code, check evidence, and a short named list of open decisions instead of a summary. Runs existing agents on your own machine. Free and open-source. Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+      "validation": {
+        "never_use_violations": [],
+        "repetitive_sentence_starts": [],
+        "structural_cadence": {
+          "phases_triggered": [],
+          "cadence_score": 0,
+          "is_broken": false,
+          "note": "0/4 cadence phases \u2014 intentionally fresh structure"
+        },
+        "passed": true
+      },
+      "source": "drafts/2026-05-22_reddit_fresh_bodies.md"
     }
   ]
 }
