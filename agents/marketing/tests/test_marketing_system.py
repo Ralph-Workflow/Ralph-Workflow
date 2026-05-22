@@ -1019,6 +1019,8 @@ class MarketingLoopRunnerTests(unittest.TestCase):
     def test_runner_executes_outcome_engine_before_reporting_scripts(self):
         self.assertEqual(marketing_loop_runner.SCRIPTS[0].name, 'run.py')
         self.assertIn('marketing_workflow_audit.py', [path.name for path in marketing_loop_runner.SCRIPTS])
+        self.assertIn('marketing_loop_independent_verify.py', [path.name for path in marketing_loop_runner.SCRIPTS])
+        self.assertEqual(marketing_loop_runner.SCRIPTS[-1].name, 'marketing_loop_verifier.py')
 
 
 class MarketingMomentumWatchdogTests(unittest.TestCase):
@@ -1076,11 +1078,16 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
         self.assertNotIn('outcome_system_repair_missing', payload['actions'])
         self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
 
-    def test_watchdog_accepts_distribution_reset_as_live_outcome_repair(self):
-        rc, payload = self._run_watchdog_with_action('distribution_reset_execution')
+    def test_watchdog_accepts_curator_handoff_packet_as_live_outcome_repair(self):
+        rc, payload = self._run_watchdog_with_action('curator_handoff_packet_execution')
         self.assertEqual(rc, 0)
         self.assertNotIn('outcome_system_repair_missing', payload['actions'])
         self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
+
+    def test_watchdog_rejects_distribution_reset_as_insufficient_live_outcome_repair(self):
+        rc, payload = self._run_watchdog_with_action('distribution_reset_execution')
+        self.assertEqual(rc, 1)
+        self.assertIn('outcome_system_repair_missing', payload['actions'])
 
     def test_watchdog_rejects_curator_follow_through_as_live_outcome_repair(self):
         rc, payload = self._run_watchdog_with_action('curator_queue_follow_through')
@@ -1219,12 +1226,19 @@ class MarketingLoopCertificationTests(unittest.TestCase):
         }
         self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
 
-    def test_checker_accepts_distribution_reset_execution_as_system_redesign_shipment(self):
+    def test_checker_accepts_curator_handoff_packet_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'curator_handoff_packet_execution', 'ok': True},
+            'repair_actions': [],
+        }
+        self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
+
+    def test_checker_rejects_distribution_reset_execution_as_system_redesign_shipment(self):
         audit = {
             'latest_executed_action': {'type': 'distribution_reset_execution', 'ok': True},
             'repair_actions': [],
         }
-        self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
+        self.assertFalse(marketing_loop_checker.shipped_system_redesign(audit))
 
     def test_checker_refuses_to_certify_flat_primary_repo_even_when_measurement_is_pending(self):
         ok, reason = marketing_loop_checker.watch_state_is_certifiable(
@@ -1237,6 +1251,20 @@ class MarketingLoopCertificationTests(unittest.TestCase):
     def test_independent_verifier_rejects_curator_follow_through_as_system_redesign_shipment(self):
         audit = {
             'latest_executed_action': {'type': 'curator_queue_follow_through', 'ok': True},
+            'repair_actions': [],
+        }
+        self.assertFalse(marketing_loop_independent_verify.shipped_system_redesign(audit))
+
+    def test_independent_verifier_accepts_curator_handoff_packet_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'curator_handoff_packet_execution', 'ok': True},
+            'repair_actions': [],
+        }
+        self.assertTrue(marketing_loop_independent_verify.shipped_system_redesign(audit))
+
+    def test_independent_verifier_rejects_distribution_reset_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'distribution_reset_execution', 'ok': True},
             'repair_actions': [],
         }
         self.assertFalse(marketing_loop_independent_verify.shipped_system_redesign(audit))

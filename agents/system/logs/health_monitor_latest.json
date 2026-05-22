@@ -1,7 +1,47 @@
 {
-  "ts": "2026-05-22T19:07:15.685315",
+  "ts": "2026-05-22T20:05:25.532714",
   "jobs_checked": 20,
-  "issues_found": 0,
-  "issues": [],
-  "repairs_attempted": []
+  "issues_found": 3,
+  "issues": [
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+      "required_text": "Status: independently verified pass",
+      "likely_cause": "Verifier artifact exists but does not show required pass contract"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification",
+      "category": "loop_verification_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "verdict": "fail",
+      "required_verdict": "pass",
+      "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
+      "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "agent_architecture_verifier_runtime",
+      "category": "artifact_contract_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-22T20:05:21.496965+02:00\"\n}",
+      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
+    }
+  ],
+  "repairs_attempted": [
+    {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": false,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": false,
+      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_"
+    }
+  ]
 }

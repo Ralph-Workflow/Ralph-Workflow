@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T19:03:11.647808",
+  "timestamp": "2026-05-22T19:26:13.629377",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-22T18:28:53.828649",
+    "timestamp": "2026-05-22T19:18:22.250910",
     "metrics": [
       {
         "platform": "GitHub",
@@ -410,13 +410,14 @@
     }
   },
   "distribution_lane": {
-    "lane": "distribution_reset",
-    "reason": "Curator and comparison queues are both saturated; ship a new queue-reset/discovery packet instead of pretending a fresh outreach asset exists.",
+    "lane": "curator_handoff_packet",
+    "reason": "Prepared curator targets exist but still lack one canonical execution packet; consolidate the best unsent targets instead of resetting the lane again.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "11 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "11 prepared curator targets still need a canonical execution handoff packet.",
       "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity."
     ],
@@ -431,20 +432,17 @@
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_action_brief.md"
   },
   "distribution_execution": {
-    "lane": "distribution_reset",
-    "action_type": "distribution_reset_execution",
+    "lane": "curator_handoff_packet",
+    "action_type": "curator_handoff_packet_execution",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_reset_execution.md",
-    "summary": "Shipped a queue-reset/discovery packet so the loop expands into new targets instead of logging saturated follow-through as progress.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_curator_handoff_packet.md",
+    "summary": "Consolidated the highest-priority prepared curator targets into one canonical execution packet instead of repeating another reset/discovery cycle.",
     "targets_prepared": [
-      "Hermes Agent",
-      "Conductor OSS",
-      "Conductor (Teams)",
-      "Aider",
-      "Continue",
-      "Cursor",
-      "Claude Code",
-      "GitHub Copilot"
+      "2. filipecalegario/awesome-vibe-coding",
+      "7. 0xWelt/Awesome-Vibe-Coding",
+      "Agent-Analytics/awesome-multi-agent-orchestrators",
+      "dariubs/awesome-workflow-automation",
+      "hesreallyhim/awesome-claude-code"
     ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
@@ -459,12 +457,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: lane=distribution_reset",
+    "stdout": "skipped: lane=curator_handoff_packet",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: lane=distribution_reset",
+    "stdout": "skipped: lane=curator_handoff_packet",
     "stderr": ""
   }
 }

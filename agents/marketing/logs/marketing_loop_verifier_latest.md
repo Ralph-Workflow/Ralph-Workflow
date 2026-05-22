@@ -1,11 +1,11 @@
 # Marketing Loop Independent Verification
 
-- Checked: 2026-05-22T19:03:22.729544
-- Status: independently verified pass
+- Checked: 2026-05-22T19:24:47.207717
+- Status: independently verified fail
 - Independent artifact: `/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json`
-- Independent check time: 2026-05-22T19:03:22.706198+02:00
-- Summary: Independent verifier found the marketing owner loop healthy enough to certify while keeping active watchpoints open.
+- Independent check time: 2026-05-22T19:24:47.184585+02:00
+- Summary: Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.
 
 ## Verification result
 
-- Independent verification artifact is present, fresh, and passed.
+- independent verifier did not pass (verdict='fail')

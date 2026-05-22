@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-05-22T19:26:13.629377",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "curator_handoff_packet_execution",
+    "channel": "curator_handoff_packet",
+    "title": "Distribution lane execution: curator_handoff_packet",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_curator_handoff_packet.md"
+  },
+  "why_this_action": {
+    "summary": "Consolidated the highest-priority prepared curator targets into one canonical execution packet instead of repeating another reset/discovery cycle.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+    ],
+    "targets_prepared": [
+      "2. filipecalegario/awesome-vibe-coding",
+      "7. 0xWelt/Awesome-Vibe-Coding",
+      "Agent-Analytics/awesome-multi-agent-orchestrators",
+      "dariubs/awesome-workflow-automation",
+      "hesreallyhim/awesome-claude-code"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true
+  }
+}
