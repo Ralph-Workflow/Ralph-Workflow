@@ -75,13 +75,13 @@ Do not rely on Codex for environments that require strict tool isolation. Ralph 
 
 Reference: https://platform.openai.com/docs/codex
 
-### Google Anti Gravity - Best-Effort
+### Google Anti Gravity - Full Enforcement (Config-Discovery-Based)
 
-Google Anti Gravity (AGY) does not have a documented environment variable that redirects its config root. Ralph Workflow therefore discovers AGY upstream servers from the user's existing config files: `~/.gemini/antigravity-cli/mcp_config.json` and workspace-level `.agents/mcp_config.json`.
+Google Anti Gravity (AGY) is a first-class supported agent path under the same MCP enforcement contract as Claude Code and OpenCode. The distinction from those backends is that AGY has no documented environment variable for config root redirection, so Ralph Workflow uses config-discovery-based upstream loading rather than direct injection.
 
-Users who want the full Ralph MCP contract must pre-configure the Ralph MCP endpoint in AGY's `mcp_config.json` as a `serverUrl` entry. Ralph Workflow reads that existing config, normalizes AGY's `serverUrl` HTTP entries, and re-exposes those upstream tools as Ralph Workflow-owned proxied aliases.
+Ralph Workflow discovers AGY upstream servers from the user's existing config files: `~/.gemini/antigravity-cli/mcp_config.json` and workspace-level `.agents/mcp_config.json`. Users must pre-configure the Ralph MCP endpoint in AGY's `mcp_config.json` as a `serverUrl` entry; Ralph Workflow reads that existing config, normalizes AGY's `serverUrl` HTTP entries, and re-exposes those upstream tools as Ralph Workflow-owned proxied aliases.
 
-AGY participates in Ralph's upstream proxy model and still runs under Ralph's capability-gated MCP model and completion contract. There is no documented home-root override, so Ralph treats AGY as config-discovery based rather than direct-injection based.
+AGY participates fully in Ralph's upstream proxy model, capability-gated MCP model, and completion contract. There is no documented home-root override, so Ralph treats AGY as config-discovery-based rather than direct-injection-based — a setup difference, not a capability limitation.
 
 ## 3. Known Bugs and Limitations
 

@@ -122,6 +122,16 @@
 # can_commit = false
 # display_name = "OpenCode"
 
+# [agents.agy]
+# cmd = "agy"
+# transport = "agy"
+# yolo_flag = "--dangerously-skip-permissions"
+# print_flag = "--print"
+# session_flag = "--conversation {}"
+# json_parser = "generic"
+# can_commit = false
+# display_name = "Google Anti Gravity"
+
 # [agents.prompt-helper-agent]
 # cmd = "claude"
 # transport = "claude_interactive"
@@ -134,7 +144,7 @@
 # ---------------------------------------------------------------------------
 # [agent_chains.*] — Named reusable chain definitions (list of agent names)
 # The active defaults below are the recommended starting point. They showcase
-# explicit model families and ordered fallback across Claude, OpenCode, and Codex.
+# explicit model families and ordered fallback across Claude, OpenCode, Codex, and Google Anti Gravity (agy).
 # ---------------------------------------------------------------------------
 
 [agent_chains]

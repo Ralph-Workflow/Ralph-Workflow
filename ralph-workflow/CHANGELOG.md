@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Google Anti Gravity (AGY) is now a first-class supported agent path.** Ralph Workflow officially supports running Google Anti Gravity alongside Claude, Codex, and OpenCode under the same unattended orchestration contract. AGY sessions require explicit completion evidence (`declare_complete` or a phase artifact), receive MCP tooling through Ralph's capability-gated model, have upstream MCP servers (from `~/.gemini/antigravity-cli/mcp_config.json` or workspace `.agents/mcp_config.json`) normalized and proxied via Ralph's upstream layer, and have multimodal delivery resolved through the Gemini provider profile. Because AGY does not expose an env-var config-root override, users must pre-configure the Ralph MCP endpoint in their AGY native config file; Ralph then reads and re-exposes those servers automatically. Use `ralph --check-mcp` to verify AGY transport compatibility before a run.
 - **Dedicated `waiting_status_line` field on `PipelineSnapshot`.** Child-wait status updates
   are now routed to a separate `waiting_status_line` field instead of overwriting
   `last_activity_line`, so agent tool/content activity and waiting status can be displayed

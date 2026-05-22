@@ -201,7 +201,7 @@ retry_delay_ms = 1000
 
 [agent_chains]
 planning = ["claude/opus"]
-development = ["opencode/minimax/MiniMax-M2.7-highspeed", "codex", "claude/sonnet"]
+development = ["agy", "opencode/minimax/MiniMax-M2.7-highspeed", "codex", "claude/sonnet"]
 analysis = ["opencode/openai/gpt-5.4"]
 commit = ["claude/haiku"]
 
@@ -212,6 +212,8 @@ development = "development"
 development_analysis = "analysis"
 development_commit = "commit"
 ```
+
+`agy` (Google Anti Gravity) is also a valid agent name in any chain alongside `claude`, `codex`, and `opencode`.
 
 In practice:
 
@@ -224,10 +226,10 @@ Multiple drains can point at the same chain. That lets you change agent policy w
 
 ```toml
 [agent_chains]
-development = ["codex", "claude/sonnet", "opencode/minimax/MiniMax-M2.7-highspeed"]
+development = ["agy", "codex", "claude/sonnet"]
 ```
 
-Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"**
+Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"** — valid agent names include `claude`, `codex`, `opencode`, and `agy`.
 
 ### Example: use a repo-local override for one project only
 
