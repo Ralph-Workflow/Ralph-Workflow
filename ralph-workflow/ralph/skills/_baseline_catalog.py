@@ -58,7 +58,7 @@ MANDATORY_DEFAULTS: tuple[BaselineCapability, ...] = (
     ),
     BaselineCapability(
         "skills_bundle",
-        "obra/superpowers and ECC security/verification/coding-standards skill bundles",
+        "Ralph Workflow first-party skill bundle (17 skills: Superpowers + quality subset)",
         "mandatory",
     ),
 )
@@ -79,7 +79,7 @@ CONDITIONAL_DEFAULTS: tuple[BaselineCapability, ...] = (
 NON_DEFAULTS: tuple[BaselineCapability, ...] = (
     BaselineCapability(
         "github",
-        "github/github-mcp-server — requires credentials",
+        "github/github-mcp-server - requires credentials",
         "non_default",
     ),
     BaselineCapability(

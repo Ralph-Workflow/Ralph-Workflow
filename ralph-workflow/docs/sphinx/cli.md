@@ -36,7 +36,7 @@ See [Policy Explanation](policy-explanation.md) for the deeper inspection view.
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP, pipeline, and artifact files. Also installs the `obra/superpowers` and ECC skill bundles and runs a baseline capability health check. `ralph --init` with no label is the recommended form. |
+| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP, pipeline, and artifact files. Also installs the first-party Ralph Workflow skill bundle from the shipped package assets and runs a baseline capability health check. `ralph --init` with no label is the recommended form. |
 | `--init-local-config` | | `False` | Create `.agent/` config files as explicit project-local copies of the main Ralph Workflow config set |
 | `--regenerate-config` | | `False` | Rewrite config files from bundled defaults and keep backups as `<name>.bak` |
 

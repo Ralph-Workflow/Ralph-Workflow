@@ -2,10 +2,19 @@ PLANNING MODE
 
 {% include 'shared/_unattended_mode.j2' %}
 
+{% if SKILLS_INLINE_CONTENT %}
+{{ SKILLS_INLINE_CONTENT }}
+{% else %}
 ## BASELINE WORKFLOW SKILLS
 
-Skills available from the installed workflow bundle (read and apply as appropriate):
+Skills available from the Ralph Workflow shipped skill bundle (read and apply as appropriate):
 - `using-superpowers` (all planning tasks), `writing-plans` (multi-step plans), `brainstorming` (open-ended shaping), `executing-plans` (plan-to-execution), `dispatching-parallel-agents`/`subagent-driven-development` (parallel work), `coding-standards` and `verification-loop` (quality bars)
+{% endif %}
+
+{% if LAST_RETRY_ERROR %}
+Recent retry context:
+{{ LAST_RETRY_ERROR }}
+{% endif %}
 
 Create an execution plan for:
 

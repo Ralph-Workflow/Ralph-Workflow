@@ -10,9 +10,14 @@ You are continuing a DEVELOPMENT iteration. Resume from the prior work, follow t
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
+{% if SKILLS_INLINE_CONTENT %}
+## SHIPPED SKILL BUNDLE
+
+{{ SKILLS_INLINE_CONTENT }}
+{% else %}
 ## BASELINE WORKFLOW SKILLS
 
-The following skills from the `obra/superpowers` and ECC workflow bundles apply to this development continuation task. Read and apply the relevant ones before proceeding:
+The following skills from the Ralph Workflow shipped skill bundle apply to this development continuation task. Read and apply the relevant ones before proceeding:
 
 - **`using-superpowers`** — read at the start of every developer task
 - **`test-driven-development`** — apply for feature work and bugfix work
@@ -23,6 +28,7 @@ The following skills from the `obra/superpowers` and ECC workflow bundles apply 
 - **`security-review`**, **`verification-loop`**, **`coding-standards`** — apply as baseline quality controls
 - **`using-git-worktrees`** — apply when isolated feature work or risky parallel work is required
 - **`finishing-a-development-branch`** — apply when implementation is complete and integration choices must be made
+{% endif %}
 
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not complete successfully.

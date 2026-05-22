@@ -1,51 +1,51 @@
 """Tests for ralph.skills._installer check_skills_update_available."""
 
-from unittest.mock import patch
+from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+from ralph.skills._content import materialize_skills_to_dir
 from ralph.skills._installer import check_skills_update_available
 
+if TYPE_CHECKING:
+    from pathlib import Path
 
-class TestCheckSkillsUpdateAvailable:
-    def test_returns_true_when_update_available_text_in_output(self) -> None:
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = b""
-            mock_run.return_value.stderr = b"  obra/superpowers - update available\n"
-            result = check_skills_update_available()
-            assert result is True
+    import pytest
 
-    def test_returns_true_when_updates_available_plural_in_output(self) -> None:
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = b"obra/superpowers - updates available\n"
-            mock_run.return_value.stderr = b""
-            result = check_skills_update_available()
-            assert result is True
 
-    def test_returns_false_on_non_zero_exit(self) -> None:
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 1
-            result = check_skills_update_available()
-            assert result is False
+def test_check_skills_update_available_returns_true_when_dir_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "ralph.skills._installer._installed_skills_dir",
+        lambda: tmp_path / "missing-skills",
+    )
+    assert check_skills_update_available() is True
 
-    def test_returns_false_on_timeout(self) -> None:
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = TimeoutError()
-            result = check_skills_update_available()
-            assert result is False
 
-    def test_returns_false_when_no_update_text(self) -> None:
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = b"obra/superpowers - installed\n"
-            mock_run.return_value.stderr = b""
-            result = check_skills_update_available()
-            assert result is False
+def test_check_skills_update_available_returns_false_when_contents_match(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    installed_dir = tmp_path / "skills"
+    materialize_skills_to_dir(installed_dir)
+    monkeypatch.setattr(
+        "ralph.skills._installer._installed_skills_dir",
+        lambda: installed_dir,
+    )
+    assert check_skills_update_available() is False
 
-    def test_case_insensitive_detection(self) -> None:
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = b"UPDATE AVAILABLE\n"
-            mock_run.return_value.stderr = b""
-            result = check_skills_update_available()
-            assert result is True
+
+def test_check_skills_update_available_returns_true_when_content_differs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    installed_dir = tmp_path / "skills"
+    materialize_skills_to_dir(installed_dir)
+    (installed_dir / "using-superpowers.md").write_text("changed", encoding="utf-8")
+    monkeypatch.setattr(
+        "ralph.skills._installer._installed_skills_dir",
+        lambda: installed_dir,
+    )
+    assert check_skills_update_available() is True

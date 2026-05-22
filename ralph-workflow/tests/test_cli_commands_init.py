@@ -67,7 +67,7 @@ def test_init_command_calls_ensure_baseline_capabilities(
     ) -> object:
         nonlocal called
         called = True
-        from ralph.skills._state import CapabilityState
+        from ralph.skills._capability_state import CapabilityState
         return CapabilityState()
 
     from ralph.skills import manager as manager_module
@@ -89,7 +89,9 @@ def test_init_command_prints_capability_summary(
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
 
-    from ralph.skills._state import CapabilityEntry, CapabilityState, CapabilityStatus
+    from ralph.skills._capability_entry import CapabilityEntry
+    from ralph.skills._capability_state import CapabilityState
+    from ralph.skills._capability_status import CapabilityStatus
 
     def fake_ensure(
         _self_obj: object, *, workspace_root: object

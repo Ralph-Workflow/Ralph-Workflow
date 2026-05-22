@@ -17,14 +17,18 @@ class TestCondenseContentSummaryContract:
     def test_2tuple_returned_when_summary_false(self) -> None:
         result = condense_content("x" * 6000)
         assert len(result) == _EXPECTED_2TUPLE
-        visible, condensed = result
+        visible = result[0]
+        condensed = result[1]
         assert isinstance(visible, str)
         assert isinstance(condensed, bool)
 
     def test_4tuple_returned_when_summary_true(self) -> None:
         result = condense_content("x" * 6000, options=CondenseOptions(summary=True))
         assert len(result) == _EXPECTED_4TUPLE
-        visible, condensed, summary_line, ai_summary_line = result
+        visible = result[0]
+        condensed = result[1]
+        summary_line = result[2]
+        ai_summary_line = result[3]
         assert isinstance(visible, str)
         assert condensed is True
         assert summary_line is None or isinstance(summary_line, str)
@@ -32,7 +36,10 @@ class TestCondenseContentSummaryContract:
 
     def test_summary_none_for_short_text(self) -> None:
         result = condense_content("short", options=CondenseOptions(summary=True))
-        _visible, condensed, summary_line, ai_summary_line = result
+        _visible = result[0]
+        condensed = result[1]
+        summary_line = result[2] if len(result) == _EXPECTED_4TUPLE else None
+        ai_summary_line = result[3] if len(result) == _EXPECTED_4TUPLE else None
         assert condensed is False
         assert summary_line is None
         assert ai_summary_line is None

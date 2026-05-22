@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.agents.chain import ChainManager
+    from ralph.agents.registry import AgentRegistry
+    from ralph.policy.models import AgentsPolicy, ArtifactsPolicy, PipelinePolicy
 
 import pytest
 from git import Repo
@@ -24,13 +28,18 @@ from ralph.workspace.fs import FsWorkspace
 
 def _fs_context(root: Path) -> PhaseContext:
     workspace = FsWorkspace(root)
+    registry = cast("AgentRegistry", object())
+    chain_manager = cast("ChainManager", object())
+    pipeline_policy = cast("PipelinePolicy", object())
+    agents_policy = cast("AgentsPolicy", object())
+    artifacts_policy = cast("ArtifactsPolicy", object())
     return PhaseContext.construct(
         workspace=workspace,
-        registry=object(),
-        chain_manager=object(),
-        pipeline_policy=object(),
-        agents_policy=object(),
-        artifacts_policy=object(),
+        registry=registry,
+        chain_manager=chain_manager,
+        pipeline_policy=pipeline_policy,
+        agents_policy=agents_policy,
+        artifacts_policy=artifacts_policy,
     )
 
 

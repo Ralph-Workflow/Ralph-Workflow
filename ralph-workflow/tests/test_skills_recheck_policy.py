@@ -2,8 +2,9 @@
 
 from datetime import UTC, datetime, timedelta
 
+from ralph.skills._capability_entry import CapabilityEntry
+from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._recheck_policy import RecheckPolicy, needs_recheck
-from ralph.skills._state import CapabilityEntry, CapabilityStatus
 
 
 def _make_entry(

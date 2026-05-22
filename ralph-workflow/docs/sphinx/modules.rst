@@ -2875,6 +2875,13 @@ ralph.prompts.materialize
    :members:
    :show-inheritance:
 
+ralph.prompts.materialize_support
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.prompts.materialize_support
+   :members:
+   :show-inheritance:
+
 ralph.prompts.payload_refs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -1,6 +1,8 @@
-"""Tests for ralph.skills._state."""
+"""Tests for ralph.skills._capability_* modules."""
 
-from ralph.skills._state import CapabilityEntry, CapabilityState, CapabilityStatus
+from ralph.skills._capability_entry import CapabilityEntry
+from ralph.skills._capability_state import CapabilityState
+from ralph.skills._capability_status import CapabilityStatus
 
 
 def test_capability_status_six_values() -> None:

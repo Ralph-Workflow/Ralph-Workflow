@@ -35,7 +35,7 @@ Use the default initializer first:
 ralph --init
 ```
 
-`ralph --init` scaffolds `PROMPT.md` plus the standard project-local support files used for MCP, pipeline, and artifact configuration. It also installs the `obra/superpowers` and ECC workflow skill bundles via `claude plugin install` and prints a Baseline Capabilities summary showing the health of all default helpers. If you explicitly want a project-local override copy of the main config, create `.agent/ralph-workflow.toml` with:
+`ralph --init` scaffolds `PROMPT.md` plus the standard project-local support files used for MCP, pipeline, and artifact configuration. It also installs the first-party Ralph Workflow skill bundle from the shipped Python package assets and prints a Baseline Capabilities summary showing the health of all default helpers. If you explicitly want a project-local override copy of the main config, create `.agent/ralph-workflow.toml` with:
 
 ```bash
 ralph --init-local-config

@@ -18,7 +18,9 @@ from ralph.policy.models import (
     PipelinePolicy,
     PolicyBundle,
 )
-from ralph.skills._state import CapabilityEntry, CapabilityState, CapabilityStatus
+from ralph.skills._capability_entry import CapabilityEntry
+from ralph.skills._capability_state import CapabilityState
+from ralph.skills._capability_status import CapabilityStatus
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:

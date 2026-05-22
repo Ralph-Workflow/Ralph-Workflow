@@ -279,3 +279,5 @@ __marimo__/
 .playwright-mcp/
 tmp/
 **/tmp/
+
+skills-package/
