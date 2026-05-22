@@ -7,15 +7,18 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ralph.config.mcp_loader import McpConfigError, load_mcp_config
+from ralph.skills._capability_entry import CapabilityEntry
+from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._docs_mcp_probe import is_supported_docs_mcp_url, probe_docs_mcp
 from ralph.skills._installer import check_skills_update_available, install_baseline_skills
 from ralph.skills._recheck_policy import DEFAULT_POLICY, RecheckPolicy, needs_recheck
-from ralph.skills._state import CapabilityEntry, CapabilityState, CapabilityStatus
 from ralph.skills._state_store import load_capability_state, save_capability_state
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.skills._capability_state import CapabilityState
 
 
 def _now_iso() -> str:

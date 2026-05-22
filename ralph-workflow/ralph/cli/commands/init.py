@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.skills._capability_state import CapabilityState
 
     class _LoadConfigFn(Protocol):
         def __call__(
@@ -55,7 +56,7 @@ if TYPE_CHECKING:
 
 from ralph.display.context import make_display_context
 from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
-from ralph.skills._state import CapabilityState, CapabilityStatus
+from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 

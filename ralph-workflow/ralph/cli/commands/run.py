@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import os
 import shutil
+from contextlib import ExitStack
 from importlib import import_module
 from inspect import signature
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
+from typing import TYPE_CHECKING, NamedTuple, Protocol, Unpack, cast
 
 from loguru import logger
 from rich.panel import Panel
@@ -44,6 +45,7 @@ from ralph.policy.validation import (
     validate_recovery_config,
     validate_required_inputs,
 )
+from ralph.skills._process_view import SkillsProcessView, has_machine_global_skills
 from ralph.skills._state_store import default_state_path
 from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
@@ -468,6 +470,13 @@ def _pipeline_config_error_text(message: str) -> Text:
     return text
 
 
+def _maybe_enter_process_view(stack: ExitStack) -> Path | None:
+    """Enter a process-scoped skills view when machine-global skills are unavailable."""
+    if has_machine_global_skills():
+        return None
+    return stack.enter_context(SkillsProcessView())
+
+
 def _warn_if_capabilities_degraded(console: Console, workspace_root: Path) -> None:
     """Print a soft warning if any baseline capability appears degraded (no network I/O)."""
     state_path = default_state_path()
@@ -507,7 +516,7 @@ def run_pipeline(
     request: RunPipelineRequest | None = None,
     *,
     display_context: DisplayContext | None = None,
-    **kwargs: _LegacyRunPipelineKwargs,
+    **kwargs: Unpack[_LegacyRunPipelineKwargs],
 ) -> int:
     """Run the Ralph Workflow pipeline (backward compatibility wrapper).
 
@@ -524,18 +533,19 @@ def run_pipeline(
     """
     ctx = display_context if display_context is not None else make_display_context()
     if request is None:
+        manifest_from_kwargs = kwargs.get("parallel_worker_manifest")
         request = RunPipelineRequest(
-            config_path=cast("Path | None", kwargs.get("config_path")),
-            cli_overrides=cast("ConfigOverrides | None", kwargs.get("cli_overrides")),
-            dry_run=cast("bool", kwargs.get("dry_run", False)),
-            resume=cast("bool", kwargs.get("resume", False)),
-            verbosity=cast("Verbosity | None", kwargs.get("verbosity")),
-            counter_overrides=cast("dict[str, int] | None", kwargs.get("counter_overrides")),
-            inline_prompt=cast("str | None", kwargs.get("inline_prompt")),
+            config_path=kwargs.get("config_path"),
+            cli_overrides=kwargs.get("cli_overrides"),
+            dry_run=kwargs.get("dry_run", False),
+            resume=kwargs.get("resume", False),
+            verbosity=kwargs.get("verbosity"),
+            counter_overrides=kwargs.get("counter_overrides"),
+            inline_prompt=kwargs.get("inline_prompt"),
             parallel_worker_manifest=(
-                Path(cast("str", kwargs["parallel_worker_manifest"]))
-                if isinstance(kwargs.get("parallel_worker_manifest"), str)
-                else cast("Path | None", kwargs.get("parallel_worker_manifest"))
+                Path(manifest_from_kwargs)
+                if isinstance(manifest_from_kwargs, str)
+                else manifest_from_kwargs
             ),
         )
     effective_request = request
@@ -601,19 +611,21 @@ def run_pipeline(
         return _EXIT_SUCCESS
 
     # Phase 4: Execute pipeline
-    return _execute_pipeline(
-        _ExecutePipelineRequest(
-            config=load_result.config,
-            initial_state=load_result.initial_state,
-            policy_bundle=load_result.policy_bundle,
-            verbosity=effective_request.verbosity,
-            counter_overrides=effective_counter_overrides,
-            config_path=effective_request.config_path,
-            cli_overrides=effective_request.cli_overrides,
-            parallel_worker_manifest=effective_request.parallel_worker_manifest,
-        ),
-        display_context=ctx,
-    )
+    with ExitStack() as _stack:
+        _maybe_enter_process_view(_stack)
+        return _execute_pipeline(
+            _ExecutePipelineRequest(
+                config=load_result.config,
+                initial_state=load_result.initial_state,
+                policy_bundle=load_result.policy_bundle,
+                verbosity=effective_request.verbosity,
+                counter_overrides=effective_counter_overrides,
+                config_path=effective_request.config_path,
+                cli_overrides=effective_request.cli_overrides,
+                parallel_worker_manifest=effective_request.parallel_worker_manifest,
+            ),
+            display_context=ctx,
+        )
 
 
 validate_loaded_policy_bundle = _validate_loaded_policy_bundle

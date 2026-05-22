@@ -1,77 +1,61 @@
-"""Skill installation via subprocess calls to the claude CLI."""
+"""Baseline skill bundle installation and update checks."""
 
 from __future__ import annotations
 
-import subprocess
+import hashlib
 from datetime import UTC, datetime
+from pathlib import Path
 
-from ralph.skills._bundle import BASELINE_SKILL_BUNDLE, SkillInstallSpec
-from ralph.skills._state import CapabilityEntry, CapabilityStatus
+from ralph.skills._capability_entry import CapabilityEntry
+from ralph.skills._capability_status import CapabilityStatus
+from ralph.skills._content import BASELINE_SKILL_NAMES, get_skill_content, materialize_skills_to_dir
 
 
 def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
 
 
-def install_skill(spec: SkillInstallSpec, *, timeout: int = 120) -> bool:
-    """Run `claude plugin install <plugin_id>` and return True on success."""
-    result = subprocess.run(
-        ["claude", "plugin", "install", spec.plugin_id],
-        capture_output=True,
-        timeout=timeout,
-        check=False,
-    )
-    return result.returncode == 0
+def _installed_skills_dir() -> Path:
+    return Path.home() / ".claude" / "plugins" / "ralph-workflow-skills" / "skills"
 
 
-def install_baseline_skills(
-    bundle: tuple[SkillInstallSpec, ...] | None = None,
-    *,
-    timeout: int = 120,
-) -> tuple[CapabilityEntry, list[str]]:
-    """Install the baseline skill bundle and return an entry + failure list."""
-    specs = bundle if bundle is not None else BASELINE_SKILL_BUNDLE
-    successes: list[str] = []
-    failures: list[str] = []
-    for spec in specs:
-        if install_skill(spec, timeout=timeout):
-            successes.append(spec.plugin_id)
-        else:
-            failures.append(spec.plugin_id)
-
-    if not failures:
+def install_baseline_skills() -> tuple[CapabilityEntry, list[str]]:
+    target_dir = _installed_skills_dir()
+    try:
+        materialize_skills_to_dir(target_dir)
+    except OSError:
         return (
             CapabilityEntry(
-                status=CapabilityStatus.INSTALLED_HEALTHY, last_check_ok_iso=_now_iso()
+                status=CapabilityStatus.NEEDS_REPAIR,
+                last_check_fail_iso=_now_iso(),
             ),
-            [],
-        )
-    if not successes:
-        return (
-            CapabilityEntry(status=CapabilityStatus.NEEDS_REPAIR, last_check_fail_iso=_now_iso()),
-            failures,
+            ["skills-materialize-failed"],
         )
     return (
-        CapabilityEntry(status=CapabilityStatus.INSTALLED_DEGRADED, last_check_ok_iso=_now_iso()),
-        failures,
+        CapabilityEntry(
+            status=CapabilityStatus.INSTALLED_HEALTHY,
+            last_check_ok_iso=_now_iso(),
+        ),
+        [],
     )
 
 
-def check_skills_update_available(*, timeout: int = 30) -> bool:
-    """Return True if `claude plugin list` output indicates an update is available."""
+def check_skills_update_available() -> bool:
+    installed_dir = _installed_skills_dir()
+    if not installed_dir.exists():
+        return True
     try:
-        result = subprocess.run(
-            ["claude", "plugin", "list"],
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-        if result.returncode != 0:
-            return False
-        output = (result.stdout + result.stderr).decode("utf-8", errors="replace").lower()
-        return "update available" in output or "updates available" in output
+        for name in BASELINE_SKILL_NAMES:
+            installed_file = installed_dir / f"{name}.md"
+            if not installed_file.exists():
+                return True
+            installed_hash = hashlib.sha256(installed_file.read_bytes()).digest()
+            expected_hash = hashlib.sha256(get_skill_content(name).encode("utf-8")).digest()
+            if installed_hash != expected_hash:
+                return True
+        return False
     except Exception:
         return False
 
 
-__all__ = ["check_skills_update_available", "install_baseline_skills", "install_skill"]
+__all__ = ["check_skills_update_available", "install_baseline_skills"]

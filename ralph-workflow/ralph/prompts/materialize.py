@@ -44,9 +44,14 @@ from ralph.prompts.developer import (
     prompt_developer_iteration_xml_with_context,
     prompt_planning_xml_with_context,
 )
-from ralph.prompts.payload_refs import (
-    build_prompt_payload_variables,
-    write_payload_to_directory,
+from ralph.prompts.materialize_support import (
+    current_prompt_variables as _current_prompt_variables,
+)
+from ralph.prompts.materialize_support import (
+    persist_current_prompt as _persist_current_prompt,
+)
+from ralph.prompts.materialize_support import (
+    phase_payload_variables,
 )
 from ralph.prompts.payload_refs import (
     sanitize_surrogates as _sanitize_surrogates,
@@ -55,6 +60,7 @@ from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
+from ralph.skills._skill_resolver import get_inline_skill_content
 from ralph.skills.manager import SkillManager
 
 __all__ = [
@@ -313,6 +319,7 @@ def _render_planning_prompt(
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
     artifact_history_path = resolve_planning_history_path(workspace_root)
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
+    skills_inline_content = get_inline_skill_content()
     return prompt_planning_xml_with_context(
         context=tmpl_ctx,
         inputs=PlanningPromptInputs(
@@ -334,6 +341,7 @@ def _render_planning_prompt(
                 else workspace_root / ".agent" / "tmp" / "prompt_payloads"
             ),
             last_retry_error=last_retry_error,
+            skills_inline_content=skills_inline_content,
             has_docs_mcp=has_docs_mcp,
         ),
         workspace=workspace,
@@ -381,6 +389,7 @@ def _render_developer_prompt(
     )
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
     has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
+    skills_inline_content = get_inline_skill_content()
     return prompt_developer_iteration_xml_with_context(
         context=tmpl_ctx,
         inputs=DeveloperPromptInputs(
@@ -401,6 +410,7 @@ def _render_developer_prompt(
             ),
             prompt_name_prefix=phase,
             last_retry_error=last_retry_error,
+            skills_inline_content=skills_inline_content,
             artifact_history_path=dev_artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
             has_docs_mcp=has_docs_mcp,
@@ -505,49 +515,6 @@ def _read_optional(workspace: Workspace, path: str) -> str | None:
     if not workspace.exists(path):
         return None
     return workspace.read(path)
-def phase_payload_variables(
-    *,
-    phase: str,
-    workspace_root: Path,
-    values: dict[str, str],
-    worker_namespace: Path | None = None,
-) -> dict[str, str]:
-    """Build prompt payload variables, writing oversized values to disk under the phase prefix."""
-    output_dir = (
-        worker_namespace / "tmp" / "prompt_payloads"
-        if worker_namespace is not None
-        else workspace_root / ".agent" / "tmp" / "prompt_payloads"
-    )
-    return build_prompt_payload_variables(
-        values,
-        prompt_name_prefix=phase,
-        write_payload=lambda relative_path, content: write_payload_to_directory(
-            output_dir,
-            relative_path,
-            content,
-        ),
-    )
-def _persist_current_prompt(
-    workspace_root: Path,
-    prompt_content: str | None,
-    *,
-    worker_namespace: Path | None = None,
-) -> str:
-    current_prompt_path = (
-        worker_namespace / "tmp" / "CURRENT_PROMPT.md"
-        if worker_namespace is not None
-        else workspace_root / ".agent" / "CURRENT_PROMPT.md"
-    )
-    current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    if prompt_content is None and current_prompt_path.exists():
-        return str(current_prompt_path)
-    current_prompt_path.write_text(prompt_content or "No requirements provided", encoding="utf-8")
-    return str(current_prompt_path)
-def _current_prompt_variables(
-    prompt_content: str | None, current_prompt_path: str
-) -> dict[str, str]:
-    del prompt_content
-    return {"PROMPT": "", "PROMPT_PATH": current_prompt_path}
 def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
     """Return the plan handoff users and downstream agents should consume."""
     return _resolve_agent_handoff(

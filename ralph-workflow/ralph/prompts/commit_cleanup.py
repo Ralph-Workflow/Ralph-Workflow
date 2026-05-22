@@ -31,9 +31,11 @@ def render_commit_cleanup_prompt(
 ) -> str:
     """Render the commit cleanup prompt using the commit_cleanup.jinja template."""
     from ralph.prompts.materialize import (
-        _current_prompt_variables,
         _merged_variables,
         commit_cleanup_diff,
+    )
+    from ralph.prompts.materialize_support import (
+        current_prompt_variables as _current_prompt_variables,
     )
 
     diff = commit_cleanup_diff(workspace_root)

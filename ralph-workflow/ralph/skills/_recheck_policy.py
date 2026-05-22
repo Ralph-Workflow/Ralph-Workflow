@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from ralph.pydantic_compat import ConfigDict, RalphBaseModel
-from ralph.skills._state import CapabilityEntry, CapabilityStatus
+from ralph.skills._capability_status import CapabilityStatus
+
+if TYPE_CHECKING:
+    from ralph.skills._capability_entry import CapabilityEntry
 
 
 class RecheckPolicy(RalphBaseModel):

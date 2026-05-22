@@ -40,7 +40,7 @@ from ralph.policy.validation import (
     validate_recovery_config,
 )
 from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
-from ralph.skills._state import CapabilityStatus
+from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._state_store import load_capability_state
 from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope

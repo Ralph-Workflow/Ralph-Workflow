@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ralph.skills._state import CapabilityState
+from ralph.skills._capability_state import CapabilityState
 
 DEFAULT_STATE_PATH: Path = Path.home() / ".config" / "ralph-workflow-capabilities.json"
 
