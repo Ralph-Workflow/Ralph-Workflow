@@ -10,6 +10,7 @@ from loguru import logger
 
 from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
+from .failure_details import contains_casefolded_marker, failure_detail_parts
 
 # Network/transport error substrings that indicate environmental faults
 _TRANSPORT_SUBSTRINGS: frozenset[str] = frozenset(
@@ -125,7 +126,7 @@ def _is_artifact_validation_message(raw_message: str) -> bool:
 
 def _is_stale_session_message(raw_message: str) -> bool:
     """Return True if the message indicates a stale agent session ID was used."""
-    return any(s in raw_message for s in SESSION_NOT_FOUND_SUBSTRINGS)
+    return contains_casefolded_marker((raw_message,), SESSION_NOT_FOUND_SUBSTRINGS)
 
 
 class FailureClassifier:
@@ -146,14 +147,16 @@ class FailureClassifier:
         if isinstance(exc, str):
             raw_message = exc
             original: BaseException | None = None
+            detail_parts = [exc]
         else:
             exc_msg = str(exc)
             type_name = type(exc).__name__
             raw_message = f"{type_name}: {exc_msg}" if exc_msg else type_name
             original = exc
+            detail_parts = failure_detail_parts(exc)
 
         exc_obj = exc if isinstance(exc, BaseException) else None
-        category, counts, reset_session = self._categorize(exc_obj, raw_message)
+        category, counts, reset_session = self._categorize(exc_obj, raw_message, detail_parts)
 
         if category == FailureCategory.AMBIGUOUS:
             logger.warning(
@@ -179,6 +182,7 @@ class FailureClassifier:
         self,
         exc: BaseException,
         raw_message: str,
+        detail_parts: list[str],
     ) -> tuple[FailureCategory, bool, bool] | None:
         if _is_user_config_exc(exc):
             return FailureCategory.USER_CONFIG, False, False
@@ -188,7 +192,7 @@ class FailureClassifier:
         if type_name == "AgentInactivityTimeoutError":
             return FailureCategory.AGENT, True, False
         if type_name == "AgentInvocationError":
-            if _is_stale_session_message(raw_message):
+            if contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS):
                 return FailureCategory.AGENT, True, True
             msg_lower = raw_message.lower()
             if not _message_looks_environmental(raw_message) and (
@@ -201,11 +205,14 @@ class FailureClassifier:
         self,
         exc: BaseException | None,
         raw_message: str,
+        detail_parts: list[str],
     ) -> tuple[FailureCategory, bool, bool]:
         if exc is not None:
-            result = self._categorize_exc(exc, raw_message)
+            result = self._categorize_exc(exc, raw_message, detail_parts)
             if result is not None:
                 return result
+        if contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS):
+            return FailureCategory.AGENT, True, True
         if _message_looks_environmental(raw_message):
             return FailureCategory.ENVIRONMENTAL, False, False
         if _is_user_config_message(raw_message):

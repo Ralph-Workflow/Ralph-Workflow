@@ -2233,6 +2233,13 @@ ralph.recovery.failure_category
    :members:
    :show-inheritance:
 
+ralph.recovery.failure_details
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.recovery.failure_details
+   :members:
+   :show-inheritance:
+
 ralph.recovery.retry_prompt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from ralph.agents.invoke import AgentInvocationError
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 
 
@@ -56,3 +57,29 @@ def test_unrelated_opencode_error_does_not_trigger_reset_session() -> None:
     failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
 
     assert failure.reset_session is False
+
+
+def test_stale_session_detection_is_case_insensitive() -> None:
+    """Lowercase stale-session payloads still trigger reset_session=True."""
+    exc = _AgentInvocationError("agent 'opencode' failed: session not found: lower-case")
+    failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
+
+    assert failure.reset_session is True
+    assert failure.category == FailureCategory.AGENT
+
+
+def test_stale_session_detection_reads_agent_invocation_parsed_output() -> None:
+    """Classifier inspects parsed_output, not just the top-level exception string."""
+    exc = AgentInvocationError(
+        "opencode",
+        1,
+        "Unexpected server error",
+        [
+            '{"type":"error","error":{"message":"session not found: recovered-from-output"}}'
+        ],
+    )
+
+    failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
+
+    assert failure.reset_session is True
+    assert failure.category == FailureCategory.AGENT
