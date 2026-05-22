@@ -136,7 +136,7 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
     * non-agent effects return ``[]``.
     * ``InvokeAgentEffect`` ensures git exists, validates the commit-cleanup
       artifact, applies cleanup actions, and returns ``AGENT_SUCCESS`` when
-      ``analysis_complete=True`` or ``ANALYSIS_LOOPBACK`` otherwise.
+      ``analysis_complete=True`` or ``PHASE_LOOPBACK`` otherwise.
     * missing artifacts or failed cleanup actions return ``PhaseFailureEvent``.
     """
     if isinstance(effect, PreparePromptEffect):
@@ -193,4 +193,4 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
     # Return appropriate event based on analysis_complete
     if cleanup.analysis_complete:
         return [PipelineEvent.AGENT_SUCCESS]
-    return [PipelineEvent.ANALYSIS_LOOPBACK]
+    return [PipelineEvent.PHASE_LOOPBACK]

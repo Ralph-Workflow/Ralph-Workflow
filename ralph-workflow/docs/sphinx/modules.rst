@@ -724,6 +724,13 @@ ralph.pipeline.handoffs
    :members:
    :show-inheritance:
 
+ralph.pipeline.loopback
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.loopback
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.phase_entry_cleaner
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

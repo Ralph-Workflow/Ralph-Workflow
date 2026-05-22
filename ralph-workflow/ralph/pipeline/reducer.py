@@ -59,10 +59,11 @@ from ralph.pipeline.handoffs import (
     resolve_next_phase,
     resolve_post_commit_phase,
 )
+from ralph.pipeline.loopback import handle_capped_phase_loopback_policy_driven
 from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.explain import explain_routing_decision
-from ralph.policy.models import PhaseDefinition, PhaseLoopPolicy
+from ralph.policy.models import PhaseLoopPolicy
 from ralph.recovery.classifier import ClassifiedFailure, FailureContext
 
 if TYPE_CHECKING:
@@ -217,6 +218,7 @@ def _get_event_handlers() -> dict[
                 PipelineEvent.AGENT_RETRY: _ignore_policy(_handle_agent_retry),
                 PipelineEvent.ANALYSIS_SUCCESS: _handle_analysis_success,
                 PipelineEvent.ANALYSIS_LOOPBACK: _handle_analysis_loopback,
+                PipelineEvent.PHASE_LOOPBACK: _handle_phase_loopback,
                 PipelineEvent.REVIEW_CLEAN: _handle_review_clean,
                 PipelineEvent.REVIEW_ISSUES_FOUND: _handle_review_issues_found,
                 PipelineEvent.FIX_SUCCESS: _handle_fix_success,
@@ -543,58 +545,44 @@ def _handle_analysis_loopback(
             state, f"Unknown phase for analysis loopback: {state.phase}", policy
         )
 
-    if isinstance(phase_def.loop_policy, PhaseLoopPolicy):
-        return _handle_capped_analysis_loopback_policy_driven(state, policy, phase_def)
+    if phase_def.role == "analysis" and isinstance(phase_def.loop_policy, PhaseLoopPolicy):
+        return handle_capped_phase_loopback_policy_driven(
+            state,
+            policy,
+            phase_def,
+            review_outcome=phase_def.loop_policy.loopback_review_outcome,
+            advance_to_failed=_advance_to_failed,
+            resolve_or_terminal=_resolve_or_terminal,
+            advance_phase=_advance_phase,
+        )
 
     return _resolve_or_terminal(state, "loopback", policy, "analysis loopback")
 
 
-def _handle_capped_analysis_loopback_policy_driven(
+def _handle_phase_loopback(
     state: PipelineState,
-    policy: PipelinePolicy,
-    phase_def: PhaseDefinition,
+    policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle analysis loopback using policy-declared loop_policy.
+    """Handle generic bounded phase loopback for non-analysis phases."""
+    if policy is None:
+        return _advance_to_failed(state, "No policy loaded for phase loopback routing", policy)
 
-    Progress tracking (iteration counter, review_issues_found) is applied
-    before routing so that even when routing fails the counters are persisted.
-    The runtime cap comes from state.loop_caps (set from config) with fallback
-    to policy.loop_counters[field].default_max.
+    phase_def = policy.phases.get(state.phase)
+    if phase_def is None:
+        return _advance_to_failed(state, f"Unknown phase for loopback: {state.phase}", policy)
 
-    Loopback target comes exclusively from transitions.on_loopback via
-    resolve_next_phase — decision keys are vocabulary contracts, not routing keys.
-    """
-    loop_policy = phase_def.loop_policy
-    if not isinstance(loop_policy, PhaseLoopPolicy):
-        return _resolve_or_terminal(state, "loopback", policy, "analysis loopback")
-
-    iteration_field: str = loop_policy.iteration_state_field
-    max_iterations = progress.resolve_analysis_cap(
-        state,
-        iteration_field,
-        policy,
-    )
-    # Apply progress tracking up front so it is preserved even if routing fails.
-    progress_state = progress.apply_analysis_loopback(
-        state,
-        state,
-        iteration_field,
-        max_iterations=max_iterations,
-        review_outcome=loop_policy.loopback_review_outcome,
-    )
-
-    # Routing target comes from transitions.on_loopback only — no decision-key lookup.
-    try:
-        loopback_target = resolve_next_phase(state.phase, "loopback", policy)
-    except ValueError as exc:
-        return _advance_to_failed(
-            progress_state,
-            f"Routing error for analysis loopback in '{state.phase}': {exc}",
+    if isinstance(phase_def.loop_policy, PhaseLoopPolicy):
+        return handle_capped_phase_loopback_policy_driven(
+            state,
             policy,
+            phase_def,
+            review_outcome=None,
+            advance_to_failed=_advance_to_failed,
+            resolve_or_terminal=_resolve_or_terminal,
+            advance_phase=_advance_phase,
         )
 
-    new_state, effects = _advance_phase(progress_state, loopback_target, policy)
-    return new_state, effects
+    return _resolve_or_terminal(state, "loopback", policy, "phase loopback")
 
 
 def _handle_analysis_decision(

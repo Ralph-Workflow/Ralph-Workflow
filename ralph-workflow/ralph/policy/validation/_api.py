@@ -18,6 +18,7 @@ from ralph.policy.validation._phase_validators import (
     _validate_commit_cleanup_phase,
     _validate_commit_phase_loop_resets,
     _validate_commit_phase_post_commit_routes,
+    _validate_loop_policy_role,
     _validate_parallelization_consistency,
     _validate_review_phase,
     _validate_skip_invocation_has_on_success,
@@ -202,6 +203,7 @@ def validate_policy_completeness(
         if role == "commit_cleanup":
             _validate_commit_cleanup_phase(phase_name, phase_def, bundle, errors)
 
+        _validate_loop_policy_role(phase_name, phase_def, errors)
         _validate_skip_invocation_has_on_success(phase_name, phase_def, errors)
         _validate_parallelization_consistency(phase_name, phase_def, errors)
 

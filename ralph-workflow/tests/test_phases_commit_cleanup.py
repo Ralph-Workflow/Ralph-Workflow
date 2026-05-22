@@ -89,8 +89,8 @@ def test_agent_success_when_analysis_complete(tmp_git_repo: Path) -> None:
     assert result == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_analysis_loopback_when_has_actions(tmp_git_repo: Path) -> None:
-    """Test that ANALYSIS_LOOPBACK is returned when actions remain."""
+def test_phase_loopback_when_has_actions(tmp_git_repo: Path) -> None:
+    """Test that PHASE_LOOPBACK is returned when actions remain."""
     workspace = FsWorkspace(tmp_git_repo)
     _write_commit_cleanup_artifact(
         workspace,
@@ -113,7 +113,7 @@ def test_analysis_loopback_when_has_actions(tmp_git_repo: Path) -> None:
         prompt_file="cleanup.txt",
     )
     result = handle_commit_cleanup_phase(effect, ctx)
-    assert PipelineEvent.ANALYSIS_LOOPBACK in result
+    assert PipelineEvent.PHASE_LOOPBACK in result
     # Verify .gitignore was updated
     gitignore = tmp_git_repo / ".gitignore"
     assert gitignore.exists()
@@ -145,7 +145,7 @@ def test_delete_file_action_removes_file(tmp_git_repo: Path) -> None:
         prompt_file="cleanup.txt",
     )
     result = handle_commit_cleanup_phase(effect, ctx)
-    assert PipelineEvent.ANALYSIS_LOOPBACK in result
+    assert PipelineEvent.PHASE_LOOPBACK in result
     assert not binary.exists()
 
 
@@ -173,7 +173,7 @@ def test_git_exclude_action_adds_pattern(tmp_git_repo: Path) -> None:
         prompt_file="cleanup.txt",
     )
     result = handle_commit_cleanup_phase(effect, ctx)
-    assert PipelineEvent.ANALYSIS_LOOPBACK in result
+    assert PipelineEvent.PHASE_LOOPBACK in result
     exclude_path = tmp_git_repo / ".git" / "info" / "exclude"
     assert exclude_path.exists()
     assert ".env.local" in exclude_path.read_text()

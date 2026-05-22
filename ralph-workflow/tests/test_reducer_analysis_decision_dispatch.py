@@ -708,6 +708,7 @@ class TestAnalysisDecisionDispatch:
         policy = MagicMock()
         policy.recovery.failed_route = "failed"
         phase_def = MagicMock()
+        phase_def.role = "analysis"
         phase_def.workflow_fallback = None
         phase_def.loop_policy = PhaseLoopPolicy(
             iteration_state_field="development_analysis_iteration"
@@ -734,6 +735,7 @@ class TestAnalysisDecisionDispatch:
         policy = MagicMock()
         policy.recovery.failed_route = "failed"
         phase_def = MagicMock()
+        phase_def.role = "analysis"
         phase_def.workflow_fallback = None
         phase_def.loop_policy = PhaseLoopPolicy(
             iteration_state_field="review_analysis_iteration", loopback_review_outcome="has_issues"
@@ -755,3 +757,45 @@ class TestAnalysisDecisionDispatch:
             state.loop_caps.get("review_analysis_iteration", 2),
         )
         assert new_state.review_outcome is not None
+
+    def test_commit_cleanup_loopback_does_not_apply_analysis_iteration_bookkeeping(self) -> None:
+        policy = PipelinePolicy(
+            phases={
+                "development_commit_cleanup": PhaseDefinition(
+                    drain="commit",
+                    role="commit_cleanup",
+                    transitions=PhaseTransition(
+                        on_success="development_commit",
+                        on_loopback="development_commit_cleanup",
+                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="commit_cleanup_iteration"),
+                ),
+                "development_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    transitions=PhaseTransition(on_success="complete"),
+                    commit_policy=PhaseCommitPolicy(loop_resets=["commit_cleanup_iteration"]),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                ),
+            },
+            entry_phase="development_commit_cleanup",
+            terminal_phase="complete",
+            loop_counters={"commit_cleanup_iteration": LoopCounterConfig(default_max=3)},
+        )
+        state = PipelineState(
+            phase="development_commit_cleanup",
+            loop_iterations={"commit_cleanup_iteration": 1},
+            loop_caps={"commit_cleanup_iteration": 3},
+        )
+
+        new_state, _ = _reduce(state, PipelineEvent.PHASE_LOOPBACK, policy)
+
+        assert new_state.phase == "development_commit_cleanup"
+        assert new_state.previous_phase == "development_commit_cleanup"
+        assert new_state.get_loop_iteration("commit_cleanup_iteration") == 2
+        assert new_state.review_outcome is None
