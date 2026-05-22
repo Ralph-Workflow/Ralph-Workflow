@@ -226,6 +226,19 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
 
 
 class DistributionLaneExecutorTests(unittest.TestCase):
+    def test_curator_parser_skips_measurement_only_rows(self):
+        text = """### 1. Real target
+- **URL:** https://example.com/1
+- **Action:** Submit PR
+
+### 2. Measurement only
+- **URL:** https://example.com/2
+- **Action:** Check indexing status — any live backlinks from these?
+"""
+        targets = distribution_lane_executor._parse_curator_targets(text)
+        actionable = [t for t in targets if distribution_lane_executor._is_actionable_curator_target(t)]
+        self.assertEqual([t['heading'] for t in actionable], ['1. Real target'])
+
     def test_curator_execution_builds_target_specific_artifact_and_log(self):
         now = datetime(2026, 5, 22, 7, 15, 0)
         decision = distribution_lane_selector.LaneDecision(
@@ -282,6 +295,87 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertEqual(queue_payload['targets'][0]['status'], 'prepared')
             self.assertTrue(Path(queue_payload['targets'][0]['artifact_path']).exists())
 
+    def test_curator_execution_advances_to_unprepared_targets_instead_of_regenerating_same_queue(self):
+        now = datetime(2026, 5, 23, 7, 15, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='curator_outreach',
+            reason='Monitoring is not the move right now; switch to a Codeberg-primary curator/comparison distribution lane.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+        market_intelligence = {'comparison_pages': []}
+        targets_md = """# Targets
+
+### 1. first-target
+- **URL:** https://example.com/1
+- **Action:** Submit PR
+- **Priority:** HIGH
+
+### 2. second-target
+- **URL:** https://example.com/2
+- **Action:** Submit PR
+- **Priority:** HIGH
+
+### 3. third-target
+- **URL:** https://example.com/3
+- **Action:** Submit PR
+- **Priority:** HIGH
+
+### 4. fourth-target
+- **URL:** https://example.com/4
+- **Action:** Submit PR
+- **Priority:** MEDIUM
+
+### 5. fifth-target
+- **URL:** https://example.com/5
+- **Action:** Submit PR
+- **Priority:** MEDIUM
+"""
+        existing_queue = {
+            'generated_at': '2026-05-22T09:25:12',
+            'targets': [
+                {'target': '1. first-target', 'url': 'https://example.com/1', 'status': 'prepared', 'review_due_date': '2026-06-05', 'artifact_path': '/tmp/1.md'},
+                {'target': '2. second-target', 'url': 'https://example.com/2', 'status': 'prepared', 'review_due_date': '2026-06-05', 'artifact_path': '/tmp/2.md'},
+                {'target': '3. third-target', 'url': 'https://example.com/3', 'status': 'prepared', 'review_due_date': '2026-06-05', 'artifact_path': '/tmp/3.md'},
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            targets_path = tmp / 'curator_outreach_targets.md'
+            targets_path.write_text(targets_md, encoding='utf-8')
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('Curator outreach active.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            queue_path.write_text(json.dumps(existing_queue), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'TARGETS_PATH', targets_path), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', queue_path), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.status, 'executed')
+            queue_payload = json.loads(queue_path.read_text(encoding='utf-8'))
+            queue_targets = [row['target'] for row in queue_payload['targets']]
+            self.assertEqual(queue_targets[-2:], ['4. fourth-target', '5. fifth-target'])
+            self.assertNotIn('1. first-target', execution.targets_prepared[-2:])
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('01_4-fourth-target.md', artifact_text)
+            self.assertIn('02_5-fifth-target.md', artifact_text)
+
 
 class MarketingLoopRunnerTests(unittest.TestCase):
     def test_runner_executes_outcome_engine_before_reporting_scripts(self):
@@ -337,6 +431,19 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
 
 
 class MarketingWorkflowAuditTests(unittest.TestCase):
+    def test_load_latest_marketing_action_prefers_execution_log_over_lane_switch_stub(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            decision = out_dir / 'marketing_2026-05-22_curator_outreach.json'
+            execution = out_dir / 'marketing_2026-05-22_curator_outreach_execution.json'
+            decision.write_text(json.dumps({'chosen_action': {'type': 'distribution_lane_switch'}}), encoding='utf-8')
+            execution.write_text(json.dumps({'chosen_action': {'type': 'curator_queue_follow_through'}}), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
+                payload = marketing_workflow_audit.load_latest_marketing_action()
+
+            self.assertEqual(payload['chosen_action']['type'], 'curator_queue_follow_through')
+
     def test_audit_treats_curator_redesign_as_shipped_and_drops_duplicate_architecture_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -386,6 +493,54 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertNotIn('marketing_system_architecture', targets)
             content_action = next(item for item in payload['repair_actions'] if item['target_tactic'] == 'content_distribution')
             self.assertIn('Owned content is saturated for now', content_action['action'])
+
+    def test_audit_treats_curator_follow_through_as_shipped_system_repair(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            out_dir = tmp / 'logs'
+            out_dir.mkdir()
+            adoption_path = out_dir / 'adoption_metrics_latest.json'
+            retro_path = out_dir / 'reddit_post_analysis.json'
+            outreach_path = tmp / 'outreach-log.md'
+            principles_path = tmp / 'principles.md'
+            four_questions_path = tmp / 'four_questions.md'
+            self_improvement_path = tmp / 'self_improvement.md'
+            audit_json = out_dir / 'marketing_workflow_audit_latest.json'
+            audit_md = out_dir / 'marketing_workflow_audit_latest.md'
+
+            adoption_path.write_text(json.dumps({
+                'metrics': [],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'failing_signals': ['primary_repo_flat']},
+            }), encoding='utf-8')
+            retro_path.write_text(json.dumps({'recent_posts': [], 'repeated_openings': []}), encoding='utf-8')
+            outreach_path.write_text('HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.', encoding='utf-8')
+            principles_path.write_text('principles', encoding='utf-8')
+            four_questions_path.write_text('questions', encoding='utf-8')
+            self_improvement_path.write_text('self-improvement', encoding='utf-8')
+            (out_dir / 'marketing_2026-05-22_curator_outreach_execution.json').write_text(json.dumps({
+                'chosen_action': {'type': 'curator_queue_follow_through', 'title': 'Distribution lane execution: curator_outreach'},
+                'result': {'ok': True, 'status': 'executed'},
+            }), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_JSON', audit_json), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_MD', audit_md), \
+                 patch.object(marketing_workflow_audit, 'OUTREACH', outreach_path), \
+                 patch.object(marketing_workflow_audit, 'ADOPTION', adoption_path), \
+                 patch.object(marketing_workflow_audit, 'RETRO', retro_path), \
+                 patch.object(marketing_workflow_audit, 'PRINCIPLES', principles_path), \
+                 patch.object(marketing_workflow_audit, 'FOUR_QUESTIONS_DOC', four_questions_path), \
+                 patch.object(marketing_workflow_audit, 'SELF_IMPROVEMENT_DOC', self_improvement_path):
+                rc = marketing_workflow_audit.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads(audit_json.read_text(encoding='utf-8'))
+            targets = [item['target_tactic'] for item in payload['repair_actions']]
+            self.assertNotIn('marketing_system_architecture', targets)
 
 
 class CompetitorAnalysisTests(unittest.TestCase):

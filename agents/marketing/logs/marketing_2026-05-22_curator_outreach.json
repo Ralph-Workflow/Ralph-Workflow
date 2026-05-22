@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T09:25:12.878127",
+  "timestamp": "2026-05-22T09:49:22.777273",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -18,8 +18,8 @@
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
-      "Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.",
-      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run."
+      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
+      "6 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet."
     ]
   },
   "result": {

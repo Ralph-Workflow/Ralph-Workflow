@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T09:25:12.878127",
+  "generated_at": "2026-05-22T09:48:19.135304",
   "targets": [
     {
       "target": "1. ai-for-developers/awesome-ai-coding-tools",
@@ -28,6 +28,36 @@
       "priority": "MEDIUM \u2014 complementary, not competing",
       "subject": "Ralph Workflow for 3. asheshgoplani/agent-deck",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_3-asheshgoplani-agent-deck.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "4. zhu1090093659/spec_driven_develop",
+      "url": "https://github.com/zhu1090093659/spec_driven_develop",
+      "action": "Submit PR or reach out about cross-citation",
+      "priority": "MEDIUM \u2014 philosophy-aligned, could be a good citation partner",
+      "subject": "Ralph Workflow for 4. zhu1090093659/spec_driven_develop",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_4-zhu1090093659-spec-driven-develop.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "5. 23blocks-OS/ai-maestro",
+      "url": "https://github.com/23blocks-OS/ai-maestro",
+      "action": "Monitor for outreach opportunity, not direct PR",
+      "priority": "LOW for PR \u2014 competitor, but good backlink target",
+      "subject": "Ralph Workflow for 5. 23blocks-OS/ai-maestro",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_5-23blocks-os-ai-maestro.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "6. GitHub Topics: AI agents",
+      "url": "https://github.com/topics/ai-agents",
+      "action": "Check if Ralph Workflow is already tagged; if not, could add topic tag to the Codeberg/GitHub repo description",
+      "priority": "MEDIUM \u2014 repo-level tagging improvement",
+      "subject": "Ralph Workflow for 6. GitHub Topics: AI agents",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_6-github-topics-ai-agents.md",
       "status": "prepared",
       "review_due_date": "2026-06-05"
     }

@@ -250,6 +250,14 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "accessible")
         self.assertIn("confirmed autonomous submit lane", note)
 
+    def test_toolshelf_validated_submit_host_short_circuits_to_accessible(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {"probe_status": "ok"},
+            page_url="https://toolshelf.dev/submit",
+        )
+        self.assertEqual(status, "accessible")
+        self.assertIn("/api/submit", note)
+
     def test_login_required_submit_api_overrides_public_form_copy(self):
         status, note = channel_discovery.classify_submission_surface_probe(
             {

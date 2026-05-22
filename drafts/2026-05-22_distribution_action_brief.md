@@ -1,13 +1,13 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-22T09:25:12
+Generated: 2026-05-22T09:49:22
 Chosen lane: **curator_outreach**
 
 ## Why this lane
 - Monitoring is not the move right now; switch to a Codeberg-primary curator/comparison distribution lane.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 2 owned-content posts already shipped in the last 36 hours.
-- Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
+- 6 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -23,3 +23,4 @@ Chosen lane: **curator_outreach**
 - Use `drafts/2026-05-22_curator_outreach_packet.md` as the canonical packet
 - Use `agents/marketing/logs/curator_outreach_targets.md` for the first PR/email targets
 - Lead with comparison intent and Codeberg-primary proof, not another general product intro
+- If a live curator queue already exists, prepare only untouched targets; do not regenerate the same three targets again

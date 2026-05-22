@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-22T09:25:24.049897
+- Generated: 2026-05-22T09:50:45.557302
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,7 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
-- The active loop did execute a live marketing action recently (curator_outreach_execution), so the system is still shipping output even though outcome movement is not visible yet.
+- The active loop did execute a live marketing action recently (curator_queue_follow_through), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
@@ -43,7 +43,7 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, repetitive_outreach
 
 ## Latest executed marketing action
-- Type: curator_outreach_execution
+- Type: curator_queue_follow_through
 - Title: Distribution lane execution: curator_outreach
 - Status: executed (ok=True)
 - Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_curator_outreach_execution.json

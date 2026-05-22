@@ -5288,3 +5288,20 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 09:25:24
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+## 2026-05-22 (Friday) — Reddit monitoring (07:28 UTC / 09:28 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-22_0928.md`
+- **Scan summary:** 18 current-ish candidates reviewed after manual rescue, 4 credible discussion opportunities, 14 rejected.
+- **Coverage note:** the local monitor path was degraded again (**1 ok / 23 provider challenges**), so the earlier 00:57 / 04:12 / 07:28 reports were **not** clean zero-opportunity passes. Manual web rescue recovered partial visibility.
+- **Current verdict:** **4** real discussion opportunities exist, but **0** are honest RalphWorkflow mention fits after coverage-risk, thread-family saturation, prior-use pressure, and no-product-value filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "I spent last 6 months talking to AI engineering teams about production agent failures"
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+  - `r/automation` — "We built AI agents for real work but they all fail in production at the same point"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+- **Shift worth tracking:** the fresher signal is broader now — more **production-failure / review-tax / visible-finish-state** discussion outside pure `r/ClaudeCode` / `r/codex` posting lanes.
+- **Posting note:** No posting attempted. **Fail closed** while coverage is degraded and the best current threads are stronger as product-free comments than as RalphWorkflow mentions.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 09:40:28
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
