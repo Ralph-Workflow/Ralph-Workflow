@@ -1,25 +1,14 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-22 10:50 UTC
+Timestamp: 2026-05-22 17:04 UTC
 
 ## ralph-docs-watchdog
 - Status: ok
 - Checker: `DOCS_QUALITY_OK`
 
 ## autonomous-marketing-stack
-- Status: error
-- Repairs:
-  - executed independent verifier after repairing stale verifier state
-  - checker failed; executed runner for remediation
-  - executed independent verifier after remediation
-- Errors:
-  - independent verifier failed after repairing stale verifier state
-  - verifier failed while repairing stale state
-  - runner failed after checker failure
-  - independent verifier failed after remediation
-  - checker still failing after remediation/verifier pass
-- Checker: `MARKETING_LOOP_FAIL: runner bundle still reports failure`
-- Checker after repair: `MARKETING_LOOP_FAIL: runner bundle still reports failure`
+- Status: ok
+- Checker: `MARKETING_LOOP_OK`
 
 ## ralph-site-owner-loop
 - Status: owner_only
@@ -42,8 +31,6 @@ Timestamp: 2026-05-22 10:50 UTC
 
 ## agent-architecture-watchdog
 - Status: ok
-- Notes:
-  - Verifier artifact is red because the loop correctly failed closed on a live blocker; this is not, by itself, a loop-integrity contract failure.
 - Checker: `AGENT_ARCHITECTURE_OK`
 
 ## research-findings-sync

@@ -1,24 +1,24 @@
 {
-  "checked_at": "2026-05-22T16:31:57.231255+02:00",
-  "verdict": "fail",
-  "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
+  "checked_at": "2026-05-22T19:03:22.706198+02:00",
+  "verdict": "pass",
+  "summary": "Independent verifier found the marketing owner loop healthy enough to certify while keeping active watchpoints open.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=False generated_at=2026-05-22T16:31:29.023394"
+      "summary": "runner ok=True generated_at=2026-05-22T19:03:22.682273"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=needs_attention; actions=['reddit_channel_blocked']; watch_actions=['primary_repo_adoption_flat']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_channel_blocked', 'primary_repo_adoption_flat']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
       "summary": "repair_window_status=measurement_pending; failing_tactics=['reddit_style_repetition', 'primary_repo_flat_window', 'mirror_repo_flat_window']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat', 'repetitive_outreach']"
     }
   ],
-  "watchpoints": [],
-  "blockers": [
-    "Marketing runner bundle is not healthy.",
-    "Momentum watchdog status is needs_attention with actions: reddit_channel_blocked."
-  ]
+  "watchpoints": [
+    "primary repo adoption remains measurement-pending after shipped repairs",
+    "reddit is blocked from this environment, but a replacement distribution execution has already shipped"
+  ],
+  "blockers": []
 }

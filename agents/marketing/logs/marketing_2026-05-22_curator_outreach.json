@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T17:34:16.765473",
+  "timestamp": "2026-05-22T18:58:27.404282",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -19,8 +19,8 @@
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
-      "6 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
-      "5 fresh distribution-reset targets are waiting to be turned into real outreach assets.",
+      "9 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "2 fresh distribution-reset targets are waiting to be turned into real outreach assets.",
       "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity."
     ]

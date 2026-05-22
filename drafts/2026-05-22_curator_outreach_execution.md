@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Outreach Execution Pack
-Generated: 2026-05-22T17:34:16
+Generated: 2026-05-22T18:58:27
 
 ## Why this exists now
 - Fresh reset targets exist; promote them into real outreach assets before logging another reset or queue-housekeeping cycle.
@@ -36,57 +36,40 @@ Generated: 2026-05-22T17:34:16
 - Conductor (Teams) — /home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md
 
 ## Ready target files
-- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_agent-analytics-awesome-multi-agent-orchestrators.md
-- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_dariubs-awesome-workflow-automation.md
-- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_no-fluff-awesome-vibe-coding.md
+- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md
+- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_hesreallyhim-awesome-claude-code.md
 - Queue log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_outreach_queue_latest.json
 
 ## Reset targets activated in this run
 - These targets came from the fresh distribution-reset queue and were promoted into real outreach assets instead of logging another reset-only cycle.
-- Agent-Analytics/awesome-multi-agent-orchestrators — https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators
-- dariubs/awesome-workflow-automation — https://github.com/dariubs/awesome-workflow-automation
-- no-fluff/awesome-vibe-coding — https://github.com/no-fluff/awesome-vibe-coding
+- vivy-yi/awesome-agent-orchestration — https://github.com/vivy-yi/awesome-agent-orchestration
+- hesreallyhim/awesome-claude-code — https://github.com/hesreallyhim/awesome-claude-code
 
-## Target 1: Agent-Analytics/awesome-multi-agent-orchestrators
-- URL: https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators
+## Target 1: vivy-yi/awesome-agent-orchestration
+- URL: https://github.com/vivy-yi/awesome-agent-orchestration
 - Action: Submit PR or request inclusion with a Codeberg-primary entry
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- Fit note: explicitly curates multi-agent orchestrators, coding-agent workspaces, and governance layers. Strong match for Ralph Workflow's orchestration positioning and Codeberg-primary repo link opportunity.
-- Subject: Ralph Workflow for Agent-Analytics/awesome-multi-agent-orchestrators
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_agent-analytics-awesome-multi-agent-orchestrators.md
+- Fit note: broad orchestration list covering multi-agent systems, workflow patterns, MCP/A2A. Strong adjacent target to the Conductor / Claude Code / Hermes comparisons.
+- Subject: Ralph Workflow for vivy-yi/awesome-agent-orchestration
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md
 - Suggested copy:
 ```text
-For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer repo-native coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: explicitly curates multi-agent orchestrators, coding-agent workspaces, and governance layers. Strong match for Ralph Workflow's orchestration positioning and Codeberg-primary repo link opportunity.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
+For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer repo-native coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: broad orchestration list covering multi-agent systems, workflow patterns, MCP/A2A. Strong adjacent target to the Conductor / Claude Code / Hermes comparisons.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
 
 Proposed entry:
 - [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
 ```
 
-## Target 2: dariubs/awesome-workflow-automation
-- URL: https://github.com/dariubs/awesome-workflow-automation
+## Target 2: hesreallyhim/awesome-claude-code
+- URL: https://github.com/hesreallyhim/awesome-claude-code
 - Action: Submit PR or request inclusion with a Codeberg-primary entry
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- Fit note: adjacent workflow/orchestration directory with dedicated AI agent and coding-agent sections. Good target for citation/inclusion near the existing comparison pages.
-- Subject: Ralph Workflow for dariubs/awesome-workflow-automation
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_dariubs-awesome-workflow-automation.md
+- Fit note: Claude Code ecosystem roundup; directly adjacent to the existing Claude Code comparison page and potentially receptive to orchestration/workflow tooling.
+- Subject: Ralph Workflow for hesreallyhim/awesome-claude-code
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_hesreallyhim-awesome-claude-code.md
 - Suggested copy:
 ```text
-For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer repo-native coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: adjacent workflow/orchestration directory with dedicated AI agent and coding-agent sections. Good target for citation/inclusion near the existing comparison pages.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
-
-Proposed entry:
-- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
-```
-
-## Target 3: no-fluff/awesome-vibe-coding
-- URL: https://github.com/no-fluff/awesome-vibe-coding
-- Action: Submit PR or request inclusion with a Codeberg-primary entry
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- Fit note: coding-tool roundup with agent/workflow categories and clear audience overlap. Good Codeberg-link candidate.
-- Subject: Ralph Workflow for no-fluff/awesome-vibe-coding
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_no-fluff-awesome-vibe-coding.md
-- Suggested copy:
-```text
-For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer repo-native coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: coding-tool roundup with agent/workflow categories and clear audience overlap. Good Codeberg-link candidate.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
+For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer repo-native coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: Claude Code ecosystem roundup; directly adjacent to the existing Claude Code comparison page and potentially receptive to orchestration/workflow tooling.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
 
 Proposed entry:
 - [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T17:34:16.765473",
+  "timestamp": "2026-05-22T18:58:27.404282",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "curator_outreach_execution",
@@ -16,9 +16,8 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "targets_prepared": [
-      "Agent-Analytics/awesome-multi-agent-orchestrators",
-      "dariubs/awesome-workflow-automation",
-      "no-fluff/awesome-vibe-coding"
+      "vivy-yi/awesome-agent-orchestration",
+      "hesreallyhim/awesome-claude-code"
     ]
   },
   "result": {

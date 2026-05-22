@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T17:34:16.765473",
+  "generated_at": "2026-05-22T18:58:27.404282",
   "targets": [
     {
       "target": "1. ai-for-developers/awesome-ai-coding-tools",
@@ -127,6 +127,26 @@
       "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
       "subject": "Ralph Workflow for no-fluff/awesome-vibe-coding",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_no-fluff-awesome-vibe-coding.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "vivy-yi/awesome-agent-orchestration",
+      "url": "https://github.com/vivy-yi/awesome-agent-orchestration",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for vivy-yi/awesome-agent-orchestration",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "hesreallyhim/awesome-claude-code",
+      "url": "https://github.com/hesreallyhim/awesome-claude-code",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for hesreallyhim/awesome-claude-code",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_hesreallyhim-awesome-claude-code.md",
       "status": "prepared",
       "review_due_date": "2026-06-05"
     }

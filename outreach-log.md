@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-22 (Friday) — Reddit monitoring (16:15 UTC / 18:15 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-22_1815.md`
+- **Scan summary:** 23 current-ish candidates scanned, 5 credible discussion opportunities, 18 rejected.
+- **Coverage note:** this run attempted the built-in monitor again, but `agents/marketing/reddit_monitor.py` did not complete cleanly from this environment, so the pass still depended on live web rescue. Treat the result as **partial visibility**, not full coverage.
+- **Current verdict:** **5** discussion opportunities exist, but **0** are honest RalphWorkflow mention fits after degraded-coverage caution, thread-family saturation, and no-product-value filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+  - `r/AI_Agents` — "74% of enterprises have rolled back AI agents after going live"
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AIAgentsInAction` — "Everyone says they have AI agents in production. Nobody can clearly answer 'how do you know it's actually working'"
+  - `r/AgentsOfAI` — "Collected every real AI agent failure I could find from the last 6 months"
+- **Repeated pains worth tracking:** visible finish state, summary-vs-visible-state trust, visible review packets, graceful downgrade paths, staged autonomy, and production recovery/observability.
+- **Posting note:** No posting attempted from this monitor pass. Research-first only; fail closed while coverage stays degraded.
+
 ## 2026-05-22 (Friday) — Reddit monitoring (13:15 UTC / 15:15 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-22_1515.md`
 - **Scan summary:** 22 current-ish candidates scanned, 5 credible discussion opportunities, 17 rejected.
@@ -13,6 +27,18 @@
   - `r/AgentsOfAI` — "Collected every real AI agent failure I could find from the last 6 months"
 - **Repeated pains worth tracking:** visible finish state, summary-vs-visible-state trust, graceful downgrade paths, staged autonomy, review packets, and production recovery/observability.
 - **Posting note:** No posting attempted from this monitor pass. Research-first only; fail closed while coverage stays degraded.
+
+## 2026-05-22 (Friday) — Distribution reset executed after queue saturation (18:31 CEST)
+- **What I executed:** ran the marketing workflow audit, then forced the distribution-lane selector/executor to treat queue saturation as a real ceiling instead of fake progress. The loop chose **distribution_reset** and shipped `drafts/2026-05-22_distribution_reset_execution.md` plus a fresh action log at `agents/marketing/logs/marketing_2026-05-22_distribution_reset_execution.json`.
+- **Why this action:** this is **REPLACING / RESETTING**. Codeberg is still flat across the recent 9-sample window, Reddit coverage remains partial with **0** honest mention fits on the latest pass, and both live prep queues were already saturated (**12** curator targets, **8** comparison-backlink targets). Another follow-through note would have been low-signal fake activity.
+- **Shared findings reused:** `adoption_metrics_latest.json`, `market_intelligence_latest.json`, `outreach-log.md`, `curator_outreach_queue_latest.json`, `comparison_backlink_queue_latest.json`, and the latest Reddit monitor/report files.
+- **Fresh targets surfaced by the reset:**
+  - `vivy-yi/awesome-agent-orchestration`
+  - `hesreallyhim/awesome-claude-code`
+- **Expected outcome:** keep the next outreach-prep cycle pointed at fresh third-party citation / curated-list backlink targets instead of regenerating already-prepared packets or falling back to Telegraph-first output.
+- **Measurement window:** next 14 days through **2026-06-05** for any Codeberg star/watch/fork movement or new third-party backlink evidence tied to the fresh reset targets.
+- **Replace if it fails:** if the next cycle cannot turn the reset targets into a fresh outreach-prep asset or Codeberg remains flat through **2026-06-05**, escalate again instead of logging follow-through-only work.
+- **Type:** **REPLACING / RESETTING**
 
 ## 2026-05-22 (Friday) — Active HN/Lobsters packet refreshed and stabilized (00:35 CEST)
 - **What I executed:** promoted the current HN/Lobsters submission packet into a single stable handoff file at `drafts/HN_LOBSTERS_ACTIVE_PACKET.md` so the highest-leverage blocked move now has one canonical execution path instead of drifting across dated draft filenames.
@@ -5504,3 +5530,27 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 - **Measurement window:** 14 days for any reply or inclusion signal; 30 days through **2026-06-21** for a live list inclusion/backlink and any Codeberg adoption delta.
 - **Replace if it fails:** if there is no reply or inclusion signal by **2026-06-21**, treat this target as exhausted for cold email and move to the next highest-fit curated list or submission-form lane instead of repeating the same ask.
 - **Type:** **EXECUTED / DISTRIBUTION**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 18:07:59
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 18:35:23
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 18:58:05
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Apollo monitor
+- **When:** 2026-05-22 18:58:11
+- **Note:** Apollo status changed from `login_not_attempted` to `login_succeeded`.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 18:58:39
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 19:03:22
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

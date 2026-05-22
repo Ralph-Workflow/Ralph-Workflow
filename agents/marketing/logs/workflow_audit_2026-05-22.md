@@ -51,3 +51,51 @@
 - Did the loop ship replacement assets? ✅ (Telegraph post + curator targets + Reddit bodies)
 - Did the loop improve odds of real distribution? ✅ (curator outreach is a new lane, not another HN/Lobsters promise)
 - Did the loop fix technical hygiene only? ❌ (genuine new distribution paths shipped)
+
+---
+
+# 2026-05-22 Evening Audit — Saturated Queue Reset, Not Another Follow-Through Cycle
+
+**Status:** REPLACING — same-run reset asset shipped after curator + comparison queues saturated
+
+## What changed since the morning audit
+- Codeberg is still flat: **10⭐ / 2👁 / 2🍴**, no movement across the 9-sample window.
+- GitHub mirror is still flat: **0⭐ / 2👁 / 0🍴**.
+- The loop did **not** pretend curator queue follow-through was progress.
+- Both live prep queues were already saturated:
+  - curator outreach queue: **12** live targets
+  - comparison backlink queue: **8** live targets
+
+## What actually worked
+- The system correctly reused shared findings instead of inventing a new siloed pitch:
+  - `adoption_metrics_latest.json`
+  - `market_intelligence_latest.json`
+  - `outreach-log.md`
+  - current queue logs
+- The loop switched to **distribution_reset** and shipped a fresh reset packet:
+  - `drafts/2026-05-22_distribution_reset_execution.md`
+- That reset surfaced **2 still-unused third-party targets** for the next real outreach-prep pass:
+  1. `vivy-yi/awesome-agent-orchestration`
+  2. `hesreallyhim/awesome-claude-code`
+
+## What did not work
+- Owned content volume still did not move primary-repo adoption.
+- Reddit is still low-signal for direct product mentions today: **5** credible discussion opportunities, **0** honest RalphWorkflow mention fits, and coverage remains partial/degraded.
+- HN/Lobsters is still a human-only blocker, so it should stay out of the loop's "next autonomous move" slot.
+
+## What is repetitive or low-signal now
+- Any new note that only says "follow up on the queue later."
+- Any additional Telegraph-first cycle before Codeberg moves.
+- Any Reddit pass that treats degraded coverage as a clean zero-opportunity day.
+- Any audit that puts HN/Lobsters back in the main autonomous action slot.
+
+## What should change now
+1. **Next autonomous prep should activate the two fresh reset targets before regenerating anything else.**
+2. **Reddit stays fail-closed** until coverage is healthy and a thread produces an honest mention fit.
+3. **Codeberg remains the only primary success gate**; GitHub mirror movement stays secondary evidence.
+4. **Measurement-pending repairs stay preserved** until the 14-day adoption window proves otherwise.
+
+## Outcome judgment
+- Best current lane: **third-party citation / curated-list backlinks**, not more owned content.
+- Best proof to reuse: comparison pages + finish-state language (`finished code`, `tested code`, `ready to review`, `would you merge it?`).
+- Current system state: **we are waiting on measurement, but not because the loop stopped acting**. It shipped a real replacement lane this evening.

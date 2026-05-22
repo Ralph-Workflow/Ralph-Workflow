@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-05-22T17:14:25.919576+02:00",
-  "status": "login_not_attempted",
+  "timestamp": "2026-05-22T18:58:11.216674+02:00",
+  "status": "login_succeeded",
   "final_url": "https://app.apollo.io/#/home",
   "login_attempted": false,
   "cloudflare_blocked": false,
-  "notes": "Apollo login form fields were not available for automation.",
+  "notes": "Apollo was already on an authenticated app surface before form automation.",
   "auth_endpoint_status_codes": []
 }

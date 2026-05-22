@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T17:32:24.360745",
+  "timestamp": "2026-05-22T19:03:11.647808",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "distribution_reset_execution",
@@ -16,11 +16,14 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "targets_prepared": [
-      "Agent-Analytics/awesome-multi-agent-orchestrators",
-      "dariubs/awesome-workflow-automation",
-      "no-fluff/awesome-vibe-coding",
-      "vivy-yi/awesome-agent-orchestration",
-      "hesreallyhim/awesome-claude-code"
+      "Hermes Agent",
+      "Conductor OSS",
+      "Conductor (Teams)",
+      "Aider",
+      "Continue",
+      "Cursor",
+      "Claude Code",
+      "GitHub Copilot"
     ]
   },
   "result": {

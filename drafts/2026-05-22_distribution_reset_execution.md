@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Reset Packet
-Generated: 2026-05-22T17:32:24
+Generated: 2026-05-22T19:03:11
 
 ## Why this exists now
 - Curator and comparison queues are both saturated; ship a new queue-reset/discovery packet instead of pretending a fresh outreach asset exists.
@@ -24,26 +24,13 @@ Generated: 2026-05-22T17:32:24
 - would you merge it?
 
 ## Queue snapshot
-- Live curator targets: 9
+- Live curator targets: 14
 - Live comparison targets: 8
 
 ## Next untouched target classes to create
 - comparison pages not yet turned into third-party citations or curated-list inclusions
 - repo-native coding tool roundups that can link directly to Codeberg instead of the GitHub mirror
 - workflow/orchestration directories or blog lists adjacent to the current comparison pages
-
-## Fresh targets discovered in this reset
-- **Agent-Analytics/awesome-multi-agent-orchestrators** — https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators
-  - Why it fits: explicitly curates multi-agent orchestrators, coding-agent workspaces, and governance layers. Strong match for Ralph Workflow's orchestration positioning and Codeberg-primary repo link opportunity.
-- **dariubs/awesome-workflow-automation** — https://github.com/dariubs/awesome-workflow-automation
-  - Why it fits: adjacent workflow/orchestration directory with dedicated AI agent and coding-agent sections. Good target for citation/inclusion near the existing comparison pages.
-- **no-fluff/awesome-vibe-coding** — https://github.com/no-fluff/awesome-vibe-coding
-  - Why it fits: coding-tool roundup with agent/workflow categories and clear audience overlap. Good Codeberg-link candidate.
-- **vivy-yi/awesome-agent-orchestration** — https://github.com/vivy-yi/awesome-agent-orchestration
-  - Why it fits: broad orchestration list covering multi-agent systems, workflow patterns, MCP/A2A. Strong adjacent target to the Conductor / Claude Code / Hermes comparisons.
-- **hesreallyhim/awesome-claude-code** — https://github.com/hesreallyhim/awesome-claude-code
-  - Why it fits: Claude Code ecosystem roundup; directly adjacent to the existing Claude Code comparison page and potentially receptive to orchestration/workflow tooling.
-- Queue log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_targets_latest.json
 
 ## Comparison assets to extend
 - Hermes Agent — /home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md
