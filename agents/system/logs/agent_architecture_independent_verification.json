@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-22T20:51:09.283331+02:00",
+  "checked_at": "2026-05-22T22:00:15.425948+02:00",
   "verdict": "fail",
   "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
   "verified_repairs": [
@@ -26,7 +26,7 @@
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=0, consecutive_passes_since_last_fail=2"
+      "details": "recent_failures=0, consecutive_passes_since_last_fail=3"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -41,7 +41,7 @@
   ],
   "remaining_blockers": [
     "architecture report overall health is not healthy: 'high_risk'",
-    "health monitor has non-architecture issues: marketing_independent_verification:loop_verification_fail, docs_agentic_review:loop_verification_fail, docs_verifier_stability:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required",
+    "health monitor has non-architecture issues: marketing_independent_verification:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required",
     "marketing independent verification is not pass: 'fail'"
   ],
   "evidence": [
@@ -59,7 +59,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=20 and issues_found=8."
+      "summary": "Health monitor reports jobs_checked=20 and issues_found=6."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
@@ -74,7 +74,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]

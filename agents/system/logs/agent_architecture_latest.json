@@ -217,9 +217,9 @@
     "architecture_verifier_status": "fail",
     "architecture_verifier_errors": [
       "independent verifier did not pass (verdict='fail')",
-      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail, docs_agentic_review:loop_verification_fail, docs_verifier_stability:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required"
+      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required"
     ],
-    "architecture_verifier_checked_at": "2026-05-22T20:51:09.283331+02:00",
+    "architecture_verifier_checked_at": "2026-05-22T22:00:15.425948+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "autonomous-marketing-stack": "ok",
@@ -237,11 +237,11 @@
   },
   "verifier_invalidation": {
     "status": "fail",
-    "checked_at": "2026-05-22T20:51:09.283331+02:00",
+    "checked_at": "2026-05-22T22:00:15.425948+02:00",
     "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
     "errors": [
       "independent verifier did not pass (verdict='fail')",
-      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail, docs_agentic_review:loop_verification_fail, docs_verifier_stability:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required"
+      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required"
     ]
   }
 }

@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-22T20:55:41.568732
+- Generated: 2026-05-22T21:38:33.512204
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**

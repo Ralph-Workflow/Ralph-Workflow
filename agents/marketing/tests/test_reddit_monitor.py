@@ -56,6 +56,17 @@ class RedditMonitorTests(unittest.TestCase):
             self.assertEqual(payload['scanned'], 12)
             self.assertEqual(payload['shortlisted'], 2)
 
+    def test_score_candidate_rejects_non_software_tax_threads(self):
+        score, _reason, direct_reply_fit, mention_fit = reddit_monitor.score_candidate(
+            'AI to review tax returns?',
+            'Would this help accountants review tax returns faster for the IRS?',
+            'r/Accounting',
+            'review_tax',
+        )
+        self.assertLess(score, 0)
+        self.assertEqual(direct_reply_fit, 'low')
+        self.assertEqual(mention_fit, 'low')
+
 
 if __name__ == '__main__':
     unittest.main()

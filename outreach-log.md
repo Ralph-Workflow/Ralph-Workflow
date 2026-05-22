@@ -5597,3 +5597,37 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 20:49:49
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 21:06:23
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+## 2026-05-22 (Friday) — Reddit monitoring (19:16 UTC / 21:16 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-22_2116.md`
+- **Scan summary:** 15 current-ish candidates scanned, 6 credible discussion opportunities, 9 rejected.
+- **Coverage note:** this run directly re-tested the built-in local monitor and `python3 agents/marketing/reddit_monitor.py` timed out after **40 seconds**, so the pass still required live manual web rescue. Treat the result as **partial visibility**, not full coverage.
+- **Current verdict:** **6** discussion opportunities exist, but **0** are honest RalphWorkflow mention fits after degraded-coverage caution, thread-family saturation, and no-product-value filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+  - `r/AI_Agents` — "74% of enterprises have rolled back AI agents after going live"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+  - `r/PracticalAgenticDev` — "Codex and Claude Code are converging on the same idea: agents as dev coworkers"
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AIAgentsInAction` — "Everyone says they have AI agents in production. Nobody can clearly answer 'how do you know it's actually working'"
+- **Repeated pains worth tracking:** workflow-did-not-actually-finish, looks-done-vs-is-done, visible run ledgers, graceful downgrade paths, review tax, and summary-vs-visible-state trust.
+- **Posting note:** No posting attempted from this monitor pass. Research-first only; fail closed while coverage stays degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 21:38:33
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 21:40:09
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Apollo curator follow-up list
+- **When:** 2026-05-22 22:00 CEST
+- **Action:** Created Apollo people list `Ralph Workflow — curator follow-up 2026-05-22` from live curator outreach contacts.
+- **Why:** Reused existing curator email execution instead of drafting another packet; gives the Apollo lane a real live asset for follow-up / sequence work.
+- **Result:** List created successfully in Apollo. Visible record count was `0` immediately after creation, so the CSV-import path should be rechecked before using the list for a sequence.
+- **Log:** `agents/marketing/logs/marketing_2026-05-22_apollo_curator_followup_list.json`

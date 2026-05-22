@@ -141,7 +141,7 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 - Treat Apollo sequence and report views as measurement surfaces, not vanity dashboards. A sequence is only healthy if it plausibly drives qualified repo visits, replies, or inspection behavior.
 - Protect deliverability before scaling any Apollo sending motion: domain authentication, warmup and ramp-up, conservative sending limits, and caution around open/click tracking unless the tracking setup is known to be safe and correctly configured.
 - Use Apollo tasks, workflows, and sequences only when the motion is measurable and safe for sender reputation.
-- Current blocker truth: from this environment, Apollo login automation is currently blocked by Cloudflare/auth protection and must be treated as a monitored blocker until unblocked.
+- Current blocker truth must come from runtime status, not stale strategy text. If `agents/marketing/logs/apollo_status.json` shows a recent `login_succeeded` state without Cloudflare blocking, Apollo is a live managed-outbound lane; if runtime status shows auth or Cloudflare failure, treat Apollo as blocked until it recovers.
 
 ## Open Questions
 - Improve measurement of which tactics plausibly increase repo visits and repo inspection.
