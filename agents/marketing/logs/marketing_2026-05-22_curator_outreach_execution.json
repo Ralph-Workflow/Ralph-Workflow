@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-22T13:18:18.985987",
+  "timestamp": "2026-05-22T17:34:16.765473",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "curator_queue_follow_through",
+    "type": "curator_outreach_execution",
     "channel": "curator_outreach",
     "title": "Distribution lane execution: curator_outreach",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_curator_queue_follow_through.md"
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_curator_outreach_execution.md"
   },
   "why_this_action": {
-    "summary": "Detected a live curator queue and enforced follow-through instead of regenerating the same outreach targets.",
+    "summary": "Prepared target-specific curator outreach copy using shared market intelligence and Codeberg-first proof assets.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -16,15 +16,9 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "targets_prepared": [
-      "1. ai-for-developers/awesome-ai-coding-tools",
-      "2. filipecalegario/awesome-vibe-coding",
-      "3. asheshgoplani/agent-deck",
-      "4. zhu1090093659/spec_driven_develop",
-      "5. 23blocks-OS/ai-maestro",
-      "6. GitHub Topics: AI agents",
-      "6. QAInsights/awesome-ai-tools",
-      "7. 0xWelt/Awesome-Vibe-Coding",
-      "8. taskade/awesome-vibe-coding"
+      "Agent-Analytics/awesome-multi-agent-orchestrators",
+      "dariubs/awesome-workflow-automation",
+      "no-fluff/awesome-vibe-coding"
     ]
   },
   "result": {

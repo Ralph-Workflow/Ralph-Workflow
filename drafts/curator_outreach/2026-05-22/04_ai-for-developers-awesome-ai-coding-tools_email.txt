@@ -1,0 +1,19 @@
+Hi AI for Developers team,
+
+I noticed your awesome-ai-coding-tools list is actively curating coding agents and workflow-layer tools, and I think Ralph Workflow would fit well there.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for developers who want a structured workflow instead of a chat session. The useful difference is that it composes planning, development, and verification into one repo-native loop so longer unattended runs end in finished, tested code that is ready to review instead of another confident summary.
+
+Primary repo (Codeberg first): https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Start-here guide: https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md
+
+A concise list entry could be:
+- Ralph Workflow — Free and open-source composable loop framework and AI orchestrator for unattended coding runs that aims to hand back finished, tested code ready to review.
+
+If it helps, Ralph Workflow would probably fit best near the coding-agent / workflow-oriented CLI layer rather than as a generic editor.
+
+Thanks for considering it.
+
+Best,
+Ralph Workflow

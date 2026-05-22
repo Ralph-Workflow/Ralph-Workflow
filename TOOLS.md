@@ -61,6 +61,14 @@ Add whatever helps you do your job. This is your cheat sheet.
 - **Historical password:** `V9%)/A@=sXX-ebn`
   - Note: keep only for historical recovery context; do not post from this account.
 
+### Reddit API (PRAW)
+> ⚠️ REQUIRED — Fill in after registering app at https://www.reddit.com/prefs/apps (script type)
+- **Client ID:** <paste from reddit.com/prefs/apps>
+- **Client Secret:** <paste from reddit.com/prefs/apps>
+- **Redirect URI:** http://localhost:8080
+- **Account:** u/Informal-Salt827 (ken.li156@gmail.com)
+- See `agents/marketing/REDDIT_PRAW_SETUP.md` for full setup instructions
+
 ### Apollo.io
 - **Login username:** `ken@hireaegis.com`
 - **Password:** `ngzcz!tS*jWo4dY1QjlZ@cxAd2r2c$Tf`

@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-22T16:31:28.881563
+- Generated: 2026-05-22T17:34:26.726589
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,7 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
-- The active loop did execute a live marketing action recently (distribution_reset_execution), so the system is still shipping output even though outcome movement is not visible yet.
+- The active loop did execute a live marketing action recently (curator_outreach_execution), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
@@ -43,10 +43,10 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, repetitive_outreach
 
 ## Latest executed marketing action
-- Type: distribution_reset_execution
-- Title: Distribution lane execution: distribution_reset
+- Type: curator_outreach_execution
+- Title: Distribution lane execution: curator_outreach
 - Status: executed (ok=True)
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_distribution_reset_execution.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_curator_outreach_execution.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

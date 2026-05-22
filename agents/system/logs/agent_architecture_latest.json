@@ -263,11 +263,11 @@
       "independent verifier did not pass (verdict='fail')",
       "health monitor reports non-architecture live issues: system-health-monitor:live_error"
     ],
-    "architecture_verifier_checked_at": "2026-05-22T16:20:58.191211+02:00"
+    "architecture_verifier_checked_at": "2026-05-22T17:27:24.089679+02:00"
   },
   "verifier_invalidation": {
     "status": "fail",
-    "checked_at": "2026-05-22T16:20:58.191211+02:00",
+    "checked_at": "2026-05-22T17:27:24.089679+02:00",
     "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
     "errors": [
       "independent verifier did not pass (verdict='fail')",

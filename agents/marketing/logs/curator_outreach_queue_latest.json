@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T12:37:40.524262",
+  "generated_at": "2026-05-22T17:34:16.765473",
   "targets": [
     {
       "target": "1. ai-for-developers/awesome-ai-coding-tools",
@@ -99,6 +99,36 @@
       "last_contact_at": "2026-05-22T10:10:23.345917+00:00",
       "last_contact_path": "email:support@taskade.com",
       "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_101023_taskade_curator_email.json"
+    },
+    {
+      "target": "Agent-Analytics/awesome-multi-agent-orchestrators",
+      "url": "https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for Agent-Analytics/awesome-multi-agent-orchestrators",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_agent-analytics-awesome-multi-agent-orchestrators.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "dariubs/awesome-workflow-automation",
+      "url": "https://github.com/dariubs/awesome-workflow-automation",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for dariubs/awesome-workflow-automation",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_dariubs-awesome-workflow-automation.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "no-fluff/awesome-vibe-coding",
+      "url": "https://github.com/no-fluff/awesome-vibe-coding",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for no-fluff/awesome-vibe-coding",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_no-fluff-awesome-vibe-coding.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
     }
   ]
 }

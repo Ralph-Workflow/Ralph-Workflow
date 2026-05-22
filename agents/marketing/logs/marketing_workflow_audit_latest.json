@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T16:31:28.881563",
+  "generated_at": "2026-05-22T17:34:26.726589",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -101,7 +101,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
-    "The active loop did execute a live marketing action recently (distribution_reset_execution), so the system is still shipping output even though outcome movement is not visible yet."
+    "The active loop did execute a live marketing action recently (curator_outreach_execution), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -134,9 +134,9 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_distribution_reset_execution.json",
-    "type": "distribution_reset_execution",
-    "title": "Distribution lane execution: distribution_reset",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_curator_outreach_execution.json",
+    "type": "curator_outreach_execution",
+    "title": "Distribution lane execution: curator_outreach",
     "status": "executed",
     "ok": true,
     "url": null

@@ -137,9 +137,11 @@ class DistributionLaneSelectorTests(unittest.TestCase):
             outreach_path = tmp / 'outreach-log.md'
             latest_json = log_dir / 'distribution_lane_latest.json'
             latest_md = log_dir / 'distribution_lane_latest.md'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
             adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
             channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
             outreach_path.write_text(outreach_text, encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
             for payload, name in recent_logs:
                 (log_dir / name).write_text(json.dumps(payload), encoding='utf-8')
 
@@ -150,6 +152,7 @@ class DistributionLaneSelectorTests(unittest.TestCase):
                  patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
                  patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
                  patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
                  patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', tmp / 'missing.json'):
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
@@ -358,6 +361,76 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'distribution_reset')
 
+    def test_prefers_curator_activation_when_distribution_reset_targets_are_waiting(self):
+        now = datetime(2026, 5, 22, 6, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        outreach_text = 'HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.'
+        curator_queue = {
+            'targets': [
+                {'target': f'{idx}. target', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+                for idx in range(1, 7)
+            ]
+        }
+        comparison_queue = {
+            'targets': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+                for idx in range(1, 9)
+            ]
+        }
+        reset_queue = {
+            'targets': [
+                {'target': 'Agent-Analytics/awesome-multi-agent-orchestrators', 'url': 'https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators', 'status': 'discovered'}
+            ]
+        }
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'path': f'/comparisons/comp-{idx}.md'}
+                for idx in range(1, 9)
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            market_path = log_dir / 'market_intelligence.json'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text(outreach_text, encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            reset_queue_path.write_text(json.dumps(reset_queue), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            (log_dir / 'marketing_a.json').write_text(json.dumps({"timestamp": "2026-05-21T22:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post A", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+            (log_dir / 'marketing_b.json').write_text(json.dumps({"timestamp": "2026-05-22T01:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post B", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'curator_outreach')
+            self.assertIn('Fresh reset targets exist', decision.reason)
+
 
 class DistributionLaneExecutorTests(unittest.TestCase):
     def test_curator_parser_skips_measurement_only_rows(self):
@@ -440,6 +513,8 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             outreach_path.write_text('HN/Lobsters mentioned several times', encoding='utf-8')
             adoption_path = tmp / 'adoption_metrics_latest.json'
             adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
 
             with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
@@ -448,6 +523,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
                  patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
                  patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
@@ -586,6 +662,8 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
             queue_path = log_dir / 'curator_outreach_queue_latest.json'
             queue_path.write_text(json.dumps(existing_queue), encoding='utf-8')
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
 
             with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
@@ -594,6 +672,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
                  patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
                  patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', queue_path), \
+                 patch.object(distribution_lane_executor, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
@@ -848,6 +927,78 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertIn('Fresh targets discovered in this reset', artifact_text)
             self.assertIn('Agent-Analytics/awesome-multi-agent-orchestrators', artifact_text)
             self.assertNotIn('hesreallyhim/awesome-claude-code', execution.targets_prepared)
+
+    def test_curator_execution_promotes_distribution_reset_targets_before_static_queue(self):
+        now = datetime(2026, 5, 23, 7, 15, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='curator_outreach',
+            reason='Fresh reset targets exist; promote them into real outreach assets before logging another reset or queue-housekeeping cycle.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': 'claude-code', 'name': 'Claude Code', 'path': '/tmp/claude-code.md'},
+            ]
+        }
+        curator_targets = """### 1. Static target
+- **URL:** https://example.com/static
+- **Action:** Submit PR
+- **Priority:** HIGH
+"""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            seo_dir = tmp / 'seo-reports'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            seo_dir.mkdir()
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('HN/Lobsters blocker noted.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            curator_queue = log_dir / 'curator_outreach_queue_latest.json'
+            curator_queue.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
+            comparison_queue.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            reset_queue = log_dir / 'distribution_reset_targets_latest.json'
+            reset_queue.write_text(json.dumps({'targets': [
+                {
+                    'target': 'Agent-Analytics/awesome-multi-agent-orchestrators',
+                    'url': 'https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators',
+                    'why_it_fits': 'explicitly curates multi-agent orchestrators.',
+                    'status': 'discovered',
+                }
+            ]}), encoding='utf-8')
+            target_path = log_dir / 'curator_outreach_targets.md'
+            target_path.write_text(curator_targets, encoding='utf-8')
+            (seo_dir / 'reddit_monitor_latest.md').write_text('visible review packets\n', encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', curator_queue), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
+                 patch.object(distribution_lane_executor, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue), \
+                 patch.object(distribution_lane_executor, 'TARGETS_PATH', target_path), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'curator_outreach_execution')
+            self.assertEqual(execution.targets_prepared, ['Agent-Analytics/awesome-multi-agent-orchestrators'])
+            queue_payload = json.loads(curator_queue.read_text(encoding='utf-8'))
+            self.assertEqual(queue_payload['targets'][0]['target'], 'Agent-Analytics/awesome-multi-agent-orchestrators')
+            reset_payload = json.loads(reset_queue.read_text(encoding='utf-8'))
+            self.assertEqual(reset_payload['targets'][0]['status'], 'promoted_to_curator_queue')
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('Reset targets activated in this run', artifact_text)
 
     def test_curator_queue_dedupes_same_url_even_if_heading_changes(self):
         rows = [

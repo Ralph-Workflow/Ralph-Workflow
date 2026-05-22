@@ -5471,3 +5471,36 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 16:39:16
 - **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 17:10:15
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+### 2026-05-22 17:20:28 — Distribution layer repair (marketing_momentum_watchdog)
+- **Diagnosis:** Reddit blocked (headless Chrome detected), GitHub unauthenticated, Apollo session encrypted
+- **What was blocked:** Reddit posting (~54h since last post), GitHub curator PRs, Apollo outreach
+- **What was fixed:** PRAW Reddit posting infrastructure built and integrated
+  - `reddit_praw_post.py` — full PRAW module with OAuth flow
+  - `reddit_praw_reply.py` — autoposter-compatible reply module
+  - `reddit_autopost.py` updated to prefer PRAW when credentials are in TOOLS.md
+  - `REDDIT_PRAW_SETUP.md` — setup instructions
+  - `TOOLS.md` updated with credential slots
+  - `REDDIT_LEARNINGS.md` updated with PRAW context
+- **Still needs human action:** Fill Reddit OAuth credentials in TOOLS.md (Client ID + Client Secret from reddit.com/prefs/apps)
+- **GitHub curator PRs:** Blocked — `gh` not authenticated, no API token available
+- **Apollo:** Session cookies encrypted, ATO challenge on record — needs human browser session
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 17:35:21
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+
+## 2026-05-22 (Friday) — Curator outreach email sent to AI for Developers (16:05 UTC / 18:05 CEST)
+- **What I executed:** sent a live curator-inclusion email to `contact@aifordevelopers.org` requesting that Ralph Workflow be considered for `ai-for-developers/awesome-ai-coding-tools`, with **Codeberg as the primary repo** and GitHub positioned as the mirror.
+- **Why this action:** this is **REPLACING / DISTRIBUTION**. The audit says primary-repo adoption is flat, Reddit is structurally weak, and the current replacement lane is curator/comparison backlinks. AI for Developers is one of the highest-fit active curated lists because it already ranks and curates coding agents, CLI tools, and workflow layers for thousands of developers.
+- **Shared findings reused:** `market_intelligence_latest.json`, `marketing_workflow_audit_latest.json`, `adoption_metrics_latest.md`, and the curator outreach packet were used to keep the pitch aligned with the four marketing questions and Codeberg-first CTA.
+- **Asset used:** `drafts/curator_outreach/2026-05-22/04_ai-for-developers-awesome-ai-coding-tools_email.txt`
+- **Delivery log:** `agents/marketing/logs/marketing_2026-05-22_160551_ai_for_developers_curator_email.json`
+- **Expected outcome:** a curated-list inclusion or reply that creates a qualified backlink and sends higher-intent developer traffic to the primary Codeberg repo.
+- **Measurement window:** 14 days for any reply or inclusion signal; 30 days through **2026-06-21** for a live list inclusion/backlink and any Codeberg adoption delta.
+- **Replace if it fails:** if there is no reply or inclusion signal by **2026-06-21**, treat this target as exhausted for cold email and move to the next highest-fit curated list or submission-form lane instead of repeating the same ask.
+- **Type:** **EXECUTED / DISTRIBUTION**

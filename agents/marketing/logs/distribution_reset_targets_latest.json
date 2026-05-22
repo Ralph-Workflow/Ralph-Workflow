@@ -1,40 +1,50 @@
 {
-  "generated_at": "2026-05-22T17:07:23.911289",
+  "generated_at": "2026-05-22T07:15:00",
   "targets": [
     {
       "target": "Agent-Analytics/awesome-multi-agent-orchestrators",
       "url": "https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators",
       "why_it_fits": "explicitly curates multi-agent orchestrators, coding-agent workspaces, and governance layers. Strong match for Ralph Workflow's orchestration positioning and Codeberg-primary repo link opportunity.",
-      "status": "discovered",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md"
+      "status": "promoted_to_curator_queue",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
+      "promoted_at": "2026-05-22T17:34:16.765473",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_agent-analytics-awesome-multi-agent-orchestrators.md"
     },
     {
       "target": "dariubs/awesome-workflow-automation",
       "url": "https://github.com/dariubs/awesome-workflow-automation",
       "why_it_fits": "adjacent workflow/orchestration directory with dedicated AI agent and coding-agent sections. Good target for citation/inclusion near the existing comparison pages.",
-      "status": "discovered",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md"
+      "status": "promoted_to_curator_queue",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
+      "promoted_at": "2026-05-22T17:34:16.765473",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_dariubs-awesome-workflow-automation.md"
     },
     {
       "target": "no-fluff/awesome-vibe-coding",
       "url": "https://github.com/no-fluff/awesome-vibe-coding",
       "why_it_fits": "coding-tool roundup with agent/workflow categories and clear audience overlap. Good Codeberg-link candidate.",
-      "status": "discovered",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md"
+      "status": "promoted_to_curator_queue",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
+      "promoted_at": "2026-05-22T17:34:16.765473",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_no-fluff-awesome-vibe-coding.md"
     },
     {
       "target": "vivy-yi/awesome-agent-orchestration",
       "url": "https://github.com/vivy-yi/awesome-agent-orchestration",
       "why_it_fits": "broad orchestration list covering multi-agent systems, workflow patterns, MCP/A2A. Strong adjacent target to the Conductor / Claude Code / Hermes comparisons.",
-      "status": "discovered",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md"
+      "status": "promoted_to_curator_queue",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
+      "promoted_at": "2026-05-22T07:15:00",
+      "artifact_path": "/tmp/tmppttgwtd4/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md"
     },
     {
       "target": "hesreallyhim/awesome-claude-code",
       "url": "https://github.com/hesreallyhim/awesome-claude-code",
       "why_it_fits": "Claude Code ecosystem roundup; directly adjacent to the existing Claude Code comparison page and potentially receptive to orchestration/workflow tooling.",
-      "status": "discovered",
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md"
+      "status": "promoted_to_curator_queue",
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
+      "promoted_at": "2026-05-22T07:15:00",
+      "artifact_path": "/tmp/tmppttgwtd4/drafts/curator_outreach/2026-05-22/02_hesreallyhim-awesome-claude-code.md"
     }
   ]
 }
