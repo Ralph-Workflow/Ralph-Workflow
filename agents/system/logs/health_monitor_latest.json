@@ -1,64 +1,8 @@
 {
-  "ts": "2026-05-22T07:50:30.383084",
+  "ts": "2026-05-22T08:04:05.546642",
   "jobs_checked": 20,
-  "issues_found": 5,
-  "issues": [
-    {
-      "job_id": "5a7cc4fc-69f7-4101-b4af-baf2adb604c1",
-      "name": "Push research findings to git repo",
-      "category": "live_error",
-      "consecutive_errors": 1,
-      "last_status": "error",
-      "last_error": "cron: job interrupted by gateway restart",
-      "timeout_seconds": 0,
-      "last_duration_ms": 989284,
-      "likely_cause": "UNKNOWN: cron: job interrupted by gateway restart"
-    },
-    {
-      "job_id": "ce3f9db8-bb49-4f97-9ee3-d4786314c204",
-      "name": "marketing-momentum-watchdog",
-      "category": "live_error",
-      "consecutive_errors": 1,
-      "last_status": "error",
-      "last_error": "cron: job interrupted by gateway restart",
-      "timeout_seconds": 1800,
-      "last_duration_ms": 989286,
-      "likely_cause": "UNKNOWN: cron: job interrupted by gateway restart"
-    },
-    {
-      "job_id": "126471f7-1226-4aee-a2fe-e7ff17a28d6d",
-      "name": "repo-adoption-tracker",
-      "category": "live_error",
-      "consecutive_errors": 1,
-      "last_status": "error",
-      "last_error": "cron: job interrupted by gateway restart",
-      "timeout_seconds": 900,
-      "last_duration_ms": 989287,
-      "likely_cause": "PRE_TIMEOUT_RISK: script at 989287ms / 900s limit - duration exceeds 90%"
-    },
-    {
-      "job_id": "50578fdf-ea83-46bd-8580-36d2bae7ba54",
-      "name": "marketing-workflow-audit",
-      "category": "live_error",
-      "consecutive_errors": 1,
-      "last_status": "error",
-      "last_error": "cron: job interrupted by gateway restart",
-      "timeout_seconds": 1800,
-      "last_duration_ms": 989287,
-      "likely_cause": "UNKNOWN: cron: job interrupted by gateway restart"
-    },
-    {
-      "job_id": "3f549d7c-8ee5-4739-b6da-2ee5d85f29f8",
-      "name": "content-generator",
-      "category": "live_error",
-      "consecutive_errors": 1,
-      "last_status": "error",
-      "last_error": "cron: job interrupted by gateway restart",
-      "timeout_seconds": 600,
-      "last_duration_ms": 989282,
-      "likely_cause": "PRE_TIMEOUT_RISK: script at 989282ms / 600s limit - duration exceeds 90%"
-    }
-  ],
+  "issues_found": 0,
+  "issues": [],
   "repairs_attempted": [
     {
       "type": "rerun_independent_architecture_verification",
@@ -70,7 +14,7 @@
       "type": "rerun_architecture_verifier",
       "job": "agent_architecture_verifier_runtime",
       "ok": true,
-      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-22T07:50:23.917653+02:00\"\n}"
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-22T08:04:03.551790+02:00\"\n}"
     }
   ]
 }
