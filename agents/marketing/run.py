@@ -22,13 +22,19 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+ROOT = Path("/home/mistlight/.openclaw/workspace")
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from agents.marketing.distribution_lane_executor import execute_distribution_lane
+from agents.marketing.distribution_lane_selector import choose_distribution_lane
 from agents.marketing.market_intelligence_runtime import load_market_intelligence
 
-AGENTS_DIR = Path("/home/mistlight/.openclaw/workspace/agents/marketing")
+AGENTS_DIR = ROOT / "agents/marketing"
 LOG_DIR = AGENTS_DIR / "logs"
 STRATEGY_FILE = AGENTS_DIR / "STRATEGY.md"
 POSTED_FILE = LOG_DIR / "posted_urls.json"
-SEO_REPORTS_DIR = Path("/home/mistlight/.openclaw/workspace/seo-reports")
+SEO_REPORTS_DIR = ROOT / "seo-reports"
 ADOPTION_FILE = LOG_DIR / "adoption_metrics_latest.json"
 MARKET_INTELLIGENCE_FILE = LOG_DIR / "market_intelligence_latest.json"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -565,31 +571,44 @@ def main() -> int:
     insights_path = write_seo_insights(seo_current, decisions)
     print(f"[run.py] SEO insights written to {insights_path}", flush=True)
 
-    # Trigger content generation every day so the loop can actually hand work to posting.
-    print("[run.py] Triggering content generation from SEO insights...", flush=True)
-    generation_result = subprocess.run(
-        [sys.executable, str(AGENTS_DIR / "generate_content.py")],
-        capture_output=True, text=True, timeout=60,
-    )
-    generation_stdout = (generation_result.stdout or "").strip()
-    generation_stderr = (generation_result.stderr or "").strip()
-    if generation_result.returncode == 0:
-        print(f"[run.py] Content generation stdout: {generation_stdout[:200]}", flush=True)
-    else:
-        print(f"[run.py] Content generation warning: {generation_stderr[:200]}", flush=True)
+    distribution_lane = choose_distribution_lane(now)
+    distribution_execution = execute_distribution_lane(distribution_lane, now)
+    print(f"[run.py] Chosen distribution lane: {distribution_lane.lane}", flush=True)
+    if distribution_execution.artifact_path:
+        print(f"[run.py] Distribution execution artifact: {distribution_execution.artifact_path}", flush=True)
 
-    # Try the posting step after generation so the daily marketing loop can actually publish.
-    print("[run.py] Triggering posting step...", flush=True)
-    posting_result = subprocess.run(
-        [sys.executable, str(AGENTS_DIR / "run_posting.py")],
-        capture_output=True, text=True, timeout=120,
-    )
-    posting_stdout = (posting_result.stdout or "").strip()
-    posting_stderr = (posting_result.stderr or "").strip()
-    if posting_result.returncode == 0:
-        print(f"[run.py] Posting stdout: {posting_stdout[:200]}", flush=True)
+    if distribution_lane.lane == "owned_content":
+        print("[run.py] Triggering content generation from SEO insights...", flush=True)
+        generation_result = subprocess.run(
+            [sys.executable, str(AGENTS_DIR / "generate_content.py")],
+            capture_output=True, text=True, timeout=60,
+        )
+        generation_stdout = (generation_result.stdout or "").strip()
+        generation_stderr = (generation_result.stderr or "").strip()
+        if generation_result.returncode == 0:
+            print(f"[run.py] Content generation stdout: {generation_stdout[:200]}", flush=True)
+        else:
+            print(f"[run.py] Content generation warning: {generation_stderr[:200]}", flush=True)
+
+        print("[run.py] Triggering posting step...", flush=True)
+        posting_result = subprocess.run(
+            [sys.executable, str(AGENTS_DIR / "run_posting.py")],
+            capture_output=True, text=True, timeout=120,
+        )
+        posting_stdout = (posting_result.stdout or "").strip()
+        posting_stderr = (posting_result.stderr or "").strip()
+        if posting_result.returncode == 0:
+            print(f"[run.py] Posting stdout: {posting_stdout[:200]}", flush=True)
+        else:
+            print(f"[run.py] Posting warning: {posting_stderr[:200]}", flush=True)
     else:
-        print(f"[run.py] Posting warning: {posting_stderr[:200]}", flush=True)
+        generation_result = subprocess.CompletedProcess(args=["generate_content.py"], returncode=0, stdout=f"skipped: lane={distribution_lane.lane}", stderr="")
+        generation_stdout = generation_result.stdout
+        generation_stderr = generation_result.stderr
+        posting_result = subprocess.CompletedProcess(args=["run_posting.py"], returncode=0, stdout=f"skipped: lane={distribution_lane.lane}", stderr="")
+        posting_stdout = posting_result.stdout
+        posting_stderr = posting_result.stderr
+        print(f"[run.py] Skipping owned-content generation/posting; using {distribution_lane.lane} lane.", flush=True)
 
     # Build payload
     payload = {
@@ -614,6 +633,8 @@ def main() -> int:
         },
         "adoption": adoption_data,
         "market_intelligence": market_intelligence,
+        "distribution_lane": distribution_lane.__dict__,
+        "distribution_execution": distribution_execution.__dict__,
         "failure_signals": [d["action"] for d in decisions if d.get("is_failing_signal")],
         "marketing_status": "failing" if any(d.get("is_failing_signal") for d in decisions) else "mixed" if decisions else "initial",
         "content_generation": {

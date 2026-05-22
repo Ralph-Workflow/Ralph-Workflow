@@ -1,0 +1,17 @@
+{
+  "lane": "curator_outreach",
+  "reason": "Owned content is saturated for now; switch to comparison-page and curator distribution prep.",
+  "reasons": [
+    "Primary Codeberg adoption is flat in the current measurement window.",
+    "3 owned-content posts already shipped in the last 36 hours."
+  ],
+  "owned_content_posts_last_36h": 3,
+  "unsubmitted_directory_channels": [],
+  "shared_findings_used": [
+    "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+    "channel_discovery.json: validated easy-submit directory lanes",
+    "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+    "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+  ],
+  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_action_brief.md"
+}

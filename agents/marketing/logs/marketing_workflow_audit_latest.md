@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-22T05:38:03.786758
+- Generated: 2026-05-22T07:09:30.995677
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,15 +11,13 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
-- The active loop did execute a live marketing action recently (owned_content_publication), so the system is still shipping output even though outcome movement is not visible yet.
-- The loop has repeated the same HN/Lobsters bottleneck multiple times without a fresh autonomous replacement action, so the ceiling itself is now a failing tactic.
+- The active loop did execute a live marketing action recently (curator_outreach_execution), so the system is still shipping output even though outcome movement is not visible yet.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
 - Failing tactic detected: reddit_style_repetition
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
-- Failing tactic detected: execution_ceiling_repetition
 
 ## Outcome evaluation
 - GitHub: samples=9, stars +0, watchers +0, forks +0
@@ -34,7 +32,7 @@
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
 - **outcome_system_underpowered** (system_design) → REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.
-  - Repair state: needs_execution
+  - Repair state: pending_measurement
   - Kill condition: Another audit still shows flat primary-repo adoption without any new structural marketing capability or replacement execution path
   - Success metric: A new outcome-oriented agent/process/runtime capability is created and logged before the next audit, with a direct link to Codeberg adoption movement
 - **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
@@ -45,19 +43,14 @@
   - Repair state: pending_measurement
   - Kill condition: Same opening detected again in next audit
   - Success metric: No repeated openings in next audit window
-- **execution_ceiling_repetition** (system_design) → STOP repeating the same HN/Lobsters-only handoff. Ship a fresh autonomous replacement asset in this run: either a new conversion-focused Telegraph post tied to a current pain angle, or a curator/directory/backlink outreach packet the loop can hand off cleanly without another generic ceiling note.
-  - Repair state: needs_execution
-  - Kill condition: Another audit repeats the same HN/Lobsters bottleneck without a new shipped asset
-  - Success metric: A fresh non-monitor marketing asset is shipped and logged before the next audit
 - No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat, repetitive_outreach
 
 ## Latest executed marketing action
-- Type: owned_content_publication
-- Title: Start Here: Try Ralph Workflow on One Real Backlog Task
-- Status: posted (ok=True)
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_start-here.json
-- URL: https://telegra.ph/Start-Here-Try-Ralph-Workflow-on-One-Real-Backlog-Task-05-22
+- Type: curator_outreach_execution
+- Title: Distribution lane execution: curator_outreach
+- Status: executed (ok=True)
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_curator_outreach_execution.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

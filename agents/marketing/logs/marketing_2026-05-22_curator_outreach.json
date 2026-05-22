@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-05-22T07:09:48.815073",
+  "run_type": "marketing-distribution-lane",
+  "chosen_action": {
+    "type": "distribution_lane_switch",
+    "channel": "curator_outreach",
+    "title": "Distribution lane decision: curator_outreach",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_action_brief.md"
+  },
+  "why_this_action": {
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
+    ],
+    "reasoning": "Owned content is saturated for now; switch to comparison-page and curator distribution prep.",
+    "supporting_reasons": [
+      "Primary Codeberg adoption is flat in the current measurement window.",
+      "3 owned-content posts already shipped in the last 36 hours."
+    ]
+  },
+  "result": {
+    "status": "prepared",
+    "ok": true
+  }
+}
