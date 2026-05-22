@@ -96,9 +96,10 @@ On failure (`is_error=true`):
 ## Capability and default grant
 
 `visit_url` requires the `WebVisit` capability. `WebVisit` is granted to
-**all 10 session drains** by default, meaning `visit_url` is visible and callable
-in every phase. This default exposure is verified by the cross-phase regression test
-`tests/integration/test_web_access_phase_visibility.py`.
+**all non-commit session drains** by default, meaning `visit_url` is visible and
+callable in every phase except commit-class drains (development commit, review
+commit, and commit drains). This default exposure is verified by the cross-phase
+regression test `tests/integration/test_web_access_phase_visibility_visit_url_phase_visibility.py`.
 
 ## Private-network access (SSRF guard)
 

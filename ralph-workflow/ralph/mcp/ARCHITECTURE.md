@@ -153,7 +153,7 @@ Ralph uses an internal capability vocabulary for session access control:
 | `env.write` | `env.write` | Write environment variables |
 | `upstream.tool_use` | `upstream.tool_use` | Use upstream MCP tools |
 | `web.search` | `web.search` | Search the web |
-| `web.visit` | `web.visit` | Fetch and extract text from a URL (config opt-in; all drains) |
+| `web.visit` | `web.visit` | Fetch and extract text from a URL (default-enabled; non-commit drains) |
 | `media.read` | `media.read` | Read media files (images, PDFs, documents, audio, video) — default-on |
 
 ### MCP Capability Mapping
