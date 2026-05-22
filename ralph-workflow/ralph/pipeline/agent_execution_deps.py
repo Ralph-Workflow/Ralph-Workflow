@@ -58,7 +58,13 @@ if TYPE_CHECKING:
         def __call__(self, bridge: object) -> None: ...
 
     class _MaterializeSystemPromptFn(Protocol):
-        def __call__(self, *, workspace_root: Path, name: str) -> str: ...
+        def __call__(
+            self,
+            *,
+            workspace_root: Path,
+            name: str,
+            worker_namespace: Path | None = None,
+        ) -> str: ...
 
     class _McpSupervisorFactory(Protocol):
         def __call__(

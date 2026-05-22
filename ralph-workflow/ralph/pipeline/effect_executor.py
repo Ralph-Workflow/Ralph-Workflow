@@ -162,6 +162,9 @@ def execute_agent_effect(
         waiting_listener=waiting_listener,
         agent_config=agent_config,
         display=display,
+        worker_namespace=cast("Path | None", opts.get("worker_namespace")),
+        worker_artifact_dir=cast("Path | None", opts.get("worker_artifact_dir")),
+        parallel_worker=cast("bool", opts.get("parallel_worker", False)),
     )
     return _invoke_agent_with_recovery(ctx)
 
@@ -180,9 +183,17 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
     bridge = None
     try:
         _materialize = ctx.deps.materialize_system_prompt_fn or materialize_system_prompt
-        system_prompt_file = _materialize(
-            workspace_root=ctx.workspace_scope.root, name=str(ctx.effect.phase)
-        )
+        try:
+            system_prompt_file = _materialize(
+                workspace_root=ctx.workspace_scope.root,
+                name=str(ctx.effect.phase),
+                worker_namespace=ctx.worker_namespace,
+            )
+        except TypeError:
+            system_prompt_file = _materialize(
+                workspace_root=ctx.workspace_scope.root,
+                name=str(ctx.effect.phase),
+            )
         session_mcp_plan = build_session_mcp_plan(
             transport=ctx.agent_config.transport,
             drain=ctx.effect.drain or ctx.effect.phase,
@@ -195,6 +206,10 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
             run_id=str(uuid.uuid4()),
             drain=ctx.effect.drain or ctx.effect.phase,
             capabilities=set(session_mcp_plan.capabilities),
+            parallel_worker=ctx.parallel_worker,
+            worker_artifact_dir=ctx.worker_artifact_dir,
+            worker_namespace=ctx.worker_namespace,
+            allowed_roots=ctx.workspace_scope.allowed_roots,
             model_identity=session_mcp_plan.model_identity,
             stored_capability_profile=session_mcp_plan.capability_profile,
         )

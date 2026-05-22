@@ -83,11 +83,13 @@ def _materialize_system_prompt(
     workspace_root: Path,
     name: str,
     default_current_prompt: str | None,
+    worker_namespace: Path | None = None,
 ) -> str:
     return materialize_system_prompt(
         workspace_root=workspace_root,
         name=name,
         default_current_prompt=default_current_prompt,
+        worker_namespace=worker_namespace,
     )
 
 

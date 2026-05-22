@@ -1,19 +1,11 @@
-"""Capability state model."""
+"""Capability state model - backward compatibility re-export.
 
-from __future__ import annotations
+New code should import from ralph.skills._state:
+    from ralph.skills._state import CapabilityState
+"""
 
-from pydantic import Field
+from __future__ annotations
 
-from ralph.pydantic_compat import ConfigDict, RalphBaseModel
-from ralph.skills._capability_entry import CapabilityEntry
+from ralph.skills._state import CapabilityState
 
-
-class CapabilityState(RalphBaseModel):
-    """Capability health state for all dependency-backed helpers."""
-
-    model_config = ConfigDict(frozen=True)
-
-    web_search: CapabilityEntry = Field(default_factory=CapabilityEntry)
-    visit_url: CapabilityEntry = Field(default_factory=CapabilityEntry)
-    docs_mcp: CapabilityEntry = Field(default_factory=CapabilityEntry)
-    skills: CapabilityEntry = Field(default_factory=CapabilityEntry)
+__all__ = ["CapabilityState"]

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.mcp.artifacts.commit_message import (
+    normalize_commit_message_content,
     read_commit_message_artifact,
     read_commit_message_from_path,
     write_commit_message_artifact,
@@ -138,3 +139,39 @@ def test_write_commit_message_artifact_rejects_non_conventional_subject(tmp_path
             {"type": "commit", "subject": "update files"},
             backend=backend,
         )
+
+
+def test_normalize_commit_message_content_accepts_excluded_files_payload() -> None:
+    normalized = normalize_commit_message_content(
+        {
+            "type": "commit",
+            "subject": "fix(core): scope commit staging",
+            "excluded_files": [{"path": "docs/guide.md", "reason": "internal_ignore"}],
+        }
+    )
+
+    assert normalized["excluded_files"] == [
+        {"path": "docs/guide.md", "reason": "internal_ignore"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "type": "commit",
+            "subject": "fix(core): scope commit staging",
+            "excluded_files": [{"path": "docs/guide.md", "reason": "generated"}],
+        },
+        {
+            "type": "commit",
+            "subject": "fix(core): scope commit staging",
+            "excluded_files": ["docs/guide.md"],
+        },
+    ],
+)
+def test_normalize_commit_message_content_rejects_invalid_excluded_files_payload(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError):
+        normalize_commit_message_content(payload)

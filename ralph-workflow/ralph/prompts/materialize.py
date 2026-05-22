@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from collections import OrderedDict
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,15 +28,15 @@ from ralph.phases.required_artifacts import (
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
 from ralph.policy.models import ROLE_REVIEW
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
-from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.commit_cleanup import render_commit_cleanup_prompt
 from ralph.prompts.debug_dump import (
+    clear_multimodal_sidecar,
+    collect_media_entries_for_phase,
     dump_rendered_prompt,
-    media_session_path,
-    multimodal_sidecar_path,
     prompt_dump_path,
+    write_multimodal_sidecar,
 )
 from ralph.prompts.developer import (
     DeveloperPromptInputs,
@@ -73,6 +72,7 @@ if TYPE_CHECKING:
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import ArtifactsPolicy, PhaseDefinition, PipelinePolicy
+    from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
     from ralph.workspace.protocol import Workspace
 @dataclass(frozen=True)
 class PromptPhaseOptions:
@@ -82,79 +82,16 @@ class PromptPhaseOptions:
     previous_phase: str | None = None
     resume_existing_phase: bool = False
     multimodal_entries: list[MultimodalSidecarEntry] | None = None
-def _sidecar_entry_identity(entry: MultimodalSidecarEntry) -> str:
-    """Return the bounded live-set identity for a multimodal sidecar entry."""
-    if entry.identity_key:
-        return entry.identity_key
-    if entry.source_uri:
-        return f"source-uri:{entry.modality}:{entry.source_uri}"
-    if entry.source_path:
-        return f"source-path:{entry.modality}:{entry.source_path}"
-    return f"artifact-id:{entry.artifact_id or entry.uri}"
-_SIDECAR_SCHEMA_VERSION = "2"
-def _write_multimodal_sidecar(
-    workspace: Workspace,
-    phase: str,
-    entries: list[MultimodalSidecarEntry],
-) -> None:
-    path = multimodal_sidecar_path(phase)
-    payload = {
-        "schema_version": _SIDECAR_SCHEMA_VERSION,
-        "phase": phase,
-        "artifacts": [e.to_dict() for e in entries],
-    }
-    workspace.write(path, json.dumps(payload, indent=2))
-def _clear_multimodal_sidecar(workspace: Workspace, phase: str) -> None:
-    path = multimodal_sidecar_path(phase)
-    with suppress(Exception):
-        workspace.remove(path)
-def collect_media_entries_for_phase(
-    workspace: Workspace,
-    phase: str,
-) -> list[MultimodalSidecarEntry]:
-    """Read media entries from the persistent session index for a phase.
-    The MCP server writes artifact metadata to this index whenever read_media
-    creates a resource-reference artifact during a live session. The runner
-    reads this index at the next prompt materialization to carry those artifacts
-    forward so the agent can retrieve them via read_media / resources/read.
-    Returns an empty list when no session index exists or it cannot be parsed.
-    """
-    path = media_session_path(phase)
-    try:
-        raw = workspace.read(path)
-    except Exception:
-        return []
-    try:
-        data: dict[str, object] = json.loads(raw)
-        artifacts = data.get("artifacts")
-        if not isinstance(artifacts, list):
-            return []
-        entries: OrderedDict[str, MultimodalSidecarEntry] = OrderedDict()
-        for item in artifacts:
-            if not isinstance(item, dict):
-                continue
-            try:
-                entry = MultimodalSidecarEntry(
-                    artifact_id=str(item.get("artifact_id", "")),
-                    uri=str(item.get("uri", "")),
-                    mime_type=str(item.get("mime_type", "")),
-                    title=str(item.get("title", "")),
-                    modality=str(item.get("modality", "")),
-                    delivery=str(item.get("delivery", "resource_reference_replay")),
-                    reason=str(item.get("reason", "")),
-                    source_path=str(item.get("source_path", "")),
-                    cache_path=str(item.get("cache_path", "")),
-                    source_uri=str(item.get("source_uri", "")),
-                    block_type=str(item.get("block_type", "")),
-                    failure_kind=str(item.get("failure_kind", "")),
-                    identity_key=str(item.get("identity_key", "")),
-                )
-            except Exception:
-                continue
-            entries[_sidecar_entry_identity(entry)] = entry
-        return list(entries.values())
-    except Exception:
-        return []
+    work_unit: WorkUnit | None = None
+
+
+def __getattr__(name: str) -> object:
+    if name == "MultimodalSidecarEntry":
+        from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry as _Entry
+
+        return _Entry
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 def materialize_prompt_for_phase(
     context: PromptPhaseContext | None = None,
     options: PromptPhaseOptions | None = None,
@@ -178,15 +115,54 @@ def materialize_prompt_for_phase(
                 multimodal_entries=cast(
                     "list[MultimodalSidecarEntry] | None", kwargs.get("multimodal_entries")
                 ),
+                work_unit=cast("WorkUnit | None", kwargs.get("work_unit")),
             )
     opts = options or PromptPhaseOptions()
     prompt = _render_prompt_for_phase(context, opts)
-    path = dump_rendered_prompt(context.workspace, context.phase, prompt)
+    if _should_wrap_worker_prompt(context.phase, context.pipeline_policy, opts):
+        assert opts.work_unit is not None
+        prompt = render_worker_prompt(
+            unit=opts.work_unit,
+            base_prompt=prompt,
+            policy=context.pipeline_policy,
+        )
+    path = dump_rendered_prompt(
+        context.workspace,
+        context.phase,
+        prompt,
+        worker_namespace=opts.worker_namespace,
+    )
     if opts.multimodal_entries:
-        _write_multimodal_sidecar(context.workspace, context.phase, opts.multimodal_entries)
+        write_multimodal_sidecar(
+            context.workspace,
+            context.phase,
+            opts.multimodal_entries,
+            worker_namespace=opts.worker_namespace,
+        )
     else:
-        _clear_multimodal_sidecar(context.workspace, context.phase)
+        clear_multimodal_sidecar(
+            context.workspace,
+            context.phase,
+            worker_namespace=opts.worker_namespace,
+        )
     return path
+
+
+def _should_wrap_worker_prompt(
+    phase: str,
+    pipeline_policy: PipelinePolicy,
+    options: PromptPhaseOptions,
+) -> bool:
+    if options.work_unit is None:
+        return False
+    phase_def = pipeline_policy.phases.get(phase)
+    if phase_def is None or phase_def.role != "execution":
+        return False
+    artifacts_policy = options.artifacts_policy
+    if artifacts_policy is None:
+        return phase == "development"
+    drain = phase_def.drain if phase_def.drain is not None else phase
+    return _drain_artifact_type(drain, artifacts_policy) == "development_result"
 def prompt_file_for_phase(phase: str) -> str:
     """Return the workspace-relative path where a phase's prompt is stored."""
     return prompt_dump_path(phase)
@@ -233,7 +209,11 @@ def _render_prompt_for_phase(
         previous_phase=previous_phase,
         artifacts_policy=artifacts_policy,
     )
-    current_prompt_path = _persist_current_prompt(workspace_root, prompt_content)
+    current_prompt_path = _persist_current_prompt(
+        workspace_root,
+        prompt_content,
+        worker_namespace=worker_namespace,
+    )
     phase_def = pipeline_policy.phases.get(phase)
     phase_role = phase_def.role if phase_def is not None else None
     drain = phase_def.drain if phase_def is not None else phase
@@ -343,6 +323,16 @@ def _render_planning_prompt(
             analysis_feedback_path=analysis_feedback_path,
             artifact_history_path=artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(artifact_history_path),
+            current_prompt_path=str(
+                options.worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+                if options.worker_namespace is not None
+                else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+            ),
+            payload_root=str(
+                options.worker_namespace / "tmp" / "prompt_payloads"
+                if options.worker_namespace is not None
+                else workspace_root / ".agent" / "tmp" / "prompt_payloads"
+            ),
             last_retry_error=last_retry_error,
             has_docs_mcp=has_docs_mcp,
         ),
@@ -399,6 +389,16 @@ def _render_developer_prompt(
             analysis_feedback_content=analysis_feedback_content,
             plan_path=plan_path,
             analysis_feedback_path=analysis_feedback_path,
+            current_prompt_path=str(
+                options.worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+                if options.worker_namespace is not None
+                else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+            ),
+            payload_root=str(
+                options.worker_namespace / "tmp" / "prompt_payloads"
+                if options.worker_namespace is not None
+                else workspace_root / ".agent" / "tmp" / "prompt_payloads"
+            ),
             prompt_name_prefix=phase,
             last_retry_error=last_retry_error,
             artifact_history_path=dev_artifact_history_path,
@@ -527,8 +527,17 @@ def phase_payload_variables(
             content,
         ),
     )
-def _persist_current_prompt(workspace_root: Path, prompt_content: str | None) -> str:
-    current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+def _persist_current_prompt(
+    workspace_root: Path,
+    prompt_content: str | None,
+    *,
+    worker_namespace: Path | None = None,
+) -> str:
+    current_prompt_path = (
+        worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+        if worker_namespace is not None
+        else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    )
     current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
     if prompt_content is None and current_prompt_path.exists():
         return str(current_prompt_path)

@@ -35,6 +35,8 @@ from ralph.pipeline.legacy_console_display import (
 )
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.mode import SameWorkspaceContext
+from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
+from ralph.pipeline.parallel.worker_runtime import build_worker_runtime_paths
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.verification_result import VerificationResult
 from ralph.pipeline.work_units import (
@@ -97,6 +99,8 @@ class _FanOutCtx:
     repo_root: Path
     pipeline_subscriber: _PipelineSubscriberLike | None
     config: UnifiedConfig | None
+    config_path: Path | None
+    cli_overrides: dict[str, object] | None
     monitor_stop_cb: Callable[[], None] | None
     install_signal_handlers_fn: _InstallSignalHandlersFn | None = None
     executor_cls: _ExecutorFactory | None = None
@@ -296,6 +300,8 @@ def _fan_out_worker_context(
     repo_root: Path,
     bridge: SignalBridge,
     session_drain: str,
+    worker_commands: dict[str, tuple[str, ...]],
+    worker_manifest_paths: dict[str, Path],
     session_mcp_plan: SessionMcpPlan,
     executor_cls: _ExecutorFactory | None = None,
     mcp_factory_cls: _McpFactory | None = None,
@@ -326,14 +332,62 @@ def _fan_out_worker_context(
             repo_root=repo_root,
             mcp_factory=_mcp_factory_cls(workspace=workspace),
             executor_command=_parallel_worker_command(),
+            worker_commands=worker_commands,
             signal_bridge=bridge,
             worker_namespace_root=worker_namespace_root,
+            worker_manifest_paths=worker_manifest_paths,
             session_drain=session_drain,
             session_capabilities=session_mcp_plan.capabilities,
             session_model_identity=session_mcp_plan.model_identity,
             session_capability_profile=session_mcp_plan.capability_profile,
         ),
     )
+
+
+def _persist_parallel_worker_manifests(
+    *,
+    effect: FanOutEffect,
+    repo_root: Path,
+    session_drain: str,
+    config_path: Path | None = None,
+    cli_overrides: dict[str, object] | None = None,
+) -> dict[str, Path]:
+    worker_namespace_root = repo_root / ".agent" / "workers"
+    manifests: dict[str, Path] = {}
+    for unit in effect.work_units:
+        worker_namespace = worker_namespace_root / unit.unit_id
+        worker_namespace.mkdir(parents=True, exist_ok=True)
+        runtime_paths = build_worker_runtime_paths(
+            workspace_root=repo_root,
+            worker_namespace=worker_namespace,
+            phase=effect.phase,
+        )
+        manifest = ParallelWorkerManifest(
+            unit_id=unit.unit_id,
+            description=unit.description,
+            allowed_directories=list(unit.allowed_directories),
+            phase=effect.phase,
+            drain=session_drain,
+            config_path=str(config_path) if config_path is not None else None,
+            cli_overrides=dict(cli_overrides or {}),
+            worker_namespace=str(worker_namespace),
+            worker_artifact_dir=str(worker_namespace / "artifacts"),
+            prompt_file=str(runtime_paths.prompt_dump_path),
+            workspace_root=str(repo_root),
+        )
+        manifest_path = worker_namespace / "worker-manifest.json"
+        manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+        manifests[unit.unit_id] = manifest_path
+    return manifests
+
+
+def _worker_commands_from_manifests(
+    manifest_paths: dict[str, Path],
+) -> dict[str, tuple[str, ...]]:
+    return {
+        unit_id: _parallel_worker_command(manifest_path)
+        for unit_id, manifest_path in manifest_paths.items()
+    }
 
 
 def _resume_fan_out_state(
@@ -462,11 +516,21 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             workspace_scope=ctx.workspace_scope,
             config=ctx.config,
         )
+        worker_manifest_paths = _persist_parallel_worker_manifests(
+            effect=ctx.effect,
+            repo_root=ctx.repo_root,
+            session_drain=session_drain,
+            config_path=ctx.config_path,
+            cli_overrides=ctx.cli_overrides,
+        )
+        worker_commands = _worker_commands_from_manifests(worker_manifest_paths)
         executor, worker_ctx = _fan_out_worker_context(
             workspace_scope=ctx.workspace_scope,
             repo_root=ctx.repo_root,
             bridge=bridge,
             session_drain=session_drain,
+            worker_commands=worker_commands,
+            worker_manifest_paths=worker_manifest_paths,
             session_mcp_plan=session_mcp_plan,
             executor_cls=ctx.executor_cls,
             mcp_factory_cls=ctx.mcp_factory_cls,
@@ -540,6 +604,8 @@ def execute_fan_out_sync(
     pipeline_subscriber = cast("_PipelineSubscriberLike | None", opts.get("pipeline_subscriber"))
     dashboard_subscriber = cast("_PipelineSubscriberLike | None", opts.get("dashboard_subscriber"))
     config = cast("UnifiedConfig | None", opts.get("config"))
+    config_path = cast("Path | None", opts.get("config_path"))
+    cli_overrides = cast("dict[str, object] | None", opts.get("cli_overrides"))
     monitor_stop_cb = cast("Callable[[], None] | None", opts.get("_monitor_stop_cb"))
     install_fn = cast("_InstallSignalHandlersFn | None", opts.get("_install_signal_handlers"))
     executor_cls = cast("_ExecutorFactory | None", opts.get("_executor_cls"))
@@ -559,6 +625,8 @@ def execute_fan_out_sync(
         repo_root=workspace_scope.root,
         pipeline_subscriber=effective_subscriber,
         config=config,
+        config_path=config_path,
+        cli_overrides=cli_overrides,
         monitor_stop_cb=monitor_stop_cb,
         install_signal_handlers_fn=install_fn,
         executor_cls=executor_cls,
@@ -569,5 +637,8 @@ def execute_fan_out_sync(
     return asyncio.run(_run_fan_out_async(ctx))
 
 
-def _parallel_worker_command() -> tuple[str, ...]:
-    return (sys.executable, "-m", "ralph")
+def _parallel_worker_command(manifest_path: Path | None = None) -> tuple[str, ...]:
+    command: tuple[str, ...] = (sys.executable, "-m", "ralph")
+    if manifest_path is None:
+        return command
+    return (*command, "--parallel-worker-manifest", str(manifest_path))

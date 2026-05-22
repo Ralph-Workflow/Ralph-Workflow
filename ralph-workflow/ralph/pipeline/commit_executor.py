@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -33,6 +34,11 @@ if TYPE_CHECKING:
     from ralph.workspace import FsWorkspace
 
 _PORCELAIN_STATUS_PREFIX_LEN = 3
+
+
+@dataclass(frozen=True)
+class _CommitScopeResolution:
+    include_paths: tuple[str, ...] | None
 
 if TYPE_CHECKING:
 
@@ -129,8 +135,32 @@ def _stage_commit_scope(
 
 def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[str] | None:
     raw_files = payload.get("files")
+    raw_excluded = payload.get("excluded_files")
+    if not isinstance(raw_files, list) and not isinstance(raw_excluded, list):
+        return None
+    return _commit_include_paths_from_changed(payload, _changed_commit_paths(repo_root))
+
+
+def _commit_include_paths_from_changed(
+    payload: dict[str, object], changed_paths: list[str]
+) -> list[str] | None:
+    resolution = _resolve_commit_scope(payload, changed_paths)
+    if resolution.include_paths is None:
+        return None
+    return list(resolution.include_paths)
+
+
+def _resolve_commit_scope(
+    payload: dict[str, object], changed_paths: list[str]
+) -> _CommitScopeResolution:
+    raw_files = payload.get("files")
+    raw_excluded = payload.get("excluded_files")
+
+    if not isinstance(raw_files, list) and not isinstance(raw_excluded, list):
+        return _CommitScopeResolution(include_paths=None)
+
+    changed = _dedupe_repo_relative_paths(changed_paths)
     if isinstance(raw_files, list):
-        changed = _changed_commit_paths(repo_root)
         normalized_changed = {_normalize_repo_relative_path(path) for path in changed}
         include_paths: list[str] = []
         for raw_path in raw_files:
@@ -144,16 +174,30 @@ def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[s
                 )
             if normalized not in include_paths:
                 include_paths.append(normalized)
-        return include_paths
-    raw_excluded = payload.get("excluded_files")
+        return _CommitScopeResolution(include_paths=tuple(include_paths))
     if not isinstance(raw_excluded, list):
-        return None
-    excluded = {
-        _normalize_repo_relative_path(path)
-        for item in raw_excluded
-        if isinstance(item, dict) and isinstance((path := item.get("path")), str) and path.strip()
-    }
-    return [path for path in changed if _normalize_repo_relative_path(path) not in excluded]
+        return _CommitScopeResolution(include_paths=None)
+    excluded: set[str] = set()
+    for item in raw_excluded:
+        if not isinstance(item, dict):
+            continue
+        raw_path = item.get("path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            continue
+        excluded.add(_normalize_repo_relative_path(raw_path))
+    filtered_paths: tuple[str, ...] = tuple(
+        path for path in changed if _normalize_repo_relative_path(path) not in excluded
+    )
+    return _CommitScopeResolution(include_paths=filtered_paths)
+
+
+def _dedupe_repo_relative_paths(paths: list[str]) -> list[str]:
+    deduped: list[str] = []
+    for path in paths:
+        normalized = _normalize_repo_relative_path(path)
+        if normalized not in deduped:
+            deduped.append(normalized)
+    return deduped
 
 
 def _normalize_repo_relative_path(raw_path: str) -> str:

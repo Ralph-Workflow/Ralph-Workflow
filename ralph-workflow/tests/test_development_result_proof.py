@@ -226,6 +226,8 @@ def test_proof_failure_preserves_same_session_via_recovery_controller() -> None:
     assert new_state.session_preserve_retry_pending is True
     assert new_state.last_agent_session_id == "sess-proof-123"
     assert new_state.last_failure_category == FailureCategory.ARTIFACT_VALIDATION
+    assert new_state.last_error is not None
+    assert "Artifact validation fault" in new_state.last_error
 
 
 def test_steps_plan_rejects_duplicate_plan_item_entries() -> None:

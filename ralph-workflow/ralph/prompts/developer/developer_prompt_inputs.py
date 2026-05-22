@@ -16,6 +16,8 @@ class DeveloperPromptInputs:
     analysis_feedback_path: str = ""
     artifact_history_path: str = ""
     artifact_history_dir: str = ""
+    current_prompt_path: str = ""
+    payload_root: str = ""
     prompt_name_prefix: str = "development"
     last_retry_error: str = ""
     has_docs_mcp: bool = False

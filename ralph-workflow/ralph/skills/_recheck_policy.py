@@ -1,15 +1,17 @@
 """TTL-based recheck policy for capability health state."""
 
-from __future__ import annotations
+from __future__ annotations
 
 from datetime import UTC, datetime
 
-from ralph.pydantic_compat import RalphBaseModel
+from ralph.pydantic_compat import ConfigDict, RalphBaseModel
 from ralph.skills._state import CapabilityEntry, CapabilityStatus
 
 
 class RecheckPolicy(RalphBaseModel):
     """Recheck timing policy for capability health probes."""
+
+    model_config = ConfigDict(frozen=True)
 
     healthy_recheck_hours: float = 24.0
     failed_recheck_hours: float = 1.0

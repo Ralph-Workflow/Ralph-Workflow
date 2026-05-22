@@ -758,6 +758,20 @@ ralph.pipeline.parallel.mode
    :members:
    :show-inheritance:
 
+ralph.pipeline.parallel.worker_manifest
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.parallel.worker_manifest
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.parallel.worker_runtime
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.parallel.worker_runtime
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.parallel.scheduler
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

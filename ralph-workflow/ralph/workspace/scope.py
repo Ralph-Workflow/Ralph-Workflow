@@ -155,8 +155,12 @@ class WorkspaceScope:
                 raise ValueError("allowed_directory must be non-empty")
             p = canonical_root / ad
             resolved = p.resolve()
-            if not str(resolved).startswith(str(canonical_root)):
-                raise ValueError(f"allowed_directory {ad!r} escapes repo_root {canonical_root}")
+            try:
+                resolved.relative_to(canonical_root)
+            except ValueError:
+                raise ValueError(
+                    f"allowed_directory {ad!r} escapes repo_root {canonical_root}"
+                ) from None
             allowed_roots.append(resolved)
 
         allowed_roots.append(canonical_ns)

@@ -38,6 +38,8 @@ class PlanningPromptInputs:
     analysis_feedback_path: str = ""
     artifact_history_path: str = ""
     artifact_history_dir: str = ""
+    current_prompt_path: str = ""
+    payload_root: str = ""
     last_retry_error: str = ""
     has_docs_mcp: bool = False
 
@@ -52,6 +54,10 @@ def prompt_developer_iteration_xml_with_context(
 ) -> str:
     """Render the developer-iteration prompt, falling back to a static template on error."""
     template_content = context.registry.get_template(template_name)
+    current_prompt_path = inputs.current_prompt_path or workspace.absolute_path(
+        ".agent/CURRENT_PROMPT.md"
+    )
+    payload_root = inputs.payload_root or workspace.absolute_path(".agent/tmp/prompt_payloads")
 
     base_vars: dict[str, str] = {
         "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(
@@ -67,7 +73,7 @@ def prompt_developer_iteration_xml_with_context(
     base_vars.update(
         _current_prompt_variables(
             inputs.prompt_content,
-            workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+            current_prompt_path,
         )
     )
     payload_values = {
@@ -78,6 +84,7 @@ def prompt_developer_iteration_xml_with_context(
         _prompt_payload_variables(
             payload_values,
             workspace=workspace,
+            payload_root=payload_root,
             prompt_name_prefix=inputs.prompt_name_prefix,
         )
     )
@@ -115,17 +122,17 @@ def prompt_developer_iteration_xml_with_context(
                 "ARTIFACT_HISTORY_PATH": inputs.artifact_history_path,
                 "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
                 "LAST_RETRY_ERROR": inputs.last_retry_error,
+<<<<<<< HEAD
                 "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+=======
+                "PROMPT_PATH": current_prompt_path,
+>>>>>>> main
                 "PLAN_PATH": inputs.plan_path
-                or str(
-                    Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
-                    / f"{inputs.prompt_name_prefix}_plan.txt"
-                ),
+                or str(Path(payload_root) / f"{inputs.prompt_name_prefix}_plan.txt"),
                 "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
                 or str(
-                    Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
-                    / f"{inputs.prompt_name_prefix}_analysis_feedback.txt"
+                    Path(payload_root) / f"{inputs.prompt_name_prefix}_analysis_feedback.txt"
                 ),
             },
         )
@@ -141,6 +148,10 @@ def prompt_planning_xml_with_context(
 ) -> str:
     """Render the planning-phase prompt, falling back to a static template on error."""
     template_content = context.registry.get_template(template_name)
+    current_prompt_path = inputs.current_prompt_path or workspace.absolute_path(
+        ".agent/CURRENT_PROMPT.md"
+    )
+    payload_root = inputs.payload_root or workspace.absolute_path(".agent/tmp/prompt_payloads")
 
     base_vars: dict[str, str] = {
         "PLAN_XML_PATH": workspace.absolute_path(PLAN_ARTIFACT_PATH),
@@ -151,7 +162,7 @@ def prompt_planning_xml_with_context(
     base_vars.update(
         _current_prompt_variables(
             inputs.prompt_content,
-            workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+            current_prompt_path,
         )
     )
     payload_values = {
@@ -162,6 +173,7 @@ def prompt_planning_xml_with_context(
         _prompt_payload_variables(
             payload_values,
             workspace=workspace,
+            payload_root=payload_root,
             prompt_name_prefix="planning",
         )
     )
@@ -198,17 +210,19 @@ def prompt_planning_xml_with_context(
             "PROMPT": inputs.prompt_content or "No requirements provided",
             "PLAN": inputs.plan_content or "(no plan available)",
             "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
-            "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+            "PROMPT_PATH": current_prompt_path,
             "PLAN_PATH": inputs.plan_path
-            or str(
-                Path(workspace.absolute_path(".agent/tmp/prompt_payloads")) / "planning_plan.txt"
-            ),
+            or str(Path(payload_root) / "planning_plan.txt"),
             "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
+<<<<<<< HEAD
             or str(
                 Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
                 / "planning_analysis_feedback.txt"
             ),
             "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
+=======
+            or str(Path(payload_root) / "planning_analysis_feedback.txt"),
+>>>>>>> main
         }
         fallback_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
         fallback_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir
@@ -232,9 +246,11 @@ def _prompt_payload_variables(
     values: Mapping[str, str],
     *,
     workspace: Workspace,
+    payload_root: str,
     prompt_name_prefix: str,
 ) -> dict[str, str]:
-    output_dir = Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
+    del workspace
+    output_dir = Path(payload_root)
     return build_prompt_payload_variables(
         values,
         prompt_name_prefix=prompt_name_prefix,

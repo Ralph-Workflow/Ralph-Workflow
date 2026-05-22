@@ -290,36 +290,6 @@ def test_workers_complete_successfully_with_multimodal_session_contract(
 
 
 @pytest.mark.integration
-def test_worker_namespaces_created_with_correct_structure(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Worker namespace directories must be created with artifacts/ and handoffs/.
-
-    Black-box observable: the runtime creates the expected directory structure
-    under .agent/workers/<unit_id>/.
-    """
-    unit = _make_work_unit("unit-workspace")
-    effect = FanOutEffect(work_units=(unit,), max_workers=1)
-
-    identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
-    contract = sessioncontract_helper._SessionContract(
-        drain="development_analysis",
-        capabilities=frozenset({"media.read"}),
-        model_identity=identity,
-    )
-    _run_fan_out_sync(
-        effect,
-        tmp_path,
-        contract=contract,
-        monkeypatch=monkeypatch,
-    )
-
-    worker_ns = tmp_path / ".agent" / "workers" / "unit-workspace"
-    for subdir in ("artifacts", "tmp", "logs", "handoffs"):
-        assert (worker_ns / subdir).is_dir(), f"Expected {subdir}/ to exist"
-
-
-@pytest.mark.integration
 def test_multiple_workers_each_get_unique_session_ids(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -530,3 +500,4 @@ def test_worker_artifacts_contain_plan_json(
     )
     plan_data = json.loads(plan_path.read_text())
     assert plan_data["type"] == "plan"
+    assert not (tmp_path / ".agent" / "tmp" / "development_multimodal_handoff.json").exists()

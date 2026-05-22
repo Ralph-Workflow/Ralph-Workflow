@@ -24,6 +24,10 @@ if TYPE_CHECKING:
 from loguru import logger
 
 from ralph.pipeline import progress
+from ralph.pipeline._failure_formatting import (
+    classified_failure_reason_for_event,
+    commit_failure_reason,
+)
 from ralph.pipeline._reducer_worker_state import (
     handle_fan_out_started as _handle_fan_out_started,
 )
@@ -173,7 +177,7 @@ def _reduce_phase_failure(
             raw_message = event.reason or f"(no reason reported for phase={event.phase})"
             classified_failure = ClassifiedFailure(
                 category=event.failure_category,
-                reason=f"Artifact validation fault: {raw_message}",
+                reason=classified_failure_reason_for_event(event),
                 attributed_agent=None,
                 attributed_phase=event.phase,
                 counts_against_budget=False,
@@ -824,7 +828,7 @@ def _handle_commit_failure(
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle commit failure."""
-    failure_reason = _failure_reason(state, "Commit failed")
+    failure_reason = commit_failure_reason(state)
     return _enter_failed_recovery(state, failure_reason, policy)
 
 

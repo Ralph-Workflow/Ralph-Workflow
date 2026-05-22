@@ -5,9 +5,11 @@ This module implements the main pipeline execution command.
 
 from __future__ import annotations
 
+import os
 import shutil
 from importlib import import_module
 from inspect import signature
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
 from loguru import logger
@@ -22,8 +24,10 @@ from ralph.cli.commands._preflight_request import _PreflightRequest
 from ralph.cli.commands._run_func_state import _RUN_FUNC_UNSET, _RunFuncState
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
+from ralph.mcp.protocol.env import RALPH_PARALLEL_WORKER_MANIFEST_ENV
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
+from ralph.pipeline.parallel.worker_runtime import run_parallel_worker_from_manifest
 from ralph.policy.loader import (
     load_policy as _dir_load_policy,
 )
@@ -45,10 +49,13 @@ from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+<<<<<<< HEAD
     from pathlib import Path
 
     from rich.console import Console
 
+=======
+>>>>>>> main
     from ralph.cli.commands._legacy_run_pipeline_kwargs import _LegacyRunPipelineKwargs
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
@@ -147,6 +154,7 @@ class RunPipelineRequest(NamedTuple):
     verbosity: Verbosity | None = None
     counter_overrides: dict[str, int] | None = None
     inline_prompt: str | None = None
+    parallel_worker_manifest: Path | None = None
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
@@ -412,6 +420,10 @@ def _execute_pipeline(
             kwargs["display_context"] = display_context
         if request.counter_overrides and "counter_overrides" in runner_params:
             kwargs["counter_overrides"] = request.counter_overrides
+        if request.config_path is not None and "config_path" in runner_params:
+            kwargs["config_path"] = request.config_path
+        if request.cli_overrides is not None and "cli_overrides" in runner_params:
+            kwargs["cli_overrides"] = request.cli_overrides
         return run_func(request.config, request.initial_state, **kwargs)
     except KeyboardInterrupt:
         console.print(Text("\nInterrupted by user", style="theme.status.warning"))
@@ -525,9 +537,25 @@ def run_pipeline(
             verbosity=cast("Verbosity | None", kwargs.get("verbosity")),
             counter_overrides=cast("dict[str, int] | None", kwargs.get("counter_overrides")),
             inline_prompt=cast("str | None", kwargs.get("inline_prompt")),
+            parallel_worker_manifest=(
+                Path(cast("str", kwargs["parallel_worker_manifest"]))
+                if isinstance(kwargs.get("parallel_worker_manifest"), str)
+                else cast("Path | None", kwargs.get("parallel_worker_manifest"))
+            ),
         )
     effective_request = request
     effective_counter_overrides = effective_request.counter_overrides or {}
+    effective_parallel_worker_manifest = effective_request.parallel_worker_manifest
+    if effective_parallel_worker_manifest is None:
+        manifest_from_env = os.environ.get(str(RALPH_PARALLEL_WORKER_MANIFEST_ENV))
+        if manifest_from_env:
+            effective_parallel_worker_manifest = Path(manifest_from_env)
+
+    if effective_parallel_worker_manifest is not None:
+        return run_parallel_worker_from_manifest(
+            manifest_path=effective_parallel_worker_manifest,
+            display_context=ctx,
+        )
 
     if effective_request.inline_prompt is not None:
         workspace_scope = resolve_workspace_scope()
@@ -555,6 +583,7 @@ def run_pipeline(
             initial_state=load_result.initial_state,
             counter_overrides=effective_counter_overrides,
             inline_prompt=effective_request.inline_prompt,
+            parallel_worker_manifest=effective_request.parallel_worker_manifest,
         ),
         display_context=ctx,
     )
@@ -584,6 +613,9 @@ def run_pipeline(
             policy_bundle=load_result.policy_bundle,
             verbosity=effective_request.verbosity,
             counter_overrides=effective_counter_overrides,
+            config_path=effective_request.config_path,
+            cli_overrides=effective_request.cli_overrides,
+            parallel_worker_manifest=effective_request.parallel_worker_manifest,
         ),
         display_context=ctx,
     )

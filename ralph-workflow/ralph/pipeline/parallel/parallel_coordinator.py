@@ -14,6 +14,7 @@ from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.protocol.env import (
     AGENT_LABEL_SCOPE_ENV,
     MCP_ENDPOINT_ENV,
+    RALPH_PARALLEL_WORKER_MANIFEST_ENV,
     WORKER_ARTIFACT_DIR_ENV,
     WORKER_ID_ENV,
     WORKER_NAMESPACE_ENV,
@@ -238,11 +239,13 @@ def _prepare_executor(
     )
     worker_artifact_dir = worker_namespace / "artifacts"
     agent_label_scope = bundle.session.session_id
+    command = same_workspace.worker_commands.get(unit.unit_id, same_workspace.executor_command)
+    manifest_path = same_workspace.worker_manifest_paths.get(unit.unit_id)
     return (
         cast(
             "AgentExecutor",
             subprocess_executor.SubprocessAgentExecutor(
-                same_workspace.executor_command,
+                command,
                 signal_bridge=same_workspace.signal_bridge,
                 cwd=same_workspace.repo_root,
                 extra_env={
@@ -250,6 +253,9 @@ def _prepare_executor(
                     str(WORKER_ID_ENV): unit.unit_id,
                     str(WORKER_NAMESPACE_ENV): str(worker_namespace),
                     str(WORKER_ARTIFACT_DIR_ENV): str(worker_artifact_dir),
+                    str(RALPH_PARALLEL_WORKER_MANIFEST_ENV): (
+                        str(manifest_path) if manifest_path is not None else ""
+                    ),
                     str(AGENT_LABEL_SCOPE_ENV): agent_label_scope,
                 },
                 activity_router=activity_router,

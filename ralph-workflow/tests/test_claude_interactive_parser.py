@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.execution_state import ClaudeInteractiveExecutionStrategy
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveTranscriptParser
@@ -32,6 +34,41 @@ def test_interactive_parser_extracts_session_id_from_transcript_line() -> None:
     assert [event.kind for event in events] == ["session"]
 
 
+def test_interactive_parser_does_not_misclassify_plain_output_with_tool_token() -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+
+    events = parser.feed("Rendered help text includes tool: read_file as an example.\n")
+
+    assert [event.kind for event in events] == ["output"]
+    assert events[0].text == "Rendered help text includes tool: read_file as an example."
+
+
+def test_interactive_parser_suppresses_repeated_json_tool_use_event() -> None:
+    parser = ClaudeInteractiveTranscriptParser()
+    payload = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [{"type": "tool_use", "name": "read_file"}],
+            },
+        }
+    )
+
+    first_events = parser.feed(payload)
+    second_events = parser.feed(payload)
+
+    assert [event.kind for event in first_events] == ["tool_use"]
+    assert second_events == []
+
+
+def test_vt_normalizer_collapses_repaint_duplicates_to_single_semantic_line() -> None:
+    raw = "\rclaude tool: read_file\rclaude tool: read_file\n"
+
+    normalized = normalize_vt_text(raw)
+
+    assert normalized == "claude tool: read_file\n"
+
+
 def test_claude_interactive_strategy_classifies_vt_tool_line_as_tool_use() -> None:
     strategy = ClaudeInteractiveExecutionStrategy()
 
@@ -39,3 +76,25 @@ def test_claude_interactive_strategy_classifies_vt_tool_line_as_tool_use() -> No
 
     assert signal is not None
     assert signal.kind == AgentActivityKind.TOOL_USE
+
+
+def test_claude_interactive_strategy_prioritizes_tool_use_over_later_output_from_same_feed(
+) -> None:
+    strategy = ClaudeInteractiveExecutionStrategy()
+    payload = json.dumps(
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "name": "read_file"},
+                    {"type": "text", "text": "Done reading file."},
+                ],
+            },
+        }
+    )
+
+    signal = strategy.classify_activity_line(payload)
+
+    assert signal is not None
+    assert signal.kind == AgentActivityKind.TOOL_USE
+    assert signal.raw == "claude tool: read_file"

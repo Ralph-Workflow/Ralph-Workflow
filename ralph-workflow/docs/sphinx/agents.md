@@ -44,6 +44,30 @@ Multimodal delivery is decided per session through `ResolvedCapabilityProfile`, 
 
 That keeps media, artifacts, and tool output aligned with the capabilities of the current session instead of assuming one fixed behavior for every provider.
 
+## Dedicated parallel worker bootstrap
+
+When Ralph Workflow fans out parallel workers for a multi-unit execution, each worker enters through a dedicated bootstrap path that short-circuits the shared pipeline startup loop.
+
+### What each worker receives
+
+Each parallel worker gets its own isolated execution context:
+
+- **Work-unit manifest** — serialized at `.agent/workers/<unit_id>/worker-manifest.json` before launch, containing the unit description, allowed directories, phase, drain, and the parent run's config path and CLI overrides
+- **Worker-local prompt dump** — rendered prompt written to `.agent/workers/<unit_id>/tmp/<phase>_prompt.md` instead of the shared `.agent/tmp/` location
+- **Worker-local checkpoint** — saved to `.agent/workers/<unit_id>/tmp/checkpoint.json` instead of `.agent/checkpoint.json`
+- **Worker-local system prompt and current-prompt mirror** — materialized under the same worker namespace, keeping the worker's view of PROMPT.md and system prompt isolated from other workers
+- **Worker-local multimodal sidecar** — handoff metadata written to `.agent/workers/<unit_id>/tmp/<phase>_multimodal_handoff.json`
+
+### Why isolation matters
+
+The old bootstrap path launched workers as generic `python -m ralph` invocations that entered the shared pipeline loop and competed for singleton runtime files. The dedicated bootstrap path bypasses that loop entirely and threads the work-unit context through the manifest so each worker operates on its own state.
+
+Post-fanout verification remains serialized — Ralph Workflow waits for all workers to finish before running the single verification step, but the workers themselves execute in parallel with no shared state to corrupt.
+
+### Bootstrap entry point
+
+Workers launched via fan-out receive the manifest path through the hidden `--parallel-worker-manifest` CLI option. The worker runtime loads the manifest, reconstructs the work-unit context, materializes the prompt for the unit, and executes the phase without re-entering the outer pipeline loop.
+
 ## Related pages
 
 - [Developer Internals](developer-internals.md)

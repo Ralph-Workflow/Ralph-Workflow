@@ -60,6 +60,10 @@ class FileBackedSession:
         return self._loader(self._path)
 
     @property
+    def _workspace_root(self) -> Path:
+        return self._path.parent.parent.parent.resolve()
+
+    @property
     def session_id(self) -> str:
         return cast("str", self._load().get("session_id", self._session_id_factory()))
 
@@ -87,9 +91,26 @@ class FileBackedSession:
         artifact submission can route to the correct per-worker namespace.
         """
         raw = self._env_getter(WORKER_ARTIFACT_DIR)
-        if raw is None:
-            return None
-        return Path(raw)
+        if raw is not None:
+            return Path(raw)
+        payload_raw = self._load().get("worker_artifact_dir")
+        if isinstance(payload_raw, str) and payload_raw:
+            return Path(payload_raw)
+        return None
+
+    @property
+    def worker_namespace(self) -> Path | None:
+        payload_raw = self._load().get("worker_namespace")
+        if isinstance(payload_raw, str) and payload_raw:
+            return Path(payload_raw)
+        return None
+
+    @property
+    def allowed_roots(self) -> tuple[Path, ...]:
+        payload_raw = self._load().get("allowed_roots")
+        if not isinstance(payload_raw, list):
+            return ()
+        return tuple(Path(item).resolve() for item in payload_raw if isinstance(item, str))
 
     @property
     def model_identity(self) -> object:
@@ -123,10 +144,22 @@ class FileBackedSession:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"
 
     def is_parallel_worker(self) -> bool:
-        return False
+        payload_raw = self._load().get("parallel_worker", False)
+        return bool(payload_raw) or self.worker_artifact_dir is not None
 
-    def check_edit_area(self, _: str) -> object:
-        return "approved"
+    def check_edit_area(self, path: str) -> object:
+        if not self.is_parallel_worker():
+            return "approved"
+        allowed_roots = self.allowed_roots
+        if not allowed_roots:
+            return "denied"
+        try:
+            resolved = (self._workspace_root / path).resolve()
+        except Exception:
+            return "denied"
+        if any(resolved == root or resolved.is_relative_to(root) for root in allowed_roots):
+            return "approved"
+        return "denied"
 
 
 def _load_session_payload(path: Path) -> dict[str, object]:
@@ -184,6 +217,12 @@ def session_from_env(
     stored_profile = profile_from_payload(raw_profile) if isinstance(raw_profile, dict) else None
     if stored_profile is None and model_identity.is_known():
         stored_profile = resolve_capability_profile(model_identity)
+    raw_allowed_roots = payload.get("allowed_roots")
+    allowed_roots = (
+        tuple(Path(item).resolve() for item in raw_allowed_roots if isinstance(item, str))
+        if isinstance(raw_allowed_roots, list)
+        else ()
+    )
     return AgentSession(
         session_id=cast(
             "str",
@@ -203,6 +242,18 @@ def session_from_env(
         ),
         drain=cast("str", payload.get("drain", "standalone")),
         capabilities=capabilities,
+        parallel_worker=bool(payload.get("parallel_worker", False)),
+        worker_artifact_dir=(
+            Path(cast("str", payload["worker_artifact_dir"]))
+            if isinstance(payload.get("worker_artifact_dir"), str)
+            else None
+        ),
+        worker_namespace=(
+            Path(cast("str", payload["worker_namespace"]))
+            if isinstance(payload.get("worker_namespace"), str)
+            else None
+        ),
+        allowed_roots=allowed_roots,
         model_identity=model_identity,
         stored_capability_profile=stored_profile,
     )

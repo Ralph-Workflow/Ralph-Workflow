@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 from ralph.pipeline import checkpoint as ckpt
@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+    from ralph.display.parallel_display import ParallelDisplay
 from tests.integration.test_parallel_resume_helper__fakedisplay import _FakeDisplay
 
 RESUMED_WORKER_COUNT = 3
@@ -111,6 +113,9 @@ class TestParallelResume:
         fake_executor = _fake_executor_for(["unit-2", "unit-3", "unit-4"])
         scope = MagicMock()
         scope.root = tmp_path
+        shared_checkpoint = tmp_path / ".agent" / "checkpoint.json"
+        shared_checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        shared_checkpoint.write_text('{"phase": "development"}', encoding="utf-8")
 
         _setup_patches(
             monkeypatch,
@@ -122,7 +127,7 @@ class TestParallelResume:
         execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=_FakeDisplay(),
+            display=cast("ParallelDisplay", _FakeDisplay()),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -136,6 +141,7 @@ class TestParallelResume:
         assert runs_for["unit-2"] == 1, "Each resumed unit must be invoked exactly once"
         assert runs_for["unit-3"] == 1, "Each resumed unit must be invoked exactly once"
         assert runs_for["unit-4"] == 1, "Each resumed unit must be invoked exactly once"
+        assert shared_checkpoint.exists()
 
     def test_resume_resets_running_to_pending(
         self,
@@ -168,7 +174,7 @@ class TestParallelResume:
         execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=_FakeDisplay(),
+            display=cast("ParallelDisplay", _FakeDisplay()),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -210,7 +216,7 @@ class TestParallelResume:
         final_state = execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=_FakeDisplay(),
+            display=cast("ParallelDisplay", _FakeDisplay()),
             policy_bundle=_make_mock_policy_bundle(),
             workspace_scope=scope,
         )
@@ -224,4 +230,3 @@ class TestParallelResume:
             ws = final_state.worker_states.get(uid)
             assert ws is not None, f"{uid} missing from final worker_states"
             assert ws.status == WorkerStatus.SUCCEEDED, f"{uid} expected SUCCEEDED, got {ws.status}"
-

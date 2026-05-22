@@ -30,6 +30,7 @@ from ralph.recovery.events import FalloverEvent as _FalloverEvent
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
     from typing import Protocol
 
     from ralph.config.agent_config import AgentConfig
@@ -46,6 +47,25 @@ if TYPE_CHECKING:
 
     class _RegistryLike(Protocol):
         def get(self, name: str) -> AgentConfig | None: ...
+
+    class _RunPipelineStepFn(Protocol):
+        def __call__(
+            self,
+            *,
+            state: PipelineState,
+            policy_bundle: PolicyBundle,
+            workspace_scope: WorkspaceScope,
+            config: UnifiedConfig,
+            display: ParallelDisplay | LegacyConsoleDisplay,
+            display_context: DisplayContext,
+            verbosity: Verbosity,
+            registry: _RegistryLike,
+            pipeline_subscriber: _PipelineSubscriberProtocol | None,
+            recovery_controller: RecoveryController,
+            config_path: Path | None,
+            cli_overrides: dict[str, object],
+            _monitor_stop_cb: Callable[[], None] | None,
+        ) -> PipelineState | int: ...
 
     class _ConnectivityMonitorLike(Protocol):
         @property
@@ -87,6 +107,8 @@ class _LoopContext:
     registry: _RegistryLike
     effective_pipeline_subscriber: _PipelineSubscriberProtocol | None
     controller: RecoveryController
+    config_path: Path | None
+    cli_overrides: dict[str, object]
     monitor_stop: Callable[[], None] | None
     connectivity_monitor: _ConnectivityMonitorLike
     sleep: Callable[[float], None]
@@ -255,7 +277,8 @@ def _run_inner_loop(
     """Run main pipeline while loop; return (state, prev_phase, exit_code_if_interrupted)."""
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
-        step_result = _runner_module.run_pipeline_step(
+        runner_step = cast("_RunPipelineStepFn", _runner_module.run_pipeline_step)
+        step_result = runner_step(
             state=state,
             policy_bundle=ctx.policy_bundle,
             workspace_scope=ctx.workspace_scope,
@@ -266,6 +289,8 @@ def _run_inner_loop(
             registry=ctx.registry,
             pipeline_subscriber=ctx.effective_pipeline_subscriber,
             recovery_controller=ctx.controller,
+            config_path=ctx.config_path,
+            cli_overrides=ctx.cli_overrides,
             _monitor_stop_cb=ctx.monitor_stop,
         )
         if isinstance(step_result, int):
@@ -505,6 +530,8 @@ def run(
     connectivity_monitor: _ConnectivityMonitorLike | None = None,
     display_context: DisplayContext | None = None,
     counter_overrides: dict[str, int] | None = None,
+    config_path: Path | None = None,
+    cli_overrides: dict[str, object] | None = None,
     _recovery_sleep: Callable[[float], None] | None = None,
 ) -> int:
     """Execute the pipeline event loop.
@@ -562,6 +589,8 @@ def run(
         registry=registry,
         effective_pipeline_subscriber=effective_pipeline_subscriber,
         controller=_controller,
+        config_path=config_path,
+        cli_overrides=dict(cli_overrides or {}),
         monitor_stop=_monitor_stop,
         connectivity_monitor=connectivity_monitor,
         sleep=_sleep,

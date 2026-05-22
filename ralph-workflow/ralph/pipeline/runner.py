@@ -457,6 +457,8 @@ def _run_pipeline_step(
     registry: _RegistryLike,
     pipeline_subscriber: _PipelineSubscriber | None,
     recovery_controller: RecoveryController | None = None,
+    config_path: Path | None = None,
+    cli_overrides: dict[str, object] | None = None,
     _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState | int:
     try:
@@ -467,6 +469,8 @@ def _run_pipeline_step(
             pipeline_policy=policy_bundle.pipeline,
             artifacts_policy=policy_bundle.artifacts,
             agents_policy=policy_bundle.agents,
+            registry=registry,
+            config=config,
             workspace_scope=workspace_scope,
             display=display,
             pipeline_subscriber=pipeline_subscriber,
@@ -483,6 +487,8 @@ def _run_pipeline_step(
                 workspace_scope=workspace_scope,
                 pipeline_subscriber=pipeline_subscriber,
                 config=config,
+                config_path=config_path,
+                cli_overrides=cli_overrides,
                 monitor_stop_cb=_monitor_stop_cb,
             )
 
@@ -622,6 +628,8 @@ def _handle_inline_effect(
     artifacts_policy: ArtifactsPolicy,
     workspace_scope: WorkspaceScope,
     agents_policy: AgentsPolicy | None = None,
+    registry: _RegistryLike | None = None,
+    config: UnifiedConfig | None = None,
     display: ParallelDisplay | LegacyConsoleDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
@@ -661,7 +669,9 @@ def _handle_inline_effect(
                     artifacts_policy,
                     workspace_scope,
                     agents_policy,
-                    state,
+                    state=state,
+                    registry=registry,
+                    config=config,
                 )
             except MissingPlanHandoffError as exc:
                 if state.phase != pipeline_policy.recovery.failed_route:
@@ -790,6 +800,9 @@ def materialize_prepared_prompt(
     agents_policy: AgentsPolicy | None = None,
     state: PipelineState | None = None,
     env: Mapping[str, str] | None = None,
+    *,
+    registry: _RegistryLike | None = None,
+    config: UnifiedConfig | None = None,
 ) -> None:
     """Delegate to _materialize_prepared_prompt, injecting the patchable prompt function."""
     _mat_fn = (
@@ -806,6 +819,8 @@ def materialize_prepared_prompt(
         state=state,
         env=env,
         materialize_fn=_mat_fn,
+        registry=registry,
+        config=config,
     )
 
 

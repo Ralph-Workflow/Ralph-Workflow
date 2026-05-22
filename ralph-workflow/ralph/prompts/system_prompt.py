@@ -10,20 +10,25 @@ from ralph.prompts.template_registry import packaged_template_root
 if TYPE_CHECKING:
     from pathlib import Path
 
-
 def materialize_system_prompt(
     *,
     workspace_root: Path,
     name: str,
     default_current_prompt: str | None = None,
+    worker_namespace: Path | None = None,
 ) -> str:
     """Write a system prompt file for the named agent and return its path."""
     current_prompt_path = _sync_current_prompt_file(
         workspace_root=workspace_root,
         default_current_prompt=default_current_prompt,
+        worker_namespace=worker_namespace,
     )
     current_plan_path = _current_plan_handoff_path(workspace_root, phase_name=name)
-    system_prompt_path = workspace_root / ".agent" / "tmp" / f"{name}_system_prompt.md"
+    system_prompt_path = (
+        worker_system_prompt_path(worker_namespace, name)
+        if worker_namespace is not None
+        else workspace_root / ".agent" / "tmp" / f"{name}_system_prompt.md"
+    )
     system_prompt_path.parent.mkdir(parents=True, exist_ok=True)
     system_prompt_path.write_text(
         build_system_prompt(
@@ -40,8 +45,13 @@ def _sync_current_prompt_file(
     *,
     workspace_root: Path,
     default_current_prompt: str | None,
+    worker_namespace: Path | None = None,
 ) -> Path:
-    current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    current_prompt_path = (
+        worker_current_prompt_path(worker_namespace)
+        if worker_namespace is not None
+        else workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    )
     source_prompt_path = workspace_root / "PROMPT.md"
     current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
     if source_prompt_path.exists():
@@ -51,15 +61,31 @@ def _sync_current_prompt_file(
             or current_prompt_path.read_text(encoding="utf-8") != prompt_text
         ):
             current_prompt_path.write_text(prompt_text, encoding="utf-8")
-            _write_prompt_history_snapshot(workspace_root=workspace_root, prompt_text=prompt_text)
+            if worker_namespace is None:
+                _write_prompt_history_snapshot(
+                    workspace_root=workspace_root,
+                    prompt_text=prompt_text,
+                )
         return current_prompt_path
     if not current_prompt_path.exists() and default_current_prompt is not None:
         current_prompt_path.write_text(default_current_prompt, encoding="utf-8")
-        _write_prompt_history_snapshot(
-            workspace_root=workspace_root,
-            prompt_text=default_current_prompt,
-        )
+        if worker_namespace is None:
+            _write_prompt_history_snapshot(
+                workspace_root=workspace_root,
+                prompt_text=default_current_prompt,
+            )
     return current_prompt_path
+
+
+def worker_current_prompt_path(worker_namespace: Path) -> Path:
+    """Return the worker-local mirror path for CURRENT_PROMPT.md."""
+    return worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+
+
+def worker_system_prompt_path(worker_namespace: Path, phase: str) -> Path:
+    """Return the worker-local system prompt materialization path."""
+    normalized = phase.replace("/", "_").replace(" ", "_")
+    return worker_namespace / "tmp" / f"{normalized}_system_prompt.md"
 
 
 def _write_prompt_history_snapshot(*, workspace_root: Path, prompt_text: str) -> None:

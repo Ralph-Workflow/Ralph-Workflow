@@ -186,7 +186,11 @@ def build_standalone_http_server(
         drain="standalone",
         capabilities=_all_capability_values(),
     )
-    workspace = FsWorkspace(workspace_root)
+    allowed_roots = cast("tuple[Path, ...]", getattr(effective_session, "allowed_roots", ()))
+    workspace = FsWorkspace(
+        workspace_root,
+        allowed_roots=allowed_roots if allowed_roots else None,
+    )
     mcp_cfg = (
         _extras.mcp_config
         if _extras.mcp_config is not None
@@ -309,7 +313,11 @@ def build_fastmcp_server(
             capabilities=_all_capability_values(),
         )
     )
-    workspace = FsWorkspace(workspace_root)
+    allowed_roots = cast("tuple[Path, ...]", getattr(effective_session, "allowed_roots", ()))
+    workspace = FsWorkspace(
+        workspace_root,
+        allowed_roots=allowed_roots if allowed_roots else None,
+    )
     mcp_cfg = (
         _extras.mcp_config
         if _extras.mcp_config is not None

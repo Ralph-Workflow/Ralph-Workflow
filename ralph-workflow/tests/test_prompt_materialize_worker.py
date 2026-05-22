@@ -3,13 +3,24 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+import ralph.prompts.materialize as materialize_module
+
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
-from ralph.prompts.materialize import phase_payload_variables, render_worker_prompt
+from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry
+from ralph.prompts.materialize import (
+    materialize_prompt_for_phase,
+    phase_payload_variables,
+    render_worker_prompt,
+)
 from ralph.prompts.payload_refs import MAX_INLINE_PROMPT_BYTES
+from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.workspace.memory import MemoryWorkspace
 
 BASE_PROMPT = "Base context: only work on your assigned unit."
 # Content large enough to trigger file-based payload routing (>100KB).
@@ -137,3 +148,138 @@ def test_two_concurrent_namespaces_dont_collide(tmp_path: Path) -> None:
     files_a = {f.name for f in dir_a.iterdir()}
     files_b = {f.name for f in dir_b.iterdir()}
     assert files_a and files_b, "Both namespaces must have payload files"
+
+
+def test_materialize_prompt_for_worker_runtime_uses_unit_specific_prompt_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Base development prompt")
+    workspace.write(".agent/PLAN.md", "# Execution Plan\n\n1. Implement the assigned unit\n")
+    unit = WorkUnit(
+        unit_id="unit-a",
+        description="Implement only unit A",
+        allowed_directories=["src/a"],
+    )
+    worker_prompt = "WORKER-SCOPED PROMPT\nImplement only unit A\n[\n  \"src/a\"\n]"
+
+    monkeypatch.setattr(
+        "ralph.prompts.materialize._render_prompt_for_phase",
+        lambda *_args, **_kwargs: "Base development prompt",
+    )
+    monkeypatch.setattr(
+        "ralph.prompts.materialize.render_worker_prompt",
+        lambda **_kwargs: worker_prompt,
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        worker_namespace=tmp_path / ".agent" / "workers" / unit.unit_id,
+        work_unit=unit,
+    )
+
+    rendered = workspace.read(prompt_path)
+
+    assert rendered == worker_prompt
+
+
+def test_materialize_prompt_for_worker_runtime_does_not_wrap_non_development_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Base planning prompt")
+    workspace.write(".agent/PLAN.md", "# Existing Plan\n")
+    unit = WorkUnit(
+        unit_id="unit-a",
+        description="Implement only unit A",
+        allowed_directories=["src/a"],
+    )
+    wrap_calls: list[object] = []
+
+    monkeypatch.setattr(
+        "ralph.prompts.materialize._render_prompt_for_phase",
+        lambda *_args, **_kwargs: "Base planning prompt",
+    )
+    monkeypatch.setattr(
+        "ralph.prompts.materialize.render_worker_prompt",
+        lambda **kwargs: wrap_calls.append(kwargs) or "WRAPPED",
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        worker_namespace=tmp_path / ".agent" / "workers" / unit.unit_id,
+        work_unit=unit,
+    )
+
+    assert workspace.read(prompt_path) == "Base planning prompt"
+    assert wrap_calls == []
+
+
+def test_persist_current_prompt_uses_worker_namespace_when_provided(
+    tmp_path: Path,
+) -> None:
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+
+    current_prompt_path = materialize_module._persist_current_prompt(
+        tmp_path,
+        "Plan only the assigned worker task",
+        worker_namespace=worker_namespace,
+    )
+
+    assert current_prompt_path == str(worker_namespace / "tmp" / "CURRENT_PROMPT.md")
+    assert (worker_namespace / "tmp" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
+        "Plan only the assigned worker task"
+    )
+    assert not (tmp_path / ".agent" / "CURRENT_PROMPT.md").exists()
+
+
+def test_materialize_prompt_for_worker_runtime_writes_namespaced_prompt_and_sidecar(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+
+    monkeypatch.setattr(
+        materialize_module,
+        "_render_prompt_for_phase",
+        lambda *_args, **_kwargs: "worker-scoped prompt body",
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        worker_namespace=worker_namespace,
+        multimodal_entries=[
+            MultimodalSidecarEntry(
+                artifact_id="artifact-1",
+                uri="ralph://media/artifact-1",
+                mime_type="image/png",
+                title="diagram",
+                modality="image",
+                delivery="resource_reference_replay",
+            )
+        ],
+    )
+
+    assert prompt_path == str(worker_namespace / "tmp" / "planning_prompt.md")
+    assert workspace.read(prompt_path) == "worker-scoped prompt body"
+    assert workspace.read(str(worker_namespace / "tmp" / "planning_multimodal_handoff.json"))
+    assert not workspace.exists(".agent/tmp/planning_prompt.md")
+    assert not workspace.exists(".agent/tmp/planning_multimodal_handoff.json")
