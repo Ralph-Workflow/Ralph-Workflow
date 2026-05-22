@@ -1,23 +1,27 @@
 """Google Anti Gravity (AGY) transport helpers.
 
-This module provides AGY-specific MCP transport helpers following the Codex pattern
-of isolated temp-dir home directory isolation (never mutates user's live config).
+This module provides AGY-specific MCP transport helpers.
 
-Research-confirmed facts (Step 1):
+Research-confirmed facts:
 - Executable: agy
 - Print flag: --print
 - Yolo flag: --dangerously-skip-permissions
 - Session flag: --conversation {}
 - MCP config path: ~/.gemini/antigravity-cli/mcp_config.json
-- HTTP JSON key: serverUrl (confirmed)
-- Home env var: GEMINI_HOME (expected; not fully confirmed by research - limitation noted)
+- HTTP JSON key: serverUrl
 - Output format: plain text (not NDJSON) - uses JsonParserType.GENERIC
 
-Known limitation: GEMINI_HOME env var override is expected based on the pattern used
-by similar tools but was not explicitly confirmed in AGY documentation. If AGY ignores
-this env var in a future release, the isolation design will regress. The temp dir is
-still created to avoid mutating user config, but the MCP endpoint injection may not
-be honored by AGY.
+Known limitation: AGY does not have a documented environment variable to override its
+config directory. There is no AGY equivalent of GEMINI_HOME or GEMINI_CLI_HOME.
+The MCP endpoint injection via prepare_agy_home() is therefore best-effort: Ralph
+creates an isolated temp dir with the MCP config, but AGY will not automatically
+discover it since it reads from ~/.gemini/antigravity-cli/ by default. User must
+have their mcp_config.json already configured with the Ralph MCP endpoint, or AGY
+must gain env-var support in a future release for full MCP injection to work.
+
+The temp-dir isolation still provides value: it prevents Ralph from mutating the
+user's live config file, and it allows AGY session isolation when --conversation {}
+is used.
 """
 
 from __future__ import annotations
@@ -170,7 +174,12 @@ def prepare_agy_home(
         config_obj = _parse_json_config_file(source_config)
         mcp_servers = config_obj.get("mcpServers")
         if isinstance(mcp_servers, dict):
-            upstreams = normalize_upstream_mcp_servers(cast("dict[str, object]", mcp_servers))
+            normalized_entries: dict[str, object] = {}
+            for srv_name, srv_entry in mcp_servers.items():
+                result = _normalize_agy_server_entry(srv_name, srv_entry)
+                if result is not None:
+                    normalized_entries[result[0]] = result[1]
+            upstreams = normalize_upstream_mcp_servers(normalized_entries)
 
     # Write merged config with Ralph endpoint if provided
     if endpoint:

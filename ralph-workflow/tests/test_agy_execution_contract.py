@@ -19,7 +19,7 @@ from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
     CompletionCheckOptions,
     OpenCodeResumableExitError,
-    _check_process_result,
+    check_process_result,
 )
 from ralph.config.enums import AgentTransport
 from ralph.phases.required_artifacts import RequiredArtifact
@@ -27,6 +27,14 @@ from tests.fake_handle import _FakeHandle
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.process.manager import ManagedProcess
+
+
+# Local alias: tests call the same public function but under the name matching
+# the original private symbol (before the public alias was added to __init__.py).
+_check_process_result = check_process_result
+_CompletionCheckOptions = CompletionCheckOptions
 
 
 class TestAgyExecutionContract:
@@ -49,7 +57,7 @@ class TestAgyExecutionContract:
                 cast("ManagedProcess", handle),
                 "agy",
                 [],
-                CompletionCheckOptions(
+                _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     required_artifact=RequiredArtifact(
@@ -75,7 +83,7 @@ class TestAgyExecutionContract:
             cast("ManagedProcess", handle),
             "agy",
             raw_output,
-            CompletionCheckOptions(
+            _CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
@@ -103,7 +111,7 @@ class TestAgyExecutionContract:
             cast("ManagedProcess", handle),
             "agy",
             [],
-            CompletionCheckOptions(
+            _CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
                 required_artifact=RequiredArtifact(
@@ -115,7 +123,3 @@ class TestAgyExecutionContract:
                 ),
             ),
         )
-
-
-if TYPE_CHECKING:
-    from ralph.process.manager import ManagedProcess

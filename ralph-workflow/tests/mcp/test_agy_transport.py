@@ -48,17 +48,19 @@ def test_load_existing_agy_upstream_servers_parses_http_entry(
     agy_home.mkdir(parents=True)
     config_file = agy_home / "mcp_config.json"
     config_file.write_text(
-        json.dumps({
-            "mcpServers": {
-                "github": {
-                    "serverUrl": "https://api.githubcopilot.com/mcp/",
-                },
-                "filesystem": {
-                    "command": "npx",
-                    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
-                },
+        json.dumps(
+            {
+                "mcpServers": {
+                    "github": {
+                        "serverUrl": "https://api.githubcopilot.com/mcp/",
+                    },
+                    "filesystem": {
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+                    },
+                }
             }
-        }),
+        ),
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -72,6 +74,28 @@ def test_load_existing_agy_upstream_servers_parses_http_entry(
     assert len(http_servers) == 1
     assert http_servers[0].name == "github"
     assert http_servers[0].url == "https://api.githubcopilot.com/mcp/"
+
+
+def test_prepare_agy_home_includes_http_server_url_upstream(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """HTTP serverUrl entry in existing AGY config is returned as an upstream."""
+    agy_config = tmp_path / ".gemini" / "antigravity-cli" / "mcp_config.json"
+    agy_config.parent.mkdir(parents=True)
+    agy_config.write_text(
+        json.dumps({"mcpServers": {"my-http-server": {"serverUrl": "http://some-server:8080"}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    result_path, upstreams = prepare_agy_home(None, workspace_path=None, existing_home=None)
+
+    assert Path(result_path).is_absolute()
+    assert len(upstreams) == 1
+    assert upstreams[0].name == "my-http-server"
+    assert upstreams[0].transport == "http"
+    assert upstreams[0].url == "http://some-server:8080"
 
 
 def test_prepare_agy_home_creates_temp_dir(tmp_path: Path) -> None:
@@ -118,7 +142,7 @@ def test_prepare_agy_home_with_no_endpoint_does_not_write_config(tmp_path: Path)
 
 
 def test_prepare_agy_home_returns_absolute_path(tmp_path: Path) -> None:
-    """Returned path is absolute and usable as GEMINI_HOME env var."""
+    """Returned path is absolute and returned as a plain string path."""
     result_path, _upstreams = prepare_agy_home(
         None,
         workspace_path=tmp_path,

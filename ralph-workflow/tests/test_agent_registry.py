@@ -103,6 +103,14 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert opencode.yolo_flag is None
     assert opencode.transport == AgentTransport.OPENCODE
 
+    agy = registry.get("agy")
+    assert agy is not None
+    assert agy.cmd == "agy"
+    assert agy.transport == AgentTransport.AGY
+    assert agy.yolo_flag == "--dangerously-skip-permissions"
+    assert agy.print_flag == "--print"
+    assert agy.session_flag == "--conversation {}"
+
 
 def test_ccs_alias_keeps_claude_transport() -> None:
     config = UnifiedConfig(ccs_aliases={"glm": "ccs glm"})

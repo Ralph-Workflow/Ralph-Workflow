@@ -20,6 +20,7 @@ from ralph.agents.invoke import (
     check_agent_available,
     command_for_log,
     invoke_agent,
+    resolve_invocation_runtime,
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -59,6 +60,95 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
 
 def _argv(args: tuple[object, ...]) -> list[str]:
     return list(cast("Iterable[str]", args[0]))
+
+
+def _run_agy_transport_proxy_payload_check(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_home: Path,
+    prompt_file: Path,
+    seen_envs: dict[str, dict[str, str]],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(fake_home))
+    agy_transport_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+
+    class FakeAgyProcess:
+        pid: int = 12345
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def __init__(self) -> None:
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeAgyProcess:
+            return self
+
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
+            return False
+
+        def wait(self, timeout: float | None = None) -> int:
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.returncode = -15
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+    def fake_popen_agy(*args: object, **kwargs: object) -> FakeAgyProcess:
+        del args
+        seen_envs["agy"] = _env_dict(kwargs)
+        return FakeAgyProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_agy)
+    agy_config_dir = fake_home / ".gemini" / "antigravity-cli"
+    agy_config_dir.mkdir(parents=True)
+    (agy_config_dir / "mcp_config.json").write_text(
+        json.dumps(
+            {"mcpServers": {"upstream-agy-http": {"serverUrl": "http://upstream-agy:9876"}}}
+        ),
+        encoding="utf-8",
+    )
+
+    runtime = resolve_invocation_runtime(
+        agy_transport_config,
+        {str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+        tmp_path,
+    )
+    assert runtime.agent_env is not None
+    assert UPSTREAM_MCP_CONFIG_ENV in runtime.agent_env
+    agy_upstream_payload = json.loads(runtime.agent_env[UPSTREAM_MCP_CONFIG_ENV])
+    assert any(
+        u["name"] == "upstream-agy-http" and u["transport"] == "http"
+        for u in agy_upstream_payload
+    ), (
+        "AGY HTTP serverUrl upstream must appear in RALPH_UPSTREAM_MCP_CONFIG "
+        "after normalization fix"
+    )
+
+    list(
+        invoke_agent(
+            agy_transport_config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+    assert "agy" in seen_envs
 
 
 def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
@@ -652,7 +742,10 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         )
     )
 
-    # All three transports must pass upstream proxy payload to Ralph via env
+    # --- AGY ---
+    _run_agy_transport_proxy_payload_check(monkeypatch, fake_home, prompt_file, seen_envs, tmp_path)
+
+    # All three baseline transports must pass upstream proxy payload to Ralph via env
     for transport_name in ("claude", "opencode", "codex"):
         env = seen_envs[transport_name]
         assert UPSTREAM_MCP_CONFIG_ENV in env, (
@@ -660,10 +753,19 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
             "for Ralph upstream proxy payload"
         )
         upstreams = load_upstream_mcp_servers(env[UPSTREAM_MCP_CONFIG_ENV])
-        assert any(s.name == "upstream-server" for s in upstreams), (
-            f"Transport '{transport_name}' did not include 'upstream-server' "
+        assert any(s.name in {"upstream-server", "upstream-agy-http"} for s in upstreams), (
+            f"Transport '{transport_name}' did not include expected upstream server "
             "in the upstream proxy payload passed to Ralph"
         )
+
+    agy_upstream_payload = json.loads(seen_envs["agy"][UPSTREAM_MCP_CONFIG_ENV])
+    assert any(
+        u["name"] == "upstream-agy-http" and u["transport"] == "http"
+        for u in agy_upstream_payload
+    ), (
+        "AGY HTTP serverUrl upstream must appear in RALPH_UPSTREAM_MCP_CONFIG "
+        "after normalization fix"
+    )
 
 
 def test_claude_strict_mode_inlines_prompt_content_not_file_path(tmp_path: Path) -> None:

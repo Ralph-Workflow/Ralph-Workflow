@@ -381,13 +381,14 @@ def resolve_invocation_runtime(
             set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
 
     elif transport == AgentTransport.AGY:
-        existing_home = runtime_env.get("GEMINI_HOME") or _env.get("GEMINI_HOME")
-        agy_home, upstreams = prepare_agy_home(
+        # Note: AGY does not have a documented env var to override its config directory.
+        # prepare_agy_home() creates an isolated temp dir and mirrors user config,
+        # but the MCP endpoint injection via temp dir is best-effort (see agy.py).
+        _agy_home, upstreams = prepare_agy_home(
             endpoint,
             workspace_path=workspace_path,
-            existing_home=existing_home,
+            existing_home=None,
         )
-        runtime_env["GEMINI_HOME"] = agy_home
         effective_mcp = effective_session_mcp_plan_from_servers(
             mcp_toml_as_upstreams(workspace_path),
             agent_upstream_servers=upstreams,
