@@ -11,6 +11,7 @@ Ralph Workflow's prompts claim "Native agent tools are DISABLED". This document 
 - **Claude Code** receives `--tools ""` plus a strict-MCP-config that contains only the Ralph Workflow MCP server.
 - **OpenCode** receives a config payload that explicitly sets each native tool to `false`.
 - **Codex** receives a TOML config that preserves existing sections and disables several built-in features, but core editing primitives cannot be fully removed.
+- **Google Anti Gravity** uses the Ralph-owned MCP proxy contract and an isolated temp home for best-effort config mirroring, but does not have a documented environment-variable home override.
 
 ### Strict Ralph Workflow Authority Mode
 
@@ -18,18 +19,18 @@ In strict Ralph Workflow authority mode, provider CLIs receive only the Ralph Wo
 
 ## 2. Per-CLI Guarantees
 
-### Claude Code — Full Enforcement
+### Claude Code - Full Enforcement
 
 Claude Code supports CLI flags that together remove all native tools from a session:
 
-- `--tools ""` — An empty allowlist disables every native tool. The empty string is not a wildcard; it means "allow nothing".
-- `--strict-mcp-config` — Ignores Claude's default global and workspace MCP config discovery. Ralph Workflow reads supported user config files (`~/.claude.json`, workspace `.mcp.json`, workspace `.claude.json`) to extract upstream MCP server definitions, but does **not** pass those definitions to Claude as MCP servers. Instead, Ralph Workflow loads those upstream servers itself and re-exposes their tools as Ralph Workflow-owned proxied aliases. The generated `--mcp-config` contains only the Ralph Workflow MCP server entry.
+- `--tools ""` - An empty allowlist disables every native tool. The empty string is not a wildcard; it means "allow nothing".
+- `--strict-mcp-config` - Ignores Claude's default global and workspace MCP config discovery. Ralph Workflow reads supported user config files (`~/.claude.json`, workspace `.mcp.json`, workspace `.claude.json`) to extract upstream MCP server definitions, but does **not** pass those definitions to Claude as MCP servers. Instead, Ralph Workflow loads those upstream servers itself and re-exposes their tools as Ralph Workflow-owned proxied aliases. The generated `--mcp-config` contains only the Ralph Workflow MCP server entry.
 
 Ralph Workflow passes `--allowedTools` for Claude using the exact live Ralph Workflow MCP tool names reported by the runtime endpoint. This keeps built-in tools disabled via `--tools ""` while pre-approving only Ralph Workflow-owned MCP tools for the current session. Ralph Workflow still remains the real policy boundary: provider approval only removes Claude-side prompts, while `ToolBridge` metadata and session capabilities decide whether the forwarded call is actually allowed.
 
 Reference: https://docs.anthropic.com/en/docs/claude-code/cli-reference
 
-### OpenCode — Full Enforcement
+### OpenCode - Full Enforcement
 
 OpenCode reads configuration from a JSON object passed via the `OPENCODE_CONFIG_CONTENT` environment variable. Ralph Workflow builds this object in `_merge_opencode_config_content()` and disables all 16 native tools by setting each to `false`:
 
@@ -50,7 +51,7 @@ In strict Ralph Workflow authority mode, the provider-visible `mcp` field in thi
 
 Reference: https://opencode.ai/docs
 
-### Codex — Best-Effort Only
+### Codex - Best-Effort Only
 
 Codex is configured via a `config.toml` file. Ralph Workflow prepares this file in `_prepare_codex_home()` by preserving the user's existing `config.toml`, replacing any stale `[mcp_servers.ralph]` block with the live run-scoped endpoint, and setting the following in the `[features]` block:
 
@@ -74,15 +75,15 @@ Do not rely on Codex for environments that require strict tool isolation. Ralph 
 
 Reference: https://platform.openai.com/docs/codex
 
-### Google Anti Gravity — Best-Effort
+### Google Anti Gravity - Best-Effort
 
-Google Anti Gravity (AGY) is configured via `GEMINI_HOME` environment variable pointing to an isolated temp dir created by Ralph Workflow. Ralph Workflow writes `mcp_config.json` at `<GEMINI_HOME>/antigravity-cli/mcp_config.json` using the `serverUrl` key for the Ralph MCP endpoint.
+Google Anti Gravity (AGY) does not have a documented environment variable that redirects its config root. Ralph Workflow therefore treats AGY support as best-effort for direct endpoint injection: `prepare_agy_home()` creates an isolated temp directory, mirrors the user's existing `~/.gemini/antigravity-cli/` contents when present, and writes a merged `mcp_config.json` at `<temp_dir>/antigravity-cli/mcp_config.json` with the Ralph MCP endpoint when one is available.
 
-The isolation design follows the Codex pattern: Ralph Workflow creates an isolated temp directory and sets `GEMINI_HOME` to redirect AGY to the Ralph-managed config. User config at `~/.gemini/antigravity-cli/` is mirrored (symlinks with copy fallback) to the temp dir but is never mutated.
+AGY reads from `~/.gemini/antigravity-cli/` by default, so the temp directory is for isolation and session safety rather than a guaranteed live config redirect. Ralph Workflow does not pretend that AGY has a documented home-root override.
 
-**Known limitation:** `GEMINI_HOME` env var override is expected based on the pattern used by similar tools but was not explicitly confirmed in AGY documentation. If AGY ignores this env var in a future release, the isolation design will regress. The temp dir is still created to avoid mutating user config, but MCP endpoint injection may not be honored by AGY. See `ralph/mcp/transport/agy.py` for the reference implementation and known-limitation documentation.
+AGY does participate in Ralph's upstream proxy model. `prepare_agy_home()` reads user-configured upstream servers from the existing AGY `mcp_config.json`, normalizes AGY's `serverUrl` HTTP entries, and Ralph Workflow re-exposes those upstream tools as Ralph Workflow-owned proxied aliases.
 
-When an MCP endpoint is wired to AGY, Ralph Workflow does not log a specific best-effort warning (unlike Codex) because the `GEMINI_HOME` isolation approach is expected to be fully effective. If future releases of AGY change how config is loaded, enforcement may regress and a warning would be added at that time.
+When an MCP endpoint is wired to AGY, Ralph Workflow still enforces the same capability-gated MCP model and completion contract. The temp dir keeps the user's live config untouched, but endpoint delivery remains best-effort until AGY exposes a documented home-root override.
 
 ## 3. Known Bugs and Limitations
 
@@ -102,13 +103,20 @@ When an MCP endpoint is wired to AGY, Ralph Workflow does not log a specific bes
 - `apply_patch` and core editing primitives remain active regardless of `[features]` settings.
 - The `web_search = "disabled"` string literal is required because Codex TOML interprets bare `disabled` as an identifier, not a string.
 
+### Google Anti Gravity
+
+- AGY does not currently expose a documented home-root override for config redirection.
+- Direct endpoint injection is best-effort rather than guaranteed live discovery.
+- `serverUrl` is the AGY HTTP field name; `url` is used by Ralph's internal upstream normalization.
+
 ## 4. How Ralph Workflow Verifies Enforcement
 
 Ralph Workflow's test suite covers enforcement through agent invocation tests:
 
-- **`tests/test_agents_invoke.py`** verifies Claude uses `--tools ""`, derives `--allowedTools` from Ralph Workflow-only MCP tool names, the provider-visible `--mcp-config` contains only the Ralph Workflow MCP server entry, and upstream server definitions are extracted and passed to Ralph Workflow runtime separately for proxied re-exposure.
-- The same file verifies OpenCode JSON config generation disables all 16 native tools while preserving unrelated non-tool config fields (for example, `permission`). The provider-visible `mcp` field contains only the Ralph Workflow MCP server entry; user upstream MCP servers are extracted and passed to Ralph Workflow separately for proxy re-exposure.
-- For Codex, the same file checks that the generated `config.toml` preserves unrelated sections, does not include user upstream `mcp_servers` in the provider-visible `[mcp_servers]` section (they are extracted and passed to Ralph Workflow separately for proxy re-exposure), and rewrites any stale `[mcp_servers.ralph]` block to the live endpoint.
+- **`tests/test_agents_invoke_1.py`** through **`tests/test_agents_invoke_5.py`** verify Claude, OpenCode, Codex, and AGY invocation enforcement.
+- **`tests/test_agy_execution_contract.py`** proves AGY uses `ClaudeInteractiveExecutionStrategy` and that clean exit without `declare_complete` raises `OpenCodeResumableExitError`.
+- **`tests/mcp/test_agy_transport.py`** verifies the AGY transport helpers, including `serverUrl` normalization for HTTP upstream servers.
+- **`tests/test_agents_invoke_5.py`** includes the AGY runtime endpoint wiring test.
 
 Transport selection and alias routing are verified in **`tests/test_agent_registry.py`**, which checks that `ccs` aliases resolve to the correct CLI and that each CLI receives the appropriate transport configuration.
 
@@ -116,14 +124,14 @@ Run these tests with:
 
 ```bash
 cd ralph-workflow
-pytest tests/test_agents_invoke.py -q
+pytest tests/test_agents_invoke_1.py tests/test_agents_invoke_2.py tests/test_agents_invoke_3.py tests/test_agents_invoke_4.py tests/test_agents_invoke_5.py -q
 ```
 
 ## 5. Follow-Up
 
 ### MCP Reachability Preflight
 
-With MCP-only enforcement active, agents that encounter an unreachable MCP server have no native fallback. Claude Code, OpenCode, and Codex will all produce output when their only available tools are unavailable, but that output will not be useful and may be silently wrong.
+With MCP-only enforcement active, agents that encounter an unreachable MCP server have no native fallback. Claude Code, OpenCode, Codex, and Google Anti Gravity will all produce output when their only available tools are unavailable, but that output will not be useful and may be silently wrong.
 
 A preflight probe that verifies MCP server reachability before launching an agent is planned. See `.agent/PLAN.md` for the full roadmap. Until that probe is implemented, an unreachable MCP server will produce a confusing failure mode that is difficult to diagnose from logs alone.
 

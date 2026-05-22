@@ -23,6 +23,7 @@ Its job is to get you to the right next doc quickly, including overnight use cas
 - [Ralph Workflow vs Claude Code](ralph-workflow-vs-claude-code.md)
 - [Ralph Workflow vs Codex CLI](ralph-workflow-vs-codex-cli.md)
 - [Ralph Workflow vs OpenCode](ralph-workflow-vs-opencode.md)
+- [Ralph Workflow vs Google Anti Gravity](ralph-workflow-vs-google-anti-gravity.md)
 
 ## I want to run work overnight without babysitting the terminal
 

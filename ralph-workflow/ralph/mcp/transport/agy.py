@@ -36,7 +36,7 @@ from typing import cast
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
-# AGY home config directory name within GEMINI_HOME
+# AGY home config directory name within its default config root
 _AGY_HOME_SUBDIR = "antigravity-cli"
 
 
@@ -151,7 +151,7 @@ def prepare_agy_home(
     Args:
         endpoint: Optional Ralph MCP endpoint URL to inject.
         workspace_path: Optional workspace path for workspace-level config.
-        existing_home: Optional existing AGY home to mirror (e.g., from GEMINI_HOME env).
+        existing_home: Optional existing AGY home to mirror for isolation/testing.
 
     Returns:
         Tuple of (path to isolated temp dir, upstream servers from existing config).
