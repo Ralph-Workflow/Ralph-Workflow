@@ -14,6 +14,7 @@ _SESSION_ID_PATTERNS = (
     re.compile(r"session\s+id\s*[:=]\s*([A-Za-z0-9._:-]+)", re.IGNORECASE),
     re.compile(r"--resume\s+([A-Za-z0-9._:-]+)"),
 )
+_TOOL_USE_PATTERN = re.compile(r"^claude tool:\s*\S", re.IGNORECASE)
 
 
 def _extract_message_text(value: object) -> str:
@@ -35,25 +36,33 @@ class ClaudeInteractiveTranscriptParser:
 
     def __init__(self) -> None:
         self.session_id: str | None = None
-        self._last_emitted_text: str | None = None
+        self._last_emitted_signature: tuple[str, str] | None = None
 
     def feed(self, raw_text: str) -> list[InteractiveTranscriptEvent]:
         json_events = self._events_from_json(raw_text)
-        if json_events:
+        if json_events is not None:
             return json_events
         normalized = normalize_vt_text(raw_text)
         events: list[InteractiveTranscriptEvent] = []
         for line in normalized.splitlines():
             text = line.strip()
-            if not text or text == self._last_emitted_text:
+            if not text:
                 continue
             if not any(character.isalnum() for character in text):
                 continue
             event = self._event_for_text(text)
             if event is not None:
-                events.append(event)
-                self._last_emitted_text = text
+                self._append_if_new(events, event)
         return events
+
+    def _append_if_new(
+        self, events: list[InteractiveTranscriptEvent], event: InteractiveTranscriptEvent
+    ) -> None:
+        signature = (event.kind, event.text)
+        if signature == self._last_emitted_signature:
+            return
+        events.append(event)
+        self._last_emitted_signature = signature
 
     def _events_from_assistant_content_item(
         self, item: dict[str, object]
@@ -104,25 +113,27 @@ class ClaudeInteractiveTranscriptParser:
                 )
         return events
 
-    def _events_from_json(self, raw_text: str) -> list[InteractiveTranscriptEvent]:
+    def _events_from_json(self, raw_text: str) -> list[InteractiveTranscriptEvent] | None:
         try:
             parsed = cast("object", json.loads(raw_text))
         except json.JSONDecodeError:
-            return []
+            return None
         if not isinstance(parsed, dict):
-            return []
+            return None
         obj = cast("dict[str, object]", parsed)
         event_type = str(obj.get("type", ""))
         events: list[InteractiveTranscriptEvent] = []
         session_id = obj.get("sessionId") or obj.get("session_id")
         if isinstance(session_id, str) and session_id:
             self.session_id = session_id
-            events.append(InteractiveTranscriptEvent(kind="session", text=session_id))
+            self._append_if_new(events, InteractiveTranscriptEvent(kind="session", text=session_id))
         if event_type == "assistant":
-            events.extend(self._events_from_assistant_message(obj.get("message")))
+            for event in self._events_from_assistant_message(obj.get("message")):
+                self._append_if_new(events, event)
         elif event_type == "user":
-            events.extend(self._events_from_user_message(obj.get("message")))
-        return [event for event in events if event.text != self._last_emitted_text]
+            for event in self._events_from_user_message(obj.get("message")):
+                self._append_if_new(events, event)
+        return events
 
     def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:
         for pattern in _SESSION_ID_PATTERNS:
@@ -130,7 +141,7 @@ class ClaudeInteractiveTranscriptParser:
             if match is not None:
                 self.session_id = match.group(1)
                 return InteractiveTranscriptEvent(kind="session", text=text)
-        if text.startswith("claude tool:") or " tool: " in text:
+        if _TOOL_USE_PATTERN.match(text):
             return InteractiveTranscriptEvent(kind="tool_use", text=text)
         if text.startswith("claude result:"):
             return InteractiveTranscriptEvent(kind="tool_result", text=text)

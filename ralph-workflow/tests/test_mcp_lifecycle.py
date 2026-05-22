@@ -727,3 +727,25 @@ def test_session_payload_json_capability_profile_verdicts_cover_all_modalities()
     verdicts = payload["capability_profile"]["verdicts"]
     for modality in SUPPORTED_MODALITIES:
         assert modality in verdicts, f"modality {modality!r} missing from serialized profile"
+
+
+def test_session_payload_json_includes_parallel_worker_metadata(tmp_path: Path) -> None:
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+    allowed_root = tmp_path / "src" / "unit-a"
+    session = AgentSession(
+        session_id="sid-par",
+        run_id="run-par",
+        drain="development",
+        capabilities={"WorkspaceRead"},
+        parallel_worker=True,
+        worker_artifact_dir=worker_namespace / "artifacts",
+        worker_namespace=worker_namespace,
+        allowed_roots=(allowed_root, worker_namespace),
+    )
+
+    payload = json.loads(session_payload_json(session))
+
+    assert payload["parallel_worker"] is True
+    assert payload["worker_artifact_dir"] == str(worker_namespace / "artifacts")
+    assert payload["worker_namespace"] == str(worker_namespace)
+    assert payload["allowed_roots"] == [str(allowed_root), str(worker_namespace)]

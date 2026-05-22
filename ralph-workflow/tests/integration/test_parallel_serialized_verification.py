@@ -191,8 +191,8 @@ class TestSerializedPostFanoutVerification:
             workspace_scope=workspace_scope,
         )
 
-        assert call_order.index("fan_out") < call_order.index("verify"), (
-            f"fan_out must complete before verify, but got order: {call_order}"
+        assert call_order == ["fan_out", "verify"], (
+            f"fan_out must complete before verify with no extra work, got: {call_order}"
         )
 
     def test_verification_skipped_when_run_post_fanout_verification_false(

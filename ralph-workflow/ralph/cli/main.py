@@ -555,6 +555,14 @@ def main(
             help="Policy directory to explain or check (default: bundled defaults)",
         ),
     ] = None,
+    parallel_worker_manifest: Annotated[
+        str | None,
+        typer.Option(
+            "--parallel-worker-manifest",
+            hidden=True,
+            help="Internal worker bootstrap manifest path.",
+        ),
+    ] = None,
     check_policy: Annotated[
         bool,
         typer.Option(
@@ -689,6 +697,7 @@ def main(
             verbosity=verbosity,
             counter_overrides=counter_overrides,
             inline_prompt=prompt,
+            parallel_worker_manifest=_config_path(parallel_worker_manifest),
         ),
         display_context=_cli_ctx,
     )
@@ -836,6 +845,7 @@ class _RunPipelineOpts:
     verbosity: Verbosity = Verbosity.VERBOSE
     counter_overrides: dict[str, int] | None = None
     inline_prompt: str | None = None
+    parallel_worker_manifest: RuntimePath | None = None
 
 
 def _run_pipeline(
@@ -855,6 +865,7 @@ def _run_pipeline(
             verbosity=opts.verbosity,
             counter_overrides=opts.counter_overrides or {},
             inline_prompt=opts.inline_prompt,
+            parallel_worker_manifest=opts.parallel_worker_manifest,
         )
         exit_code = run_pipeline(request, display_context=display_context)
         return exit_code

@@ -83,6 +83,16 @@ uv run pytest -q tests/integration/test_runner_fanout_wiring.py
 uv run pytest -q tests/integration/test_old_checkpoint_loads.py
 ```
 
+## Parallel worker bootstrap tests
+
+Dedicated worker bootstrap isolates each fan-out worker's prompt, checkpoint, and runtime state under `.agent/workers/<unit_id>/`. These tests verify the isolation contract:
+
+```bash
+cd ralph-workflow
+uv run pytest -q tests/test_parallel_worker_runtime.py
+uv run pytest -q tests/integration/test_parallel_worker_bootstrap.py
+```
+
 ## Interactive Claude PTY tests
 
 ```bash

@@ -9,9 +9,11 @@ import ralph.prompts.materialize
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
+from ralph.pipeline import fan_out as fan_out_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
@@ -23,6 +25,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+    from ralph.pipeline.events import Event
+    from ralph.pipeline.parallel.coordinator import WorkerContext
+    from ralph.policy.models import PipelinePolicy
 
 
 def _legacy_display() -> runner_module.LegacyConsoleDisplay:
@@ -132,14 +138,14 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    unit = _make_work_unit("unit-a")
-    effect = FanOutEffect(work_units=(unit,), max_workers=1)
+    units = (_make_work_unit("unit-a"), _make_work_unit("unit-b"))
+    effect = FanOutEffect(work_units=units, max_workers=2)
     state = PipelineState(
         phase="development",
-        work_units=(unit,),
+        work_units=units,
         phase_chains={"development": AgentChainState(agents=["claude"])},
     )
-    policy_bundle = _make_policy_bundle(max_workers=1)
+    policy_bundle = _make_policy_bundle(max_workers=2)
     workspace_scope = WorkspaceScope(tmp_path)
     install_calls: list[tuple[object, object, object]] = []
     coordinator_calls: list[dict[str, object]] = []
@@ -148,7 +154,12 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
 
     class _FakeExecutor:
         def __init__(self, command: object, signal_bridge: object | None = None) -> None:
-            executor_calls.append({"command": tuple(command), "signal_bridge": signal_bridge})
+            executor_calls.append(
+                {
+                    "command": tuple(cast("tuple[str, ...]", command)),
+                    "signal_bridge": signal_bridge,
+                }
+            )
 
     class _FakeMcpFactory:
         def __init__(self, workspace: object) -> None:
@@ -179,7 +190,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     assert len(executor_calls) == 1
     assert executor_calls[0]["signal_bridge"] is install_calls[0][2]
     assert mcp_factory_calls
-    ctx = cast("object", coordinator_calls[0]["ctx"])
+    ctx = cast("WorkerContext", coordinator_calls[0]["ctx"])
     assert ctx.same_workspace is not None
     # Verify session contract fields are properly threaded from the runner's
     # _build_session_mcp_plan_for_phase into SameWorkspaceContext.
@@ -187,6 +198,79 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     assert "media.read" in ctx.same_workspace.session_capabilities
     assert ctx.same_workspace.session_model_identity is not None
     assert ctx.same_workspace.session_capability_profile is not None
+    assert ctx.same_workspace.worker_commands["unit-a"] == (
+        fan_out_module.sys.executable,
+        "-m",
+        "ralph",
+        "--parallel-worker-manifest",
+        str(tmp_path / ".agent" / "workers" / "unit-a" / "worker-manifest.json"),
+    )
+    assert (
+        ctx.same_workspace.worker_commands["unit-a"]
+        != ctx.same_workspace.worker_commands["unit-b"]
+    )
+    assert (
+        ctx.same_workspace.worker_manifest_paths["unit-a"]
+        != ctx.same_workspace.worker_manifest_paths["unit-b"]
+    )
+
+
+def test_execute_fan_out_sync_persists_worker_manifests_with_distinct_phase_and_drain(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    unit = _make_work_unit("unit-a")
+    effect = FanOutEffect(work_units=(unit,), max_workers=1, phase="parallel-dev")
+    state = PipelineState(
+        phase="parallel-dev",
+        work_units=(unit,),
+        phase_chains={"parallel-dev": AgentChainState(agents=["claude"])},
+    )
+    policy_bundle = _make_policy_bundle(max_workers=1)
+    parallel_phase = MagicMock(requires_commit=False, drain="development", role="execution")
+    parallel_phase.parallelization = policy_bundle.pipeline.phases["development"].parallelization
+    policy_bundle.pipeline.phases["parallel-dev"] = parallel_phase
+    workspace_scope = WorkspaceScope(tmp_path)
+    coordinator_calls: list[dict[str, object]] = []
+
+    class _FakeExecutor:
+        def __init__(self, command: object, signal_bridge: object | None = None) -> None:
+            del command, signal_bridge
+
+    class _FakeMcpFactory:
+        def __init__(self, workspace: object) -> None:
+            del workspace
+
+    async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+        coordinator_calls.append(dict(kwargs))
+        return []
+
+    monkeypatch.setattr(
+        "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
+    )
+    monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
+    monkeypatch.setattr(
+        "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
+    )
+    monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+
+    runner_module.execute_fan_out_sync(
+        effect=effect,
+        state=state,
+        display=_legacy_display(),
+        policy_bundle=policy_bundle,
+        workspace_scope=workspace_scope,
+    )
+
+    ctx = cast("WorkerContext", coordinator_calls[0]["ctx"])
+    same_workspace = ctx.same_workspace
+    assert same_workspace is not None
+    manifest_path = same_workspace.worker_manifest_paths[unit.unit_id]
+    manifest = ParallelWorkerManifest.load(manifest_path)
+    assert manifest.phase == "parallel-dev"
+    assert manifest.drain == "development"
+    assert manifest.worker_namespace == str(tmp_path / ".agent" / "workers" / unit.unit_id)
 
 
 def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_recovery_state(
@@ -234,7 +318,9 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
     )
 
     assert recovered.phase == "development"
-    assert recovered.chain_for_phase("development").retries == 1
+    development_chain = recovered.chain_for_phase("development")
+    assert development_chain is not None
+    assert development_chain.retries == 1
     assert recovered.recovery_epoch == 0
     assert recovered.last_error is not None
     assert "Fan-out execution crashed" in recovered.last_error
@@ -273,10 +359,10 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
         return []
 
     def _recording_reduce(
-        current_state: object,
-        event: object,
-        pipeline_policy: object | None = None,
-    ) -> object:
+        current_state: PipelineState,
+        event: Event,
+        pipeline_policy: PipelinePolicy | None = None,
+    ) -> tuple[PipelineState, object]:
         seen_events.append(event)
         return original_reduce(current_state, event, pipeline_policy)
 

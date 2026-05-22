@@ -58,6 +58,7 @@ class AgentSession:
     edit_area_result: object = None
     worker_artifact_dir: Path | None = None
     worker_namespace: Path | None = None
+    allowed_roots: tuple[Path, ...] = field(default_factory=tuple)
     media_manifest: MediaManifest = field(default_factory=MediaManifest)
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
     stored_capability_profile: ResolvedCapabilityProfile | None = field(default=None)

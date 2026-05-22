@@ -269,3 +269,16 @@ class TestSameWorkspaceWorkerScopeFencing:
         workspace = FsWorkspace(tmp_path, allowed_roots=scope.allowed_roots)
         with pytest.raises(ValueError, match="outside workspace root"):
             workspace.write(".agent/workers/u2/artifacts/x", "should fail")
+
+    def test_allowed_directory_prefix_escape_is_rejected(self, tmp_path: Path) -> None:
+        worker_ns = tmp_path / ".agent" / "workers" / "u1"
+        worker_ns.mkdir(parents=True)
+        sibling = tmp_path.parent / f"{tmp_path.name}-escape"
+        sibling.mkdir(parents=True, exist_ok=True)
+
+        with pytest.raises(ValueError, match="escapes repo_root"):
+            WorkspaceScope.for_same_workspace_worker(
+                repo_root=tmp_path,
+                allowed_directories=(f"../{sibling.name}",),
+                worker_namespace=worker_ns,
+            )

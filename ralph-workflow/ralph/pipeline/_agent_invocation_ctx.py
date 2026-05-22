@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from ralph.config.enums import Verbosity
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -37,3 +38,6 @@ class _AgentInvocationCtx:
     waiting_listener: Callable[[object], None]
     agent_config: AgentConfig
     display: ParallelDisplay | LegacyConsoleDisplay | None
+    worker_namespace: Path | None = None
+    worker_artifact_dir: Path | None = None
+    parallel_worker: bool = False

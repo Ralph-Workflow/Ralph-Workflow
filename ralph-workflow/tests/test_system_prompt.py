@@ -107,3 +107,44 @@ def test_materialize_system_prompt_ignores_plan_handoff_during_planning(
     assert str(plan_path) not in system_prompt
     assert "source of truth for the current goal and execution steps" not in system_prompt
     assert "source of truth for the current goal" in system_prompt
+
+
+def test_materialize_system_prompt_uses_worker_namespace_without_shared_singletons(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "PROMPT.md").write_text("Worker-only prompt", encoding="utf-8")
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+
+    system_prompt_path = materialize_system_prompt(
+        workspace_root=tmp_path,
+        name="development",
+        worker_namespace=worker_namespace,
+    )
+
+    worker_current_prompt = worker_namespace / "tmp" / "CURRENT_PROMPT.md"
+    assert Path(system_prompt_path) == worker_namespace / "tmp" / "development_system_prompt.md"
+    assert worker_current_prompt.read_text(encoding="utf-8") == "Worker-only prompt"
+    assert not (tmp_path / ".agent" / "CURRENT_PROMPT.md").exists()
+    assert not (tmp_path / ".agent" / "tmp" / "development_system_prompt.md").exists()
+
+
+def test_materialize_system_prompt_in_worker_mode_does_not_write_shared_prompt_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        system_prompt_module,
+        "_history_timestamp",
+        lambda: "20260508T120002Z",
+        raising=False,
+    )
+    (tmp_path / "PROMPT.md").write_text("Worker-only prompt", encoding="utf-8")
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+
+    materialize_system_prompt(
+        workspace_root=tmp_path,
+        name="development",
+        worker_namespace=worker_namespace,
+    )
+
+    assert not (tmp_path / ".agent" / "prompt_history").exists()

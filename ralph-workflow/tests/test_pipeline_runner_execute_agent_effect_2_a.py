@@ -13,6 +13,7 @@ from rich.console import Console
 
 from ralph.config.enums import (
     AgentTransport,
+    JsonParserType,
 )
 from ralph.config.mcp_loader import McpConfigError
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
@@ -481,6 +482,85 @@ class TestExecuteAgentEffectA:
         assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
         assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
         assert (tmp_path / ".agent" / "PLAN.md").exists()
+
+    def test_execute_agent_effect_worker_mode_uses_namespaced_system_prompt_and_session(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        effect = InvokeAgentEffect(
+            agent_name="developer",
+            phase="development",
+            prompt_file="PROMPT.md",
+            drain="development",
+        )
+        worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
+        prompt_file = worker_ns / "tmp" / "development_system_prompt.md"
+        captured: dict[str, object] = {}
+
+        def _fake_materialize_system_prompt(**kwargs: object) -> str:
+            captured["materialize_kwargs"] = kwargs
+            return str(prompt_file)
+
+        def _fake_start_mcp_server(
+            session: object,
+            workspace: object,
+            **kwargs: object,
+        ) -> _FakeBridge:
+            captured["session"] = session
+            captured["workspace"] = workspace
+            captured["start_kwargs"] = kwargs
+            return _FakeBridge()
+
+        monkeypatch.setattr(
+            effect_executor_module,
+            "materialize_system_prompt",
+            _fake_materialize_system_prompt,
+        )
+        monkeypatch.setattr(
+            effect_executor_module,
+            "clear_phase_output_artifacts",
+            lambda *args, **kwargs: None,
+        )
+        monkeypatch.setattr(effect_executor_module, "start_mcp_server", _fake_start_mcp_server)
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
+
+        agent_config = AgentConfig(
+            cmd="claude",
+            output_flag="--json-stream",
+            json_parser=JsonParserType.CLAUDE,
+            transport=AgentTransport.CLAUDE,
+        )
+
+        result = runner_module.execute_agent_effect(
+            effect,
+            UnifiedConfig(),
+            runner_module.AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=AgentError,
+                agent_registry=_registry_factory(agent_config),
+            ),
+            WorkspaceScope.for_same_workspace_worker(
+                repo_root=tmp_path,
+                allowed_directories=("src/a",),
+                worker_namespace=worker_ns,
+            ),
+            display_context=make_display_context(),
+            policy_bundle=_load_default_policy_bundle(),
+            worker_namespace=worker_ns,
+            worker_artifact_dir=worker_ns / "artifacts",
+            parallel_worker=True,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        materialize_kwargs = captured["materialize_kwargs"]
+        assert isinstance(materialize_kwargs, dict)
+        assert materialize_kwargs["worker_namespace"] == worker_ns
+        session = captured["session"]
+        assert session.parallel_worker is True
+        assert session.worker_artifact_dir == worker_ns / "artifacts"
+        assert session.worker_namespace == worker_ns
+        assert worker_ns in session.allowed_roots
 
     def test_execute_agent_effect_preserves_planning_artifacts_on_same_phase_retry(
         self,

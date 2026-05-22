@@ -360,6 +360,18 @@ def session_payload_json(session: SessionLike) -> str:
         "drain": session.drain,
         "capabilities": sorted(session.capabilities),
     }
+    raw_parallel_worker: object = getattr(session, "parallel_worker", False)
+    if bool(raw_parallel_worker):
+        session_payload["parallel_worker"] = True
+    raw_worker_artifact_dir: object = getattr(session, "worker_artifact_dir", None)
+    if isinstance(raw_worker_artifact_dir, Path):
+        session_payload["worker_artifact_dir"] = str(raw_worker_artifact_dir)
+    raw_worker_namespace: object = getattr(session, "worker_namespace", None)
+    if isinstance(raw_worker_namespace, Path):
+        session_payload["worker_namespace"] = str(raw_worker_namespace)
+    raw_allowed_roots: object = getattr(session, "allowed_roots", ())
+    if isinstance(raw_allowed_roots, tuple) and raw_allowed_roots:
+        session_payload["allowed_roots"] = [str(path) for path in raw_allowed_roots]
     raw_identity: object = getattr(session, "model_identity", None)
     if isinstance(raw_identity, MultimodalModelIdentity) and raw_identity.is_known():
         session_payload["model_identity"] = {

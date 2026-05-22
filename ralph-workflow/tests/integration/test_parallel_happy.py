@@ -4,8 +4,10 @@ import asyncio
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
+    from ralph.agents.executor import AgentExecutor
     from ralph.display.parallel_display import ParallelDisplay
 
+from ralph.agents.worker_result import WorkerResult
 from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import Event, PipelineEvent, WorkerCompletedEvent
 from ralph.pipeline.parallel import coordinator
@@ -48,13 +50,45 @@ def test_three_workers_all_succeed() -> None:
         _make_work_unit("unit-B"),
         _make_work_unit("unit-C"),
     )
-    runs = {
-        unit.unit_id: FakeRun(outputs=[f"done-{unit.unit_id}"], exit_code=0, duration_ms=1)
-        for unit in units
-    }
-    effect = FanOutEffect(work_units=units, max_workers=3)
+    started: list[str] = []
+    release_workers = asyncio.Event()
+    second_started = asyncio.Event()
 
-    events = _run_fan_out(effect, runs)
+    class _ParallelProofExecutor:
+        async def run(
+            self,
+            unit: WorkUnit,
+            *,
+            on_output: object,
+            on_status: object,
+        ) -> WorkerResult:
+            del on_output, on_status
+            started.append(unit.unit_id)
+            if unit.unit_id == "unit-A":
+                await second_started.wait()
+            elif unit.unit_id == "unit-B":
+                second_started.set()
+            await release_workers.wait()
+            return WorkerResult(
+                unit_id=unit.unit_id,
+                exit_code=0,
+                final_message="done",
+                duration_ms=1,
+            )
+
+    async def _exercise() -> list[Event]:
+        task = asyncio.create_task(
+            coordinator.run_fan_out(
+                effect=FanOutEffect(work_units=units, max_workers=3),
+                executor=cast("AgentExecutor", _ParallelProofExecutor()),
+                display=cast("ParallelDisplay", _FakeDisplay()),
+            )
+        )
+        await second_started.wait()
+        release_workers.set()
+        return await task
+
+    events = asyncio.run(_exercise())
 
     completed_events = [event for event in events if isinstance(event, WorkerCompletedEvent)]
     completed_ids = {event.unit_id for event in completed_events}
@@ -63,6 +97,7 @@ def test_three_workers_all_succeed() -> None:
     assert events[-1] == PipelineEvent.ALL_WORKERS_COMPLETE
     assert completed_ids == {"unit-A", "unit-B", "unit-C"}
     assert all(event.exit_code == 0 for event in completed_events)
+    assert started[:2] == ["unit-A", "unit-B"]
 
 
 def _fan_out_policy() -> PipelinePolicy:
@@ -109,3 +144,4 @@ def test_happy_path_state_transitions() -> None:
     assert reduced_state.worker_states["unit-A"].status == WorkerStatus.SUCCEEDED
     assert reduced_state.worker_states["unit-B"].status == WorkerStatus.SUCCEEDED
     assert reduced_state.worker_states["unit-C"].status == WorkerStatus.SUCCEEDED
+

@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 10
+UNIT_TEST_SHARD_COUNT = 19
 
 
 def _target_body(name: str) -> list[str]:
@@ -76,11 +76,20 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
     assert any("$(PYTEST_CORE_PATHS)" in line for line in unit_body)
     assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_A_B)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_C_H)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_I_M)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_N_O)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_PA_PL)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_A)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_B)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_C_D)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_E_F)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_G_H)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_I_J)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_K_L)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_M)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_N)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_O)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_PA_PC)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_PD_PF)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_PG_PI)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_PJ_PL)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_PM_PZ)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_Q_S)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_T_Z)" in line for line in unit_body)

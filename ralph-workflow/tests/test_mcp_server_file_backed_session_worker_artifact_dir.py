@@ -894,3 +894,34 @@ class TestFileBackedSessionWorkerArtifactDir:
         )
         session = FileBackedSession(session_file, env_getter=lambda k: None)
         assert session.worker_artifact_dir is None
+
+    def test_file_backed_session_restores_parallel_worker_edit_roots(self, tmp_path: Path) -> None:
+        repo_root = tmp_path / "repo"
+        worker_ns = repo_root / ".agent" / "workers" / "unit-a"
+        allowed_dir = repo_root / "src" / "unit-a"
+        session_dir = repo_root / ".agent" / "tmp"
+        session_dir.mkdir(parents=True)
+        session_file = session_dir / "session.json"
+        session_file.write_text(
+            json.dumps(
+                {
+                    "session_id": "s",
+                    "run_id": "r",
+                    "drain": "d",
+                    "capabilities": [],
+                    "parallel_worker": True,
+                    "worker_artifact_dir": str(worker_ns / "artifacts"),
+                    "worker_namespace": str(worker_ns),
+                    "allowed_roots": [str(allowed_dir), str(worker_ns)],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        session = FileBackedSession(session_file, env_getter=lambda _k: None)
+
+        assert session.is_parallel_worker() is True
+        assert session.worker_artifact_dir == worker_ns / "artifacts"
+        assert session.worker_namespace == worker_ns
+        assert session.check_edit_area("src/unit-a/file.txt") == "approved"
+        assert session.check_edit_area("src/other/file.txt") == "denied"

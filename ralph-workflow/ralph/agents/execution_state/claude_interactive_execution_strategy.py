@@ -32,14 +32,29 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         events = self._transcript_parser.feed(line)
         if events:
-            event = events[-1]
-            if event.kind == "tool_use":
-                return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=event.text)
-            if event.kind == "lifecycle":
-                return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=event.text)
-            if event.kind == "session":
-                return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=event.text)
-            return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=event.text)
+            tool_result_event = None
+            lifecycle_event = None
+            output_event = None
+            for event in events:
+                if event.kind == "tool_use":
+                    return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=event.text)
+                if event.kind in {"lifecycle", "session"} and lifecycle_event is None:
+                    lifecycle_event = event
+                    continue
+                if event.kind == "tool_result" and tool_result_event is None:
+                    tool_result_event = event
+                    continue
+                if output_event is None:
+                    output_event = event
+            if lifecycle_event is not None:
+                return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=lifecycle_event.text)
+            if tool_result_event is not None:
+                return AgentActivitySignal(
+                    AgentActivityKind.OUTPUT_LINE,
+                    raw=tool_result_event.text,
+                )
+            if output_event is not None:
+                return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=output_event.text)
         return super().classify_activity_line(line)
 
     def supports_session_continuation(self) -> bool:

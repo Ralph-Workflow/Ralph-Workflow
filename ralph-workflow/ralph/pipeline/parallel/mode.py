@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.parallel.parallel_execution_mode import ParallelExecutionMode
@@ -35,8 +35,10 @@ class SameWorkspaceContext:
     repo_root: Path
     mcp_factory: McpServerFactory
     executor_command: tuple[str, ...] | None = None
+    worker_commands: dict[str, tuple[str, ...]] = field(default_factory=dict)
     signal_bridge: SignalBridge | None = None
     worker_namespace_root: Path | None = None
+    worker_manifest_paths: dict[str, Path] = field(default_factory=dict)
 
     session_drain: str = ""
     session_capabilities: frozenset[str] = frozenset()

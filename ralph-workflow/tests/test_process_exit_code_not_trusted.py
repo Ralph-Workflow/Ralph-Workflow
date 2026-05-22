@@ -6,6 +6,7 @@ import contextlib
 import importlib
 import json
 import sys
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -26,6 +27,26 @@ from tests.test_process_exit_code_not_trusted_helper__recordingmcpfactory import
     _RecordingMcpFactory,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
+    from pathlib import Path
+    from typing import Protocol
+
+    class _WorkerContextCtor(Protocol):
+        def __call__(self, *, log: object | None = ..., same_workspace: object) -> object: ...
+
+    class _CoordinatorModule(Protocol):
+        WorkerContext: _WorkerContextCtor
+
+        def run_fan_out(
+            self,
+            *,
+            effect: FanOutEffect,
+            executor: FakeAgentExecutor,
+            display: _RecordingDisplay,
+            ctx: object,
+        ) -> Awaitable[list[object]]: ...
+
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
 )
@@ -45,7 +66,7 @@ def _reset_pm() -> object:
 
 
 @pytest.mark.asyncio
-async def test_exit_code_7_is_exited_not_failed(tmp_path: object) -> None:
+async def test_exit_code_7_is_exited_not_failed(tmp_path: Path) -> None:
     """ProcessManager records EXITED (not FAILED) even when returncode != 0."""
     pm = ProcessManager(policy=_FAST_POLICY)
     handle = pm.spawn([PYTHON, "-c", f"import sys; sys.exit({_EXPECTED_EXIT_CODE})"])
@@ -57,8 +78,11 @@ async def test_exit_code_7_is_exited_not_failed(tmp_path: object) -> None:
     assert handle.record.status != ProcessStatus.FAILED
 
 
-def _load_coordinator() -> object:
-    return importlib.import_module("ralph.pipeline.parallel.coordinator")
+def _load_coordinator() -> _CoordinatorModule:
+    return cast(
+        "_CoordinatorModule",
+        importlib.import_module("ralph.pipeline.parallel.coordinator"),
+    )
 
 
 def _make_unit(unit_id: str) -> WorkUnit:
@@ -70,7 +94,7 @@ def _make_unit(unit_id: str) -> WorkUnit:
     )
 
 
-def _seed_artifact(artifact_dir: object) -> None:
+def _seed_artifact(artifact_dir: Path) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "plan.json").write_text(
         json.dumps(
@@ -99,13 +123,13 @@ class _RecordingDisplay:
 
 
 
-def _make_ctx(module: object, same_workspace: object) -> object:
+def _make_ctx(module: _CoordinatorModule, same_workspace: object) -> object:
     ctx_type = module.WorkerContext
     return ctx_type(log=None, same_workspace=same_workspace)
 
 
 @pytest.mark.asyncio
-async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path: object) -> None:
+async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path: Path) -> None:
     """Worker coordinator: exit_code != 0 but artifact present → worker succeeds.
 
     This is the exit-code-not-trusted invariant: success comes from worker-local
@@ -142,7 +166,7 @@ async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path: object
 
 
 @pytest.mark.asyncio
-async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path: object) -> None:
+async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path: Path) -> None:
     """Worker coordinator: exit_code == 0 but no artifact → worker fails.
 
     This is the exit-code-not-trusted invariant: only worker-local artifact
@@ -153,6 +177,7 @@ async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path: object
     effect = FanOutEffect(work_units=(unit,), max_workers=1)
     display = _RecordingDisplay()
     mcp_factory = _RecordingMcpFactory()
+    _seed_artifact(tmp_path / ".agent" / "artifacts")
 
     same_workspace = SameWorkspaceContext(
         repo_root=tmp_path,
