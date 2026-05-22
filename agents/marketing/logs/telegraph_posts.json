@@ -52,5 +52,12 @@
     "keyword": "Ralph Workflow first task guide",
     "published_at": "2026-05-22T00:05:42Z",
     "notes": "Conversion-focused first-task asset published because adoption remains flat and the current bottleneck is interest-to-free-use conversion. Keeps Codeberg primary and GitHub mirror CTA."
+  },
+  {
+    "url": "https://telegra.ph/The-Unattended-Coding-Agent-What-Done-Actually-Means-05-22",
+    "title": "The Unattended Coding Agent: What Done Actually Means",
+    "keyword": "unattended coding agent",
+    "published_at": "2026-05-22T03:15:00Z",
+    "notes": "Keyword-gap post. Core differentiator: bounded diff and review surface. Targets search around unattended coding agent evaluation."
   }
 ]
