@@ -39,7 +39,7 @@ def needs_recheck(entry: CapabilityEntry, policy: RecheckPolicy | None = None) -
     s = entry.status
     if s == CapabilityStatus.NOT_INSTALLED:
         return p.always_recheck_if_not_installed
-    if s in (CapabilityStatus.NEEDS_REPAIR, CapabilityStatus.CONFIGURED_UNREACHABLE):
+    if s in {CapabilityStatus.NEEDS_REPAIR, CapabilityStatus.CONFIGURED_UNREACHABLE}:
         hours = _hours_since_iso(entry.last_check_fail_iso)
         return hours is None or hours >= p.failed_recheck_hours
     hours = _hours_since_iso(entry.last_check_ok_iso)

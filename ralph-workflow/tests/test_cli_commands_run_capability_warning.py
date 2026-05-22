@@ -8,8 +8,6 @@ from unittest.mock import MagicMock
 from rich.panel import Panel
 
 from ralph.cli.commands import run as run_module
-from ralph.cli.commands._load_result import _LoadResult
-from ralph.config.models import UnifiedConfig
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -66,16 +64,6 @@ def _configure_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Wor
     scope = WorkspaceScope(tmp_path)
     monkeypatch.setattr(run_module, "resolve_workspace_scope", lambda: scope)
     return scope
-
-
-def _mock_load_result(scope: WorkspaceScope) -> _LoadResult:
-    """Return a valid _LoadResult for testing."""
-    return _LoadResult(
-        config=UnifiedConfig(),
-        workspace_scope=scope,
-        initial_state=None,
-        policy_bundle=_fake_policy_bundle(),
-    )
 
 
 class TestWarnIfCapabilitiesDegraded:
