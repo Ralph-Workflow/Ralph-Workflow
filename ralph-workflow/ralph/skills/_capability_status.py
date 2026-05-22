@@ -1,11 +1,19 @@
-"""Capability status enum - backward compatibility re-export.
+"""Capability status enum - canonical definition."""
 
-New code should import from ralph.skills._state:
-    from ralph.skills._state import CapabilityStatus
-"""
+from __future__ import annotations
 
-from __future__ annotations
+from enum import StrEnum
 
-from ralph.skills._state import CapabilityStatus
+
+class CapabilityStatus(StrEnum):
+    """Six-state capability lifecycle."""
+
+    NOT_INSTALLED = "not_installed"
+    INSTALLED_HEALTHY = "installed_healthy"
+    CONFIGURED_UNREACHABLE = "configured_unreachable"
+    INSTALLED_OUTDATED = "installed_outdated"
+    INSTALLED_DEGRADED = "installed_degraded"
+    NEEDS_REPAIR = "needs_repair"
+
 
 __all__ = ["CapabilityStatus"]

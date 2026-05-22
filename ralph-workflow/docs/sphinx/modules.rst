@@ -108,13 +108,6 @@ ralph.timeout_defaults
    :members:
    :show-inheritance:
 
-ralph.pydantic_compat
-~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pydantic_compat
-   :members:
-   :show-inheritance:
-
 ralph.verify_timeout
 ~~~~~~~~~~~~~~~~~~~~
 

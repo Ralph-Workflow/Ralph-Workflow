@@ -49,13 +49,8 @@ from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-<<<<<<< HEAD
-    from pathlib import Path
-
     from rich.console import Console
 
-=======
->>>>>>> main
     from ralph.cli.commands._legacy_run_pipeline_kwargs import _LegacyRunPipelineKwargs
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig

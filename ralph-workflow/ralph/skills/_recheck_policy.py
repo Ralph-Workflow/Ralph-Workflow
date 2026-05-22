@@ -1,6 +1,6 @@
 """TTL-based recheck policy for capability health state."""
 
-from __future__ annotations
+from __future__ import annotations
 
 from datetime import UTC, datetime
 

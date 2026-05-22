@@ -122,12 +122,8 @@ def prompt_developer_iteration_xml_with_context(
                 "ARTIFACT_HISTORY_PATH": inputs.artifact_history_path,
                 "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
                 "LAST_RETRY_ERROR": inputs.last_retry_error,
-<<<<<<< HEAD
                 "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
-=======
-                "PROMPT_PATH": current_prompt_path,
->>>>>>> main
                 "PLAN_PATH": inputs.plan_path
                 or str(Path(payload_root) / f"{inputs.prompt_name_prefix}_plan.txt"),
                 "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
@@ -214,15 +210,11 @@ def prompt_planning_xml_with_context(
             "PLAN_PATH": inputs.plan_path
             or str(Path(payload_root) / "planning_plan.txt"),
             "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
-<<<<<<< HEAD
             or str(
                 Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
                 / "planning_analysis_feedback.txt"
             ),
             "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
-=======
-            or str(Path(payload_root) / "planning_analysis_feedback.txt"),
->>>>>>> main
         }
         fallback_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
         fallback_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir
