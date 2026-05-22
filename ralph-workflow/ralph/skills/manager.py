@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 from datetime import UTC, datetime
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 from ralph.config.mcp_loader import McpConfigError, load_mcp_config
@@ -46,6 +47,22 @@ def _find_configured_docs_mcp_url(workspace_root: Path | None = None) -> str | N
         if server.url and is_supported_docs_mcp_url(server.url):
             return server.url
     return None
+
+
+def _web_search_is_available() -> bool:
+    try:
+        from ralph.mcp.websearch.backends.ddgs import DDGS as _DDGS
+    except ImportError:
+        return False
+    return _DDGS is not None
+
+
+def _visit_url_is_available() -> bool:
+    try:
+        import_module("ralph.mcp.webvisit.extractor")
+    except ImportError:
+        return False
+    return True
 
 
 class SkillManager:
@@ -94,15 +111,26 @@ class SkillManager:
         else:
             docs_mcp_entry = CapabilityEntry(status=CapabilityStatus.NOT_INSTALLED)
 
-        # web_search and visit_url are built-in to ralph; stamp with version for OUTDATED detection
+        web_search_ok = _web_search_is_available()
         web_search_entry = CapabilityEntry(
-            status=CapabilityStatus.INSTALLED_HEALTHY,
-            last_check_ok_iso=_now_iso(),
+            status=(
+                CapabilityStatus.INSTALLED_HEALTHY
+                if web_search_ok
+                else CapabilityStatus.INSTALLED_DEGRADED
+            ),
+            last_check_ok_iso=_now_iso() if web_search_ok else "",
+            last_check_fail_iso="" if web_search_ok else _now_iso(),
             ralph_version=current_version,
         )
+        visit_url_ok = _visit_url_is_available()
         visit_url_entry = CapabilityEntry(
-            status=CapabilityStatus.INSTALLED_HEALTHY,
-            last_check_ok_iso=_now_iso(),
+            status=(
+                CapabilityStatus.INSTALLED_HEALTHY
+                if visit_url_ok
+                else CapabilityStatus.NEEDS_REPAIR
+            ),
+            last_check_ok_iso=_now_iso() if visit_url_ok else "",
+            last_check_fail_iso="" if visit_url_ok else _now_iso(),
             ralph_version=current_version,
         )
 

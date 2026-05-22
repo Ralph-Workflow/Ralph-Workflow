@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.cli.commands import run as run_module
@@ -42,6 +43,37 @@ def test_maybe_enter_process_view_enters_context_when_machine_global_skills_miss
         return False
 
     monkeypatch.setattr(run_module, "has_machine_global_skills", _has_machine_global_skills)
+    monkeypatch.setattr(run_module, "SkillsProcessView", FakeView)
+    with ExitStack() as stack:
+        target = run_module._maybe_enter_process_view(stack)
+        assert target == "target-dir"
+    assert entered == ["enter", "exit"]
+
+
+def test_maybe_enter_process_view_enters_context_when_partial_install(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    entered: list[str] = []
+
+    class FakeView:
+        def __enter__(self) -> str:
+            entered.append("enter")
+            return "target-dir"
+
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: object | None,
+        ) -> bool:
+            entered.append("exit")
+            return False
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    skills_dir = tmp_path / ".claude" / "plugins" / "ralph-workflow-skills" / "skills"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "using-superpowers.md").write_text("# using-superpowers\n", encoding="utf-8")
     monkeypatch.setattr(run_module, "SkillsProcessView", FakeView)
     with ExitStack() as stack:
         target = run_module._maybe_enter_process_view(stack)

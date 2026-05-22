@@ -1,0 +1,24 @@
+{
+  "name": "@ralph-workflow/skills",
+  "version": "0.8.7",
+  "description": "Baseline workflow skills for Ralph Workflow — ships 17 Superpowers and quality skills as a repo-owned, publishable bundle.",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow.git"
+  },
+  "bin": {
+    "skills": "./bin/skills.js"
+  },
+  "files": [
+    "bin/",
+    "content/"
+  ],
+  "scripts": {
+    "prepack": "node -e \"const{cpSync}=require('node:fs');cpSync('../ralph/skills/content','content',{recursive:true})\"",
+    "postpack": "node -e \"require('node:fs').rmSync('content',{recursive:true,force:true})\""
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

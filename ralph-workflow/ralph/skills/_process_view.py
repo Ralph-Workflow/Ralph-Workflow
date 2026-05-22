@@ -21,9 +21,8 @@ def has_machine_global_skills() -> bool:
     skills_dir = _machine_global_skills_dir()
     if not skills_dir.is_dir():
         return False
-    return any(
-        md_file.stem in BASELINE_SKILL_NAMES for md_file in skills_dir.glob("*.md")
-    )
+    present = {f.stem for f in skills_dir.glob("*.md")}
+    return set(BASELINE_SKILL_NAMES).issubset(present)
 
 
 class SkillsProcessView(AbstractContextManager[Path]):

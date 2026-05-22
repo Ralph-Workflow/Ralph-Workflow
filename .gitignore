@@ -280,4 +280,5 @@ __marimo__/
 tmp/
 **/tmp/
 
-skills-package/
+ralph-workflow/skills-package/content/
+ralph-workflow/skills-package/*.tgz

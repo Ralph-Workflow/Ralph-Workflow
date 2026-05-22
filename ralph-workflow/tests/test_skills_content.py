@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.skills._content import (
     BASELINE_SKILL_NAMES,
     get_skill_content,
@@ -25,6 +27,11 @@ def test_each_skill_has_substantial_content() -> None:
         content = get_skill_content(name)
         assert content.startswith(f"# {name}")
         assert len(content.split()) >= 150
+
+
+def test_get_skill_content_raises_for_unknown_name() -> None:
+    with pytest.raises(ValueError):
+        get_skill_content("definitely-not-a-real-skill")
 
 
 def test_materialize_skills_to_dir_writes_all_skills(tmp_path: Path) -> None:
