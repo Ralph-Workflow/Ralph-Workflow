@@ -40,6 +40,7 @@ from ralph.policy.validation import (
     validate_recovery_config,
     validate_required_inputs,
 )
+from ralph.skills._state_store import default_state_path
 from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -462,7 +463,7 @@ def _pipeline_config_error_text(message: str) -> Text:
 
 def _warn_if_capabilities_degraded(console: Console, workspace_root: Path) -> None:
     """Print a soft warning if any baseline capability appears degraded (no network I/O)."""
-    state_path = workspace_root.parent / ".config" / "ralph-workflow-capabilities.json"
+    state_path = default_state_path()
     if not state_path.exists():
         return  # no state file yet; skip (first run before init)
     manager = SkillManager()

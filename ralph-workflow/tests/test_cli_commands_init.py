@@ -63,7 +63,7 @@ def test_init_command_calls_ensure_baseline_capabilities(
     called = False
 
     def fake_ensure(
-        self_obj: object, *, workspace_root: object
+        _self_obj: object, *, workspace_root: object
     ) -> object:
         nonlocal called
         called = True
@@ -92,7 +92,7 @@ def test_init_command_prints_capability_summary(
     from ralph.skills._state import CapabilityEntry, CapabilityState, CapabilityStatus
 
     def fake_ensure(
-        self_obj: object, *, workspace_root: object
+        _self_obj: object, *, workspace_root: object
     ) -> CapabilityState:
         return CapabilityState(
             web_search=CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
