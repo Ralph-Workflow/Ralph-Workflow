@@ -83,7 +83,7 @@ That is the real product test.
 
 ## Fastest honest first test
 
-Before you start, have Google Anti Gravity or another supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is free and open source, but it does not replace the coding agent itself. For AGY, pre-configure the Ralph Workflow endpoint in `~/.gemini/antigravity-cli/mcp_config.json` or `.agents/mcp_config.json` before running the smoke check.
+Before you start, AGY requires one manual step that Claude and Codex do not: add the Ralph Workflow MCP endpoint to your AGY native config file before Ralph Workflow can discover it. Add a `serverUrl` entry for Ralph Workflow under `mcpServers` in either `~/.gemini/antigravity-cli/mcp_config.json` (global) or `.agents/mcp_config.json` (workspace-local). Then verify the wiring with `ralph --check-mcp` before the first run.
 
 Then run:
 
@@ -92,11 +92,14 @@ pipx install ralph-workflow
 cd /path/to/your/project
 ralph --init
 ralph --diagnose
+ralph --check-mcp
 $EDITOR PROMPT.md
 ralph
 ```
 
 Use one real backlog task, not a vague demo.
+
+**Completion contract:** Ralph Workflow expects Google Anti Gravity to signal completion using `declare_complete` (via the Ralph Workflow MCP tool surface) or by submitting a phase artifact — the same contract as Claude interactive mode.
 
 If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
 

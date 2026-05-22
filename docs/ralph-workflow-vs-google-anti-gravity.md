@@ -79,7 +79,7 @@ That is the real product test.
 
 ## Fastest honest first test
 
-Before you start, have Google Anti Gravity or another supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is free and open source, but it does not replace the coding agent itself. For AGY, pre-configure the Ralph Workflow endpoint in `~/.gemini/antigravity-cli/mcp_config.json` or `.agents/mcp_config.json` before running the smoke check.
+Before you start, AGY requires one manual step that Claude and Codex do not: add the Ralph Workflow MCP endpoint to your AGY native config file before Ralph Workflow can discover it. Add a `serverUrl` entry for Ralph Workflow under `mcpServers` in either `~/.gemini/antigravity-cli/mcp_config.json` (global) or `.agents/mcp_config.json` (workspace-local). Then verify the wiring with `ralph --check-mcp` before the first run.
 
 Then run:
 
@@ -88,23 +88,26 @@ pipx install ralph-workflow
 cd /path/to/your/project
 ralph --init
 ralph --diagnose
+ralph --check-mcp
 $EDITOR PROMPT.md
 ralph
 ```
 
 Use one real backlog task, not a vague demo.
 
-If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
+**Completion contract:** Ralph Workflow expects Google Anti Gravity to signal completion using `declare_complete` (via the Ralph Workflow MCP tool surface) or by submitting a phase artifact — the same contract as Claude interactive mode.
 
-If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).
+If you want help picking that first task, read [when unattended coding fits](when-unattended-coding-fits.md), [the first-task guide](first-task-guide.md), and [first-task prompt templates](first-task-prompt-templates.md).
 
-## Best public next step if Google Anti Gravity is already in your stack
+If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect the [example review bundle](example-review-bundle.md) and [how to review AI coding output before you merge](review-ai-coding-output-before-merge.md).
 
-Use **Codeberg** as the main public home for evaluating Ralph Workflow:
+## Best next step if this sounds like the missing piece
 
-- **Inspect the primary repo first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if Ralph Workflow earns a place next to Google Anti Gravity:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Open first-run friction or docs issues on Codeberg if the handoff misses:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+Use **Codeberg** as the main public home:
+
+- **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star / watch / fork on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
-Keeping adoption and feedback on Codeberg makes the primary repo a clearer trust surface for developers evaluating Anti Gravity-based setups.
+Keeping adoption and feedback on Codeberg makes the primary repo a clearer trust surface for developers evaluating OpenCode-based setups.
