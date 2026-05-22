@@ -1,12 +1,12 @@
 {
-  "checked_at": "2026-05-22T03:10:03.231064+02:00",
+  "checked_at": "2026-05-22T04:11:23.623295+02:00",
   "verdict": "pass",
   "summary": "Fresh independent verification confirms the health monitor now checks the live architecture-verifier boundary, and the repaired full-contract loops remain green.",
   "verified_repairs": [
     {
-      "claim": "health_monitor.py now checks the live architecture verifier instead of trusting a stale pass artifact",
+      "claim": "health_monitor.py now checks both the live architecture verifier and live-vs-artifact cron topology coherence",
       "status": "verified",
-      "details": "Source inspection shows a runtime verifier check plus independent-verification and verifier reruns for the architecture path."
+      "details": "Source inspection shows runtime verifier enforcement plus direct checks that agent_architecture_latest.json agrees with live Gateway cron topology."
     },
     {
       "claim": "direct rerun of health_monitor.py is green after the repair",

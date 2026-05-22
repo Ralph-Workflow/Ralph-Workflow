@@ -1,16 +1,12 @@
 {
-  "timestamp": "2026-05-22 01:13 UTC",
+  "timestamp": "2026-05-22 02:13 UTC",
   "results": [
     {
       "name": "ralph-docs-watchdog",
       "contractMode": "full",
-      "repairs": [
-        "runner artifact was stale; executed runner",
-        "runner skipped because the live docs loop already held the global lock"
-      ],
+      "repairs": [],
       "errors": [],
       "status": "ok",
-      "runnerOutput": "SKIP: another Ralph docs loop process already holds the global lock",
       "checkerResult": "DOCS_QUALITY_OK"
     },
     {

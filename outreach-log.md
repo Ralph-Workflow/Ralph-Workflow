@@ -5125,3 +5125,35 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 03:13:20
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 03:18:46
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+## 2026-05-22 (Friday) — Marketing workflow audit + structural repair (03:45 CEST)
+- **Verdict: two repair actions executed. Reddit cadence broken structurally. Distribution ceiling addressed with fresh autonomous asset.**
+  - Codeberg: 10⭐ 2👁 2🍴, 0 delta across 9 samples. GitHub mirror flat (0⭐ 2👁 0🍴).
+  - **Reddit structural cadence confirmed broken (not lexical):** the 4-paragraph rhythm `contrast opener → handoff framing → proof bundle → product close` is confirmed across all 6 recent logged posts. Fresh openings do not fix it. Created `drafts/2026-05-22_reddit_structural_rewrite.md` with 3 new draft shapes that break the cadence entirely (open in the middle of a moment, embed proof as observation, end with reader's own question).
+  - **Distribution ceiling addressed with fresh autonomous asset:** the HN/Lobsters handoff has been repeated as the "only remaining high-leverage move" across 7+ audits without execution. Created `drafts/2026-05-22_curator_outreach_packet.md` — a new distribution approach targeting comparison page curators and AI tool listing webmasters, which is a genuinely different lane from HN/Lobsters. Every live comparison page citing Ralph Workflow with a do-follow Codeberg link is worth more than HN traffic that does not convert.
+  - **Execution ceiling diagnosis:** the loop correctly identifies HN/Lobsters as high-leverage but cannot execute it autonomously and the human has not executed it across multiple cycles. The repair is not another packet rewrite — it is a new distribution lane that can run autonomously or with lighter human friction.
+  - Backlinks: 0 indexed. SaaSHub listing live. AIToolsIndex and ToolShelf in-flight.
+  - Four marketing questions: all correctly answered, no drift.
+- **What worked:** Infrastructure stack holding. The +1 Codeberg star (9→10) on May 21 is the first real adoption signal correlating with proof-link/entry-path repairs. Proof-path repairs are directionally correct.
+- **What failed:** Reddit structural cadence — the paragraph rhythm is broken structurally, not lexically. HN/Lobsters execution ceiling — same bottleneck diagnosed 7+ times without resolution. Distribution lane too narrow (only HN/Lobsters identified despite multiple cycles).
+- **What is repetitive:** "Execute HN/Lobsters" has become the same stuck record across multiple audits. The loop diagnoses the same bottleneck without replacing the tactic. This is now a structural failure, not a measurement window problem.
+- **What is low leverage:** More fresh Reddit body drafts (fresh openings do not fix structural cadence). Another HN/Lobsters packet rewrite (packet is correct; execution is the real gap). More monitor passes during cooldown.
+- **Current bottleneck:** Distribution ceiling — the loop is executing its available paths correctly but the available paths are too narrow. New distribution lanes (curator outreach, comparison page backlinks) can expand the ceiling.
+- **Repair actions executed in this run:**
+  1. `drafts/2026-05-22_reddit_structural_rewrite.md` — 3 new Reddit draft shapes that break the old 4-paragraph cadence entirely. These replace the old fresh-draft approach.
+  2. `drafts/2026-05-22_curator_outreach_packet.md` — new distribution lane targeting comparison page curators and AI tool listing sites. Genuinely different from HN/Lobsters. Can be executed autonomously or with lighter human friction.
+- **Measurement window:** 14 days through **2026-06-05** for Codeberg stars/watchers/forks delta. 30 days for any curator outreach response or indexed backlink from comparison pages.
+- **Replace if it fails:** if Codeberg is still flat and curator outreach produces no live comparison citations by **2026-06-21**, evaluate whether the product framing itself is the bottleneck before trying another distribution approach.
+- **Type:** **AUDIT / REPAIR**
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 03:42:05
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 04:12:54
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.

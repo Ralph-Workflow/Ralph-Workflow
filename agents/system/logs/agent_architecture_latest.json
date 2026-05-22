@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "healthy_with_repairs",
-    "primary_failure_mode": "The live marketing owner loop temporarily lost certifiability because its runner bundle lagged newer momentum/audit evidence, creating a short-lived self-certification gap until the full bundle and independent signoff were refreshed.",
-    "most_urgent_fix": "Keep the marketing full-contract path coherence-gated so runner evidence is refreshed whenever newer momentum/audit artifacts would otherwise outrun it."
+    "primary_failure_mode": "The architecture watchdog artifact drifted from live runtime reality by conflating three persisted disabled historical jobs in jobs.json with the live Gateway cron topology, which had 20 enabled jobs and 0 live-disabled jobs.",
+    "most_urgent_fix": "Keep architecture signoff fail-closed on live-vs-artifact topology mismatches so persisted disabled history can never be reported as live runtime state."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,12 +22,14 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-22T03:14:59.621337+02:00",
-    "scheduler_inspection_method": "direct openclaw cron list --json plus jobs.json comparison",
+    "checked_at": "2026-05-22T04:07:00+02:00",
+    "scheduler_inspection_method": "direct openclaw cron list --json plus jobs.json comparison with explicit live-vs-persisted separation",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
-    "live_jobs_disabled": 3,
-    "disabled_job_names": [
+    "live_jobs_disabled": 0,
+    "disabled_job_names": [],
+    "persisted_jobs_checked": 23,
+    "persisted_disabled_job_names": [
       "marketing-reflection",
       "ralph-workflow-full-house-docs-audit",
       "docs-stack-aggressive-10min-self-heal"
@@ -71,7 +73,8 @@
       "owns": [
         "job/runtime health detection",
         "bounded timeout reruns and timeout tuning",
-        "artifact contract checks for code-backed shared-market reuse"
+        "artifact contract checks for code-backed shared-market reuse",
+        "live-vs-artifact topology coherence checks"
       ]
     },
     {
@@ -104,79 +107,117 @@
   "findings": [
     {
       "severity": "high",
-      "title": "Marketing full-contract certifiability drifted when newer audit/watchdog evidence outran the runner bundle",
-      "mechanism": "marketing_loop_checker.py correctly failed closed because marketing_loop_runner_latest.json was older than newer marketing_momentum_watchdog.json and marketing_workflow_audit_latest.json evidence.",
-      "source_layer": "hidden repair loops",
-      "root_cause": "The live marketing contract depends on runner/audit/momentum coherence, and that coherence temporarily lapsed before the next bundle refresh.",
+      "title": "Architecture signoff drifted from live cron reality by reporting persisted disabled history as live topology",
+      "mechanism": "agent_architecture_latest.json claimed live_jobs_disabled=3 and listed three disabled job names even though openclaw cron list --json showed 20 live jobs, 20 enabled, and 0 live-disabled jobs.",
+      "source_layer": "persistence",
+      "root_cause": "The architecture path preserved intentional historical disabled jobs from jobs.json but did not keep them clearly separated from live Gateway runtime state in its latest-state artifact.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/cron/jobs.json",
+        "openclaw cron list --json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ],
-      "confidence": 0.97,
-      "recommended_fix": "Refresh the full marketing runner bundle immediately when coherence breaks, then regenerate fresh independent verification before re-certifying the loop."
+      "confidence": 0.99,
+      "recommended_fix": "Fail closed whenever the architecture audit metadata disagrees with live Gateway cron topology, and report persisted disabled history in separate fields only."
     },
     {
       "severity": "medium",
-      "title": "Marketing learning is now runtime-backed, but measurable outcome movement is still absent",
-      "mechanism": "The refreshed marketing audit still reports flat Codeberg adoption and flags repetitive outreach/execution-ceiling patterns under a measurement-pending repair window.",
+      "title": "The health-monitor and architecture independent-verification boundaries needed stronger topology-coherence enforcement",
+      "mechanism": "Before this repair, the architecture independent verifier passed without validating that the architecture artifact's live topology metadata matched openclaw cron list --json.",
+      "source_layer": "hidden repair loops",
+      "root_cause": "Independent signoff covered freshness and peer artifacts but did not yet validate live-vs-artifact scheduler coherence explicitly.",
+      "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor_independent_verify.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/AGENT_ARCHITECTURE_WATCHDOG.md"
+      ],
+      "confidence": 0.97,
+      "recommended_fix": "Keep the new live-topology coherence checks and watchdog instructions in the runtime path so future architecture reports cannot self-certify stale topology wording."
+    },
+    {
+      "severity": "medium",
+      "title": "Marketing learning is runtime-backed but measurable outcome movement is still absent",
+      "mechanism": "The latest marketing audit still keeps the bottleneck explicit as distribution_and_message_to_primary_repo_conversion and the independent verification still notes flat Codeberg adoption.",
       "source_layer": "tool execution",
-      "root_cause": "The loop has improved its self-diagnosis and certifiability faster than it has improved real distribution results.",
+      "root_cause": "The marketing loop now certifies more cleanly than it converts that discipline into adoption gains.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json"
       ],
       "confidence": 0.9,
-      "recommended_fix": "Keep replacing tactics and system design until Codeberg adoption moves; do not let measurement-pending status become a resting state."
+      "recommended_fix": "Keep replacing tactics and architecture until Codeberg adoption moves; do not let measurement-pending status become a resting state."
     },
     {
       "severity": "low",
-      "title": "Retired topology is still present in jobs.json but remains explicitly disabled and non-authoritative",
-      "mechanism": "Three legacy jobs remain in the persisted scheduler file for audit history, while the live enabled runtime exposed by openclaw cron list --json is 20 jobs with no stray user crontab entries.",
+      "title": "Retired topology remains persisted for audit history but is now clearly separated from live runtime state",
+      "mechanism": "Three legacy jobs still exist in jobs.json for audit memory, while live runtime ownership remains in Gateway and user crontab stays clean.",
       "source_layer": "persistence",
-      "root_cause": "Historical retention is intentional and explicitly non-live rather than silently active.",
+      "root_cause": "Historical retention is intentional and safe only when it stays explicitly non-authoritative for live runtime claims.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/cron/jobs.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ],
       "confidence": 0.95,
-      "recommended_fix": "Keep legacy jobs disabled, clearly described as legacy, and out of the live ownership path."
+      "recommended_fix": "Keep legacy jobs disabled, clearly labeled as historical, and excluded from live topology counts."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Preserve marketing loop coherence between runner, audit, momentum, and independent verification artifacts",
-      "why_now": "This was the only live certifiability gap found in the current run.",
-      "expected_effect": "The marketing stack fails closed on drift and regains independent certification immediately after repair."
+      "goal": "Keep architecture signoff bound to live Gateway cron topology rather than persisted scheduler history",
+      "why_now": "This was the live contradiction that made the previous architecture artifact untrustworthy.",
+      "expected_effect": "The architecture watchdog and health monitor fail closed before stale topology wording can be treated as healthy."
     },
     {
       "order": 2,
+      "goal": "Preserve independent verification of the repaired architecture and health-monitor boundaries",
+      "why_now": "The repair touched verification-bearing runtime code and needed fresh proof.",
+      "expected_effect": "Future health runs catch topology/report drift directly instead of trusting stale pass artifacts."
+    },
+    {
+      "order": 3,
       "goal": "Convert marketing self-improvement into measurable Codeberg adoption movement",
-      "why_now": "The loop is structurally healthier than before, but outcomes are still flat.",
-      "expected_effect": "The system stops rewarding activity-only marketing work and forces stronger tactic or architecture replacement."
+      "why_now": "The strongest remaining loop risk is still outcome stagnation rather than certifiability drift.",
+      "expected_effect": "The system keeps rewarding real distribution outcomes instead of activity-only marketing work."
     }
   ],
   "repairs_applied_this_run": [
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "change": "Regenerated the full marketing runner bundle after the checker detected coherence drift against newer momentum/audit evidence.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
+      "change": "Added direct architecture live-topology coherence checks so health monitoring now fails closed when agent_architecture_latest.json disagrees with openclaw cron list --json.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py"
+        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ]
     },
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "change": "Ran fresh independent verification after the marketing runner refresh so the repaired marketing path is not self-certified.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
+      "change": "Added independent live-vs-artifact Gateway cron topology checks so architecture signoff now fails closed on topology drift.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json"
+      ]
+    },
+    {
+      "status": "done",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/AGENT_ARCHITECTURE_WATCHDOG.md",
+      "change": "Clarified that openclaw cron list --json is the live topology source of truth and persisted disabled jobs in jobs.json must be reported separately.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/system/AGENT_ARCHITECTURE_WATCHDOG.md"
+      ]
+    },
+    {
+      "status": "done",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "change": "Refreshed the architecture artifact to match current live topology: 20 live jobs, 20 enabled, 0 live-disabled, with historical disabled jobs separated into persisted-history fields.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "openclaw cron list --json",
+        "/home/mistlight/.openclaw/cron/jobs.json"
       ]
     }
   ],
@@ -189,16 +230,17 @@
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md"
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_independent_verification.json"
     ],
-    "summary": "Live loop ownership remains coherent, the marketing certifiability gap was repaired and independently re-signed, shared market-intelligence reuse is still machine-verifiable, and health monitoring reports no open system issues.",
-    "checked_at": "2026-05-22T03:14:59.621337+02:00"
+    "summary": "Independent verification now confirms that the refreshed architecture artifact matches live Gateway cron topology, the architecture verifier fails closed on stale signoff, and the repaired health-monitor boundary is green.",
+    "checked_at": "2026-05-22T04:11:37.720840+02:00"
   },
   "what_still_needs_independent_verification": [],
   "highest_risk_unresolved_issue": {
     "title": "Marketing outcomes remain flat despite better loop discipline",
-    "why": "The loop now certifies correctly and promotes findings into runtime behavior, but Codeberg adoption and broader distribution results have still not moved in the current window."
+    "why": "The loop now certifies more defensibly, but Codeberg adoption and broader distribution results have still not moved in the current window."
   }
 }
