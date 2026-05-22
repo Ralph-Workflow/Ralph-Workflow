@@ -26,6 +26,10 @@ ralph --help
 - [Reference](docs/sphinx/reference.md)
 - [User stories](docs/sphinx/user-stories.md)
 
+## Baseline capabilities
+
+Ralph Workflow ships DuckDuckGo-backed web search, built-in `visit_url` text retrieval, a 17-skill baseline bundle installed by `ralph --init`, and docs-aware guidance that turns on when `arabold/docs-mcp-server` is reachable on `localhost:6280`. Prompts show a short setup hint when docs-mcp is absent. See [Web Search](docs/mcp/web-search.md), [Web Visit](docs/mcp/web-visit.md), and [MCP Servers](docs/mcp/mcp-servers.md).
+
 ## Deeper material
 
 If you need the fuller manual, configuration detail, or maintainer-facing internals, go to `docs/sphinx/`.

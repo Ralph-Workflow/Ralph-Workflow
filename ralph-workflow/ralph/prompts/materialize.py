@@ -951,23 +951,9 @@ def _commit_phase_diff(workspace_root: Path) -> str:
     combined = (diff + "\n\n## Untracked files (staged by git add -A):\n" + untracked).strip()
     return combined or "(no diff available)"
 def commit_cleanup_diff(workspace_root: Path) -> str:
-<<<<<<< HEAD
-    """Return diff for commit cleanup including untracked files."""
-    try:
-        repo = Repo(workspace_root)
-        base = _sanitize_surrogates(cast("str", repo.git.diff("HEAD"))) or "(no diff available)"
-        untracked = cast("str", repo.git.ls_files("--others", "--exclude-standard")).strip()
-    except Exception:
-        base, untracked = "(no diff available)", ""
-    if not untracked:
-        return base or "(no diff available)"
-    section = "\n\n## Untracked files (will be staged by git add -A):\n" + untracked
-    return (base + section).strip() or "(no diff available)"
-=======
     """Return only the pending commit diff for commit cleanup.
 
     Commit cleanup must reason about content that is actually part of the pending
     commit, not arbitrary untracked workspace files that happen to exist nearby.
     """
     return _pending_diff(workspace_root)
->>>>>>> main

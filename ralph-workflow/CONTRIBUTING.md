@@ -234,6 +234,14 @@ Required invariants:
 4. **Tests are required at both seams:** changes to technical retry behavior must update (a) runner-level tests for direct retry prompt generation and (b) recovery/controller-level tests for cap enforcement and chain progression.
 5. **No new retry writers at call sites:** if a new recoverable technical failure is introduced, route it through the shared technical retry owner instead of adding a new retry loop or prompt builder in place.
 
+## Skill bundle maintenance
+
+- Add a skill by creating `ralph/skills/content/<name>.md`, adding the name to `BASELINE_SKILL_NAMES` in `ralph/skills/_content.py`, and mirroring it in `skills-package/bin/skills.js` as `SKILL_NAMES`.
+- Rename a skill by updating both lists together and renaming the content file.
+- Keep `skills-package/` in sync through its `prepack` script, which copies `ralph/skills/content/` into the npm package before publish.
+- Run `uv run pytest -q tests/test_skills_package_skill_names_parity.py` after every skill-list change.
+- Update `docs/sphinx/modules.rst` whenever you add a new public module under `ralph/skills/`; `tests/test_sphinx_modules_coverage.py` enforces that rule.
+
 ## Release and versioning
 
 For the complete release process — version bumping, building, validating, and publishing
