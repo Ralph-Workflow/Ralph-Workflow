@@ -110,4 +110,4 @@ Use **Codeberg** as the main public home:
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
-Keeping adoption and feedback on Codeberg makes the primary repo a clearer trust surface for developers evaluating OpenCode-based setups.
+Keeping adoption and feedback on Codeberg makes the primary repo a clearer trust surface for developers evaluating Google Anti Gravity-based setups.
