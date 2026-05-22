@@ -10,7 +10,7 @@ import ipaddress
 import socket
 from dataclasses import dataclass
 from typing import Literal
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -39,6 +39,7 @@ _PRIVATE_HOSTNAMES = frozenset({"localhost"})
 
 _HTTP_SUCCESS_MIN = 200
 _HTTP_SUCCESS_MAX = 300
+_MAX_REDIRECTS = 10
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,7 @@ def _is_private_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 def _is_private_address(host: str) -> bool:
     if host.lower() in _PRIVATE_HOSTNAMES:
         return True
-    # Parse as a literal IP address first — no DNS needed and no blocking
+    # Parse as a literal IP address first  no DNS needed and no blocking
     try:
         return _is_private_ip(ipaddress.ip_address(host))
     except ValueError:
@@ -100,16 +101,31 @@ def _content_type_base(content_type_header: str | None) -> str | None:
     return content_type_header.split(";")[0].strip().lower()
 
 
-def _check_url_policy(url: str, *, allow_private_networks: bool) -> FetchOutcome | None:
+def _check_url_policy(
+    url: str,
+    *,
+    allow_private_networks: bool,
+    error_url: str | None = None,
+) -> FetchOutcome | None:
     """Validate URL scheme, hostname, and SSRF policy. Returns an error FetchOutcome or None."""
     parsed = urlparse(url)
+    target_url = error_url or url
     if parsed.scheme not in {"http", "https"}:
-        return FetchOutcome(status="invalid_url", error=f"unsupported scheme: {parsed.scheme!r}")
+        return FetchOutcome(
+            status="invalid_url",
+            effective_url=target_url,
+            error=f"unsupported scheme: {parsed.scheme!r}",
+        )
     if not parsed.hostname:
-        return FetchOutcome(status="invalid_url", error="missing hostname")
+        return FetchOutcome(
+            status="invalid_url",
+            effective_url=target_url,
+            error="missing hostname",
+        )
     if not allow_private_networks and _is_private_address(parsed.hostname):
         return FetchOutcome(
             status="blocked_by_policy",
+            effective_url=target_url,
             error=(
                 "access to private/loopback networks is disabled by default; "
                 "set allow_private_networks=true in [web_visit] config to enable"
@@ -158,55 +174,90 @@ def fetch_url(
 ) -> FetchOutcome:
     """Fetch a single URL and return a FetchOutcome.
 
-    Never raises on network failures — always returns a FetchOutcome.
+    Never raises on network failures  always returns a FetchOutcome.
     """
-    policy_error = _check_url_policy(url, allow_private_networks=allow_private_networks)
-    if policy_error is not None:
-        return policy_error
-
     timeout = timeout_ms / 1000.0
     headers = {"User-Agent": user_agent}
+    current_url = url
+    result: FetchOutcome | None = None
 
     try:
-        with (
-            httpx.Client(follow_redirects=True, timeout=timeout) as client,
-            client.stream("GET", url, headers=headers) as response,
-        ):
-            effective_url: str = str(response.url)
-            http_status: int = response.status_code
-            content_type_header: str | None = response.headers.get("content-type")
-            content_type_base = _content_type_base(content_type_header)
-
-            if http_status < _HTTP_SUCCESS_MIN or http_status >= _HTTP_SUCCESS_MAX:
-                return FetchOutcome(
-                    status="http_error",
-                    effective_url=effective_url,
-                    http_status=http_status,
-                    content_type=content_type_header,
-                    error=f"HTTP {http_status}",
+        with httpx.Client(follow_redirects=False, timeout=timeout) as client:
+            for _ in range(_MAX_REDIRECTS + 1):
+                policy_error = _check_url_policy(
+                    current_url,
+                    allow_private_networks=allow_private_networks,
                 )
+                if policy_error is not None:
+                    result = policy_error
+                    break
 
-            if content_type_base not in _SUPPORTED_CONTENT_TYPES:
-                return FetchOutcome(
-                    status="unsupported_content",
-                    effective_url=effective_url,
-                    http_status=http_status,
-                    content_type=content_type_header,
-                    error=f"unsupported content type: {content_type_header!r}",
-                )
+                with client.stream("GET", current_url, headers=headers) as response:
+                    effective_url: str = str(response.url)
+                    http_status: int = response.status_code
+                    content_type_header: str | None = response.headers.get("content-type")
+                    content_type_base = _content_type_base(content_type_header)
 
-            return _read_streaming_body(
-                response,
-                max_bytes=max_bytes,
-                effective_url=effective_url,
-                http_status=http_status,
-                content_type_header=content_type_header,
-            )
+                    if 300 <= http_status < 400:
+                        location: str | None = response.headers.get("location")
+                        if not location:
+                            result = FetchOutcome(
+                                status="http_error",
+                                effective_url=effective_url,
+                                http_status=http_status,
+                                content_type=content_type_header,
+                                error=f"HTTP {http_status}",
+                            )
+                            break
+                        next_url = urljoin(effective_url, location)
+                        redirect_policy_error = _check_url_policy(
+                            next_url,
+                            allow_private_networks=allow_private_networks,
+                            error_url=next_url,
+                        )
+                        if redirect_policy_error is not None:
+                            result = redirect_policy_error
+                            break
+                        current_url = next_url
+                        continue
+
+                    if http_status < _HTTP_SUCCESS_MIN or http_status >= _HTTP_SUCCESS_MAX:
+                        result = FetchOutcome(
+                            status="http_error",
+                            effective_url=effective_url,
+                            http_status=http_status,
+                            content_type=content_type_header,
+                            error=f"HTTP {http_status}",
+                        )
+                        break
+
+                    if content_type_base not in _SUPPORTED_CONTENT_TYPES:
+                        result = FetchOutcome(
+                            status="unsupported_content",
+                            effective_url=effective_url,
+                            http_status=http_status,
+                            content_type=content_type_header,
+                            error=f"unsupported content type: {content_type_header!r}",
+                        )
+                        break
+
+                    result = _read_streaming_body(
+                        response,
+                        max_bytes=max_bytes,
+                        effective_url=effective_url,
+                        http_status=http_status,
+                        content_type_header=content_type_header,
+                    )
+                    break
+            else:
+                result = FetchOutcome(status="unreachable", error="too many redirects")
 
     except httpx.TimeoutException as exc:
         return FetchOutcome(status="timeout", error=str(exc))
     except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.HTTPError) as exc:
         return FetchOutcome(status="unreachable", error=str(exc))
+
+    return result or FetchOutcome(status="unreachable", error="too many redirects")
 
 
 __all__ = ["FetchOutcome", "FetchStatus", "fetch_url"]
