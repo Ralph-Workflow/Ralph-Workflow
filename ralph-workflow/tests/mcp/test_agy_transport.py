@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from ralph.mcp.transport.agy import (
     agy_mcp_config,
     load_existing_agy_upstream_servers,
-    prepare_agy_home,
 )
 
 if TYPE_CHECKING:
@@ -74,95 +75,3 @@ def test_load_existing_agy_upstream_servers_parses_http_entry(
     assert len(http_servers) == 1
     assert http_servers[0].name == "github"
     assert http_servers[0].url == "https://api.githubcopilot.com/mcp/"
-
-
-def test_prepare_agy_home_includes_http_server_url_upstream(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """HTTP serverUrl entry in existing AGY config is returned as an upstream."""
-    agy_config = tmp_path / ".gemini" / "antigravity-cli" / "mcp_config.json"
-    agy_config.parent.mkdir(parents=True)
-    agy_config.write_text(
-        json.dumps({"mcpServers": {"my-http-server": {"serverUrl": "http://some-server:8080"}}}),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("HOME", str(tmp_path))
-
-    result_path, upstreams = prepare_agy_home(None, workspace_path=None, existing_home=None)
-
-    assert Path(result_path).is_absolute()
-    assert len(upstreams) == 1
-    assert upstreams[0].name == "my-http-server"
-    assert upstreams[0].transport == "http"
-    assert upstreams[0].url == "http://some-server:8080"
-
-
-def test_prepare_agy_home_creates_temp_dir(tmp_path: Path) -> None:
-    """prepare_agy_home creates an isolated temp directory."""
-    result_path, upstreams = prepare_agy_home(
-        None,
-        workspace_path=tmp_path,
-        existing_home=None,
-    )
-
-    assert Path(result_path).is_absolute()
-    assert Path(result_path).exists()
-    assert upstreams == ()
-
-
-def test_prepare_agy_home_with_endpoint_writes_mcp_config(tmp_path: Path) -> None:
-    """When endpoint is provided, writes mcp_config.json with Ralph entry."""
-    result_path, _upstreams = prepare_agy_home(
-        "http://localhost:8080/mcp",
-        workspace_path=tmp_path,
-        existing_home=None,
-    )
-
-    config_path = Path(result_path) / "antigravity-cli" / "mcp_config.json"
-    assert config_path.exists()
-
-    parsed = json.loads(config_path.read_text(encoding="utf-8"))
-    assert "mcpServers" in parsed
-    assert "ralph" in parsed["mcpServers"]
-    assert parsed["mcpServers"]["ralph"]["serverUrl"] == "http://localhost:8080/mcp"
-
-
-def test_prepare_agy_home_with_no_endpoint_does_not_write_config(tmp_path: Path) -> None:
-    """When no endpoint is provided, no mcp_config.json is written."""
-    result_path, _upstreams = prepare_agy_home(
-        None,
-        workspace_path=tmp_path,
-        existing_home=None,
-    )
-
-    config_path = Path(result_path) / "antigravity-cli" / "mcp_config.json"
-    # Should not exist unless there was an existing config mirrored
-    assert not config_path.exists()
-
-
-def test_prepare_agy_home_returns_absolute_path(tmp_path: Path) -> None:
-    """Returned path is absolute and returned as a plain string path."""
-    result_path, _upstreams = prepare_agy_home(
-        None,
-        workspace_path=tmp_path,
-        existing_home=None,
-    )
-
-    # Must be absolute path string
-    assert Path(result_path).is_absolute()
-    # Must be usable as an env var value (just a string path)
-    assert isinstance(result_path, str)
-
-
-def test_prepare_agy_home_uses_workspace_tmp_dir(tmp_path: Path) -> None:
-    """When workspace_path is provided, uses .agent/tmp under workspace."""
-    result_path, _ = prepare_agy_home(
-        None,
-        workspace_path=tmp_path,
-        existing_home=None,
-    )
-
-    assert result_path.startswith(str(tmp_path))
-    assert ".agent" in result_path
-    assert "tmp" in result_path

@@ -9,7 +9,6 @@ from __future__ import annotations
 from ralph.mcp.transport.agy import (
     agy_mcp_config,
     load_existing_agy_upstream_servers,
-    prepare_agy_home,
 )
 from ralph.mcp.transport.claude import (
     claude_mcp_config,
@@ -38,7 +37,6 @@ __all__ = [
     "mcp_toml_as_upstreams",
     "merge_mcp_toml_into_upstreams",
     "merge_opencode_config_content",
-    "prepare_agy_home",
     "prepare_codex_home",
     "prepare_codex_home_with_upstreams",
     "set_upstream_mcp_config",

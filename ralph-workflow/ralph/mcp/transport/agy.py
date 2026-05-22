@@ -11,24 +11,15 @@ Research-confirmed facts:
 - HTTP JSON key: serverUrl
 - Output format: plain text (not NDJSON) - uses JsonParserType.GENERIC
 
-Known limitation: AGY does not have a documented environment variable to override its
-config directory. There is no AGY equivalent of GEMINI_HOME or GEMINI_CLI_HOME.
-The MCP endpoint injection via prepare_agy_home() is therefore best-effort: Ralph
-creates an isolated temp dir with the MCP config, but AGY will not automatically
-discover it since it reads from ~/.gemini/antigravity-cli/ by default. User must
-have their mcp_config.json already configured with the Ralph MCP endpoint, or AGY
-must gain env-var support in a future release for full MCP injection to work.
-
-The temp-dir isolation still provides value: it prevents Ralph from mutating the
-user's live config file, and it allows AGY session isolation when --conversation {}
-is used.
+Ralph reads existing AGY upstream servers from the user config files at
+~/.gemini/antigravity-cli/mcp_config.json and workspace .agents/mcp_config.json.
+The agy_mcp_config() helper builds the AGY-native JSON payload for Ralph's MCP
+endpoint using AGY's serverUrl field.
 """
 
 from __future__ import annotations
 
 import json
-import shutil
-import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
@@ -137,98 +128,7 @@ def _parse_json_config_file(path: Path) -> dict[str, object]:
     return cast("dict[str, object]", raw_payload)
 
 
-def prepare_agy_home(
-    endpoint: str | None,
-    *,
-    workspace_path: Path | None,
-    existing_home: str | None,
-) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
-    """Prepare an isolated AGY home directory and return its path with upstream servers.
-
-    This ALWAYS creates an isolated temp dir (never writes to user's real config),
-    following the Codex pattern.
-
-    Args:
-        endpoint: Optional Ralph MCP endpoint URL to inject.
-        workspace_path: Optional workspace path for workspace-level config.
-        existing_home: Optional existing AGY home to mirror for isolation/testing.
-
-    Returns:
-        Tuple of (path to isolated temp dir, upstream servers from existing config).
-    """
-    agy_home = _allocate_agy_home_dir(workspace_path)
-    agy_home.mkdir(parents=True, exist_ok=True)
-
-    # Mirror existing home contents to temp dir
-    source_home = (
-        Path(existing_home).expanduser() / _AGY_HOME_SUBDIR
-        if existing_home
-        else Path.home() / ".gemini" / _AGY_HOME_SUBDIR
-    )
-    if source_home.exists():
-        _mirror_agy_home(source_home, agy_home / _AGY_HOME_SUBDIR)
-
-    source_config = source_home / "mcp_config.json"
-    upstreams: tuple[UpstreamMcpServer, ...] = ()
-    if source_config.exists():
-        config_obj = _parse_json_config_file(source_config)
-        mcp_servers = config_obj.get("mcpServers")
-        if isinstance(mcp_servers, dict):
-            normalized_entries: dict[str, object] = {}
-            for srv_name, srv_entry in mcp_servers.items():
-                result = _normalize_agy_server_entry(srv_name, srv_entry)
-                if result is not None:
-                    normalized_entries[result[0]] = result[1]
-            upstreams = normalize_upstream_mcp_servers(normalized_entries)
-
-    # Write merged config with Ralph endpoint if provided
-    if endpoint:
-        dest_config = agy_home / _AGY_HOME_SUBDIR / "mcp_config.json"
-        dest_config.parent.mkdir(parents=True, exist_ok=True)
-        merged_obj: dict[str, object] = {"mcpServers": {}}
-        if source_config.exists():
-            existing = _parse_json_config_file(source_config)
-            if "mcpServers" in existing:
-                merged_obj["mcpServers"] = cast("dict[str, object]", existing["mcpServers"])
-        # Add Ralph entry
-        mcp_servers = cast("dict[str, object]", merged_obj["mcpServers"])
-        mcp_servers[RALPH_MCP_SERVER_NAME] = {"serverUrl": endpoint}
-        dest_config.write_text(json.dumps(merged_obj, separators=(",", ":")), encoding="utf-8")
-
-    return str(agy_home), upstreams
-
-
-def _allocate_agy_home_dir(workspace_path: Path | None) -> Path:
-    """Allocate a temp dir for AGY home, preferring workspace .agent/tmp."""
-    if workspace_path is None:
-        return Path(tempfile.mkdtemp(prefix="ralph-agy-home-"))
-
-    tmp_root = workspace_path / ".agent" / "tmp"
-    tmp_root.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(prefix="agy-home-", dir=str(tmp_root)))
-
-
-def _mirror_agy_home(source_home: Path, dest_home: Path) -> None:
-    """Mirror source home directory contents to destination (symlinks with copy fallback)."""
-    if not source_home.exists():
-        return
-    dest_home.mkdir(parents=True, exist_ok=True)
-    for entry in source_home.iterdir():
-        if entry.name == "mcp_config.json":
-            # Don't copy mcp_config.json - we'll regenerate it with Ralph's endpoint
-            continue
-        destination = dest_home / entry.name
-        try:
-            destination.symlink_to(entry, target_is_directory=entry.is_dir())
-        except OSError:
-            if entry.is_dir():
-                shutil.copytree(entry, destination, dirs_exist_ok=True)
-            else:
-                shutil.copy2(entry, destination)
-
-
 __all__ = [
     "agy_mcp_config",
     "load_existing_agy_upstream_servers",
-    "prepare_agy_home",
 ]
