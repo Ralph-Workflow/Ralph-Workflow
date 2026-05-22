@@ -1,11 +1,11 @@
-# Reddit monitor — RalphWorkflow — 2026-05-22 04:12 Europe/Berlin
+# Reddit monitor — RalphWorkflow — 2026-05-22 07:28 Europe/Berlin
 
 ## Snapshot
-- **Threads/posts scanned:** 14
+- **Threads/posts scanned:** 12
 - **Shortlisted:** 0
-- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 14
+- **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 12
 - **Query attempts:** 24
-- **Search diagnostics:** ok=3, provider_challenge=21
+- **Search diagnostics:** ok=1, provider_challenge=23
 - **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`
 - **Messaging ground truth used:** <https://ralphworkflow.com>
 - **Search mode:** content-first across Reddit via broad query families; subreddit is a weak secondary hint only

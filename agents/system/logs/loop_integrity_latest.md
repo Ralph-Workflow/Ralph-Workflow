@@ -1,6 +1,6 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-22 03:46 UTC
+Timestamp: 2026-05-22 05:28 UTC
 
 ## ralph-docs-watchdog
 - Status: ok
@@ -8,7 +8,12 @@ Timestamp: 2026-05-22 03:46 UTC
 
 ## autonomous-marketing-stack
 - Status: ok
-- Checker: `MARKETING_LOOP_OK`
+- Repairs:
+  - checker failed; executed runner for remediation
+  - executed independent verifier after remediation
+  - executed verifier after remediation
+- Checker: `MARKETING_LOOP_FAIL: runner artifact is stale relative to marketing_workflow_audit_latest.json; rerun the full runner bundle before certifying health`
+- Checker after repair: `MARKETING_LOOP_OK`
 
 ## ralph-site-owner-loop
 - Status: owner_only

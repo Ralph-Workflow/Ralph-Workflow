@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-22T07:25:46.301540+02:00",
+  "checked_at": "2026-05-22T07:50:23.917653+02:00",
   "verdict": "pass",
   "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
@@ -70,7 +70,7 @@
       "summary": "Marketing independent verification verdict='pass'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "source": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]
