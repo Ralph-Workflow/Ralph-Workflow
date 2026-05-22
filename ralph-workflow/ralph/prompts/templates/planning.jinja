@@ -10,6 +10,18 @@ You are in PLANNING MODE. Create a detailed, structured execution plan.
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
+## BASELINE WORKFLOW SKILLS
+
+The following skills from the `obra/superpowers` and ECC workflow bundles apply to this planning task. Read and apply the relevant ones before proceeding:
+
+- **`using-superpowers`** — read at the start of every planning task
+- **`writing-plans`** — apply when creating multi-step implementation plans
+- **`brainstorming`** — apply before open-ended or creative solution shaping
+- **`executing-plans`** — apply when converting an approved written plan into execution guidance
+- **`dispatching-parallel-agents`** or **`subagent-driven-development`** — apply when work can be parallelized safely
+- **`coding-standards`** — apply when the plan sets implementation quality bars
+- **`verification-loop`** — apply when the plan defines verification requirements
+
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
 
@@ -56,6 +68,21 @@ and what planning-analysis feedback they received.
 Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself with non-mutating tools.
 Check the repository structure, read the referenced files, and confirm the commands or tests actually exist.
 If you have not verified something yet, do not present it as settled fact — add an explicit discovery step instead.
+
+{% if HAS_DOCS_MCP %}
+
+## DOCUMENTATION LOOKUP
+
+The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. When researching library APIs, framework behavior, or third-party tooling during planning:
+1. Search documentation first using the docs-mcp search tool from your MCP tool list.
+2. Fall back to `web_search` only if docs-mcp returns no useful results.
+3. Use `visit_url` for pages that docs-mcp surfaces as links.
+
+{% else %}
+
+> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during planning.
+
+{% endif %}
 
 Your plan must be executor-ready for unattended development. The submitted artifact must:
 - Capture the problem context and the concrete user-facing outcome

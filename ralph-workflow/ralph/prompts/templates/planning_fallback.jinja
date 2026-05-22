@@ -2,6 +2,11 @@ PLANNING MODE
 
 {% include 'shared/_unattended_mode.j2' %}
 
+## BASELINE WORKFLOW SKILLS
+
+Skills available from the installed workflow bundle (read and apply as appropriate):
+- `using-superpowers` (all planning tasks), `writing-plans` (multi-step plans), `brainstorming` (open-ended shaping), `executing-plans` (plan-to-execution), `dispatching-parallel-agents`/`subagent-driven-development` (parallel work), `coding-standards` and `verification-loop` (quality bars)
+
 Create an execution plan for:
 
 Canonical request file: `{{PROMPT_PATH}}`
@@ -11,6 +16,12 @@ Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`
 {% endif %}
 
 {{PROMPT}}
+
+{% if HAS_DOCS_MCP %}
+Docs MCP is active (localhost:6280). Prefer docs-mcp search over web_search for library/API research during planning.
+{% else %}
+Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml improves documentation lookup quality during planning.
+{% endif %}
 
 Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself with non-mutating tools.
 If you have not verified something yet, do not present it as settled fact — add an explicit discovery step instead.

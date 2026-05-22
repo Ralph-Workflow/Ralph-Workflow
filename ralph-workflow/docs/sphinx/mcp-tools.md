@@ -53,7 +53,7 @@ The table below uses a few drain groupings:
 | `coordinate` | `artifact.submit` | all | Parallel worker coordination |
 | `read_env` | `env.read` | write drains | Read an environment variable |
 | `web_search` | `web.search` | non-analysis/commit (config opt-in) | Search the web via configured backends |
-| `visit_url` | `web.visit` | non-commit drains (config opt-in) | Fetch and extract text from a single URL |
+| `visit_url` | `web.visit` | non-commit drains (granted by default) | Fetch and extract text from a single URL |
 | `read_media` | `media.read` | all (default-on; opt-out via mcp.toml) | Read a media file — images, PDFs, documents, audio, video; inline or resource-reference delivery based on model capability |
 | `read_image` | `media.read` | all (default-on; opt-out via mcp.toml) | Compatibility alias for `read_media` for image inputs; follows the same capability-aware delivery contract (inline image when supported, resource reference or explicit error otherwise) |
 

@@ -198,12 +198,13 @@ def test_unsupported_content_type_returns_error(monkeypatch: pytest.MonkeyPatch)
     assert data["status"] == "unsupported_content"
 
 
-def test_missing_optional_deps_returns_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_extraction_failure_returns_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When extract_readable raises an exception, handle_visit_url returns an error."""
     monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: _GOOD_OUTCOME)
     monkeypatch.setattr(
         tool_webvisit,
         "extract_readable",
-        MagicMock(side_effect=ImportError("missing dep")),
+        MagicMock(side_effect=RuntimeError("extraction failed")),
     )
 
     result = tool_webvisit.handle_visit_url(

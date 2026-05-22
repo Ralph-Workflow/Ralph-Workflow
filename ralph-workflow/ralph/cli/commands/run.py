@@ -40,10 +40,13 @@ from ralph.policy.validation import (
     validate_recovery_config,
     validate_required_inputs,
 )
+from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from rich.console import Console
 
     from ralph.cli.commands._legacy_run_pipeline_kwargs import _LegacyRunPipelineKwargs
     from ralph.config.enums import Verbosity
@@ -457,6 +460,25 @@ def _pipeline_config_error_text(message: str) -> Text:
     return text
 
 
+def _warn_if_capabilities_degraded(console: Console, workspace_root: Path) -> None:
+    """Print a soft warning if any baseline capability appears degraded (no network I/O)."""
+    state_path = workspace_root.parent / ".config" / "ralph-workflow-capabilities.json"
+    if not state_path.exists():
+        return  # no state file yet; skip (first run before init)
+    manager = SkillManager()
+    health = manager.check_baseline_health()
+    mandatory_keys = ("web_search", "visit_url", "skills")
+    if any(not health.get(k) for k in mandatory_keys):
+        console.print(
+            Panel(
+                "One or more baseline capabilities may need attention.\n"
+                "Run `ralph --init` to repair or update.",
+                title="Baseline Capability Warning",
+                border_style="theme.status.warning",
+            )
+        )
+
+
 def _status_text(label: str, detail: str, style: str) -> Text:
     text = Text()
     text.append(f"{label}:", style=style)
@@ -538,6 +560,10 @@ def run_pipeline(
 
     if preflight_result != _EXIT_SUCCESS:
         return preflight_result
+
+    # Phase 2b: capability degradation warning (file read + version compare; no network I/O)
+    if load_result.workspace_scope is not None:
+        _warn_if_capabilities_degraded(ctx.console, load_result.workspace_scope.root)
 
     # Phase 3: Handle dry-run
     if effective_request.dry_run:

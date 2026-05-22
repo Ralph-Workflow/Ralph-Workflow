@@ -39,6 +39,7 @@ class PlanningPromptInputs:
     artifact_history_path: str = ""
     artifact_history_dir: str = ""
     last_retry_error: str = ""
+    has_docs_mcp: bool = False
 
 
 def prompt_developer_iteration_xml_with_context(
@@ -61,6 +62,7 @@ def prompt_developer_iteration_xml_with_context(
         ),
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
         "LAST_RETRY_ERROR": inputs.last_retry_error,
+        "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
     base_vars.update(
         _current_prompt_variables(
@@ -113,6 +115,7 @@ def prompt_developer_iteration_xml_with_context(
                 "ARTIFACT_HISTORY_PATH": inputs.artifact_history_path,
                 "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
                 "LAST_RETRY_ERROR": inputs.last_retry_error,
+                "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
                 "PLAN_PATH": inputs.plan_path
                 or str(
@@ -143,6 +146,7 @@ def prompt_planning_xml_with_context(
         "PLAN_XML_PATH": workspace.absolute_path(PLAN_ARTIFACT_PATH),
         "PLAN_XSD_PATH": workspace.absolute_path(".agent/artifacts/plan.schema.json"),
         "LAST_RETRY_ERROR": inputs.last_retry_error,
+        "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
     }
     base_vars.update(
         _current_prompt_variables(
@@ -204,6 +208,7 @@ def prompt_planning_xml_with_context(
                 Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
                 / "planning_analysis_feedback.txt"
             ),
+            "HAS_DOCS_MCP": "true" if inputs.has_docs_mcp else "",
         }
         fallback_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
         fallback_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir

@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     from types import ModuleType
     from typing import Protocol
 
+    from rich.console import Console
+
     from ralph.agents.registry import AgentRegistry
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
@@ -52,6 +54,9 @@ if TYPE_CHECKING:
 
 
 from ralph.display.context import make_display_context
+from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
+from ralph.skills._state import CapabilityState, CapabilityStatus
+from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 STARTER_PROMPT_SENTINEL = _STARTER_PROMPT_SENTINEL
@@ -140,6 +145,8 @@ def init_command(
             # All skipped - show fallback next steps
             _print_fallback_next_steps(target, display_context=ctx)
 
+        _ensure_baseline_capabilities(display_context=ctx)
+
 
 def _try_load_registry() -> AgentRegistry | None:
     """Attempt to load the agent registry; returns None on failure."""
@@ -149,6 +156,57 @@ def _try_load_registry() -> AgentRegistry | None:
         return registry_type.from_config(cfg)
     except Exception:
         return None
+
+
+def _ensure_baseline_capabilities(*, display_context: DisplayContext) -> None:
+    """Install baseline skills and print the capability summary."""
+    ctx = display_context
+    console = ctx.console
+    try:
+        manager = SkillManager()
+        cap_state = manager.ensure_baseline_capabilities(workspace_root=Path.cwd())
+        _print_capability_summary(console, cap_state)
+    except Exception:
+        pass
+
+
+def _print_capability_summary(console: Console, state: CapabilityState) -> None:
+    """Print the baseline capabilities summary table."""
+    from rich.table import Table
+
+    table = Table(title="Baseline Capabilities", show_header=True)
+    table.add_column("Capability", style="theme.cat.meta")
+    table.add_column("Type")
+    table.add_column("Status")
+    # Static built-in capabilities — always available
+    for cap in STATIC_BUILTIN_CAPABILITIES:
+        table.add_row(
+            cap.name.replace("_", " ").title(),
+            "Built-in",
+            Text("OK — always available", style="theme.status.success"),
+        )
+    # Health-tracked dependency-backed helpers
+    managed_rows = [
+        ("Web search (DuckDuckGo)", state.web_search),
+        ("Page retrieval (visit_url)", state.visit_url),
+        ("Docs MCP (localhost:6280)", state.docs_mcp),
+        ("Skill bundles", state.skills),
+    ]
+    for label, entry in managed_rows:
+        if entry.status == CapabilityStatus.INSTALLED_HEALTHY:
+            status_text = Text("OK", style="theme.status.success")
+        elif entry.update_available:
+            status_text = Text(
+                "Update available — run `ralph --init` to update",
+                style="theme.status.warning",
+            )
+        else:
+            status_text = Text(
+                f"{entry.status.value} — run `ralph --init` or check config",
+                style="theme.status.warning",
+            )
+        table.add_row(label, "Managed", status_text)
+    console.print(table)
 
 
 def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext) -> None:

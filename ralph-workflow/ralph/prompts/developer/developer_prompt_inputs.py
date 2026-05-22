@@ -18,3 +18,4 @@ class DeveloperPromptInputs:
     artifact_history_dir: str = ""
     prompt_name_prefix: str = "development"
     last_retry_error: str = ""
+    has_docs_mcp: bool = False

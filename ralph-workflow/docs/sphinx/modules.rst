@@ -957,6 +957,25 @@ ralph.pipeline.worker_status
 
 ----
 
+Skills
+------
+
+ralph.skills
+~~~~~~~~~~~~
+
+.. automodule:: ralph.skills
+   :members:
+   :show-inheritance:
+
+ralph.skills.manager
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.skills.manager
+   :members:
+   :show-inheritance:
+
+----
+
 Git
 ---
 

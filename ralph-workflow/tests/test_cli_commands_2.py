@@ -716,6 +716,51 @@ def test_diagnose_uses_display_context_console(
     assert "Git Repository" in output
 
 
+def test_diagnose_command_displays_capability_state_table(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """diagnose_command should display a Baseline Capabilities table."""
+
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(env={"COLUMNS": "120"})
+    recording_ctx = dataclasses.replace(ctx, console=console)
+
+    monkeypatch.setattr(diagnose_module, "find_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(diagnose_module, "is_repo_clean", lambda root: True)
+    monkeypatch.setattr(
+        diagnose_module,
+        "resolve_workspace_scope",
+        lambda: __import__("ralph.workspace.scope", fromlist=["WorkspaceScope"]).WorkspaceScope(
+            tmp_path
+        ),
+    )
+    monkeypatch.setattr(
+        diagnose_module,
+        "load_config",
+        lambda *a, **kw: SimpleNamespace(
+            general=SimpleNamespace(
+                developer_iters=5,
+                workflow=SimpleNamespace(checkpoint_enabled=True),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        diagnose_module,
+        "AgentRegistry",
+        SimpleNamespace(from_config=lambda c: SimpleNamespace(list_agents=lambda: [])),
+    )
+
+    diagnose_module.diagnose_command(display_context=recording_ctx)
+
+    output = stream.getvalue()
+    assert "Baseline Capabilities" in output
+    # Should show Built-in capabilities (always available)
+    assert "Built-in" in output
+    # Should show Managed capabilities
+    assert "Managed" in output
+
+
 def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)

@@ -34,6 +34,8 @@ dependencies = [
   "watchdog>=4.0",
   "gitpython>=3.1",
   "ddgs>=9.14.0",
+  "readability-lxml>=0.8.1",
+  "selectolax>=0.3.21",
   "psutil>=5.9",
 ]
 
@@ -57,10 +59,6 @@ web-search = [
   "tavily-python>=0.7.23",
   "exa-py>=2.12.0",
   "brave-search-python-client>=0.4.27",
-]
-web-visit = [
-  "readability-lxml>=0.8.1",
-  "selectolax>=0.3.21",
 ]
 docs = [
   "sphinx>=7",

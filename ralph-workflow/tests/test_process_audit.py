@@ -20,7 +20,12 @@ POSIX_FORBIDDEN = [
 ]
 
 # Files under RALPH_ROOT that are allowed to use subprocess directly.
-ALLOWLIST: list[tuple[str, str]] = []
+ALLOWLIST: list[tuple[str, str]] = [
+    (
+        "skills/_installer.py",
+        "claude plugin install requires direct subprocess calls to invoke the claude CLI tool",
+    ),
+]
 
 # Files under TESTS_ROOT that are allowed to use subprocess directly.
 # Each entry should have a comment explaining why it's allowlisted.

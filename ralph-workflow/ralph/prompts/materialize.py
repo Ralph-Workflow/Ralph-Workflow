@@ -56,6 +56,7 @@ from ralph.prompts.plan_format import format_plan_for_execution
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
+from ralph.skills.manager import SkillManager
 
 __all__ = [
     "MissingPlanHandoffError",
@@ -331,6 +332,7 @@ def _render_planning_prompt(
     ) = _prepare_planning_prompt_context(context, options)
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
     artifact_history_path = resolve_planning_history_path(workspace_root)
+    has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     return prompt_planning_xml_with_context(
         context=tmpl_ctx,
         inputs=PlanningPromptInputs(
@@ -342,6 +344,7 @@ def _render_planning_prompt(
             artifact_history_path=artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(artifact_history_path),
             last_retry_error=last_retry_error,
+            has_docs_mcp=has_docs_mcp,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -387,6 +390,7 @@ def _render_developer_prompt(
         workspace, phase, pipeline_policy, artifacts_policy
     )
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
+    has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
     return prompt_developer_iteration_xml_with_context(
         context=tmpl_ctx,
         inputs=DeveloperPromptInputs(
@@ -399,6 +403,7 @@ def _render_developer_prompt(
             last_retry_error=last_retry_error,
             artifact_history_path=dev_artifact_history_path,
             artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
+            has_docs_mcp=has_docs_mcp,
         ),
         workspace=workspace,
         session_caps=session_caps,

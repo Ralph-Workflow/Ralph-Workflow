@@ -59,22 +59,18 @@ def handle_visit_url(
         logger.warning("visit_url fetch failed: status={s}", s=outcome.status)
         return _error_result(outcome)
 
+    body_text = (outcome.body or b"").decode("utf-8", errors="replace")
     try:
-        body_text = (outcome.body or b"").decode("utf-8", errors="replace")
         page = extract_readable(
             body_text,
             base_url=outcome.effective_url,
             with_links=with_links,
         )
-    except ImportError as exc:
-        logger.warning("visit_url extraction unavailable: {e}", e=exc)
-        no_deps_payload: dict[str, object] = {
-            "status": "unsupported_content",
-            "error": str(exc),
-            "effective_url": outcome.effective_url,
-        }
+    except Exception as exc:
+        logger.warning("visit_url extraction failed: {exc}", exc=exc)
+        err_payload: dict[str, object] = {"status": "unsupported_content", "error": str(exc)}
         return ToolResult(
-            content=[ToolContent.text_content(json.dumps(no_deps_payload))],
+            content=[ToolContent.text_content(json.dumps(err_payload))],
             is_error=True,
         )
 

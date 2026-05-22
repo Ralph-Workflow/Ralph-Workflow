@@ -8,19 +8,7 @@ of how `visit_url` fits into Ralph Workflow's three web concepts (search, visit,
 
 ## Requirements
 
-The tool uses two optional Python packages for HTML extraction:
-
-```
-pip install "ralph-workflow[web-visit]"
-```
-
-This installs:
-- `readability-lxml` — main-content isolation
-- `selectolax` — fast plain-text rendering and link extraction
-
-If these packages are not installed, `visit_url` will still appear in `tools/list`
-(because the capability is granted) but every call will return `is_error=true`
-with a clear "install web-visit extras" message.
+The tool requires `readability-lxml` and `selectolax` for HTML extraction. Both are included in the default `ralph-workflow` installation.
 
 ## Configuration
 

@@ -8,6 +8,18 @@ You are in PLANNING EDIT MODE. Revise the existing execution plan in response to
 
 {% include 'shared/_mcp_tools.j2' %}
 
+## BASELINE WORKFLOW SKILLS
+
+The following skills from the `obra/superpowers` and ECC workflow bundles apply to this planning revision task. Read and apply the relevant ones before proceeding:
+
+- **`using-superpowers`** — read at the start of every planning task
+- **`writing-plans`** — apply when creating or revising multi-step implementation plans
+- **`brainstorming`** — apply before open-ended or creative solution shaping
+- **`executing-plans`** — apply when converting an approved written plan into execution guidance
+- **`dispatching-parallel-agents`** or **`subagent-driven-development`** — apply when work can be parallelized safely
+- **`coding-standards`** — apply when the plan sets implementation quality bars
+- **`verification-loop`** — apply when the plan defines verification requirements
+
 {% if LAST_RETRY_ERROR %}
 IMPORTANT: The previous attempt did not submit the required revised plan before declaring completion.
 
@@ -32,6 +44,16 @@ Canonical history index file:
 `{{ARTIFACT_HISTORY_PATH}}`
 Inspect this history to understand what plans have been tried and rejected before
 so you do not repeat prior mistakes or revisit already-ruled-out approaches.
+{% endif %}
+
+{% if HAS_DOCS_MCP %}
+
+> **Documentation:** The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. Use docs-mcp search for library and API research before revising the plan.
+
+{% else %}
+
+> **Documentation hint:** Configuring `arabold/docs-mcp-server` on `localhost:6280` in `.agent/mcp.toml` improves library and API documentation lookup quality during planning.
+
 {% endif %}
 
 Not submitting the revised plan is a FAILURE.
