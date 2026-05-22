@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Outreach Execution Pack
-Generated: 2026-05-22T11:27:05
+Generated: 2026-05-22T12:37:40
 
 ## Why this exists now
 - Monitoring is not the move right now; switch to a Codeberg-primary curator/comparison distribution lane.
@@ -14,10 +14,17 @@ Generated: 2026-05-22T11:27:05
 - outreach-log.md → avoid repeating HN/Lobsters-only notes
 
 ## Proof spine to reuse in every PR/email
-- Product blurb: Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.
+- Product blurb: free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
 - Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 - What is it: Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator.
 - Why now: You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process.
+
+## Current demand phrases reused
+- stop babysitting your agents
+- run until done
+- overnight coding
+- finished code
+- would you merge it?
 
 ## Comparison assets to cite
 - Hermes Agent — /home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md
@@ -25,54 +32,22 @@ Generated: 2026-05-22T11:27:05
 - Conductor (Teams) — /home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md
 
 ## Ready target files
-- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_6-qainsights-awesome-ai-tools.md
-- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md
-- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_8-taskade-awesome-vibe-coding.md
+- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_9-github-topics-ai-agents.md
 - Queue log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_outreach_queue_latest.json
 
-## Target 1: 6. QAInsights/awesome-ai-tools
-- URL: https://github.com/QAInsights/awesome-ai-tools
-- Action: Submit Ralph Workflow through the maintainer’s tool-submission form (do not open a PR)
-- Priority: HIGH — fresh May 2026 curation, clear category fit, alternative intake path
-- Fit note: Ralph Workflow belongs in the autonomous / async coding-agent layer and the repo explicitly points contributors to a submission form instead of ad-hoc PRs
-- Subject: Ralph Workflow for 6. QAInsights/awesome-ai-tools
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_6-qainsights-awesome-ai-tools.md
+## Target 1: 9. GitHub Topics: AI agents
+- URL: https://github.com/topics/ai-agents
+- Action: Check if Ralph Workflow is already tagged; if not, could add topic tag to the Codeberg/GitHub repo description
+- Priority: MEDIUM — repo-level tagging improvement
+- Fit note: scope fit confirmed
+- Subject: Ralph Workflow for 9. GitHub Topics: AI agents
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_9-github-topics-ai-agents.md
 - Suggested copy:
 ```text
-Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session. Why this target fits: Ralph Workflow belongs in the autonomous / async coding-agent layer and the repo explicitly points contributors to a submission form instead of ad-hoc PRs. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
+For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer repo-native coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: It fits the list scope cleanly.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
 
 Proposed entry:
-- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.
-```
-
-## Target 2: 7. 0xWelt/Awesome-Vibe-Coding
-- URL: https://github.com/0xWelt/Awesome-Vibe-Coding
-- Action: Submit PR adding Ralph Workflow to the CLI / autonomous coding section
-- Priority: HIGH — active repo, 90+ stars, open PR flow visible
-- Fit note: Strong CLI / AI-agent tooling coverage and recent activity; Ralph Workflow fits the structured unattended-coding layer
-- Subject: Ralph Workflow for 7. 0xWelt/Awesome-Vibe-Coding
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md
-- Suggested copy:
-```text
-Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session. Why this target fits: Strong CLI / AI-agent tooling coverage and recent activity; Ralph Workflow fits the structured unattended-coding layer. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
-
-Proposed entry:
-- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.
-```
-
-## Target 3: 8. taskade/awesome-vibe-coding
-- URL: https://github.com/taskade/awesome-vibe-coding
-- Action: Review CONTRIBUTING.md, then submit PR if third-party entries are accepted; otherwise use issue/contact path
-- Priority: MEDIUM-HIGH — active repo, contribution path visible, audience overlap is strong
-- Fit note: Ralph Workflow is differentiated from the IDE/editor tier and belongs in the workflow / autonomous coding framing
-- Subject: Ralph Workflow for 8. taskade/awesome-vibe-coding
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_8-taskade-awesome-vibe-coding.md
-- Suggested copy:
-```text
-Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. Developers and technical teams doing ambitious software work that benefits from a structured workflow instead of a chat session. Why this target fits: Ralph Workflow is differentiated from the IDE/editor tier and belongs in the workflow / autonomous coding framing. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
-
-Proposed entry:
-- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, ships with a strong default workflow for writing software, and lets teams use that default or build their own workflows on top.
+- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
 ```
 
 ## Measurement contract

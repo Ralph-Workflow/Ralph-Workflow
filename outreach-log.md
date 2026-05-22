@@ -5341,3 +5341,42 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 11:58:02
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 12:12:51
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+## 2026-05-22 (Friday) — Reddit monitoring (12:21 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-22_1221.md`
+- **Scan summary:** 21 current-ish candidate threads/posts scanned, 5 credible discussion opportunities, 16 rejected.
+- **Coverage note:** search coverage was still **degraded** on the local path, so this pass was handled as **partial visibility** with manual rescue checks. It was **not** treated as a clean zero-opportunity day.
+- **Current verdict:** **5** credible discussion opportunities were found, but **0** are honest RalphWorkflow mention fits after degraded-telemetry, prior-use, thread-family saturation, no-product-value, and freshness filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AI_Agents` — "74% of enterprises have rolled back AI agents after going live"
+  - `r/automation` — "We built AI agents for real work but they all fail in production at the same point"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+- **Repeated pains worth tracking:** production failure, review tax, visible finish state, recovery/re-entry burden, browser-layer execution failure, and observability gaps.
+- **Risk note:** the strongest current threads are improving research value, not live posting confidence. Coverage is still degraded and the best contributions are product-free workflow comments, not RalphWorkflow mentions.
+- **Posting note:** No posting attempted from this monitor pass. Research-first only; fail closed on posting while telemetry remains degraded.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 12:39:45
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Apollo monitor
+- **When:** 2026-05-22 12:40:55
+- **Note:** Apollo status changed from `login_succeeded` to `login_not_attempted`.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 12:47:20
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 12:49:51
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 12:50:44
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.

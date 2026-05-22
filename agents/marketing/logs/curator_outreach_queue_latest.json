@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T11:27:05.341620",
+  "generated_at": "2026-05-22T12:37:40.524262",
   "targets": [
     {
       "target": "1. ai-for-developers/awesome-ai-coding-tools",
@@ -8,8 +8,11 @@
       "priority": "HIGH \u2014 active repo, clear scope fit",
       "subject": "Ralph Workflow for 1. ai-for-developers/awesome-ai-coding-tools",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_1-ai-for-developers-awesome-ai-coding-tools.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-05"
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-05",
+      "last_contact_at": "2026-05-22T06:19:20.918576+00:00",
+      "last_contact_path": "email:info@aifordevelopers.org",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_ai-for-developers_curator_email.json"
     },
     {
       "target": "2. filipecalegario/awesome-vibe-coding",
@@ -88,8 +91,11 @@
       "priority": "MEDIUM-HIGH \u2014 active repo, contribution path visible, audience overlap is strong",
       "subject": "Ralph Workflow for 8. taskade/awesome-vibe-coding",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_8-taskade-awesome-vibe-coding.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-05"
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-05",
+      "last_contact_at": "2026-05-22T10:10:23.345917+00:00",
+      "last_contact_path": "email:support@taskade.com",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_101023_taskade_curator_email.json"
     }
   ]
 }

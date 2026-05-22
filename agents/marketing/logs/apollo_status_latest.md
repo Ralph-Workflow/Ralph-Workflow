@@ -1,9 +1,9 @@
 # Apollo Status
 
-- Timestamp: `2026-05-22T09:18:13.418618+02:00`
-- Status: `login_succeeded`
+- Timestamp: `2026-05-22T12:40:55.260460+02:00`
+- Status: `login_not_attempted`
 - Final URL: `https://app.apollo.io/#/home`
-- Login attempted: `True`
+- Login attempted: `False`
 - Cloudflare/auth blocked: `False`
-- Auth endpoint status codes: `[200]`
-- Notes: Apollo login appears to have completed successfully.
+- Auth endpoint status codes: `[]`
+- Notes: Apollo login form fields were not available for automation.

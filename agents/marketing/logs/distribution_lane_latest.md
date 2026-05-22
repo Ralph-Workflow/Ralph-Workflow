@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-22T11:27:05
+Generated: 2026-05-22T12:50:31
 Chosen lane: **curator_outreach**
 
 ## Why this lane
@@ -7,7 +7,7 @@ Chosen lane: **curator_outreach**
 - Primary Codeberg adoption is flat in the current measurement window.
 - 2 owned-content posts already shipped in the last 36 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
-- 6 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
+- 7 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate

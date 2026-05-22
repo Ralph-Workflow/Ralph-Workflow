@@ -1,9 +1,9 @@
 {
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
-    "overall_health": "healthy_with_repairs",
-    "primary_failure_mode": "The highest remaining weakness is still flat marketing outcome movement; the main new runtime break was wrapper-layer false negatives and verifier drift, both repaired in this run.",
-    "most_urgent_fix": "Convert marketing learning into measurable Codeberg adoption movement while preserving the repaired fail-closed verifier and wrapper-proof health boundaries."
+    "overall_health": "high_risk",
+    "primary_failure_mode": "The autonomous-marketing-stack is currently red under independent verification: its runner bundle remains unhealthy and its momentum gate still reports no_recent_reddit_post plus flat primary-repo adoption.",
+    "most_urgent_fix": "Repair or redesign the marketing owner loop so it can clear its failing runner/momentum contract with fresh outcome-producing execution, then rerun independent verification."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-22T07:25:38.060871+02:00",
+    "checked_at": "2026-05-22T12:56:30+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus jobs.json comparison with explicit live-vs-persisted separation",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -73,8 +73,7 @@
       "owns": [
         "job/runtime health detection",
         "bounded timeout reruns and verifier refreshes",
-        "artifact contract checks",
-        "wrapper-false-negative suppression for proven mirror health"
+        "artifact contract checks"
       ]
     },
     {
@@ -106,134 +105,135 @@
   ],
   "findings": [
     {
-      "severity": "medium",
-      "title": "Marketing remains the highest-risk unresolved loop because outcome movement is still flat",
-      "mechanism": "The marketing audit still records distribution_and_message_to_primary_repo_conversion as the bottleneck, and the independent verifier still passes only with flat primary-repo movement explicitly kept open.",
+      "severity": "high",
+      "title": "The autonomous marketing stack is currently failing its full-contract health gate",
+      "mechanism": "The runner bundle remains ok=false and the marketing independent verifier fails closed on a live momentum gap: no recent Reddit post plus flat primary-repo adoption.",
       "source_layer": "tool execution",
-      "root_cause": "The marketing system is learning and reusing shared artifacts, but current tactics still have not produced measurable Codeberg adoption movement.",
+      "root_cause": "The marketing owner loop is still generating activity and shared artifacts, but not enough fresh execution or outcome movement to satisfy its own independent verification contract.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ],
-      "confidence": 0.94,
-      "recommended_fix": "Keep replacing tactics and, if necessary, the marketing runtime itself until Codeberg movement becomes measurable instead of accepting activity-only health."
+      "confidence": 0.97,
+      "recommended_fix": "The marketing owner loop must either produce fresh verified distribution execution that clears the no_recent_reddit_post gate or explicitly redesign/retire that gate so the contract matches reality."
     },
     {
-      "severity": "low",
-      "title": "Mirror sync health had a wrapper-layer false negative even though replication was healthy",
-      "mechanism": "The Gateway job reported an agent response failure, but the sync script completed successfully and remote heads were aligned; the failure lived in the wrapper/response layer, not in the replication path.",
-      "source_layer": "hidden repair loops",
-      "root_cause": "A lightweight owner-only operational job still depends on an agent response layer that can fail after the real sync work succeeds.",
-      "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/sync_github.log"
-      ],
-      "confidence": 0.9,
-      "recommended_fix": "Keep health-monitor proof checks bound to underlying mirror state so wrapper-only failures do not masquerade as operational replication failures."
-    },
-    {
-      "severity": "low",
-      "title": "Docs verifier drift briefly produced contradictory pass/fail evidence and was repaired in the same run",
-      "mechanism": "The docs agentic artifact had drifted to fail while the independent verifier markdown still said pass; rerunning the verifier restored a coherent independently verified pass artifact set.",
+      "severity": "medium",
+      "title": "Stale-green architecture signoff leakage existed and required a verifier-level downgrade path",
+      "mechanism": "Before this run's repair, agent_architecture_latest.{json,md} could stay green after downstream verification went red because the verifier only reported failure instead of invalidating the top-level artifact.",
       "source_layer": "persistence",
-      "root_cause": "Verifier freshness had fallen behind newer docs-loop evidence.",
+      "root_cause": "Top-level architecture reporting depended on scheduled/manual refresh rather than deterministic verifier-driven invalidation.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py"
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md"
       ],
-      "confidence": 0.93,
-      "recommended_fix": "Preserve the fail-closed artifact checks and rerun the independent verifier whenever docs-loop evidence moves underneath the last signoff."
+      "confidence": 0.96,
+      "recommended_fix": "Keep the new verifier invalidation path in place and re-verify it after future verifier changes."
+    },
+    {
+      "severity": "medium",
+      "title": "Loop-integrity had been conflating watchdog fail-closed reporting with watchdog breakage",
+      "mechanism": "loop_integrity_audit.py previously required a pass phrase unconditionally, so a legitimate red verifier artifact was misclassified as a loop-integrity contract error instead of a correct watchdog report of a live blocker.",
+      "source_layer": "answer shaping",
+      "root_cause": "Loop-integrity mixed up loop-contract health with the domain state being reported by the watchdog.",
+      "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
+      ],
+      "confidence": 0.95,
+      "recommended_fix": "Keep the patched distinction between fail-closed watchdog reporting and actual loop-integrity contract failure, and independently verify it after future changes."
     },
     {
       "severity": "low",
-      "title": "Persisted disabled cron history still exists and must stay separated from live runtime claims",
-      "mechanism": "jobs.json still contains three disabled legacy jobs, while live Gateway cron currently shows 20 jobs with 0 live-disabled.",
+      "title": "Persisted disabled cron history still exists and must remain separated from live topology claims",
+      "mechanism": "jobs.json contains three disabled historical jobs while live Gateway cron currently shows 20 enabled jobs and 0 live-disabled jobs.",
       "source_layer": "persistence",
-      "root_cause": "Historical retention is intentional, but it becomes dangerous if any watchdog or verifier collapses persisted history back into live topology reporting.",
+      "root_cause": "Historical retention is intentional, but any watchdog that collapses persisted history into live topology would leak stale/retired structure back into runtime judgment.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/cron/jobs.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ],
-      "confidence": 0.98,
-      "recommended_fix": "Keep all live-topology checks bound to openclaw cron list --json and report persisted disabled history only in separate persisted-history fields."
+      "confidence": 0.99,
+      "recommended_fix": "Keep live topology checks bound to openclaw cron list --json and report persisted disabled history only in separate persisted-history fields."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Convert marketing self-improvement into measurable Codeberg adoption movement",
-      "why_now": "This is still the highest-risk unresolved system weakness after the verifier and wrapper-boundary repairs held green.",
-      "expected_effect": "The system rewards real distribution outcomes instead of activity-only loop health."
+      "goal": "Repair or redesign the marketing full-contract gate so it reflects a real, current recovery path",
+      "why_now": "The live red blocker is the marketing stack: runner ok=false, momentum needs_attention, and independent verification fail.",
+      "expected_effect": "The system regains a trustworthy independent pass/fail boundary for its highest-noise owner loop."
     },
     {
       "order": 2,
-      "goal": "Keep wrapper-false-negative suppression tied to underlying operational proof for mirror sync",
-      "why_now": "This run exposed a response-layer false negative on an owner-only operational loop.",
-      "expected_effect": "Operational replication issues are judged by real remote state, not by a post-tool response failure."
+      "goal": "Keep the verifier-driven architecture invalidation path under independent verification",
+      "why_now": "This run repaired stale-green signoff leakage by making the verifier actively downgrade the top-level architecture artifact.",
+      "expected_effect": "Top-level architecture status will stop overstating health after downstream verification turns red."
     },
     {
       "order": 3,
-      "goal": "Preserve fail-closed verifier freshness and live-vs-persisted topology gates",
-      "why_now": "Docs and architecture signoff drift reappeared quickly once runtime evidence moved.",
-      "expected_effect": "Repair loops continue to need fresh external signoff before being treated as healthy."
+      "goal": "Preserve the loop-integrity distinction between correct fail-closed reporting and actual watchdog breakage",
+      "why_now": "This run exposed and patched a false self-failure path inside loop-integrity.",
+      "expected_effect": "Architecture coverage checks stay strict without penalizing watchdogs for reporting real red states."
     }
   ],
   "repairs_applied_this_run": [
     {
       "status": "repaired",
-      "target": "system-health-monitor",
-      "change": "Patched the health monitor to (a) verify real mirror state before treating the mirror-sync wrapper failure as a live outage and (b) rerun the docs verifier when docs-loop contract evidence drifts.",
+      "target": "architecture evidence freshness",
+      "change": "Refreshed health_monitor.py, agent_architecture_independent_verify.py, and agent_architecture_verifier.py so stale green architecture signoff was replaced by a fresh fail-closed red state tied to current marketing blockers.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_independent_verification.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
       ]
     },
     {
       "status": "repaired",
-      "target": "architecture verifier boundary",
-      "change": "Patched the architecture verifier to fail closed on non-architecture health issues reported by the live health monitor instead of only checking independent-signoff freshness.",
+      "target": "loop-integrity fail-closed classification",
+      "change": "Patched loop_integrity_audit.py so a watchdog verifier artifact that correctly reports an independently verified fail is not itself treated as a loop-integrity contract break.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/system/loop_integrity_audit.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
+      ]
+    },
+    {
+      "status": "repaired",
+      "target": "top-level architecture artifact invalidation",
+      "change": "Patched agent_architecture_verifier.py so a fresh verifier failure now downgrades agent_architecture_latest.{json,md} and records verifier_invalidation metadata instead of leaving the older top-level report untouched.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json"
-      ]
-    },
-    {
-      "status": "repaired",
-      "target": "docs verifier coherence",
-      "change": "Reran the docs verifier, which refreshed the agentic review and restored a coherent independently verified pass artifact set.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md"
       ]
     }
   ],
   "independent_verification": {
-    "status": "performed",
+    "status": "performed_fail",
     "artifacts": [
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_independent_verification.json",
-      "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
-      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
-      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
-      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json"
     ],
-    "summary": "Fresh reruns now confirm green health-monitor status, repaired docs verifier coherence, fail-closed architecture signoff, clean live-vs-persisted topology separation, and machine-verifiable shared market-intelligence reuse.",
-    "checked_at": "2026-05-22T07:22:13.836028+02:00"
+    "summary": "Fresh independent verification still fails, but now for the correct remaining blocker set: the architecture watchdog and its invalidation path are functioning, while the marketing owner loop remains red.",
+    "checked_at": "2026-05-22T12:55:47.472892+02:00"
   },
-  "what_still_needs_independent_verification": [],
+  "what_still_needs_independent_verification": [
+    "After the marketing owner loop repairs or redesigns its failing runner/momentum gate, fresh independent verification is still required before the architecture path can return to healthy.",
+    "After any future change to agent_architecture_verifier.py or loop_integrity_audit.py, rerun independent architecture verification before trusting green status."
+  ],
   "highest_risk_unresolved_issue": {
-    "title": "Marketing outcomes remain flat despite healthy loop discipline",
-    "why": "Codeberg adoption is still flat across the recent measurement window, so the active tactics are not yet producing measurable primary-repo movement."
+    "title": "The marketing owner loop remains red even though its learning artifacts clearly identify the failing tactics",
+    "why": "The system is still better at naming the bottleneck than at producing fresh outcome-moving execution that clears its own contract, so architecture health cannot recover yet."
   },
   "runtime_assertions": {
     "ownership_boundaries_ok": true,
@@ -242,7 +242,7 @@
     "shared_market_intelligence_reuse_verified": true,
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
-      "autonomous-marketing-stack": "ok",
+      "autonomous-marketing-stack": "error",
       "ralph-site-owner-loop": "owner_only",
       "system-health-monitor": "monitor_only",
       "blocked-channel-recovery": "owner_only",
@@ -251,19 +251,27 @@
       "codeberg-github-mirror-sync": "owner_only",
       "user-crontab-ownership": "ok"
     },
-    "health_monitor_issues_found": 0,
-    "marketing_independent_verdict": "pass",
-    "health_monitor_independent_verdict": "pass",
-    "architecture_independent_verdict": "pass",
+    "health_monitor_issues_found": 3,
+    "marketing_independent_verdict": "fail",
+    "architecture_independent_verdict": "fail",
     "market_runtime_consumers": [
       "agents/marketing/reddit_monitor.py",
       "agents/marketing/run.py"
     ],
-    "mirror_wrapper_state": {
-      "job_status": "running",
-      "last_status": "error",
-      "last_error": "\u26a0\ufe0f Agent couldn't generate a response. Note: some tool actions may have already been executed \u2014 please verify before retrying.",
-      "health_monitor_treats_as_outage": false
-    }
+    "architecture_verifier_status": "fail",
+    "architecture_verifier_errors": [
+      "independent verifier did not pass (verdict='fail')",
+      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail"
+    ],
+    "architecture_verifier_checked_at": "2026-05-22T13:00:11.147729+02:00"
+  },
+  "verifier_invalidation": {
+    "status": "fail",
+    "checked_at": "2026-05-22T13:00:11.147729+02:00",
+    "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+    "errors": [
+      "independent verifier did not pass (verdict='fail')",
+      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail"
+    ]
   }
 }

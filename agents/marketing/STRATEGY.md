@@ -370,11 +370,11 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 ### Weekly Decisions
 - **[HIGH]** MARK AS FAILING: Current content/distribution tactics are not driving repo adoption. — Codeberg repo adoption flat across 9 samples (stars +0, watchers +0, forks +0)
 - **[HIGH]** Fix on-page SEO issues before investing in new content. — SEO score is 70/100 — technical foundation needs attention.
-- **[MEDIUM]** Keep publishing conversion-asset content. — Best avg views: 0.0 — lean into what's working.
+- **[INFO]** Do not infer a winning owned-content format yet. — Current content-performance logs show zero measurable views, so format recommendations would be guesswork.
 - **[HIGH]** Build backlinks — submit to directories and pursue guest post opportunities. — Zero backlinks detected. Link acquisition is the highest-leverage SEO activity right now.
 - **[MEDIUM]** Fix top on-page SEO issues (current score: 70/100) — Identified by daily SEO analysis as a top priority.
 - **[MEDIUM]** Create content targeting: spec-driven AI agent, AI coding workflow automation, Claude Code automation — Identified by daily SEO analysis as a top priority.
-- **[ONGOING]** Continue Telegraph posting. write.as is permanently blocked — do not use. Seek Dev.to API key for second platform. — Working distribution channel. Track ratio of views per post to gauge platform value.
+- **[MEDIUM]** Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move. — Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes.
 - **[MEDIUM]** Leverage competitor comparison pages in content and outreach. — Monitoring 8 competitors. Use comparison pages in Reddit/HN comments when accounts are unblocked.
 - **[INFO]** Note: hermes-agent has 161918 GitHub stars — lean into Ralph's cost and flexibility advantages. — Competitor intelligence for positioning decisions.
 

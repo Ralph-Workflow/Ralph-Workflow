@@ -1,0 +1,25 @@
+Hi Taskade team,
+
+I came across the awesome-vibe-coding list and thought Ralph Workflow could fit well in the AI agents / autonomous coding layer.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator for developers and technical teams who want a structured workflow instead of a chat session.
+
+Why it fits your list:
+- strong default workflow for real software tasks, not just one-shot prompting
+- composes planning, implementation, and verification into one reviewable loop
+- free and open source
+- works well alongside tools people already use like Claude Code and Codex
+
+Suggested entry:
+- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free and open-source composable loop framework and AI orchestrator for structured unattended coding workflows
+
+A couple of public proof assets, if useful:
+- Start Here guide: https://telegra.ph/Start-Here-Try-Ralph-Workflow-on-One-Real-Backlog-Task-05-22
+- Comparison overview: https://telegra.ph/AI-Coding-Tool-Comparison-Claude-Code-Cursor-Aider-and-the-Workflow-Layer-Most-Teams-Actually-Need-05-22
+
+GitHub mirror (secondary): https://github.com/Ralph-Workflow/Ralph-Workflow
+
+If the list accepts third-party additions through another path, feel free to point me there and I can format it accordingly.
+
+Best,
+Ralph Workflow

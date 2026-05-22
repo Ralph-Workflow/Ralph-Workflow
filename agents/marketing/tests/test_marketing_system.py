@@ -291,6 +291,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
 
             with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', tmp / 'seo-reports'), \
                  patch.object(distribution_lane_executor, 'TARGETS_PATH', targets_path), \
                  patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
                  patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
@@ -305,6 +306,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertIn('Claude Code', text)
             self.assertIn('awesome-ai-coding-tools', text)
             self.assertIn('Ready target files', text)
+            self.assertNotIn('Current demand phrases reused', text)
             action_log = log_dir / 'marketing_2026-05-22_curator_outreach_execution.json'
             self.assertTrue(action_log.exists())
             queue_log = log_dir / 'curator_outreach_queue_latest.json'
@@ -378,6 +380,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
 
             with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', tmp / 'seo-reports'), \
                  patch.object(distribution_lane_executor, 'TARGETS_PATH', targets_path), \
                  patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
                  patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
@@ -393,6 +396,79 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('01_4-fourth-target.md', artifact_text)
             self.assertIn('02_5-fifth-target.md', artifact_text)
+
+    def test_curator_follow_through_reuses_research_signals_and_status_rules(self):
+        now = datetime(2026, 5, 23, 7, 15, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='curator_outreach',
+            reason='Monitoring is not the move right now; switch to a Codeberg-primary curator/comparison distribution lane.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+        targets_md = """# Targets
+
+### 1. first-target
+- **URL:** https://example.com/1
+- **Action:** Submit PR
+- **Priority:** HIGH
+"""
+        existing_queue = {
+            'generated_at': '2026-05-22T09:25:12',
+            'targets': [
+                {'target': '1. first-target', 'url': 'https://example.com/1', 'status': 'sent_via_email_fallback', 'review_due_date': '2026-06-05', 'artifact_path': '/tmp/1.md'},
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            seo_dir = tmp / 'seo-reports'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            seo_dir.mkdir()
+
+            (seo_dir / 'research_2026-05-22.md').write_text('Teams want to stop babysitting your agents and want finished code that is ready to review.', encoding='utf-8')
+            targets_path = tmp / 'curator_outreach_targets.md'
+            targets_path.write_text(targets_md, encoding='utf-8')
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('Curator outreach active.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            queue_path.write_text(json.dumps(existing_queue), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, 'TARGETS_PATH', targets_path), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', queue_path), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={'comparison_pages': []}):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('Demand signals to preserve in any outreach', artifact_text)
+            self.assertIn('stop babysitting your agents', artifact_text)
+            self.assertIn('sent_via_email_fallback: do not resend now', artifact_text)
+
+    def test_curator_queue_dedupes_same_url_even_if_heading_changes(self):
+        rows = [
+            {'target': '6. GitHub Topics: AI agents', 'url': 'https://github.com/topics/ai-agents', 'status': 'prepared'},
+            {'target': '9. GitHub Topics: AI agents', 'url': 'https://github.com/topics/ai-agents', 'status': 'prepared'},
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            queue_path = Path(tmpdir) / 'queue.json'
+            queue_path.write_text(json.dumps({'targets': rows}), encoding='utf-8')
+            with patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', queue_path):
+                loaded = distribution_lane_executor._load_curator_queue_rows()
+
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0]['target'], '6. GitHub Topics: AI agents')
 
 
 class MarketingLoopRunnerTests(unittest.TestCase):

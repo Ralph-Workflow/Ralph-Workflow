@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T11:11:52.385581",
+  "timestamp": "2026-05-22T12:50:31.703784",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -68,9 +68,9 @@
       "reason": "SEO score is 70/100 \u2014 technical foundation needs attention."
     },
     {
-      "priority": "medium",
-      "action": "Keep publishing conversion-asset content.",
-      "reason": "Best avg views: 0.0 \u2014 lean into what's working."
+      "priority": "info",
+      "action": "Do not infer a winning owned-content format yet.",
+      "reason": "Current content-performance logs show zero measurable views, so format recommendations would be guesswork."
     },
     {
       "priority": "high",
@@ -88,9 +88,9 @@
       "reason": "Identified by daily SEO analysis as a top priority."
     },
     {
-      "priority": "ongoing",
-      "action": "Continue Telegraph posting. write.as is permanently blocked \u2014 do not use. Seek Dev.to API key for second platform.",
-      "reason": "Working distribution channel. Track ratio of views per post to gauge platform value."
+      "priority": "medium",
+      "action": "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
+      "reason": "Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes."
     },
     {
       "priority": "medium",
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-22T10:42:16.853084",
+    "timestamp": "2026-05-22T12:14:34.410822",
     "metrics": [
       {
         "platform": "GitHub",
@@ -416,7 +416,7 @@
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
-      "6 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet."
+      "7 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet."
     ],
     "owned_content_posts_last_36h": 2,
     "unsubmitted_directory_channels": [],
@@ -440,7 +440,10 @@
       "3. asheshgoplani/agent-deck",
       "4. zhu1090093659/spec_driven_develop",
       "5. 23blocks-OS/ai-maestro",
-      "6. GitHub Topics: AI agents"
+      "6. GitHub Topics: AI agents",
+      "6. QAInsights/awesome-ai-tools",
+      "7. 0xWelt/Awesome-Vibe-Coding",
+      "8. taskade/awesome-vibe-coding"
     ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",

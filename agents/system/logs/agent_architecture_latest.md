@@ -1,9 +1,12 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-22T07:25:38.060871+02:00
-- Overall health: healthy_with_repairs
-- Primary failure mode: The highest remaining weakness is still flat marketing outcome movement; the main new runtime break was wrapper-layer false negatives and verifier drift, both repaired in this run.
-- Most urgent fix: Convert marketing learning into measurable Codeberg adoption movement while preserving the repaired fail-closed verifier and wrapper-proof health boundaries.
+- Checked: 2026-05-22T12:56:30+02:00
+- Overall health: high_risk
+- Primary failure mode: The autonomous-marketing-stack is currently red under independent verification: its runner bundle remains unhealthy and its momentum gate still reports `no_recent_reddit_post` plus flat primary-repo adoption.
+- Most urgent fix: Repair or redesign the marketing owner loop so it can clear its failing runner/momentum contract with fresh outcome-producing execution, then rerun independent verification.
+- Verifier status: invalidated by fresh fail-closed verification
+- Verifier checked: 2026-05-22T13:00:11.147729+02:00
+- Verifier blockers: independent verifier did not pass (verdict='fail'); health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail
 
 ## Live topology
 
@@ -13,40 +16,45 @@
 
 ## Severity-ranked findings
 
-1. **Medium — Marketing remains the highest-risk unresolved loop because outcome movement is still flat**
-   - Mechanism: Marketing still records `distribution_and_message_to_primary_repo_conversion` as the bottleneck and the primary repo remains flat in the recent window.
-   - Recommended fix: Replace tactics and, if necessary, the runtime itself until Codeberg movement becomes measurable.
+1. **High — The autonomous marketing stack is currently failing its full-contract health gate**
+   - Mechanism: the runner bundle remains `ok=false` and the marketing independent verifier fails closed on a live momentum gap: `no_recent_reddit_post` plus flat primary-repo adoption.
+   - Recommended fix: the marketing owner loop must either clear that gate with fresh verified execution or explicitly redesign/retire the gate so the contract matches reality.
 
-2. **Low — Mirror sync health produced a wrapper false negative, not a replication failure**
-   - Mechanism: The agent wrapper failed after the sync path completed; the health monitor now cross-checks underlying mirror proof before flagging an outage.
-   - Recommended fix: Keep mirror health bound to remote-state proof, not post-tool response text.
+2. **Medium — Stale-green architecture signoff leakage existed and required a verifier-level downgrade path**
+   - Mechanism: before this run's repair, `agent_architecture_latest.{json,md}` could stay green after downstream verification went red because the verifier only reported failure instead of invalidating the top-level artifact.
+   - Recommended fix: keep the new verifier invalidation path in place and re-verify it after future verifier changes.
 
-3. **Low — Docs verifier drift briefly produced contradictory pass/fail evidence and was repaired this run**
-   - Mechanism: `ralph_agentic_latest.json` had drifted away from the verifier markdown; a fresh verifier rerun restored coherent pass artifacts.
-   - Recommended fix: Preserve fail-closed verifier freshness and rerun signoff whenever newer docs evidence appears.
+3. **Medium — Loop-integrity had been conflating watchdog fail-closed reporting with watchdog breakage**
+   - Mechanism: `loop_integrity_audit.py` had required the pass phrase unconditionally, so a legitimate red verifier artifact was misread as a loop-contract failure.
+   - Recommended fix: keep the patched distinction between fail-closed watchdog reporting and actual loop-integrity breakage.
 
-4. **Low — Persisted disabled cron history still exists and must stay separated from live runtime claims**
-   - Mechanism: `jobs.json` still contains disabled legacy jobs while live Gateway cron shows none disabled.
-   - Recommended fix: Keep live-topology checks bound to `openclaw cron list --json` and report persisted disabled history separately.
+4. **Low — Persisted disabled cron history still exists and must stay separated from live topology claims**
+   - Mechanism: `jobs.json` still contains three disabled historical jobs while live Gateway cron shows none disabled.
+   - Recommended fix: keep live topology checks bound to `openclaw cron list --json` and report persisted disabled history separately.
 
 ## Ordered fix plan
 
-1. Convert marketing self-improvement into measurable Codeberg adoption movement
-2. Keep wrapper-false-negative suppression tied to underlying operational proof for mirror sync
-3. Preserve fail-closed verifier freshness and live-vs-persisted topology gates
+1. Repair or redesign the marketing full-contract gate so it reflects a real, current recovery path
+2. Keep the verifier-driven architecture invalidation path under independent verification
+3. Preserve the loop-integrity distinction between correct fail-closed reporting and actual watchdog breakage
 
 ## Repaired this run
 
-- Patched `agents/system/health_monitor.py` so mirror-sync wrapper failures are checked against real mirror state and docs-loop contract drift triggers a verifier rerun.
-- Patched `agents/system/agent_architecture_verifier.py` so architecture signoff fails closed on non-architecture live health issues, not just stale independent signoff.
-- Reran the docs verifier and restored coherent green docs artifacts.
+- Refreshed `health_monitor.py`, `agent_architecture_independent_verify.py`, and `agent_architecture_verifier.py` so stale green architecture signoff was replaced by a fresh fail-closed red state tied to current marketing blockers.
+- Patched `agents/system/loop_integrity_audit.py` so a watchdog verifier artifact that correctly reports an independently verified fail is not itself treated as a loop-integrity contract break.
+- Patched `agents/system/agent_architecture_verifier.py` so a fresh verifier failure now downgrades `agent_architecture_latest.{json,md}` and records invalidation metadata instead of leaving the older top-level report untouched.
 
 ## Independent verification
 
-- Performed: performed
-- Summary: Fresh reruns now confirm green health-monitor status, repaired docs verifier coherence, fail-closed architecture signoff, clean live-vs-persisted topology separation, and machine-verifiable shared market-intelligence reuse.
-- Checked at: 2026-05-22T07:22:13.836028+02:00
+- Performed: performed_fail
+- Summary: Fresh independent verification still fails, but now for the correct remaining blocker set: the architecture watchdog and its invalidation path are functioning, while the marketing owner loop remains red.
+- Checked at: 2026-05-22T12:55:47.472892+02:00
+
+## Still needs independent verification
+
+- After the marketing owner loop repairs or redesigns its failing runner/momentum gate, fresh independent verification is still required before the architecture path can return to healthy.
+- After any future change to `agent_architecture_verifier.py` or `loop_integrity_audit.py`, rerun independent architecture verification before trusting green status.
 
 ## Highest-risk unresolved loop issue
 
-- Marketing outcomes remain flat despite healthy loop discipline: Codeberg adoption is still flat across the recent measurement window.
+- The marketing owner loop remains red even though its learning artifacts clearly identify the failing tactics.
