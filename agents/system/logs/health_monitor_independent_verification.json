@@ -1,37 +1,46 @@
 {
-  "checked_at": "2026-05-22T01:30:24.200208+02:00",
+  "checked_at": "2026-05-22T03:10:03.231064+02:00",
   "verdict": "pass",
-  "summary": "Fresh post-repair verification confirms the health monitor now fails closed on missing shared-market consumer proof while still reporting zero live issues on the repaired system.",
+  "summary": "Fresh independent verification confirms the health monitor now checks the live architecture-verifier boundary, and the repaired full-contract loops remain green.",
   "verified_repairs": [
     {
-      "claim": "health_monitor.py now checks market_intelligence_consumption_latest.json for required runtime consumers.",
+      "claim": "health_monitor.py now checks the live architecture verifier instead of trusting a stale pass artifact",
       "status": "verified",
-      "details": "Direct source inspection shows agents/marketing/run.py and agents/marketing/reddit_monitor.py are required runtime consumers with allowed statuses loaded/skipped."
+      "details": "Source inspection shows a runtime verifier check plus independent-verification and verifier reruns for the architecture path."
     },
     {
-      "claim": "Fresh runtime proof exists for the required shared-market consumers.",
+      "claim": "direct rerun of health_monitor.py is green after the repair",
       "status": "verified",
-      "details": "market_intelligence_consumption_latest.json now contains a loaded record for agents/marketing/run.py and a conscious cooldown_skip record for agents/marketing/reddit_monitor.py."
+      "details": "health_monitor_latest.json records jobs_checked=20 and issues_found=0."
     },
     {
-      "claim": "A direct rerun of health_monitor.py stays green after the new contract gate.",
+      "claim": "architecture-verifier path is healthy after the health-monitor repair",
       "status": "verified",
-      "details": "health_monitor_latest.json now shows jobs_checked=20, issues_found=0."
+      "details": "agent_architecture_verifier_latest.md currently reports Status: independently verified pass."
+    },
+    {
+      "claim": "loop-integrity audit is green on the repaired full-contract loops",
+      "status": "verified",
+      "details": "loop_integrity_latest.json now reports agent-architecture-watchdog status=ok and autonomous-marketing-stack status=ok."
     }
   ],
   "remaining_blockers": [],
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-      "summary": "Health monitor requires runtime proof for code-backed shared-market consumers."
-    },
-    {
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
-      "summary": "Fresh producer and consumer proof recorded after the repair."
+      "summary": "Health monitor source includes live architecture-verifier enforcement and repair reruns."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Latest direct health-monitor run is green after the new proof gate."
+      "summary": "Latest health-monitor run reports issues_found=0 and jobs_checked=20."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+      "summary": "Architecture verifier latest artifact currently shows an independently verified pass."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+      "summary": "Loop integrity latest artifact is used to verify full-contract loop status after repair."
     }
   ]
 }

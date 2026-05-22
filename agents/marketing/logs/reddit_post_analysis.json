@@ -1,69 +1,120 @@
 {
-  "generated_at": "2026-05-22T01:46:56.884765",
-  "count": 55,
+  "generated_at": "2026-05-22T03:13:20.874427",
+  "count": 25,
+  "total_logged_rows": 55,
+  "cadence_records_filtered": 30,
   "recent_window_count": 6,
   "by_account": {
-    "unknown": 6
+    "Informal-Salt827": 6
   },
   "by_community": {
-    "unknown": 6
+    "r/AI_Agents": 1,
+    "r/ClaudeCode": 5
   },
-  "top_title_words": [],
-  "top_body_tokens": [],
-  "phrase_hits": {},
-  "repeated_openings": [],
+  "top_title_words": [
+    "claude",
+    "code",
+    "mode",
+    "codex",
+    "multi",
+    "agent",
+    "supervision",
+    "becoming",
+    "real",
+    "autonomous",
+    "runs",
+    "reality",
+    "approval",
+    "plan",
+    "questions"
+  ],
+  "top_body_tokens": [
+    "making",
+    "diff",
+    "result",
+    "ends",
+    "readable",
+    "checks",
+    "model",
+    "about",
+    "scoped",
+    "task",
+    "explicit",
+    "easy",
+    "optimize",
+    "review",
+    "it's",
+    "handoff",
+    "real",
+    "short",
+    "assumptions",
+    "judge"
+  ],
+  "phrase_hits": {
+    "done criteria": 1,
+    "trust": 1,
+    "scope": 3,
+    "small scoped": 1,
+    "diff": 5,
+    "handoff": 3
+  },
+  "repeated_openings": [
+    "Honestly the part I'd optimize first is the handoff, not the model stack."
+  ],
   "account_switches": [],
   "recent_posts": [
     {
-      "timestamp": null,
-      "account": "unknown",
-      "community": "unknown",
-      "title": "",
-      "comment_url": null,
-      "opening_line": ""
+      "timestamp": "2026-05-18T18:47:16.160831",
+      "account": "Informal-Salt827",
+      "community": "r/AI_Agents",
+      "title": "Is multi-agent supervision becoming the real job?",
+      "comment_url": "https://old.reddit.com/r/AI_Agents/comments/1s8zhjp/is_multiagent_supervision_becoming_the_real/omihj8a/",
+      "opening_line": "The best improvement I've seen is making the output easier to judge, not making the agent look busier."
     },
     {
-      "timestamp": null,
-      "account": "unknown",
-      "community": "unknown",
-      "title": "",
-      "comment_url": null,
-      "opening_line": ""
+      "timestamp": "2026-05-18T22:01:03.501685",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Autonomous Claude Code runs in the new reality.",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tcngab/autonomous_claude_code_runs_in_the_new_reality/omjjo73/",
+      "opening_line": "My default is to optimize for a clean morning-after review, not maximum autonomy."
     },
     {
-      "timestamp": null,
-      "account": "unknown",
-      "community": "unknown",
-      "title": "",
-      "comment_url": null,
-      "opening_line": ""
+      "timestamp": "2026-05-19T09:37:03.252988",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Claude Code approval / plan mode questions",
+      "comment_url": "https://www.reddit.com/r/ClaudeCode/comments/1taelgl/claude_code_approval_plan_mode_questions/",
+      "opening_line": "Honestly the part I'd optimize first is the handoff, not the model stack."
     },
     {
-      "timestamp": null,
-      "account": "unknown",
-      "community": "unknown",
-      "title": "",
-      "comment_url": null,
-      "opening_line": ""
+      "timestamp": "2026-05-19T16:01:56.204431",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Claude Code just shipped a \"run until done\" mode. Upgrade to v2.1.139 for /goal.",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1taty8a/claude_code_just_shipped_a_run_until_done_mode/omo8q4d/",
+      "opening_line": "Honestly the part I'd optimize first is the handoff, not the model stack."
     },
     {
-      "timestamp": null,
-      "account": "unknown",
-      "community": "unknown",
-      "title": "",
-      "comment_url": null,
-      "opening_line": ""
+      "timestamp": "2026-05-20T04:26:57.206970",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "How do you ACTUALLY use CC+codex?",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1tb7j36/how_do_you_actually_use_cccodex/omshh9e/",
+      "opening_line": "Forcing the handoff to be boring and explicit — that is what usually saves multi-tool runs, not another model hop."
     },
     {
-      "timestamp": null,
-      "account": "unknown",
-      "community": "unknown",
-      "title": "",
-      "comment_url": null,
-      "opening_line": ""
+      "timestamp": "2026-05-20T11:24:40.993170",
+      "account": "Informal-Salt827",
+      "community": "r/ClaudeCode",
+      "title": "Claude Code + Codex Workflow?",
+      "comment_url": "https://old.reddit.com/r/ClaudeCode/comments/1sz3u7k/claude_code_codex_workflow/omtznlu/",
+      "opening_line": "The multi-tool failure I kept hitting: one session sounds confident, the next session inherits contradictory assumptions, and the combined result quietly stops making sense."
     }
   ],
   "recommendations": [
+    "Avoid reusing the same opening line; vary the first paragraph deliberately.",
+    "ClaudeCode is the strongest current venue, but avoid stacking too many similar comments there without fresh thread-specific advice.",
     "Before each autopost, compare the candidate body against the last 3 logged bodies and rewrite if the opening, structure, or closing feel too similar.",
     "Score opportunities not just on topic fit but on whether they create a distinctly new reply angle versus existing logged comments."
   ]

@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-05-22T01:31:08.580964+02:00",
+  "checked_at": "2026-05-22T03:13:27.003722+02:00",
   "verdict": "pass",
   "summary": "Independent verifier found the marketing owner loop healthy enough to certify while keeping active watchpoints open.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-22T01:30:56.193114"
+      "summary": "runner ok=True generated_at=2026-05-22T03:13:20.956028"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
@@ -13,7 +13,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "repair_window_status=measurement_pending; failing_tactics=['primary_repo_flat_window', 'mirror_repo_flat_window']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat']"
+      "summary": "repair_window_status=measurement_pending; failing_tactics=['reddit_style_repetition', 'primary_repo_flat_window', 'mirror_repo_flat_window', 'execution_ceiling_repetition']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat', 'repetitive_outreach']"
     }
   ],
   "watchpoints": [

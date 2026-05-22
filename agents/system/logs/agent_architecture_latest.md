@@ -1,40 +1,40 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-22T01:36:01.591988+02:00
+- Checked: 2026-05-22T03:14:59.621337+02:00
 - Overall health: healthy_with_repairs
-- Primary failure mode: The architecture watchdog verifier previously allowed stale independent signoff to pass even after newer runtime evidence existed, leaving a hidden self-certification gap.
-- Most urgent fix: Require the architecture independent-verification artifact to be newer than the latest relevant runtime evidence before the verifier can pass.
+- Primary failure mode: The live marketing owner loop temporarily lost certifiability because its runner bundle lagged newer momentum/audit evidence, creating a short-lived self-certification gap until the full bundle and independent signoff were refreshed.
+- Most urgent fix: Keep the marketing full-contract path coherence-gated so runner evidence is refreshed whenever newer momentum/audit artifacts would otherwise outrun it.
 
 ## Severity-ranked findings
 
-1. **High — Architecture verifier previously failed open on stale independent verification**
-   - Mechanism: agent_architecture_verifier.py only checked whether the independent verification artifact existed, was fresh-ish, and said pass; it did not require that signoff to postdate newer runtime evidence such as loop integrity or health-monitor outputs.
-   - Recommended fix: Fail closed whenever the independent verification artifact predates newer architecture/runtime evidence and require a fresh independent verification rerun after any newer audit or repair output.
+1. **High — Marketing full-contract certifiability drifted when newer audit/watchdog evidence outran the runner bundle**
+   - Mechanism: marketing_loop_checker.py correctly failed closed because marketing_loop_runner_latest.json was older than newer marketing_momentum_watchdog.json and marketing_workflow_audit_latest.json evidence.
+   - Recommended fix: Refresh the full marketing runner bundle immediately when coherence breaks, then regenerate fresh independent verification before re-certifying the loop.
 
-2. **Medium — Marketing owner loop is learning explicitly, but measurable repo adoption remains flat**
-   - Mechanism: The marketing audit shows a live self-improvement mandate, owned repair actions, and fresh independent verification, but Codeberg adoption deltas remain flat in the current window.
-   - Recommended fix: Keep the marketing loop in owned repair/measurement mode and require new structural marketing capabilities or tactic replacement if Codeberg deltas stay flat through the next window.
+2. **Medium — Marketing learning is now runtime-backed, but measurable outcome movement is still absent**
+   - Mechanism: The refreshed marketing audit still reports flat Codeberg adoption and flags repetitive outreach/execution-ceiling patterns under a measurement-pending repair window.
+   - Recommended fix: Keep replacing tactics and system design until Codeberg adoption moves; do not let measurement-pending status become a resting state.
 
-3. **Low — Retired jobs remain present only as explicitly disabled legacy topology**
-   - Mechanism: Three disabled jobs remain in jobs.json for audit history but are clearly non-live.
-   - Recommended fix: Keep disabled legacy jobs explicitly labeled and non-authoritative.
+3. **Low — Retired topology is still present in jobs.json but remains explicitly disabled and non-authoritative**
+   - Mechanism: Three legacy jobs remain in the persisted scheduler file for audit history, while the live enabled runtime exposed by openclaw cron list --json is 20 jobs with no stray user crontab entries.
+   - Recommended fix: Keep legacy jobs disabled, clearly described as legacy, and out of the live ownership path.
 
 ## Ordered fix plan
 
-1. Keep architecture independent verification freshness-gated against newer runtime evidence
-2. Keep marketing learning outcome-focused until Codeberg adoption moves
+1. Preserve marketing loop coherence between runner, audit, momentum, and independent verification artifacts
+2. Convert marketing self-improvement into measurable Codeberg adoption movement
 
 ## Repaired this run
 
-- Added freshness coherence checks so independent verification must postdate newer architecture/runtime evidence, including loop integrity, health monitor, docs verifier, and shared market-intelligence artifacts.
-- Added a dedicated machine-readable independent verification pass for the architecture watchdog so fresh signoff can be regenerated from live evidence instead of hand-maintained state.
+- Regenerated the full marketing runner bundle after the checker detected coherence drift against newer momentum/audit evidence.
+- Ran fresh independent verification after the marketing runner refresh so the repaired marketing path is not self-certified.
 
 ## Independent verification
 
 - Performed: performed
-- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Checked at: 2026-05-22T01:37:40.499825+02:00
+- Summary: Live loop ownership remains coherent, the marketing certifiability gap was repaired and independently re-signed, shared market-intelligence reuse is still machine-verifiable, and health monitoring reports no open system issues.
+- Checked at: 2026-05-22T03:14:59.621337+02:00
 
 ## Highest-risk unresolved loop issue
 
-- Marketing outcome movement is still unproven in the current measurement window: The owner loop is structurally healthier and independently verified, but Codeberg adoption remains flat, so measurable progress is not yet demonstrated.
+- Marketing outcomes remain flat despite better loop discipline: The loop now certifies correctly and promotes findings into runtime behavior, but Codeberg adoption and broader distribution results have still not moved in the current window.
