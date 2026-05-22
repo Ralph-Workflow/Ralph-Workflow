@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.mcp.transport.common import _parse_json_config_file
+from ralph.mcp.transport.common import _load_mcpservers_from_paths
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 
@@ -29,15 +28,9 @@ def load_existing_claude_upstream_servers(
     workspace_path: Path | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
     """Read Claude's MCP config files and return any upstream MCP servers found."""
-    merged: dict[str, object] = {}
-    for path in _claude_mcp_config_paths(workspace_path):
-        config_obj = _parse_json_config_file(path)
-        if not config_obj:
-            continue
-        value = config_obj.get("mcpServers")
-        if isinstance(value, dict):
-            merged = {**merged, **cast("dict[str, object]", value)}
-    return normalize_upstream_mcp_servers(merged)
+    return normalize_upstream_mcp_servers(
+        _load_mcpservers_from_paths(_claude_mcp_config_paths(workspace_path))
+    )
 
 
 def _claude_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:

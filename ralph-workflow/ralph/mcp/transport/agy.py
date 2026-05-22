@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.mcp.transport.common import _parse_json_config_file
+from ralph.mcp.transport.common import _load_mcpservers_from_paths
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 # AGY home config directory name within its default config root
@@ -85,18 +85,11 @@ def load_existing_agy_upstream_servers(
     Returns:
         Tuple of UpstreamMcpServer objects found in AGY config files.
     """
-    merged: dict[str, object] = {}
-    for path in _agy_mcp_config_paths(workspace_path):
-        config_obj = _parse_json_config_file(path)
-        if not config_obj:
-            continue
-        value = config_obj.get("mcpServers")
-        if isinstance(value, dict):
-            for srv_name, srv_entry in value.items():
-                normalized = _normalize_agy_server_entry(srv_name, srv_entry)
-                if normalized is not None:
-                    merged[normalized[0]] = normalized[1]
-    return normalize_upstream_mcp_servers(merged)
+    return normalize_upstream_mcp_servers(
+        _load_mcpservers_from_paths(
+            _agy_mcp_config_paths(workspace_path), _normalize_agy_server_entry
+        )
+    )
 
 
 def _agy_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:

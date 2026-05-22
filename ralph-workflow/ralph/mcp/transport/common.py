@@ -15,6 +15,7 @@ from ralph.mcp.upstream.config import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.mcp_models import McpConfig
@@ -37,6 +38,29 @@ def _parse_json_config_file(path: Path) -> dict[str, object]:
     if not isinstance(raw_payload, dict):
         return {}
     return cast("dict[str, object]", raw_payload)
+
+
+def _load_mcpservers_from_paths(
+    paths: tuple[Path, ...],
+    entry_normalizer: Callable[[str, object], tuple[str, object] | None] | None = None,
+) -> dict[str, object]:
+    merged: dict[str, object] = {}
+    for path in paths:
+        config_obj = _parse_json_config_file(path)
+        if not config_obj:
+            continue
+        value = config_obj.get("mcpServers")
+        if not isinstance(value, dict):
+            continue
+        server_entries = cast("dict[str, object]", value)
+        if entry_normalizer is None:
+            merged.update(server_entries)
+            continue
+        for server_name, server_entry in server_entries.items():
+            normalized = entry_normalizer(server_name, server_entry)
+            if normalized is not None:
+                merged[normalized[0]] = normalized[1]
+    return merged
 
 
 def mcp_config_as_upstreams(mcp_config: McpConfig) -> tuple[UpstreamMcpServer, ...]:
