@@ -22,6 +22,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+from agents.marketing.market_intelligence_runtime import load_market_intelligence
+
 AGENTS_DIR = Path("/home/mistlight/.openclaw/workspace/agents/marketing")
 LOG_DIR = AGENTS_DIR / "logs"
 STRATEGY_FILE = AGENTS_DIR / "STRATEGY.md"
@@ -176,14 +178,9 @@ def load_adoption_data() -> dict | None:
         return None
 
 
-def load_market_intelligence() -> dict | None:
+def load_shared_market_intelligence() -> dict | None:
     """Load the shared competitor/positioning findings artifact when available."""
-    if not MARKET_INTELLIGENCE_FILE.exists():
-        return None
-    try:
-        return json.loads(MARKET_INTELLIGENCE_FILE.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
+    return load_market_intelligence("agents/marketing/run.py")
 
 
 def adoption_is_flat(adoption: dict | None) -> bool:
@@ -528,7 +525,7 @@ def main() -> int:
         competitor_data = run_competitor_analysis()
         print(f"[run.py] Competitor analysis: {competitor_data.get('competitor_count', 0)} competitors tracked", flush=True)
 
-    market_intelligence = load_market_intelligence()
+    market_intelligence = load_shared_market_intelligence()
     if competitor_data is None and market_intelligence:
         competitor_data = {
             "report_path": market_intelligence.get("summary_report"),

@@ -1,37 +1,72 @@
 {
-  "checked_at": "2026-05-22T01:09:50+02:00",
+  "checked_at": "2026-05-22T01:46:14.574222+02:00",
   "verdict": "pass",
-  "summary": "Independent verification confirms the repaired marketing full-contract path no longer accepts stale independent proof after newer runtime evidence, and fresh post-repair marketing signoff is present.",
+  "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
   "verified_repairs": [
     {
-      "claim": "The marketing verifier now fails closed when independent proof predates newer runner, momentum, or workflow-audit artifacts.",
+      "claim": "Architecture report refresh captured the verifier repair state before fresh independent signoff.",
       "status": "verified",
-      "details": "A pre-rerun execution of `python3 agents/marketing/marketing_loop_verifier.py` failed with a stale-proof error, and the patched code now enforces that check in `agents/marketing/marketing_loop_verifier.py`."
+      "details": "agent_architecture_latest.json recorded pending architecture independent verification after the verifier repair."
     },
     {
-      "claim": "Fresh independent verification was produced after the repaired runtime evidence.",
+      "claim": "architecture verifier now fails closed on stale independent verification",
       "status": "verified",
-      "details": "`agents/marketing/logs/marketing_loop_independent_verification.json` now shows `checked_at=2026-05-22T01:09:25.420760+02:00` with `verdict=pass`."
+      "details": "agent_architecture_verifier.py now compares the independent artifact against newer runtime evidence including loop integrity, health monitor, and market-intelligence consumption artifacts."
     },
     {
-      "claim": "The broader loop-integrity surface accepts the marketing path only after the fresh signoff.",
+      "claim": "loop integrity still recognizes the architecture watchdog as a valid covered loop",
       "status": "verified",
-      "details": "A fresh `python3 agents/system/loop_integrity_audit.py` run wrote `agents/system/logs/loop_integrity_latest.json` with `autonomous-marketing-stack` at `MARKETING_LOOP_OK`."
+      "details": "loop_integrity_latest.json reports agent-architecture-watchdog status=ok with no ownership or topology errors."
+    },
+    {
+      "claim": "system health remains green after the architecture verifier repair",
+      "status": "verified",
+      "details": "health_monitor_latest.json records jobs_checked=20 and issues_found=0."
+    },
+    {
+      "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
+      "status": "verified",
+      "details": "market_intelligence_consumption_latest.json contains acceptable runtime proof for agents/marketing/run.py and agents/marketing/reddit_monitor.py."
+    },
+    {
+      "claim": "marketing learning remains outcome-driven rather than activity-only",
+      "status": "verified",
+      "details": "marketing_workflow_audit_latest.json keeps the bottleneck explicit and ties repairs to Codeberg adoption movement."
     }
   ],
   "remaining_blockers": [],
   "evidence": [
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py",
-      "summary": "Verifier now checks runtime coherence against runner, momentum, and workflow-audit artifacts."
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "summary": "Architecture verifier source now contains freshness-gate logic for newer runtime evidence."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "summary": "Fresh post-repair independent pass artifact written at 2026-05-22T01:09:25.420760+02:00."
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "summary": "Architecture audit refreshed with overall_health='healthy_with_repairs'."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-      "summary": "Fresh loop-integrity audit reports `autonomous-marketing-stack` as `MARKETING_LOOP_OK`."
+      "summary": "Loop integrity reports agent-architecture-watchdog status=ok with no topology/ownership drift."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
+      "summary": "Health monitor reports jobs_checked=20 and issues_found=0."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
+      "summary": "Runtime consumer proof exists for the code-backed shared market-intelligence consumers."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "summary": "Marketing audit keeps the current bottleneck explicit as 'distribution_and_message_to_primary_repo_conversion'."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "summary": "Marketing independent verification verdict='pass'."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
+      "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]
 }

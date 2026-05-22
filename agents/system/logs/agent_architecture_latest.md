@@ -1,41 +1,40 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-22T01:09:50+02:00
+- Checked: 2026-05-22T01:36:01.591988+02:00
 - Overall health: healthy_with_repairs
-- Primary failure mode: the marketing full-contract loop could certify newer repaired runtime state with older independent proof
-- Most urgent fix: fail closed when independent verification predates newer runner/audit evidence
+- Primary failure mode: The architecture watchdog verifier previously allowed stale independent signoff to pass even after newer runtime evidence existed, leaving a hidden self-certification gap.
+- Most urgent fix: Require the architecture independent-verification artifact to be newer than the latest relevant runtime evidence before the verifier can pass.
 
 ## Severity-ranked findings
 
-1. **High — stale independent proof could certify repaired marketing runtime**
-   - Runner evidence was newer than the independent verification artifact.
-   - Fixed by adding a coherence gate in `agents/marketing/marketing_loop_verifier.py` and rerunning independent verification.
+1. **High — Architecture verifier previously failed open on stale independent verification**
+   - Mechanism: agent_architecture_verifier.py only checked whether the independent verification artifact existed, was fresh-ish, and said pass; it did not require that signoff to postdate newer runtime evidence such as loop integrity or health-monitor outputs.
+   - Recommended fix: Fail closed whenever the independent verification artifact predates newer architecture/runtime evidence and require a fresh independent verification rerun after any newer audit or repair output.
 
-2. **Medium — shared market intelligence is still partly prompt-enforced**
-   - Direct code-level reuse is evident in `competitor_analysis.py` and `run.py`.
-   - Other intended consumers still rely mainly on cron prompt instructions.
+2. **Medium — Marketing owner loop is learning explicitly, but measurable repo adoption remains flat**
+   - Mechanism: The marketing audit shows a live self-improvement mandate, owned repair actions, and fresh independent verification, but Codeberg adoption deltas remain flat in the current window.
+   - Recommended fix: Keep the marketing loop in owned repair/measurement mode and require new structural marketing capabilities or tactic replacement if Codeberg deltas stay flat through the next window.
 
-3. **Low — retired jobs are still explicitly marked legacy**
-   - Disabled docs/reflection jobs remain non-authoritative instead of silently leaking back into live ownership.
+3. **Low — Retired jobs remain present only as explicitly disabled legacy topology**
+   - Mechanism: Three disabled jobs remain in jobs.json for audit history but are clearly non-live.
+   - Recommended fix: Keep disabled legacy jobs explicitly labeled and non-authoritative.
 
 ## Ordered fix plan
 
-1. Keep the marketing verifier fail-closed against newer runtime evidence.
-2. Add runtime proof that each intended market-intelligence consumer actually loaded or consciously skipped the shared artifact.
-3. Keep legacy disabled jobs clearly labeled and non-live.
+1. Keep architecture independent verification freshness-gated against newer runtime evidence
+2. Keep marketing learning outcome-focused until Codeberg adoption moves
 
 ## Repaired this run
 
-- Patched `agents/marketing/marketing_loop_verifier.py` to reject independent verification artifacts older than newer runner/momentum/audit evidence.
-- Reran `python3 agents/marketing/marketing_loop_independent_verify.py`.
-- Rechecked with `python3 agents/marketing/marketing_loop_verifier.py` and `python3 agents/system/loop_integrity_audit.py`.
+- Added freshness coherence checks so independent verification must postdate newer architecture/runtime evidence, including loop integrity, health monitor, docs verifier, and shared market-intelligence artifacts.
+- Added a dedicated machine-readable independent verification pass for the architecture watchdog so fresh signoff can be regenerated from live evidence instead of hand-maintained state.
 
 ## Independent verification
 
-- Performed: yes
-- Strongest proof: `marketing_loop_verifier.py` failed before the rerun, then passed only after a fresh independent artifact was written at `2026-05-22T01:09:25.420760+02:00`.
-- Fresh loop-integrity result: `autonomous-marketing-stack` now reports `MARKETING_LOOP_OK`.
+- Performed: performed
+- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+- Checked at: 2026-05-22T01:37:40.499825+02:00
 
 ## Highest-risk unresolved loop issue
 
-Shared market-intelligence reuse is still not uniformly runtime-proven across every intended consumer.
+- Marketing outcome movement is still unproven in the current measurement window: The owner loop is structurally healthier and independently verified, but Codeberg adoption remains flat, so measurable progress is not yet demonstrated.

@@ -1,35 +1,37 @@
 {
-  "checked_at": "2026-05-21T21:48:38+02:00",
+  "checked_at": "2026-05-22T01:30:24.200208+02:00",
   "verdict": "pass",
-  "summary": "Fresh post-repair verification confirms that the health monitor now watches the newly explicit active jobs and still reports only the real remaining marketing verification failure instead of inventing extra health. This is a pass on monitor truthfulness, not a claim that the whole system is green.",
+  "summary": "Fresh post-repair verification confirms the health monitor now fails closed on missing shared-market consumer proof while still reporting zero live issues on the repaired system.",
   "verified_repairs": [
     {
-      "claim": "health_monitor.py now includes marketing-research-daily, marketing-daily, and Push research findings to git repo in KEY_JOBS.",
+      "claim": "health_monitor.py now checks market_intelligence_consumption_latest.json for required runtime consumers.",
       "status": "verified",
-      "details": "Direct source inspection shows all three active jobs are now part of the health monitor key-job set."
+      "details": "Direct source inspection shows agents/marketing/run.py and agents/marketing/reddit_monitor.py are required runtime consumers with allowed statuses loaded/skipped."
     },
     {
-      "claim": "Direct rerun still produces a truthful latest-state artifact after the coverage expansion.",
+      "claim": "Fresh runtime proof exists for the required shared-market consumers.",
       "status": "verified",
-      "details": "health_monitor_latest.json now shows jobs_checked=19, issues_found=1, and the only reported issue is the real marketing independent-verification failure."
+      "details": "market_intelligence_consumption_latest.json now contains a loaded record for agents/marketing/run.py and a conscious cooldown_skip record for agents/marketing/reddit_monitor.py."
+    },
+    {
+      "claim": "A direct rerun of health_monitor.py stays green after the new contract gate.",
+      "status": "verified",
+      "details": "health_monitor_latest.json now shows jobs_checked=20, issues_found=0."
     }
   ],
-  "remaining_blockers": [
-    "The monitor remains correctly red on marketing because agents/marketing/logs/marketing_loop_independent_verification.json still has verdict=fail.",
-    "This verification pass covered monitor truthfulness after the repair; the marketing owner loop itself still needs substantive repair before the overall system can go green."
-  ],
+  "remaining_blockers": [],
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-      "summary": "KEY_JOBS now includes marketing-research-daily, marketing-daily, and Push research findings to git repo."
+      "summary": "Health monitor requires runtime proof for code-backed shared-market consumers."
+    },
+    {
+      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
+      "summary": "Fresh producer and consumer proof recorded after the repair."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Latest direct run records jobs_checked=19 and only one issue: loop_verification_fail on the marketing independent verification artifact."
-    },
-    {
-      "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "summary": "Current marketing independent verifier verdict is fail."
+      "summary": "Latest direct health-monitor run is green after the new proof gate."
     }
   ]
 }

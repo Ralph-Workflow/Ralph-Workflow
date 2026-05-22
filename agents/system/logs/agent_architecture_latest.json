@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "healthy_with_repairs",
-    "primary_failure_mode": "A full-contract marketing loop could be declared healthy even when its independent verification artifact predated newer repaired runtime evidence.",
-    "most_urgent_fix": "Keep full-contract verifier gates fail-closed against newer runner/audit artifacts so no repaired loop can self-certify on stale independent proof."
+    "primary_failure_mode": "The architecture watchdog verifier previously allowed stale independent signoff to pass even after newer runtime evidence existed, leaving a hidden self-certification gap.",
+    "most_urgent_fix": "Require the architecture independent-verification artifact to be newer than the latest relevant runtime evidence before the verifier can pass."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,9 +22,11 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-22T01:09:50+02:00",
-    "scheduler_inspection_method": "direct `openclaw cron list --json` because the in-tool cron API is restricted inside this cron-run context",
-    "live_jobs_checked": 20,
+    "checked_at": "2026-05-22T01:36:01.591988+02:00",
+    "scheduler_inspection_method": "direct openclaw cron list --json and live jobs.json comparison",
+    "live_jobs_checked": 23,
+    "live_jobs_enabled": 20,
+    "live_jobs_disabled": 3,
     "inspected_roots": [
       "/home/mistlight/.openclaw/workspace/agents/system",
       "/home/mistlight/.openclaw/workspace/agents/docs_quality",
@@ -36,136 +38,157 @@
   "responsibility_map": [
     {
       "loop": "ralph-docs-watchdog",
-      "owns": ["docs quality", "docs remediation", "independent docs verification"]
+      "owns": [
+        "docs quality",
+        "docs remediation",
+        "independent docs verification"
+      ]
     },
     {
       "loop": "autonomous-marketing-stack",
-      "owns": ["research", "message testing", "distribution actions", "marketing independent verification"]
+      "owns": [
+        "research",
+        "message testing",
+        "distribution actions",
+        "marketing independent verification"
+      ]
     },
     {
       "loop": "ralph-site-owner-loop",
-      "owns": ["site rendering", "live deploy", "public SEO surfaces"]
+      "owns": [
+        "site rendering",
+        "live deploy",
+        "public SEO surfaces"
+      ]
     },
     {
       "loop": "system-health-monitor",
-      "owns": ["job/runtime health detection", "bounded timeout reruns and timeout tuning"]
+      "owns": [
+        "job/runtime health detection",
+        "bounded timeout reruns and timeout tuning",
+        "artifact contract checks for code-backed shared-market reuse"
+      ]
     },
     {
       "loop": "blocked-channel-recovery",
-      "owns": ["generic managed channel recovery"]
+      "owns": [
+        "generic managed channel recovery"
+      ]
     },
     {
       "loop": "research-findings-sync",
-      "owns": ["syncing research artifacts into the git repo"]
+      "owns": [
+        "syncing research artifacts into the git repo"
+      ]
     },
     {
       "loop": "codeberg-github-mirror-sync",
-      "owns": ["Codeberg-to-GitHub mirror replication"]
+      "owns": [
+        "Codeberg-to-GitHub mirror replication"
+      ]
     },
     {
       "loop": "agent-architecture-watchdog",
-      "owns": ["cross-loop architecture audit", "ownership-boundary verification", "repair-signoff enforcement"]
+      "owns": [
+        "cross-loop architecture audit",
+        "ownership-boundary verification",
+        "repair-signoff enforcement"
+      ]
     }
   ],
   "findings": [
     {
       "severity": "high",
-      "title": "Marketing full-contract verification could pass on stale independent proof after newer runtime repairs",
-      "mechanism": "The marketing verifier only checked age and pass/fail of `marketing_loop_independent_verification.json`, so a runner-triggered repair at 2026-05-22T00:57:25+02:00 could still be certified by independent proof from 2026-05-22T00:27:28+02:00.",
+      "title": "Architecture verifier previously failed open on stale independent verification",
+      "mechanism": "agent_architecture_verifier.py only checked whether the independent verification artifact existed, was fresh-ish, and said pass; it did not require that signoff to postdate newer runtime evidence such as loop integrity or health-monitor outputs.",
       "source_layer": "hidden repair loops",
-      "root_cause": "The verifier gate lacked coherence checks against newer runner, momentum, and workflow-audit artifacts.",
+      "root_cause": "The watchdog verifier enforced presence but not coherence of independent verification against the latest runtime state.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:9-16",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:23-29",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:47-56"
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ],
-      "confidence": 0.99,
-      "recommended_fix": "Require the marketing verifier to fail closed when independent verification predates newer runtime evidence, then rerun independent verification after any material repair."
+      "confidence": 0.98,
+      "recommended_fix": "Fail closed whenever the independent verification artifact predates newer architecture/runtime evidence and require a fresh independent verification rerun after any newer audit or repair output."
     },
     {
       "severity": "medium",
-      "title": "Shared market-intelligence reuse is still partly prompt-enforced instead of runtime-enforced",
-      "mechanism": "The shared artifact declares intended downstream consumers including `reddit_monitor.py`, `run.py`, the Ralph-Site owner loop, and this watchdog, but direct code-level consumption was only evident in `competitor_analysis.py` and `run.py`; other paths currently rely on cron prompt instructions to read the artifact.",
-      "source_layer": "tool selection",
-      "root_cause": "Cross-loop reuse expectations are documented well, but not yet backed by uniform script-level proof hooks across every intended consumer.",
+      "title": "Marketing owner loop is learning explicitly, but measurable repo adoption remains flat",
+      "mechanism": "The marketing audit shows a live self-improvement mandate, owned repair actions, and fresh independent verification, but Codeberg adoption deltas remain flat in the current window.",
+      "source_layer": "tool execution",
+      "root_cause": "Outcome movement has not yet caught up with the repaired marketing loop design and its new tactic replacement window.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/competitor_analysis.py:46",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/run.py:31",
-        "/home/mistlight/.openclaw/cron/jobs.json"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
       ],
-      "confidence": 0.78,
-      "recommended_fix": "Add lightweight runtime proof that each intended consumer loaded or consciously skipped the shared market-intelligence artifact, instead of relying only on prompt prose."
+      "confidence": 0.87,
+      "recommended_fix": "Keep the marketing loop in owned repair/measurement mode and require new structural marketing capabilities or tactic replacement if Codeberg deltas stay flat through the next window."
     },
     {
       "severity": "low",
-      "title": "Retired docs and reflection jobs are disabled and clearly marked as legacy rather than live authority",
-      "mechanism": "Disabled topology is still present for audit history, but the payloads and descriptions explicitly identify them as non-live legacy surfaces.",
+      "title": "Retired jobs remain present only as explicitly disabled legacy topology",
+      "mechanism": "Three disabled jobs remain in jobs.json for audit history but are clearly non-live.",
       "source_layer": "persistence",
-      "root_cause": "Legacy retention is being handled explicitly rather than silently.",
+      "root_cause": "Legacy retention is explicit rather than silently authoritative.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/cron/jobs.json"
       ],
       "confidence": 0.95,
-      "recommended_fix": "Keep disabled legacy jobs explicitly labeled and non-authoritative so stale topology cannot regain silent ownership."
+      "recommended_fix": "Keep disabled legacy jobs explicitly labeled and non-authoritative."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Fail closed when independent verification is older than repaired marketing runtime evidence",
-      "why_now": "This was a real hidden self-certification gap on a live full-contract loop.",
-      "expected_effect": "Same-run repairs now require fresh independent proof before the marketing path can be called healthy."
+      "goal": "Keep architecture independent verification freshness-gated against newer runtime evidence",
+      "why_now": "This closes the watchdog\u2019s own hidden self-certification hole.",
+      "expected_effect": "The architecture path cannot claim healthy status on a stale independent signoff after newer repairs or evidence appear."
     },
     {
       "order": 2,
-      "goal": "Add runtime-level consumption proof for shared market-intelligence artifacts",
-      "why_now": "Cross-loop learning should be provable behavior, not just prompt intent.",
-      "expected_effect": "Cleaner evidence that competitor/reddit/positioning learnings are actually reused by the loops that should act on them."
-    },
-    {
-      "order": 3,
-      "goal": "Keep disabled topology explicitly retired and out of active ownership reasoning",
-      "why_now": "That remains the main protection against stale loop leakage returning through old scheduler surfaces.",
-      "expected_effect": "Lower risk of retired jobs or prompts silently regaining authority."
+      "goal": "Keep marketing learning outcome-focused until Codeberg adoption moves",
+      "why_now": "The system now has explicit learning repairs, but measurable progress is still pending.",
+      "expected_effect": "The marketing loop remains accountable for outcome movement instead of reporting activity as success."
     }
   ],
   "repairs_applied_this_run": [
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py",
-      "change": "Added a runtime-coherence gate so the verifier fails if `marketing_loop_independent_verification.json` predates newer runner, momentum, or workflow-audit artifacts.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+      "change": "Added freshness coherence checks so independent verification must postdate newer architecture/runtime evidence, including loop integrity, health monitor, docs verifier, and shared market-intelligence artifacts.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:23-29",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_verifier.py:51-56"
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py"
       ]
     },
     {
       "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "change": "Reran the independent marketing verifier after the repaired runtime proof gate so the full-contract path has fresh post-repair signoff.",
+      "target": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
+      "change": "Added a dedicated machine-readable independent verification pass for the architecture watchdog so fresh signoff can be regenerated from live evidence instead of hand-maintained state.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json"
       ]
     }
   ],
   "independent_verification": {
     "status": "performed",
     "artifacts": [
-      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_verifier_latest.md",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-      "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md"
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
+      "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py"
     ],
-    "summary": "The repaired marketing verifier first failed closed against stale proof, then passed only after a fresh independent marketing verification was produced at 2026-05-22T01:09:25.420760+02:00. A fresh loop-integrity run then returned `MARKETING_LOOP_OK`.",
-    "checked_at": "2026-05-22T01:09:50+02:00"
+    "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
+    "checked_at": "2026-05-22T01:37:40.499825+02:00"
   },
   "what_still_needs_independent_verification": [],
   "highest_risk_unresolved_issue": {
-    "title": "Shared market-intelligence consumption is not uniformly runtime-proven across every intended consumer",
-    "why": "The architecture now blocks stale independent certification on the repaired marketing path, but cross-loop learning reuse is still partially enforced by prompt prose rather than uniform script-level proof."
+    "title": "Marketing outcome movement is still unproven in the current measurement window",
+    "why": "The owner loop is structurally healthier and independently verified, but Codeberg adoption remains flat, so measurable progress is not yet demonstrated."
   }
 }

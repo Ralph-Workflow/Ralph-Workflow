@@ -415,7 +415,23 @@
       "error": null,
       "draft_hash": "13299515c09f4e9c2480b67602e3f4a139d0b37036f8359f65589a3fe2c780ce",
       "experiment_id": "2026-05-22-after-first-run-codeberg"
+    },
+    {
+      "date": "2026-05-22",
+      "draft": "2026-05-22_start-here-first-task-guide_telegraph.md",
+      "title": "Start Here: Try Ralph Workflow on One Real Backlog Task",
+      "platform": "telegraph",
+      "ok": true,
+      "status": "posted",
+      "url": "https://telegra.ph/Start-Here-Try-Ralph-Workflow-on-One-Real-Backlog-Task-05-22",
+      "error": null,
+      "draft_hash": "88b138136998cdb401a8104ab41c489a377dc534660717b186ca3a002a67732c",
+      "experiment_id": "2026-05-22-start-here-first-task-guide",
+      "content_type": "conversion-asset",
+      "keyword": "Ralph Workflow first task guide",
+      "cta": "codeberg_primary_repo",
+      "hypothesis": "A concrete first-task guide should convert evaluator interest into a real first run and increase the odds of later Codeberg star/watch/issue signals."
     }
   ],
-  "last_run": "2026-05-22T00:06:27.910883"
+  "last_run": "2026-05-22T02:05:42.604488+02:00"
 }

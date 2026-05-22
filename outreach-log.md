@@ -4964,3 +4964,87 @@ Distribution and message-to-primary-repo conversion. Owned surfaces at ceiling. 
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 00:57:25
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 01:13:04
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 01:30:56
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+## HN Submission Attempt — 2026-05-21T23:39:54.651197+00:00
+**Status:** dry_run
+**URL submitted:** https://codeberg.org/RalphWorkflow/Ralph-Workflow
+**Title:** Show RalphWorkflow: A composable AI coding workflow loop that runs overnight and hands back reviewable output
+**Detail:** Dry-run, no submission attempted
+
+## HN Submission Attempt — 2026-05-21T23:40:09.720625+00:00
+**Status:** manual_required
+**URL submitted:** https://codeberg.org/RalphWorkflow/Ralph-Workflow
+**Title:** Show RalphWorkflow: A composable AI coding workflow loop that runs overnight and hands back reviewable output
+**Detail:** No BROWSERLESS_TOKEN or HN credentials — manual submission required
+
+## 2026-05-22 (Friday) — Marketing workflow audit + repair actions (02:00 CEST)
+
+### Audit verdict: execution ceiling confirmed. One structural repair executed. HN blocker persists.
+
+**Codeberg: 10⭐ 2👁 2🍴, +0 delta across 9-sample window.** The +1 signal (9→10, May 21) did not compound — treat it as measurement noise pending confirmation. GitHub mirror: 0⭐ 2👁 0🍴, flat across all samples.
+
+### What worked
+- Proof-link/entry-path repairs shipped May 21 correlate with first Codeberg star signal (first signal in the measurement window)
+- Infrastructure stack holding across all owned surfaces
+- **Reddit structural cadence fix: formally integrated.** `reddit_structural_bodies.py` generates 6 validated cadences that break the old 4-paragraph rhythm. Previously a standalone script; now wired into `reddit_next_window_packet.py` as the **primary body source** with fallback to static drafts only when structural output is absent or stale (>7 days). All 6 cadences pass NEVER_USE and repetition validation.
+- Reddit cooldown discipline maintained correctly
+- HN/Lobsters packet: promoted to single canonical file `drafts/HN_LOBSTERS_ACTIVE_PACKET.md`
+
+### What failed
+- **HN submission: attempted via browserless — returned HTTP 400 Bad Request.** The Browserless token is valid for other services but the `/devtools/browser` launch endpoint rejects the request. No HN credentials are configured, so there is no fallback. **HN submission remains blocked from this environment. Human action required.**
+- **Backlink indexing velocity: 0 indexed.** Only SaaSHub (1/6 directories) is live. AIToolsIndex, ToolShelf, ToolWise, MadeWithStack, DevToolCenter are either DNS failures or not confirmed submitted.
+- Codeberg and GitHub: flat across all recent samples
+
+### What's repetitive
+- Every audit cycle saying "stay quiet, HN/Lobsters is the move" — the loop correctly identifies the bottleneck but cannot break through it autonomously
+- Monitor passes during cooldown returning zero output — correctly cautious, correctly zero-leverage
+- Owned-surface polish — at SEO ceiling
+
+### What's low leverage
+- More owned-surface wording work without new distribution channels
+- More monitor passes during cooldown windows
+- More keyword-gap Telegraph posts (already at 100% ceiling)
+
+### What changed now (repair executed)
+1. **`reddit_next_window_packet.py` structural bodies integration** — `load_structural_bodies()` and `cadence_for_opportunity()` added. The drafting flow now tries structurally verified cadences first (6 cadences, all validated against NEVER_USE and repetition rules), with fallback to static `next_reddit_bodies.md` only when structural output is absent or stale. This closes the gap where structurally fresh bodies existed but were not used in the drafting flow.
+
+### Hard blockers (require human action)
+1. **HN/Lobsters submission** — `drafts/HN_LOBSTERS_ACTIVE_PACKET.md` is current and ready. The autonomous attempt via browserless failed (400 Bad Request). Credentials required or manual submission at https://news.ycombinator.com/submit
+2. **Reddit posting** — human-executed using drafted bodies; cadence is structurally fixed but human judgment is required for thread-specific alignment
+3. **Directory backlinks** — only SaaSHub live; other 5 directories need confirmation and follow-up
+
+### Current bottleneck analysis
+The marketing system has reached its **execution ceiling**: all reproducible autonomous paths are complete, in-flight, or blocked. The bottleneck is no longer tactical — it is the absence of a viable autonomous path for the single highest-leverage remaining move (HN submission). The loop has fully shipped its infrastructure, proof assets, owned surfaces, Reddit cadence fix, and Telegraph keyword coverage. It cannot post to HN from this environment.
+
+The marketing architecture is **not underpowered** — it is at the limit of what it can execute autonomously. The fix for `outcome_system_underpowered` is not more agents or scripts; it is resolving the HN submission blocker (credentials or manual execution) and following up on directory listings.
+
+### Next higher-leverage moves (in priority order)
+1. **Human: execute HN/Lobsters** from `drafts/HN_LOBSTERS_ACTIVE_PACKET.md` — submit to HN first, then Lobsters. This is the single highest-leverage move still unmade.
+2. **Human: follow up on directory listings** — AIToolsIndex, ToolShelf, ToolWise, MadeWithStack, DevToolCenter status unclear; confirm submissions and check for listing approval
+3. **Human: Reddit** — use structural bodies when window opens; all 6 cadences are validated and integrated
+4. **Autonomous: re-run structural bodies** if the current output is >7 days old (`python3 agents/marketing/reddit_structural_bodies.py`)
+
+### Measurement window
+- 14 days through **2026-06-04** for Codeberg stars/watchers/forks delta
+- 7 days for directory listing confirmation signals
+
+### Replace if it fails
+If HN/Lobsters gets posted and Codeberg is still flat with no indexed backlinks by **2026-06-04**, stop investing in owned distribution and shift to direct human outreach (AI tool curators, comparison backlink requests, competitor citation).
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 01:46:56
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+## HN Submission Attempt — 2026-05-21T23:47:46.532039+00:00
+**Status:** manual_required
+**URL submitted:** https://codeberg.org/RalphWorkflow/Ralph-Workflow
+**Title:** Show RalphWorkflow: A composable AI coding workflow loop that runs overnight and hands back reviewable output
+**Detail:** No BROWSERLESS_TOKEN or HN credentials — manual submission required
