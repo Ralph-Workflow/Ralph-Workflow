@@ -38,26 +38,10 @@ def _argv(args: tuple[object, ...]) -> list[str]:
     return list(cast("Iterable[str]", args[0]))
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class TestResolveInvocationRuntime:
     def test_opencode_uses_config_content_from_base_env(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-
         config = AgentConfig(
             cmd="opencode",
             output_flag="--json-stream",
@@ -83,7 +67,6 @@ class TestResolveInvocationRuntime:
         assert captured[0] == "injected-content"
 
     def test_codex_uses_home_from_base_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-
         config = AgentConfig(
             cmd="codex",
             output_flag="",
@@ -110,3 +93,23 @@ class TestResolveInvocationRuntime:
             config, extra_env, None, _base_env={"CODEX_HOME": "/injected/home"}
         )
         assert captured[0] == "/injected/home"
+
+    def test_agy_runtime_sets_mcp_endpoint_and_upstream_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config = AgentConfig(
+            cmd="agy",
+            transport=AgentTransport.AGY,
+        )
+        extra_env = {str(MCP_ENDPOINT_ENV): "http://localhost:9999"}
+
+        monkeypatch.setattr(
+            invoke_module,
+            "load_existing_agy_upstream_servers",
+            lambda workspace_path: (),
+        )
+        monkeypatch.setattr(invoke_module, "mcp_toml_as_upstreams", lambda p: [])
+        monkeypatch.setattr(invoke_module, "set_upstream_mcp_config", lambda e, u: None)
+        result = invoke_module.resolve_invocation_runtime(config, extra_env, None)
+        assert result.mcp_endpoint == "http://localhost:9999"
+        assert result.agent_env is not None

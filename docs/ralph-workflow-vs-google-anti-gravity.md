@@ -1,0 +1,113 @@
+# Ralph Workflow vs Google Anti Gravity
+
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
+That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+
+
+If you already use Google Anti Gravity, the simplest difference is this:
+
+- **Google Anti Gravity** is an interactive coding agent you drive directly.
+- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs Google Anti Gravity or another supported coding agent **on your own machine** inside a **composable loop workflow** for real software work.
+
+That makes Ralph Workflow a fit for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
+
+Why try it now? Because you do not need to replace Google Anti Gravity to use it. Keep your current Anti Gravity setup, hand Ralph Workflow one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+
+## The core difference
+
+Google Anti Gravity is strongest when you want to stay in the loop.
+
+You prompt, inspect, redirect, and keep steering the session live.
+
+Ralph Workflow is strongest when you want to get out of the loop for a while.
+
+You write a bounded spec in `PROMPT.md`, Ralph Workflow runs planning, development, verification, and review as one unattended flow, and you come back to a diff, checks, logs, and artifacts you can inspect like normal engineering work.
+
+For Google Anti Gravity support, the MCP contract matters too: before a run, configure the Ralph Workflow MCP endpoint in AGY's native config, then use `ralph --check-mcp` to verify the wiring. Ralph Workflow-owned MCP tools, completion signals such as `declare_complete`, and proxied upstream servers are part of the supported-agent story rather than an escape hatch.
+
+## Choose Ralph Workflow when
+
+Ralph Workflow is usually the better fit when you want to:
+
+- hand off a real backlog task and review it later
+- wake up to a large chunk of work instead of babysitting the terminal
+- keep Google Anti Gravity as your agent path but add a stronger handoff
+- route different phases through different agents when needed
+- judge the result by whether it produced working software and real verification
+
+Typical good Ralph Workflow tasks:
+
+- a bounded feature slice
+- a narrow refactor with tests
+- a cleanup pass with obvious verification
+- repetitive implementation work with clear acceptance criteria
+
+## Choose Google Anti Gravity when
+
+Google Anti Gravity is usually the better fit when you want to:
+
+- pair-program interactively in the terminal
+- keep steering the work every few minutes
+- explore a codebase conversationally
+- make small edits while you stay present
+- iterate live instead of handing off a full work unit
+
+## Why some teams use both
+
+These tools solve different parts of the job.
+
+A practical split is:
+
+- use **Google Anti Gravity** for live exploration, shaping, and interactive edits during the day
+- use **Ralph Workflow** for unattended evening or overnight runs where the handoff quality matters as much as the model quality
+
+If your current pain is not "how do I get Anti Gravity to edit faster?" but "how do I come back to something reviewable tomorrow morning?", Ralph Workflow is the sharper fit.
+
+## What makes Ralph Workflow different from just running Google Anti Gravity longer
+
+The difference is not simply more agent time.
+
+Ralph Workflow is built around a different handoff:
+
+- a real diff
+- checks that actually ran
+- artifacts saved in the repo
+- review output you can inspect
+- enough context to answer: **does the implementation hold up?**
+
+That is the real product test.
+
+## Fastest honest first test
+
+Before you start, AGY requires one manual step that Claude and Codex do not: add the Ralph Workflow MCP endpoint to your AGY native config file before Ralph Workflow can discover it. Add a `serverUrl` entry for Ralph Workflow under `mcpServers` in either `~/.gemini/antigravity-cli/mcp_config.json` (global) or `.agents/mcp_config.json` (workspace-local). Then verify the wiring with `ralph --check-mcp` before the first run.
+
+Then run:
+
+```bash
+pipx install ralph-workflow
+cd /path/to/your/project
+ralph --init
+ralph --diagnose
+ralph --check-mcp
+$EDITOR PROMPT.md
+ralph
+```
+
+Use one real backlog task, not a vague demo.
+
+**Completion contract:** Ralph Workflow expects Google Anti Gravity to signal completion using `declare_complete` (via the Ralph Workflow MCP tool surface) or by submitting a phase artifact — the same contract as Claude interactive mode.
+
+If you want help picking that first task, read [when unattended coding fits](when-unattended-coding-fits.md), [the first-task guide](first-task-guide.md), and [first-task prompt templates](first-task-prompt-templates.md).
+
+If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect the [example review bundle](example-review-bundle.md) and [how to review AI coding output before you merge](review-ai-coding-output-before-merge.md).
+
+## Best next step if this sounds like the missing piece
+
+Use **Codeberg** as the main public home:
+
+- **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star / watch / fork on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+Keeping adoption and feedback on Codeberg makes the primary repo a clearer trust surface for developers evaluating Google Anti Gravity-based setups.

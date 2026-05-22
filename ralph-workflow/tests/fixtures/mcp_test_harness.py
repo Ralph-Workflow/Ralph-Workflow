@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 
 if TYPE_CHECKING:
@@ -38,7 +39,7 @@ SSE_CALL_RESULT: dict[str, Any] = {
 }
 
 
-class StubUpstreamClient:
+class StubUpstreamClient(HttpUpstreamClient):
     """In-process upstream client for fast deterministic tests."""
 
     def __init__(

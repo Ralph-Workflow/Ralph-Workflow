@@ -71,7 +71,7 @@ For that filter, read [When Ralph Workflow Fits — and When It Does Not](when-u
 
 ## What Ralph Workflow adds beyond running Claude Code or Codex directly
 
-If you already use Claude Code, Codex, or another agent CLI, Ralph Workflow is not asking you to throw that away.
+If you already use Claude Code, Codex, Google Anti Gravity, or another agent CLI, Ralph Workflow is not asking you to throw that away.
 
 It adds a repo-native unattended workflow around those tools so you can:
 

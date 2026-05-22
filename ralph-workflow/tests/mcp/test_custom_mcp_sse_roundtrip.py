@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 _FAKE_SSE_URL = "http://127.0.0.1:9999/sse"
 _EXPECTED_TRANSPORT_COUNT = len(
-    [AgentTransport.CLAUDE, AgentTransport.CODEX, AgentTransport.OPENCODE]
+    [AgentTransport.CLAUDE, AgentTransport.CODEX, AgentTransport.OPENCODE, AgentTransport.AGY]
 )
 
 
@@ -58,7 +58,12 @@ def test_sse_entry_probe_agent_transports_sees_server_as_reachable(
 
     reports = probe_agent_transports(
         mcp_toml_as_upstreams(tmp_path),
-        transports=(AgentTransport.CLAUDE, AgentTransport.CODEX, AgentTransport.OPENCODE),
+        transports=(
+            AgentTransport.CLAUDE,
+            AgentTransport.CODEX,
+            AgentTransport.OPENCODE,
+            AgentTransport.AGY,
+        ),
         workspace_path=tmp_path,
     )
 

@@ -54,7 +54,7 @@ It gives the run a more trustworthy shape:
 - **agent-agnostic** instead of locked to one coding tool
 - **reviewable output** instead of a transcript you have to reconstruct
 
-It is not a hosted black box. It runs on your machine with Claude Code, Codex CLI, OpenCode, or the agent path you already use.
+It is not a hosted black box. It runs on your machine with Claude Code, Codex CLI, OpenCode, Google Anti Gravity, or the agent path you already use.
 
 ## Best first evaluation path
 

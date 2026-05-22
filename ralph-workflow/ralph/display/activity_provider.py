@@ -6,6 +6,7 @@ from enum import StrEnum
 class ActivityProvider(StrEnum):
     """Canonical provider identity for agent activity events."""
 
+    AGY = "agy"
     CLAUDE = "claude"
     CODEX = "codex"
     OPENCODE = "opencode"

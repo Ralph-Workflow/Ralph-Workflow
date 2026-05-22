@@ -67,6 +67,10 @@ def test_returns_zero_when_no_custom_mcp_servers_configured(
         "ralph.mcp.transport.claude.load_existing_claude_upstream_servers",
         lambda _p: (),
     )
+    monkeypatch.setattr(
+        "ralph.mcp.transport.agy.load_existing_agy_upstream_servers",
+        lambda _p: (),
+    )
     validate_mock = MagicMock()
     probe_mock = MagicMock()
     monkeypatch.setattr(runner_module, "VALIDATE_MCP", validate_mock)
@@ -87,6 +91,10 @@ def test_healthy_claude_native_upstreams_and_probes_return_zero(
     monkeypatch.setattr(
         "ralph.mcp.transport.claude.load_existing_claude_upstream_servers",
         lambda _p: (native,),
+    )
+    monkeypatch.setattr(
+        "ralph.mcp.transport.agy.load_existing_agy_upstream_servers",
+        lambda _p: (),
     )
 
     validate_mock = MagicMock(return_value=_ok_report((native,)))

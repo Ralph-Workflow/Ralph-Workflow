@@ -27,6 +27,7 @@ This guide documents compatibility between Ralph Workflow and various AI coding 
 | **Claude Code** | ✅ Excellent | ✅ Excellent | Best overall compatibility |
 | **Codex (OpenAI)** | ✅ Excellent | ✅ Excellent | Great for security-focused reviews |
 | **OpenCode** | ✅ Good | ✅ Good | Requires `opencode` parser |
+| **Google Anti Gravity (AGY)** | ✅ Good | ✅ Good | First-class; config-discovery-based setup (pre-configure `mcp_config.json`) |
 | **CCS/GLM** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
 | **ZhipuAI/ZAI** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
 | **Qwen** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
@@ -114,6 +115,30 @@ json_parser = "opencode"
 - Requires the `opencode` parser (not interchangeable)
 - May produce less structured output than Claude/Codex
 - Works best with explicit review guidelines
+
+### Google Anti Gravity (AGY)
+
+**Status**: ✅ First-Class Supported Agent Path
+
+**Configuration**:
+```toml
+[agents.agy]
+name = "agy"
+command = "agy"
+args = ["--conversation", "<PROMPT>"]
+json_parser = "generic"
+```
+
+**MCP Setup**:
+- pre-configure `mcp_config.json`
+- run `ralph --check-mcp`
+- keep the AGY config discovery path aligned with Ralph-owned MCP proxies
+
+**Notes**:
+- Completion contract: `declare_complete` or phase artifact, same as Claude interactive
+- Multimodal delivery uses the Gemini provider profile
+- Config-discovery-based, not env-var injection
+- AGY is a supported orchestration path, not a replacement for Ralph Workflow
 
 ## Agents with Known Issues
 
@@ -308,6 +333,8 @@ json_parser = "generic"
 
 ### Gemini CLI
 
+> **Note**: This section covers the standalone `gemini` Gemini CLI. Google Anti Gravity (AGY) is a separate Google coding CLI documented as a first-class supported agent path in [Known Working Agents](#google-anti-gravity-agy) above.
+
 **Status**: ⚠️ Experimental
 
 **Configuration**:
@@ -422,7 +449,7 @@ RALPH_REVIEWER_JSON_PARSER=generic ralph --reviewer-agent aider
 | `codex` | OpenAI Codex | Native parser |
 | `opencode` | OpenCode | Required for OpenCode |
 | `gemini` | Gemini CLI | Native parser, experimental |
-| `generic` | Any agent | Fallback for unsupported agents |
+| `generic` | Any agent; Google Anti Gravity (AGY) | Native parser for AGY (plain-text, not NDJSON); fallback for other agents |
 
 ### Review Depth Settings
 

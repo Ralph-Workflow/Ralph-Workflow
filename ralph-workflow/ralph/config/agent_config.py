@@ -54,6 +54,7 @@ class AgentConfig(RalphBaseModel):
             "claude": AgentTransport.CLAUDE_INTERACTIVE,
             "codex": AgentTransport.CODEX,
             "opencode": AgentTransport.OPENCODE,
+            "agy": AgentTransport.AGY,
         }
         command_name = self.cmd.split()[0] if self.cmd else ""
         inferred_transport = parser_to_transport.get(

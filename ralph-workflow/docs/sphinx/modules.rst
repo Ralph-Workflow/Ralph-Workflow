@@ -1843,6 +1843,13 @@ ralph.mcp.transport.opencode
    :members:
    :show-inheritance:
 
+ralph.mcp.transport.agy
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.transport.agy
+   :members:
+   :show-inheritance:
+
 ralph.mcp.upstream
 ~~~~~~~~~~~~~~~~~~
 

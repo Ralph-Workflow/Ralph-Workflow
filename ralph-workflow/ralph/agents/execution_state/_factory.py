@@ -26,4 +26,6 @@ def strategy_for_transport(
         return ClaudeExecutionStrategy()
     if transport == AgentTransport.CLAUDE_INTERACTIVE:
         return ClaudeInteractiveExecutionStrategy()
+    if transport == AgentTransport.AGY:
+        return ClaudeInteractiveExecutionStrategy()
     return GenericExecutionStrategy()
