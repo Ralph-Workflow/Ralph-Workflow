@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-23T00:00:11.489888+02:00",
+  "checked_at": "2026-05-23T01:00:23.239541+02:00",
   "verdict": "fail",
   "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
   "verified_repairs": [
@@ -26,7 +26,7 @@
     {
       "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
       "status": "verified",
-      "details": "recent_failures=0, consecutive_passes_since_last_fail=4"
+      "details": "recent_failures=0, consecutive_passes_since_last_fail=6"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -41,7 +41,7 @@
   ],
   "remaining_blockers": [
     "architecture report overall health is not healthy: 'high_risk'",
-    "health monitor has non-architecture issues: marketing_independent_verification:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required",
+    "health monitor has non-architecture issues: marketing_independent_verification:loop_verification_fail",
     "marketing independent verification is not pass: 'fail'"
   ],
   "evidence": [

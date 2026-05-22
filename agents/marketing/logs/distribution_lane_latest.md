@@ -1,14 +1,15 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-23T00:08:49
-Chosen lane: **apollo_outreach**
+Generated: 2026-05-23T00:53:08
+Chosen lane: **curator_handoff_packet**
 
 ## Why this lane
-- Reddit is blocked, GitHub PR auth is blocked here, and Apollo is live; use managed outbound with the already-prepared curator/comparison proof spine instead of another manual handoff packet.
+- Prepared outreach targets already exist but GitHub auth is blocked here; refresh the canonical manual execution packet instead of discovering more targets.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 2 owned-content posts already shipped in the last 36 hours.
 - Reddit is infrastructure-blocked from this environment, so the loop should not treat more Reddit monitoring as an execution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
+- Apollo already has an active measurement window until 2026-05-30T00:14:49.075391+02:00, so do not spend this run repackaging the same outbound lane.
 - 11 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 11 prepared curator targets still need a canonical execution handoff packet.
 - GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.
@@ -26,8 +27,9 @@ Chosen lane: **apollo_outreach**
 - Start Here: Try Ralph Workflow on One Real Backlog Task (telegraph)
 - AI Coding Tool Comparison: Claude Code, Cursor, Aider, and the Workflow Layer Most Teams Actually Need (telegraph)
 
-## Immediate Apollo managed-outbound work
-- Reuse `market_intelligence_latest.json`, `curator_outreach_queue_latest.json`, and `comparison_backlink_queue_latest.json` as the proof spine
-- Build one execution packet with ICP filters, sequence copy, and Codeberg-primary CTA instead of another general marketing note
-- Keep GitHub framed as the mirror only; Apollo copy should route serious evaluators to Codeberg first
-- Use Apollo because Reddit is degraded/blocked from this environment and GitHub PR auth is not the only available path
+## Immediate curator handoff work
+- Build one canonical packet from the highest-priority prepared curator targets that have not been sent yet
+- Include the comparison/backlink handoff packet too when prepared comparison targets are also waiting
+- Reuse the existing target-ready files instead of generating a new queue or another reset note
+- Include exact next actions, ready links, and Codeberg-primary wording so a human can execute quickly
+- Do not count another discovery/reset cycle as progress while prepared targets still await handoff

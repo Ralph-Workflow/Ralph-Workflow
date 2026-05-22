@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "high_risk",
-    "primary_failure_mode": "Cron-classifier denial-phrase false positives had been leaking wrapper-red state into healthy loop judgment until the watchdog prompts and health-monitor logic were tightened.",
-    "most_urgent_fix": "Keep the denial-phrase guard enforced in the patched cron prompts and health monitor, while leaving Codeberg adoption movement owned by the marketing loop as an outcome watchpoint rather than an architecture failure."
+    "primary_failure_mode": "The marketing owner loop still does not have a pass-worthy independent verification artifact because primary Codeberg adoption remains flat inside a live measurement window, so the architecture verifier correctly stays fail-closed.",
+    "most_urgent_fix": "Keep pressure inside the marketing owner loop: either produce measurable primary-repo movement or expire and replace the current distribution tactic when the measurement window closes."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-22T19:06:04.160362+02:00",
+    "checked_at": "2026-05-23T00:55:23.270038+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus jobs.json comparison with explicit live-vs-persisted separation",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -105,103 +105,99 @@
   ],
   "findings": [
     {
-      "severity": "medium",
-      "title": "Cron-classifier wording had been misclassifying healthy loop runs as live errors",
-      "mechanism": "Both the system-health-monitor and agent-architecture-watchdog jobs still carried a denial-token phrase in their runtime prompts, and the monitor treated the resulting classifier state as a real loop fault.",
-      "source_layer": "answer shaping",
-      "root_cause": "Prompt-level wording and monitor-level classification were not hardened against cron classifier false positives.",
-      "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-        "/home/mistlight/.openclaw/cron/jobs.json"
-      ],
-      "confidence": 0.99,
-      "recommended_fix": "Keep the patched cron prompts free of the denial-token phrase and continue downgrading classifier false positives out of live-error health judgments."
-    },
-    {
-      "severity": "medium",
-      "title": "Marketing remains an outcome watchpoint, but it is no longer an architecture-contract failure",
-      "mechanism": "The marketing loop now passes independent verification while still carrying watchpoints for Reddit blockage and flat primary-repo adoption.",
-      "source_layer": "tool interpretation",
-      "root_cause": "Outcome movement is still pending measurement, but the loop has a valid owner path, shared intelligence consumption, and an explicit bottleneck.",
+      "severity": "high",
+      "title": "Marketing independent verification is still legitimately red",
+      "mechanism": "The marketing loop runner is now operationally healthy, but the independent verifier still refuses certification because Codeberg adoption has not moved within the active measurement window.",
+      "source_layer": "cross-loop ownership",
+      "root_cause": "Outcome evidence is still missing for the owner loop that owns primary-repo adoption.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json"
       ],
-      "confidence": 0.95,
-      "recommended_fix": "Keep adoption movement and replacement-tactic execution inside the marketing owner loop; do not reclassify watchpoints as architecture failure unless the independent marketing contract turns red again."
+      "confidence": 0.99,
+      "recommended_fix": "Do not certify around the watchpoint. Hold the red state until the current measurement window either produces Codeberg movement or is replaced by a new tactic."
+    },
+    {
+      "severity": "medium",
+      "title": "Marketing runner/runtime health was self-poisoning on verifier failures",
+      "mechanism": "The runner bundle had been executing the independent verifier and verifier inside the runtime bundle, which made the runner artifact go red whenever certification stayed red.",
+      "source_layer": "tool execution",
+      "root_cause": "Operational execution and certification were coupled in the same runner contract.",
+      "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_runner.py",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json"
+      ],
+      "confidence": 0.97,
+      "recommended_fix": "Keep runtime production scripts in the runner bundle and leave certification to the dedicated verifier surfaces."
     },
     {
       "severity": "low",
-      "title": "Persisted disabled cron history still exists and must stay separated from live topology claims",
-      "mechanism": "jobs.json retains disabled historical jobs while the live Gateway scheduler currently exposes only enabled jobs.",
-      "source_layer": "persistence",
-      "root_cause": "Historical retention is intentional, but topology reporting would drift if persisted-disabled jobs were treated as live state.",
+      "title": "Architecture fail-closed reporting had escalation noise mixed into blocker text",
+      "mechanism": "Derived escalation issues were being counted alongside the root marketing blocker, which diluted blocker localization without changing the live verdict.",
+      "source_layer": "answer shaping",
+      "root_cause": "Architecture verifier surfaces were not collapsing repeat-escalation artifacts away from the underlying blocker list.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/cron/jobs.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
       ],
-      "confidence": 0.99,
-      "recommended_fix": "Continue using openclaw cron list --json as live topology authority and keep persisted disabled history in a separate field."
+      "confidence": 0.95,
+      "recommended_fix": "Keep escalation artifacts available for history, but localize architecture blocker text to the root non-self, non-escalation issue set."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Verify the repaired classifier-false-positive path end to end",
-      "why_now": "The architecture stack must prove that wrapper-red cron summaries no longer contaminate health judgment.",
-      "expected_effect": "System-health and architecture-verifier artifacts can remain green without waiting for a misleading stale job state to age out."
+      "goal": "Keep the architecture verdict pinned to the single live owner-loop blocker",
+      "why_now": "The stack is fail-closed for a real reason, so noise must not outrank the actual blocker.",
+      "expected_effect": "Architecture red remains accurate and compact: marketing certification stays the blocker until it genuinely turns green."
     },
     {
       "order": 2,
-      "goal": "Keep marketing outcome pressure inside the marketing owner loop",
-      "why_now": "Primary Codeberg adoption is still flat, but that is a business watchpoint rather than a cross-loop architecture break.",
-      "expected_effect": "Architecture health stays trustworthy while the marketing loop continues replacing weak tactics with measurable ones."
+      "goal": "Force outcome movement or tactic replacement inside the marketing owner loop",
+      "why_now": "Primary Codeberg adoption is still flat and is the only blocker still preventing green signoff.",
+      "expected_effect": "The next architecture green can only come from a real marketing pass artifact, not from wording or verifier churn."
     }
   ],
   "repairs_applied_this_run": [
     {
-      "status": "repaired",
-      "target": "cron classifier denial-phrase leakage",
-      "change": "Patched the system-health-monitor and agent-architecture-watchdog cron payload messages so they no longer contain the classifier-trigger phrase anywhere.",
+      "status": "repaired_and_verified",
+      "target": "marketing runner self-poisoning",
+      "change": "Removed the marketing independent verifier and verifier from marketing_loop_runner.py so the runner artifact now reflects runtime execution health instead of certification state.",
       "proof": [
-        "/home/mistlight/.openclaw/cron/jobs.json"
-      ]
-    },
-    {
-      "status": "repaired",
-      "target": "health-monitor false-positive classification",
-      "change": "Updated agents/system/health_monitor.py so classifier false positives are downgraded out of live-error health issues instead of poisoning architecture signoff.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_runner.py",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json"
       ]
     },
     {
       "status": "repaired_and_verified",
-      "target": "marketing full-contract quality gate alignment",
-      "change": "Updated agents/marketing/marketing_loop_checker.py so certifiable watchpoints (reddit_channel_blocked with shipped replacement execution, and primary_repo_adoption_flat under measurement_pending) no longer falsely fail loop integrity.",
+      "target": "architecture blocker localization noise",
+      "change": "Updated the architecture independent verifier and verifier to ignore escalation-only health artifacts when summarizing live blockers.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_loop_checker.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
       ]
     }
   ],
   "independent_verification": {
-    "status": "performed_pass",
+    "status": "performed_fail",
     "artifacts": [
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_independent_verification.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
+      "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
     ],
-    "summary": "Fresh independent verification passed for the architecture verifier, the repaired health monitor, and the full-contract loop integrity surface.",
-    "checked_at": "2026-05-22T19:05:15.283492+02:00"
+    "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
+    "checked_at": "2026-05-23T00:54:00.680131+02:00"
   },
   "what_still_needs_independent_verification": [
-    "No architecture repair blockers remain. Continue measuring Codeberg adoption movement inside the marketing owner loop."
+    "Fresh marketing independent pass after the current primary-repo adoption measurement window either produces Codeberg movement or is replaced with a new tactic."
   ],
   "highest_risk_unresolved_issue": {
-    "title": "Primary Codeberg adoption is still flat under a measurement-pending marketing repair window",
-    "why": "This no longer breaks architecture signoff, but it is still the highest-risk unresolved loop outcome because the system must prove new tactics can move primary-repo adoption."
+    "title": "Primary Codeberg adoption is still flat under a live measurement window",
+    "why": "This is now the only root blocker still keeping the architecture verifier red."
   },
   "runtime_assertions": {
     "ownership_boundaries_ok": true,
@@ -209,7 +205,8 @@
     "stale_topology_leakage_detected": false,
     "shared_market_intelligence_reuse_verified": true,
     "shared_market_intelligence_fresh": true,
-    "marketing_independent_verdict": "pass",
+    "marketing_runner_ok": true,
+    "marketing_independent_verdict": "fail",
     "market_runtime_consumers": [
       "agents/marketing/reddit_monitor.py",
       "agents/marketing/run.py"
@@ -217,12 +214,12 @@
     "architecture_verifier_status": "fail",
     "architecture_verifier_errors": [
       "independent verifier did not pass (verdict='fail')",
-      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required"
+      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail"
     ],
-    "architecture_verifier_checked_at": "2026-05-23T00:00:11.489888+02:00",
+    "architecture_verifier_checked_at": "2026-05-23T01:00:23.239541+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
-      "autonomous-marketing-stack": "ok",
+      "autonomous-marketing-stack": "error",
       "ralph-site-owner-loop": "owner_only",
       "system-health-monitor": "monitor_only",
       "blocked-channel-recovery": "owner_only",
@@ -231,17 +228,19 @@
       "codeberg-github-mirror-sync": "owner_only",
       "user-crontab-ownership": "ok"
     },
-    "health_monitor_issues_found": 0,
-    "health_monitor_issue_names": [],
-    "market_intelligence_generated_at": "2026-05-22T18:46:42.328528"
+    "health_monitor_issues_found": 6,
+    "health_monitor_issue_names": [
+      "marketing_independent_verification"
+    ],
+    "market_intelligence_generated_at": "2026-05-23T00:52:17.495672"
   },
   "verifier_invalidation": {
     "status": "fail",
-    "checked_at": "2026-05-23T00:00:11.489888+02:00",
+    "checked_at": "2026-05-23T01:00:23.239541+02:00",
     "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
     "errors": [
       "independent verifier did not pass (verdict='fail')",
-      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required"
+      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail"
     ]
   }
 }

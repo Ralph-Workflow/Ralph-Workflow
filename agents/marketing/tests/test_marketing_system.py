@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agents.marketing import distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_checker, marketing_loop_independent_verify, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting
+from agents.marketing import apollo_sequence_status, distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_checker, marketing_loop_independent_verify, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting
 
 
 class GenerateContentTests(unittest.TestCase):
@@ -277,6 +277,106 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'curator_handoff_packet')
             self.assertIn('Prepared curator targets exist', decision.reason)
+
+    def test_does_not_reselect_apollo_while_measurement_window_is_active(self):
+        now = datetime(2026, 5, 23, 9, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        reddit_report = (
+            '# Reddit monitor\n\n'
+            '- **Threads/posts scanned:** 0\n'
+            '- **Shortlisted:** 0\n'
+            '- **Query attempts:** 18\n'
+            '- **Search diagnostics:** ok=0, reddit_ip_blocked=9\n\n'
+            'Reddit is IP-blocked from this environment.\n'
+        )
+        curator_queue = {
+            'targets': [
+                {'target': '1. Example Curator', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+            ]
+        }
+        comparison_queue = {'targets': []}
+        apollo_status = {
+            'status': 'login_succeeded',
+            'cloudflare_blocked': False,
+        }
+        apollo_sequence = {
+            'status': 'measurement_pending_launch_window',
+            'measurement_pending': True,
+            'next_review_at': '2026-05-30T00:12:00+02:00',
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            apollo_path = log_dir / 'apollo_status.json'
+            apollo_sequence_path = log_dir / 'apollo_sequence_status_latest.json'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.', encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            apollo_path.write_text(json.dumps(apollo_status), encoding='utf-8')
+            apollo_sequence_path.write_text(json.dumps(apollo_sequence), encoding='utf-8')
+            (seo_dir / 'reddit_monitor_latest.md').write_text(reddit_report, encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_apollo_sequence_launch.json').write_text(json.dumps({
+                'timestamp': '2026-05-23T00:12:00+02:00',
+                'chosen_action': {'type': 'apollo_sequence_launch', 'channel': 'apollo_outreach'},
+                'result': {'ok': True, 'live_external_action': True, 'outcome_ready': True, 'record_count': 5},
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_STATUS_PATH', apollo_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_path), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', seo_dir / 'reddit_monitor_latest.md'), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'curator_handoff_packet')
+            self.assertIn('do not spend this run repackaging the same outbound lane', '\n'.join(decision.reasons))
+
+
+class ApolloSequenceStatusTests(unittest.TestCase):
+    def test_marks_recent_launch_as_measurement_pending(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            launch = log_dir / 'marketing_2026-05-23_apollo_sequence_launch.json'
+            launch.write_text(json.dumps({
+                'timestamp': '2026-05-23T00:12:00+02:00',
+                'chosen_action': {'type': 'apollo_sequence_launch'},
+                'result': {'outcome_ready': True, 'record_count': 5, 'sequence_name': 'test sequence'},
+            }), encoding='utf-8')
+
+            with patch.object(apollo_sequence_status, 'LOG_DIR', log_dir), \
+                 patch.object(apollo_sequence_status, 'STATUS_JSON', log_dir / 'apollo_sequence_status_latest.json'), \
+                 patch.object(apollo_sequence_status, 'STATUS_MD', log_dir / 'apollo_sequence_status_latest.md'):
+                payload = apollo_sequence_status.build_status(datetime.fromisoformat('2026-05-24T00:12:00+02:00'))
+
+            self.assertEqual(payload['status'], 'measurement_pending_launch_window')
+            self.assertTrue(payload['measurement_pending'])
+            self.assertEqual(payload['record_count'], 5)
 
     def test_prefers_curator_outreach_when_reddit_coverage_is_degraded_and_hn_ceiling_repeats(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
@@ -1657,6 +1757,13 @@ class MarketingLoopCertificationTests(unittest.TestCase):
         }
         self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
 
+    def test_checker_accepts_apollo_sequence_launch_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'apollo_sequence_launch', 'ok': True, 'live_external_action': True, 'outcome_ready': True},
+            'repair_actions': [],
+        }
+        self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
+
     def test_checker_rejects_apollo_outreach_execution_packet_as_system_redesign_shipment(self):
         audit = {
             'latest_executed_action': {'type': 'apollo_outreach_execution', 'ok': True, 'live_external_action': False},
@@ -1703,6 +1810,13 @@ class MarketingLoopCertificationTests(unittest.TestCase):
     def test_independent_verifier_accepts_live_external_submission_as_system_redesign_shipment(self):
         audit = {
             'latest_executed_action': {'type': 'toolshelf_free_listing_submission', 'ok': True, 'live_external_action': True},
+            'repair_actions': [],
+        }
+        self.assertTrue(marketing_loop_independent_verify.shipped_system_redesign(audit))
+
+    def test_independent_verifier_accepts_apollo_sequence_launch_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'apollo_sequence_launch', 'ok': True, 'live_external_action': True, 'outcome_ready': True},
             'repair_actions': [],
         }
         self.assertTrue(marketing_loop_independent_verify.shipped_system_redesign(audit))

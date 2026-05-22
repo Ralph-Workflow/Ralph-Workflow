@@ -60,3 +60,6 @@ Generated: 2026-05-23T00:53:08
 ## Measurement contract
 - Expected outcome: at least one executed PR, inclusion request, or maintainer contact against the prepared queue
 - Review window: next 7 days for execution, 14 days for response, 30 days for live backlink/listing evidence
+
+## Comparison backlink execution packet
+- /home/mistlight/.openclaw/workspace/drafts/2026-05-23_comparison_backlink_handoff_packet.md

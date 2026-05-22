@@ -592,6 +592,15 @@ def main() -> int:
     insights_path = write_seo_insights(seo_current, decisions)
     print(f"[run.py] SEO insights written to {insights_path}", flush=True)
 
+    apollo_sequence_status_script = AGENTS_DIR / 'apollo_sequence_status.py'
+    if apollo_sequence_status_script.exists():
+        subprocess.run(
+            [sys.executable, str(apollo_sequence_status_script)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
     distribution_lane = choose_distribution_lane(now)
     distribution_execution = execute_distribution_lane(distribution_lane, now)
     print(f"[run.py] Chosen distribution lane: {distribution_lane.lane}", flush=True)

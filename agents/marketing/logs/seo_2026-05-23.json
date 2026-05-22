@@ -1,0 +1,187 @@
+{
+  "timestamp": "2026-05-23T00:53:08.128341",
+  "site_health": {
+    "homepage": {
+      "ok": true,
+      "status": 200,
+      "title": "Unattended coding agent \u2014 AI agent orchestration CLI \u2014 Ralph Workflow",
+      "meta_description": "Free open-source unattended coding agent and AI agent orchestration CLI. Inspect Codeberg first, run one real backlog task overnight, and wake up to finished, tested code ready to review.",
+      "canonical": "https://ralphworkflow.com/",
+      "og_tags": {
+        "description": "Free open-source unattended coding agent and AI agent orchestration CLI. Inspect Codeberg first, run one real backlog task overnight, and wake up to finished, tested code ready to review.",
+        "title": "Unattended coding agent \u2014 AI agent orchestration CLI",
+        "type": "website",
+        "url": "https://ralphworkflow.com/",
+        "site_name": "Ralph Workflow",
+        "image": "https://ralphworkflow.com/icon.png"
+      },
+      "twitter_card": "summary_large_image",
+      "json_ld": true,
+      "has_h1": true,
+      "word_count": 6220,
+      "has_nav": true,
+      "has_main": true,
+      "lang_attr": "en"
+    },
+    "robots": {
+      "status": 200,
+      "directive_count": 9,
+      "sitemap_url": "https://ralphworkflow.com/sitemap.xml"
+    },
+    "sitemap": {
+      "status": 200,
+      "url_count": 66,
+      "urls": [
+        "https://ralphworkflow.com/",
+        "https://ralphworkflow.com/privacy",
+        "https://ralphworkflow.com/terms",
+        "https://ralphworkflow.com/install",
+        "https://ralphworkflow.com/aider-alternative",
+        "https://ralphworkflow.com/conductor-alternative",
+        "https://ralphworkflow.com/hermes-alternative",
+        "https://ralphworkflow.com/claude-code-alternative",
+        "https://ralphworkflow.com/docs/",
+        "https://ralphworkflow.com/contact",
+        "https://ralphworkflow.com/docs/advanced-artifact-configuration",
+        "https://ralphworkflow.com/docs/advanced-mcp-configuration",
+        "https://ralphworkflow.com/docs/advanced-pipeline-configuration",
+        "https://ralphworkflow.com/docs/after-your-first-run",
+        "https://ralphworkflow.com/docs/agents",
+        "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
+        "https://ralphworkflow.com/docs/ai-agent-workflow-composer",
+        "https://ralphworkflow.com/docs/ai-coding-workflow-automation",
+        "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding",
+        "https://ralphworkflow.com/docs/claude-code-approval-mode"
+      ]
+    }
+  },
+  "onpage": {
+    "score": 70,
+    "grade": "C",
+    "issues": [
+      {
+        "severity": "error",
+        "item": "Title too long"
+      },
+      {
+        "severity": "warning",
+        "item": "Meta description too long",
+        "detail": "Keep between 150-160 characters"
+      }
+    ],
+    "recommendations": [
+      "Keep title under 60 characters (current: 69 chars)"
+    ]
+  },
+  "ranks": {
+    "unattended coding agent": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI agent orchestration CLI": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "spec-driven AI agent": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI coding workflow automation": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Claude Code automation": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Claude Code unattended": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "AI agent workflow composer": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    },
+    "Ralph Workflow": {
+      "position": null,
+      "impressions": 0,
+      "clicks": 0,
+      "source": "GSC"
+    }
+  },
+  "backlinks": {
+    "count_approx": 0,
+    "note": "Google search approximation \u2014 set COLLOSUS_API_KEY for accurate data"
+  },
+  "domain_rating": {
+    "dr": null,
+    "status": 0
+  },
+  "competitors": {
+    "claude.ai/code": {
+      "status": 0,
+      "ok": false,
+      "title": ""
+    },
+    "cursor.com": {
+      "status": 200,
+      "ok": true,
+      "title": "Cursor: The best way to code with AI"
+    },
+    "github.com/features/copilot": {
+      "status": 200,
+      "ok": true,
+      "title": "GitHub Copilot \u00b7 Your AI pair programmer \u00b7 GitHub"
+    },
+    "aider.chat": {
+      "status": 200,
+      "ok": true,
+      "title": "Aider - AI Pair Programming in Your Terminal"
+    },
+    "continue.dev": {
+      "status": 200,
+      "ok": true,
+      "title": "Continue \u2022 Quality control for your software factory. | Continue"
+    }
+  },
+  "content_gap": {
+    "gaps": [
+      "spec-driven AI agent",
+      "AI coding workflow automation",
+      "Claude Code automation",
+      "Claude Code unattended",
+      "AI agent workflow composer"
+    ],
+    "covered": [
+      "unattended coding agent",
+      "AI agent orchestration CLI",
+      "Ralph Workflow"
+    ],
+    "coverage_pct": 37.5
+  },
+  "serp": {
+    "position": null,
+    "people_also_ask": false,
+    "related_searches": false,
+    "keyword": "unattended coding agent"
+  },
+  "priority_actions": [
+    "Fix top on-page SEO issues (current score: 70/100)",
+    "Create content targeting: spec-driven AI agent, AI coding workflow automation, Claude Code automation",
+    "Build backlinks: submit to directories, guest post, earn citations"
+  ]
+}
