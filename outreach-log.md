@@ -5380,3 +5380,32 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 12:50:44
 - **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 13:05:34
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog — 2026-05-22 13:05 UTC
+- **Reddit:** IP-blocked confirmed — all access methods return 403. Fix deployed: `reddit_ip_blocked` circuit-breaker added to monitor. Reddit is not "degraded" — it is infrastructure-blocked. Routing around it is the only path.
+- **Telegraph:** Healthy — 9 posts in 3 days. Do not treat as the only live channel; it is near saturation for same-angle owned content.
+- **Curator PRs:** 7 prepared targets, 0 executed. This is the execution gap, not a planning gap. GH auth needed (`gh auth login`) before I can push branches and create PRs.
+- **Backlinks:** SaaSHub live (not yet indexed). AIToolsIndex permanently dead (DNS failure). ToolShelf+ToolWise DNS/timeouts — not live.
+- **Apollo:** login_not_attempted — monitor only; blocked by Cloudflare auth.
+- **Architecture fix deployed:** Reddit monitor now categorizes 403 from Reddit API as `reddit_ip_blocked` (not `fetch_error`). Report explicitly calls out Reddit as infrastructure-blocked and lists Reddit-independent distribution paths.
+- **Pending human action:** (1) `gh auth login` for curator PR execution, (2) Reddit proxy/VPN if Reddit channel is to be restored.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 13:18:15
+- **Note:** Momentum check found: no_recent_reddit_post. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 13:36:49
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 13:37:09
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 13:38:00
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.

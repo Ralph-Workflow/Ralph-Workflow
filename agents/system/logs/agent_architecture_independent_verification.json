@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-22T13:00:11.147729+02:00",
+  "checked_at": "2026-05-22T14:00:11.975728+02:00",
   "verdict": "fail",
   "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
   "verified_repairs": [
@@ -24,6 +24,11 @@
       "details": "loop_integrity_latest.json reports agent-architecture-watchdog status=ok with no ownership or topology errors."
     },
     {
+      "claim": "health monitor shows no unrelated live system issues while the architecture verifier is being independently checked",
+      "status": "verified",
+      "details": "health_monitor_latest.json records jobs_checked=20 and only self-referential architecture-verifier artifact issues, if any."
+    },
+    {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
       "status": "verified",
       "details": "market_intelligence_consumption_latest.json contains acceptable runtime proof for agents/marketing/run.py and agents/marketing/reddit_monitor.py."
@@ -35,9 +40,7 @@
     }
   ],
   "remaining_blockers": [
-    "architecture report overall health is not healthy: 'high_risk'",
-    "health monitor has non-architecture issues: marketing_independent_verification:loop_verification_fail",
-    "marketing independent verification is not pass: 'fail'"
+    "architecture report overall health is not healthy: 'high_risk'"
   ],
   "evidence": [
     {
@@ -54,7 +57,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=20 and issues_found=3."
+      "summary": "Health monitor reports jobs_checked=20 and issues_found=2."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
@@ -66,7 +69,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "summary": "Marketing independent verification verdict='fail'."
+      "summary": "Marketing independent verification verdict='pass'."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",

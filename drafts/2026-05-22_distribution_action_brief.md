@@ -1,13 +1,14 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-22T12:50:31
-Chosen lane: **curator_outreach**
+Generated: 2026-05-22T13:36:58
+Chosen lane: **comparison_backlink_outreach**
 
 ## Why this lane
-- Monitoring is not the move right now; switch to a Codeberg-primary curator/comparison distribution lane.
+- Curator queue prep is already full; ship a fresh comparison/backlink outreach asset instead of another follow-through note.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 2 owned-content posts already shipped in the last 36 hours.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - 7 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
+- The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -19,8 +20,8 @@ Chosen lane: **curator_outreach**
 - Start Here: Try Ralph Workflow on One Real Backlog Task (telegraph)
 - AI Coding Tool Comparison: Claude Code, Cursor, Aider, and the Workflow Layer Most Teams Actually Need (telegraph)
 
-## Immediate curator outreach queue
-- Use `drafts/2026-05-22_curator_outreach_packet.md` as the canonical packet
-- Use `agents/marketing/logs/curator_outreach_targets.md` for the first PR/email targets
-- Lead with comparison intent and Codeberg-primary proof, not another general product intro
-- If a live curator queue already exists, prepare only untouched targets; do not regenerate the same three targets again
+## Immediate comparison/backlink queue
+- Reuse `agents/marketing/logs/market_intelligence_latest.json` as the canonical comparison source of truth
+- Build outreach around the strongest existing comparison pages and current pain phrases, not another general product intro
+- Prepare only targets that can create a fresh Codeberg-primary backlink or comparison citation
+- Do not count curator queue housekeeping as progress for this lane

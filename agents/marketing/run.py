@@ -388,6 +388,8 @@ def build_weekly_decisions(
 
     # Priority actions from seo_daily
     for action in (seo_actions or [])[:2]:
+        if adoption_is_flat(adoption_data) and any(token in action.lower() for token in ('create content', 'publish', 'telegraph')):
+            continue
         if not any(action.lower() in d.get("action", "").lower() for d in decisions):
             decisions.append({
                 "priority": "medium",
@@ -401,6 +403,11 @@ def build_weekly_decisions(
             "priority": "medium",
             "action": "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
             "reason": "Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes.",
+        })
+        decisions.append({
+            "priority": "medium",
+            "action": "Ship comparison-led backlink outreach packets whenever the curator queue is already full.",
+            "reason": "A follow-through note is not enough when the queue is saturated; the loop needs a fresh executable distribution asset tied to existing comparison pages.",
         })
     else:
         decisions.append({

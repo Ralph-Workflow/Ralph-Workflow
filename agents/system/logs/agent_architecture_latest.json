@@ -260,18 +260,16 @@
     ],
     "architecture_verifier_status": "fail",
     "architecture_verifier_errors": [
-      "independent verifier did not pass (verdict='fail')",
-      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail"
+      "independent verifier did not pass (verdict='fail')"
     ],
-    "architecture_verifier_checked_at": "2026-05-22T13:00:11.147729+02:00"
+    "architecture_verifier_checked_at": "2026-05-22T14:00:11.975728+02:00"
   },
   "verifier_invalidation": {
     "status": "fail",
-    "checked_at": "2026-05-22T13:00:11.147729+02:00",
+    "checked_at": "2026-05-22T14:00:11.975728+02:00",
     "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
     "errors": [
-      "independent verifier did not pass (verdict='fail')",
-      "health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail"
+      "independent verifier did not pass (verdict='fail')"
     ]
   }
 }

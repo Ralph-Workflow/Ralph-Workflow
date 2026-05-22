@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-05-22T13:36:58.554247",
+  "targets": [
+    {
+      "slug": "hermes-agent",
+      "name": "Hermes Agent",
+      "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/01_hermes-agent.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "slug": "aider",
+      "name": "Aider",
+      "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/aider.md",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/02_aider.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "slug": "continue",
+      "name": "Continue",
+      "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/03_continue.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    }
+  ]
+}

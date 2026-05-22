@@ -242,6 +242,50 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
             self.assertEqual(decision.lane, 'curator_outreach')
             self.assertIn('Monitoring is not the move right now', decision.reason)
 
+    def test_prefers_comparison_backlink_outreach_when_curator_queue_is_saturated(self):
+        now = datetime(2026, 5, 22, 6, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        outreach_text = 'HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.'
+        queue_payload = {
+            'targets': [
+                {'target': f'{idx}. target', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+                for idx in range(1, 7)
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text(outreach_text, encoding='utf-8')
+            queue_path.write_text(json.dumps(queue_payload), encoding='utf-8')
+            (log_dir / 'marketing_a.json').write_text(json.dumps({"timestamp": "2026-05-21T22:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post A", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+            (log_dir / 'marketing_b.json').write_text(json.dumps({"timestamp": "2026-05-22T01:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post B", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', tmp / 'missing.json'):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'comparison_backlink_outreach')
+
 
 class DistributionLaneExecutorTests(unittest.TestCase):
     def test_curator_parser_skips_measurement_only_rows(self):
@@ -456,6 +500,59 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertIn('stop babysitting your agents', artifact_text)
             self.assertIn('sent_via_email_fallback: do not resend now', artifact_text)
 
+    def test_comparison_backlink_execution_creates_fresh_asset_from_market_intelligence(self):
+        now = datetime(2026, 5, 23, 7, 15, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='comparison_backlink_outreach',
+            reason='Curator queue prep is already full; ship a fresh comparison/backlink outreach asset instead of another follow-through note.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': 'hermes-agent', 'name': 'Hermes Agent', 'path': '/tmp/hermes-agent.md'},
+                {'slug': 'conductor-oss', 'name': 'Conductor OSS', 'path': '/tmp/conductor-oss.md'},
+            ],
+            'competitors': {
+                'hermes-agent': {'name': 'Hermes Agent', 'positioning': 'Self-improving agent', 'github_stars': 100},
+                'conductor-oss': {'name': 'Conductor OSS', 'positioning': 'Enterprise workflow orchestration', 'github_stars': 90},
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            seo_dir = tmp / 'seo-reports'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            seo_dir.mkdir()
+            (seo_dir / 'research_2026-05-22.md').write_text('Teams want run until done and finished code that is ready to review.', encoding='utf-8')
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('Curator queue saturated.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.status, 'executed')
+            self.assertEqual(execution.action_type, 'comparison_backlink_outreach_execution')
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('Comparison Backlink Outreach Pack', artifact_text)
+            self.assertIn('Hermes Agent', artifact_text)
+            self.assertTrue(comparison_queue.exists())
+
     def test_curator_queue_dedupes_same_url_even_if_heading_changes(self):
         rows = [
             {'target': '6. GitHub Topics: AI agents', 'url': 'https://github.com/topics/ai-agents', 'status': 'prepared'},
@@ -522,6 +619,12 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
 
     def test_watchdog_accepts_shipped_curator_replacement_as_live_outcome_repair(self):
         rc, payload = self._run_watchdog_with_action('curator_outreach_execution')
+        self.assertEqual(rc, 0)
+        self.assertNotIn('outcome_system_repair_missing', payload['actions'])
+        self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
+
+    def test_watchdog_accepts_shipped_comparison_backlink_replacement_as_live_outcome_repair(self):
+        rc, payload = self._run_watchdog_with_action('comparison_backlink_outreach_execution')
         self.assertEqual(rc, 0)
         self.assertNotIn('outcome_system_repair_missing', payload['actions'])
         self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
@@ -655,6 +758,13 @@ class MarketingLoopCertificationTests(unittest.TestCase):
             'repair_actions': [],
         }
         self.assertFalse(marketing_loop_checker.shipped_system_redesign(audit))
+
+    def test_checker_accepts_comparison_backlink_execution_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'comparison_backlink_outreach_execution', 'ok': True},
+            'repair_actions': [],
+        }
+        self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
 
     def test_independent_verifier_rejects_curator_follow_through_as_system_redesign_shipment(self):
         audit = {

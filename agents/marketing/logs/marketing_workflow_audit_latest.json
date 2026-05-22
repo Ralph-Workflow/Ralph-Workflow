@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T12:50:44.373940",
+  "generated_at": "2026-05-22T13:37:09.286294",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -61,21 +61,11 @@
       "target_tactic": "content_distribution",
       "failure_type": "primary_repo_flat",
       "repair_kind": "tactic",
-      "action": "REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.",
+      "action": "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
       "kill_condition": "Still no Codeberg delta after 7 days of new approach",
       "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
       "priority": 1,
       "repair_state": "pending_measurement"
-    },
-    {
-      "target_tactic": "marketing_system_architecture",
-      "failure_type": "outcome_system_underpowered",
-      "repair_kind": "system_design",
-      "action": "REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.",
-      "kill_condition": "Another audit still shows flat primary-repo adoption without any new structural marketing capability or replacement execution path",
-      "success_metric": "A new outcome-oriented agent/process/runtime capability is created and logged before the next audit, with a direct link to Codeberg adoption movement",
-      "priority": 1,
-      "repair_state": "needs_execution"
     },
     {
       "target_tactic": "github_mirror_outreach",
@@ -111,7 +101,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
-    "The most recent marketing action was curator-queue housekeeping, which should not count as a fresh replacement tactic or proof of new distribution progress."
+    "The active loop did execute a live marketing action recently (comparison_backlink_outreach_execution), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -144,9 +134,9 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_curator_outreach_execution.json",
-    "type": "curator_queue_follow_through",
-    "title": "Distribution lane execution: curator_outreach",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_comparison_backlink_outreach_execution.json",
+    "type": "comparison_backlink_outreach_execution",
+    "title": "Distribution lane execution: comparison_backlink_outreach",
     "status": "executed",
     "ok": true,
     "url": null

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T12:50:31.703784",
+  "timestamp": "2026-05-22T13:36:58.554247",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -84,13 +84,13 @@
     },
     {
       "priority": "medium",
-      "action": "Create content targeting: spec-driven AI agent, AI coding workflow automation, Claude Code automation",
-      "reason": "Identified by daily SEO analysis as a top priority."
+      "action": "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
+      "reason": "Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes."
     },
     {
       "priority": "medium",
-      "action": "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
-      "reason": "Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes."
+      "action": "Ship comparison-led backlink outreach packets whenever the curator queue is already full.",
+      "reason": "A follow-through note is not enough when the queue is saturated; the loop needs a fresh executable distribution asset tied to existing comparison pages."
     },
     {
       "priority": "medium",
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-22T12:14:34.410822",
+    "timestamp": "2026-05-22T13:20:17.211261",
     "metrics": [
       {
         "platform": "GitHub",
@@ -410,13 +410,14 @@
     }
   },
   "distribution_lane": {
-    "lane": "curator_outreach",
-    "reason": "Monitoring is not the move right now; switch to a Codeberg-primary curator/comparison distribution lane.",
+    "lane": "comparison_backlink_outreach",
+    "reason": "Curator queue prep is already full; ship a fresh comparison/backlink outreach asset instead of another follow-through note.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
-      "7 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet."
+      "7 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset."
     ],
     "owned_content_posts_last_36h": 2,
     "unsubmitted_directory_channels": [],
@@ -429,22 +430,12 @@
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_action_brief.md"
   },
   "distribution_execution": {
-    "lane": "curator_outreach",
-    "action_type": "curator_queue_follow_through",
+    "lane": "comparison_backlink_outreach",
+    "action_type": "comparison_backlink_outreach_execution",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_curator_queue_follow_through.md",
-    "summary": "Detected a live curator queue and enforced follow-through instead of regenerating the same outreach targets.",
-    "targets_prepared": [
-      "1. ai-for-developers/awesome-ai-coding-tools",
-      "2. filipecalegario/awesome-vibe-coding",
-      "3. asheshgoplani/agent-deck",
-      "4. zhu1090093659/spec_driven_develop",
-      "5. 23blocks-OS/ai-maestro",
-      "6. GitHub Topics: AI agents",
-      "6. QAInsights/awesome-ai-tools",
-      "7. 0xWelt/Awesome-Vibe-Coding",
-      "8. taskade/awesome-vibe-coding"
-    ],
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_comparison_backlink_outreach_execution.md",
+    "summary": "Prepared comparison-led backlink outreach assets from shared market intelligence so the loop ships a fresh distribution capability instead of queue housekeeping.",
+    "targets_prepared": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -458,12 +449,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: lane=curator_outreach",
+    "stdout": "skipped: lane=comparison_backlink_outreach",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: lane=curator_outreach",
+    "stdout": "skipped: lane=comparison_backlink_outreach",
     "stderr": ""
   }
 }
