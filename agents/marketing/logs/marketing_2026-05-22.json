@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T09:25:12.878127",
+  "timestamp": "2026-05-22T11:11:52.385581",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-22T08:10:57.512229",
+    "timestamp": "2026-05-22T10:42:16.853084",
     "metrics": [
       {
         "platform": "GitHub",
@@ -415,8 +415,8 @@
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
-      "Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.",
-      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run."
+      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
+      "6 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet."
     ],
     "owned_content_posts_last_36h": 2,
     "unsubmitted_directory_channels": [],
@@ -430,14 +430,17 @@
   },
   "distribution_execution": {
     "lane": "curator_outreach",
-    "action_type": "curator_outreach_execution",
+    "action_type": "curator_queue_follow_through",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_curator_outreach_execution.md",
-    "summary": "Prepared target-specific curator outreach copy using shared market intelligence and Codeberg-first proof assets.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_curator_queue_follow_through.md",
+    "summary": "Detected a live curator queue and enforced follow-through instead of regenerating the same outreach targets.",
     "targets_prepared": [
       "1. ai-for-developers/awesome-ai-coding-tools",
       "2. filipecalegario/awesome-vibe-coding",
-      "3. asheshgoplani/agent-deck"
+      "3. asheshgoplani/agent-deck",
+      "4. zhu1090093659/spec_driven_develop",
+      "5. 23blocks-OS/ai-maestro",
+      "6. GitHub Topics: AI agents"
     ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",

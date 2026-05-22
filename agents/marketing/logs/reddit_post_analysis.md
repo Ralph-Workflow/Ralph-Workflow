@@ -1,8 +1,8 @@
 # Reddit Post Analysis
 
-- Generated: 2026-05-22T09:40:28.809376
+- Generated: 2026-05-22T11:27:14.708122
 - Reddit posts logged: 25 total / 6 recent-window posts
-- (Filtered 36 cadence/structural records; showed last 6 reddit posts)
+- (Filtered 60 cadence/structural records; showed last 6 reddit posts)
 - Accounts seen: Informal-Salt827 (6)
 - Communities seen: r/AI_Agents (1), r/ClaudeCode (5)
 

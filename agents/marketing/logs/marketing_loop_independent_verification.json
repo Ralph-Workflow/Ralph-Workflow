@@ -1,15 +1,15 @@
 {
-  "checked_at": "2026-05-22T07:28:35.295538+02:00",
+  "checked_at": "2026-05-22T11:12:04.333271+02:00",
   "verdict": "pass",
   "summary": "Independent verifier found the marketing owner loop healthy enough to certify while keeping active watchpoints open.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-22T07:28:35.272106"
+      "summary": "runner ok=True generated_at=2026-05-22T11:12:04.306197"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['apollo_channel_blocked', 'primary_repo_adoption_flat']"
+      "summary": "momentum status=watch; actions=[]; watch_actions=['primary_repo_adoption_flat']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
@@ -17,8 +17,7 @@
     }
   ],
   "watchpoints": [
-    "primary repo adoption is still flat, but the loop already shipped repairs and is waiting on the measurement window",
-    "Apollo outbound is externally blocked (ato_email_verification_required) with fresh telemetry"
+    "primary repo adoption is still flat, but the loop already shipped repairs and is waiting on the measurement window"
   ],
   "blockers": []
 }

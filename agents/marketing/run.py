@@ -340,7 +340,8 @@ def build_weekly_decisions(
 
     # Content performance
     ranked = sorted(content_summary.items(), key=lambda item: item[1].get("avg_views", 0), reverse=True)
-    if ranked:
+    has_real_content_signal = any((stats.get('views', 0) or 0) > 0 for stats in content_summary.values())
+    if ranked and has_real_content_signal:
         best_type, best_stats = ranked[0]
         decisions.append({
             "priority": "medium",
@@ -355,6 +356,12 @@ def build_weekly_decisions(
                     "action": f"Shift one future slot away from {worst_type} toward {best_type}.",
                     "reason": f"{best_type} outperforms {worst_type} on avg views.",
                 })
+    elif ranked:
+        decisions.append({
+            "priority": "info",
+            "action": "Do not infer a winning owned-content format yet.",
+            "reason": "Current content-performance logs show zero measurable views, so format recommendations would be guesswork.",
+        })
 
     # SEO trend-based decisions
     rank_delta = seo_trends.get("rank_delta", 0)
@@ -389,11 +396,18 @@ def build_weekly_decisions(
             })
 
     # Distribution channel decisions
-    decisions.append({
-        "priority": "ongoing",
-        "action": "Continue Telegraph posting. write.as is permanently blocked — do not use. Seek Dev.to API key for second platform.",
-        "reason": "Working distribution channel. Track ratio of views per post to gauge platform value.",
-    })
+    if adoption_is_flat(adoption_data):
+        decisions.append({
+            "priority": "medium",
+            "action": "Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.",
+            "reason": "Primary repo adoption is flat and owned-content output is already saturated; shift effort to curator, backlink, and comparison distribution lanes.",
+        })
+    else:
+        decisions.append({
+            "priority": "ongoing",
+            "action": "Continue Telegraph posting. write.as is permanently blocked — do not use. Seek Dev.to API key for second platform.",
+            "reason": "Working distribution channel. Track ratio of views per post to gauge platform value.",
+        })
 
     # Competitor-driven decisions
     if competitor_data:

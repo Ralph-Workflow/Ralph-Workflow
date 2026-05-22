@@ -53,13 +53,34 @@ For each target:
 
 ## Tier 2 — Directory and comparison page targets
 
-### 6. GitHub Topics: AI agents
+### 6. QAInsights/awesome-ai-tools
+- **URL:** https://github.com/QAInsights/awesome-ai-tools
+- **What it is:** Curated reference of AI-powered coding tools across IDEs, terminal agents, autonomous agents, and review platforms
+- **Why it fits:** Ralph Workflow belongs in the autonomous / async coding-agent layer and the repo explicitly points contributors to a submission form instead of ad-hoc PRs
+- **Action:** Submit Ralph Workflow through the maintainer’s tool-submission form (do not open a PR)
+- **Priority:** HIGH — fresh May 2026 curation, clear category fit, alternative intake path
+
+### 7. 0xWelt/Awesome-Vibe-Coding
+- **URL:** https://github.com/0xWelt/Awesome-Vibe-Coding
+- **What it is:** Curated list of vibe-coding open-source projects, tools, and learning resources
+- **Why it fits:** Strong CLI / AI-agent tooling coverage and recent activity; Ralph Workflow fits the structured unattended-coding layer
+- **Action:** Submit PR adding Ralph Workflow to the CLI / autonomous coding section
+- **Priority:** HIGH — active repo, 90+ stars, open PR flow visible
+
+### 8. taskade/awesome-vibe-coding
+- **URL:** https://github.com/taskade/awesome-vibe-coding
+- **What it is:** Branded but active vibe-coding guide with dedicated CLI and autonomous-coding sections plus a CONTRIBUTING file
+- **Why it fits:** Ralph Workflow is differentiated from the IDE/editor tier and belongs in the workflow / autonomous coding framing
+- **Action:** Review CONTRIBUTING.md, then submit PR if third-party entries are accepted; otherwise use issue/contact path
+- **Priority:** MEDIUM-HIGH — active repo, contribution path visible, audience overlap is strong
+
+### 9. GitHub Topics: AI agents
 - **URL:** https://github.com/topics/ai-agents
 - **Scope:** 450+ repos tagged ai-agents
 - **Action:** Check if Ralph Workflow is already tagged; if not, could add topic tag to the Codeberg/GitHub repo description
 - **Priority:** MEDIUM — repo-level tagging improvement
 
-### 7. Any running AIToolsIndex / ToolShelf submission
+### 10. Any running AIToolsIndex / ToolShelf submission
 - **Status:** Previously submitted, in-flight for indexing
 - **Action:** Check indexing status — any live backlinks from these?
 - **Priority:** MEDIUM — measure existing work before new submissions

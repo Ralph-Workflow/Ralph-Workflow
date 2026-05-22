@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T09:48:19.135304",
+  "generated_at": "2026-05-22T11:27:05.341620",
   "targets": [
     {
       "target": "1. ai-for-developers/awesome-ai-coding-tools",
@@ -58,6 +58,36 @@
       "priority": "MEDIUM \u2014 repo-level tagging improvement",
       "subject": "Ralph Workflow for 6. GitHub Topics: AI agents",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_6-github-topics-ai-agents.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "6. QAInsights/awesome-ai-tools",
+      "url": "https://github.com/QAInsights/awesome-ai-tools",
+      "action": "Submit Ralph Workflow through the maintainer\u2019s tool-submission form (do not open a PR)",
+      "priority": "HIGH \u2014 fresh May 2026 curation, clear category fit, alternative intake path",
+      "subject": "Ralph Workflow for 6. QAInsights/awesome-ai-tools",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_6-qainsights-awesome-ai-tools.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "7. 0xWelt/Awesome-Vibe-Coding",
+      "url": "https://github.com/0xWelt/Awesome-Vibe-Coding",
+      "action": "Submit PR adding Ralph Workflow to the CLI / autonomous coding section",
+      "priority": "HIGH \u2014 active repo, 90+ stars, open PR flow visible",
+      "subject": "Ralph Workflow for 7. 0xWelt/Awesome-Vibe-Coding",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "8. taskade/awesome-vibe-coding",
+      "url": "https://github.com/taskade/awesome-vibe-coding",
+      "action": "Review CONTRIBUTING.md, then submit PR if third-party entries are accepted; otherwise use issue/contact path",
+      "priority": "MEDIUM-HIGH \u2014 active repo, contribution path visible, audience overlap is strong",
+      "subject": "Ralph Workflow for 8. taskade/awesome-vibe-coding",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_8-taskade-awesome-vibe-coding.md",
       "status": "prepared",
       "review_due_date": "2026-06-05"
     }

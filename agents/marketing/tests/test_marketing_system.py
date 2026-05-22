@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.marketing import distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting
+from agents.marketing import distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_checker, marketing_loop_independent_verify, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting
 
 
 class GenerateContentTests(unittest.TestCase):
@@ -77,6 +77,24 @@ class MarketingDecisionTests(unittest.TestCase):
         actions_text = "\n".join(item["action"] for item in decisions)
         self.assertTrue(any("comparison pages" in a for a in actions_text.split("\n")))
         self.assertTrue(any("Hermes" in a or "145388" in a for a in actions_text.split("\n")))
+
+    def test_build_weekly_decisions_refuses_zero_signal_content_winner_and_holds_telegraph_when_flat(self):
+        summary = {
+            "technical": {"posts": 2, "views": 0, "avg_views": 0.0},
+            "philosophy": {"posts": 1, "views": 0, "avg_views": 0.0},
+        }
+        seo_trends = {}
+        seo_current = {"onpage_score": "75/100"}
+        actions = []
+        adoption = {
+            "evaluation": {"failing_signals": ["primary_repo_flat"]},
+            "recent_window": {"Codeberg": {"samples": 9, "stars_delta_window": 0, "watchers_delta_window": 0, "forks_delta_window": 0}},
+        }
+        decisions = run.build_weekly_decisions(summary, seo_trends, seo_current, actions, adoption_data=adoption)
+        actions_text = "\n".join(item["action"] for item in decisions)
+        self.assertIn("Do not infer a winning owned-content format yet.", actions_text)
+        self.assertIn("Hold Telegraph at maintenance only; do not treat more owned-content volume as the next best move.", actions_text)
+        self.assertNotIn("Keep publishing technical content.", actions_text)
 
     def test_recent_successful_posts_filters_old_or_failed_posts(self):
         now = datetime(2026, 5, 12, 9, 0, 0)
@@ -384,7 +402,7 @@ class MarketingLoopRunnerTests(unittest.TestCase):
 
 
 class MarketingMomentumWatchdogTests(unittest.TestCase):
-    def test_watchdog_accepts_shipped_curator_replacement_as_live_outcome_repair(self):
+    def _run_watchdog_with_action(self, action_type: str) -> tuple[int, dict]:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             status_dir = tmp / 'logs'
@@ -404,7 +422,7 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
                 'measurement_pending_reasons': ['primary_repo_flat'],
                 'repair_actions': [],
                 'failing_tactics': ['primary_repo_flat_window'],
-                'latest_executed_action': {'type': 'curator_outreach_execution', 'ok': True},
+                'latest_executed_action': {'type': action_type, 'ok': True},
                 'has_failing_tactics': True,
             }), encoding='utf-8')
             (seo_dir / 'reddit_monitor_latest.md').write_text('# report\n\n- **Shortlisted:** 0\n', encoding='utf-8')
@@ -424,10 +442,21 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
                  patch.object(marketing_momentum_watchdog, 'RETRO', retro_path):
                 rc = marketing_momentum_watchdog.main()
 
-            self.assertEqual(rc, 0)
-            payload = json.loads(status_path.read_text(encoding='utf-8'))
-            self.assertNotIn('outcome_system_repair_missing', payload['actions'])
-            self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
+            return rc, json.loads(status_path.read_text(encoding='utf-8'))
+
+    def test_watchdog_accepts_shipped_curator_replacement_as_live_outcome_repair(self):
+        rc, payload = self._run_watchdog_with_action('curator_outreach_execution')
+        self.assertEqual(rc, 0)
+        self.assertNotIn('outcome_system_repair_missing', payload['actions'])
+        self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
+
+    def test_watchdog_rejects_curator_follow_through_as_live_outcome_repair(self):
+        rc, payload = self._run_watchdog_with_action('curator_queue_follow_through')
+        self.assertEqual(rc, 1)
+        self.assertIn('outcome_system_repair_missing', payload['actions'])
+        self.assertIn('measurement_pending_without_repairs', payload['actions'])
+        self.assertNotIn('no_recent_reddit_post', payload['actions'])
+        self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
 
 
 class MarketingWorkflowAuditTests(unittest.TestCase):
@@ -494,7 +523,7 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             content_action = next(item for item in payload['repair_actions'] if item['target_tactic'] == 'content_distribution')
             self.assertIn('Owned content is saturated for now', content_action['action'])
 
-    def test_audit_treats_curator_follow_through_as_shipped_system_repair(self):
+    def test_audit_does_not_treat_curator_follow_through_as_shipped_system_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             out_dir = tmp / 'logs'
@@ -540,7 +569,23 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             payload = json.loads(audit_json.read_text(encoding='utf-8'))
             targets = [item['target_tactic'] for item in payload['repair_actions']]
-            self.assertNotIn('marketing_system_architecture', targets)
+            self.assertIn('marketing_system_architecture', targets)
+
+
+class MarketingLoopCertificationTests(unittest.TestCase):
+    def test_checker_rejects_curator_follow_through_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'curator_queue_follow_through', 'ok': True},
+            'repair_actions': [],
+        }
+        self.assertFalse(marketing_loop_checker.shipped_system_redesign(audit))
+
+    def test_independent_verifier_rejects_curator_follow_through_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'curator_queue_follow_through', 'ok': True},
+            'repair_actions': [],
+        }
+        self.assertFalse(marketing_loop_independent_verify.shipped_system_redesign(audit))
 
 
 class CompetitorAnalysisTests(unittest.TestCase):
