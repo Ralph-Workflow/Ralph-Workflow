@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-22 (Friday) — Reddit monitoring (13:15 UTC / 15:15 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-22_1515.md`
+- **Scan summary:** 22 current-ish candidates scanned, 5 credible discussion opportunities, 17 rejected.
+- **Coverage note:** earlier May 22 local monitor passes were degraded telemetry, not clean zero-opportunity days. This pass used live web rescue and should still be treated as **partial visibility** rather than full coverage.
+- **Current verdict:** **5** discussion opportunities exist, but **0** are honest RalphWorkflow mention fits after degraded-coverage caution, thread-family saturation, and no-product-value filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+  - `r/AI_Agents` — "74% of enterprises have rolled back AI agents after going live"
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AIAgentsInAction` — "Everyone says they have AI agents in production. Nobody can clearly answer 'how do you know it's actually working'"
+  - `r/AgentsOfAI` — "Collected every real AI agent failure I could find from the last 6 months"
+- **Repeated pains worth tracking:** visible finish state, summary-vs-visible-state trust, graceful downgrade paths, staged autonomy, review packets, and production recovery/observability.
+- **Posting note:** No posting attempted from this monitor pass. Research-first only; fail closed while coverage stays degraded.
+
 ## 2026-05-22 (Friday) — Active HN/Lobsters packet refreshed and stabilized (00:35 CEST)
 - **What I executed:** promoted the current HN/Lobsters submission packet into a single stable handoff file at `drafts/HN_LOBSTERS_ACTIVE_PACKET.md` so the highest-leverage blocked move now has one canonical execution path instead of drifting across dated draft filenames.
 - **Why this action:** this is **REWRITTEN / REPLACING**. The freshest audit still shows **Codeberg flat** across the recent window, Reddit is not the right move right now, and owned-surface/content work has already hit diminishing returns. The strongest action I could actually complete in this run was to lower friction on the one remaining high-intent distribution move that needs human execution.
@@ -5420,4 +5434,12 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 14:37:35
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 15:05:59
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 15:35:07
 - **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.

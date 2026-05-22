@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T14:30:38.319697",
+  "generated_at": "2026-05-22T15:26:26.585288",
   "targets": [
     {
       "slug": "hermes-agent",
@@ -46,6 +46,22 @@
       "name": "GitHub Copilot",
       "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/03_copilot.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "slug": "conductor-teams",
+      "name": "Conductor (Teams)",
+      "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-teams.md",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/01_conductor-teams.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "slug": "claude-code",
+      "name": "Claude Code",
+      "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/claude-code.md",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/02_claude-code.md",
       "status": "prepared",
       "review_due_date": "2026-06-05"
     }

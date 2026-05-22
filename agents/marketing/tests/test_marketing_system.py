@@ -301,6 +301,25 @@ class DistributionLaneExecutorTests(unittest.TestCase):
         actionable = [t for t in targets if distribution_lane_executor._is_actionable_curator_target(t)]
         self.assertEqual([t['heading'] for t in actionable], ['1. Real target'])
 
+    def test_latest_research_signals_falls_back_to_reddit_monitor_artifact(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            seo_dir = tmp / 'seo-reports'
+            seo_dir.mkdir()
+            (seo_dir / 'reddit_monitor_latest.md').write_text(
+                'visible review packets\n'
+                'staged autonomy\n'
+                'seeing what the agent actually did\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir):
+                signals = distribution_lane_executor._latest_research_signals()
+
+        self.assertIn('visible review packets', signals)
+        self.assertIn('staged autonomy', signals)
+        self.assertIn('seeing what the agent actually did', signals)
+
     def test_curator_execution_builds_target_specific_artifact_and_log(self):
         now = datetime(2026, 5, 22, 7, 15, 0)
         decision = distribution_lane_selector.LaneDecision(
@@ -358,6 +377,63 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             queue_payload = json.loads(queue_log.read_text(encoding='utf-8'))
             self.assertEqual(queue_payload['targets'][0]['status'], 'prepared')
             self.assertTrue(Path(queue_payload['targets'][0]['artifact_path']).exists())
+
+    def test_curator_execution_reuses_reddit_monitor_signals_when_research_file_missing(self):
+        now = datetime(2026, 5, 22, 7, 15, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='curator_outreach',
+            reason='Owned content is saturated for now; switch to comparison-page and curator distribution prep.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+        market_intelligence = {'comparison_pages': []}
+        targets_md = """# Targets
+
+### 1. ai-for-developers/awesome-ai-coding-tools
+- **URL:** https://github.com/ai-for-developers/awesome-ai-coding-tools
+- **What it is:** Curated list
+- **Why it fits:** Ralph Workflow is an AI coding orchestration tool
+- **Action:** Submit PR adding Ralph Workflow entry
+- **Priority:** HIGH
+"""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            seo_dir = tmp / 'seo-reports'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            seo_dir.mkdir()
+            (seo_dir / 'reddit_monitor_latest.md').write_text(
+                'visible review packets\nseeing what the agent actually did\n',
+                encoding='utf-8',
+            )
+            targets_path = tmp / 'curator_outreach_targets.md'
+            targets_path.write_text(targets_md, encoding='utf-8')
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('Curator outreach active.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, 'TARGETS_PATH', targets_path), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('Current demand phrases reused', text)
+            self.assertIn('visible review packets', text)
+            self.assertIn('seeing what the agent actually did', text)
+            self.assertIn('reddit_monitor_latest.md', text)
 
     def test_curator_execution_advances_to_unprepared_targets_instead_of_regenerating_same_queue(self):
         now = datetime(2026, 5, 23, 7, 15, 0)

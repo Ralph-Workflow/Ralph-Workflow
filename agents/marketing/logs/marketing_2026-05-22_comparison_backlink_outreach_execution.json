@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T14:30:38.319697",
+  "timestamp": "2026-05-22T15:26:26.585288",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "comparison_backlink_outreach_execution",
@@ -16,9 +16,8 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
     "targets_prepared": [
-      "Conductor OSS",
-      "Cursor",
-      "GitHub Copilot"
+      "Conductor (Teams)",
+      "Claude Code"
     ]
   },
   "result": {
