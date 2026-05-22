@@ -38,9 +38,9 @@ from ralph.mcp.artifacts.smoke_test_result import (
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
+from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -92,12 +92,6 @@ class SmokeRunResult:
     artifact_submitted: bool
     meaningful_output_lines: list[str]
     errors: list[str]
-
-
-def _submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
-        return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
-    return SUBMIT_ARTIFACT_TOOL
 
 
 def _build_smoke_prompt(output_relpath: str, *, submit_artifact_tool_name: str) -> str:
@@ -448,7 +442,7 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
             f"Smoke test agent '{_INTERACTIVE_AGENT}' is unavailable in the registry"
         )
 
-    submit_artifact_tool_name = _submit_artifact_tool_name_for_transport(agent_config.transport)
+    submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
     prompt_file.write_text(
         _build_smoke_prompt(
             _SMOKE_OUTPUT_FILE.as_posix(),

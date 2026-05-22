@@ -34,7 +34,9 @@ fails when it tries to invoke an agent.
 **Fix:** Install the agent binary and ensure it is on your `PATH`:
 
 - **Claude Code**: see <https://docs.claude.com/claude-code>
+- **Codex CLI**: see <https://platform.openai.com/docs/codex>
 - **opencode**: see <https://opencode.ai>
+- **Google Anti Gravity (agy)**: see the Google Anti Gravity documentation for installation instructions
 
 Verify after installation:
 

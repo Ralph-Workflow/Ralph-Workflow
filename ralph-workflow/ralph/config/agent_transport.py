@@ -12,6 +12,7 @@ class AgentTransport(StrEnum):
         CODEX: Codex CLI compatible invocation/MCP transport.
         OPENCODE: OpenCode compatible invocation/MCP transport.
         GENERIC: No special transport support.
+        AGY: Google Anti Gravity compatible invocation/MCP transport.
     """
 
     CLAUDE = "claude"
@@ -19,3 +20,4 @@ class AgentTransport(StrEnum):
     CODEX = "codex"
     OPENCODE = "opencode"
     GENERIC = "generic"
+    AGY = "agy"

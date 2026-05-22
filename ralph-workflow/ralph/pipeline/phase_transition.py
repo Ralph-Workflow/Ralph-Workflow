@@ -114,7 +114,7 @@ def _build_phase_entry_model_from_state(
     phase_def = pipeline_policy.phases.get(phase)
     if phase_def is not None:
         phase_role = phase_def.role
-        if phase_def.loop_policy is not None:
+        if phase_def.role == "analysis" and phase_def.loop_policy is not None:
             field = phase_def.loop_policy.iteration_state_field
             inner_analysis = state.get_loop_iteration(field) + 1
             inner_analysis_cap = _resolve_analysis_cap(field, state, pipeline_policy)

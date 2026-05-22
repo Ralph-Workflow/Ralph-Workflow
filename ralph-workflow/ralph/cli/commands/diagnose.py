@@ -20,6 +20,7 @@ from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
 from ralph.git.operations import find_repo_root, is_repo_clean
 from ralph.mcp.session_plan import resolve_effective_session_mcp_plan
+from ralph.mcp.transport.agy import load_existing_agy_upstream_servers
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.common import mcp_toml_as_upstreams
 from ralph.mcp.upstream.agent_probe import probe_agent_transports
@@ -207,8 +208,10 @@ def build_next_steps(
     if agent_missing:
         steps.append(
             "Install at least one supported agent: "
-            "Claude Code (https://docs.claude.com/claude-code) "
-            "or OpenCode (https://opencode.ai)."
+            "Claude Code (https://docs.claude.com/claude-code), "
+            "Codex CLI (https://codex.openai.com), "
+            "OpenCode (https://opencode.ai), "
+            "or Google Anti Gravity."
         )
 
     if not validation_ok:
@@ -548,6 +551,7 @@ def _print_agent_transport_compatibility(
     probe_table.add_column("Claude")
     probe_table.add_column("Codex")
     probe_table.add_column("OpenCode")
+    probe_table.add_column("AGY")
 
     probes = probe_agent_transports(healthy_servers, workspace_path=workspace_root)
     by_server: dict[str, dict[str, Text]] = {}
@@ -567,6 +571,7 @@ def _print_agent_transport_compatibility(
             cells.get("claude", Text("-")),
             cells.get("codex", Text("-")),
             cells.get("opencode", Text("-")),
+            cells.get("agy", Text("-")),
         )
 
     console.print(probe_table)
@@ -575,7 +580,10 @@ def _print_agent_transport_compatibility(
 def _print_effective_session_mcp_inventory(console: Console, workspace_root: Path) -> None:
     effective_mcp = resolve_effective_session_mcp_plan(
         workspace_root,
-        agent_upstream_servers=load_existing_claude_upstream_servers(workspace_root),
+        agent_upstream_servers=(
+            *load_existing_claude_upstream_servers(workspace_root),
+            *load_existing_agy_upstream_servers(workspace_root),
+        ),
     )
     inventory_table = Table(title="Effective Session MCP Inventory")
     inventory_table.add_column("Server", style="theme.cat.meta")

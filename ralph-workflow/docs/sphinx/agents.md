@@ -6,6 +6,10 @@ orphan: true
 
 Ralph Workflow can supervise multiple coding agents, but the contract stays the same: the workflow is built for **unattended** orchestration that still comes back reviewable in the morning.
 
+## Supported agents
+
+Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, and **Google Anti Gravity** as orchestration targets. Each runs under the same unattended workflow contract described on this page. For help choosing, see [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
+
 ## What this page is for
 
 This page explains how Ralph Workflow orchestrates agent sessions, what completion means, and why interactive and headless transports make different tradeoffs.

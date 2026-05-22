@@ -378,6 +378,48 @@ class TestValidatePolicyCompletenessNewRules:
         with pytest.raises(PolicyValidationError, match="invalid iteration field"):
             validate_policy_completeness(bundle)
 
+    def test_execution_role_rejects_loop_policy(self) -> None:
+        agents = self._minimal_agents(["development", "complete"])
+        pipeline = PipelinePolicy(
+            phases={
+                "development": PhaseDefinition(
+                    drain="development",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="complete"),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_iteration"),
+                ),
+                "failed_terminal": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="failure",
+                    transitions=PhaseTransition(on_success="failed_terminal"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_loopback="complete",
+                    ),
+                ),
+            },
+            loop_counters={"development_iteration": LoopCounterConfig(default_max=3)},
+            entry_phase="development",
+            terminal_phase="complete",
+        )
+        bundle = PolicyBundle(
+            agents=agents,
+            pipeline=pipeline,
+            artifacts=ArtifactsPolicy(artifacts={}),
+        )
+
+        with pytest.raises(
+            PolicyValidationError,
+            match="loop_policy is only valid for role='analysis' or role='commit_cleanup'",
+        ):
+            validate_policy_completeness(bundle)
+
     def test_commit_policy_loop_resets_valid_field_passes(self) -> None:
         """commit_policy.loop_resets referencing a valid iteration field passes validation."""
         agents = self._minimal_agents(["development_analysis", "development_commit", "complete"])

@@ -11,6 +11,7 @@ class PipelineEvent(StrEnum):
     AGENT_RETRY = "agent_retry"
     ANALYSIS_SUCCESS = "analysis_success"
     ANALYSIS_LOOPBACK = "analysis_loopback"
+    PHASE_LOOPBACK = "phase_loopback"
     REVIEW_CLEAN = "review_clean"
     REVIEW_ISSUES_FOUND = "review_issues_found"
     FIX_SUCCESS = "fix_success"

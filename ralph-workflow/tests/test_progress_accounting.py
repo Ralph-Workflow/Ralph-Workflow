@@ -66,6 +66,7 @@ def _progress_policy() -> PipelinePolicy:
             ),
             "development_analysis": PhaseDefinition(
                 drain="development_analysis",
+                role="analysis",
                 transitions=PhaseTransition(
                     on_success="development_commit",
                     on_loopback="development",
@@ -87,6 +88,7 @@ def _progress_policy() -> PipelinePolicy:
             ),
             "review_analysis": PhaseDefinition(
                 drain="review_analysis",
+                role="analysis",
                 transitions=PhaseTransition(
                     on_success="review_commit",
                     on_loopback="fix",

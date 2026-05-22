@@ -276,6 +276,43 @@ def _build_codex_command(
     return cmd
 
 
+def _build_agy_command(
+    config: AgentConfig,
+    prompt_file: str,
+    *,
+    options: _BuildCommandOptions,
+) -> list[str]:
+    """Build the AGY command line.
+
+    AGY uses: agy --print <prompt> [--dangerously-skip-permissions] [--conversation <session_id>]
+    """
+    cmd = config.cmd.split()
+
+    # Add print flag for non-interactive output
+    if config.print_flag:
+        cmd.append(config.print_flag)
+
+    prompt_text = _resolve_prompt_path(prompt_file, options.workspace_path).read_text(
+        encoding="utf-8"
+    )
+    artifacts = _read_multimodal_sidecar(prompt_file, options.workspace_path)
+    if artifacts:
+        prompt_text += _build_multimodal_appendix(artifacts)
+    cmd.append(prompt_text)
+
+    # Add yolo/permissions flag if present
+    cmd.extend(_split_optional_flag(config.yolo_flag))
+
+    # Add session continuation flag if session_id is present
+    if config.session_flag and options.session_id:
+        cmd.extend(config.session_flag.format(options.session_id).split())
+
+    if options.verbose and config.verbose_flag:
+        cmd.append(config.verbose_flag)
+
+    return cmd
+
+
 def _build_claude_interactive_command(
     config: AgentConfig,
     prompt_file: str,
@@ -345,6 +382,13 @@ def _build_command(
             options=build_options,
         )
 
+    if transport == AgentTransport.AGY:
+        return _build_agy_command(
+            config,
+            prompt_file,
+            options=build_options,
+        )
+
     cmd = config.cmd.split()
     if transport == AgentTransport.CLAUDE and config.output_flag is not None:
         cmd.append(config.output_flag)
@@ -385,6 +429,7 @@ def _command_for_log(config: AgentConfig, cmd: list[str], prompt_file: str) -> s
             AgentTransport.CODEX,
             AgentTransport.CLAUDE,
             AgentTransport.CLAUDE_INTERACTIVE,
+            AgentTransport.AGY,
         }
         and logged_cmd
     ):

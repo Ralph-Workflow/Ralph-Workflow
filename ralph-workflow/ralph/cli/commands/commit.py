@@ -49,7 +49,7 @@ from ralph.mcp.artifacts.commit_message import (
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
+from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 from ralph.prompts.commit import (
@@ -57,6 +57,7 @@ from ralph.prompts.commit import (
     prompt_commit_message,
     prompt_commit_message_for_opencode,
 )
+from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
@@ -311,16 +312,10 @@ def _commit_submit_artifact_tool_names(
         agent = registry.get(agent_name)
         if agent is None:
             continue
-        tool_name = _submit_artifact_tool_name_for_transport(agent.transport)
+        tool_name = submit_artifact_tool_name_for_transport(agent.transport)
         if tool_name not in names:
             names.append(tool_name)
     return tuple(names) or (SUBMIT_ARTIFACT_TOOL,)
-
-
-def _submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
-        return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
-    return SUBMIT_ARTIFACT_TOOL
 
 
 def _is_opencode_agent(agent: AgentConfig | None) -> bool:
@@ -929,5 +924,4 @@ def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
 start_commit_bridge = _start_commit_bridge
 write_commit_prompt_file = _write_commit_prompt_file
 working_tree_diff = _working_tree_diff
-submit_artifact_tool_name_for_transport = _submit_artifact_tool_name_for_transport
 render_commit_agent_activity_line = _render_commit_agent_activity_line

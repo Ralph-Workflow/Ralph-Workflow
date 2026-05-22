@@ -253,3 +253,19 @@ def _validate_commit_cleanup_phase(
                 f"phases.{phase_name}.loop_policy.iteration_state_field: "
                 f"'{field}' is not declared in pipeline.loop_counters."
             )
+
+
+def _validate_loop_policy_role(
+    phase_name: str,
+    phase_def: object,
+    errors: list[str],
+) -> None:
+    if not isinstance(phase_def, PhaseDefinition):
+        return
+    if phase_def.loop_policy is None:
+        return
+    if phase_def.role not in ("analysis", "commit_cleanup"):
+        errors.append(
+            f"phases.{phase_name}: loop_policy is only valid for role='analysis' "
+            f"or role='commit_cleanup' (got role='{phase_def.role}')"
+        )

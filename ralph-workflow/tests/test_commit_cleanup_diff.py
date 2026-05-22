@@ -24,13 +24,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_commit_cleanup_diff_includes_untracked_files(tmp_git_repo: Path) -> None:
-    """Untracked files appear in the cleanup diff helper output."""
+def test_commit_cleanup_diff_excludes_untracked_files(tmp_git_repo: Path) -> None:
+    """Untracked files do not appear in the cleanup diff helper output."""
     from ralph.prompts.materialize import commit_cleanup_diff
 
     (tmp_git_repo / "accidental_binary.exe").write_bytes(b"\x00MZ")
     diff = commit_cleanup_diff(tmp_git_repo)
-    assert "accidental_binary.exe" in diff
+    assert "accidental_binary.exe" not in diff
 
 
 def test_commit_cleanup_diff_fallback_on_non_repo_path(tmp_path: Path) -> None:
@@ -41,8 +41,8 @@ def test_commit_cleanup_diff_fallback_on_non_repo_path(tmp_path: Path) -> None:
     assert diff == "(no diff available)"
 
 
-def test_commit_cleanup_prompt_includes_untracked_files(tmp_git_repo: Path) -> None:
-    """Rendered cleanup prompt contains untracked filename."""
+def test_commit_cleanup_prompt_excludes_untracked_files(tmp_git_repo: Path) -> None:
+    """Rendered cleanup prompt does not list untracked files as commit candidates."""
     (tmp_git_repo / "accidental_binary.exe").write_bytes(b"\x00MZ")
     p = PipelinePolicy(
         phases={
@@ -90,4 +90,4 @@ def test_commit_cleanup_prompt_includes_untracked_files(tmp_git_repo: Path) -> N
             ),
         )
     )
-    assert "accidental_binary.exe" in rendered
+    assert "accidental_binary.exe" not in rendered

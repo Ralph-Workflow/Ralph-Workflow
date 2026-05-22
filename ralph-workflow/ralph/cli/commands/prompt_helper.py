@@ -38,13 +38,12 @@ from rich.text import Text
 from ralph.agents.invoke import OpenCodeResumableExitError
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.prompt_helper_prompt import build_prompt_helper_prompt
-from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.product_spec import (
     read_product_spec_artifact,
     render_product_spec_as_prompt,
 )
 from ralph.mcp.protocol.capability_mapping import Capability
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
+from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.fs import FsWorkspace
 
 _session_runtime_module = import_module("ralph.session_runtime")
@@ -95,13 +94,6 @@ _EXISTING_PROMPT_ACTION_MAP: dict[str, ExistingPromptAction] = {
     "Replace it": _EXISTING_PROMPT_REPLACE,
     "Refine it": _EXISTING_PROMPT_REFINE,
 }
-
-
-def _submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
-    """Return the submit artifact tool name for the given agent transport."""
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
-        return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
-    return SUBMIT_ARTIFACT_TOOL
 
 
 def _build_review_prompt() -> list[str]:
@@ -428,7 +420,7 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
         )
         raise RuntimeError(msg)
 
-    submit_artifact_tool_name = _submit_artifact_tool_name_for_transport(agent_config.transport)
+    submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
     existing_prompt_context = _existing_prompt_context_for_intake(workspace_root)
 
     with ManagedAgentSessionRuntimeType.open(

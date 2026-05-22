@@ -717,6 +717,13 @@ ralph.pipeline.handoffs
    :members:
    :show-inheritance:
 
+ralph.pipeline.loopback
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.loopback
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.phase_entry_cleaner
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1845,6 +1852,13 @@ ralph.mcp.transport.opencode
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.transport.opencode
+   :members:
+   :show-inheritance:
+
+ralph.mcp.transport.agy
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.transport.agy
    :members:
    :show-inheritance:
 

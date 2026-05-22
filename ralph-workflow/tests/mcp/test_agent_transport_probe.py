@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import tomllib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import RetryablePreflightError
+from ralph.mcp.transport.agy import agy_mcp_config as real_agy_mcp_config
 from ralph.mcp.transport.claude import claude_mcp_config as real_claude_config
 from ralph.mcp.transport.opencode import (
     build_opencode_provider_config as real_opencode,
@@ -154,6 +155,46 @@ def test_claude_interactive_in_default_probe_transports() -> None:
     assert AgentTransport.CLAUDE_INTERACTIVE in DEFAULT_TRANSPORTS
 
 
+def test_agy_in_default_probe_transports() -> None:
+    assert AgentTransport.AGY in DEFAULT_TRANSPORTS
+
+
+def test_probe_emits_agy_config_with_server_url_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AGY probe synthesizes MCP config with serverUrl (not url) for the Ralph entry."""
+    server = _http_server()
+    captured_blobs: list[tuple[str, dict[str, object]]] = []
+
+    def spy_agy_mcp_config(endpoint: str) -> str:
+        blob = real_agy_mcp_config(endpoint)
+        payload = cast("dict[str, object]", json.loads(blob))
+        captured_blobs.append((endpoint, payload))
+        return blob
+
+    monkeypatch.setattr(
+        "ralph.mcp.transport.agy.agy_mcp_config",
+        spy_agy_mcp_config,
+    )
+    captured = _stub_http_handshake_pass(monkeypatch)
+
+    reports = probe_agent_transports(
+        [server], transports=(AgentTransport.AGY,), workspace_path=None
+    )
+
+    assert len(reports) == 1
+    assert reports[0].ok is True
+    assert reports[0].transport == AgentTransport.AGY
+    assert captured == [server.url]
+    assert len(captured_blobs) == 1
+    assert captured_blobs[0][0] == server.url
+    parsed_blob = captured_blobs[0][1]
+    mcp_servers = cast("dict[str, object]", parsed_blob["mcpServers"])
+    ralph_entry = cast("dict[str, object]", mcp_servers["ralph"])
+    assert "serverUrl" in ralph_entry
+    assert ralph_entry["serverUrl"] == server.url
+
+
 def test_probe_codex_reuses_existing_native_server_without_duplicate_table(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -207,13 +248,19 @@ def test_probe_reports_failure_when_server_unreachable(
 
     reports = probe_agent_transports(
         [server],
-        transports=(AgentTransport.CLAUDE, AgentTransport.CODEX, AgentTransport.OPENCODE),
+        transports=(
+            AgentTransport.CLAUDE,
+            AgentTransport.CODEX,
+            AgentTransport.OPENCODE,
+            AgentTransport.AGY,
+        ),
         workspace_path=tmp_path,
     )
     statuses = {(r.transport, r.ok) for r in reports}
     assert (AgentTransport.CLAUDE, False) in statuses
     assert (AgentTransport.CODEX, False) in statuses
     assert (AgentTransport.OPENCODE, False) in statuses
+    assert (AgentTransport.AGY, False) in statuses
 
 
 def test_probe_skips_stdio_for_claude(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -233,5 +280,26 @@ def test_probe_skips_stdio_for_claude(monkeypatch: pytest.MonkeyPatch) -> None:
             ok=True,
             error=None,
             note="skipped (stdio proxied by Claude CLI)",
+        ),
+    )
+
+
+def test_probe_skips_stdio_for_agy(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _stdio_server(name="local-agy")
+    monkeypatch.setattr(
+        "ralph.mcp.upstream.agent_probe.http_handshake",
+        lambda endpoint: pytest.fail("stdio agy probe should not call http handshake"),
+    )
+
+    reports = probe_agent_transports(
+        [server], transports=(AgentTransport.AGY,), workspace_path=None
+    )
+    assert reports == (
+        AgentProbeReport(
+            transport=AgentTransport.AGY,
+            server_name="local-agy",
+            ok=True,
+            error=None,
+            note="skipped (stdio proxied by AGY CLI)",
         ),
     )

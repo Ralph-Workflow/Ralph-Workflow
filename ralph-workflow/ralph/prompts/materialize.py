@@ -1,4 +1,5 @@
 """Policy-selected prompt materialization."""
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,7 @@ from ralph.mcp.artifacts.history import (
     history_index_path,
 )
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_ARTIFACT_TYPE, PLAN_DRAFT_PATH
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
+from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
 from ralph.phases.required_artifacts import (
     resolve_required_artifact,
     retry_hint_path,
@@ -70,6 +71,7 @@ __all__ = [
     "collect_media_entries_for_phase",
     "materialize_prompt_for_phase",
     "prompt_file_for_phase",
+    "submit_artifact_tool_name_for_transport",
     "tool_name_prefix_for_transport",
 ]
 if TYPE_CHECKING:
@@ -83,14 +85,13 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class PromptPhaseOptions:
     """Optional inputs for prompt materialization with sensible defaults."""
+
     artifacts_policy: ArtifactsPolicy | None = None
     worker_namespace: Path | None = None
     previous_phase: str | None = None
     resume_existing_phase: bool = False
     multimodal_entries: list[MultimodalSidecarEntry] | None = None
     work_unit: WorkUnit | None = None
-
-
 def __getattr__(name: str) -> object:
     if name == "MultimodalSidecarEntry":
         from ralph.prompts._multimodal_sidecar_entry import MultimodalSidecarEntry as _Entry
@@ -152,8 +153,6 @@ def materialize_prompt_for_phase(
             worker_namespace=opts.worker_namespace,
         )
     return path
-
-
 def _should_wrap_worker_prompt(
     phase: str,
     pipeline_policy: PipelinePolicy,
@@ -255,10 +254,14 @@ def _render_prompt_for_phase(
     # Commit-cleanup prompt: commit_cleanup role
     if phase_role == "commit_cleanup":
         return render_commit_cleanup_prompt(
-            phase=phase, workspace_root=workspace_root,
-            worker_namespace=worker_namespace, prompt_content=prompt_content,
-            current_prompt_path=current_prompt_path, template_name=template_name,
-            tmpl_ctx=tmpl_ctx, session_caps=session_caps,
+            phase=phase,
+            workspace_root=workspace_root,
+            worker_namespace=worker_namespace,
+            prompt_content=prompt_content,
+            current_prompt_path=current_prompt_path,
+            template_name=template_name,
+            tmpl_ctx=tmpl_ctx,
+            session_caps=session_caps,
         )
     plan_content, plan_path = _resolve_required_plan_handoff(
         workspace,
@@ -470,9 +473,7 @@ def _render_template_based_prompt(
     variables.update({k: v for k, v in path_vars.items() if v})
     if phase_def is not None and phase_def.skip_invocation:
         variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
-    variables.update(_current_prompt_variables(
-        prompt_content, str(current_prompt_path)
-    ))
+    variables.update(_current_prompt_variables(prompt_content, str(current_prompt_path)))
     variables["LAST_RETRY_ERROR"] = last_retry_error
     return render_template(
         template,
@@ -503,11 +504,14 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
         },
         context.partials,
     )
+def submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
+    """Return the submit-artifact tool name for the given transport."""
+    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
+        return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
+    return SUBMIT_ARTIFACT_TOOL
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
     """Return the tool name prefix for the given agent transport."""
-    # Prompt templates should talk about the same tool names the current agent
-    # transport will actually see. Claude gets namespaced MCP tools; other
-    # transports continue to see Ralph's bare tool names.
+    # Prompt templates should use the same MCP tool names the active transport sees.
     if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         return claude_tool_name_prefix()
     return ""
@@ -578,22 +582,16 @@ def _prepare_planning_prompt_context(
         pipeline_policy=pipeline_policy,
         resume_existing_phase=resume_existing_phase,
     )
-    # Clear fresh planning context only for true fresh entry.
-    # Analysis loopbacks, same-phase recoverable retries, and resumed
-    # planning passes must preserve the current plan + history so the
-    # planner can revise instead of restart.
+    # Preserve planning context for loopbacks and resumed passes.
     if not preserve_planning_context:
-        # Clear drain artifacts for fresh planning entry.
-        # This handles the direct materialization path where runner-level clearing
-        # via clear_phase_entry_drains does not fire.
-        # Use the phase-agnostic is_fresh_phase_entry to determine if this is
-        # a genuine fresh entry before clearing.
+        # Clear drain artifacts for a genuine fresh planning entry.
         from ralph.pipeline.phase_entry_cleaner import (
             clear_phase_entry_drains as _clear_phase_entry_drains,
         )
         from ralph.pipeline.phase_entry_cleaner import (
             is_fresh_phase_entry,
         )
+
         if (
             is_fresh_phase_entry(phase, previous_phase, pipeline_policy)
             and artifacts_policy is not None
@@ -953,6 +951,7 @@ def _commit_phase_diff(workspace_root: Path) -> str:
     combined = (diff + "\n\n## Untracked files (staged by git add -A):\n" + untracked).strip()
     return combined or "(no diff available)"
 def commit_cleanup_diff(workspace_root: Path) -> str:
+<<<<<<< HEAD
     """Return diff for commit cleanup including untracked files."""
     try:
         repo = Repo(workspace_root)
@@ -964,3 +963,11 @@ def commit_cleanup_diff(workspace_root: Path) -> str:
         return base or "(no diff available)"
     section = "\n\n## Untracked files (will be staged by git add -A):\n" + untracked
     return (base + section).strip() or "(no diff available)"
+=======
+    """Return only the pending commit diff for commit cleanup.
+
+    Commit cleanup must reason about content that is actually part of the pending
+    commit, not arbitrary untracked workspace files that happen to exist nearby.
+    """
+    return _pending_diff(workspace_root)
+>>>>>>> main

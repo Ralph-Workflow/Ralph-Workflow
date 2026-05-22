@@ -216,7 +216,7 @@ ralph --check-mcp
 
 ## Agent compatibility validation
 
-After every upstream MCP server passes validation, Ralph Workflow synthesizes the per-agent transport wiring it would emit for Claude, Codex, and OpenCode and re-runs the same MCP handshake against each backend. This guarantees that what Ralph Workflow hands to each agent's MCP client can actually reach the same server. If any agent transport probe fails in strict mode, Ralph Workflow exits with code 1 and identifies the (server, transport) pair that failed.
+After every upstream MCP server passes validation, Ralph Workflow synthesizes the per-agent transport wiring it would emit for Claude, Codex, OpenCode, and Google Anti Gravity and re-runs the same MCP handshake against each backend. This guarantees that what Ralph Workflow hands to each agent's MCP client can actually reach the same server. If any agent transport probe fails in strict mode, Ralph Workflow exits with code 1 and identifies the (server, transport) pair that failed.
 
 The probe never spawns the agent binaries themselves — the MCP JSON-RPC protocol is identical across all supported agents (`2024-11-05`), so Ralph Workflow's own client is a faithful reference.
 
@@ -298,6 +298,7 @@ Agent Transport Compatibility
   angular-cli × CLAUDE    ok
   angular-cli × CODEX     ok
   angular-cli × OPENCODE  ok
+  angular-cli × AGY       ok
 ```
 
 ## Worked example: Docs MCP server on localhost:6280
@@ -403,6 +404,7 @@ Agent Transport Compatibility
   crawl4ai × CLAUDE    ok
   crawl4ai × CODEX     ok
   crawl4ai × OPENCODE  ok
+  crawl4ai × AGY       ok
 ```
 
 If a phase fails to expose `ralph_upstream__crawl4ai__*` tools, run `ralph --diagnose` first — this is the regression failure mode that `tests/integration/test_web_access_phase_visibility.py` guards against.

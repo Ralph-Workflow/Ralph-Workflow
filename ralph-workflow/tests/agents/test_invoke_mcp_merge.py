@@ -1,4 +1,4 @@
-"""Tests for mcp.toml merge into upstream env-var flow across all three agent paths."""
+"""Tests for mcp.toml merge into upstream env-var flow across all four agent paths."""
 
 from __future__ import annotations
 
@@ -359,6 +359,36 @@ def test_claude_collision_mcp_toml_overrides_native_server(
     upstreams = load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV])
     winning = next(s for s in upstreams if s.name == "toml-injected")
     assert winning.url == "http://toml.example/mcp"
+
+
+def test_agy_upstream_env_var_includes_mcp_toml_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    seen_env: list[dict[str, str]] = []
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
+    monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.load_existing_agy_upstream_servers",
+        lambda workspace_path: (),
+    )
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    upstreams = load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV])
+    assert any(s.name == "toml-injected" for s in upstreams)
 
 
 def test_opencode_non_colliding_native_server_preserved(
