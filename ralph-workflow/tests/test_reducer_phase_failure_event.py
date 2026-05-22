@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from ralph.pipeline.events import (
     PhaseFailureEvent,
+    PipelineEvent,
 )
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -22,6 +23,8 @@ from ralph.policy.models import (
     PostCommitRouteWhen,
     RecoveryPolicy,
 )
+from ralph.recovery.classifier import FailureCategory
+from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 
 DEVELOPMENT_ANALYSIS_TWO_RUN_CAP = 2
 
@@ -495,3 +498,57 @@ class TestPhaseFailureEvent:
         assert new_state.phase == "failed_terminal"
         assert new_state.recovery_epoch == 1
         assert effects == []
+
+    def test_commit_failure_does_not_reuse_stale_last_error(self) -> None:
+        policy = PipelinePolicy(
+            phases={
+                "development_final_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "failed_terminal": PhaseDefinition(
+                    drain="failed_terminal",
+                    role="terminal",
+                    terminal_outcome="failure",
+                    transitions=PhaseTransition(on_success="failed_terminal"),
+                ),
+            },
+            entry_phase="development_final_commit",
+            terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="failed_terminal"),
+        )
+        state = PipelineState(
+            phase="development_final_commit",
+            last_error="Artifact validation fault: stale proof mismatch",
+        )
+
+        new_state, effects = _reduce(state, PipelineEvent.COMMIT_FAILURE, policy)
+
+        assert new_state.phase == "failed_terminal"
+        assert new_state.last_error == "development_final_commit: Commit failed"
+        assert effects == []
+
+    def test_phase_failure_with_recovery_uses_actual_failure_category_prefix(self) -> None:
+        state = PipelineState(
+            phase="development",
+            phase_chains={
+                "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
+            },
+        )
+        event = PhaseFailureEvent(
+            phase="development",
+            reason="something unclear happened",
+            recoverable=True,
+            failure_category=FailureCategory.AMBIGUOUS,
+        )
+        controller = RecoveryController(options=RecoveryControllerOptions(cycle_cap=10))
+
+        new_state, effects = reducer_reduce(state, event, recovery=controller)
+
+        assert new_state.phase == "development"
+        assert effects == []
+        assert new_state.last_failure_category == FailureCategory.AMBIGUOUS
+        assert new_state.last_error is not None
+        assert "Ambiguous fault" in new_state.last_error
+        assert "Artifact validation fault" not in new_state.last_error
