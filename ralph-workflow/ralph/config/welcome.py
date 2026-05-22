@@ -58,7 +58,7 @@ def _build_agent_availability_content(
                 return content
         except Exception:
             pass
-    content.append(Text("Ensure your AI agents are on PATH (e.g., `claude`, `opencode`)"))
+    content.append(Text("Ensure your AI agents are on PATH (e.g., `claude`, `opencode`, `agy`)"))
     return content
 
 

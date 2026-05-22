@@ -831,6 +831,73 @@ def test_agy_command_inlines_prompt_content_not_file_path(tmp_path: Path) -> Non
     assert str(prompt_file) not in cmd
 
 
+def test_agy_command_includes_print_flag(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        transport=AgentTransport.AGY,
+        print_flag="--print",
+    )
+
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
+
+    assert "--print" in cmd
+    assert cmd.index("--print") < len(cmd) - 1
+    assert cmd[-1] == prompt_text
+
+
+def test_agy_command_appends_yolo_flag(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        transport=AgentTransport.AGY,
+        yolo_flag="--dangerously-skip-permissions",
+    )
+
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
+
+    assert "--dangerously-skip-permissions" in cmd
+
+
+def test_agy_command_appends_session_flag(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        transport=AgentTransport.AGY,
+        session_flag="--conversation {}",
+    )
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(session_id="test-session-123"),
+    )
+
+    assert "--conversation" in cmd
+    assert "test-session-123" in cmd
+
+
+def test_agy_command_appends_verbose_flag(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        transport=AgentTransport.AGY,
+        verbose_flag="--verbose",
+    )
+
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions(verbose=True))
+
+    assert "--verbose" in cmd
+
+
 def test_agy_command_appends_multimodal_sidecar_content(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"

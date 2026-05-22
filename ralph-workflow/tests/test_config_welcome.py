@@ -15,6 +15,7 @@ from ralph.config.models import UnifiedConfig
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
+from ralph.onboarding import welcome_panel_next_steps
 
 if TYPE_CHECKING:
     import pytest
@@ -199,6 +200,30 @@ def test_emit_first_run_welcome_noops_when_no_registry(
     output = console.getvalue()
     assert "Ralph Workflow first-run setup" in output
     assert "PATH" in output
+
+
+def test_welcome_fallback_path_message_includes_agy() -> None:
+    """Fallback PATH message should mention AGY alongside other supported agents."""
+    buf, rich_console = _make_console()
+    results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
+    ctx = _make_display_context_for_console(rich_console)
+
+    emit_first_run_welcome(rich_console, results, agent_registry=None, display_context=ctx)
+
+    output = buf.getvalue()
+    assert "agy" in output.lower(), (
+        f"Expected AGY to appear in fallback PATH message output, got: {output!r}"
+    )
+    _assert_no_raw_markup(output)
+
+
+def test_welcome_panel_next_steps_install_step_includes_agy() -> None:
+    """Welcome-panel next steps should mention AGY in the install step."""
+    output = "\n".join(welcome_panel_next_steps())
+
+    assert "agy" in output.lower(), (
+        f"Expected AGY to appear in welcome_panel_next_steps output, got: {output!r}"
+    )
 
 
 def test_emit_first_run_welcome_banner_printed_before_panel() -> None:
