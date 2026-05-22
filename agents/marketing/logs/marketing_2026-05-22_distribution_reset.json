@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T19:03:11.647808",
+  "timestamp": "2026-05-22T20:54:36.728360",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -20,6 +20,7 @@
       "2 owned-content posts already shipped in the last 36 hours.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "11 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "11 prepared curator targets still need a canonical execution handoff packet.",
       "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity."
     ]

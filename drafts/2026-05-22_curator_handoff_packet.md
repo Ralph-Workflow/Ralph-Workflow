@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Execution Handoff Packet
-Generated: 2026-05-22T19:26:13
+Generated: 2026-05-22T20:58:18
 
 ## Why this exists now
 - Prepared curator targets already exist, but the loop kept rediscovering/resetting instead of consolidating the best ready-to-execute items.
@@ -60,3 +60,6 @@ Generated: 2026-05-22T19:26:13
 ## Measurement contract
 - Expected outcome: at least one executed PR, inclusion request, or maintainer contact against the prepared queue
 - Review window: next 7 days for execution, 14 days for response, 30 days for live backlink/listing evidence
+
+## Comparison backlink execution packet
+- /home/mistlight/.openclaw/workspace/drafts/2026-05-22_comparison_backlink_handoff_packet.md

@@ -37,7 +37,8 @@
     "quora",
     "indiehackers",
     "github-readme",
-    "thenextai"
+    "thenextai",
+    "aigearbase"
   ],
   "results": [
     {
@@ -1040,6 +1041,42 @@
         "server_error_detected": false
       },
       "note": "confirmed autonomous submit lane: free listing POST to the public Google Script endpoint succeeded with HTTP 200 on 2026-05-22"
+    },
+    {
+      "name": "aigearbase",
+      "url": "https://aigearbase.com/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-22T18:17:27Z",
+      "http_code": "200",
+      "final_url": "https://aigearbase.com/submit",
+      "status": "accessible",
+      "note": "confirmed autonomous submit lane: public /api/submit endpoint with simple math captcha succeeded with HTTP 200 on 2026-05-22",
+      "source_probe": {
+        "probe_status": "ok",
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_captcha_markers": false,
+        "api_candidates": [
+          "https://aigearbase.com/api/submit"
+        ]
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://aigearbase.com/api/submit",
+        "post_code": 200,
+        "public_submit_detected": true,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      },
+      "submission_status": "success",
+      "submission_note": "POST to /api/submit returned 200",
+      "submitted_data": {
+        "name": "Ralph Workflow",
+        "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+        "category_id": 15,
+        "pricing_type": "open_source"
+      }
     }
   ],
   "working": [
@@ -1064,6 +1101,12 @@
     {
       "name": "thenextai",
       "url": "https://www.thenextai.com/submit-ai-tool/",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "aigearbase",
+      "url": "https://aigearbase.com/submit",
       "method": "submit",
       "difficulty": "easy"
     }

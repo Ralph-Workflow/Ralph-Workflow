@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from agents.marketing import distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_checker, marketing_loop_independent_verify, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting
@@ -352,6 +353,7 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
                  patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
                  patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
                  patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=True), \
                  patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
                  patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
                  patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
@@ -360,6 +362,68 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
             self.assertEqual(decision.lane, 'distribution_reset')
+
+    def test_prefers_handoff_packet_when_prepared_queues_exist_but_github_auth_is_blocked(self):
+        now = datetime(2026, 5, 22, 6, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        outreach_text = 'HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.'
+        curator_queue = {
+            'targets': [
+                {'target': f'{idx}. target', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+                for idx in range(1, 7)
+            ]
+        }
+        comparison_queue = {
+            'targets': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+                for idx in range(1, 9)
+            ]
+        }
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'path': f'/comparisons/comp-{idx}.md'}
+                for idx in range(1, 9)
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            market_path = log_dir / 'market_intelligence.json'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text(outreach_text, encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            (log_dir / 'marketing_a.json').write_text(json.dumps({"timestamp": "2026-05-21T22:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post A", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+            (log_dir / 'marketing_b.json').write_text(json.dumps({"timestamp": "2026-05-22T01:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post B", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'curator_handoff_packet')
 
     def test_prefers_curator_activation_when_distribution_reset_targets_are_waiting(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
@@ -527,14 +591,18 @@ class DistributionLaneExecutorTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
-            self.assertEqual(execution.status, 'executed')
+            self.assertEqual(execution.status, 'prepared')
+            self.assertFalse(execution.live_external_action)
+            self.assertIn('github_auth_missing_for_live_pr_submission', execution.blocking_factors)
             self.assertTrue(execution.artifact_path)
             text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Shared findings reused', text)
             self.assertIn('Claude Code', text)
             self.assertIn('awesome-ai-coding-tools', text)
             self.assertIn('Ready target files', text)
+            self.assertIn('Canonical manual execution packet', text)
             self.assertNotIn('Current demand phrases reused', text)
+            self.assertIn('canonical curator handoff packet', execution.summary)
             action_log = log_dir / 'marketing_2026-05-22_curator_outreach_execution.json'
             self.assertTrue(action_log.exists())
             queue_log = log_dir / 'curator_outreach_queue_latest.json'
@@ -542,6 +610,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             queue_payload = json.loads(queue_log.read_text(encoding='utf-8'))
             self.assertEqual(queue_payload['targets'][0]['status'], 'prepared')
             self.assertTrue(Path(queue_payload['targets'][0]['artifact_path']).exists())
+            self.assertTrue((drafts_dir / 'curator_handoff_packet_latest.md').exists())
 
     def test_curator_execution_reuses_reddit_monitor_signals_when_research_file_missing(self):
         now = datetime(2026, 5, 22, 7, 15, 0)
@@ -676,7 +745,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
-            self.assertEqual(execution.status, 'executed')
+            self.assertEqual(execution.status, 'prepared')
             queue_payload = json.loads(queue_path.read_text(encoding='utf-8'))
             queue_targets = [row['target'] for row in queue_payload['targets']]
             self.assertEqual(queue_targets[-2:], ['4. fourth-target', '5. fifth-target'])
@@ -795,17 +864,21 @@ class DistributionLaneExecutorTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
                  patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
                  patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch('subprocess.run', return_value=SimpleNamespace(returncode=1)), \
                  patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
-            self.assertEqual(execution.status, 'executed')
+            self.assertEqual(execution.status, 'prepared')
             self.assertEqual(execution.action_type, 'comparison_backlink_outreach_execution')
             self.assertEqual(execution.targets_prepared, ['Conductor OSS'])
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Comparison Backlink Outreach Pack', artifact_text)
             self.assertIn('Conductor OSS', artifact_text)
+            self.assertIn('Canonical manual execution packet', artifact_text)
+            self.assertIn('canonical comparison handoff packet', execution.summary)
             self.assertTrue(comparison_queue.exists())
+            self.assertTrue((drafts_dir / 'comparison_backlink_handoff_packet_latest.md').exists())
 
     def test_comparison_backlink_execution_marks_follow_through_when_queue_is_exhausted(self):
         now = datetime(2026, 5, 23, 7, 15, 0)
@@ -858,6 +931,60 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Comparison Backlink Follow-Through', artifact_text)
             self.assertIn('already covers every ranked competitor', artifact_text)
+
+    def test_curator_handoff_packet_also_points_to_comparison_handoff_when_comparison_queue_exists(self):
+        now = datetime(2026, 5, 23, 7, 15, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='curator_handoff_packet',
+            reason='Prepared outreach targets already exist but GitHub auth is blocked here; refresh the canonical manual execution packet instead of discovering more targets.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': 'hermes-agent', 'name': 'Hermes Agent', 'path': '/tmp/hermes-agent.md'},
+            ],
+            'competitors': {
+                'hermes-agent': {'name': 'Hermes Agent', 'positioning': 'Self-improving agent', 'github_stars': 100},
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('Curator queue saturated.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            curator_queue = log_dir / 'curator_outreach_queue_latest.json'
+            curator_queue.write_text(json.dumps({'targets': [
+                {'target': '1. Example Curator', 'url': 'https://github.com/example/awesome', 'status': 'prepared', 'artifact_path': '/tmp/curator.md', 'review_due_date': '2026-06-05'},
+            ]}), encoding='utf-8')
+            comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
+            comparison_queue.write_text(json.dumps({'targets': [
+                {'slug': 'hermes-agent', 'name': 'Hermes Agent', 'status': 'prepared', 'artifact_path': '/tmp/hermes-agent.md', 'comparison_path': '/tmp/hermes-agent.md', 'review_due_date': '2026-06-05'},
+            ]}), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', curator_queue), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
+                 patch('subprocess.run', return_value=SimpleNamespace(returncode=1)), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('Comparison backlink execution packet', artifact_text)
+            self.assertIn('comparison backlink handoff packet', execution.summary)
+            self.assertTrue((drafts_dir / 'comparison_backlink_handoff_packet_latest.md').exists())
 
     def test_distribution_reset_execution_uses_fresh_discovered_targets_instead_of_relogging_comparison_assets(self):
         now = datetime(2026, 5, 23, 7, 15, 0)
@@ -1024,7 +1151,7 @@ class MarketingLoopRunnerTests(unittest.TestCase):
 
 
 class MarketingMomentumWatchdogTests(unittest.TestCase):
-    def _run_watchdog_with_action(self, action_type: str) -> tuple[int, dict]:
+    def _run_watchdog_with_action(self, action_type: str, live_external_action: bool = False) -> tuple[int, dict]:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             status_dir = tmp / 'logs'
@@ -1044,7 +1171,7 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
                 'measurement_pending_reasons': ['primary_repo_flat'],
                 'repair_actions': [],
                 'failing_tactics': ['primary_repo_flat_window'],
-                'latest_executed_action': {'type': action_type, 'ok': True},
+                'latest_executed_action': {'type': action_type, 'ok': True, 'live_external_action': live_external_action},
                 'has_failing_tactics': True,
             }), encoding='utf-8')
             (seo_dir / 'reddit_monitor_latest.md').write_text('# report\n\n- **Shortlisted:** 0\n', encoding='utf-8')
@@ -1066,23 +1193,16 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
 
             return rc, json.loads(status_path.read_text(encoding='utf-8'))
 
-    def test_watchdog_accepts_shipped_curator_replacement_as_live_outcome_repair(self):
-        rc, payload = self._run_watchdog_with_action('curator_outreach_execution')
+    def test_watchdog_accepts_live_directory_submission_as_live_outcome_repair(self):
+        rc, payload = self._run_watchdog_with_action('aigearbase_free_listing_submission', live_external_action=True)
         self.assertEqual(rc, 0)
         self.assertNotIn('outcome_system_repair_missing', payload['actions'])
         self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
 
-    def test_watchdog_accepts_shipped_comparison_backlink_replacement_as_live_outcome_repair(self):
-        rc, payload = self._run_watchdog_with_action('comparison_backlink_outreach_execution')
-        self.assertEqual(rc, 0)
-        self.assertNotIn('outcome_system_repair_missing', payload['actions'])
-        self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
-
-    def test_watchdog_accepts_curator_handoff_packet_as_live_outcome_repair(self):
-        rc, payload = self._run_watchdog_with_action('curator_handoff_packet_execution')
-        self.assertEqual(rc, 0)
-        self.assertNotIn('outcome_system_repair_missing', payload['actions'])
-        self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
+    def test_watchdog_rejects_prepared_curator_packet_as_live_outcome_repair(self):
+        rc, payload = self._run_watchdog_with_action('curator_handoff_packet_execution', live_external_action=False)
+        self.assertEqual(rc, 1)
+        self.assertIn('outcome_system_repair_missing', payload['actions'])
 
     def test_watchdog_rejects_distribution_reset_as_insufficient_live_outcome_repair(self):
         rc, payload = self._run_watchdog_with_action('distribution_reset_execution')
@@ -1112,6 +1232,23 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
 
             self.assertEqual(payload['chosen_action']['type'], 'curator_queue_follow_through')
 
+    def test_load_latest_marketing_action_normalizes_live_submission_log(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            live = out_dir / 'marketing_2026-05-22_aigearbase_submission.json'
+            live.write_text(json.dumps({
+                'action': 'aigearbase_free_listing_submission',
+                'type': 'EXECUTED / DISTRIBUTION',
+                'channel': {'name': 'AI Gear Base', 'submit_page': 'https://aigearbase.com/submit', 'response': {'http_status': 200}},
+                'submitted_payload': {'website_url': 'https://codeberg.org/RalphWorkflow/Ralph-Workflow'},
+            }), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
+                payload = marketing_workflow_audit.load_latest_marketing_action()
+
+            self.assertEqual(payload['chosen_action']['type'], 'aigearbase_free_listing_submission')
+            self.assertTrue(payload['result']['live_external_action'])
+
     def test_audit_treats_curator_redesign_as_shipped_and_drops_duplicate_architecture_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -1139,9 +1276,11 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             principles_path.write_text('principles', encoding='utf-8')
             four_questions_path.write_text('questions', encoding='utf-8')
             self_improvement_path.write_text('self-improvement', encoding='utf-8')
-            (out_dir / 'marketing_2026-05-22_curator_outreach_execution.json').write_text(json.dumps({
-                'chosen_action': {'type': 'curator_outreach_execution', 'title': 'Distribution lane execution: curator_outreach'},
-                'result': {'ok': True, 'status': 'executed'},
+            (out_dir / 'marketing_2026-05-22_aigearbase_submission.json').write_text(json.dumps({
+                'action': 'aigearbase_free_listing_submission',
+                'type': 'EXECUTED / DISTRIBUTION',
+                'channel': {'name': 'AI Gear Base', 'submit_page': 'https://aigearbase.com/submit', 'response': {'http_status': 200}},
+                'submitted_payload': {'website_url': 'https://codeberg.org/RalphWorkflow/Ralph-Workflow'},
             }), encoding='utf-8')
 
             with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir), \
@@ -1219,19 +1358,19 @@ class MarketingLoopCertificationTests(unittest.TestCase):
         }
         self.assertFalse(marketing_loop_checker.shipped_system_redesign(audit))
 
-    def test_checker_accepts_comparison_backlink_execution_as_system_redesign_shipment(self):
+    def test_checker_accepts_live_external_submission_as_system_redesign_shipment(self):
         audit = {
-            'latest_executed_action': {'type': 'comparison_backlink_outreach_execution', 'ok': True},
+            'latest_executed_action': {'type': 'aigearbase_free_listing_submission', 'ok': True, 'live_external_action': True},
             'repair_actions': [],
         }
         self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
 
-    def test_checker_accepts_curator_handoff_packet_as_system_redesign_shipment(self):
+    def test_checker_rejects_curator_handoff_packet_as_system_redesign_shipment(self):
         audit = {
-            'latest_executed_action': {'type': 'curator_handoff_packet_execution', 'ok': True},
+            'latest_executed_action': {'type': 'curator_handoff_packet_execution', 'ok': True, 'live_external_action': False},
             'repair_actions': [],
         }
-        self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
+        self.assertFalse(marketing_loop_checker.shipped_system_redesign(audit))
 
     def test_checker_rejects_distribution_reset_execution_as_system_redesign_shipment(self):
         audit = {
@@ -1255,9 +1394,9 @@ class MarketingLoopCertificationTests(unittest.TestCase):
         }
         self.assertFalse(marketing_loop_independent_verify.shipped_system_redesign(audit))
 
-    def test_independent_verifier_accepts_curator_handoff_packet_as_system_redesign_shipment(self):
+    def test_independent_verifier_accepts_live_external_submission_as_system_redesign_shipment(self):
         audit = {
-            'latest_executed_action': {'type': 'curator_handoff_packet_execution', 'ok': True},
+            'latest_executed_action': {'type': 'toolshelf_free_listing_submission', 'ok': True, 'live_external_action': True},
             'repair_actions': [],
         }
         self.assertTrue(marketing_loop_independent_verify.shipped_system_redesign(audit))

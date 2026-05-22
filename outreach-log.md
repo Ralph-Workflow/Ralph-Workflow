@@ -1,5 +1,16 @@
 # Outreach Log
 
+## 2026-05-22 (Friday) — AI Gear Base submission executed (18:17 UTC / 20:17 local)
+- **What I executed:** submitted Ralph Workflow to **AI Gear Base** through its live public endpoint `https://aigearbase.com/api/submit`, pointing the listing directly at the primary Codeberg repo: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`.
+- **Verification:** live POST returned HTTP **200** with `{"success":true,"message":"Tool submitted successfully! We will review it soon."}`.
+- **Why this action:** this is **EXECUTED / DISTRIBUTION**. The freshest audit still shows flat Codeberg adoption, both curator/comparison prep queues were already saturated, and GitHub-auth-blocked PR lanes were not executable from this environment. AI Gear Base exposed a fresh autonomous submit lane that could create a new third-party backlink without waiting on GitHub auth or another human handoff.
+- **Shared findings reused:** `marketing_workflow_audit_latest.json`, `market_intelligence_latest.json`, `channel_discovery.json`, and `outreach-log.md`.
+- **Runtime fix shipped in the same run:** added `aigearbase.com` to `agents/marketing/channel_discovery.py` as a validated autonomous submit host and added a regression test so future discovery runs keep the lane available.
+- **Verification gate:** `python3 -m unittest agents.marketing.tests.test_channel_discovery -v` passed (**21 tests**) on 2026-05-22.
+- **Expected outcome:** one more relevant AI directory listing/backlink that sends evaluators to **Codeberg first**, with GitHub remaining secondary.
+- **Measurement window:** watch for listing approval/backlink evidence through **2026-06-05**.
+- **Type:** **EXECUTED / DISTRIBUTION**
+
 ## 2026-05-22 (Friday) — Reddit monitoring (16:15 UTC / 18:15 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-22_1815.md`
 - **Scan summary:** 23 current-ish candidates scanned, 5 credible discussion opportunities, 18 rejected.
@@ -5573,4 +5584,16 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 19:35:07
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 20:08:22
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 20:35:38
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 20:49:49
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T19:26:30.421948",
+  "generated_at": "2026-05-22T20:55:41.568732",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -101,7 +101,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
-    "The active loop did execute a live marketing action recently (curator_handoff_packet_execution), so the system is still shipping output even though outcome movement is not visible yet."
+    "The active loop did execute a live marketing action recently (aigearbase_free_listing_submission), so the system is still shipping output even though outcome movement is not visible yet."
   ],
   "next_moves": [
     "Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.",
@@ -134,11 +134,12 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_curator_handoff_packet_execution.json",
-    "type": "curator_handoff_packet_execution",
-    "title": "Distribution lane execution: curator_handoff_packet",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_aigearbase_submission.json",
+    "type": "aigearbase_free_listing_submission",
+    "title": "aigearbase free listing submission",
     "status": "executed",
     "ok": true,
-    "url": null
+    "live_external_action": true,
+    "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
   }
 }

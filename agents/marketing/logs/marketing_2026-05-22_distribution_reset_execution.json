@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T19:03:11.647808",
+  "timestamp": "2026-05-22T20:54:36.728360",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "distribution_reset_execution",
@@ -27,7 +27,9 @@
     ]
   },
   "result": {
-    "status": "executed",
-    "ok": true
+    "status": "prepared",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
   }
 }

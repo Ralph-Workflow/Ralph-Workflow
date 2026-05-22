@@ -1,6 +1,6 @@
 {
   "schema_version": "market-intelligence-consumption.v1",
-  "updated_at": "2026-05-22T18:01:52.195530+00:00",
+  "updated_at": "2026-05-22T18:58:29.668108+00:00",
   "shared_artifact": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
   "runtime_proven_consumers": [
     "agents/marketing/reddit_monitor.py",
@@ -18,10 +18,10 @@
   "consumers": {
     "agents/marketing/run.py": {
       "consumer": "agents/marketing/run.py",
-      "recorded_at": "2026-05-22T17:26:24.831580+00:00",
+      "recorded_at": "2026-05-22T18:58:29.517039+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-05-22T18:46:42.328528",
+      "artifact_generated_at": "2026-05-22T20:01:52.195256",
       "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-22.md",
       "competitor_count": 8,
       "comparison_page_count": 8
@@ -34,10 +34,10 @@
     },
     "agents/marketing/distribution_lane_executor.py": {
       "consumer": "agents/marketing/distribution_lane_executor.py",
-      "recorded_at": "2026-05-22T17:26:24.943240+00:00",
+      "recorded_at": "2026-05-22T18:58:29.668008+00:00",
       "required": false,
       "status": "loaded",
-      "artifact_generated_at": "2026-05-22T18:46:42.328528",
+      "artifact_generated_at": "2026-05-22T20:01:52.195256",
       "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-22.md",
       "competitor_count": 8,
       "comparison_page_count": 8

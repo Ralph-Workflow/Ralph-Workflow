@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Reset Packet
-Generated: 2026-05-22T19:03:11
+Generated: 2026-05-22T20:54:36
 
 ## Why this exists now
 - Curator and comparison queues are both saturated; ship a new queue-reset/discovery packet instead of pretending a fresh outreach asset exists.
