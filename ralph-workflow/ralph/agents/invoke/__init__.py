@@ -89,6 +89,7 @@ from ralph.mcp.protocol.startup import (
 )
 from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
 from ralph.mcp.tools.names import claude_tool_name
+from ralph.mcp.transport.agy import prepare_agy_home
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
 from ralph.mcp.transport.common import (
@@ -307,11 +308,44 @@ def resolve_invocation_runtime(
     endpoint = runtime_env.get(MCP_ENDPOINT_ENV)
 
     transport = _agent_transport(config)
+
+    # Pre-compute early-exit result for transports that need one
+    early_result: ResolvedInvocationRuntime | None = None
+    if (
+        (transport == AgentTransport.OPENCODE and not endpoint)
+        or (
+            transport == AgentTransport.CODEX
+            and not endpoint
+            and system_prompt_file is None
+        )
+        or (transport == AgentTransport.AGY and not endpoint)
+        or (
+            transport
+            not in (
+                AgentTransport.OPENCODE,
+                AgentTransport.CODEX,
+                AgentTransport.CLAUDE,
+                AgentTransport.CLAUDE_INTERACTIVE,
+                AgentTransport.AGY,
+            )
+            and not endpoint
+        )
+    ):
+        early_result = ResolvedInvocationRuntime(agent_env=runtime_env or None)
+
+    if early_result is not None:
+        return early_result
+
+    # Transport-specific setup
     if transport == AgentTransport.OPENCODE:
-        if not endpoint:
-            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
+        if endpoint is None:
+            raise RuntimeError("endpoint must be set for OPENCODE transport")
+        opencode_config = (
+            runtime_env.get("OPENCODE_CONFIG_CONTENT")
+            or _env.get("OPENCODE_CONFIG_CONTENT")
+        )
         provider_config, upstreams = build_opencode_provider_config(
-            runtime_env.get("OPENCODE_CONFIG_CONTENT") or _env.get("OPENCODE_CONFIG_CONTENT"),
+            opencode_config,
             endpoint,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
@@ -321,14 +355,8 @@ def resolve_invocation_runtime(
         )
         set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
         set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
-        return ResolvedInvocationRuntime(
-            agent_env=runtime_env,
-            server_env=server_env or None,
-            mcp_endpoint=endpoint,
-        )
-    if transport == AgentTransport.CODEX:
-        if not endpoint and system_prompt_file is None:
-            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
+
+    elif transport == AgentTransport.CODEX:
         codex_home, upstreams = prepare_codex_home_with_upstreams(
             endpoint,
             workspace_path=workspace_path,
@@ -342,12 +370,8 @@ def resolve_invocation_runtime(
         )
         set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
         set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
-        return ResolvedInvocationRuntime(
-            agent_env=runtime_env,
-            server_env=server_env or None,
-            mcp_endpoint=endpoint,
-        )
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
+
+    elif transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         if endpoint:
             effective_mcp = effective_session_mcp_plan_from_servers(
                 mcp_toml_as_upstreams(workspace_path),
@@ -355,17 +379,32 @@ def resolve_invocation_runtime(
             )
             set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
             set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
-        return ResolvedInvocationRuntime(
-            agent_env=runtime_env or None,
-            server_env=server_env or None,
-            mcp_endpoint=endpoint,
+
+    elif transport == AgentTransport.AGY:
+        existing_home = runtime_env.get("GEMINI_HOME") or _env.get("GEMINI_HOME")
+        agy_home, upstreams = prepare_agy_home(
+            endpoint,
+            workspace_path=workspace_path,
+            existing_home=existing_home,
+        )
+        runtime_env["GEMINI_HOME"] = agy_home
+        effective_mcp = effective_session_mcp_plan_from_servers(
+            mcp_toml_as_upstreams(workspace_path),
+            agent_upstream_servers=upstreams,
+        )
+        set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
+        set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
+
+    elif endpoint is not None:
+        # Unsupported transport with endpoint
+        raise UnsupportedMcpTransportError(
+            f"Agent transport '{transport}' does not declare how to receive Ralph MCP wiring"
         )
 
-    if not endpoint:
-        return ResolvedInvocationRuntime(agent_env=runtime_env or None)
-
-    raise UnsupportedMcpTransportError(
-        f"Agent transport '{transport}' does not declare how to receive Ralph MCP wiring"
+    return ResolvedInvocationRuntime(
+        agent_env=runtime_env or None,
+        server_env=server_env or None,
+        mcp_endpoint=endpoint,
     )
 
 

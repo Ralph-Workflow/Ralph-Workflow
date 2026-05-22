@@ -67,6 +67,16 @@ def builtin_agents() -> dict[str, AgentConfig]:
             session_flag="--session {}",
             transport=AgentTransport.OPENCODE,
         ),
+        "agy": AgentConfig(
+            cmd="agy",
+            output_flag=None,
+            yolo_flag="--dangerously-skip-permissions",
+            print_flag="--print",
+            session_flag="--conversation {}",
+            can_commit=False,
+            json_parser=JsonParserType.GENERIC,
+            transport=AgentTransport.AGY,
+        ),
     }
 
 
@@ -164,7 +174,11 @@ class AgentRegistry:
         for name, config in self.agents.items():
             if not config.cmd:
                 errors.append(f"Agent '{name}' has no command configured")
-            if config.transport != AgentTransport.CLAUDE_INTERACTIVE and not config.output_flag:
+            allowed_no_output = (
+                AgentTransport.CLAUDE_INTERACTIVE,
+                AgentTransport.AGY,
+            )
+            if config.transport not in allowed_no_output and not config.output_flag:
                 errors.append(f"Agent '{name}' has no output flag configured")
         return errors
 

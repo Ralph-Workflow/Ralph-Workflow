@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+import ralph.mcp.transport.agy as agy_transport_module
 import ralph.mcp.transport.claude as claude_transport_module
 from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
 from ralph.mcp.transport import common as transport_common_module
@@ -65,8 +66,9 @@ def _effective_session_mcp_servers_for_runner_validation(
     """
     effective_mcp = effective_session_mcp_plan_from_servers(
         transport_common_module.mcp_toml_as_upstreams(workspace_root),
-        agent_upstream_servers=claude_transport_module.load_existing_claude_upstream_servers(
-            workspace_root
+        agent_upstream_servers=(
+            *claude_transport_module.load_existing_claude_upstream_servers(workspace_root),
+            *agy_transport_module.load_existing_agy_upstream_servers(workspace_root),
         ),
     )
     return effective_mcp.effective_servers

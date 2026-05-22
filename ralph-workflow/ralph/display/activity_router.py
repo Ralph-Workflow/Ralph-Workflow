@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from ralph.agents.parsers.base import AgentParser
 
 PARSERS: dict[ActivityProvider, type[AgentParser]] = {
+    ActivityProvider.AGY: GenericParser,
     ActivityProvider.CLAUDE: ClaudeParser,
     ActivityProvider.OPENCODE: OpenCodeParser,
     ActivityProvider.CODEX: CodexParser,
@@ -45,14 +46,21 @@ def detect_provider_from_command(command: list[str]) -> ActivityProvider:
     if not command:
         return ActivityProvider.GENERIC
     argv0 = command[0]
-    if "claude" in argv0:
-        return ActivityProvider.CLAUDE
-    if "opencode" in argv0:
-        return ActivityProvider.OPENCODE
-    if "codex" in argv0 or "aider" in argv0:
-        return ActivityProvider.CODEX
-    if "gemini" in argv0:
-        return ActivityProvider.GEMINI
+
+    # Map substrings to providers (checked in order)
+    substrings_to_provider: list[tuple[str, ActivityProvider]] = [
+        ("agy", ActivityProvider.AGY),
+        ("claude", ActivityProvider.CLAUDE),
+        ("opencode", ActivityProvider.OPENCODE),
+        ("codex", ActivityProvider.CODEX),
+        ("aider", ActivityProvider.CODEX),
+        ("gemini", ActivityProvider.GEMINI),
+    ]
+
+    for substring, provider in substrings_to_provider:
+        if substring in argv0:
+            return provider
+
     return ActivityProvider.GENERIC
 
 

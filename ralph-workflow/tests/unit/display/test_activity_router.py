@@ -81,6 +81,10 @@ def test_detect_provider_from_command_gemini() -> None:
     assert detect_provider_from_command(["gemini"]) == ActivityProvider.GEMINI
 
 
+def test_detect_provider_from_command_agy() -> None:
+    assert detect_provider_from_command(["agy"]) == ActivityProvider.AGY
+
+
 def test_detect_provider_from_command_unknown() -> None:
     assert detect_provider_from_command(["unknown-tool"]) == ActivityProvider.GENERIC
 

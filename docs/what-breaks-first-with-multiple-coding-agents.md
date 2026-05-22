@@ -6,7 +6,7 @@ That simple core composes into a stronger workflow system for serious repo work,
 
 Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
-It is for developers and technical teams who already know how to run Claude Code, Codex, OpenCode, worktrees, or parallel branches — but still do not trust the morning-after result when the task is **too big to babysit and too risky to trust blindly**.
+It is for developers and technical teams who already know how to run Claude Code, Codex, OpenCode, Google Anti Gravity, worktrees, or parallel branches — but still do not trust the morning-after result when the task is **too big to babysit and too risky to trust blindly**.
 
 What makes Ralph Workflow different is the finish line: it is built to hand back a **strong software result** — a real diff, checks, artifacts, and a short handoff trail — instead of a transcript plus a confident claim that the task is done.
 

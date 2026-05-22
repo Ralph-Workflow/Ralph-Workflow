@@ -63,6 +63,18 @@ Why this is a good first fit:
 - lets Ralph Workflow orchestrate the agent stack you already use
 - good for teams that switch models often
 
+### Start with Google Anti Gravity if...
+
+- `agy` already works on your machine
+- you want Gemini-model-backed coding assistance
+- you prefer a lightweight TUI-focused experience
+
+Why this is a good first fit:
+
+- Gemini-backed coding with strong context handling
+- Ralph Workflow orchestrates it with the same MCP-controlled workflow used for other supported agents
+- good when you want Google ecosystem integration
+
 ## Best first-run rule
 
 Pick the path with the **least setup friction**.
@@ -77,7 +89,7 @@ If two agents are equally ready, prefer the one you would be happiest reviewing 
 
 ## What matters more than the agent choice
 
-For a first run, these matter more than whether you picked Claude Code, Codex, or OpenCode:
+For a first run, these matter more than whether you picked Claude Code, Codex, OpenCode, or Google Anti Gravity:
 
 - choosing a **small real backlog task**
 - writing a **clear one-paragraph spec** in `PROMPT.md`

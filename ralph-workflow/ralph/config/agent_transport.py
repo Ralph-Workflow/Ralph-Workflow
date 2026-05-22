@@ -19,3 +19,4 @@ class AgentTransport(StrEnum):
     CODEX = "codex"
     OPENCODE = "opencode"
     GENERIC = "generic"
+    AGY = "agy"

@@ -216,7 +216,7 @@ ralph --check-mcp
 
 ## Agent compatibility validation
 
-After every upstream MCP server passes validation, Ralph Workflow synthesizes the per-agent transport wiring it would emit for Claude, Codex, and OpenCode and re-runs the same MCP handshake against each backend. This guarantees that what Ralph Workflow hands to each agent's MCP client can actually reach the same server. If any agent transport probe fails in strict mode, Ralph Workflow exits with code 1 and identifies the (server, transport) pair that failed.
+After every upstream MCP server passes validation, Ralph Workflow synthesizes the per-agent transport wiring it would emit for Claude, Codex, OpenCode, and Google Anti Gravity and re-runs the same MCP handshake against each backend. This guarantees that what Ralph Workflow hands to each agent's MCP client can actually reach the same server. If any agent transport probe fails in strict mode, Ralph Workflow exits with code 1 and identifies the (server, transport) pair that failed.
 
 The probe never spawns the agent binaries themselves — the MCP JSON-RPC protocol is identical across all supported agents (`2024-11-05`), so Ralph Workflow's own client is a faithful reference.
 

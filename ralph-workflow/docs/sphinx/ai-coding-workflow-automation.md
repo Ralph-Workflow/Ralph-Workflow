@@ -58,7 +58,7 @@ It gives the run a more trustworthy shape:
 - **agent-agnostic** instead of locked to one coding tool
 - **composable loops** instead of a single long agent session
 
-It is not a hosted black box. It runs on your machine with Claude Code, Codex CLI, OpenCode, or the agent path you already use.
+It is not a hosted black box. It runs on your machine with Claude Code, Codex CLI, OpenCode, Google Anti Gravity, or the agent path you already use.
 
 ## Best first evaluation path
 

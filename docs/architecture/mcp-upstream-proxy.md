@@ -16,7 +16,7 @@ This document describes the Ralph upstream proxy architecture for the Python imp
 
 Ralph operates a run-scoped MCP server that is the only MCP endpoint visible to provider CLIs. When a user has configured upstream MCP servers (for example, in their `~/.claude.json`, `~/.opencode/mcp.json`, or equivalent), Ralph loads those server definitions itself and re-exposes their tools as Ralph-owned proxied aliases. Provider CLIs never receive the upstream server definitions directly.
 
-This contract holds across all supported transports: Claude, OpenCode, and Codex.
+This contract holds across all supported transports: Claude, OpenCode, Codex, and Google Anti Gravity.
 
 ### What is proxied in v1
 
@@ -48,8 +48,9 @@ At run start, Ralph discovers upstream MCP server definitions from supported con
 - Claude: `~/.claude.json`, workspace `.mcp.json`, workspace `.claude.json`
 - OpenCode: provider-specific config file paths
 - Codex: provider-specific config file paths
+- Google Anti Gravity: `~/.gemini/antigravity-cli/mcp_config.json`
 
-Ralph reads these sources, extracts non-Ralph server entries, normalizes them into a transport-neutral model, and discards the raw definitions from provider-facing config. Each supported transport (Claude, OpenCode, Codex) receives a provider-visible MCP config that contains **only Ralph**, while the upstream server definitions are passed to the Ralph runtime via a separate serialized payload (environment variable, sidecar, or session file).
+Ralph reads these sources, extracts non-Ralph server entries, normalizes them into a transport-neutral model, and discards the raw definitions from provider-facing config. Each supported transport (Claude, OpenCode, Codex, Google Anti Gravity) receives a provider-visible MCP config that contains **only Ralph**, while the upstream server definitions are passed to the Ralph runtime via a separate serialized payload (environment variable, sidecar, or session file).
 
 This separation means provider-side MCP permissions are never the authority for proxied tools. Ralph may still use provider-side approval surfaces to pre-approve Ralph-owned MCP tool names for the current session, but Ralph remains the single policy boundary for actual authorization.
 
@@ -137,6 +138,14 @@ Provider-visible `OPENCODE_CONFIG_CONTENT` contains only Ralph as the MCP server
 ### Codex
 
 Provider-visible `config.toml` contains only the Ralph MCP server entry. Upstream server definitions are extracted and passed to Ralph via a serialized runtime payload. `[features]` settings follow the same best-effort approach as the existing native-tool restriction for Codex.
+
+### Google Anti Gravity
+
+Provider-visible `mcp_config.json` is written to an isolated temp dir pointed to by `GEMINI_HOME`. The config contains only the Ralph MCP server entry under `mcpServers.<name>.serverUrl`. Upstream server definitions are extracted from the user's global `~/.gemini/antigravity-cli/mcp_config.json` and workspace `.agents/mcp_config.json`, normalized, and passed to Ralph via a serialized runtime payload.
+
+Ralph creates an isolated temp directory (never mutating the user's live config), mirrors existing `~/.gemini/antigravity-cli/` contents via symlinks with copy fallback, and writes the merged `mcp_config.json` with the Ralph endpoint. `GEMINI_HOME` is set in the agent environment to redirect AGY to the Ralph-managed config.
+
+**Known limitation:** `GEMINI_HOME` env var override is expected based on the pattern used by similar tools. If AGY ignores this env var in a future release, enforcement may regress. See `ralph/mcp/transport/agy.py` for the reference implementation.
 
 ---
 

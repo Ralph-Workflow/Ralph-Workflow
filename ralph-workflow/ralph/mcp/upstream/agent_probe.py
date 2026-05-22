@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+import ralph.mcp.transport.agy as _agy_transport
 import ralph.mcp.transport.claude as _claude_transport
 import ralph.mcp.transport.codex as _codex_transport
 import ralph.mcp.transport.opencode as _opencode_transport
@@ -49,6 +50,7 @@ _DEFAULT_TRANSPORTS: tuple[AgentTransport, ...] = (
     AgentTransport.CLAUDE_INTERACTIVE,
     AgentTransport.CODEX,
     AgentTransport.OPENCODE,
+    AgentTransport.AGY,
 )
 
 
@@ -113,6 +115,8 @@ def _probe_pair(
             report = _probe_codex(server, workspace_path)
         elif transport == AgentTransport.OPENCODE:
             report = _probe_opencode(server, workspace_path)
+        elif transport == AgentTransport.AGY:
+            report = _probe_agy(server, workspace_path)
         else:
             report = AgentProbeReport(
                 transport=transport,
@@ -155,21 +159,12 @@ def _probe_claude(
             f"server '{server.name}' is missing url for Claude http transport"
         )
     config_blob = _claude_transport.claude_mcp_config(server.url)
-    parsed = _parse_json_obj(config_blob, "Claude MCP config")
-    mcp_servers = parsed.get("mcpServers")
-    if not isinstance(mcp_servers, dict):
-        raise AgentTransportProbeError("Claude MCP config missing 'mcpServers'")
-    raw_entry = cast("dict[str, object]", mcp_servers).get(RALPH_MCP_SERVER_NAME)
-    if not isinstance(raw_entry, dict):
-        raise AgentTransportProbeError(
-            "Claude MCP config missing Ralph entry; injected wiring is broken"
-        )
-    entry = cast("dict[str, object]", raw_entry)
-    if entry.get("url") != server.url:
-        raise AgentTransportProbeError(
-            f"Claude MCP config Ralph url='{entry.get('url')!r}' does not match server.url"
-        )
-    http_handshake(server.url)
+    _validate_mcp_json_and_handshake(
+        server,
+        config_blob,
+        "Claude MCP config",
+        ralph_url_key="url",
+    )
     return AgentProbeReport(transport=transport, server_name=server.name, ok=True)
 
 
@@ -262,6 +257,58 @@ def _probe_opencode(server: UpstreamMcpServer, workspace_path: Path | None) -> A
         raise AgentTransportProbeError("OpenCode Ralph mcp entry shape mismatch (type/url)")
     http_handshake(server.url)
     return AgentProbeReport(transport=AgentTransport.OPENCODE, server_name=server.name, ok=True)
+
+
+def _probe_agy(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:
+    del workspace_path
+    if server.transport == "stdio":
+        return AgentProbeReport(
+            transport=AgentTransport.AGY,
+            server_name=server.name,
+            ok=True,
+            note="skipped (stdio proxied by AGY CLI)",
+        )
+    if not server.url:
+        raise AgentTransportProbeError(
+            f"server '{server.name}' is missing url for AGY http transport"
+        )
+    config_blob = _agy_transport.agy_mcp_config(server.url)
+    _validate_mcp_json_and_handshake(
+        server,
+        config_blob,
+        "AGY MCP config",
+        ralph_url_key="serverUrl",
+    )
+    return AgentProbeReport(transport=AgentTransport.AGY, server_name=server.name, ok=True)
+
+
+def _validate_mcp_json_and_handshake(
+    server: UpstreamMcpServer,
+    config_blob: str,
+    label: str,
+    ralph_url_key: str,
+) -> None:
+    """Validate MCP JSON config structure and perform HTTP handshake.
+
+    Shared helper for agents that use mcpServers dict with a Ralph entry.
+    """
+    parsed = _parse_json_obj(config_blob, label)
+    mcp_servers = parsed.get("mcpServers")
+    if not isinstance(mcp_servers, dict):
+        raise AgentTransportProbeError(f"{label} missing 'mcpServers'")
+    raw_entry = cast("dict[str, object]", mcp_servers).get(RALPH_MCP_SERVER_NAME)
+    if not isinstance(raw_entry, dict):
+        raise AgentTransportProbeError(
+            f"{label} missing Ralph entry; injected wiring is broken"
+        )
+    entry = cast("dict[str, object]", raw_entry)
+    ralph_url = entry.get(ralph_url_key)
+    if ralph_url != server.url:
+        raise AgentTransportProbeError(
+            f"{label} Ralph {ralph_url_key}='{ralph_url!r}' does not match server.url"
+        )
+    if server.url is not None:
+        http_handshake(server.url)
 
 
 def _http_handshake(endpoint: str) -> None:

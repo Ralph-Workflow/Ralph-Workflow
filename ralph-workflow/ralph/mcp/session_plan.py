@@ -7,7 +7,9 @@ into the Ralph MCP subprocess for that session.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.api.opencode import get_model_by_id
@@ -23,12 +25,14 @@ from ralph.mcp.multimodal.capabilities import (
 )
 from ralph.mcp.protocol.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
+from ralph.mcp.transport.agy import load_existing_agy_upstream_servers
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.common import (
     mcp_toml_as_upstreams,
     merge_mcp_toml_into_upstreams,
     set_upstream_mcp_config,
 )
+from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.policy.validation import PolicyValidationError
 
 _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
@@ -42,10 +46,10 @@ _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
 }
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.policy.models import AgentsPolicy
+
+
+type UpstreamLoaderFn = Callable[[Path | None], tuple[UpstreamMcpServer, ...]]
 
 
 @dataclass(frozen=True)
@@ -71,18 +75,22 @@ def resolve_model_identity(
     """
     if transport is None:
         return UNKNOWN_IDENTITY
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
+
+    # Map known transports to their providers
+    provider_map: dict[AgentTransport, str] = {
+        AgentTransport.CLAUDE: "claude",
+        AgentTransport.CLAUDE_INTERACTIVE: "claude",
+        AgentTransport.CODEX: "openai",
+        AgentTransport.AGY: "gemini",
+    }
+
+    if transport in provider_map:
         return MultimodalModelIdentity(
-            provider="claude",
+            provider=provider_map[transport],
             model_id=model_flag,
             transport=transport.value,
         )
-    if transport == AgentTransport.CODEX:
-        return MultimodalModelIdentity(
-            provider="openai",
-            model_id=model_flag,
-            transport=transport.value,
-        )
+
     if transport == AgentTransport.OPENCODE and model_flag is not None:
         try:
             entry = get_model_by_id(model_flag)
@@ -99,6 +107,7 @@ def resolve_model_identity(
             model_id=model_flag,
             transport=transport.value,
         )
+
     return MultimodalModelIdentity(
         provider=transport.value,
         model_id=model_flag,
@@ -185,10 +194,17 @@ def build_session_mcp_plan(
     server_env: dict[str, str] = {}
     effective_mcp = resolve_effective_session_mcp_plan(workspace_path)
     upstreams = effective_mcp.effective_servers
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
+
+    native_upstream_loaders: dict[AgentTransport, UpstreamLoaderFn] = {
+        AgentTransport.CLAUDE: load_existing_claude_upstream_servers,
+        AgentTransport.CLAUDE_INTERACTIVE: load_existing_claude_upstream_servers,
+        AgentTransport.AGY: load_existing_agy_upstream_servers,
+    }
+    upstream_loader = native_upstream_loaders.get(transport) if transport is not None else None
+    if upstream_loader is not None:
         effective_mcp = resolve_effective_session_mcp_plan(
             workspace_path,
-            agent_upstream_servers=load_existing_claude_upstream_servers(workspace_path),
+            agent_upstream_servers=upstream_loader(workspace_path),
         )
         upstreams = effective_mcp.effective_servers
         set_upstream_mcp_config(server_env, upstreams)

@@ -30,7 +30,7 @@ That is the gap Ralph Workflow is trying to close.
 
 ## What Ralph Workflow adds beyond a normal agent session
 
-Running Claude Code, Codex CLI, or OpenCode directly can still leave you with:
+Running Claude Code, Codex CLI, OpenCode, or Google Anti Gravity directly can still leave you with:
 
 - a long transcript instead of a clean handoff
 - a claim that tests passed without an easy review path

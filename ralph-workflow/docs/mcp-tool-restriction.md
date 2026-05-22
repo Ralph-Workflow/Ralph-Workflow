@@ -14,7 +14,7 @@ Ralph Workflow's prompts claim "Native agent tools are DISABLED". This document 
 
 ### Strict Ralph Workflow Authority Mode
 
-In strict Ralph Workflow authority mode, provider CLIs receive only the Ralph Workflow MCP endpoint. User-configured upstream MCP servers are loaded by Ralph Workflow itself and re-exposed as Ralph Workflow-owned proxied tool aliases under the `ralph_upstream__<server_name>__<tool_name>` naming scheme. Provider-side MCP permissions must not be relied on for these proxied tools. Ralph Workflow enforces capability policy before forwarding any proxied tool call to its upstream backend. This contract applies consistently to Claude, OpenCode, and Codex integrations.
+In strict Ralph Workflow authority mode, provider CLIs receive only the Ralph Workflow MCP endpoint. User-configured upstream MCP servers are loaded by Ralph Workflow itself and re-exposed as Ralph Workflow-owned proxied tool aliases under the `ralph_upstream__<server_name>__<tool_name>` naming scheme. Provider-side MCP permissions must not be relied on for these proxied tools. Ralph Workflow enforces capability policy before forwarding any proxied tool call to its upstream backend. This contract applies consistently to Claude, OpenCode, Codex, and Google Anti Gravity integrations.
 
 ## 2. Per-CLI Guarantees
 
@@ -73,6 +73,16 @@ In strict Ralph Workflow authority mode, the provider-visible `[mcp_servers]` se
 Do not rely on Codex for environments that require strict tool isolation. Ralph Workflow's best-effort for Codex is explicitly logged as a warning at runtime.
 
 Reference: https://platform.openai.com/docs/codex
+
+### Google Anti Gravity — Best-Effort
+
+Google Anti Gravity (AGY) is configured via `GEMINI_HOME` environment variable pointing to an isolated temp dir created by Ralph Workflow. Ralph Workflow writes `mcp_config.json` at `<GEMINI_HOME>/antigravity-cli/mcp_config.json` using the `serverUrl` key for the Ralph MCP endpoint.
+
+The isolation design follows the Codex pattern: Ralph Workflow creates an isolated temp directory and sets `GEMINI_HOME` to redirect AGY to the Ralph-managed config. User config at `~/.gemini/antigravity-cli/` is mirrored (symlinks with copy fallback) to the temp dir but is never mutated.
+
+**Known limitation:** `GEMINI_HOME` env var override is expected based on the pattern used by similar tools but was not explicitly confirmed in AGY documentation. If AGY ignores this env var in a future release, the isolation design will regress. The temp dir is still created to avoid mutating user config, but MCP endpoint injection may not be honored by AGY. See `ralph/mcp/transport/agy.py` for the reference implementation and known-limitation documentation.
+
+When an MCP endpoint is wired to AGY, Ralph Workflow does not log a specific best-effort warning (unlike Codex) because the `GEMINI_HOME` isolation approach is expected to be fully effective. If future releases of AGY change how config is loaded, enforcement may regress and a warning would be added at that time.
 
 ## 3. Known Bugs and Limitations
 
