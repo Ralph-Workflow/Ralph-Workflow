@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    import pytest
+
 
 class StubRunner:
     def __init__(self, results: list[ProcessResult]) -> None:
@@ -44,7 +46,9 @@ def _result(
     )
 
 
-def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys: object) -> None:
+def test_main_runs_all_verify_steps_when_successful(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     pytest_cmd = (
         "-m", "pytest", "tests", "-q", "-n", "4",
         "--dist", "worksteal", "-m", "not subprocess_e2e",
@@ -76,7 +80,7 @@ def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys: obje
 
 
 def test_main_prints_agent_fix_banner_when_verify_step_fails(
-    tmp_path: Path, capsys: object
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     runner = StubRunner(
         [
@@ -108,7 +112,9 @@ def test_main_prints_agent_fix_banner_when_verify_step_fails(
     assert "make typecheck" in captured.err
 
 
-def test_main_passes_remaining_budget_to_pytest(tmp_path: Path, capsys: object) -> None:
+def test_main_passes_remaining_budget_to_pytest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Verify pytest receives only the remaining budget after lint/typecheck."""
     pytest_cmd = (
         "-m", "pytest", "tests", "-q", "-n", "4",
@@ -140,7 +146,7 @@ def test_main_passes_remaining_budget_to_pytest(tmp_path: Path, capsys: object) 
 
 
 def test_main_refuses_to_run_pytest_when_budget_exhausted(
-    tmp_path: Path, capsys: object
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Verify that when pre-pytest steps exhaust the budget, pytest is not called."""
     # Simulate a StubRunner where lint and typecheck each "consume" time
