@@ -7,12 +7,18 @@ downstream rendering.
 
 from __future__ import annotations
 
-from ralph.display.phase_lifecycle import (
-    PhaseEntryModel,
-)
-from ralph.display.phase_status import (
-    format_analysis_cycle,
-    format_dev_cycle,
+import pytest
+
+from ralph.display.phase_lifecycle import PhaseEntryModel
+from ralph.display.phase_status import format_analysis_cycle, format_dev_cycle
+from ralph.pipeline.phase_transition import build_phase_entry_model_from_state
+from ralph.pipeline.state import PipelineState
+from ralph.policy.models import (
+    LoopCounterConfig,
+    PhaseDefinition,
+    PhaseLoopPolicy,
+    PhaseTransition,
+    PipelinePolicy,
 )
 
 # ---------------------------------------------------------------------------
@@ -79,8 +85,50 @@ class TestPhaseEntryModel:
 
     def test_is_frozen(self) -> None:
         m = PhaseEntryModel(phase_name="development", outer_dev_iteration=1)
-        try:
-            m.outer_dev_iteration = 2
-            raise AssertionError("should be frozen")
-        except (AttributeError, TypeError):
-            pass
+        with pytest.raises((AttributeError, TypeError)):
+            m.__setattr__("outer_dev_iteration", 2)
+
+    def test_commit_cleanup_entry_model_does_not_render_inner_analysis_context(self) -> None:
+        policy = PipelinePolicy(
+            phases={
+                "development_commit_cleanup": PhaseDefinition(
+                    drain="commit",
+                    role="commit_cleanup",
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="commit_cleanup_iteration"
+                    ),
+                    transitions=PhaseTransition(on_success="development_commit"),
+                ),
+                "development_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                ),
+            },
+            entry_phase="development_commit_cleanup",
+            terminal_phase="complete",
+            loop_counters={
+                "commit_cleanup_iteration": LoopCounterConfig(default_max=3),
+            },
+        )
+        state = PipelineState(
+            phase="development_commit_cleanup",
+            loop_iterations={"commit_cleanup_iteration": 1},
+            loop_caps={"commit_cleanup_iteration": 3},
+        )
+
+        entry = build_phase_entry_model_from_state(
+            "development_commit_cleanup",
+            state,
+            policy,
+        )
+
+        assert entry.phase_role == "commit_cleanup"
+        assert entry.inner_analysis is None
+        assert entry.inner_analysis_cap is None
