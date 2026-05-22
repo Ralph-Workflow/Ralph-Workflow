@@ -11,7 +11,7 @@ Generated: 2026-05-22T13:18:18
 - run until done
 - overnight coding
 - finished code
-- would you merge it?
+- would you ship it?
 
 ## Queue status summary
 - prepared: 7

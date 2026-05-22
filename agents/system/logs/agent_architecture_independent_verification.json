@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-22T23:00:12.416130+02:00",
+  "checked_at": "2026-05-23T00:00:11.489888+02:00",
   "verdict": "fail",
   "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
   "verified_repairs": [
@@ -74,7 +74,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md",
+      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]

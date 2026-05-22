@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-22T23:23:31.947332",
+  "timestamp": "2026-05-23T00:08:49.754183",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
-    "channel": "curator_handoff_packet",
-    "title": "Distribution lane decision: curator_handoff_packet",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_action_brief.md"
+    "channel": "apollo_outreach",
+    "title": "Distribution lane decision: apollo_outreach",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_distribution_action_brief.md"
   },
   "why_this_action": {
     "shared_findings_used": [
@@ -15,13 +15,13 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "reasoning": "Prepared outreach targets already exist but GitHub auth is blocked here; refresh the canonical manual execution packet instead of discovering more targets.",
+    "reasoning": "Reddit is blocked, GitHub PR auth is blocked here, and Apollo is live; use managed outbound with the already-prepared curator/comparison proof spine instead of another manual handoff packet.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
       "Reddit is infrastructure-blocked from this environment, so the loop should not treat more Reddit monitoring as an execution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
-      "Apollo is authenticated, but the runtime still lacks proof of a usable live import/sequence step, so do not treat packet generation alone as a live lane.",
+      "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
       "11 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "11 prepared curator targets still need a canonical execution handoff packet.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",

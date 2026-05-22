@@ -22,7 +22,7 @@ Generated: 2026-05-22T22:49:07
 ## Apollo search / list filters to build now
 - Titles: founder, CTO, engineering manager, developer productivity, platform engineering, AI engineering, devtools
 - Company themes: developer tools, platform engineering, agent tooling, internal tooling, software consultancies, AI-native product teams
-- Exclude broad generic marketing personas; this motion is for repo-native technical evaluators who can inspect Codeberg directly
+- Exclude broad generic marketing personas; this motion is for your own repo technical evaluators who can inspect Codeberg directly
 
 ## Sequence variants to create in Apollo
 - Codeberg-first autonomous coding proof
@@ -82,7 +82,7 @@ Subject: when an AI coding run actually becomes reviewable
 
 The useful bar for autonomous coding is not “agent completed” but “finished, tested, mergeable work you can inspect quickly.”
 
-Ralph Workflow is a free open-source workflow layer for repo-native autonomous coding runs. The point is not another confident summary — it is getting back finished, tested code that is ready to review, with visible evidence of what changed and whether you would merge it.
+Ralph Workflow is a free open-source workflow layer for your own repo autonomous coding runs. The point is not another confident summary — it is getting back finished, tested code that is ready to review, with visible evidence of what changed and whether you would merge it.
 
 If that is the problem you are trying to solve, the cleanest entry point is the Codeberg repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 ```

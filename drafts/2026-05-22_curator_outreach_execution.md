@@ -28,7 +28,7 @@ Generated: 2026-05-22T18:58:27
 - finished code
 - tested code
 - ready to review
-- would you merge it?
+- would you ship it?
 
 ## Comparison assets to cite
 - Hermes Agent — /home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md
@@ -54,7 +54,7 @@ Generated: 2026-05-22T18:58:27
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md
 - Suggested copy:
 ```text
-For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer repo-native coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: broad orchestration list covering multi-agent systems, workflow patterns, MCP/A2A. Strong adjacent target to the Conductor / Claude Code / Hermes comparisons.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
+For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer your own repo coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: broad orchestration list covering multi-agent systems, workflow patterns, MCP/A2A. Strong adjacent target to the Conductor / Claude Code / Hermes comparisons.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
 
 Proposed entry:
 - [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
@@ -69,7 +69,7 @@ Proposed entry:
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_hesreallyhim-awesome-claude-code.md
 - Suggested copy:
 ```text
-For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer repo-native coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: Claude Code ecosystem roundup; directly adjacent to the existing Claude Code comparison page and potentially receptive to orchestration/workflow tooling.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
+For teams learning that run-until-done is not enough on its own, Ralph Workflow is a free and open-source workflow layer for longer your own repo coding runs. It is built to end in finished, tested code that is ready to review instead of another confident summary. Why this target fits: Claude Code ecosystem roundup; directly adjacent to the existing Claude Code comparison page and potentially receptive to orchestration/workflow tooling.. Useful comparison anchors already prepared: Hermes Agent, Conductor OSS.
 
 Proposed entry:
 - [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary

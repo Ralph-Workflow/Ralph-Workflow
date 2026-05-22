@@ -5639,3 +5639,37 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 22:49:20
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 23:06:05
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 23:35:09
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### StackOverflow answer lane
+- **When:** 2026-05-22 23:38:51
+- **Note:** StackOverflow answer lane ran: found 0 questions, scored 0, drafted 0 answers. Top question: none.
+
+### Marketing momentum watchdog repair — 2026-05-22 23:50 CEST
+- **What was stale:** Positioning contradiction in `positioning.py` (FORBIDDEN_LEADS banned "repo-native" and "would you merge it" but REDDIT_LEARNINGS.md listed them as official site language). This blocked every new draft from posting. StackOverflow lane blocked at network level.
+- **Repair executed:**
+  - `positioning.py`: Replaced banned-phrase approach with positive framing rules
+  - `distribution_lane_executor.py`: Fixed 5 hardcoded stale phrases
+  - 4 blocked drafts cleaned and repositioned
+  - Telegraph post shipped: "The Unattended Coding Agent: What Done Actually Means" v5 (with default-workflow framing)
+  - StackOverflow lane built (`stackoverflow_answer_lane.py`) — blocked at network level, lane ready
+- **What still needs execution:**
+  - Apollo list has 0 contacts — needs browser/manual fix
+  - GitHub PAT needed for GitHub Issues commenting lane (highest-leverage cold distribution)
+  - Reddit IP block unresolved — Reddit is dead from this environment
+- **Architectural finding:** Marketing loop is distribution-rich but conversion-poor. All high-impact cold channels are blocked. Telegraph/write.as owned content is working but not driving Codeberg adoption.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 23:44:39
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 23:46:20
+- **Note:** Momentum check found: reddit_channel_blocked. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Reddit is confirmed IP-blocked / 403 from this environment, so this is a dead distribution channel right now, not a watch-level telemetry wobble. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.

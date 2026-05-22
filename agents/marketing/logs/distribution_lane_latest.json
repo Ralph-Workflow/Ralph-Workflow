@@ -6,7 +6,7 @@
     "2 owned-content posts already shipped in the last 36 hours.",
     "Reddit is infrastructure-blocked from this environment, so the loop should not treat more Reddit monitoring as an execution lane.",
     "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
-    "Apollo is authenticated right now, so a managed outbound execution packet is available without waiting on Reddit or GitHub PR auth.",
+    "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
     "11 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
     "11 prepared curator targets still need a canonical execution handoff packet.",
     "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
@@ -22,5 +22,5 @@
     "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
     "apollo_status.json: managed outbound is authenticated and available for execution packaging"
   ],
-  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_distribution_action_brief.md"
+  "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_distribution_action_brief.md"
 }

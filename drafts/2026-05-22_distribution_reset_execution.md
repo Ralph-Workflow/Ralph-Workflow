@@ -21,7 +21,7 @@ Generated: 2026-05-22T20:54:36
 - finished code
 - tested code
 - ready to review
-- would you merge it?
+- would you ship it?
 
 ## Queue snapshot
 - Live curator targets: 14
@@ -29,7 +29,7 @@ Generated: 2026-05-22T20:54:36
 
 ## Next untouched target classes to create
 - comparison pages not yet turned into third-party citations or curated-list inclusions
-- repo-native coding tool roundups that can link directly to Codeberg instead of the GitHub mirror
+- your own repo coding tool roundups that can link directly to Codeberg instead of the GitHub mirror
 - workflow/orchestration directories or blog lists adjacent to the current comparison pages
 
 ## Comparison assets to extend

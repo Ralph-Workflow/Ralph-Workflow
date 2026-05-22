@@ -56,13 +56,36 @@ The bounded run is more useful the next morning.
 
 ---
 
+## The Default Workflow Works as-Is
+
+Ralph Workflow ships with a strong default loop — spec, build, verify, review — that works out of the box on real backlog tasks tonight.
+
+No configuration required to start. No workflow design to do first.
+
+Run it as-is and iterate from the output.
+
+## Extend When the Default Is Not Enough
+
+The default workflow is intentionally simple: one spec phase, one build phase, one verify phase, one review surface.
+
+When that is not the right structure for your task, extend it:
+
+- Add a planning phase for complex work
+- Add a separate review phase with its own acceptance criteria
+- Add a rollback gate before merge
+- Replace any phase with a custom implementation
+
+The core loop does not change. The composition does.
+
+This is what "composable" means in practice: not a library of recipes, but a loop structure you can extend without rebuilding from scratch.
+
 ## Use It Tonight
 
 The fastest honest test:
 
 1. Pick one real backlog task — small, bounded, rollback-cheap
 2. Write a one-paragraph spec: what changes, what stays, what done looks like
-3. Run Ralph Workflow
+3. Run Ralph Workflow with the default loop
 4. Come back and ask: would I merge this?
 
 If yes — give it something bigger next.

@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime
@@ -199,7 +200,7 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
 
 class DistributionLaneSelectorFallbackTests(unittest.TestCase):
-    def test_prefers_apollo_outreach_when_reddit_and_github_pr_paths_are_blocked_but_apollo_is_live(self):
+    def test_prefers_handoff_packet_when_apollo_is_only_authenticated_but_not_proven_live(self):
         now = datetime(2026, 5, 22, 21, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
         channel_log = {"working": []}
@@ -274,8 +275,8 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
                  patch.object(distribution_lane_selector, '_github_auth_available', return_value=False):
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
-            self.assertEqual(decision.lane, 'apollo_outreach')
-            self.assertIn('Apollo is live', decision.reason)
+            self.assertEqual(decision.lane, 'curator_handoff_packet')
+            self.assertIn('Prepared curator targets exist', decision.reason)
 
     def test_prefers_curator_outreach_when_reddit_coverage_is_degraded_and_hn_ceiling_repeats(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
@@ -620,6 +621,44 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Apollo Outbound Execution Packet', artifact_text)
             self.assertIn('Codeberg repo', artifact_text)
+
+    def test_latest_apollo_warning_ignores_older_zero_record_log_when_newer_verification_is_ready(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+
+            older = log_dir / 'marketing_2026-05-22_apollo_curator_followup_list.json'
+            older.write_text(json.dumps({
+                'chosen_action': {'channel': 'apollo_outreach'},
+                'result': {
+                    'ok': True,
+                    'live_external_action': True,
+                    'outcome_ready': False,
+                    'notes': ['The visible record count was 0 right after creation, so the import path likely needs a second-pass check before using this list for a sequence.'],
+                    'evidence': [],
+                },
+            }), encoding='utf-8')
+
+            newer = log_dir / 'marketing_2026-05-23_apollo_list_verification.json'
+            newer.write_text(json.dumps({
+                'chosen_action': {'channel': 'apollo_outreach'},
+                'result': {
+                    'ok': True,
+                    'live_external_action': True,
+                    'outcome_ready': True,
+                    'notes': [],
+                    'evidence': ["Apollo UI shows list 'Ralph Workflow — curator follow-up 2026-05-22' with 5 visible records."],
+                },
+            }), encoding='utf-8')
+
+            older_ts = datetime(2026, 5, 22, 22, 17, 0).timestamp()
+            newer_ts = datetime(2026, 5, 23, 0, 7, 0).timestamp()
+            os.utime(older, (older_ts, older_ts))
+            os.utime(newer, (newer_ts, newer_ts))
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir):
+                self.assertIsNone(distribution_lane_executor._latest_apollo_execution_warning())
 
     def test_curator_parser_skips_measurement_only_rows(self):
         text = """### 1. Real target
@@ -1379,7 +1418,7 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertEqual(payload['chosen_action']['type'], 'aigearbase_free_listing_submission')
             self.assertTrue(payload['result']['live_external_action'])
 
-    def test_load_latest_marketing_action_prefers_newer_replacement_packet_over_older_live_action(self):
+    def test_load_latest_marketing_action_prefers_live_action_over_newer_apollo_packet_stub(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             out_dir = Path(tmpdir)
             older_live = out_dir / 'marketing_2026-05-22_apollo_curator_followup_list.json'
@@ -1397,7 +1436,7 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
                 payload = marketing_workflow_audit.load_latest_marketing_action()
 
-            self.assertEqual(payload['chosen_action']['type'], 'apollo_outreach_execution')
+            self.assertEqual(payload['chosen_action']['type'], 'apollo_people_list_creation')
 
     def test_audit_treats_curator_redesign_as_shipped_and_drops_duplicate_architecture_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1499,7 +1538,7 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             targets = [item['target_tactic'] for item in payload['repair_actions']]
             self.assertIn('marketing_system_architecture', targets)
 
-    def test_audit_treats_apollo_outreach_execution_as_shipped_system_repair(self):
+    def test_audit_does_not_treat_apollo_outreach_packet_as_shipped_system_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             out_dir = tmp / 'logs'
@@ -1545,7 +1584,7 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             payload = json.loads(audit_json.read_text(encoding='utf-8'))
             targets = [item['target_tactic'] for item in payload['repair_actions']]
-            self.assertNotIn('marketing_system_architecture', targets)
+            self.assertIn('marketing_system_architecture', targets)
 
     def test_audit_rejects_zero_record_apollo_live_execution_as_shipped_system_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1618,12 +1657,12 @@ class MarketingLoopCertificationTests(unittest.TestCase):
         }
         self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
 
-    def test_checker_accepts_apollo_outreach_execution_as_system_redesign_shipment(self):
+    def test_checker_rejects_apollo_outreach_execution_packet_as_system_redesign_shipment(self):
         audit = {
             'latest_executed_action': {'type': 'apollo_outreach_execution', 'ok': True, 'live_external_action': False},
             'repair_actions': [],
         }
-        self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
+        self.assertFalse(marketing_loop_checker.shipped_system_redesign(audit))
 
     def test_checker_rejects_low_signal_live_external_action_as_system_redesign_shipment(self):
         audit = {
@@ -1668,12 +1707,12 @@ class MarketingLoopCertificationTests(unittest.TestCase):
         }
         self.assertTrue(marketing_loop_independent_verify.shipped_system_redesign(audit))
 
-    def test_independent_verifier_accepts_apollo_outreach_execution_as_system_redesign_shipment(self):
+    def test_independent_verifier_rejects_apollo_outreach_execution_packet_as_system_redesign_shipment(self):
         audit = {
             'latest_executed_action': {'type': 'apollo_outreach_execution', 'ok': True, 'live_external_action': False},
             'repair_actions': [],
         }
-        self.assertTrue(marketing_loop_independent_verify.shipped_system_redesign(audit))
+        self.assertFalse(marketing_loop_independent_verify.shipped_system_redesign(audit))
 
     def test_independent_verifier_rejects_low_signal_live_external_action_as_system_redesign_shipment(self):
         audit = {
