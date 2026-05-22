@@ -116,6 +116,7 @@ if TYPE_CHECKING:
 
     from ralph.agents.timeout_clock import Clock
     from ralph.config.models import AgentConfig
+    from ralph.mcp.upstream.config import UpstreamMcpServer
 
 
 def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
@@ -149,6 +150,20 @@ def _stop_workspace_monitor(monitor: WorkspaceMonitor | None) -> None:
     """Stop workspace monitoring."""
     if monitor is not None:
         monitor.stop()
+
+
+def _apply_upstream_env(
+    upstreams: tuple[UpstreamMcpServer, ...],
+    workspace_path: Path | None,
+    runtime_env: dict[str, str],
+    server_env: dict[str, str],
+) -> None:
+    effective_mcp = effective_session_mcp_plan_from_servers(
+        mcp_toml_as_upstreams(workspace_path),
+        agent_upstream_servers=upstreams,
+    )
+    set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
+    set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
 
 
 def _prepare_interactive_claude_options(opts: InvokeOptions, config: AgentConfig) -> InvokeOptions:
@@ -349,12 +364,7 @@ def resolve_invocation_runtime(
             endpoint,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
-        effective_mcp = effective_session_mcp_plan_from_servers(
-            mcp_toml_as_upstreams(workspace_path),
-            agent_upstream_servers=upstreams,
-        )
-        set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
-        set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
+        _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)
 
     elif transport == AgentTransport.CODEX:
         codex_home, upstreams = prepare_codex_home_with_upstreams(
@@ -364,34 +374,28 @@ def resolve_invocation_runtime(
             system_prompt_file=system_prompt_file,
         )
         runtime_env["CODEX_HOME"] = codex_home
-        effective_mcp = effective_session_mcp_plan_from_servers(
-            mcp_toml_as_upstreams(workspace_path),
-            agent_upstream_servers=upstreams,
-        )
-        set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
-        set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
+        _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)
 
     elif transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
         if endpoint:
-            effective_mcp = effective_session_mcp_plan_from_servers(
-                mcp_toml_as_upstreams(workspace_path),
-                agent_upstream_servers=load_existing_claude_upstream_servers(workspace_path),
+            _apply_upstream_env(
+                load_existing_claude_upstream_servers(workspace_path),
+                workspace_path,
+                runtime_env,
+                server_env,
             )
-            set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
-            set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
 
     elif transport == AgentTransport.AGY:
         # AGY has no documented env-var home override, so Ralph cannot inject
         # the MCP endpoint directly. Upstream servers are read from the user's
         # existing AGY config files and re-exposed via Ralph's upstream proxy.
         # Users must pre-configure the Ralph endpoint in their AGY mcp_config.json.
-        upstreams = load_existing_agy_upstream_servers(workspace_path)
-        effective_mcp = effective_session_mcp_plan_from_servers(
-            mcp_toml_as_upstreams(workspace_path),
-            agent_upstream_servers=upstreams,
+        _apply_upstream_env(
+            load_existing_agy_upstream_servers(workspace_path),
+            workspace_path,
+            runtime_env,
+            server_env,
         )
-        set_upstream_mcp_config(runtime_env, effective_mcp.effective_servers)
-        set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
 
     elif endpoint is not None:
         # Unsupported transport with endpoint
