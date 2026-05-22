@@ -1,5 +1,5 @@
 {
-  "ts": "2026-05-22T22:00:21.222101",
+  "ts": "2026-05-22T23:00:16.464153",
   "jobs_checked": 20,
   "issues_found": 6,
   "issues": [
@@ -34,24 +34,24 @@
       "name": "agent_architecture_verifier_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Repeat issue escalation: agent_architecture_verifier:artifact_contract_fail has appeared in 39 prior health-monitor runs and is still present now",
-      "repeats_in_recent_history": 39
+      "likely_cause": "Repeat issue escalation: agent_architecture_verifier:artifact_contract_fail has appeared in 43 prior health-monitor runs and is still present now",
+      "repeats_in_recent_history": 43
     },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Repeat issue escalation: marketing_independent_verification:loop_verification_fail has appeared in 22 prior health-monitor runs and is still present now",
-      "repeats_in_recent_history": 22
+      "likely_cause": "Repeat issue escalation: marketing_independent_verification:loop_verification_fail has appeared in 28 prior health-monitor runs and is still present now",
+      "repeats_in_recent_history": 28
     },
     {
       "job_id": "__artifacts__",
       "name": "agent_architecture_verifier_runtime_escalation",
       "category": "escalation_required",
       "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail, agent_architecture_verifier_escalation:escalation_required, marketing_independent_verification_escalation:escalation_required, agent_architecture_verifier_runtime_escalation:escalation_required\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_indep",
-      "likely_cause": "Repeat issue escalation: agent_architecture_verifier_runtime:artifact_contract_fail has appeared in 38 prior health-monitor runs and is still present now",
-      "repeats_in_recent_history": 38
+      "likely_cause": "Repeat issue escalation: agent_architecture_verifier_runtime:artifact_contract_fail has appeared in 42 prior health-monitor runs and is still present now",
+      "repeats_in_recent_history": 42
     }
   ],
   "repairs_attempted": [

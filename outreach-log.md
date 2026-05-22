@@ -5631,3 +5631,11 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 - **Why:** Reused existing curator email execution instead of drafting another packet; gives the Apollo lane a real live asset for follow-up / sequence work.
 - **Result:** List created successfully in Apollo. Visible record count was `0` immediately after creation, so the CSV-import path should be rechecked before using the list for a sequence.
 - **Log:** `agents/marketing/logs/marketing_2026-05-22_apollo_curator_followup_list.json`
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 22:33:47
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 22:49:20
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

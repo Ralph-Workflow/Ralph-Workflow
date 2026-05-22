@@ -1379,6 +1379,26 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             self.assertEqual(payload['chosen_action']['type'], 'aigearbase_free_listing_submission')
             self.assertTrue(payload['result']['live_external_action'])
 
+    def test_load_latest_marketing_action_prefers_newer_replacement_packet_over_older_live_action(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            older_live = out_dir / 'marketing_2026-05-22_apollo_curator_followup_list.json'
+            newer_packet = out_dir / 'marketing_2026-05-22_apollo_outreach_execution.json'
+            older_live.write_text(json.dumps({
+                'chosen_action': {'type': 'apollo_people_list_creation', 'channel': 'apollo_outreach'},
+                'result': {'ok': True, 'status': 'executed', 'live_external_action': True},
+            }), encoding='utf-8')
+            newer_packet.write_text(json.dumps({
+                'chosen_action': {'type': 'apollo_outreach_execution', 'channel': 'apollo_outreach'},
+                'result': {'ok': True, 'status': 'prepared', 'live_external_action': False},
+            }), encoding='utf-8')
+            newer_packet.touch()
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir):
+                payload = marketing_workflow_audit.load_latest_marketing_action()
+
+            self.assertEqual(payload['chosen_action']['type'], 'apollo_outreach_execution')
+
     def test_audit_treats_curator_redesign_as_shipped_and_drops_duplicate_architecture_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -1527,6 +1547,61 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             targets = [item['target_tactic'] for item in payload['repair_actions']]
             self.assertNotIn('marketing_system_architecture', targets)
 
+    def test_audit_rejects_zero_record_apollo_live_execution_as_shipped_system_repair(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            out_dir = tmp / 'logs'
+            out_dir.mkdir()
+            adoption_path = out_dir / 'adoption_metrics_latest.json'
+            retro_path = out_dir / 'reddit_post_analysis.json'
+            outreach_path = tmp / 'outreach-log.md'
+            principles_path = tmp / 'principles.md'
+            four_questions_path = tmp / 'four_questions.md'
+            self_improvement_path = tmp / 'self_improvement.md'
+            audit_json = out_dir / 'marketing_workflow_audit_latest.json'
+            audit_md = out_dir / 'marketing_workflow_audit_latest.md'
+
+            adoption_path.write_text(json.dumps({
+                'metrics': [],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'failing_signals': ['primary_repo_flat']},
+            }), encoding='utf-8')
+            retro_path.write_text(json.dumps({'recent_posts': [], 'repeated_openings': []}), encoding='utf-8')
+            outreach_path.write_text('Reddit blocked; Apollo list was attempted.', encoding='utf-8')
+            principles_path.write_text('principles', encoding='utf-8')
+            four_questions_path.write_text('questions', encoding='utf-8')
+            self_improvement_path.write_text('self-improvement', encoding='utf-8')
+            (out_dir / 'marketing_2026-05-22_apollo_curator_followup_list.json').write_text(json.dumps({
+                'chosen_action': {'type': 'apollo_people_list_creation', 'channel': 'apollo_outreach', 'title': 'Apollo curator follow-up list creation'},
+                'result': {
+                    'ok': True,
+                    'status': 'executed',
+                    'live_external_action': True,
+                    'notes': ['The visible record count was 0 right after creation, so the import path likely needs a second-pass check before using this list for a sequence.'],
+                },
+            }), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_JSON', audit_json), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_MD', audit_md), \
+                 patch.object(marketing_workflow_audit, 'OUTREACH', outreach_path), \
+                 patch.object(marketing_workflow_audit, 'ADOPTION', adoption_path), \
+                 patch.object(marketing_workflow_audit, 'RETRO', retro_path), \
+                 patch.object(marketing_workflow_audit, 'PRINCIPLES', principles_path), \
+                 patch.object(marketing_workflow_audit, 'FOUR_QUESTIONS_DOC', four_questions_path), \
+                 patch.object(marketing_workflow_audit, 'SELF_IMPROVEMENT_DOC', self_improvement_path):
+                rc = marketing_workflow_audit.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads(audit_json.read_text(encoding='utf-8'))
+            targets = [item['target_tactic'] for item in payload['repair_actions']]
+            self.assertIn('marketing_system_architecture', targets)
+            self.assertIn('managed_outbound_execution', targets)
+            self.assertFalse(payload['latest_executed_action']['outcome_ready'])
+
 
 class MarketingLoopCertificationTests(unittest.TestCase):
     def test_checker_rejects_curator_follow_through_as_system_redesign_shipment(self):
@@ -1549,6 +1624,13 @@ class MarketingLoopCertificationTests(unittest.TestCase):
             'repair_actions': [],
         }
         self.assertTrue(marketing_loop_checker.shipped_system_redesign(audit))
+
+    def test_checker_rejects_low_signal_live_external_action_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'apollo_people_list_creation', 'ok': True, 'live_external_action': True, 'outcome_ready': False},
+            'repair_actions': [],
+        }
+        self.assertFalse(marketing_loop_checker.shipped_system_redesign(audit))
 
     def test_checker_rejects_curator_handoff_packet_as_system_redesign_shipment(self):
         audit = {
@@ -1592,6 +1674,13 @@ class MarketingLoopCertificationTests(unittest.TestCase):
             'repair_actions': [],
         }
         self.assertTrue(marketing_loop_independent_verify.shipped_system_redesign(audit))
+
+    def test_independent_verifier_rejects_low_signal_live_external_action_as_system_redesign_shipment(self):
+        audit = {
+            'latest_executed_action': {'type': 'apollo_people_list_creation', 'ok': True, 'live_external_action': True, 'outcome_ready': False},
+            'repair_actions': [],
+        }
+        self.assertFalse(marketing_loop_independent_verify.shipped_system_redesign(audit))
 
     def test_independent_verifier_rejects_distribution_reset_as_system_redesign_shipment(self):
         audit = {

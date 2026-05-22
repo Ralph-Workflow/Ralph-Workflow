@@ -1,5 +1,5 @@
 # Ralph Workflow Apollo Outbound Execution Packet
-Generated: 2026-05-22T21:38:13
+Generated: 2026-05-22T22:49:07
 
 ## Why this exists now
 - Reddit is blocked, GitHub PR auth is blocked here, and Apollo is live; use managed outbound with the already-prepared curator/comparison proof spine instead of another manual handoff packet.
@@ -68,6 +68,13 @@ Generated: 2026-05-22T21:38:13
 - Aider — Terminal-based AI pair programming in your git repo
 - Continue — The leading AI code assistant inside your IDE
 - Conductor OSS — Enterprise-grade workflow orchestration for AI agents
+
+## Apollo execution gate
+- Do not count Apollo progress from packet generation or list creation alone.
+- A list import only counts when the visible imported-contact count is non-zero.
+- If the imported-contact count is zero, rebuild the CSV from the prepared curator/comparison targets and retry import before touching sequences.
+- Only launch a sequence after the list is visibly populated and the CTA stays Codeberg-primary: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+- Current warning: Latest Apollo execution evidence still shows a zero-record / import-verification gap. Do not count Apollo as shipped until the imported list is non-zero or a live sequence is launched.
 
 ## Ready email / sequence seed
 ```text

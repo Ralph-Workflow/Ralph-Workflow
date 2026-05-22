@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-22T21:38:13
+Generated: 2026-05-22T22:49:07
 Chosen lane: **apollo_outreach**
 
 ## Why this lane
