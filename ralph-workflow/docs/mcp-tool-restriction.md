@@ -11,7 +11,7 @@ Ralph Workflow's prompts claim "Native agent tools are DISABLED". This document 
 - **Claude Code** receives `--tools ""` plus a strict-MCP-config that contains only the Ralph Workflow MCP server.
 - **OpenCode** receives a config payload that explicitly sets each native tool to `false`.
 - **Codex** receives a TOML config that preserves existing sections and disables several built-in features, but core editing primitives cannot be fully removed.
-- **Google Anti Gravity** uses the Ralph-owned MCP proxy contract and an isolated temp home for best-effort config mirroring, but does not have a documented environment-variable home override.
+- **Google Anti Gravity** uses the Ralph-owned MCP proxy contract and reads existing user config files for upstream discovery, but does not have a documented environment-variable home override.
 
 ### Strict Ralph Workflow Authority Mode
 
@@ -77,13 +77,11 @@ Reference: https://platform.openai.com/docs/codex
 
 ### Google Anti Gravity - Best-Effort
 
-Google Anti Gravity (AGY) does not have a documented environment variable that redirects its config root. Ralph Workflow therefore treats AGY support as best-effort for direct endpoint injection: `prepare_agy_home()` creates an isolated temp directory, mirrors the user's existing `~/.gemini/antigravity-cli/` contents when present, and writes a merged `mcp_config.json` at `<temp_dir>/antigravity-cli/mcp_config.json` with the Ralph MCP endpoint when one is available.
+Google Anti Gravity (AGY) does not have a documented environment variable that redirects its config root. Ralph Workflow therefore discovers AGY upstream servers from the user's existing config files: `~/.gemini/antigravity-cli/mcp_config.json` and workspace-level `.agents/mcp_config.json`.
 
-AGY reads from `~/.gemini/antigravity-cli/` by default, so the temp directory is for isolation and session safety rather than a guaranteed live config redirect. Ralph Workflow does not pretend that AGY has a documented home-root override.
+Users who want the full Ralph MCP contract must pre-configure the Ralph MCP endpoint in AGY's `mcp_config.json` as a `serverUrl` entry. Ralph Workflow reads that existing config, normalizes AGY's `serverUrl` HTTP entries, and re-exposes those upstream tools as Ralph Workflow-owned proxied aliases.
 
-AGY does participate in Ralph's upstream proxy model. `prepare_agy_home()` reads user-configured upstream servers from the existing AGY `mcp_config.json`, normalizes AGY's `serverUrl` HTTP entries, and Ralph Workflow re-exposes those upstream tools as Ralph Workflow-owned proxied aliases.
-
-When an MCP endpoint is wired to AGY, Ralph Workflow still enforces the same capability-gated MCP model and completion contract. The temp dir keeps the user's live config untouched, but endpoint delivery remains best-effort until AGY exposes a documented home-root override.
+AGY participates in Ralph's upstream proxy model and still runs under Ralph's capability-gated MCP model and completion contract. There is no documented home-root override, so Ralph treats AGY as config-discovery based rather than direct-injection based.
 
 ## 3. Known Bugs and Limitations
 
@@ -106,7 +104,7 @@ When an MCP endpoint is wired to AGY, Ralph Workflow still enforces the same cap
 ### Google Anti Gravity
 
 - AGY does not currently expose a documented home-root override for config redirection.
-- Direct endpoint injection is best-effort rather than guaranteed live discovery.
+- Ralph discovers AGY upstream servers from existing config files instead of injecting a live temp-home redirect.
 - `serverUrl` is the AGY HTTP field name; `url` is used by Ralph's internal upstream normalization.
 
 ## 4. How Ralph Workflow Verifies Enforcement
@@ -116,7 +114,7 @@ Ralph Workflow's test suite covers enforcement through agent invocation tests:
 - **`tests/test_agents_invoke_1.py`** through **`tests/test_agents_invoke_5.py`** verify Claude, OpenCode, Codex, and AGY invocation enforcement.
 - **`tests/test_agy_execution_contract.py`** proves AGY uses `ClaudeInteractiveExecutionStrategy` and that clean exit without `declare_complete` raises `OpenCodeResumableExitError`.
 - **`tests/mcp/test_agy_transport.py`** verifies the AGY transport helpers, including `serverUrl` normalization for HTTP upstream servers.
-- **`tests/test_agents_invoke_5.py`** includes the AGY runtime endpoint wiring test.
+- **`tests/test_agents_invoke_5.py`** includes the AGY runtime endpoint wiring behavior test.
 
 Transport selection and alias routing are verified in **`tests/test_agent_registry.py`**, which checks that `ccs` aliases resolve to the correct CLI and that each CLI receives the appropriate transport configuration.
 

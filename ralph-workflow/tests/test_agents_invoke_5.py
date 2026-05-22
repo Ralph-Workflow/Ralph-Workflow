@@ -94,7 +94,7 @@ class TestResolveInvocationRuntime:
         )
         assert captured[0] == "/injected/home"
 
-    def test_agy_calls_prepare_agy_home_with_endpoint(
+    def test_agy_runtime_sets_mcp_endpoint_and_upstream_env(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         config = AgentConfig(
@@ -102,20 +102,14 @@ class TestResolveInvocationRuntime:
             transport=AgentTransport.AGY,
         )
         extra_env = {str(MCP_ENDPOINT_ENV): "http://localhost:9999"}
-        captured_endpoint: list[str | None] = []
 
-        def fake_prepare_agy_home(
-            endpoint: str | None,
-            *,
-            workspace_path: object,
-            existing_home: str | None,
-        ) -> tuple[str, tuple[object, ...]]:
-            captured_endpoint.append(endpoint)
-            return ("/fake/agy-home", ())
-
-        monkeypatch.setattr(invoke_module, "prepare_agy_home", fake_prepare_agy_home)
+        monkeypatch.setattr(
+            invoke_module,
+            "load_existing_agy_upstream_servers",
+            lambda workspace_path: (),
+        )
         monkeypatch.setattr(invoke_module, "mcp_toml_as_upstreams", lambda p: [])
         monkeypatch.setattr(invoke_module, "set_upstream_mcp_config", lambda e, u: None)
         result = invoke_module.resolve_invocation_runtime(config, extra_env, None)
-        assert captured_endpoint == ["http://localhost:9999"]
         assert result.mcp_endpoint == "http://localhost:9999"
+        assert result.agent_env is not None

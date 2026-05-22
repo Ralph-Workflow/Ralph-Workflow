@@ -292,8 +292,13 @@ def _build_agy_command(
     if config.print_flag:
         cmd.append(config.print_flag)
 
-    # Add the prompt file as argument
-    cmd.append(prompt_file)
+    prompt_text = _resolve_prompt_path(prompt_file, options.workspace_path).read_text(
+        encoding="utf-8"
+    )
+    artifacts = _read_multimodal_sidecar(prompt_file, options.workspace_path)
+    if artifacts:
+        prompt_text += _build_multimodal_appendix(artifacts)
+    cmd.append(prompt_text)
 
     # Add yolo/permissions flag if present
     cmd.extend(_split_optional_flag(config.yolo_flag))

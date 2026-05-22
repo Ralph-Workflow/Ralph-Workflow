@@ -819,6 +819,51 @@ def test_claude_strict_mode_command_for_log_shows_path_not_content(tmp_path: Pat
     assert prompt_text.strip() not in log_line
 
 
+def test_agy_command_inlines_prompt_content_not_file_path(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+
+    cmd = build_command(config, str(prompt_file), options=BuildCommandOptions())
+
+    assert cmd[-1] == prompt_text
+    assert str(prompt_file) not in cmd
+
+
+def test_agy_command_appends_multimodal_sidecar_content(tmp_path: Path) -> None:
+    prompt_text = "Build the feature.\n"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    sidecar_file = tmp_path / "task_multimodal_handoff.json"
+    sidecar_file.write_text(
+        json.dumps(
+            {
+                "artifacts": [
+                    {
+                        "modality": "image",
+                        "title": "Screenshot",
+                        "uri": "ralph://media/abc123",
+                        "delivery": "resource_reference_replay",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(workspace_path=tmp_path),
+    )
+
+    assert "## Multimodal Artifacts" in cmd[-1]
+    assert "ralph://media/abc123" in cmd[-1]
+    assert cmd[-1].startswith(prompt_text)
+
+
 def test_check_agent_available_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ralph.agents.invoke.shutil.which", lambda name: f"/usr/bin/{name}")
     config = AgentConfig(cmd="claude")

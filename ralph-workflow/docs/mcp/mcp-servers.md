@@ -298,6 +298,7 @@ Agent Transport Compatibility
   angular-cli × CLAUDE    ok
   angular-cli × CODEX     ok
   angular-cli × OPENCODE  ok
+  angular-cli × AGY       ok
 ```
 
 ## Worked example: Docs MCP server on localhost:6280
@@ -403,6 +404,7 @@ Agent Transport Compatibility
   crawl4ai × CLAUDE    ok
   crawl4ai × CODEX     ok
   crawl4ai × OPENCODE  ok
+  crawl4ai × AGY       ok
 ```
 
 If a phase fails to expose `ralph_upstream__crawl4ai__*` tools, run `ralph --diagnose` first — this is the regression failure mode that `tests/integration/test_web_access_phase_visibility.py` guards against.

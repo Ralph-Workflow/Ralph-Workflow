@@ -2,7 +2,7 @@
 
 After :mod:`ralph.mcp.upstream.validation` has confirmed that each upstream
 MCP server is reachable from Ralph, this module synthesizes the
-agent-specific config payload Ralph would emit for Claude/Codex/OpenCode and
+agent-specific config payload Ralph would emit for Claude/Codex/OpenCode/AGY and
 re-runs the same MCP handshake to confirm the wire is shaped correctly.
 
 The probe is *self-contained*: it never spawns the agent binaries themselves.

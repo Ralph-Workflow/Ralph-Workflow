@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from ralph.config.enums import AgentTransport
 from ralph.mcp.tools.names import custom_proxy_tool_name
+from ralph.mcp.transport.agy import agy_mcp_config
 from ralph.mcp.transport.claude import claude_mcp_config
 from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
 from ralph.mcp.transport.common import mcp_toml_as_upstreams
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 
 _FAKE_URL = "http://127.0.0.1:9999/mcp"
 _EXPECTED_TRANSPORT_COUNT = len(
-    [AgentTransport.CLAUDE, AgentTransport.CODEX, AgentTransport.OPENCODE]
+    [AgentTransport.CLAUDE, AgentTransport.CODEX, AgentTransport.OPENCODE, AgentTransport.AGY]
 )
 
 
@@ -45,7 +46,10 @@ def test_mcp_toml_entry_surfaces_in_upstream_registry(
     assert len(upstreams) == 1
     assert upstreams[0].name == "angular-docs"
 
-    registry = UpstreamRegistry.build(upstreams, client_factory=make_stub_client_factory())
+    registry = UpstreamRegistry.build(
+        upstreams,
+        client_factory=cast("Any", make_stub_client_factory()),
+    )
     aliases = {t.alias for t in registry.tool_definitions()}
 
     expected = custom_proxy_tool_name("angular-docs", FAKE_TOOL.name)
@@ -92,6 +96,14 @@ def test_mcp_toml_entry_appears_in_opencode_config(
     assert "ralph" in parsed.get("mcp", {})
 
 
+def test_mcp_toml_entry_appears_in_agy_config() -> None:
+    ralph_endpoint = "http://127.0.0.1:9999/mcp"
+    config_json = agy_mcp_config(ralph_endpoint)
+    parsed = json.loads(config_json)
+    assert "ralph" in parsed["mcpServers"]
+    assert parsed["mcpServers"]["ralph"]["serverUrl"] == ralph_endpoint
+
+
 def test_probe_agent_transports_sees_server_as_reachable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -102,7 +114,12 @@ def test_probe_agent_transports_sees_server_as_reachable(
     server = UpstreamMcpServer(name="angular-docs", transport="http", url=_FAKE_URL)
     reports = probe_agent_transports(
         [server],
-        transports=(AgentTransport.CLAUDE, AgentTransport.CODEX, AgentTransport.OPENCODE),
+        transports=(
+            AgentTransport.CLAUDE,
+            AgentTransport.CODEX,
+            AgentTransport.OPENCODE,
+            AgentTransport.AGY,
+        ),
         workspace_path=tmp_path,
     )
 

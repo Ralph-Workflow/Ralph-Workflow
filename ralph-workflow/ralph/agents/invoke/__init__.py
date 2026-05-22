@@ -89,7 +89,7 @@ from ralph.mcp.protocol.startup import (
 )
 from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
 from ralph.mcp.tools.names import claude_tool_name
-from ralph.mcp.transport.agy import prepare_agy_home
+from ralph.mcp.transport.agy import load_existing_agy_upstream_servers
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
 from ralph.mcp.transport.common import (
@@ -381,14 +381,11 @@ def resolve_invocation_runtime(
             set_upstream_mcp_config(server_env, effective_mcp.effective_servers)
 
     elif transport == AgentTransport.AGY:
-        # Note: AGY does not have a documented env var to override its config directory.
-        # prepare_agy_home() creates an isolated temp dir and mirrors user config,
-        # but the MCP endpoint injection via temp dir is best-effort (see agy.py).
-        _agy_home, upstreams = prepare_agy_home(
-            endpoint,
-            workspace_path=workspace_path,
-            existing_home=None,
-        )
+        # AGY has no documented env-var home override, so Ralph cannot inject
+        # the MCP endpoint directly. Upstream servers are read from the user's
+        # existing AGY config files and re-exposed via Ralph's upstream proxy.
+        # Users must pre-configure the Ralph endpoint in their AGY mcp_config.json.
+        upstreams = load_existing_agy_upstream_servers(workspace_path)
         effective_mcp = effective_session_mcp_plan_from_servers(
             mcp_toml_as_upstreams(workspace_path),
             agent_upstream_servers=upstreams,
