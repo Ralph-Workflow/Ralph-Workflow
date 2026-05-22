@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T07:09:48.815073",
+  "timestamp": "2026-05-22T09:25:12.878127",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -14,10 +14,12 @@
       "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths"
     ],
-    "reasoning": "Owned content is saturated for now; switch to comparison-page and curator distribution prep.",
+    "reasoning": "Monitoring is not the move right now; switch to a Codeberg-primary curator/comparison distribution lane.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "3 owned-content posts already shipped in the last 36 hours."
+      "2 owned-content posts already shipped in the last 36 hours.",
+      "Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.",
+      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run."
     ]
   },
   "result": {

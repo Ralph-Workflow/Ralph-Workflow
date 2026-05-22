@@ -1,7 +1,20 @@
 {
-  "ts": "2026-05-22T08:06:59.724328",
+  "ts": "2026-05-22T08:50:12.267097",
   "jobs_checked": 20,
   "issues_found": 0,
   "issues": [],
-  "repairs_attempted": []
+  "repairs_attempted": [
+    {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-22T08:50:08.201419+02:00\"\n}"
+    }
+  ]
 }

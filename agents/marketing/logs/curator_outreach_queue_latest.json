@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-05-22T09:25:12.878127",
+  "targets": [
+    {
+      "target": "1. ai-for-developers/awesome-ai-coding-tools",
+      "url": "https://github.com/ai-for-developers/awesome-ai-coding-tools",
+      "action": "Submit PR adding Ralph Workflow entry",
+      "priority": "HIGH \u2014 active repo, clear scope fit",
+      "subject": "Ralph Workflow for 1. ai-for-developers/awesome-ai-coding-tools",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_1-ai-for-developers-awesome-ai-coding-tools.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "2. filipecalegario/awesome-vibe-coding",
+      "url": "https://github.com/filipecalegario/awesome-vibe-coding",
+      "action": "Submit PR",
+      "priority": "MEDIUM-HIGH \u2014 updated recently (Apr 2026)",
+      "subject": "Ralph Workflow for 2. filipecalegario/awesome-vibe-coding",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_2-filipecalegario-awesome-vibe-coding.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "target": "3. asheshgoplani/agent-deck",
+      "url": "https://github.com/asheshgoplani/agent-deck",
+      "action": "Reach out about cross-linking or inclusion in both lists",
+      "priority": "MEDIUM \u2014 complementary, not competing",
+      "subject": "Ralph Workflow for 3. asheshgoplani/agent-deck",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_3-asheshgoplani-agent-deck.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    }
+  ]
+}

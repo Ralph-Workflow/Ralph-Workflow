@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.marketing import distribution_lane_executor, distribution_lane_selector, generate_content, run, run_posting
+from agents.marketing import distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting
 
 
 class GenerateContentTests(unittest.TestCase):
@@ -175,6 +175,56 @@ class DistributionLaneSelectorTests(unittest.TestCase):
             self.assertEqual(decision.lane, 'curator_outreach')
 
 
+class DistributionLaneSelectorFallbackTests(unittest.TestCase):
+    def test_prefers_curator_outreach_when_reddit_coverage_is_degraded_and_hn_ceiling_repeats(self):
+        now = datetime(2026, 5, 22, 6, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        reddit_report = (
+            '# Reddit monitor\n\n'
+            '- **Threads/posts scanned:** 0\n'
+            '- **Shortlisted:** 0\n'
+            '- **Query attempts:** 18\n'
+            '- **Search diagnostics:** ok=1, provider_challenge=9\n\n'
+            'No reliable coverage yet.\n'
+        )
+        audit = {"failing_tactics": ["execution_ceiling_repetition"]}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('HN/Lobsters remained blocked again.', encoding='utf-8')
+            (seo_dir / 'reddit_monitor_latest.md').write_text(reddit_report, encoding='utf-8')
+            (log_dir / 'marketing_workflow_audit_latest.json').write_text(json.dumps(audit), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', tmp / 'missing.json'), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', seo_dir / 'reddit_monitor_latest.md'), \
+                 patch.object(distribution_lane_selector, 'AUDIT_LATEST_JSON', log_dir / 'marketing_workflow_audit_latest.json'):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'curator_outreach')
+            self.assertIn('Monitoring is not the move right now', decision.reason)
+
+
 class DistributionLaneExecutorTests(unittest.TestCase):
     def test_curator_execution_builds_target_specific_artifact_and_log(self):
         now = datetime(2026, 5, 22, 7, 15, 0)
@@ -213,6 +263,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'TARGETS_PATH', targets_path), \
                  patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
                  patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', log_dir / 'curator_outreach_queue_latest.json'), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
                 execution = distribution_lane_executor.execute_distribution_lane(decision, now)
 
@@ -222,8 +273,119 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertIn('Shared findings reused', text)
             self.assertIn('Claude Code', text)
             self.assertIn('awesome-ai-coding-tools', text)
+            self.assertIn('Ready target files', text)
             action_log = log_dir / 'marketing_2026-05-22_curator_outreach_execution.json'
             self.assertTrue(action_log.exists())
+            queue_log = log_dir / 'curator_outreach_queue_latest.json'
+            self.assertTrue(queue_log.exists())
+            queue_payload = json.loads(queue_log.read_text(encoding='utf-8'))
+            self.assertEqual(queue_payload['targets'][0]['status'], 'prepared')
+            self.assertTrue(Path(queue_payload['targets'][0]['artifact_path']).exists())
+
+
+class MarketingLoopRunnerTests(unittest.TestCase):
+    def test_runner_executes_outcome_engine_before_reporting_scripts(self):
+        self.assertEqual(marketing_loop_runner.SCRIPTS[0].name, 'run.py')
+        self.assertIn('marketing_workflow_audit.py', [path.name for path in marketing_loop_runner.SCRIPTS])
+
+
+class MarketingMomentumWatchdogTests(unittest.TestCase):
+    def test_watchdog_accepts_shipped_curator_replacement_as_live_outcome_repair(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            status_dir = tmp / 'logs'
+            seo_dir = tmp / 'seo-reports'
+            status_dir.mkdir()
+            seo_dir.mkdir()
+            adoption_path = status_dir / 'adoption_metrics_latest.json'
+            audit_path = status_dir / 'marketing_workflow_audit_latest.json'
+            status_path = status_dir / 'marketing_momentum_watchdog.json'
+            apollo_status = status_dir / 'apollo_status.json'
+            reddit_jsonl = status_dir / 'reddit_posts.jsonl'
+            retro_path = tmp / 'retro.py'
+
+            adoption_path.write_text(json.dumps({'evaluation': {'failing_signals': ['primary_repo_flat']}}), encoding='utf-8')
+            audit_path.write_text(json.dumps({
+                'repair_window_status': 'measurement_pending',
+                'measurement_pending_reasons': ['primary_repo_flat'],
+                'repair_actions': [],
+                'failing_tactics': ['primary_repo_flat_window'],
+                'latest_executed_action': {'type': 'curator_outreach_execution', 'ok': True},
+                'has_failing_tactics': True,
+            }), encoding='utf-8')
+            (seo_dir / 'reddit_monitor_latest.md').write_text('# report\n\n- **Shortlisted:** 0\n', encoding='utf-8')
+            (seo_dir / 'reddit_monitor_latest_healthy.md').write_text('# report\n\n- **Shortlisted:** 0\n', encoding='utf-8')
+            apollo_status.write_text(json.dumps({'status': 'login_succeeded', 'cloudflare_blocked': False}), encoding='utf-8')
+            reddit_jsonl.write_text('', encoding='utf-8')
+            retro_path.write_text('print("{}")\n', encoding='utf-8')
+
+            with patch.object(marketing_momentum_watchdog, 'ROOT', tmp), \
+                 patch.object(marketing_momentum_watchdog, 'SEO', seo_dir), \
+                 patch.object(marketing_momentum_watchdog, 'STATUS_DIR', status_dir), \
+                 patch.object(marketing_momentum_watchdog, 'STATUS_PATH', status_path), \
+                 patch.object(marketing_momentum_watchdog, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(marketing_momentum_watchdog, 'AUDIT_PATH', audit_path), \
+                 patch.object(marketing_momentum_watchdog, 'APOLLO_STATUS_PATH', apollo_status), \
+                 patch.object(marketing_momentum_watchdog, 'LOG_JSONL', reddit_jsonl), \
+                 patch.object(marketing_momentum_watchdog, 'RETRO', retro_path):
+                rc = marketing_momentum_watchdog.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads(status_path.read_text(encoding='utf-8'))
+            self.assertNotIn('outcome_system_repair_missing', payload['actions'])
+            self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
+
+
+class MarketingWorkflowAuditTests(unittest.TestCase):
+    def test_audit_treats_curator_redesign_as_shipped_and_drops_duplicate_architecture_repair(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            out_dir = tmp / 'logs'
+            out_dir.mkdir()
+            adoption_path = out_dir / 'adoption_metrics_latest.json'
+            retro_path = out_dir / 'reddit_post_analysis.json'
+            outreach_path = tmp / 'outreach-log.md'
+            principles_path = tmp / 'principles.md'
+            four_questions_path = tmp / 'four_questions.md'
+            self_improvement_path = tmp / 'self_improvement.md'
+            audit_json = out_dir / 'marketing_workflow_audit_latest.json'
+            audit_md = out_dir / 'marketing_workflow_audit_latest.md'
+
+            adoption_path.write_text(json.dumps({
+                'metrics': [],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'failing_signals': ['primary_repo_flat']},
+            }), encoding='utf-8')
+            retro_path.write_text(json.dumps({'recent_posts': [], 'repeated_openings': []}), encoding='utf-8')
+            outreach_path.write_text('HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.', encoding='utf-8')
+            principles_path.write_text('principles', encoding='utf-8')
+            four_questions_path.write_text('questions', encoding='utf-8')
+            self_improvement_path.write_text('self-improvement', encoding='utf-8')
+            (out_dir / 'marketing_2026-05-22_curator_outreach_execution.json').write_text(json.dumps({
+                'chosen_action': {'type': 'curator_outreach_execution', 'title': 'Distribution lane execution: curator_outreach'},
+                'result': {'ok': True, 'status': 'executed'},
+            }), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_JSON', audit_json), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_MD', audit_md), \
+                 patch.object(marketing_workflow_audit, 'OUTREACH', outreach_path), \
+                 patch.object(marketing_workflow_audit, 'ADOPTION', adoption_path), \
+                 patch.object(marketing_workflow_audit, 'RETRO', retro_path), \
+                 patch.object(marketing_workflow_audit, 'PRINCIPLES', principles_path), \
+                 patch.object(marketing_workflow_audit, 'FOUR_QUESTIONS_DOC', four_questions_path), \
+                 patch.object(marketing_workflow_audit, 'SELF_IMPROVEMENT_DOC', self_improvement_path):
+                rc = marketing_workflow_audit.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads(audit_json.read_text(encoding='utf-8'))
+            targets = [item['target_tactic'] for item in payload['repair_actions']]
+            self.assertNotIn('marketing_system_architecture', targets)
+            content_action = next(item for item in payload['repair_actions'] if item['target_tactic'] == 'content_distribution')
+            self.assertIn('Owned content is saturated for now', content_action['action'])
 
 
 class CompetitorAnalysisTests(unittest.TestCase):

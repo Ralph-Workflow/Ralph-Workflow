@@ -5252,3 +5252,39 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 08:06:43
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 08:09:20
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+## 2026-05-22 (Friday) — AI for Developers curator outreach email + SMTP fallback repair (06:19 UTC)
+- **Executed a live curator outreach action aimed at the highest-leverage GitHub-hosted list still reachable without GitHub API auth**: sent a Codeberg-first addition request to `info@aifordevelopers.org` for the `ai-for-developers/awesome-ai-coding-tools` list using the exact suggested Ralph Workflow entry and positioning grounded in the shared curator packet.
+  - Target list: `https://github.com/ai-for-developers/awesome-ai-coding-tools`
+  - Contact path: `https://aifordevelopers.org/advertise` → `info@aifordevelopers.org`
+  - Subject: `Suggested addition for Awesome AI Coding Tools: Ralph Workflow`
+  - Codeberg primary repo in the outreach: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
+  - GitHub mirror included only as secondary context: `https://github.com/Ralph-Workflow/Ralph-Workflow`
+  - Sent log: `/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_061920_curator_email.json`
+  - Draft used: `/home/mistlight/.openclaw/workspace/drafts/2026-05-22_ai-for-developers_curator_email.txt`
+- **Why this action:** the freshest audit still says the bottleneck is `distribution_and_message_to_primary_repo_conversion`, directory submissions are mostly exhausted or already in-flight, and the curator target list ranked `awesome-ai-coding-tools` as the top direct PR candidate. Since GitHub API auth is unavailable in this environment but SMTP is usable, email was the strongest legitimate same-run path to pursue that backlink without stalling.
+- **Same-run runtime repair:** added `/home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py`, a reusable SMTP-based curator outreach helper that logs every send without hardcoding secrets, then fixed its initial `--dry-run` bug so it correctly picks up `SMTP_USER` at runtime.
+  - Verification: `python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py`
+  - Dry-run verification log: `/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_061939_curator_email.json`
+- **Expected outcome:** either a direct list addition or a maintainer reply that opens the path to a Codeberg-first listing on a high-fit developer discovery surface.
+- **Measurement window:** 14 days through **2026-06-05** for a maintainer response, list inclusion, or any new Codeberg-side adoption delta plausibly tied to this curator outreach.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 09:16:15
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+### Apollo monitor
+- **When:** 2026-05-22 09:18:13
+- **Note:** Apollo status changed from `ato_email_verification_required` to `login_succeeded`.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 09:23:51
+- **Note:** Momentum check found: outcome_system_repair_missing. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat, repetitive_outreach. Primary-repo adoption is flat without a live system-design repair; technical/tactical repairs alone are not acceptable. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 09:25:24
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal.

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T07:09:48.815073",
+  "timestamp": "2026-05-22T09:25:12.878127",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -99,7 +99,7 @@
     },
     {
       "priority": "info",
-      "action": "Note: hermes-agent has 161456 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
+      "action": "Note: hermes-agent has 161918 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
       "reason": "Competitor intelligence for positioning decisions."
     }
   ],
@@ -137,14 +137,14 @@
       "competitors": {
         "hermes-agent": {
           "status": 200,
-          "stars": 161456,
+          "stars": 161918,
           "features_found": [
             "Persistent memory"
           ]
         },
         "conductor-oss": {
           "status": 200,
-          "stars": 31837,
+          "stars": 31838,
           "features_found": [
             "Durable execution"
           ]
@@ -158,12 +158,12 @@
         },
         "aider": {
           "status": 200,
-          "stars": 45123,
+          "stars": 45131,
           "features_found": []
         },
         "continue": {
           "status": 200,
-          "stars": 33308,
+          "stars": 33310,
           "features_found": []
         },
         "cursor": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-22T06:13:28.628550",
+    "timestamp": "2026-05-22T08:10:57.512229",
     "metrics": [
       {
         "platform": "GitHub",
@@ -262,7 +262,7 @@
     }
   },
   "market_intelligence": {
-    "generated_at": "2026-05-22T01:26:06.094694",
+    "generated_at": "2026-05-22T08:03:19.253016",
     "source": "competitor_analysis.py",
     "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
     "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-22.md",
@@ -314,7 +314,7 @@
         "name": "Hermes Agent",
         "positioning": "Self-improving agent that learns from experience",
         "site_status": 200,
-        "github_stars": 161456,
+        "github_stars": 161918,
         "key_features_found": [
           "Persistent memory"
         ]
@@ -323,7 +323,7 @@
         "name": "Conductor OSS",
         "positioning": "Enterprise-grade workflow orchestration for AI agents",
         "site_status": 200,
-        "github_stars": 31837,
+        "github_stars": 31838,
         "key_features_found": [
           "Durable execution"
         ]
@@ -341,14 +341,14 @@
         "name": "Aider",
         "positioning": "Terminal-based AI pair programming in your git repo",
         "site_status": 200,
-        "github_stars": 45123,
+        "github_stars": 45131,
         "key_features_found": []
       },
       "continue": {
         "name": "Continue",
         "positioning": "The leading AI code assistant inside your IDE",
         "site_status": 200,
-        "github_stars": 33308,
+        "github_stars": 33310,
         "key_features_found": []
       },
       "cursor": {
@@ -411,12 +411,14 @@
   },
   "distribution_lane": {
     "lane": "curator_outreach",
-    "reason": "Owned content is saturated for now; switch to comparison-page and curator distribution prep.",
+    "reason": "Monitoring is not the move right now; switch to a Codeberg-primary curator/comparison distribution lane.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
-      "3 owned-content posts already shipped in the last 36 hours."
+      "2 owned-content posts already shipped in the last 36 hours.",
+      "Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.",
+      "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run."
     ],
-    "owned_content_posts_last_36h": 3,
+    "owned_content_posts_last_36h": 2,
     "unsubmitted_directory_channels": [],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T08:06:44.230338",
+  "generated_at": "2026-05-22T09:25:24.049897",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -61,19 +61,9 @@
       "target_tactic": "content_distribution",
       "failure_type": "primary_repo_flat",
       "repair_kind": "tactic",
-      "action": "REPLACE stale content distribution repair. write.as is permanently blocked; Telegraph is primary. Real gap is (a) homepage title/description SEO tuning, (b) Telegraph posts targeting keyword gaps (unattended coding agent, AI agent orchestration CLI), (c) backlink building via directory submissions and competitor citations.",
+      "action": "REPLACE stale content distribution repair. Owned content is saturated for now; hold homepage/Telegraph steady and push Codeberg-primary curator/comparison backlinks, directory confirmation, and third-party citations that can move primary-repo adoption without another Telegraph-first cycle.",
       "kill_condition": "Still no Codeberg delta after 7 days of new approach",
       "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
-      "priority": 1,
-      "repair_state": "pending_measurement"
-    },
-    {
-      "target_tactic": "marketing_system_architecture",
-      "failure_type": "outcome_system_underpowered",
-      "repair_kind": "system_design",
-      "action": "REDESIGN the marketing system itself for outcome movement. In the same run, create or repair agents, prompts, cron jobs, scripts, tests, and development workflow so the loop can pursue stronger distribution, conversion, and follow-through paths instead of only technical repairs or repeated monitoring.",
-      "kill_condition": "Another audit still shows flat primary-repo adoption without any new structural marketing capability or replacement execution path",
-      "success_metric": "A new outcome-oriented agent/process/runtime capability is created and logged before the next audit, with a direct link to Codeberg adoption movement",
       "priority": 1,
       "repair_state": "pending_measurement"
     },

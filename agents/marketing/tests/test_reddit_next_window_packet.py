@@ -77,6 +77,44 @@ class RedditNextWindowPacketTests(unittest.TestCase):
         self.assertNotEqual(entries[0].body.split("\n\n", 1)[0], entries[1].body.split("\n\n", 1)[0])
         self.assertIn("Posting discipline before using any of these", packet)
 
+    def test_build_packet_prefers_clean_structural_body_when_available(self):
+        report = Path("/tmp/reddit_monitor_2026-05-22_structural.md")
+        report.write_text(
+            """### 1) Claude Code stuck in approval loop
+- URL: https://www.reddit.com/r/ClaudeCode/comments/approval/
+- Community: `r/ClaudeCode`
+- Freshness: today
+- Best RalphWorkflow angle:
+  - **approval drag is really a weak stop-condition problem**
+- Mention fit: **high**
+""",
+            encoding="utf-8",
+        )
+        original_already_used = reddit_autopost.already_used
+        original_load_recent = reddit_next_window_packet.load_recent_bodies
+        original_load_structural = reddit_next_window_packet.load_structural_bodies
+        structural_body = (
+            "Ralph Workflow is the operating system for autonomous coding: a free and open-source "
+            "composable loop framework and AI orchestrator. It ships with a strong default workflow, "
+            "aims to leave finished code and tested code ready to review, and points people here: "
+            f"{reddit_autopost.CODEBERG_PRIMARY_URL}"
+        )
+        try:
+            reddit_autopost.already_used = lambda url: False
+            reddit_next_window_packet.load_recent_bodies = lambda limit=12: []
+            reddit_next_window_packet.load_structural_bodies = lambda: {
+                "question_opening": structural_body
+            }
+            packet, entries = reddit_next_window_packet.build_packet(report, max_entries=1)
+        finally:
+            reddit_autopost.already_used = original_already_used
+            reddit_next_window_packet.load_recent_bodies = original_load_recent
+            reddit_next_window_packet.load_structural_bodies = original_load_structural
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].body, structural_body)
+        self.assertIn("operating system for autonomous coding", entries[0].body)
+        self.assertIn("Claude Code stuck in approval loop", packet)
+
 
 if __name__ == "__main__":
     unittest.main()
