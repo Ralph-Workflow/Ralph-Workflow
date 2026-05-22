@@ -233,6 +233,23 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "broken_submit_surface")
         self.assertIn("valid payload returns", note.lower())
 
+    def test_prioritizes_easy_submit_channels_before_harder_untried_lanes(self):
+        ordered = channel_discovery.prioritize_new_channels([
+            ("medium-post", "https://example.com/post", "post", "medium"),
+            ("easy-submit", "https://example.com/submit", "submit", "easy"),
+            ("hard-submit", "https://example.com/hard", "submit", "hard"),
+            ("easy-answer", "https://example.com/answer", "answer", "easy"),
+        ])
+        self.assertEqual([item[0] for item in ordered], ["easy-submit", "easy-answer", "medium-post", "hard-submit"])
+
+    def test_validated_autonomous_submit_host_short_circuits_to_accessible(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {"probe_status": "ok"},
+            page_url="https://www.thenextai.com/submit-ai-tool/",
+        )
+        self.assertEqual(status, "accessible")
+        self.assertIn("confirmed autonomous submit lane", note)
+
     def test_login_required_submit_api_overrides_public_form_copy(self):
         status, note = channel_discovery.classify_submission_surface_probe(
             {

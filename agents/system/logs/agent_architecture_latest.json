@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "healthy_with_repairs",
-    "primary_failure_mode": "The architecture watchdog artifact drifted from live runtime reality by conflating three persisted disabled historical jobs in jobs.json with the live Gateway cron topology, which had 20 enabled jobs and 0 live-disabled jobs.",
-    "most_urgent_fix": "Keep architecture signoff fail-closed on live-vs-artifact topology mismatches so persisted disabled history can never be reported as live runtime state."
+    "primary_failure_mode": "No active cross-loop architecture break is visible; the main remaining weakness is that the marketing loop still has flat outcome movement despite healthy ownership, verification, and shared-learning boundaries.",
+    "most_urgent_fix": "Turn marketing learning into measurable Codeberg adoption movement without regressing the hardened live-topology and independent-verification boundaries."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-22T04:07:00+02:00",
+    "checked_at": "2026-05-22T04:32:56.954802+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus jobs.json comparison with explicit live-vs-persisted separation",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -84,6 +84,14 @@
       ]
     },
     {
+      "loop": "agent-architecture-watchdog",
+      "owns": [
+        "cross-loop architecture audit",
+        "ownership-boundary verification",
+        "repair-signoff enforcement"
+      ]
+    },
+    {
       "loop": "research-findings-sync",
       "owns": [
         "syncing research artifacts into the git repo"
@@ -94,130 +102,83 @@
       "owns": [
         "Codeberg-to-GitHub mirror replication"
       ]
-    },
-    {
-      "loop": "agent-architecture-watchdog",
-      "owns": [
-        "cross-loop architecture audit",
-        "ownership-boundary verification",
-        "repair-signoff enforcement"
-      ]
     }
   ],
   "findings": [
     {
-      "severity": "high",
-      "title": "Architecture signoff drifted from live cron reality by reporting persisted disabled history as live topology",
-      "mechanism": "agent_architecture_latest.json claimed live_jobs_disabled=3 and listed three disabled job names even though openclaw cron list --json showed 20 live jobs, 20 enabled, and 0 live-disabled jobs.",
-      "source_layer": "persistence",
-      "root_cause": "The architecture path preserved intentional historical disabled jobs from jobs.json but did not keep them clearly separated from live Gateway runtime state in its latest-state artifact.",
-      "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-        "/home/mistlight/.openclaw/cron/jobs.json",
-        "openclaw cron list --json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
-      ],
-      "confidence": 0.99,
-      "recommended_fix": "Fail closed whenever the architecture audit metadata disagrees with live Gateway cron topology, and report persisted disabled history in separate fields only."
-    },
-    {
       "severity": "medium",
-      "title": "The health-monitor and architecture independent-verification boundaries needed stronger topology-coherence enforcement",
-      "mechanism": "Before this repair, the architecture independent verifier passed without validating that the architecture artifact's live topology metadata matched openclaw cron list --json.",
-      "source_layer": "hidden repair loops",
-      "root_cause": "Independent signoff covered freshness and peer artifacts but did not yet validate live-vs-artifact scheduler coherence explicitly.",
-      "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor_independent_verify.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/AGENT_ARCHITECTURE_WATCHDOG.md"
-      ],
-      "confidence": 0.97,
-      "recommended_fix": "Keep the new live-topology coherence checks and watchdog instructions in the runtime path so future architecture reports cannot self-certify stale topology wording."
-    },
-    {
-      "severity": "medium",
-      "title": "Marketing learning is runtime-backed but measurable outcome movement is still absent",
-      "mechanism": "The latest marketing audit still keeps the bottleneck explicit as distribution_and_message_to_primary_repo_conversion and the independent verification still notes flat Codeberg adoption.",
+      "title": "Marketing remains the highest-risk unresolved loop because outcome movement is still flat",
+      "mechanism": "The marketing audit still names distribution_and_message_to_primary_repo_conversion as the bottleneck, and the independent verifier still flags flat primary-repo adoption as an active watchpoint.",
       "source_layer": "tool execution",
-      "root_cause": "The marketing loop now certifies more cleanly than it converts that discipline into adoption gains.",
+      "root_cause": "The marketing system is learning and reusing shared artifacts correctly, but current tactics have not yet produced measurable Codeberg adoption movement.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
         "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json"
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json"
       ],
-      "confidence": 0.9,
-      "recommended_fix": "Keep replacing tactics and architecture until Codeberg adoption moves; do not let measurement-pending status become a resting state."
+      "confidence": 0.92,
+      "recommended_fix": "Keep replacing tactics and, if necessary, the marketing runtime itself until Codeberg movement becomes measurable instead of accepting measurement-pending as a steady state."
     },
     {
       "severity": "low",
-      "title": "Retired topology remains persisted for audit history but is now clearly separated from live runtime state",
-      "mechanism": "Three legacy jobs still exist in jobs.json for audit memory, while live runtime ownership remains in Gateway and user crontab stays clean.",
+      "title": "Persisted disabled cron history still exists and must stay separated from live runtime claims",
+      "mechanism": "jobs.json still contains three disabled legacy jobs, while live Gateway cron currently shows 20 jobs with 0 live-disabled.",
       "source_layer": "persistence",
-      "root_cause": "Historical retention is intentional and safe only when it stays explicitly non-authoritative for live runtime claims.",
+      "root_cause": "Historical retention is intentional, but it becomes dangerous if any watchdog or verifier collapses persisted history back into live topology reporting.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/cron/jobs.json",
+        "openclaw cron list --json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json"
+      ],
+      "confidence": 0.98,
+      "recommended_fix": "Keep all live-topology checks bound to openclaw cron list --json and report persisted disabled history only in separate persisted-history fields."
+    },
+    {
+      "severity": "low",
+      "title": "No hidden self-certification is currently visible on the full-contract loops",
+      "mechanism": "Docs, marketing, health-monitor, loop-integrity, and architecture artifacts all show explicit verifier boundaries and current green status after direct reruns.",
+      "source_layer": "hidden repair loops",
+      "root_cause": "Recent verifier hardening is holding, but it remains a boundary that must keep being checked rather than assumed.",
+      "evidence_refs": [
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ],
-      "confidence": 0.95,
-      "recommended_fix": "Keep legacy jobs disabled, clearly labeled as historical, and excluded from live topology counts."
+      "confidence": 0.9,
+      "recommended_fix": "Preserve fail-closed verifier freshness and topology-coherence checks; do not loosen them just because the current state is green."
     }
   ],
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Keep architecture signoff bound to live Gateway cron topology rather than persisted scheduler history",
-      "why_now": "This was the live contradiction that made the previous architecture artifact untrustworthy.",
-      "expected_effect": "The architecture watchdog and health monitor fail closed before stale topology wording can be treated as healthy."
+      "goal": "Convert marketing self-improvement into measurable Codeberg adoption movement",
+      "why_now": "This is the highest-risk unresolved system weakness after the architecture-verification repairs held green.",
+      "expected_effect": "The system rewards real distribution outcomes instead of activity-only loop health."
     },
     {
       "order": 2,
-      "goal": "Preserve independent verification of the repaired architecture and health-monitor boundaries",
-      "why_now": "The repair touched verification-bearing runtime code and needed fresh proof.",
-      "expected_effect": "Future health runs catch topology/report drift directly instead of trusting stale pass artifacts."
+      "goal": "Keep live-topology reporting fail-closed against persisted scheduler history",
+      "why_now": "The historical disabled-job layer is still present in jobs.json and must never leak back into live-runtime claims.",
+      "expected_effect": "Future watchdog artifacts remain trustworthy about the real active scheduler topology."
     },
     {
       "order": 3,
-      "goal": "Convert marketing self-improvement into measurable Codeberg adoption movement",
-      "why_now": "The strongest remaining loop risk is still outcome stagnation rather than certifiability drift.",
-      "expected_effect": "The system keeps rewarding real distribution outcomes instead of activity-only marketing work."
+      "goal": "Preserve independent-verification freshness and topology-coherence gates across full-contract loops",
+      "why_now": "The system is healthy partly because those gates are active; relaxing them would recreate hidden self-certification risk.",
+      "expected_effect": "Repair loops continue to need fresh external signoff before being treated as healthy."
     }
   ],
   "repairs_applied_this_run": [
     {
-      "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-      "change": "Added direct architecture live-topology coherence checks so health monitoring now fails closed when agent_architecture_latest.json disagrees with openclaw cron list --json.",
+      "status": "none-needed",
+      "target": "architecture runtime",
+      "change": "No new material architecture repair was required in this run; the hardened topology and verifier boundaries remained green under direct rechecks.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/health_monitor.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
-      ]
-    },
-    {
-      "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
-      "change": "Added independent live-vs-artifact Gateway cron topology checks so architecture signoff now fails closed on topology drift.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json"
-      ]
-    },
-    {
-      "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/system/AGENT_ARCHITECTURE_WATCHDOG.md",
-      "change": "Clarified that openclaw cron list --json is the live topology source of truth and persisted disabled jobs in jobs.json must be reported separately.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/AGENT_ARCHITECTURE_WATCHDOG.md"
-      ]
-    },
-    {
-      "status": "done",
-      "target": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-      "change": "Refreshed the architecture artifact to match current live topology: 20 live jobs, 20 enabled, 0 live-disabled, with historical disabled jobs separated into persisted-history fields.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
         "openclaw cron list --json",
-        "/home/mistlight/.openclaw/cron/jobs.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
       ]
     }
   ],
@@ -226,21 +187,46 @@
     "artifacts": [
       "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_latest.json",
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_independent_verification.json"
+      "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
-    "summary": "Independent verification now confirms that the refreshed architecture artifact matches live Gateway cron topology, the architecture verifier fails closed on stale signoff, and the repaired health-monitor boundary is green.",
-    "checked_at": "2026-05-22T04:11:37.720840+02:00"
+    "summary": "Fresh direct reruns and current peer artifacts confirm healthy topology ownership, green independent-verification boundaries, clean user-crontab ownership, and machine-verifiable shared market-intelligence reuse.",
+    "checked_at": "2026-05-22T04:33:35.831872+02:00"
   },
   "what_still_needs_independent_verification": [],
   "highest_risk_unresolved_issue": {
-    "title": "Marketing outcomes remain flat despite better loop discipline",
-    "why": "The loop now certifies more defensibly, but Codeberg adoption and broader distribution results have still not moved in the current window."
+    "title": "Marketing outcomes remain flat despite healthy loop discipline",
+    "why": "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet."
+  },
+  "runtime_assertions": {
+    "ownership_boundaries_ok": true,
+    "hidden_self_certification_detected": false,
+    "stale_topology_leakage_detected": false,
+    "shared_market_intelligence_reuse_verified": true,
+    "loop_integrity_statuses": {
+      "ralph-docs-watchdog": "ok",
+      "autonomous-marketing-stack": "ok",
+      "ralph-site-owner-loop": "owner_only",
+      "system-health-monitor": "monitor_only",
+      "blocked-channel-recovery": "owner_only",
+      "agent-architecture-watchdog": "ok",
+      "research-findings-sync": "owner_only",
+      "codeberg-github-mirror-sync": "owner_only",
+      "user-crontab-ownership": "ok"
+    },
+    "health_monitor_issues_found": 0,
+    "marketing_independent_verdict": "pass",
+    "health_monitor_independent_verdict": "pass",
+    "architecture_independent_verdict": "pass",
+    "market_runtime_consumers": [
+      "agents/marketing/reddit_monitor.py",
+      "agents/marketing/run.py"
+    ]
   }
 }

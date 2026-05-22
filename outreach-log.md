@@ -5157,3 +5157,38 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-22 04:12:54
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-22 04:48:50
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Apollo outbound remains blocked.
+
+## 2026-05-22 (Friday) — The Next AI Codeberg-first listing submission + discovery-queue repair (02:54 UTC / 04:54 CEST)
+- **What I executed:** submitted **Ralph Workflow** to **The Next AI** free listing lane using the live public submission flow at `https://www.thenextai.com/submit-ai-tool/`, pointing the primary backlink target at **Codeberg**: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`.
+  - Live submit endpoint confirmed from page source: `https://script.google.com/macros/s/AKfycbxUeDQGc1leci0-kiZxSKKrzR8I9A-O3NpVrde9rD4sFoWW6VhBTswzsMlJKqvnWmtC/exec`
+  - Submission response: **HTTP 200** with body **`{"success":true}`**
+  - Submitted framing: **free and open-source AI orchestrator for structured autonomous coding workflows**
+  - Channel state updated: `agents/marketing/logs/channel_discovery.json` now records **thenextai** as an actionable working lane.
+- **Runtime fix applied in the same run:** repaired `agents/marketing/channel_discovery.py` so the loop stops starving fresh easy submit lanes behind harder backlog items.
+  - Added `thenextai.com` to validated autonomous submit hosts after a successful live POST.
+  - Added `prioritize_new_channels(...)` so untried **easy submit** surfaces are sampled before harder/unknown channels.
+  - Verification: ran `python3 -m unittest agents.marketing.tests.test_channel_discovery -v` — **19 tests passed**.
+- **Why this action:** this is **EXECUTED / DISTRIBUTION**. The shared audit artifacts still say the main bottleneck is `distribution_and_message_to_primary_repo_conversion`; Reddit repetition risk is already elevated, and HN/Lobsters are still blocked. The Next AI was the strongest executable external lane available right now because it accepts a free no-login submission and lets the backlink land directly on the primary **Codeberg** repo instead of a mirror.
+- **Expected outcome:** one more live third-party discovery surface and backlink that routes qualified AI-tool traffic straight to **Codeberg**, with GitHub staying secondary inside the description.
+- **Measurement window:** submit-page copy promises review in **24–48 hours**; business check = through **2026-06-05** for a live listing and any **Codeberg** stars/watchers/forks delta.
+- **Replace if it fails:** if the listing does not go live or produces no observable primary-repo movement by **2026-06-05**, stop treating directory submissions alone as enough and switch the next fresh move to direct curator/comparison-page outreach using `drafts/2026-05-22_curator_outreach_packet.md`.
+- **Artifacts:** `agents/marketing/logs/marketing_2026-05-22_thenextai_submission.json`, `agents/marketing/logs/channel_discovery.json`
+
+## 2026-05-22 (Friday) — Marketing audit execution + fresh distribution assets (05:20 CEST)
+- **What I executed:** three concrete actions that ship what the audit recommended instead of describing what should change:
+  1. **New Telegraph post** — `drafts/2026-05-22_unattended_coding_done_telegraph.md` — "The Unattended Coding Agent: What Done Actually Means" — published at https://telegra.ph/The-Unattended-Coding-Agent-What-Done-Actually-Means-05-22 — targets the "unattended coding agent" keyword gap, differentiates on bounded diff and review surface, uses "would I merge this?" as the evaluation frame
+  2. **Fresh Reddit structural bodies** — `drafts/2026-05-22_reddit_fresh_bodies.md` — three genuinely fresh shapes (approval loop pain / morning re-entry / done criteria) that break the old 4-paragraph cadence entirely, each with thread-specific usage rules
+  3. **Curator outreach target list** — `agents/marketing/logs/curator_outreach_targets.md` — real PR targets found via GitHub Topics scraping: ai-for-developers/awesome-ai-coding-tools, filipecalegario/awesome-vibe-coding, asheshgoplani/agent-deck, and others. Email templates and PR submission templates included.
+- **Why this matters:** The HN/Lobsters ceiling has been named in 7+ consecutive audits without a replacement lane executing. These three actions are the replacement lanes. The loop should stop saying "HN/Lobsters is the move" and start using these paths instead.
+- **What did not change:** Reddit remains structurally off until the next monitor clears and fresh thread opportunities surface. Reddit posting is suspended per cadence rules.
+- **Reddit structural note:** The old cadence (contrast opener → handoff framing → proof bundle → product close) is confirmed broken. Fresh bodies using Draft A/B/C shapes are in `drafts/2026-05-22_reddit_fresh_bodies.md`. Do not use old shapes.
+- **Ralph-Site deployment blocker:** Comparison pages in `seo-reports/comparisons/` (aider, continue, conductor-oss, conductor-teams, cursor, claude-code, copilot, hermes-agent) remain stranded in this workspace — Ralph-Site is a separate repo that this workspace cannot write to. This is a structural constraint requiring human access. Flagged as blocking the primary SEO distribution path.
+- **Apollo blocker:** Apollo outreach remains blocked by Cloudflare/auth. Do not attempt — treat as a monitored blocker.
+- **Expected outcome:** Comparison page backlinks (curator PRs) within 14-30 days; Telegraph keyword coverage expansion immediate; Reddit fresh bodies ready for next monitoring window.
+- **Measurement window:** 14 days for any referral signal; 30 days for indexed backlinks or Codeberg delta.
+- **Replace if it fails:** If 30 days produce no Codeberg delta and no indexed backlinks from new assets, escalate to a structural redesign of the distribution architecture — not another round of owned content.
+- **Type:** **REPLACING / DISTRIBUTION_CEILING_BREAK**

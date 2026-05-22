@@ -1,47 +1,47 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-22T04:07:00+02:00
+- Checked: 2026-05-22T04:32:56.954802+02:00
 - Overall health: healthy_with_repairs
-- Primary failure mode: The architecture watchdog artifact drifted from live runtime reality by conflating three persisted disabled historical jobs in jobs.json with the live Gateway cron topology, which had 20 enabled jobs and 0 live-disabled jobs.
-- Most urgent fix: Keep architecture signoff fail-closed on live-vs-artifact topology mismatches so persisted disabled history can never be reported as live runtime state.
+- Primary failure mode: No active cross-loop architecture break is visible; the main remaining weakness is that the marketing loop still has flat outcome movement despite healthy ownership, verification, and shared-learning boundaries.
+- Most urgent fix: Turn marketing learning into measurable Codeberg adoption movement without regressing the hardened live-topology and independent-verification boundaries.
+
+## Live topology
+
+- Live Gateway jobs: 20 total / 20 enabled / 0 disabled
+- Persisted disabled history only: marketing-reflection, ralph-workflow-full-house-docs-audit, docs-stack-aggressive-10min-self-heal
+- User crontab ownership: clean (Gateway remains scheduler authority)
 
 ## Severity-ranked findings
 
-1. **High — Architecture signoff drifted from live cron reality by reporting persisted disabled history as live topology**
-   - Mechanism: `agent_architecture_latest.json` claimed `live_jobs_disabled=3` even though `openclaw cron list --json` showed 20 live jobs, 20 enabled, and 0 live-disabled jobs.
-   - Recommended fix: Fail closed whenever architecture audit metadata disagrees with live Gateway cron topology, and report persisted disabled history in separate fields only.
+1. **Medium — Marketing remains the highest-risk unresolved loop because outcome movement is still flat**
+   - Mechanism: The marketing audit still names distribution_and_message_to_primary_repo_conversion as the bottleneck, and the independent verifier still flags flat primary-repo adoption as an active watchpoint.
+   - Recommended fix: Keep replacing tactics and, if necessary, the marketing runtime itself until Codeberg movement becomes measurable instead of accepting measurement-pending as a steady state.
 
-2. **Medium — The health-monitor and architecture independent-verification boundaries needed stronger topology-coherence enforcement**
-   - Mechanism: independent signoff covered freshness and peer artifacts but did not explicitly validate live-vs-artifact scheduler coherence.
-   - Recommended fix: Keep the new live-topology coherence checks and watchdog instructions in the runtime path.
+2. **Low — Persisted disabled cron history still exists and must stay separated from live runtime claims**
+   - Mechanism: jobs.json still contains three disabled legacy jobs, while live Gateway cron currently shows 20 jobs with 0 live-disabled.
+   - Recommended fix: Keep all live-topology checks bound to openclaw cron list --json and report persisted disabled history only in separate persisted-history fields.
 
-3. **Medium — Marketing learning is runtime-backed but measurable outcome movement is still absent**
-   - Mechanism: the latest marketing audit still keeps the bottleneck explicit as `distribution_and_message_to_primary_repo_conversion` and the independent verification still notes flat Codeberg adoption.
-   - Recommended fix: keep replacing tactics and architecture until Codeberg adoption moves.
-
-4. **Low — Retired topology remains persisted for audit history but is now clearly separated from live runtime state**
-   - Mechanism: three legacy jobs still exist in `jobs.json` for audit memory, while live runtime ownership remains in Gateway and user crontab stays clean.
-   - Recommended fix: keep legacy jobs disabled, clearly labeled as historical, and excluded from live topology counts.
+3. **Low — No hidden self-certification is currently visible on the full-contract loops**
+   - Mechanism: Docs, marketing, health-monitor, loop-integrity, and architecture artifacts all show explicit verifier boundaries and current green status after direct reruns.
+   - Recommended fix: Preserve fail-closed verifier freshness and topology-coherence checks; do not loosen them just because the current state is green.
 
 ## Ordered fix plan
 
-1. Keep architecture signoff bound to live Gateway cron topology rather than persisted scheduler history.
-2. Preserve independent verification of the repaired architecture and health-monitor boundaries.
-3. Convert marketing self-improvement into measurable Codeberg adoption movement.
+1. Convert marketing self-improvement into measurable Codeberg adoption movement
+2. Keep live-topology reporting fail-closed against persisted scheduler history
+3. Preserve independent-verification freshness and topology-coherence gates across full-contract loops
 
 ## Repaired this run
 
-- Added direct live-topology coherence checks to `agents/system/health_monitor.py`.
-- Added live-vs-artifact Gateway cron topology checks to `agents/system/agent_architecture_independent_verify.py`.
-- Clarified in `agents/system/AGENT_ARCHITECTURE_WATCHDOG.md` that `openclaw cron list --json` is the live topology source of truth and persisted disabled jobs must be reported separately.
-- Refreshed `agents/system/logs/agent_architecture_latest.json` and `.md` to match the current live topology: 20 live jobs, 20 enabled, 0 live-disabled.
+- No new material architecture repair was needed.
+- Direct rechecks stayed green for the architecture checker, architecture verifier, architecture independent verifier, loop integrity audit, and health monitor.
 
 ## Independent verification
 
 - Performed: performed
-- Summary: Independent verification now confirms that the refreshed architecture artifact matches live Gateway cron topology, the architecture verifier fails closed on stale signoff, and the repaired health-monitor boundary is green.
-- Checked at: 2026-05-22T04:11:37.720840+02:00
+- Summary: Fresh direct reruns and current peer artifacts confirm healthy topology ownership, green independent-verification boundaries, clean user-crontab ownership, and machine-verifiable shared market-intelligence reuse.
+- Checked at: 2026-05-22T04:33:35.831872+02:00
 
 ## Highest-risk unresolved loop issue
 
-- Marketing outcomes remain flat despite better loop discipline: the loop now certifies more defensibly, but Codeberg adoption and broader distribution results have still not moved in the current window.
+- Marketing outcomes remain flat despite healthy loop discipline: Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
