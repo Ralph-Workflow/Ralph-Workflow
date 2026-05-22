@@ -4,7 +4,7 @@ Ralph Workflow is a free and open-source AI agent orchestrator built around a si
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-This document describes how Ralph parses and renders streaming NDJSON output from agent CLIs (Claude, Codex, Gemini, OpenCode). The goals are:
+This document describes how Ralph parses and renders streaming output from agent CLIs (Claude, Codex, Gemini, OpenCode, and Google Anti Gravity). Claude, Codex, Gemini, and OpenCode use streaming NDJSON; Google Anti Gravity uses a generic plain-text parser (JsonParserType.GENERIC) and does not go through the NDJSON pipeline described here. The goals for the NDJSON pipeline are:
 
 - real-time output when possible
 - correct, non-duplicated output across provider quirks

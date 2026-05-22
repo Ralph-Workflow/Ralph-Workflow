@@ -155,6 +155,10 @@ def test_claude_interactive_in_default_probe_transports() -> None:
     assert AgentTransport.CLAUDE_INTERACTIVE in DEFAULT_TRANSPORTS
 
 
+def test_agy_in_default_probe_transports() -> None:
+    assert AgentTransport.AGY in DEFAULT_TRANSPORTS
+
+
 def test_probe_emits_agy_config_with_server_url_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -276,5 +280,26 @@ def test_probe_skips_stdio_for_claude(monkeypatch: pytest.MonkeyPatch) -> None:
             ok=True,
             error=None,
             note="skipped (stdio proxied by Claude CLI)",
+        ),
+    )
+
+
+def test_probe_skips_stdio_for_agy(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _stdio_server(name="local-agy")
+    monkeypatch.setattr(
+        "ralph.mcp.upstream.agent_probe.http_handshake",
+        lambda endpoint: pytest.fail("stdio agy probe should not call http handshake"),
+    )
+
+    reports = probe_agent_transports(
+        [server], transports=(AgentTransport.AGY,), workspace_path=None
+    )
+    assert reports == (
+        AgentProbeReport(
+            transport=AgentTransport.AGY,
+            server_name="local-agy",
+            ok=True,
+            error=None,
+            note="skipped (stdio proxied by AGY CLI)",
         ),
     )

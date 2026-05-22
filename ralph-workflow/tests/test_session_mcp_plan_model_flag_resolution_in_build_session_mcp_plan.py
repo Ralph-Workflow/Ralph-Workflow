@@ -76,6 +76,14 @@ def test_resolve_model_identity_claude_interactive() -> None:
     assert identity.transport == AgentTransport.CLAUDE_INTERACTIVE.value
 
 
+def test_resolve_model_identity_agy() -> None:
+    identity = resolve_model_identity(AgentTransport.AGY, "--model gemini-2.5-pro")
+
+    assert identity.provider == "gemini"
+    assert identity.model_id == "--model gemini-2.5-pro"
+    assert identity.transport == AgentTransport.AGY.value
+
+
 def test_session_mcp_plan_derives_web_and_upstream_capabilities_from_live_config(
     isolated_home: Path,
     tmp_path: Path,
