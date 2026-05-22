@@ -5,7 +5,7 @@
 - Primary failure mode: The autonomous-marketing-stack is currently red under independent verification: its runner bundle remains unhealthy and its momentum gate still reports `no_recent_reddit_post` plus flat primary-repo adoption.
 - Most urgent fix: Repair or redesign the marketing owner loop so it can clear its failing runner/momentum contract with fresh outcome-producing execution, then rerun independent verification.
 - Verifier status: invalidated by fresh fail-closed verification
-- Verifier checked: 2026-05-22T14:00:11.975728+02:00
+- Verifier checked: 2026-05-22T15:00:10.922066+02:00
 - Verifier blockers: independent verifier did not pass (verdict='fail')
 
 ## Live topology

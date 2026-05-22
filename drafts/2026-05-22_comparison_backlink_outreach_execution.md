@@ -1,5 +1,5 @@
 # Ralph Workflow Comparison Backlink Outreach Pack
-Generated: 2026-05-22T13:36:58
+Generated: 2026-05-22T14:30:38
 
 ## Why this exists now
 - Curator queue prep is already full; ship a fresh comparison/backlink outreach asset instead of another follow-through note.
@@ -12,11 +12,15 @@ Generated: 2026-05-22T13:36:58
 - adoption_metrics_latest.json → Codeberg movement is the success gate
 
 ## Ready target files
-- No new comparison targets were available; queue already covers current comparison set.
+- /home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/01_conductor-oss.md
+- /home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/02_cursor.md
+- /home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/03_copilot.md
 - Queue log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/comparison_backlink_queue_latest.json
 
 ## Prepared comparison names
-- No new names added in this run.
+- Conductor OSS
+- Cursor
+- GitHub Copilot
 
 ## Process rule now in force
 - When curator queue prep is already saturated, the next same-run asset must be comparison/backlink-oriented or another fresh executable lane.

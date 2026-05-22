@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-22T14:00:11.975728+02:00",
+  "checked_at": "2026-05-22T15:00:10.922066+02:00",
   "verdict": "fail",
   "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
   "verified_repairs": [

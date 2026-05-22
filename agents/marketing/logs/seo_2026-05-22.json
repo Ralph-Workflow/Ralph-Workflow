@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T13:36:58.604940",
+  "timestamp": "2026-05-22T14:30:38.366360",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6204,
+      "word_count": 6212,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -30,7 +30,7 @@
     },
     "sitemap": {
       "status": 200,
-      "url_count": 70,
+      "url_count": 71,
       "urls": [
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/privacy",
@@ -39,6 +39,7 @@
         "https://ralphworkflow.com/aider-alternative",
         "https://ralphworkflow.com/conductor-alternative",
         "https://ralphworkflow.com/hermes-alternative",
+        "https://ralphworkflow.com/claude-code-alternative",
         "https://ralphworkflow.com/docs/",
         "https://ralphworkflow.com/contact",
         "https://ralphworkflow.com/docs/advanced-artifact-configuration",
@@ -50,8 +51,7 @@
         "https://ralphworkflow.com/docs/ai-agent-workflow-composer",
         "https://ralphworkflow.com/docs/ai-coding-workflow-automation",
         "https://ralphworkflow.com/docs/artifacts",
-        "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding",
-        "https://ralphworkflow.com/docs/claude-code-approval-mode"
+        "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding"
       ]
     }
   },

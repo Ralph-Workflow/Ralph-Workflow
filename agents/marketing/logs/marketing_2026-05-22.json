@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-22T13:36:58.554247",
+  "timestamp": "2026-05-22T14:30:38.319697",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-22T13:20:17.211261",
+    "timestamp": "2026-05-22T14:24:48.116575",
     "metrics": [
       {
         "platform": "GitHub",
@@ -435,7 +435,11 @@
     "status": "executed",
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-22_comparison_backlink_outreach_execution.md",
     "summary": "Prepared comparison-led backlink outreach assets from shared market intelligence so the loop ships a fresh distribution capability instead of queue housekeeping.",
-    "targets_prepared": [],
+    "targets_prepared": [
+      "Conductor OSS",
+      "Cursor",
+      "GitHub Copilot"
+    ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",

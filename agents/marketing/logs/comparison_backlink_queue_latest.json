@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T13:36:58.554247",
+  "generated_at": "2026-05-22T14:30:38.319697",
   "targets": [
     {
       "slug": "hermes-agent",
@@ -22,6 +22,30 @@
       "name": "Continue",
       "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/continue.md",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/03_continue.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "slug": "conductor-oss",
+      "name": "Conductor OSS",
+      "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/conductor-oss.md",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/01_conductor-oss.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "slug": "cursor",
+      "name": "Cursor",
+      "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/cursor.md",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/02_cursor.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-05"
+    },
+    {
+      "slug": "copilot",
+      "name": "GitHub Copilot",
+      "comparison_path": "/home/mistlight/.openclaw/workspace/seo-reports/comparisons/copilot.md",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/comparison_backlinks/2026-05-22/03_copilot.md",
       "status": "prepared",
       "review_due_date": "2026-06-05"
     }

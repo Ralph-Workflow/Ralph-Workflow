@@ -500,7 +500,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertIn('stop babysitting your agents', artifact_text)
             self.assertIn('sent_via_email_fallback: do not resend now', artifact_text)
 
-    def test_comparison_backlink_execution_creates_fresh_asset_from_market_intelligence(self):
+    def test_comparison_backlink_execution_creates_fresh_asset_from_next_unprepared_market_intelligence_targets(self):
         now = datetime(2026, 5, 23, 7, 15, 0)
         decision = distribution_lane_selector.LaneDecision(
             lane='comparison_backlink_outreach',
@@ -514,11 +514,15 @@ class DistributionLaneExecutorTests(unittest.TestCase):
         market_intelligence = {
             'comparison_pages': [
                 {'slug': 'hermes-agent', 'name': 'Hermes Agent', 'path': '/tmp/hermes-agent.md'},
+                {'slug': 'aider', 'name': 'Aider', 'path': '/tmp/aider.md'},
+                {'slug': 'continue', 'name': 'Continue', 'path': '/tmp/continue.md'},
                 {'slug': 'conductor-oss', 'name': 'Conductor OSS', 'path': '/tmp/conductor-oss.md'},
             ],
             'competitors': {
                 'hermes-agent': {'name': 'Hermes Agent', 'positioning': 'Self-improving agent', 'github_stars': 100},
-                'conductor-oss': {'name': 'Conductor OSS', 'positioning': 'Enterprise workflow orchestration', 'github_stars': 90},
+                'aider': {'name': 'Aider', 'positioning': 'CLI pair programmer', 'github_stars': 95},
+                'continue': {'name': 'Continue', 'positioning': 'IDE assistant', 'github_stars': 90},
+                'conductor-oss': {'name': 'Conductor OSS', 'positioning': 'Enterprise workflow orchestration', 'github_stars': 85},
             },
         }
 
@@ -536,6 +540,11 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             adoption_path = tmp / 'adoption_metrics_latest.json'
             adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
             comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
+            comparison_queue.write_text(json.dumps({'targets': [
+                {'slug': 'hermes-agent', 'name': 'Hermes Agent', 'status': 'prepared'},
+                {'slug': 'aider', 'name': 'Aider', 'status': 'prepared'},
+                {'slug': 'continue', 'name': 'Continue', 'status': 'prepared'},
+            ]}), encoding='utf-8')
 
             with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
                  patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
@@ -548,10 +557,63 @@ class DistributionLaneExecutorTests(unittest.TestCase):
 
             self.assertEqual(execution.status, 'executed')
             self.assertEqual(execution.action_type, 'comparison_backlink_outreach_execution')
+            self.assertEqual(execution.targets_prepared, ['Conductor OSS'])
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Comparison Backlink Outreach Pack', artifact_text)
-            self.assertIn('Hermes Agent', artifact_text)
+            self.assertIn('Conductor OSS', artifact_text)
             self.assertTrue(comparison_queue.exists())
+
+    def test_comparison_backlink_execution_marks_follow_through_when_queue_is_exhausted(self):
+        now = datetime(2026, 5, 23, 7, 15, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='comparison_backlink_outreach',
+            reason='Curator queue prep is already full; ship a fresh comparison/backlink outreach asset instead of another follow-through note.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': 'hermes-agent', 'name': 'Hermes Agent', 'path': '/tmp/hermes-agent.md'},
+            ],
+            'competitors': {
+                'hermes-agent': {'name': 'Hermes Agent', 'positioning': 'Self-improving agent', 'github_stars': 100},
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            seo_dir = tmp / 'seo-reports'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            seo_dir.mkdir()
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('Curator queue saturated.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
+            comparison_queue.write_text(json.dumps({'targets': [
+                {'slug': 'hermes-agent', 'name': 'Hermes Agent', 'status': 'prepared', 'artifact_path': '/tmp/hermes-agent.md', 'review_due_date': '2026-06-05'},
+            ]}), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'comparison_backlink_follow_through')
+            self.assertEqual(execution.targets_prepared, [])
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('Comparison Backlink Follow-Through', artifact_text)
+            self.assertIn('already covers every ranked competitor', artifact_text)
 
     def test_curator_queue_dedupes_same_url_even_if_heading_changes(self):
         rows = [
