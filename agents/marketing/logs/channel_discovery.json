@@ -39,7 +39,10 @@
     "github-readme",
     "thenextai",
     "aigearbase",
-    "openagents"
+    "openagents",
+    "aitoolboard",
+    "madewithstack",
+    "thetoolify"
   ],
   "results": [
     {
@@ -1112,6 +1115,92 @@
       "http_code": "500",
       "status": "broken_submit_surface",
       "note": "Public POST endpoint exists at /api/submit, but remote backend currently fails with a Resend domain/email validation error when processing submissions."
+    },
+    {
+      "name": "aitoolboard",
+      "url": "https://aitoolboard.com/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T06:43:10Z",
+      "http_code": "200",
+      "final_url": "https://aitoolboard.com/submit",
+      "status": "accessible",
+      "note": "confirmed autonomous submit lane: public /api/tools/submit accepted a free listing payload with uploaded screenshot and returned HTTP 200 on 2026-05-23",
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://aitoolboard.com/api/tools/submit",
+        "post_code": 200,
+        "public_submit_detected": true,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      },
+      "submission_status": "success",
+      "submission_note": "POST to /api/tools/submit returned 200 with success=true",
+      "submitted_data": {
+        "name": "Ralph Workflow",
+        "website_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+        "github_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+        "category": "Code Assistant"
+      }
+    },
+    {
+      "name": "madewithstack",
+      "url": "https://www.madewithstack.com/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T09:19:51.691675",
+      "http_code": "200",
+      "final_url": "https://www.madewithstack.com/submit",
+      "status": "accessible",
+      "note": "public submission API detected at https://www.madewithstack.com/api/browser/v1/submit/free",
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 12,
+        "same_origin_script_count": 12,
+        "scripts_fetched": 12,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 0,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": false,
+        "has_captcha_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false,
+        "api_candidates": [
+          "https://www.madewithstack.com/api/browser/v1/submit/free",
+          "https://www.madewithstack.com/api/browser/v1/funnel"
+        ]
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://www.madewithstack.com/api/browser/v1/submit/free",
+        "get_code": 405,
+        "post_code": 400,
+        "post_body": "{\"error\":\"A valid email is required.\",\"error_code\":\"VALIDATION_ERROR\"}",
+        "public_submit_detected": true,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      }
+    },
+    {
+      "name": "thetoolify",
+      "url": "https://submit.thetoolify.dev/",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T07:46:00Z",
+      "http_code": "200",
+      "final_url": "https://submit.thetoolify.dev/",
+      "status": "accessible",
+      "note": "confirmed autonomous submit lane: browser-run submission to /wp-json/toolify/v1/submit succeeded with HTTP 200 on 2026-05-23 after the site's own security checkpoint completed",
+      "submission_status": "success",
+      "submission_note": "Headless browser submit returned 200 with success=true",
+      "submitted_data": {
+        "name": "Ralph Workflow",
+        "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+        "category": "Coding"
+      }
     }
   ],
   "working": [
@@ -1148,6 +1237,18 @@
     {
       "name": "openagents",
       "url": "https://www.openagents.pro/submit",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "aitoolboard",
+      "url": "https://aitoolboard.com/submit",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "thetoolify",
+      "url": "https://submit.thetoolify.dev/",
       "method": "submit",
       "difficulty": "easy"
     }

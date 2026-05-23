@@ -1,5 +1,15 @@
 # Outreach Log
 
+## 2026-05-23 (Saturday) — NavTools curator outreach executed (08:20 UTC / 10:20 CEST)
+- **What I executed:** emailed **NavTools** at `support@navtools.ai` to request a Ralph Workflow listing, with **Codeberg as the primary repo** and GitHub as the mirror.
+- **Verification:** `python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py` passed, and the live send log at `agents/marketing/logs/marketing_2026-05-23_082040_navtools_curator_email.json` recorded status **sent**.
+- **Why this action:** this is **EXECUTED / DISTRIBUTION**. The freshest audit still shows `distribution_and_message_to_primary_repo_conversion` as the live bottleneck, Codeberg adoption is flat, Apollo is already in its measurement window until **2026-05-30**, and Reddit remains structurally blocked. NavTools exposed a fresh untouched directory lane, but its visible submit flow is plan-gated and Turnstile-backed from this runtime, so the strongest same-run path was a Codeberg-primary curator email fallback to the public support contact.
+- **Shared findings reused:** `MARKETING_WORKFLOW_PRINCIPLES.md`, `FOUR_MARKETING_QUESTIONS.md`, `ADOPTION_FUNNEL_NEXT.md`, `market_intelligence_latest.json`, `marketing_workflow_audit_latest.json`, `adoption_metrics_latest.md`, `competitor_analysis_2026-05-23.md`, and `outreach-log.md`.
+- **Expected outcome:** one more relevant third-party listing or backlink that sends qualified evaluators to the **primary Codeberg repo**.
+- **Measurement window:** watch for reply, listing inclusion, or backlink evidence through **2026-06-06**.
+- **Type:** **EXECUTED / DISTRIBUTION**
+
+
 ## 2026-05-23 (Saturday) — spec_driven_develop curator outreach executed (04:28 UTC / 06:28 CEST)
 - **What I executed:** emailed **zhu1090093659/spec_driven_develop** at `1090093659@qq.com` to suggest Ralph Workflow as a complementary structured workflow project, with **Codeberg as the primary repo** and GitHub as the mirror.
 - **Verification:** `python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py` passed, and the live send log at `agents/marketing/logs/marketing_2026-05-23_042819_zhu1090093659_curator_email.json` recorded status **sent**.
@@ -5933,3 +5943,35 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### StackOverflow answer lane
 - **When:** 2026-05-23 08:09:37
 - **Note:** StackOverflow answer lane ran: found 32 questions, scored 32, drafted 5 answers. Top question: How should I structure autonomous AI agent workflows for production reliability .
+
+### StackOverflow answer lane
+- **When:** 2026-05-23 08:46:59
+- **Note:** StackOverflow answer lane ran: found 32 questions, scored 32, drafted 5 answers. Top question: How should I structure autonomous AI agent workflows for production reliability .
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 08:55:08
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 09:09:15
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### StackOverflow answer lane
+- **When:** 2026-05-23 09:29:04
+- **Note:** StackOverflow answer lane ran: found 0 questions, scored 0, drafted 0 answers. Top question: none.
+
+### StackOverflow answer lane
+- **When:** 2026-05-23 09:29:50
+- **Note:** StackOverflow answer lane ran: found 14 questions, scored 14, drafted 3 answers. Top question: How should I structure autonomous AI agent workflows for production reliability .
+
+### StackOverflow answer lane
+- **When:** 2026-05-23 09:30:41
+- **Note:** StackOverflow answer lane ran: found 14 questions, scored 14, drafted 0 answers. Top question: How should I structure autonomous AI agent workflows for production reliability .
+
+### StackOverflow answer lane
+- **When:** 2026-05-23 09:31:21
+- **Note:** StackOverflow answer lane ran: found 14 questions, scored 14, drafted 1 answers. Top question: How should I structure autonomous AI agent workflows for production reliability .
+
+### StackOverflow answer lane
+- **When:** 2026-05-23 09:31:46
+- **Note:** StackOverflow answer lane ran: found 14 questions, scored 14, drafted 1 answers. Top question: How should I structure autonomous AI agent workflows for production reliability .

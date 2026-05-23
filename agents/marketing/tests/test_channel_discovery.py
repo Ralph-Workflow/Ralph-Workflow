@@ -274,6 +274,14 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "accessible")
         self.assertIn("math captcha", note.lower())
 
+    def test_thetoolify_validated_submit_host_short_circuits_to_accessible(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {"probe_status": "ok"},
+            page_url="https://submit.thetoolify.dev/",
+        )
+        self.assertEqual(status, "accessible")
+        self.assertIn("security checkpoint", note.lower())
+
     def test_login_required_submit_api_overrides_public_form_copy(self):
         status, note = channel_discovery.classify_submission_surface_probe(
             {
@@ -409,6 +417,7 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertIn("toolsland", active)
         self.assertIn("aipowerstacks", active)
         self.assertIn("aigearbase", active)
+        self.assertIn("thetoolify", active)
 
 
 if __name__ == "__main__":

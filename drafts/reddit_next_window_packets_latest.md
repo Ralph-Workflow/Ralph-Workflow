@@ -1,8 +1,8 @@
-# RalphWorkflow Reddit next-window packet - 2026-05-23 07:14 CEST
+# RalphWorkflow Reddit next-window packet - 2026-05-23 08:55 CEST
 
 Live posting is **not** the move right now.
 
-Latest watchdog state references report `reddit_monitor_2026-05-22_2123.md`.
+Latest watchdog state references report `reddit_monitor_2026-05-23_0855.md`.
 - `status: weak_fit_only_skip`
 - `detail: opportunity_state:weak_fit_only; opportunities:2`
 

@@ -46,6 +46,15 @@ Body here.
         self.assertFalse(run_posting.already_posted_successfully(posted, "xyz"))
 
 
+class MarketingPathTests(unittest.TestCase):
+    def test_default_outreach_logs_live_under_agents_marketing(self):
+        expected = Path('/home/mistlight/.openclaw/workspace/agents/marketing/outreach-log.md')
+        self.assertEqual(distribution_lane_selector.OUTREACH_LOG_PATH, expected)
+        self.assertEqual(distribution_lane_executor.OUTREACH_LOG_PATH, expected)
+        self.assertEqual(apollo_sequence_launcher.OUTREACH_LOG, expected)
+        self.assertEqual(marketing_workflow_audit.OUTREACH, expected)
+
+
 class MarketingDecisionTests(unittest.TestCase):
     def test_build_weekly_decisions_prefers_best_bucket(self):
         summary = {

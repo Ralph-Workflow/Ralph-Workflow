@@ -2,7 +2,7 @@
 
 **Question:** How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?
 **URL:** https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability
-**Score:** 2.9
+**Score:** 3.85
 **Answers:** 0
 
 ---
@@ -23,4 +23,4 @@ What type of task are you trying to run unattended?
 
 ---
 
-*Ralph Workflow* is a free and open-source composable loop framework for autonomous coding. It treats verification as a separate phase with a defined output — so "done" means something you can actually inspect. [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — primary repo at [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
+*Ralph Workflow* is a free and open-source composable loop framework for autonomous coding. It treats verification as a separate phase with a defined output — so "done" means something you can actually inspect. Primary repo: [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow).

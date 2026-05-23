@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-05-23T09:16:50+02:00",
+  "action": "listyourtool_submission",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "channel": "directory_submission",
+  "target": "ListYourTool.com",
+  "submit_url": "https://www.listyourtool.com/submit-tool",
+  "submission_endpoint": "https://www.listyourtool.com/api/tools/submit",
+  "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "secondary_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "submitted_payload": {
+    "name": "Ralph Workflow",
+    "website": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "shortDescription": "Free open-source AI coding workflow system for unattended plan-build-verify loops.",
+    "longDescription": "Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator for developers and technical teams doing ambitious software work. It keeps a simple core loop, then composes planning, implementation, and verification into a structured workflow so you come back to something reviewable instead of just an agent saying done. Codeberg is the primary repo; GitHub is the mirror: https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "tags": [
+      "ai-agent",
+      "ai-workflow",
+      "ai-code-assistant"
+    ],
+    "submitterName": "Ken Li",
+    "submitterEmail": "ken@hireaegis.com",
+    "pricing": "free"
+  },
+  "verification": {
+    "post_status_code": 201,
+    "post_response": {
+      "success": true,
+      "message": "Tool submitted successfully",
+      "toolId": "e27adedd-3faa-432b-ab35-000a8bf66121",
+      "status": "pending"
+    }
+  },
+  "why_this_action": [
+    "Primary Codeberg adoption is still flat, so a fresh developer-facing directory with a working public API is higher leverage than another internal-only draft.",
+    "ListYourTool.com was not present in outreach-log.md, so this expands distribution instead of duplicating an in-flight lane.",
+    "The submission endpoint accepted a direct POST from this runtime without login or CAPTCHA and returned a concrete pending tool id.",
+    "The listing points evaluators to Codeberg first and preserves GitHub as the mirror only."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/adoption_metrics_latest.json",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/outreach-log.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/distribution_lane_latest.md"
+  ],
+  "expected_outcome": "Qualified developers discover Ralph Workflow through a new directory listing that points directly to the Codeberg primary repo.",
+  "measurement_window": {
+    "listing_review_at": "2026-05-30T09:16:50+02:00",
+    "backlink_review_at": "2026-06-06T09:16:50+02:00",
+    "adoption_review_at": "2026-06-22T09:16:50+02:00"
+  },
+  "replacement_condition": "If there is no live ListYourTool.com listing or referral evidence by 2026-06-06, treat this as pending only and shift the next fresh-action slot to another untouched developer-facing directory with an executable public submit path."
+}

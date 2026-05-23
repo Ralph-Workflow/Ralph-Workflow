@@ -1,0 +1,64 @@
+{
+  "timestamp_utc": "2026-05-23T07:58:00Z",
+  "action": "outreach_log_path_repair",
+  "type": "EXECUTED / RUNTIME_REPAIR",
+  "channel": {
+    "name": "marketing_runtime",
+    "status": "repaired_and_reverified"
+  },
+  "why_this_action": "A live IndieStack resubmission attempt exposed that the marketer could still miss prior outreach state. The highest-leverage fix was to repair the shared outreach-log path used across the marketing runtime so future lane selection, audits, Reddit/StackOverflow logging, Apollo sequencing, and submission execution all read the real duplicate-prevention source of truth at agents/marketing/outreach-log.md.",
+  "shared_findings_used": [
+    "adoption_metrics_latest.json: Codeberg is still the primary success gate",
+    "marketing_workflow_audit_latest.json: the bottleneck is distribution and message-to-primary-repo conversion, so wasted duplicate actions are especially harmful",
+    "marketing_workflow_audit_latest.md: the loop must do real work, not activity theater",
+    "distribution_lane_latest.json: easy-submit lanes were already considered spent, so duplicate handling must be trustworthy",
+    "agents/marketing/outreach-log.md: IndieStack had already been submitted on 2026-05-23 and should have blocked repeat work"
+  ],
+  "repairs": {
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/distribution_lane_executor.py",
+      "agents/marketing/apollo_sequence_launcher.py",
+      "agents/marketing/apollo_monitor.py",
+      "agents/marketing/marketing_workflow_audit.py",
+      "agents/marketing/marketing_momentum_watchdog.py",
+      "agents/marketing/reddit_monitor.py",
+      "agents/marketing/reddit_post.py",
+      "agents/marketing/reddit_autopost.py",
+      "agents/marketing/reddit_praw_post.py",
+      "agents/marketing/reddit_praw_reply.py",
+      "agents/marketing/stackoverflow_answer_lane.py",
+      "agents/marketing/hn_submit.py",
+      "agents/marketing/tests/test_marketing_system.py"
+    ],
+    "summary": [
+      "moved outreach-log references from the nonexistent workspace root file to the real agents/marketing/outreach-log.md file across the shared marketing runtime",
+      "added a regression test that asserts core lane-selection and execution components point at the canonical outreach log",
+      "revalidated duplicate-related selector and Apollo launcher behavior with unit tests after the path repair"
+    ]
+  },
+  "verification": {
+    "tests": [
+      {
+        "command": "python3 -m unittest agents.marketing.tests.test_marketing_system.MarketingPathTests.test_default_outreach_logs_live_under_agents_marketing agents.marketing.tests.test_marketing_system.DistributionLaneSelectorTests.test_submitted_channel_log_with_tld_name_counts_as_attempted agents.marketing.tests.test_marketing_system.ApolloSequenceLauncherTests.test_launcher_skips_duplicate_outreach_log_entries",
+        "ok": true
+      }
+    ],
+    "runtime": [
+      {
+        "command": "python3 -m py_compile agents/marketing/distribution_lane_selector.py agents/marketing/distribution_lane_executor.py agents/marketing/apollo_sequence_launcher.py agents/marketing/marketing_workflow_audit.py agents/marketing/reddit_post.py agents/marketing/reddit_autopost.py agents/marketing/reddit_praw_post.py agents/marketing/reddit_praw_reply.py agents/marketing/reddit_monitor.py agents/marketing/stackoverflow_answer_lane.py agents/marketing/apollo_monitor.py agents/marketing/marketing_momentum_watchdog.py agents/marketing/hn_submit.py",
+        "ok": true
+      }
+    ]
+  },
+  "outcome": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "marketing_effect": "future runs are materially less likely to waste the best available slot on duplicate submissions or duplicate outreach, preserving scarce execution windows for fresh Codeberg-first distribution"
+  },
+  "next_review": {
+    "review_by": "2026-05-24",
+    "success_signal": "the next distribution run reads agents/marketing/outreach-log.md by default and avoids re-attempting channels already logged on 2026-05-23 such as IndieStack"
+  }
+}

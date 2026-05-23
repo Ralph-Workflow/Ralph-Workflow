@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agents.marketing import reddit_monitor
+from agents.marketing.reddit_monitor import Candidate, SearchAttempt
 
 
 class RedditMonitorTests(unittest.TestCase):
@@ -66,6 +67,48 @@ class RedditMonitorTests(unittest.TestCase):
         self.assertLess(score, 0)
         self.assertEqual(direct_reply_fit, 'low')
         self.assertEqual(mention_fit, 'low')
+
+    def test_render_report_marks_mixed_reddit_blocking_as_partial_coverage(self):
+        shortlisted = [
+            Candidate(
+                title='Example thread',
+                url='https://www.reddit.com/r/ClaudeCode/comments/abc123/example/',
+                community='r/ClaudeCode',
+                snippet='reviewable result',
+                query_family='review_tax',
+                query='ready to review coding agent reddit',
+                score=7,
+                freshness='during this pass',
+                mention_fit='low',
+                reason='content-family match: review_tax',
+                direct_reply_fit='medium',
+            )
+        ]
+        report = reddit_monitor.render_report(
+            shortlisted,
+            [],
+            [
+                SearchAttempt('review_tax', 'query one', 'ok', 4),
+                SearchAttempt('review_tax', 'query two', 'reddit_ip_blocked', 0),
+            ],
+        )
+        self.assertIn('credible discussion opportunities', report)
+        self.assertIn('partial coverage, not a total Reddit outage', report)
+        self.assertNotIn('all Reddit API calls returned HTTP 403 on this pass', report)
+
+    def test_collect_candidates_stops_when_time_budget_is_exceeded(self):
+        time_points = iter([0.0, 0.0, 46.0])
+        with patch.object(reddit_monitor, 'CONTENT_QUERY_FAMILIES', [('review_tax', ['query one', 'query two'])]), \
+             patch.object(reddit_monitor, 'load_recent_post_urls', return_value=set()), \
+             patch.object(reddit_monitor, 'search_query', return_value=([], 'ok')):
+            candidates, attempts = reddit_monitor.collect_candidates(
+                time_budget_seconds=45.0,
+                time_source=lambda: next(time_points),
+            )
+        self.assertEqual(candidates, [])
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(attempts[0].status, 'ok')
+        self.assertEqual(attempts[1].status, 'time_budget_exceeded')
 
 
 if __name__ == '__main__':

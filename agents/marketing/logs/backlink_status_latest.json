@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T04:14:02.100349+00:00",
+  "generated_at": "2026-05-23T07:24:43.846582+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -66,10 +66,18 @@
     },
     "MadeWithStack": {
       "directory": "MadeWithStack",
-      "listing_url": "https://www.madewithstack.com/project/ralph-workflow",
+      "listing_url": "https://www.madewithstack.com/project/ralph-workflow-1",
       "submit_url": "https://www.madewithstack.com/submit",
-      "check_results": [],
-      "listing_live": false
+      "check_results": [
+        {
+          "url": "https://www.madewithstack.com/project/ralph-workflow-1",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submission returned slug ralph-workflow-1 with UNDER_EDITORIAL_REVIEW on 2026-05-23; treat as submitted/in-review until the public listing resolves."
     },
     "DevToolCenter": {
       "directory": "DevToolCenter",

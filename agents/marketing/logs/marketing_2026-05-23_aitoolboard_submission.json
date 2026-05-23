@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-05-23T06:43:10Z",
+  "action": "aitoolboard_submission",
+  "goal": "drive qualified traffic to Codeberg first and GitHub second",
+  "channel": {
+    "name": "AIToolboard",
+    "submit_url": "https://aitoolboard.com/submit",
+    "api_url": "https://aitoolboard.com/api/tools/submit"
+  },
+  "shared_findings_used": [
+    "adoption_metrics_latest.json: Codeberg remains the primary success gate and is flat",
+    "distribution_lane_latest.json: existing prepared lanes were already in-flight or blocked",
+    "channel_discovery.json: working autonomous submit lanes have been outperforming blocked social/manual lanes",
+    "market_intelligence_latest.json: positioning around repo-native orchestration, approvals, and Codeberg-primary source remains reusable"
+  ],
+  "submitted_payload": {
+    "name": "Ralph Workflow",
+    "description": "Repo-native AI coding workflow system with planning, verification gates, and morning-ready handoffs.",
+    "website_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "category_id": "14986629-5ed1-4e49-87bd-51ff2d39e0ff",
+    "category_name": "Code Assistant",
+    "pricing_model": "free",
+    "listing_type": "free",
+    "tags": [
+      "open-source",
+      "cli",
+      "workflow-automation",
+      "ai-coding",
+      "codeberg"
+    ]
+  },
+  "assets": {
+    "screenshot_source_file": "/home/mistlight/.openclaw/workspace/Ralph-Site/vendor/Ralph-Workflow/ralph-home.png",
+    "uploaded_screenshot_url": "https://hpxrjavnucdhpfkonmus.supabase.co/storage/v1/object/public/uploads/tools/fc6e5a79-66d8-4cfc-9b1b-9c300506873e.png"
+  },
+  "result": {
+    "http_code": 200,
+    "response": {
+      "success": true,
+      "tool": {
+        "id": "07ccbacd-bef7-4f61-ae13-0d9eeea4f15d",
+        "name": "Ralph Workflow",
+        "slug": "ralph-workflow"
+      },
+      "message": "Tool submitted successfully! It will be reviewed by our team."
+    }
+  },
+  "runtime_fix": {
+    "file": "/home/mistlight/.openclaw/workspace/agents/marketing/channel_discovery.py",
+    "changes": [
+      "added aitoolboard as a tracked easy submit lane and recorded it as a validated autonomous host",
+      "moved login-gated surface detection ahead of public API success detection so login pages no longer create false-positive autonomous lanes"
+    ],
+    "verification": [
+      "python3 -m py_compile agents/marketing/channel_discovery.py",
+      "mock classify_submission_surface_probe login-gated/public-api case => login_required",
+      "validated host check for aitoolboard => accessible"
+    ]
+  }
+}

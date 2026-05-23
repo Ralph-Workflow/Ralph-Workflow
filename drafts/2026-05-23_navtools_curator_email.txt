@@ -1,0 +1,27 @@
+Hi NavTools team,
+
+I’d like to suggest Ralph Workflow for a NavTools listing.
+
+Ralph Workflow is a free and open-source workflow layer for autonomous coding: a composable loop framework and AI orchestrator for developers doing repo work that is too big to babysit and too risky to trust blindly.
+
+Why it may fit your audience:
+- gives developers a strong default plan-build-verify workflow instead of another chat session
+- keeps the core loop simple, then composes planning, implementation, and verification into something reviewable
+- helps teams come back to finished, tested code that is ready to inspect instead of just a confident summary
+
+Primary repo:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+GitHub mirror:
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Homepage:
+https://ralphworkflow.com
+
+Suggested listing blurb:
+Ralph Workflow — free and open-source workflow layer for autonomous coding that composes planning, implementation, and verification so longer runs end in reviewable, tested output instead of another agent saying done.
+
+If helpful, I can also send a shorter category-specific version for a developer tools or AI coding section.
+
+Best,
+Ken

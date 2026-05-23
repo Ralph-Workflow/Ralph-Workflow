@@ -1,42 +1,63 @@
 {
-  "generated_at": "2026-05-23T08:09:37.271034",
-  "total_questions_found": 32,
-  "questions_scored": 32,
-  "drafts_created": 5,
+  "generated_at": "2026-05-23T09:31:46.284284",
+  "total_questions_found": 14,
+  "questions_scored": 14,
+  "drafts_created": 1,
   "top_questions": [
     {
       "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
       "url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
-      "score": 2.9,
+      "score": 3.85,
       "votes": 0,
       "answers": 0
     },
     {
-      "title": "Are VS Code Copilot Agent Debug Log Token Counts the Exact Billing Metrics?",
-      "url": "https://stackoverflow.com/questions/79940318/are-vs-code-copilot-agent-debug-log-token-counts-the-exact-billing-metrics",
-      "score": 2.4,
-      "votes": 0,
+      "title": "Analyzing Karate Failures with GPT as part of Github Actions workflow",
+      "url": "https://stackoverflow.com/questions/79442207/analyzing-karate-failures-with-gpt-as-part-of-github-actions-workflow",
+      "score": 2.95,
+      "votes": 1,
       "answers": 0
     },
     {
       "title": "How do i use agents in langgraph workflow",
       "url": "https://stackoverflow.com/questions/79399279/how-do-i-use-agents-in-langgraph-workflow",
-      "score": 2.1999999999999997,
+      "score": 1.9,
       "votes": -2,
-      "answers": 1
-    },
-    {
-      "title": "How to combine ConversationalRetrievalQAChain, Agents, and Tools in LangChain",
-      "url": "https://stackoverflow.com/questions/76653423/how-to-combine-conversationalretrievalqachain-agents-and-tools-in-langchain",
-      "score": 1.8,
-      "votes": 10,
       "answers": 1
     },
     {
       "title": "MCP: Not All the Tools being Listed",
       "url": "https://stackoverflow.com/questions/79659426/mcp-not-all-the-tools-being-listed",
-      "score": 1.7999999999999998,
+      "score": 0.85,
       "votes": 2,
+      "answers": 0
+    },
+    {
+      "title": "MCP server in C# for SQL database structure/schema (in Visual Studio) for Github Copilot",
+      "url": "https://stackoverflow.com/questions/79856670/mcp-server-in-c-for-sql-database-structure-schema-in-visual-studio-for-github",
+      "score": 0.65,
+      "votes": 0,
+      "answers": 0
+    },
+    {
+      "title": "Why is GitHub Copilot not calling my MCP tool correctly?",
+      "url": "https://stackoverflow.com/questions/79651006/why-is-github-copilot-not-calling-my-mcp-tool-correctly",
+      "score": -0.3,
+      "votes": 1,
+      "answers": 1
+    },
+    {
+      "title": "Azure MCP server use in Github Copilot",
+      "url": "https://stackoverflow.com/questions/79915173/azure-mcp-server-use-in-github-copilot",
+      "score": -1.2,
+      "votes": 0,
+      "answers": 0
+    },
+    {
+      "title": "I am getting a cancellation response while using an N8N MCP Server from Visual Studio Code Github Copilot Agent",
+      "url": "https://stackoverflow.com/questions/79861649/i-am-getting-a-cancellation-response-while-using-an-n8n-mcp-server-from-visual-s",
+      "score": -1.2,
+      "votes": 0,
       "answers": 0
     }
   ],
@@ -44,42 +65,10 @@
     {
       "question_title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
       "question_url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
-      "question_score": 2.9,
+      "question_score": 3.85,
       "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-should-i-structure-autonomous-ai-agent-workflo.md",
-      "answer_length": 1559,
-      "pain_family": "general"
-    },
-    {
-      "question_title": "Are VS Code Copilot Agent Debug Log Token Counts the Exact Billing Metrics?",
-      "question_url": "https://stackoverflow.com/questions/79940318/are-vs-code-copilot-agent-debug-log-token-counts-the-exact-billing-metrics",
-      "question_score": 2.4,
-      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_are-vs-code-copilot-agent-debug-log-token-counts-t.md",
-      "answer_length": 1607,
-      "pain_family": "general"
-    },
-    {
-      "question_title": "How do i use agents in langgraph workflow",
-      "question_url": "https://stackoverflow.com/questions/79399279/how-do-i-use-agents-in-langgraph-workflow",
-      "question_score": 2.1999999999999997,
-      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-do-i-use-agents-in-langgraph-workflow.md",
-      "answer_length": 1607,
-      "pain_family": "general"
-    },
-    {
-      "question_title": "How to combine ConversationalRetrievalQAChain, Agents, and Tools in LangChain",
-      "question_url": "https://stackoverflow.com/questions/76653423/how-to-combine-conversationalretrievalqachain-agents-and-tools-in-langchain",
-      "question_score": 1.8,
-      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-to-combine-conversationalretrievalqachain-agen.md",
-      "answer_length": 1569,
-      "pain_family": "general"
-    },
-    {
-      "question_title": "MCP: Not All the Tools being Listed",
-      "question_url": "https://stackoverflow.com/questions/79659426/mcp-not-all-the-tools-being-listed",
-      "question_score": 1.7999999999999998,
-      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_mcp-not-all-the-tools-being-listed.md",
-      "answer_length": 773,
-      "pain_family": "general"
+      "answer_length": 1489,
+      "pain_family": "unattended-runs"
     }
   ]
 }

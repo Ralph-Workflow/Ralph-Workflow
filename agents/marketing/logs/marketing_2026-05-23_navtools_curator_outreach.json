@@ -1,0 +1,41 @@
+{
+  "timestamp_utc": "2026-05-23T08:20:40Z",
+  "action": "navtools_curator_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "NavTools",
+    "contact": "support@navtools.ai",
+    "source": "public support email on https://navtools.ai/submit after live submit-surface verification",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "subject": "Suggested NavTools listing: Ralph Workflow",
+    "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "mirror_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_navtools_curator_email.txt"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, Codeberg adoption is flat, Apollo is already in a measurement window until 2026-05-30, and Reddit remains structurally blocked/high-risk. NavTools exposed a fresh untouched directory lane, but its visible submit flow is Turnstile-backed and monetized from this runtime, so a Codeberg-primary curator email fallback to the public support contact was the strongest executable same-run move.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: bias toward free-use path and reviewable proof instead of more generic posting",
+    "market_intelligence_latest.json: reused positioning truths and competitor-aware workflow framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "adoption_metrics_latest.md: Codeberg movement is still flat, so the action must aim at new qualified inbound paths",
+    "competitor_analysis_2026-05-23.md: reused the unattended coding / reviewable output advantage framing",
+    "outreach-log.md: verified NavTools had not already been contacted"
+  ],
+  "verification": {
+    "submit_surface_probe": "https://navtools.ai/submit exposes a form-backed, Turnstile-gated submit surface with paid acceleration tiers and a public support email fallback",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_082040_navtools_curator_email.json",
+    "status": "sent",
+    "helper_compiles": true,
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply or live NavTools listing/backlink pointing to the Codeberg primary repo",
+    "kill_condition": "If no listing or reply signal arrives by 2026-06-06, replace this lane with a different untouched curator/directory surface instead of re-emailing the same pitch."
+  }
+}
