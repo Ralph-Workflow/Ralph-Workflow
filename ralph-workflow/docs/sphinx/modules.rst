@@ -1226,6 +1226,13 @@ ralph.agents.execution_state.opencode_execution_strategy
    :members:
    :show-inheritance:
 
+ralph.agents.execution_state.agy_execution_strategy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.execution_state.agy_execution_strategy
+   :members:
+   :show-inheritance:
+
 ralph.agents.executor
 ~~~~~~~~~~~~~~~~~~~~~
 

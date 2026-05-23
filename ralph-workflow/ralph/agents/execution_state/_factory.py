@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
 
+from .agy_execution_strategy import AgyExecutionStrategy
 from .claude_execution_strategy import ClaudeExecutionStrategy
 from .claude_interactive_execution_strategy import ClaudeInteractiveExecutionStrategy
 from .generic_execution_strategy import GenericExecutionStrategy
@@ -27,5 +28,5 @@ def strategy_for_transport(
     if transport == AgentTransport.CLAUDE_INTERACTIVE:
         return ClaudeInteractiveExecutionStrategy()
     if transport == AgentTransport.AGY:
-        return ClaudeInteractiveExecutionStrategy()
+        return AgyExecutionStrategy()
     return GenericExecutionStrategy()

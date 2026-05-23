@@ -278,13 +278,14 @@ def _build_agy_command(
 ) -> list[str]:
     """Build the AGY command line.
 
-    AGY uses: agy [--dangerously-skip-permissions] [--conversation <session_id>]
-    [--verbose] --print <prompt>
+    AGY uses: agy [--dangerously-skip-permissions] [--add-dir <path>] [--verbose] --print <prompt>
     """
     cmd = config.cmd.split()
     cmd.extend(_split_optional_flag(config.yolo_flag))
     if config.session_flag and options.session_id:
         cmd.extend(config.session_flag.format(options.session_id).split())
+    if options.workspace_path is not None:
+        cmd.extend(["--add-dir", str(options.workspace_path)])
     if options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
     if config.print_flag:

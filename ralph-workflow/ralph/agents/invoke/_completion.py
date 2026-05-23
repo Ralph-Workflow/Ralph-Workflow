@@ -236,3 +236,35 @@ def _check_process_result(
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
             session_id = opts.captured_session_id or extract_session_id(bounded_output)
             raise OpenCodeResumableExitError(agent_name, session_id=session_id)
+    elif (
+        opts is not None
+        and opts.execution_strategy is not None
+        and opts.execution_strategy.supports_completion_enforcement()
+        and opts.workspace_path is not None
+    ):
+        bounded_output = _bounded_output_lines(
+            parsed_output or [],
+            explicit_completion_seen=opts.explicit_completion_seen,
+        )
+        _eval_fn = (
+            opts.evaluate_completion_fn
+            if opts.evaluate_completion_fn is not None
+            else evaluate_completion
+        )
+        signals = _eval_fn(
+            opts.workspace_path,
+            bounded_output,
+            required_artifact=opts.required_artifact,
+        )
+        exit_state = opts.execution_strategy.classify_exit(
+            handle, signals, liveness_probe=opts.liveness_probe
+        )
+        if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
+            raise AgentInvocationError(
+                agent_name,
+                0,
+                (
+                    "agent exited without required completion evidence "
+                    "(no artifact, no declare_complete)"
+                ),
+            )
