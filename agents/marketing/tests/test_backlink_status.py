@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from agents.marketing import backlink_status
 
@@ -26,6 +27,60 @@ class BacklinkStatusTests(unittest.TestCase):
         )
         self.assertEqual(result["status_note"], "Existing listing already live.")
         self.assertFalse(result["listing_live"])
+
+    def test_check_listing_status_rejects_false_positive_not_found_page(self):
+        with patch.object(
+            backlink_status,
+            "check_url_status",
+            return_value={
+                "url": "https://aitoolboard.com/tools/ralph-workflow",
+                "status": 200,
+                "ok": True,
+                "has_product_marker": True,
+                "negative_markers": ["tool not found"],
+                "transient_markers": [],
+            },
+        ):
+            result = backlink_status.check_listing_status(
+                "AIToolboard",
+                {
+                    "submit_url": "https://aitoolboard.com/submit",
+                    "listing_url": "https://aitoolboard.com/tools/ralph-workflow",
+                    "known_check_urls": ["https://aitoolboard.com/tools/ralph-workflow"],
+                },
+            )
+        self.assertFalse(result["listing_live"])
+
+    def test_check_listing_status_rejects_transient_loading_page(self):
+        with patch.object(
+            backlink_status,
+            "check_url_status",
+            return_value={
+                "url": "https://nav-ai.net/tools/ralph-workflow",
+                "status": 200,
+                "ok": True,
+                "has_product_marker": False,
+                "negative_markers": [],
+                "transient_markers": ["loading..."],
+            },
+        ):
+            result = backlink_status.check_listing_status(
+                "NavAI",
+                {
+                    "submit_url": "https://nav-ai.net/submit",
+                    "listing_url": "https://nav-ai.net/tools/ralph-workflow",
+                    "known_check_urls": ["https://nav-ai.net/tools/ralph-workflow"],
+                },
+            )
+        self.assertFalse(result["listing_live"])
+
+    def test_body_quality_flags_detects_real_listing_signal(self):
+        quality = backlink_status._body_quality_flags(
+            "Ralph Workflow is the operating system for autonomous coding"
+        )
+        self.assertTrue(quality["has_product_marker"])
+        self.assertEqual(quality["negative_markers"], [])
+        self.assertEqual(quality["transient_markers"], [])
 
 
 if __name__ == "__main__":

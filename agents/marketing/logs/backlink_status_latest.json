@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T21:40:48.903628+00:00",
+  "generated_at": "2026-05-23T22:05:05.448000+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -45,7 +45,12 @@
         {
           "url": "https://saashub.com/ralph-workflow",
           "status": 200,
-          "ok": true
+          "ok": true,
+          "has_product_marker": true,
+          "negative_markers": [],
+          "transient_markers": [
+            "loading..."
+          ]
         }
       ],
       "listing_live": true
@@ -58,7 +63,10 @@
         {
           "url": "https://toolwise.ai/tools/ralph-workflow",
           "status": 200,
-          "ok": true
+          "ok": true,
+          "has_product_marker": true,
+          "negative_markers": [],
+          "transient_markers": []
         }
       ],
       "listing_live": true,
@@ -102,10 +110,16 @@
         {
           "url": "https://aitoolboard.com/tools/ralph-workflow",
           "status": 200,
-          "ok": true
+          "ok": true,
+          "has_product_marker": true,
+          "negative_markers": [
+            "tool not found",
+            "not found"
+          ],
+          "transient_markers": []
         }
       ],
-      "listing_live": true,
+      "listing_live": false,
       "status_note": "Submitted 2026-05-23 via API; slug=ralph-workflow; pending editorial review."
     },
     "IndieStack": {
@@ -146,10 +160,15 @@
         {
           "url": "https://nav-ai.net/tools/ralph-workflow",
           "status": 200,
-          "ok": true
+          "ok": true,
+          "has_product_marker": false,
+          "negative_markers": [],
+          "transient_markers": [
+            "loading..."
+          ]
         }
       ],
-      "listing_live": true,
+      "listing_live": false,
       "status_note": "Submitted 2026-05-23 via Supabase REST API; HTTP 201; pending review."
     },
     "OpenAgents": {
@@ -216,94 +235,79 @@
   "google_index": {
     "site:codeberg.org RalphWorkflow": {
       "query": "site:codeberg.org RalphWorkflow",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "site:github.com RalphWorkflow Ralph Workflow": {
       "query": "site:github.com RalphWorkflow Ralph Workflow",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralphworkflow.com": {
       "query": "ralphworkflow.com",
-      "indexed": true,
-      "found_urls": [
-        "ralphworkflow.com"
-      ],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow aitoolsindex": {
       "query": "ralph workflow aitoolsindex",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow toolshelf": {
       "query": "ralph workflow toolshelf",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow saashub": {
       "query": "ralph workflow saashub",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow toolwise": {
       "query": "ralph workflow toolwise",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow indie stack": {
       "query": "ralph workflow indie stack",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow listyourtool": {
       "query": "ralph workflow listyourtool",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow nav-ai": {
       "query": "ralph workflow nav-ai",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow openagents": {
       "query": "ralph workflow openagents",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow toolscout": {
       "query": "ralph workflow toolscout",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow vbwebtools": {
       "query": "ralph workflow vbwebtools",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     },
     "ralph workflow the toolify": {
       "query": "ralph workflow the toolify",
-      "indexed": false,
-      "found_urls": [],
-      "status": 200
+      "indexed": null,
+      "error": "HTTP Error 429: Too Many Requests"
     }
   },
   "summary": {
-    "directories_with_live_listings": 4,
-    "queries_indexed": 1,
+    "directories_with_live_listings": 2,
+    "queries_indexed": 0,
+    "queries_unavailable": 14,
     "total_queries": 14,
     "check_urls": [
       "https://codeberg.org/RalphWorkflow/Ralph-Workflow",

@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-05-23T20:33:10.417638+02:00",
+  "checked_at": "2026-05-24T00:03:29.037768+02:00",
   "verdict": "fail",
   "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
   "verified_repairs": [
@@ -34,6 +34,11 @@
       "details": "External blockers present: marketing_independent_verification:loop_verification_fail, marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar:review_followup_required, marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required, marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required, marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required, marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g:review_followup_required, marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without:review_followup_required"
     },
     {
+      "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
+      "status": "verified",
+      "details": "recent_failures=12, consecutive_passes_since_last_fail=2"
+    },
+    {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
       "status": "verified",
       "details": "market_intelligence_consumption_latest.json contains acceptable runtime proof for agents/marketing/run.py and agents/marketing/reddit_monitor.py."
@@ -46,14 +51,10 @@
   ],
   "remaining_blockers": [
     "health monitor has non-architecture issues: docs_verifier:artifact_contract_fail, docs_verifier_stability:loop_verification_fail",
-    "docs verifier did not show independent pass",
-    "latest docs verifier verdict is not pass: 'fail'",
     "marketing independent verification is not pass: 'fail'"
   ],
   "architecture_errors": [
-    "health monitor has non-architecture issues: docs_verifier:artifact_contract_fail, docs_verifier_stability:loop_verification_fail",
-    "docs verifier did not show independent pass",
-    "latest docs verifier verdict is not pass: 'fail'"
+    "health monitor has non-architecture issues: docs_verifier:artifact_contract_fail, docs_verifier_stability:loop_verification_fail"
   ],
   "external_blockers": [
     "marketing independent verification is not pass: 'fail'"
@@ -88,7 +89,7 @@
       "summary": "Marketing independent verification verdict='fail'."
     },
     {
-      "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+      "source": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
       "summary": "Newest runtime peer evidence used for freshness coherence."
     }
   ]
