@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T11:51:57.553513",
+  "generated_at": "2026-05-23T14:09:52.761250",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 0,
   "reddit_posts_analyzed": 6,
@@ -54,7 +54,9 @@
   "failing_tactics": [
     "reddit_style_repetition",
     "primary_repo_flat_window",
-    "mirror_repo_flat_window"
+    "mirror_repo_flat_window",
+    "same_family_distribution_overlap",
+    "same_family_outreach_overlap"
   ],
   "dormant_risks": [],
   "repair_actions": [
@@ -66,6 +68,26 @@
       "kill_condition": "Still no Codeberg delta after 7 days of new approach",
       "success_metric": "Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days",
       "priority": 1,
+      "repair_state": "needs_execution"
+    },
+    {
+      "target_tactic": "directory_submission_burst",
+      "failure_type": "same_family_distribution_overlap",
+      "repair_kind": "tactic",
+      "action": "PAUSE net-new low-intent directory submissions for now. Let the existing listing approvals mature, then use the next run on higher-intent demand capture or conversion-moving lanes such as StackOverflow answers, manual curator/contact execution packets, or direct comparison-backlink follow-through.",
+      "kill_condition": "Another audit adds more directory submissions before current listing windows have produced approval/backlink evidence or aged past their review checkpoints",
+      "success_metric": "Next execution lane is not another directory submission burst and produces a cleaner measurement path toward Codeberg movement",
+      "priority": 1,
+      "repair_state": "needs_execution"
+    },
+    {
+      "target_tactic": "curator_outreach_burst",
+      "failure_type": "same_family_outreach_overlap",
+      "repair_kind": "tactic",
+      "action": "HOLD another same-day curator-contact burst. Reuse the prepared/manual-contact artifacts already in queue and spend the next active cycle on a different lane that can create clearer demand or cleaner follow-through measurement.",
+      "kill_condition": "Another audit adds more same-family curator outreach before the existing reply/backlink windows have materially aged or produced evidence",
+      "success_metric": "Next execution lane advances a different family or executes an existing manual-contact packet instead of starting another same-day curator burst",
+      "priority": 2,
       "repair_state": "needs_execution"
     },
     {
@@ -98,7 +120,9 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
-    "The active loop did execute a live marketing action recently (vbwebtools_submission), so the system is still shipping output even though outcome movement is not visible yet.",
+    "13 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.",
+    "13 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.",
+    "The active loop did execute a live marketing action recently (aitools_inc_submission), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
   "next_moves": [
@@ -132,15 +156,15 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_vbwebtools_submission.json",
-    "type": "vbwebtools_submission",
-    "title": "vbwebtools submission",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aitools_inc_submission.json",
+    "type": "aitools_inc_submission",
+    "title": "aitools inc submission",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
     "warning": null,
-    "url": "https://www.vbwebtools.com/submit-tool/"
+    "url": "https://aitools.inc/submit"
   },
   "apollo_sequence_status": {
     "generated_at": "2026-05-23T08:46:28.794228+02:00",

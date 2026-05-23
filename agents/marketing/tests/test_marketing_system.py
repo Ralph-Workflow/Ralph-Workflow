@@ -339,6 +339,77 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
 
 class DistributionLaneSelectorFallbackTests(unittest.TestCase):
+    def test_avoids_another_directory_submission_during_same_day_burst(self):
+        now = datetime(2026, 5, 23, 12, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": [{"name": "freshlane"}]}
+        reddit_report = (
+            '# Reddit monitor\n\n'
+            '- **Threads/posts scanned:** 0\n'
+            '- **Shortlisted:** 0\n'
+            '- **Query attempts:** 18\n'
+            '- **Search diagnostics:** ok=0, reddit_ip_blocked=9\n\n'
+            'Reddit is IP-blocked from this environment.\n'
+        )
+        apollo_status = {'status': 'login_succeeded', 'cloudflare_blocked': False}
+        apollo_sequence = {
+            'status': 'measurement_pending_launch_window',
+            'measurement_pending': True,
+            'next_review_at': '2026-05-30T00:12:00+02:00',
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            apollo_path = log_dir / 'apollo_status.json'
+            apollo_sequence_path = log_dir / 'apollo_sequence_status_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            apollo_path.write_text(json.dumps(apollo_status), encoding='utf-8')
+            apollo_sequence_path.write_text(json.dumps(apollo_sequence), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps({'targets': [{'slug': 'claude-code', 'status': 'prepared'}]}), encoding='utf-8')
+            curator_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (seo_dir / 'reddit_monitor_latest.md').write_text(reddit_report, encoding='utf-8')
+            for idx in range(4):
+                (log_dir / f'marketing_2026-05-23_lane_{idx}_submission.json').write_text(json.dumps({
+                    'timestamp': f'2026-05-23T0{idx}:00:00+00:00',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                    'submit_url': f'https://example{idx}.com/submit',
+                }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'APOLLO_STATUS_PATH', apollo_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', seo_dir / 'reddit_monitor_latest.md'), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'stackoverflow_answer')
+            self.assertIn('same-family burst', '\n'.join(decision.reasons))
+
     def test_prefers_stackoverflow_when_reddit_is_fail_closed_and_curator_windows_are_already_saturated(self):
         now = datetime(2026, 5, 23, 11, 46, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -675,6 +746,60 @@ class ApolloSequenceStatusTests(unittest.TestCase):
             self.assertEqual(payload['status'], 'measurement_pending_launch_window')
             self.assertTrue(payload['measurement_pending'])
             self.assertEqual(payload['record_count'], 5)
+
+
+class MarketingWorkflowAuditBurstTests(unittest.TestCase):
+    def test_flags_same_day_directory_submission_burst_as_failing_tactic(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            logs = tmp / 'logs'
+            logs.mkdir()
+            adoption_path = logs / 'adoption.json'
+            retro_path = logs / 'retro.json'
+            outreach_path = tmp / 'outreach-log.md'
+            audit_json = logs / 'audit.json'
+            audit_md = logs / 'audit.md'
+            principles = tmp / 'principles.md'
+            four = tmp / 'four.md'
+            self_improvement = tmp / 'self_improvement.md'
+            reddit_latest = tmp / 'reddit_monitor_latest.md'
+
+            adoption_path.write_text(json.dumps({
+                'metrics': [],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'failing_signals': ['primary_repo_flat'], 'findings': []},
+            }), encoding='utf-8')
+            retro_path.write_text(json.dumps({'recent_posts': [], 'repeated_openings': []}), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            principles.write_text('principles', encoding='utf-8')
+            four.write_text('four', encoding='utf-8')
+            self_improvement.write_text('self improvement', encoding='utf-8')
+            reddit_latest.write_text('ok', encoding='utf-8')
+            for idx in range(4):
+                (logs / f'marketing_2026-05-23_dir_{idx}_submission.json').write_text(json.dumps({
+                    'status': 'executed',
+                    'ok': True,
+                    'submit_url': f'https://example{idx}.com/submit',
+                }), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', logs), \
+                 patch.object(marketing_workflow_audit, 'ADOPTION', adoption_path), \
+                 patch.object(marketing_workflow_audit, 'RETRO', retro_path), \
+                 patch.object(marketing_workflow_audit, 'OUTREACH', outreach_path), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_JSON', audit_json), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_MD', audit_md), \
+                 patch.object(marketing_workflow_audit, 'PRINCIPLES', principles), \
+                 patch.object(marketing_workflow_audit, 'FOUR_QUESTIONS_DOC', four), \
+                 patch.object(marketing_workflow_audit, 'SELF_IMPROVEMENT_DOC', self_improvement), \
+                 patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', reddit_latest), \
+                 patch.object(marketing_workflow_audit, 'APOLLO_SEQUENCE_STATUS', logs / 'missing.json'):
+                self.assertEqual(marketing_workflow_audit.main(), 0)
+
+            payload = json.loads(audit_json.read_text(encoding='utf-8'))
+            self.assertIn('same_family_distribution_overlap', payload['failing_tactics'])
 
     def test_prefers_curator_outreach_when_reddit_coverage_is_degraded_and_hn_ceiling_repeats(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
@@ -1120,6 +1245,46 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('Apollo Outbound Execution Packet', artifact_text)
             self.assertIn('Codeberg repo', artifact_text)
+
+    def test_stackoverflow_lane_does_not_claim_progress_when_no_drafts_created(self):
+        now = datetime(2026, 5, 23, 14, 8, 31)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='stackoverflow_answer',
+            reason='Use higher-intent demand capture.',
+            reasons=['Directory submissions are saturated.'],
+            owned_content_posts_last_36h=1,
+            unsubmitted_directory_channels=['aitools-inc'],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='drafts/brief.md',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            stackoverflow_latest = log_dir / 'stackoverflow_answer_lane_latest.json'
+            adoption_path = log_dir / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            stackoverflow_latest.write_text(json.dumps({
+                'drafts_created': 0,
+                'top_questions': [{'title': 'Workflow reliability question', 'url': 'https://stackoverflow.com/q/1'}],
+                'drafts': [],
+                'total_questions_found': 1,
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_latest), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor.stackoverflow_answer_lane, 'main', return_value=0):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.status, 'skipped')
+            self.assertEqual(execution.targets_prepared, [])
+            self.assertIn('did not surface draft-worthy questions', execution.summary)
+            self.assertEqual(execution.blocking_factors, ['No draft-worthy StackOverflow questions surfaced in this pass.'])
 
     def test_latest_apollo_warning_ignores_older_zero_record_log_when_newer_verification_is_ready(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T12:40:14.815474",
+  "generated_at": "2026-05-23T14:11:21.914228",
   "total_questions_found": 14,
   "questions_scored": 14,
   "drafts_created": 0,
@@ -8,7 +8,7 @@
     {
       "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
       "url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
-      "score": 3.85,
+      "score": 3.5,
       "votes": 0,
       "answers": 0
     },
@@ -34,11 +34,11 @@
       "answers": 0
     },
     {
-      "title": "MCP server in C# for SQL database structure/schema (in Visual Studio) for Github Copilot",
-      "url": "https://stackoverflow.com/questions/79856670/mcp-server-in-c-for-sql-database-structure-schema-in-visual-studio-for-github",
-      "score": 0.65,
-      "votes": 0,
-      "answers": 0
+      "title": "VS Code Copilot Figma MCP tools disappearing on restart with 'Error loading 1 tool(s)' - how to get detailed error logs?",
+      "url": "https://stackoverflow.com/questions/79665442/vs-code-copilot-figma-mcp-tools-disappearing-on-restart-with-error-loading-1-to",
+      "score": -0.25,
+      "votes": 1,
+      "answers": 1
     },
     {
       "title": "Why is GitHub Copilot not calling my MCP tool correctly?",
