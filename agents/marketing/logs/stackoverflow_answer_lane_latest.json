@@ -1,63 +1,14 @@
 {
-  "generated_at": "2026-05-23T14:11:21.914228",
-  "total_questions_found": 14,
-  "questions_scored": 14,
+  "generated_at": "2026-05-23T16:34:38.381978",
+  "total_questions_found": 1,
+  "questions_scored": 1,
   "drafts_created": 0,
   "skipped_existing_drafts": 1,
   "top_questions": [
     {
       "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
       "url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
-      "score": 3.5,
-      "votes": 0,
-      "answers": 0
-    },
-    {
-      "title": "Analyzing Karate Failures with GPT as part of Github Actions workflow",
-      "url": "https://stackoverflow.com/questions/79442207/analyzing-karate-failures-with-gpt-as-part-of-github-actions-workflow",
-      "score": 2.95,
-      "votes": 1,
-      "answers": 0
-    },
-    {
-      "title": "How do i use agents in langgraph workflow",
-      "url": "https://stackoverflow.com/questions/79399279/how-do-i-use-agents-in-langgraph-workflow",
-      "score": 1.9,
-      "votes": -2,
-      "answers": 1
-    },
-    {
-      "title": "MCP: Not All the Tools being Listed",
-      "url": "https://stackoverflow.com/questions/79659426/mcp-not-all-the-tools-being-listed",
-      "score": 0.85,
-      "votes": 2,
-      "answers": 0
-    },
-    {
-      "title": "VS Code Copilot Figma MCP tools disappearing on restart with 'Error loading 1 tool(s)' - how to get detailed error logs?",
-      "url": "https://stackoverflow.com/questions/79665442/vs-code-copilot-figma-mcp-tools-disappearing-on-restart-with-error-loading-1-to",
-      "score": -0.25,
-      "votes": 1,
-      "answers": 1
-    },
-    {
-      "title": "Why is GitHub Copilot not calling my MCP tool correctly?",
-      "url": "https://stackoverflow.com/questions/79651006/why-is-github-copilot-not-calling-my-mcp-tool-correctly",
-      "score": -0.3,
-      "votes": 1,
-      "answers": 1
-    },
-    {
-      "title": "Azure MCP server use in Github Copilot",
-      "url": "https://stackoverflow.com/questions/79915173/azure-mcp-server-use-in-github-copilot",
-      "score": -1.2,
-      "votes": 0,
-      "answers": 0
-    },
-    {
-      "title": "I am getting a cancellation response while using an N8N MCP Server from Visual Studio Code Github Copilot Agent",
-      "url": "https://stackoverflow.com/questions/79861649/i-am-getting-a-cancellation-response-while-using-an-n8n-mcp-server-from-visual-s",
-      "score": -1.2,
+      "score": 5.7,
       "votes": 0,
       "answers": 0
     }

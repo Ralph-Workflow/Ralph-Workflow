@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-23T16:15:01.050736
+- Generated: 2026-05-23T17:36:45.878681
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **0**
 - Reddit posts analyzed: **6**
@@ -10,19 +10,19 @@
 - Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
-- Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
+- Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 13 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
 - 12 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
-- The active loop did execute a live marketing action recently (comparison_posts_batch_publish), so the system is still shipping output even though outcome movement is not visible yet.
+- The active loop did execute a live marketing action recently (repo_conversion_docs_push), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## Observed risks
 - Repetition risk in outreach opening: "Honestly the part I'd optimize first is the handoff, not the model stack."
-- Failing tactic detected: reddit_style_repetition
 - Failing tactic detected: primary_repo_flat_window
 - Failing tactic detected: mirror_repo_flat_window
 - Failing tactic detected: same_family_distribution_overlap
 - Failing tactic detected: same_family_outreach_overlap
+- Dormant risk parked for now: reddit_style_repetition_suspended_while_channel_blocked
 
 ## Outcome evaluation
 - GitHub: samples=9, stars +0, watchers +0, forks +0
@@ -48,17 +48,13 @@
   - Repair state: needs_execution
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
-- **repetitive_outreach** (tactic) → REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.
-  - Repair state: needs_execution
-  - Kill condition: Same opening detected again in next audit
-  - Success metric: No repeated openings in next audit window
 
 ## Latest executed marketing action
-- Type: comparison_posts_batch_publish
-- Title: comparison posts batch publish
+- Type: repo_conversion_docs_push
+- Title: Ship Codeberg-first conversion docs upgrade to public repos
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_remaining_comparison_posts_batch.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_repo_conversion_docs_push.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

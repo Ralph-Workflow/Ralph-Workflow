@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-05-23T16:36:00+02:00",
+  "run_type": "marketing-active-loop",
+  "chosen_action": {
+    "type": "owned_content_dualpost",
+    "channel": "telegraph_primary_devto_if_available",
+    "title": "Claude Code + Codex Workflow: Plan, Build, Review",
+    "source_draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_claude-code-codex-workflow_dualpost.md"
+  },
+  "shared_findings_used": [
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/market_intelligence_consumption_latest.json",
+    "agents/marketing/logs/reddit_post_analysis.md",
+    "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+    "agents/marketing/outreach-log.md"
+  ],
+  "reason": [
+    "Codeberg adoption is flat and same-family directory/curator lanes are already saturated or inside measurement windows.",
+    "Reddit is structurally constrained, and StackOverflow posting remains blocked from this runtime.",
+    "A Claude Code + Codex workflow explainer matches live evaluator pain and points directly to the Codeberg-first repo path."
+  ],
+  "results": {
+    "telegraph": {
+      "ok": true,
+      "url": "https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-23"
+    },
+    "devto": {
+      "ok": false,
+      "status": "skipped",
+      "reason": "No dev.to API key in accounts/devto_creds.json"
+    }
+  },
+  "verification": {
+    "positioning_validation": "passed",
+    "telegraph_fetch_expected": true
+  },
+  "measurement_window": {
+    "review_by": "2026-05-30 16:36 Europe/Berlin",
+    "success_signal": "visible reuse of the article or any Codeberg star/watch/fork movement within 14 days",
+    "replacement_condition": "if no visible reuse and no primary-repo movement after current windows mature, replace owned-content reuse with a different executable demand-capture lane"
+  }
+}

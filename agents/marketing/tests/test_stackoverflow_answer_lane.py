@@ -58,6 +58,18 @@ class StackOverflowAnswerLaneTests(unittest.TestCase):
         self.assertNotIn("What type of task", answer)
         self.assertFalse(answer.strip().endswith("?"))
 
+    def test_fintech_reliability_answer_is_question_specific(self):
+        question = {
+            "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+            "body_snippet": "Need webhook retries, observability, safe deploys, and a way to prevent cascading failures between agents.",
+        }
+        answer = stackoverflow_answer_lane.draft_answer(question, question)
+
+        self.assertIn("queue-backed workers", answer)
+        self.assertIn("idempotency", answer)
+        self.assertIn("correlation ID", answer)
+        self.assertIn("canary", answer)
+
     def test_load_recent_drafted_question_urls_reads_recent_drafts(self):
         with tempfile.TemporaryDirectory() as tmp:
             draft_dir = Path(tmp)

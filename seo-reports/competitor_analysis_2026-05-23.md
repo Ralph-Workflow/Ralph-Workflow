@@ -2,11 +2,11 @@
 
 ## Monitored Competitors
 
-- ✅ **Hermes Agent** (https://hermes-agent.org) ⭐ 163441
+- ✅ **Hermes Agent** (https://hermes-agent.org) ⭐ 164014
 - ✅ **Conductor OSS** (https://conductor-oss.org) ⭐ 31838
 - ✅ **Conductor (Teams)** (https://conductross.com)
-- ✅ **Aider** (https://aider.chat) ⭐ 45178
-- ✅ **Continue** (https://continue.dev) ⭐ 33328
+- ✅ **Aider** (https://aider.chat) ⭐ 45201
+- ✅ **Continue** (https://continue.dev) ⭐ 33334
 - ✅ **Cursor** (https://cursor.com)
 - ❌ (0) **Claude Code** (https://claude.ai/code)
 - ✅ **GitHub Copilot** (https://github.com/features/copilot)

@@ -1,6 +1,6 @@
 {
-  "lane": "repo_conversion_proof_asset",
-  "reason": "The StackOverflow reuse packet already exists and the external lanes are still in measurement windows; ship a missing repo proof asset instead of refreshing the same handoff packet again.",
+  "lane": "distribution_reset",
+  "reason": "The proof-asset lane already shipped recently and the current external lanes are still saturated or in-flight; create fresh reset targets instead of looping on the same docs and handoff surfaces.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "1 owned-content posts already shipped in the last 36 hours.",
@@ -16,7 +16,8 @@
     "Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.",
     "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
     "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
-    "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress."
+    "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.",
+    "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
   ],
   "owned_content_posts_last_36h": 1,
   "unsubmitted_directory_channels": [],

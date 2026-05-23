@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-05-23T16:35:00+02:00",
+  "run_type": "marketing-live-action",
+  "chosen_action": {
+    "type": "repo_conversion_docs_push",
+    "channel": "primary_repo_conversion_surface",
+    "title": "Ship Codeberg-first conversion docs upgrade to public repos",
+    "targets": [
+      "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md",
+      "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The highest-leverage feasible move was to actually ship the already-prepared repo conversion upgrade to the live Codeberg-first repo surfaces instead of leaving it as local-only work while external outreach lanes remain saturated or inside active measurement windows.",
+    "shared_findings_used": [
+      "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+      "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+      "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+      "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+      "agents/marketing/logs/market_intelligence_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md",
+      "agents/marketing/logs/reddit_post_analysis.md",
+      "agents/marketing/logs/adoption_metrics_latest.md",
+      "agents/marketing/logs/distribution_lane_latest.md"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": true,
+    "primary_repo_pushed": true,
+    "mirror_repo_pushed": true,
+    "commit": "76d93e0c50cc9d426de3b0c16f326b3d78081f26",
+    "commit_subject": "docs: sharpen first-run conversion path",
+    "codeberg_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+  },
+  "verification": [
+    "Committed only README.md, START_HERE.md, and docs/README.md",
+    "Post-push markdown link check passed for all three conversion surfaces",
+    "git ls-remote confirmed commit 76d93e0c50cc9d426de3b0c16f326b3d78081f26 on origin/main and github/main"
+  ],
+  "runtime_repairs": [
+    "Recovered from non-fast-forward push rejection by fetching and rebasing onto the latest Codeberg main",
+    "Resolved docs/README.md rebase conflict in favor of the stronger first-run conversion path",
+    "Preserved pre-existing unrelated local edits in stash@{0} and backup patch agents/marketing/logs/stash-backups/github-mirror-marketing-loop-temp-1779546541.patch",
+    "Reset the repo worktree back to clean HEAD after stash-restore conflicts so the runtime does not stay degraded"
+  ],
+  "expected_outcome": "A clearer live first-run path on the public repo that increases the odds of qualified visitors converting into Codeberg stars, watches, issues, or repeat use.",
+  "measurement_window": {
+    "review_at": "2026-05-30T16:35:00+02:00",
+    "success_metric": "Any Codeberg adoption delta or higher-quality first-run feedback attributable to the shipped conversion surfaces.",
+    "kill_condition": "If Codeberg remains flat through the next review window, treat conversion-surface sharpening as insufficient alone and pair the next run with a new high-intent demand-capture or citation lane."
+  }
+}

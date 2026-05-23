@@ -351,6 +351,107 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'repo_conversion_proof_asset')
 
+    def test_stops_repeating_repo_conversion_proof_asset_after_recent_docs_push(self):
+        now = datetime(2026, 5, 23, 17, 37, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        curator_queue = {
+            "targets": [
+                {"target": f"target-{idx}", "status": "sent_via_email_fallback", "review_due_date": "2026-06-05", "last_contact_at": "2026-05-23T05:00:00"}
+                for idx in range(5)
+            ]
+        }
+        comparison_queue = {
+            "targets": [
+                {"slug": "aider", "name": "Aider", "status": "prepared", "review_due_date": "2026-06-05"}
+            ]
+        }
+        market_intelligence = {"comparison_pages": [{"slug": "aider", "name": "Aider", "path": "/tmp/aider.md"}]}
+        stackoverflow_latest = {
+            "drafts_created": 1,
+            "drafts": [{"question_title": "workflow reliability", "draft_file": "/tmp/so_answer.md"}],
+        }
+        apollo_sequence_status = {
+            "measurement_pending": True,
+            "next_review_at": "2026-05-30T00:14:49.075391+02:00",
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (drafts_dir / 'stackoverflow').mkdir()
+
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_queue.json'
+            comparison_queue_path = log_dir / 'comparison_queue.json'
+            market_path = log_dir / 'market.json'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            apollo_sequence_status_path = log_dir / 'apollo_sequence_status_latest.json'
+            stackoverflow_latest_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            stackoverflow_handoff_path = drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md'
+            reddit_monitor_path = tmp / 'reddit_monitor_latest.md'
+
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            apollo_sequence_status_path.write_text(json.dumps(apollo_sequence_status), encoding='utf-8')
+            stackoverflow_latest_path.write_text(json.dumps(stackoverflow_latest), encoding='utf-8')
+            stackoverflow_handoff_path.write_text('# current packet\n', encoding='utf-8')
+            reddit_monitor_path.write_text('Partial visibility only. Fail closed. reddit_direct_access_degraded=1\n', encoding='utf-8')
+
+            for idx in range(4):
+                (log_dir / f'marketing_2026-05-23_dir_{idx}_submission.json').write_text(json.dumps({
+                    'timestamp': f'2026-05-23T0{idx}:00:00',
+                    'status': 'executed',
+                    'result': {'ok': True, 'live_external_action': True},
+                }), encoding='utf-8')
+
+            for idx in range(5):
+                (log_dir / f'marketing_2026-05-23_curator_email_{idx}.json').write_text(json.dumps({
+                    'timestamp': f'2026-05-23T0{idx}:30:00',
+                    'status': 'executed',
+                    'result': {'ok': True, 'live_external_action': True},
+                }), encoding='utf-8')
+
+            (log_dir / 'marketing_2026-05-23_repo_conversion_docs_push.json').write_text(json.dumps({
+                'timestamp': '2026-05-23T16:35:00+02:00',
+                'chosen_action': {'type': 'repo_conversion_docs_push'},
+                'result': {'ok': True, 'live_external_action': True},
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_status_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_latest_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_HANDOFF_LATEST_PATH', stackoverflow_handoff_path), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', reddit_monitor_path), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=False), \
+                 patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=False):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'distribution_reset')
+
     def test_submitted_channel_log_with_tld_name_counts_as_attempted(self):
         now = datetime(2026, 5, 23, 6, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -3032,6 +3133,59 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             }), encoding='utf-8')
             retro_path.write_text(json.dumps({'recent_posts': [], 'repeated_openings': ['same reddit hook']}), encoding='utf-8')
             reddit_monitor_path.write_text('Today\'s bottom line\n- Reddit is IP-blocked from this server: all Reddit API calls return HTTP 403.', encoding='utf-8')
+            outreach_path.write_text('Measurement window active.', encoding='utf-8')
+            principles_path.write_text('principles', encoding='utf-8')
+            four_questions_path.write_text('questions', encoding='utf-8')
+            self_improvement_path.write_text('self-improvement', encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_JSON', audit_json), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_MD', audit_md), \
+                 patch.object(marketing_workflow_audit, 'OUTREACH', outreach_path), \
+                 patch.object(marketing_workflow_audit, 'ADOPTION', adoption_path), \
+                 patch.object(marketing_workflow_audit, 'RETRO', retro_path), \
+                 patch.object(marketing_workflow_audit, 'PRINCIPLES', principles_path), \
+                 patch.object(marketing_workflow_audit, 'FOUR_QUESTIONS_DOC', four_questions_path), \
+                 patch.object(marketing_workflow_audit, 'SELF_IMPROVEMENT_DOC', self_improvement_path), \
+                 patch.object(marketing_workflow_audit, 'REDDIT_MONITOR_LATEST', reddit_monitor_path):
+                rc = marketing_workflow_audit.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads(audit_json.read_text(encoding='utf-8'))
+            self.assertNotIn('reddit_style_repetition', payload['failing_tactics'])
+            self.assertIn('reddit_style_repetition_suspended_while_channel_blocked', payload['dormant_risks'])
+            self.assertFalse(any(item['target_tactic'] == 'reddit_post_style' for item in payload['repair_actions']))
+
+    def test_audit_parks_reddit_repetition_when_latest_report_is_partial_coverage_blocked(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            out_dir = tmp / 'logs'
+            out_dir.mkdir()
+            adoption_path = out_dir / 'adoption_metrics_latest.json'
+            retro_path = out_dir / 'reddit_post_analysis.json'
+            outreach_path = tmp / 'outreach-log.md'
+            principles_path = tmp / 'principles.md'
+            four_questions_path = tmp / 'four_questions.md'
+            self_improvement_path = tmp / 'self_improvement.md'
+            reddit_monitor_path = tmp / 'reddit_monitor_latest.md'
+            audit_json = out_dir / 'marketing_workflow_audit_latest.json'
+            audit_md = out_dir / 'marketing_workflow_audit_latest.md'
+
+            adoption_path.write_text(json.dumps({
+                'metrics': [],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'failing_signals': ['primary_repo_flat']},
+            }), encoding='utf-8')
+            retro_path.write_text(json.dumps({'recent_posts': [], 'repeated_openings': ['same reddit hook']}), encoding='utf-8')
+            reddit_monitor_path.write_text(
+                '# Reddit monitor\n\n'
+                '- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=3**), but other queries still returned usable results (**ok=4**). Treat this as partial coverage, not a total Reddit outage.\n'
+                '- Provider still challenge-heavy and fails closed on posting.\n',
+                encoding='utf-8',
+            )
             outreach_path.write_text('Measurement window active.', encoding='utf-8')
             principles_path.write_text('principles', encoding='utf-8')
             four_questions_path.write_text('questions', encoding='utf-8')

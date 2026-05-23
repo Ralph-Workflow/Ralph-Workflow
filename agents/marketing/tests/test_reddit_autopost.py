@@ -5,6 +5,51 @@ from agents.marketing import reddit_autopost
 
 
 class RedditAutopostTests(unittest.TestCase):
+    def test_reddit_lane_repair_reasons_detect_pending_reddit_repair(self):
+        audit = {
+            "failing_tactics": ["reddit_style_repetition", "primary_repo_flat_window"],
+            "repair_actions": [
+                {
+                    "target_tactic": "reddit_post_style",
+                    "failure_type": "repetitive_outreach",
+                    "repair_state": "needs_execution",
+                }
+            ],
+        }
+        retro = {
+            "repeated_openings": [
+                "Honestly the part I'd optimize first is the handoff, not the model stack."
+            ],
+            "recent_window_count": 6,
+            "by_community": {"r/ClaudeCode": 5},
+        }
+
+        reasons = reddit_autopost.reddit_lane_repair_reasons(audit=audit, retro=retro)
+
+        self.assertIn("audit:failing_tactic:reddit_style_repetition", reasons)
+        self.assertIn("audit:repair_pending:reddit_post_style", reasons)
+        self.assertIn("retro:repeated_openings:1", reasons)
+        self.assertIn("retro:channel_concentration:r/ClaudeCode:5/6", reasons)
+
+    def test_reddit_lane_repair_reasons_clear_when_no_repair_is_pending(self):
+        audit = {
+            "failing_tactics": ["primary_repo_flat_window"],
+            "repair_actions": [
+                {
+                    "target_tactic": "content_distribution",
+                    "failure_type": "primary_repo_flat",
+                    "repair_state": "needs_execution",
+                }
+            ],
+        }
+        retro = {
+            "repeated_openings": [],
+            "recent_window_count": 3,
+            "by_community": {"r/ClaudeCode": 2},
+        }
+
+        self.assertEqual(reddit_autopost.reddit_lane_repair_reasons(audit=audit, retro=retro), [])
+
     def test_parse_opportunities_captures_mention_fit(self):
         report = """### 1) Trust Codex?
 - URL: https://www.reddit.com/r/codex/comments/example/

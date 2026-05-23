@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-23T16:10:00
-Chosen lane: **repo_conversion_proof_asset**
+Generated: 2026-05-23T17:44:46
+Chosen lane: **distribution_reset**
 
 ## Why this lane
-- The StackOverflow reuse packet already exists and the external lanes are still in measurement windows; ship a missing repo proof asset instead of refreshing the same handoff packet again.
+- The proof-asset lane already shipped recently and the current external lanes are still saturated or in-flight; create fresh reset targets instead of looping on the same docs and handoff surfaces.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 13 directory submissions already shipped in the last 24 hours.
@@ -19,6 +19,7 @@ Chosen lane: **repo_conversion_proof_asset**
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
 - The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.
+- Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -30,8 +31,8 @@ Chosen lane: **repo_conversion_proof_asset**
 ## Recent owned-content already shipped
 - AI Coding Tool Comparison: Claude Code, Cursor, Aider, and the Workflow Layer Most Teams Actually Need (telegraph)
 
-## Immediate repo proof-asset work
-- Ship one missing proof asset that helps a repo visitor understand how the workflow composes planning, build, verification, and morning-after review
-- Reuse the existing first-task, review-bundle, and market-positioning artifacts instead of creating another broad top-level rewrite
-- Keep Codeberg as the primary CTA and add the new proof asset to the first-run path only where it reduces evaluator friction
-- Do not count another StackOverflow handoff refresh as progress while the current packet is already fresh
+## Immediate queue-reset work
+- Do not count curator or comparison queue follow-through alone as a fresh repair
+- Reuse `market_intelligence_latest.json` and current queue logs to define the next untouched target classes
+- Add genuinely new third-party citation/backlink targets before the next outreach-prep execution
+- Keep Codeberg as the only primary CTA while expanding the target universe

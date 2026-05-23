@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.marketing import reddit_monitor
+from agents.marketing import marketing_momentum_watchdog, reddit_monitor
 from agents.marketing.reddit_monitor import Candidate, SearchAttempt
 
 
@@ -57,6 +57,22 @@ class RedditMonitorTests(unittest.TestCase):
             self.assertEqual(payload['scanned'], 12)
             self.assertEqual(payload['shortlisted'], 2)
 
+    def test_fresh_report_reuse_payload_rejects_partial_visibility_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            search_dir = Path(tmpdir)
+            latest = search_dir / 'reddit_monitor_latest.md'
+            latest.write_text(
+                '# Reddit monitor\n\n'
+                '- **Threads/posts scanned:** 12\n'
+                '- **Shortlisted:** 4\n'
+                '- **Query attempts:** 24\n'
+                '- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=3**), but other queries still returned usable results (**ok=4**). Treat this as partial coverage, not a total Reddit outage.\n',
+                encoding='utf-8',
+            )
+            with patch.object(reddit_monitor, 'SEARCH_DIR', search_dir):
+                payload = reddit_monitor._fresh_report_reuse_payload()
+            self.assertIsNone(payload)
+
     def test_score_candidate_rejects_non_software_tax_threads(self):
         score, _reason, direct_reply_fit, mention_fit = reddit_monitor.score_candidate(
             'AI to review tax returns?',
@@ -109,6 +125,21 @@ class RedditMonitorTests(unittest.TestCase):
         self.assertEqual(len(attempts), 2)
         self.assertEqual(attempts[0].status, 'ok')
         self.assertEqual(attempts[1].status, 'time_budget_exceeded')
+
+    def test_watchdog_skips_partial_visibility_report_when_looking_for_healthy_one(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            seo_dir = Path(tmpdir)
+            partial = seo_dir / 'reddit_monitor_latest_healthy.md'
+            partial.write_text(
+                '# Reddit monitor\n\n'
+                '- **Important telemetry note**: some Reddit queries were blocked (**reddit_ip_blocked=3**), but other queries still returned usable results (**ok=4**). Treat this as partial coverage, not a total Reddit outage.\n',
+                encoding='utf-8',
+            )
+            real = seo_dir / 'reddit_monitor_2026-05-23_1200.md'
+            real.write_text('# Reddit monitor\n\n- **Shortlisted:** 2\n', encoding='utf-8')
+            with patch.object(marketing_momentum_watchdog, 'SEO', seo_dir):
+                report, _age = marketing_momentum_watchdog.newest_healthy_report_time(marketing_momentum_watchdog.datetime.now().astimezone())
+            self.assertEqual(report, real)
 
 
 if __name__ == '__main__':
