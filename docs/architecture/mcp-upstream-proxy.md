@@ -148,7 +148,7 @@ Ralph writes a run-scoped Ralph-managed MCP config into AGY's workspace `.agents
 
 Ralph reads upstream server definitions from the user's existing AGY config files using `load_existing_agy_upstream_servers`, normalizes them, and re-exposes them as proxied tool aliases via Ralph's upstream proxy. Ralph does not write to or replace the user's live AGY config files.
 
-Add the Ralph MCP endpoint as a `serverUrl` entry under `mcpServers` in your AGY config before running Ralph. Run `ralph --check-mcp` to verify the wiring. See `ralph/mcp/transport/agy.py` for the AGY config discovery implementation.
+No manual pre-configuration is needed. Ralph injects the run-scoped `.agents/mcp_config.json` automatically before each AGY run and restores the original file afterward. Run `ralph --check-mcp` to verify the wiring. See `ralph/mcp/transport/agy.py` for the AGY runtime injection implementation.
 
 ---
 

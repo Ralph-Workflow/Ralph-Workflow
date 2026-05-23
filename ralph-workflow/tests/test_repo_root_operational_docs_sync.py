@@ -99,6 +99,8 @@ def test_agy_mcp_setup_reflects_pty_injection() -> None:
         "architecture/mcp-upstream-proxy.md": [
             "cannot inject a Ralph-only MCP config",
             "users must pre-configure",
+            "Add the Ralph MCP endpoint",
+            "before running Ralph",
         ],
         "agent-compatibility.md": [
             "config-discovery-based setup",
