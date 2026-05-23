@@ -134,6 +134,8 @@ class PipelineSubscriber:
         self._decision_log: list[tuple[str, str, str, str]] = []
         self._mcp_restart_count: int = 0
         self._last_state: PipelineState | None = None
+        self._snapshot_cache_state: PipelineState | None = None
+        self._snapshot_cache: PipelineSnapshot | None = None
 
     @property
     def queue(self) -> Queue[PipelineSnapshot]:
@@ -196,7 +198,11 @@ class PipelineSubscriber:
             self._refresh_analysis_for_phase_change_locked(state)
             self._active_agent = state.current_agent() or self._active_agent
             self._last_state = state
-            snapshot = self._build_snapshot_locked(state)
+            snapshot: PipelineSnapshot | None
+            if self._snapshot_cache_state is state and self._snapshot_cache is not None:
+                snapshot = self._snapshot_cache
+            else:
+                snapshot = self._build_snapshot_locked(state)
         if snapshot is not None:
             self._publish(snapshot)
 
@@ -384,6 +390,8 @@ class PipelineSubscriber:
         self._plan_total_steps = plan.total_steps
         self._plan_risks = plan.risks_mitigations
         self._last_plan_refresh_marker = marker
+        self._snapshot_cache_state = None
+        self._snapshot_cache = None
 
     def _plan_refresh_marker(self) -> int | None:
         plan_path = self._workspace_root / ".agent" / "artifacts" / "plan.json"
@@ -409,6 +417,8 @@ class PipelineSubscriber:
                     self._analysis_phase = phase_name
                     self._analysis_decision = summary.decision
                     self._analysis_reason = summary.reason
+                    self._snapshot_cache_state = None
+                    self._snapshot_cache = None
 
     def _append_decision_log_locked(
         self,
@@ -427,7 +437,7 @@ class PipelineSubscriber:
     ) -> PipelineSnapshot | None:
         if state is None:
             return None
-        return snapshot_from_state(
+        snapshot = snapshot_from_state(
             state,
             SnapshotContext(
                 prompt_path=self._prompt_path,
@@ -457,6 +467,9 @@ class PipelineSubscriber:
                 ),
             ),
         )
+        self._snapshot_cache_state = state
+        self._snapshot_cache = snapshot
+        return snapshot
 
     def _publish(self, snapshot: PipelineSnapshot) -> None:
         if self._on_snapshot is not None:

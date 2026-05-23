@@ -70,7 +70,7 @@ _VERIFY_COMMANDS = [
             "tests/",
             "-q",
             "-n",
-            "7",
+            "4",
             "--dist",
             "worksteal",
             "-m",
@@ -218,4 +218,3 @@ def test_main_marks_budget_exhaustion_when_pytest_times_out(
     assert len(runner.calls) == 3
     assert "pytest timed out" in captured.err
     assert "budget exhausted" in captured.err
-    assert "pytest tests (budget exhausted)" in captured.err

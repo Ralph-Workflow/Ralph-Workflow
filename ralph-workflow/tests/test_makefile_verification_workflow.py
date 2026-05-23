@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 19
+UNIT_TEST_SHARD_COUNT = 31
 
 
 def _target_body(name: str) -> list[str]:
@@ -78,12 +78,24 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_A)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_B)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_C_D)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_E_F)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_G_H)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_I_J)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_K_L)" in line for line in unit_body)
-    assert any("$(PYTEST_ROOT_PATHS_M)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_C)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_D)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_E)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_F)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_G)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_H)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_I)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_J)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_K)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_L)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_M_CONFIG)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_M_ARTIFACTS)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_M_BRIDGE)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_M_CAPABILITY)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_M_CORE)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_M_RUNTIME)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_M_SERVER)" in line for line in unit_body)
+    assert any("$(PYTEST_ROOT_PATHS_M_TOOL)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_N)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_O)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_PA_PC)" in line for line in unit_body)

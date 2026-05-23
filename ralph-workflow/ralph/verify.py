@@ -64,7 +64,7 @@ _VERIFY_COMMANDS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
             "tests/",
             "-q",
             "-n",
-            "7",
+            "4",
             "--dist",
             "worksteal",
             "-m",
