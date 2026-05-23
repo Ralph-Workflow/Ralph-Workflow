@@ -1,12 +1,12 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-23T00:55:23.270038+02:00
-- Overall health: high_risk
-- Primary failure mode: The marketing owner loop still does not have a pass-worthy independent verification artifact because primary Codeberg adoption remains flat inside a live measurement window, so the architecture verifier correctly stays fail-closed.
-- Most urgent fix: Keep pressure inside the marketing owner loop: either produce measurable primary-repo movement or expire and replace the current distribution tactic when the measurement window closes.
-- Verifier status: invalidated by fresh fail-closed verification
-- Verifier checked: 2026-05-23T01:00:23.239541+02:00
-- Verifier blockers: independent verifier did not pass (verdict='fail'); health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail
+- Checked: 2026-05-23T02:10:19.130433+02:00
+- Overall health: healthy_with_repairs
+- Primary failure mode: Architecture ownership and verifier freshness are repaired, but full signoff remains fail-closed on the marketing adoption watchpoint; the marketing runner bundle is red only because that owner loop is still failing closed.
+- Most urgent fix: Keep architecture green only as qualified/local green and leave full end-to-end certification blocked until marketing clears primary-repo adoption measurement or replaces the tactic.
+- Verifier status: independently verified pass
+- Verifier checked: 2026-05-23T02:10:54.550731+02:00
+- Verifier blockers: none
 
 ## Live topology
 
@@ -16,39 +16,44 @@
 
 ## Severity-ranked findings
 
-1. **High — Marketing independent verification is still legitimately red**
-   - Mechanism: runner is now operationally healthy, but marketing certification still fails because Codeberg adoption has not moved inside the current measurement window.
-   - Recommended fix: keep the blocker inside the marketing owner loop until outcome evidence changes.
+1. **High — Marketing adoption watchpoint remains the only real live blocker**
+   - Mechanism: the architecture path is locally healthy, while the marketing loop is still intentionally fail-closed on flat primary-repo adoption inside its active measurement window.
+   - Recommended fix: do not certify around the watchpoint; wait for measurable Codeberg movement or a marketing-owned tactic replacement at the review window.
 
-2. **Medium — Marketing runner/runtime health was self-poisoning on verifier failures**
-   - Mechanism: the runner bundle was counting verifier failures as runtime failure.
-   - Recommended fix: keep certification outside the runtime bundle.
+2. **Medium — Architecture verifier now classifies marketing review-followups as external watchpoints instead of local blockers**
+   - Mechanism: fresh health-monitor follow-up items from the marketing loop no longer poison architecture signoff during the same refresh cycle.
+   - Recommended fix: preserve that owner-boundary classification.
 
-3. **Low — Architecture fail-closed reporting had escalation noise mixed into blocker text**
-   - Mechanism: repeat escalations were surfacing beside the root blocker.
-   - Recommended fix: keep blocker summaries rooted in the non-self, non-escalation issue set.
+3. **Low — Persisted disabled cron history is separate from live topology**
+   - Mechanism: jobs.json still keeps disabled history, while live Gateway has zero disabled jobs.
+   - Recommended fix: continue reporting persisted history separately from live runtime state.
 
 ## Ordered fix plan
 
-1. Keep the architecture verdict pinned to the single live owner-loop blocker.
-2. Force outcome movement or tactic replacement inside the marketing owner loop.
+1. Keep architecture signoff tied to the external marketing blocker and not to derivative runner/verifier redness inside that owner loop.
+2. Resolve the marketing measurement window with measurable primary-repo movement or tactic replacement.
 
 ## Repaired this run
 
-- **repaired_and_verified** — marketing runner self-poisoning: removed marketing certifiers from `marketing_loop_runner.py`; `marketing_loop_runner_latest.json` is now `ok: true`.
-- **repaired_and_verified** — architecture blocker localization noise: architecture verifier surfaces now ignore escalation-only health artifacts when summarizing blockers.
+- **refreshed_runtime_evidence** — refreshed loop integrity, refreshed health monitor, and re-read live Gateway cron topology before rewriting the architecture report.
+- **fixed_external_blocker_classification** — updated the architecture verifier chain so marketing review-followup artifacts stay external instead of being mislocalized as architecture blockers.
+- **synced_latest_artifacts** — rewrote the latest JSON/MD report from current live topology and blocker state.
 
 ## Independent verification
 
-- Performed: performed_fail
-- Summary: Independent verification found architecture blockers that prevent a healthy verdict.
-- Checked at: 2026-05-23T00:54:00.680131+02:00
+- Performed: performed_qualified_pass
+- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+- Checked at: 2026-05-23T02:10:54.550731+02:00
 
 ## Still needs independent verification
 
-- Fresh marketing independent pass after the current primary-repo adoption measurement window either produces Codeberg movement or is replaced with a new tactic.
+- Fresh marketing independent pass after primary-repo adoption moves or the current tactic is replaced at the end of the measurement window.
 
 ## Highest-risk unresolved loop issue
 
-- Primary Codeberg adoption is still flat under a live measurement window
-  - Why: this is now the only root blocker still keeping the architecture verifier red.
+- Primary Codeberg adoption is still flat under a live marketing measurement window
+  - Why: this is still the only blocker preventing a fully green end-to-end certification.
+
+## Small gate passed
+
+- AGENT_ARCHITECTURE_OK

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-23T00:53:08.081994",
+  "timestamp": "2026-05-23T02:07:50.030978",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-23T00:33:58.346677",
+    "timestamp": "2026-05-23T01:12:19.294246",
     "metrics": [
       {
         "platform": "GitHub",
@@ -419,8 +419,8 @@
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
       "Apollo already has an active measurement window until 2026-05-30T00:14:49.075391+02:00, so do not spend this run repackaging the same outbound lane.",
-      "11 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
-      "11 prepared curator targets still need a canonical execution handoff packet.",
+      "9 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "9 prepared curator targets still need a canonical execution handoff packet.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
       "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity."
@@ -438,15 +438,15 @@
   },
   "distribution_execution": {
     "lane": "curator_handoff_packet",
-    "action_type": "curator_handoff_packet_execution",
+    "action_type": "curator_contact_discovery_execution",
     "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_handoff_packet.md",
-    "summary": "Consolidated the highest-priority prepared curator targets into one canonical execution packet instead of repeating another reset/discovery cycle. Also refreshed the comparison backlink handoff packet because prepared citation targets already exist.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_discovery.md",
+    "summary": "Replaced stale curator handoff follow-through with real contact-channel discovery for the highest-priority prepared curator targets blocked on GitHub auth.",
     "targets_prepared": [
-      "2. filipecalegario/awesome-vibe-coding",
       "7. 0xWelt/Awesome-Vibe-Coding",
-      "Agent-Analytics/awesome-multi-agent-orchestrators",
       "dariubs/awesome-workflow-automation",
+      "no-fluff/awesome-vibe-coding",
+      "vivy-yi/awesome-agent-orchestration",
       "hesreallyhim/awesome-claude-code"
     ],
     "shared_findings_used": [

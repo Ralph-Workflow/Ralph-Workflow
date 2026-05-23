@@ -1,16 +1,8 @@
 {
-  "ts": "2026-05-23T01:00:27.902360",
+  "ts": "2026-05-23T02:10:46.591318",
   "jobs_checked": 20,
   "issues_found": 6,
   "issues": [
-    {
-      "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "required_text": "Status: independently verified pass",
-      "likely_cause": "Verifier artifact exists but does not show required pass contract"
-    },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
@@ -23,49 +15,93 @@
     },
     {
       "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime",
-      "category": "artifact_contract_fail",
-      "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-23T01:00:23.239541+02:00\"\n}",
-      "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy"
+      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Marketing runner bundle is not healthy.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is not healthy."
     },
     {
       "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_escalation",
-      "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Repeat issue escalation: agent_architecture_verifier:artifact_contract_fail has appeared in 47 prior health-monitor runs and is still present now",
-      "repeats_in_recent_history": 47
+      "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
     },
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Repeat issue escalation: marketing_independent_verification:loop_verification_fail has appeared in 34 prior health-monitor runs and is still present now",
-      "repeats_in_recent_history": 34
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=26",
+      "repeats_in_recent_history": 26,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
     },
     {
       "job_id": "__artifacts__",
-      "name": "agent_architecture_verifier_runtime_escalation",
+      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
       "category": "escalation_required",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-23T01:00:23.239541+02:00\"\n}",
-      "likely_cause": "Repeat issue escalation: agent_architecture_verifier_runtime:artifact_contract_fail has appeared in 46 prior health-monitor runs and is still present now",
-      "repeats_in_recent_history": 46
+      "last_error": "Marketing runner bundle is not healthy.",
+      "likely_cause": "Incident escalation level=owner: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=4",
+      "repeats_in_recent_history": 4,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
+      "escalation_level": "owner",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
+      "category": "escalation_required",
+      "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
+      "likely_cause": "Incident escalation level=owner: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=4",
+      "repeats_in_recent_history": 4,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin::review_followup_required",
+      "escalation_level": "owner",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
     }
   ],
   "repairs_attempted": [
     {
-      "type": "rerun_independent_architecture_verification",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+      "type": "immediate_review_followup_owner_action",
+      "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779495035146:40\"\n}"
     },
     {
-      "type": "rerun_architecture_verifier",
-      "job": "agent_architecture_verifier_runtime",
-      "ok": false,
-      "detail": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"health monitor reports non-architecture live issues: marketing_independent_verification:loop_verification_fail\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_"
+      "type": "immediate_review_followup_owner_action",
+      "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779495037034:41\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing_independent_verification_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779495038935:42\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779495040748:43\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779495042605:44\"\n}"
     }
   ]
 }

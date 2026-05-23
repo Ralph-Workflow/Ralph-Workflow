@@ -1,0 +1,26 @@
+Hi Altern team,
+
+I noticed Altern already curates Coding Agents and Workflow Automation tools, and Ralph Workflow looks like a strong fit for that audience.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for developers doing ambitious software work that needs a structured workflow instead of a chat session. The core difference is that it keeps a simple loop at the center, then composes planning, implementation, and verification so longer unattended runs end in something bounded and reviewable instead of another confident summary.
+
+Primary repo (Codeberg): https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Suggested listing blurb:
+Ralph Workflow — free and open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.
+
+Suggested categories / framing:
+- Coding Agents
+- Workflow Automation
+- Open Source
+
+If it helps, two public proof assets are here:
+- Start Here guide: https://telegra.ph/Start-Here-Try-Ralph-Workflow-on-One-Real-Backlog-Task-05-22
+- Comparison article: https://telegra.ph/AI-Coding-Tool-Comparison-Claude-Code-Cursor-Aider-and-the-Workflow-Layer-Most-Teams-Actually-Need-05-22
+
+If you prefer a different format for submission, I’m happy to send a tighter description.
+
+Best,
+Ralph Workflow
+ken@hireaegis.com

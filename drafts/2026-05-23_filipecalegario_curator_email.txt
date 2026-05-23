@@ -1,0 +1,24 @@
+Hi Filipe,
+
+I came across awesome-vibe-coding while reviewing active curated lists for practical AI coding workflows.
+
+Ralph Workflow looks like a strong fit for the Command Line Tools / workflow layer:
+- free and open source
+- operating system for autonomous coding
+- composable loop framework and AI orchestrator
+- built for developers and technical teams who want a structured workflow instead of a chat session
+- works well for longer unattended coding runs where the goal is a reviewable result, not just an agent saying "done"
+
+Primary repo:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+GitHub mirror:
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Suggested entry:
+- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free and open-source composable loop framework and AI orchestrator for structured autonomous coding workflows, with a strong default workflow you can use as-is or build on top of.
+
+If it's useful, I'm happy to send a PR later as well.
+
+Best,
+Ralph Workflow

@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-23T00:53:08.081994",
+  "timestamp": "2026-05-23T02:07:50.030978",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "curator_handoff_packet_execution",
+    "type": "curator_contact_discovery_execution",
     "channel": "curator_handoff_packet",
     "title": "Distribution lane execution: curator_handoff_packet",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_handoff_packet.md"
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_discovery.md"
   },
   "why_this_action": {
-    "summary": "Consolidated the highest-priority prepared curator targets into one canonical execution packet instead of repeating another reset/discovery cycle. Also refreshed the comparison backlink handoff packet because prepared citation targets already exist.",
+    "summary": "Replaced stale curator handoff follow-through with real contact-channel discovery for the highest-priority prepared curator targets blocked on GitHub auth.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -17,10 +17,10 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "targets_prepared": [
-      "2. filipecalegario/awesome-vibe-coding",
       "7. 0xWelt/Awesome-Vibe-Coding",
-      "Agent-Analytics/awesome-multi-agent-orchestrators",
       "dariubs/awesome-workflow-automation",
+      "no-fluff/awesome-vibe-coding",
+      "vivy-yi/awesome-agent-orchestration",
       "hesreallyhim/awesome-claude-code"
     ]
   },

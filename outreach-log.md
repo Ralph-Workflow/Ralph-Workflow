@@ -5721,3 +5721,40 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-23 00:53:18
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 01:06:22
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Curator outreach execution
+- **When:** 2026-05-23 01:32:03 CEST
+- **Target:** `filipecalegario/awesome-vibe-coding`
+- **Action:** sent email fallback to `fcac@cin.ufpe.br` because direct PR automation is still missing GitHub API/fork support even though repo discovery and draft prep were already complete.
+- **Primary CTA:** Codeberg first — `https://codeberg.org/RalphWorkflow/Ralph-Workflow`
+- **Mirror CTA:** GitHub second — `https://github.com/Ralph-Workflow/Ralph-Workflow`
+- **Log:** `agents/marketing/logs/marketing_2026-05-22_233203_filipecalegario_curator_email.json`
+- **Review due:** 2026-06-05
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 01:47:04
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 01:50:38
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 02:01:01
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 02:01:20
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 02:04:41
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 02:08:10
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

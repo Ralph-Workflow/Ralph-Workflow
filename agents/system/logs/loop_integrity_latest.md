@@ -1,6 +1,6 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-22 22:53 UTC
+Timestamp: 2026-05-23 00:08 UTC
 
 ## ralph-docs-watchdog
 - Status: ok
@@ -14,10 +14,11 @@ Timestamp: 2026-05-22 22:53 UTC
   - checker failed; executed runner for remediation
   - executed independent verifier after remediation
 - Errors:
+  - runner failed after checker failure
   - independent verifier failed after remediation
   - checker still failing after remediation/verifier pass
-- Checker: `MARKETING_LOOP_FAIL: primary repo adoption remains flat inside a measurement-pending repair window; do not certify health yet`
-- Checker after repair: `MARKETING_LOOP_FAIL: primary repo adoption remains flat inside a measurement-pending repair window; do not certify health yet`
+- Checker: `MARKETING_LOOP_FAIL: runner bundle still reports failure`
+- Checker after repair: `MARKETING_LOOP_FAIL: runner bundle still reports failure`
 
 ## ralph-site-owner-loop
 - Status: owner_only

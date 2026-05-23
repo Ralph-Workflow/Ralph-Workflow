@@ -1,0 +1,180 @@
+{
+  "generated_at": "2026-05-23T02:07:50.030978",
+  "targets": [
+    {
+      "target": "7. 0xWelt/Awesome-Vibe-Coding",
+      "url": "https://github.com/0xWelt/Awesome-Vibe-Coding",
+      "owner": "0xWelt",
+      "repo": "Awesome-Vibe-Coding",
+      "priority": "HIGH \u2014 active repo, 90+ stars, open PR flow visible",
+      "status": "prepared",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://github-readme-stats.vercel.app/api/wakatime?username=Nickydusk&layout=compact&langs_count=10&hide=Other",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://github-readme-stats.vercel.app/api?username=0xWelt&rank_icon=percentile&show_icons=true&show=reviews&count_private=true",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://orcid.org/0009-0001-4907-0304",
+          "label": "profile website"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/in/welt-ding",
+          "label": "profile LinkedIn"
+        }
+      ],
+      "recommended_next_step": "manual contact channel is now identified",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md"
+    },
+    {
+      "target": "dariubs/awesome-workflow-automation",
+      "url": "https://github.com/dariubs/awesome-workflow-automation",
+      "owner": "dariubs",
+      "repo": "awesome-workflow-automation",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "status": "prepared",
+      "channels": [
+        {
+          "type": "x",
+          "value": "https://x.com/dariubs",
+          "label": "GitHub-linked X/Twitter"
+        },
+        {
+          "type": "website",
+          "value": "https://aifordevelopers.org",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://altern.ai",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://altern.ai/@dariubs",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://golang.college",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://medium.com/@dariubs",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://themarketingnewsletter.org",
+          "label": "profile website"
+        },
+        {
+          "type": "x",
+          "value": "https://twitter.com/dariubs",
+          "label": "profile X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/in/dariush-abbasi",
+          "label": "profile LinkedIn"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/dariubs/awesome-workflow-automation/issues/new",
+          "label": "repo contribution path"
+        }
+      ],
+      "recommended_next_step": "manual contact channel is now identified",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_dariubs-awesome-workflow-automation.md"
+    },
+    {
+      "target": "no-fluff/awesome-vibe-coding",
+      "url": "https://github.com/no-fluff/awesome-vibe-coding",
+      "owner": "no-fluff",
+      "repo": "awesome-vibe-coding",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "status": "prepared",
+      "channels": [
+        {
+          "type": "github_issue",
+          "value": "https://github.com/no-fluff/awesome-vibe-coding/issues/new",
+          "label": "repo contribution path"
+        }
+      ],
+      "recommended_next_step": "GitHub issue/PR path remains the next move once auth is restored",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_no-fluff-awesome-vibe-coding.md"
+    },
+    {
+      "target": "vivy-yi/awesome-agent-orchestration",
+      "url": "https://github.com/vivy-yi/awesome-agent-orchestration",
+      "owner": "vivy-yi",
+      "repo": "awesome-agent-orchestration",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "status": "prepared",
+      "channels": [
+        {
+          "type": "github_issue",
+          "value": "https://github.com/vivy-yi/awesome-agent-orchestration/issues/new",
+          "label": "repo contribution path"
+        }
+      ],
+      "recommended_next_step": "GitHub issue/PR path remains the next move once auth is restored",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md"
+    },
+    {
+      "target": "hesreallyhim/awesome-claude-code",
+      "url": "https://github.com/hesreallyhim/awesome-claude-code",
+      "owner": "hesreallyhim",
+      "repo": "awesome-claude-code",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "status": "prepared",
+      "channels": [
+        {
+          "type": "website",
+          "value": "https://reallyengineering.com",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://reallyengineering.com/contact",
+          "label": "possible contact page"
+        },
+        {
+          "type": "website",
+          "value": "https://demo.gpg-badge.hesreallyhim.com",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://pypi.org/user/hesreallyhim",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://six-stars.hesreallyhim.com",
+          "label": "profile website"
+        },
+        {
+          "type": "website",
+          "value": "https://www.npmjs.com/~hesreallyhim",
+          "label": "profile website"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/hesreallyhim/awesome-claude-code/issues/new",
+          "label": "repo contribution path"
+        }
+      ],
+      "recommended_next_step": "manual contact channel is now identified",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_hesreallyhim-awesome-claude-code.md"
+    }
+  ]
+}

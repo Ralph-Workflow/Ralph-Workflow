@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Execution Handoff Packet
-Generated: 2026-05-23T00:53:08
+Generated: 2026-05-23T01:43:36
 
 ## Why this exists now
 - Prepared curator targets already exist, but the loop kept rediscovering/resetting instead of consolidating the best ready-to-execute items.
@@ -13,15 +13,7 @@ Generated: 2026-05-23T00:53:08
 - /home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md → keep current pain-language tied to real workflow failures
 
 ## Execute these first
-### 1. filipecalegario/awesome-vibe-coding
-- Status: prepared
-- Priority: MEDIUM-HIGH — updated recently (Apr 2026)
-- URL: https://github.com/filipecalegario/awesome-vibe-coding
-- Review due: 2026-06-05
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_2-filipecalegario-awesome-vibe-coding.md
-- Suggested next action: Submit PR
-
-### 2. 0xWelt/Awesome-Vibe-Coding
+### 1. 0xWelt/Awesome-Vibe-Coding
 - Status: prepared
 - Priority: HIGH — active repo, 90+ stars, open PR flow visible
 - URL: https://github.com/0xWelt/Awesome-Vibe-Coding
@@ -29,15 +21,7 @@ Generated: 2026-05-23T00:53:08
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md
 - Suggested next action: Submit PR adding Ralph Workflow to the CLI / autonomous coding section
 
-### 3. Agent-Analytics/awesome-multi-agent-orchestrators
-- Status: prepared
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators
-- Review due: 2026-06-05
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_agent-analytics-awesome-multi-agent-orchestrators.md
-- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
-
-### 4. dariubs/awesome-workflow-automation
+### 2. dariubs/awesome-workflow-automation
 - Status: prepared
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
 - URL: https://github.com/dariubs/awesome-workflow-automation
@@ -45,12 +29,28 @@ Generated: 2026-05-23T00:53:08
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_dariubs-awesome-workflow-automation.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
 
-### 5. hesreallyhim/awesome-claude-code
+### 3. hesreallyhim/awesome-claude-code
 - Status: prepared
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
 - URL: https://github.com/hesreallyhim/awesome-claude-code
 - Review due: 2026-06-05
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_hesreallyhim-awesome-claude-code.md
+- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
+
+### 4. no-fluff/awesome-vibe-coding
+- Status: prepared
+- Priority: HIGH — fresh reset target, not yet prepared elsewhere
+- URL: https://github.com/no-fluff/awesome-vibe-coding
+- Review due: 2026-06-05
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_no-fluff-awesome-vibe-coding.md
+- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
+
+### 5. vivy-yi/awesome-agent-orchestration
+- Status: prepared
+- Priority: HIGH — fresh reset target, not yet prepared elsewhere
+- URL: https://github.com/vivy-yi/awesome-agent-orchestration
+- Review due: 2026-06-05
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
 
 ## Process rule now in force
@@ -60,6 +60,3 @@ Generated: 2026-05-23T00:53:08
 ## Measurement contract
 - Expected outcome: at least one executed PR, inclusion request, or maintainer contact against the prepared queue
 - Review window: next 7 days for execution, 14 days for response, 30 days for live backlink/listing evidence
-
-## Comparison backlink execution packet
-- /home/mistlight/.openclaw/workspace/drafts/2026-05-23_comparison_backlink_handoff_packet.md

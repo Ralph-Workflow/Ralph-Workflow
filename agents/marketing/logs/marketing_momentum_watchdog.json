@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-05-23T00:53:18.446938+02:00",
+  "generated_at": "2026-05-23T02:08:10.391892+02:00",
   "latest_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest.md",
-  "report_age_hours": 3.5,
+  "report_age_hours": 4.75,
   "latest_healthy_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_latest_healthy.md",
-  "latest_healthy_report_age_hours": 3.5,
-  "latest_post_age_hours": 61.48,
+  "latest_healthy_report_age_hours": 4.75,
+  "latest_post_age_hours": 62.72,
   "adoption_flat": true,
   "pending_repairs": [],
   "blocked_distribution_channels": [],
   "apollo": {
     "status": "login_succeeded",
-    "age_hours": 0.23,
+    "age_hours": 1.48,
     "cloudflare_blocked": false
   },
   "actions": [],

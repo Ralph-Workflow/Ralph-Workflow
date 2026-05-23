@@ -21,8 +21,11 @@
       "priority": "MEDIUM-HIGH \u2014 updated recently (Apr 2026)",
       "subject": "Ralph Workflow for 2. filipecalegario/awesome-vibe-coding",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_2-filipecalegario-awesome-vibe-coding.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-05"
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-05",
+      "last_contact_at": "2026-05-22T23:32:03.456983+00:00",
+      "last_contact_path": "email:fcac@cin.ufpe.br",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_233203_filipecalegario_curator_email.json"
     },
     {
       "target": "3. asheshgoplani/agent-deck",
@@ -107,8 +110,11 @@
       "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
       "subject": "Ralph Workflow for Agent-Analytics/awesome-multi-agent-orchestrators",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_agent-analytics-awesome-multi-agent-orchestrators.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-05"
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-05",
+      "last_contact_at": "2026-05-22T23:36:00.972336+00:00",
+      "last_contact_path": "email:support@agentanalytics.ai",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_233600_agent_analytics_curator_email.json"
     },
     {
       "target": "dariubs/awesome-workflow-automation",
