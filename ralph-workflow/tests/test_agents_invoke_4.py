@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal, cast
 import pytest
 from loguru import logger
 
+import ralph.agents.invoke as invoke_module
 from ralph.agents.invoke import (
     BuildCommandOptions,
     InvokeOptions,
@@ -617,6 +618,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
 
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
     seen_envs: dict[str, dict[str, str]] = {}
 
     class FakeProcess:

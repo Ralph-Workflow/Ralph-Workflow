@@ -8,7 +8,7 @@ Ralph Workflow is a free and open-source AI agent orchestrator built around a si
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-If you already use Claude Code, Codex CLI, Google Anti Gravity, or similar tools with git worktrees, you have solved part of the problem.
+If you already use Claude Code, Codex CLI, OpenCode, Google Anti Gravity, or similar tools with git worktrees, you have solved part of the problem.
 
 You have **not** solved the whole one.
 

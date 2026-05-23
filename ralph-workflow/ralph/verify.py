@@ -232,7 +232,7 @@ def _run_pytest_shard(
 
 def _run_tests(*, cwd: Path, runner: VerifyRunner, timeout: float) -> int:
     first_failure: tuple[str, ProcessResult] | None = None
-    max_workers = min(8, len(_PYTEST_SHARDS))
+    max_workers = len(_PYTEST_SHARDS)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(

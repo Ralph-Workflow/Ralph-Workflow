@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import TYPE_CHECKING
 
 from ralph.executor.process import ProcessResult
@@ -197,6 +198,48 @@ def test_main_passes_remaining_budget_to_pytest(
     # Timeout should be positive but less than or equal to 30 (the full budget)
     assert last_call[3] is not None
     assert 0 < last_call[3] <= 30.0
+
+
+def test_main_runs_enough_pytest_workers_to_launch_all_shards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shard_count = 9
+    monkeypatch.setattr(
+        "ralph.verify._PYTEST_SHARDS",
+        tuple((f"shard-{index}", (f"tests/test_{index}.py",)) for index in range(shard_count)),
+    )
+    barrier = threading.Barrier(shard_count)
+    calls: list[tuple[str, tuple[str, ...], str | Path | None, float | None]] = []
+
+    def runner(
+        command: str,
+        args: Sequence[str] = (),
+        *,
+        cwd: str | Path | None = None,
+        env: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> ProcessResult:
+        del env
+        calls.append((command, tuple(args), cwd, timeout))
+        if command == "make" and args == ("lint",):
+            return _result(args=("lint",), returncode=0)
+        if command == "make" and args == ("typecheck",):
+            return _result(args=("typecheck",), returncode=0)
+        if command == "python":
+            barrier.wait(timeout=1.0)
+            return ProcessResult(
+                command=(command, *args),
+                returncode=0,
+                stdout="",
+                stderr="",
+            )
+        raise AssertionError(f"unexpected call: {command} {args!r}")
+
+    exit_code = main([], runner=runner, cwd=tmp_path)
+
+    assert exit_code == 0
+    assert len(calls) == shard_count + 2
+    assert sum(1 for call in calls if call[0] == "python") == shard_count
 
 
 def test_main_refuses_to_run_pytest_when_budget_exhausted(
