@@ -1,0 +1,22 @@
+Hi,
+
+I came across Awesome Claude Code Workflows and thought Ralph Workflow might be a strong fit for the plan-build-review, multi-agent orchestration, and autonomous loops sections.
+
+Ralph Workflow is a free and open-source workflow layer for autonomous coding: a composable loop framework and AI orchestrator built for developers doing real repo-scale work that benefits from a structured workflow instead of a chat session.
+
+The reason it tends to resonate is pretty specific: it is designed to make unattended runs end in something reviewable — finished, tested code with visible handoff state — rather than another confident transcript saying the job is done.
+
+Primary repo:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+GitHub mirror:
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+If it fits your list, a suggested entry could be:
+- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — Free/open-source workflow layer for autonomous coding with a simple core loop composed into plan-build-review and verification flows, aimed at bringing back finished, tested code that is ready to review.
+
+Thanks for curating the list — it is one of the clearer workflow-focused collections in this space.
+
+Best,
+Ken
+Ralph Workflow

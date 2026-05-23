@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agents.marketing import apollo_sequence_launcher, apollo_sequence_status, distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_checker, marketing_loop_independent_verify, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting
+from agents.marketing import apollo_sequence_launcher, apollo_sequence_status, channel_discovery, distribution_lane_executor, distribution_lane_selector, generate_content, marketing_loop_checker, marketing_loop_independent_verify, marketing_loop_runner, marketing_momentum_watchdog, marketing_workflow_audit, run, run_posting, sync_outreach_log
 
 
 class GenerateContentTests(unittest.TestCase):
@@ -53,6 +53,55 @@ class MarketingPathTests(unittest.TestCase):
         self.assertEqual(distribution_lane_executor.OUTREACH_LOG_PATH, expected)
         self.assertEqual(apollo_sequence_launcher.OUTREACH_LOG, expected)
         self.assertEqual(marketing_workflow_audit.OUTREACH, expected)
+
+    def test_sync_outreach_log_backfills_missing_submission_entry(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            outreach = tmp / 'outreach-log.md'
+            logs = tmp / 'logs'
+            logs.mkdir()
+            outreach.write_text('# Outreach Log\n\n## 2026-05-23\n\n## Notes\n', encoding='utf-8')
+            artifact = logs / 'marketing_2026-05-23_aitoolboard_submission.json'
+            artifact.write_text(json.dumps({
+                'timestamp': '2026-05-23T06:43:10Z',
+                'channel': {
+                    'name': 'AIToolboard',
+                    'submit_url': 'https://aitoolboard.com/submit',
+                },
+                'submitted_payload': {
+                    'website_url': 'https://codeberg.org/RalphWorkflow/Ralph-Workflow',
+                },
+                'result': {
+                    'http_code': 200,
+                    'response': {'success': True},
+                },
+            }), encoding='utf-8')
+            added = sync_outreach_log.sync_submission_artifacts(outreach_path=outreach, logs_dir=logs)
+            text = outreach.read_text(encoding='utf-8')
+            self.assertEqual(added, ['marketing_2026-05-23_aitoolboard_submission.json'])
+            self.assertIn('**AIToolboard** — directory submission sent', text)
+            self.assertIn('https://aitoolboard.com/submit', text)
+            self.assertIn('https://codeberg.org/RalphWorkflow/Ralph-Workflow', text)
+            self.assertEqual(sync_outreach_log.sync_submission_artifacts(outreach_path=outreach, logs_dir=logs), [])
+
+
+class MarketingDiscoveryTests(unittest.TestCase):
+    def test_channel_discovery_seeds_vbwebtools_from_execution_log(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            artifact = tmp / 'marketing_2026-05-23_vbwebtools_submission.json'
+            artifact.write_text(json.dumps({
+                'timestamp': '2026-05-23T11:08:00+02:00',
+                'status': 'executed',
+                'ok': True,
+                'live_external_action': True,
+                'submit_url': 'https://www.vbwebtools.com/submit-tool/',
+            }), encoding='utf-8')
+            seeded = channel_discovery.seed_results_from_execution_logs(tmp)
+            self.assertEqual(len(seeded), 1)
+            self.assertEqual(seeded[0]['name'], 'vbwebtools')
+            self.assertEqual(seeded[0]['status'], 'accessible')
+            self.assertEqual(seeded[0]['url'], 'https://www.vbwebtools.com/submit-tool/')
 
 
 class MarketingDecisionTests(unittest.TestCase):
@@ -244,8 +293,144 @@ class DistributionLaneSelectorTests(unittest.TestCase):
             self.assertEqual(decision.unsubmitted_directory_channels, [])
             self.assertNotEqual(decision.lane, 'directory_submission')
 
+    def test_submission_target_name_counts_as_attempted_even_when_channel_field_is_generic(self):
+        now = datetime(2026, 5, 23, 11, 20, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": [{"name": "madewithstack"}]}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            (log_dir / 'marketing_a.json').write_text(json.dumps({"timestamp": "2026-05-22T22:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post A", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+            (log_dir / 'marketing_b.json').write_text(json.dumps({"timestamp": "2026-05-23T01:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post B", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_madewithstack_submission.json').write_text(json.dumps({
+                "channel": "directory_submission",
+                "target": "MadeWithStack",
+                "submit_url": "https://www.madewithstack.com/submit"
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=False), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', tmp / 'missing.json'):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.unsubmitted_directory_channels, [])
+            self.assertNotEqual(decision.lane, 'directory_submission')
+
 
 class DistributionLaneSelectorFallbackTests(unittest.TestCase):
+    def test_prefers_stackoverflow_when_reddit_is_fail_closed_and_curator_windows_are_already_saturated(self):
+        now = datetime(2026, 5, 23, 11, 46, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        reddit_report = (
+            '# Reddit monitor — RalphWorkflow\n\n'
+            '- **Shortlisted:** 4\n'
+            '- **Search diagnostics:** indexed_web_ok=3, local_monitor_timeout=1, reddit_direct_access_degraded=1\n\n'
+            'Coverage integrity: direct access is still degraded and this pass must be treated as partial visibility only.\n'
+            'Current verdict: fail closed on any posting decision.\n'
+        )
+        curator_queue = {
+            'targets': [
+                {'target': f'{idx}. Curator {idx}', 'status': 'sent_via_email_fallback', 'review_due_date': '2026-06-05', 'last_contact_at': '2026-05-23T05:00:00Z'}
+                for idx in range(1, 7)
+            ]
+        }
+        comparison_queue = {
+            'targets': [
+                {'slug': 'claude-code', 'name': 'Claude Code', 'status': 'prepared', 'review_due_date': '2026-06-05'},
+                {'slug': 'cursor', 'name': 'Cursor', 'status': 'prepared', 'review_due_date': '2026-06-05'},
+            ]
+        }
+        apollo_status = {
+            'status': 'login_succeeded',
+            'cloudflare_blocked': False,
+        }
+        apollo_sequence_status = {
+            'measurement_pending': True,
+            'next_review_at': '2026-05-30T00:14:49.075391+02:00',
+        }
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': 'claude-code', 'name': 'Claude Code', 'path': '/comparisons/claude-code.md'},
+                {'slug': 'cursor', 'name': 'Cursor', 'path': '/comparisons/cursor.md'},
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            apollo_path = log_dir / 'apollo_status.json'
+            apollo_sequence_path = log_dir / 'apollo_sequence_status.json'
+            market_path = log_dir / 'market_intelligence.json'
+            reddit_path = seo_dir / 'reddit_monitor_latest.md'
+            stackoverflow_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            apollo_path.write_text(json.dumps(apollo_status), encoding='utf-8')
+            apollo_sequence_path.write_text(json.dumps(apollo_sequence_status), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            reddit_path.write_text(reddit_report, encoding='utf-8')
+            stackoverflow_path.write_text(json.dumps({'drafts_created': 1}), encoding='utf-8')
+            (log_dir / 'marketing_a.json').write_text(json.dumps({"timestamp": "2026-05-22T22:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post A", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+            (log_dir / 'marketing_b.json').write_text(json.dumps({"timestamp": "2026-05-23T01:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post B", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_STATUS_PATH', apollo_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', reddit_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False), \
+                 patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=True):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'stackoverflow_answer')
+            self.assertIn('curator/comparison outreach is already saturated or exhausted', decision.reason)
+
     def test_prefers_handoff_packet_when_apollo_is_only_authenticated_but_not_proven_live(self):
         now = datetime(2026, 5, 22, 21, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}

@@ -5,7 +5,7 @@
 - Primary failure mode: Architecture-owned freshness/signoff drift was repaired this run; end-to-end green remains blocked by the marketing-owned runner degradation and primary-repo adoption measurement window.
 - Most urgent fix: Keep architecture at qualified pass, but force the marketing owner loop to clear the runner-bundle degradation path and earn fresh outcome movement before any full-green certification.
 - Verifier status: independently verified pass
-- Verifier checked: 2026-05-23T09:08:40.243129+02:00
+- Verifier checked: 2026-05-23T11:03:30.596411+02:00
 - Verifier blockers: none
 
 ## Live topology

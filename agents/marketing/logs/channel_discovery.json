@@ -1,48 +1,51 @@
 {
   "tried": [
-    "slashdot",
-    "aisotools",
-    "css-tricks",
-    "aipowerstacks",
-    "dev.to-gist",
-    "smashingmagazine",
-    "comeai",
-    "stackshare",
-    "medium",
+    "RSS directories",
     "agentdepot",
-    "reddit-r-programming",
-    "stackoverflow",
-    "hackernews",
-    "saashub",
-    "newsbrew",
-    "lobsters",
-    "dirwell",
-    "productpapa",
-    "tools-ai-online",
-    "directoryhunt",
-    "codaone",
-    "theresanaiforthat",
-    "dmoz",
-    "toolwise",
-    "dev.to",
-    "dang-ai",
-    "reddit-programming",
-    "toolshelf",
+    "aigearbase",
+    "aipowerstacks",
+    "aisotools",
+    "aitoolboard",
     "aitoolsindex",
     "alternativeTo",
-    "producthunt",
-    "RSS directories",
-    "openaitoolshub",
-    "toolsland",
-    "quora",
-    "indiehackers",
+    "codaone",
+    "comeai",
+    "css-tricks",
+    "dang-ai",
+    "dev.to",
+    "dev.to-gist",
+    "devtoolcenter",
+    "directoryhunt",
+    "dirwell",
+    "dmoz",
     "github-readme",
-    "thenextai",
-    "aigearbase",
-    "openagents",
-    "aitoolboard",
+    "hackernews",
+    "indiehackers",
+    "lobsters",
     "madewithstack",
-    "thetoolify"
+    "medium",
+    "newsbrew",
+    "openagents",
+    "openaitoolshub",
+    "producthunt",
+    "productpapa",
+    "quora",
+    "reddit-programming",
+    "reddit-r-programming",
+    "saashub",
+    "slashdot",
+    "smashingmagazine",
+    "stackoverflow",
+    "stackshare",
+    "thenextai",
+    "theresanaiforthat",
+    "thetoolify",
+    "tools-ai-online",
+    "toolscout",
+    "toolshelf",
+    "toolsland",
+    "toolwise",
+    "vbwebtools"
   ],
   "results": [
     {
@@ -348,75 +351,10 @@
       "method": "submit",
       "difficulty": "easy",
       "timestamp": "2026-05-23T01:51:50Z",
-      "http_code": "200",
-      "final_url": "https://toolshelf.dev/submit",
-      "status": "accessible",
-      "surface_probe": {
-        "probe_status": "ok",
-        "form_count": 2,
-        "input_count": 2,
-        "textarea_count": 0,
-        "select_count": 0,
-        "body_excerpt": "T\nToolShelf\nEnter\nBrowse\nCollections\nBlog\nAPI\nSubmit\nSign In\nHome/Submit a Tool\nSubmit a Tool\n\nKnow a great developer tool that should be on ToolShelf? Let us know! We review every submission and enrich it with quality scores.\n\nSign in required\n\nSign in to submit a developer tool to ToolShelf. We review every submission and enrich it with quality scores.\n\nSign In\nSign Up\nCategories\nCLI Tools\nAI Coding\nMCP Servers\nSelf-Hosted\nProductivity\nResources\nSearch\nCollections\nSubmit a Tool\nBlog\nDevelopers\nAPI Access\nllms.txt\nMCP Server\nStay in the loop\n\nGet the best new developer tools delivered to your inbox. No spam, unsubscribe anytime.\n\nGet Weekly Picks\n\nJoin 2 developers\n\nToolShelf.dev \u2014 Built for developers who care about their tools.\n\nGitHub",
-        "forms": [
-          {
-            "index": 0,
-            "action": null,
-            "method": null,
-            "text": "Enter",
-            "control_count": 1,
-            "named_control_count": 0
-          },
-          {
-            "index": 1,
-            "action": null,
-            "method": null,
-            "text": "Get Weekly Picks",
-            "control_count": 1,
-            "named_control_count": 0
-          }
-        ]
-      },
-      "source_probe": {
-        "probe_status": "ok",
-        "script_count": 11,
-        "same_origin_script_count": 11,
-        "scripts_fetched": 11,
-        "has_network_submission_markers": true,
-        "has_prevent_default": true,
-        "has_success_markers": false,
-        "submit_handler_window_count": 1,
-        "submit_handler_has_network_markers": true,
-        "submit_handler_has_success_markers": false,
-        "has_auth_markers": true,
-        "has_captcha_markers": false,
-        "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false,
-        "api_candidates": [
-          "https://toolshelf.dev/api/broadcast",
-          "https://toolshelf.dev/api/submit",
-          "https://toolshelf.dev/api/newsletter"
-        ]
-      },
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://toolshelf.dev/api/submit",
-        "get_code": 405,
-        "post_code": 400,
-        "post_body": "{\"error\":\"Tool name is required.\"}",
-        "public_submit_detected": true,
-        "auth_required_detected": false,
-        "server_error_detected": false
-      },
-      "note": "confirmed autonomous submit lane: unauthenticated POST to the public /api/submit endpoint succeeded with HTTP 200 on 2026-05-23",
-      "submission_status": "success",
-      "submission_note": "POST to /api/submit returned 200 with success=true",
-      "submitted_data": {
-        "name": "Ralph Workflow",
-        "website_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
-        "github_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
-        "category": "ai-coding"
-      }
+      "http_code": null,
+      "final_url": null,
+      "status": "broken_submit_surface",
+      "note": "seeded from failed execution log marketing_2026-05-23_toolshelf_submission.json"
     },
     {
       "name": "agentdepot",
@@ -1010,47 +948,11 @@
       "url": "https://www.thenextai.com/submit-ai-tool/",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-22T04:54:45.752016",
-      "http_code": "200",
-      "final_url": "https://www.thenextai.com/submit-ai-tool/",
-      "status": "accessible",
-      "surface_probe": {
-        "probe_status": "ok",
-        "form_count": 0,
-        "input_count": 9,
-        "textarea_count": 1,
-        "select_count": 2,
-        "body_excerpt": "THE\nNext\nAI\nHome\nAbout Us\nCategories\nAI Tools\nBlog\nContact\n+ Submit Tool\nHome\n\u203a\nSubmit AI Tool\nFREE LISTING \u00b7 LIVE IN 48 HOURS\nSubmit Your AI Tool Free\nGet Discovered by Thousands\n\nList your AI tool in front of 120,000+ monthly visitors actively searching for AI solutions. Free basic listing with dofollow backlink and dedicated page \u2014 or go Featured ($199 one-time) for homepage placement, 9\u201312 hour priority review, featured badge and maximum global exposure.\n\n\u2713\nDofollow Backlink\n\u2713\nFree Basic Listing\n\u2713\nPermanent Listing\n\u2713\n120k+ Monthly Visitors\n\u2713\n150+ Countries\n\u2713\nFeatured from $199\n3,200+\nAI TOOLS LISTED\n120k+\nMONTHLY VISITORS\n150+\nCOUNTRIES REACH\n48hrs\nAVG. GO-LIVE\n\ud83d\udd25 TOOLS ALREADY LISTED \u2014 JOIN THEM\nZapier\nMake\nn8n\nGitHub Copilot\nCursor\nChatGPT\nClaude\nMidjourney\nElevenLabs\nNotion AI\nGramma",
-        "forms": []
-      },
-      "source_probe": {
-        "probe_status": "ok",
-        "script_count": 0,
-        "same_origin_script_count": 0,
-        "scripts_fetched": 0,
-        "has_network_submission_markers": false,
-        "has_prevent_default": false,
-        "has_success_markers": false,
-        "submit_handler_window_count": 0,
-        "submit_handler_has_network_markers": false,
-        "submit_handler_has_success_markers": false,
-        "has_auth_markers": false,
-        "has_captcha_markers": false,
-        "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false,
-        "api_candidates": []
-      },
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://www.thenextai.com/api/submit",
-        "get_code": 404,
-        "post_code": 404,
-        "post_body": "<!DOCTYPE html>\n<html lang=\"en-US\" prefix=\"og: https://ogp.me/ns#\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\t<link rel=\"profile\" href=\"https:",
-        "public_submit_detected": false,
-        "auth_required_detected": false,
-        "server_error_detected": false
-      },
-      "note": "confirmed autonomous submit lane: free listing POST to the public Google Script endpoint succeeded with HTTP 200 on 2026-05-22"
+      "timestamp": "2026-05-22T02:55:07.486911+00:00",
+      "http_code": null,
+      "final_url": null,
+      "status": "broken_submit_surface",
+      "note": "seeded from failed execution log marketing_2026-05-22_thenextai_submission.json"
     },
     {
       "name": "aigearbase",
@@ -1058,35 +960,10 @@
       "method": "submit",
       "difficulty": "easy",
       "timestamp": "2026-05-22T18:17:27Z",
-      "http_code": "200",
-      "final_url": "https://aigearbase.com/submit",
-      "status": "accessible",
-      "note": "confirmed autonomous submit lane: public /api/submit endpoint with simple math captcha succeeded with HTTP 200 on 2026-05-22",
-      "source_probe": {
-        "probe_status": "ok",
-        "has_network_submission_markers": true,
-        "has_prevent_default": true,
-        "has_captcha_markers": false,
-        "api_candidates": [
-          "https://aigearbase.com/api/submit"
-        ]
-      },
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://aigearbase.com/api/submit",
-        "post_code": 200,
-        "public_submit_detected": true,
-        "auth_required_detected": false,
-        "server_error_detected": false
-      },
-      "submission_status": "success",
-      "submission_note": "POST to /api/submit returned 200",
-      "submitted_data": {
-        "name": "Ralph Workflow",
-        "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
-        "category_id": 15,
-        "pricing_type": "open_source"
-      }
+      "http_code": null,
+      "final_url": null,
+      "status": "broken_submit_surface",
+      "note": "seeded from failed execution log marketing_2026-05-22_aigearbase_submission.json"
     },
     {
       "name": "openagents",
@@ -1094,27 +971,10 @@
       "method": "submit",
       "difficulty": "easy",
       "timestamp": "2026-05-23T00:53:44Z",
-      "http_code": "200",
-      "final_url": "https://www.openagents.pro/submit",
-      "status": "accessible",
-      "note": "confirmed autonomous submit lane: Formspree-backed submit POST with browser-like headers succeeded with HTTP 200 on 2026-05-23",
-      "submission_status": "success",
-      "submission_note": "POST to Formspree endpoint returned 200 with ok=true",
-      "submitted_data": {
-        "name": "Ralph Workflow",
-        "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
-        "category": "Coding"
-      }
-    },
-    {
-      "name": "codeaidirectory",
-      "url": "https://www.codeaidirectory.com/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-23T05:32:06Z",
-      "http_code": "500",
+      "http_code": null,
+      "final_url": null,
       "status": "broken_submit_surface",
-      "note": "Public POST endpoint exists at /api/submit, but remote backend currently fails with a Resend domain/email validation error when processing submissions."
+      "note": "seeded from failed execution log marketing_2026-05-23_openagents_submission.json"
     },
     {
       "name": "aitoolboard",
@@ -1125,91 +985,65 @@
       "http_code": "200",
       "final_url": "https://aitoolboard.com/submit",
       "status": "accessible",
-      "note": "confirmed autonomous submit lane: public /api/tools/submit accepted a free listing payload with uploaded screenshot and returned HTTP 200 on 2026-05-23",
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://aitoolboard.com/api/tools/submit",
-        "post_code": 200,
-        "public_submit_detected": true,
-        "auth_required_detected": false,
-        "server_error_detected": false
-      },
-      "submission_status": "success",
-      "submission_note": "POST to /api/tools/submit returned 200 with success=true",
-      "submitted_data": {
-        "name": "Ralph Workflow",
-        "website_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
-        "github_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
-        "category": "Code Assistant"
-      }
+      "note": "seeded from verified execution log marketing_2026-05-23_aitoolboard_submission.json"
     },
     {
       "name": "madewithstack",
       "url": "https://www.madewithstack.com/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-23T09:19:51.691675",
-      "http_code": "200",
+      "timestamp": "2026-05-23T09:22:52+02:00",
+      "http_code": null,
       "final_url": "https://www.madewithstack.com/submit",
       "status": "accessible",
-      "note": "public submission API detected at https://www.madewithstack.com/api/browser/v1/submit/free",
-      "source_probe": {
-        "probe_status": "ok",
-        "script_count": 12,
-        "same_origin_script_count": 12,
-        "scripts_fetched": 12,
-        "has_network_submission_markers": true,
-        "has_prevent_default": true,
-        "has_success_markers": false,
-        "submit_handler_window_count": 0,
-        "submit_handler_has_network_markers": false,
-        "submit_handler_has_success_markers": false,
-        "has_auth_markers": false,
-        "has_captcha_markers": false,
-        "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false,
-        "api_candidates": [
-          "https://www.madewithstack.com/api/browser/v1/submit/free",
-          "https://www.madewithstack.com/api/browser/v1/funnel"
-        ]
-      },
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://www.madewithstack.com/api/browser/v1/submit/free",
-        "get_code": 405,
-        "post_code": 400,
-        "post_body": "{\"error\":\"A valid email is required.\",\"error_code\":\"VALIDATION_ERROR\"}",
-        "public_submit_detected": true,
-        "auth_required_detected": false,
-        "server_error_detected": false
-      }
+      "note": "seeded from verified execution log marketing_2026-05-23_madewithstack_submission.json"
     },
     {
       "name": "thetoolify",
       "url": "https://submit.thetoolify.dev/",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-23T07:46:00Z",
+      "timestamp": "2026-05-23T09:46:00+02:00",
       "http_code": "200",
       "final_url": "https://submit.thetoolify.dev/",
       "status": "accessible",
-      "note": "confirmed autonomous submit lane: browser-run submission to /wp-json/toolify/v1/submit succeeded with HTTP 200 on 2026-05-23 after the site's own security checkpoint completed",
-      "submission_status": "success",
-      "submission_note": "Headless browser submit returned 200 with success=true",
-      "submitted_data": {
-        "name": "Ralph Workflow",
-        "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
-        "category": "Coding"
-      }
+      "note": "seeded from verified execution log marketing_2026-05-23_thetoolify_submission.json"
+    },
+    {
+      "name": "vbwebtools",
+      "url": "https://www.vbwebtools.com/submit-tool/",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T11:08:00+02:00",
+      "http_code": "200",
+      "final_url": "https://www.vbwebtools.com/submit-tool/",
+      "status": "accessible",
+      "note": "seeded from verified execution log marketing_2026-05-23_vbwebtools_submission.json"
+    },
+    {
+      "name": "toolscout",
+      "url": "https://toolscout.ai/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T10:09:39.311840+00:00",
+      "http_code": "200",
+      "final_url": "https://toolscout.ai/submit",
+      "status": "accessible",
+      "note": "browser-run Bubble submission succeeded and showed success state; seeded from verified execution log marketing_2026-05-23_toolscout_submission.json"
+    },
+    {
+      "name": "devtoolcenter",
+      "url": "https://www.devtool.center/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T12:14:26+02:00",
+      "http_code": "201",
+      "final_url": "https://www.devtool.center/submit",
+      "status": "accessible",
+      "note": "seeded from verified execution log marketing_2026-05-23_devtoolcenter_submission.json"
     }
   ],
   "working": [
-    {
-      "name": "toolshelf",
-      "url": "https://toolshelf.dev/submit",
-      "method": "submit",
-      "difficulty": "easy"
-    },
     {
       "name": "toolwise",
       "url": "https://toolwise.ai/submit-tool",
@@ -1223,32 +1057,38 @@
       "difficulty": "easy"
     },
     {
-      "name": "thenextai",
-      "url": "https://www.thenextai.com/submit-ai-tool/",
-      "method": "submit",
-      "difficulty": "easy"
-    },
-    {
-      "name": "aigearbase",
-      "url": "https://aigearbase.com/submit",
-      "method": "submit",
-      "difficulty": "easy"
-    },
-    {
-      "name": "openagents",
-      "url": "https://www.openagents.pro/submit",
-      "method": "submit",
-      "difficulty": "easy"
-    },
-    {
       "name": "aitoolboard",
       "url": "https://aitoolboard.com/submit",
       "method": "submit",
       "difficulty": "easy"
     },
     {
+      "name": "madewithstack",
+      "url": "https://www.madewithstack.com/submit",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
       "name": "thetoolify",
       "url": "https://submit.thetoolify.dev/",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "vbwebtools",
+      "url": "https://www.vbwebtools.com/submit-tool/",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "toolscout",
+      "url": "https://toolscout.ai/submit",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "devtoolcenter",
+      "url": "https://www.devtool.center/submit",
       "method": "submit",
       "difficulty": "easy"
     }

@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-23 (Saturday) — Reddit monitoring (08:27 UTC / 10:27 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-23_1027.md`
+- **Scan summary:** 30 surfaced from fresh indexed web search, 4 shortlisted, 26 rejected.
+- **Coverage note:** direct Reddit coverage is still degraded. A direct local run of `agents/marketing/reddit_monitor.py` timed out after **50 seconds** with no usable output, and recent passes still show server-side Reddit blocking. Treat this as **partial visibility**, not a clean no-opportunity day.
+- **Current verdict:** credible discussion opportunities still exist, but only **0-1** are honest RalphWorkflow mention fits after degraded-coverage caution, thread-family saturation, and no-product-value filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+  - `r/AIAgentsInAction` — "Everyone says they have AI agents in production. Nobody can clearly answer ‘how do you know it’s actually working’"
+  - `r/ClaudeCode` — "Claude Code stuck in \"approval loop\""
+- **Repeated pains worth tracking:** production failure, review tax, visible finish state, summary-vs-visible-state trust, and morning-after proof of what changed / what passed.
+- **Self-improving fix surfaced:** add a hard lexical guard to the `review_tax` search family so coding-review queries stop drifting into tax-return communities like `r/Accounting` / `r/IRS`.
+- **Posting note:** No posting attempted. Fail closed while direct Reddit coverage remains degraded.
+
 ## 2026-05-23 (Saturday) — NavTools curator outreach executed (08:20 UTC / 10:20 CEST)
 - **What I executed:** emailed **NavTools** at `support@navtools.ai` to request a Ralph Workflow listing, with **Codeberg as the primary repo** and GitHub as the mirror.
 - **Verification:** `python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py` passed, and the live send log at `agents/marketing/logs/marketing_2026-05-23_082040_navtools_curator_email.json` recorded status **sent**.

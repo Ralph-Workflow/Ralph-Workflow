@@ -1,0 +1,25 @@
+Hi Choppy Toast team,
+
+I’d like to suggest Ralph Workflow for your AI Coding Tools Directory 2026.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Homepage: https://ralphworkflow.com
+Relevant page: https://ai-coding-tools.choppytoast.com/
+
+Suggested listing blurb:
+Ralph Workflow — free and open-source AI coding workflow system for developers who want plan-build-verify loops and reviewable repo-native handoffs instead of another raw chat session.
+
+Why it seems like a fit for your directory:
+- it is built for developers and technical teams doing ambitious software work, not lightweight one-shot prompting
+- it adds a workflow layer around autonomous coding so planning, implementation, and verification stay reviewable
+- it is free and open source, with Codeberg as the primary repo and GitHub as the mirror
+- it complements tools like Claude Code, Aider, and OpenCode by focusing on the workflow that decides whether the work is actually ready
+
+If you prefer a shorter version, this also works:
+Ralph Workflow is a free open-source workflow layer for autonomous coding that turns planning, implementation, and verification into a reviewable developer workflow.
+
+Thanks for taking a look.
+
+Best,
+Ralph Workflow

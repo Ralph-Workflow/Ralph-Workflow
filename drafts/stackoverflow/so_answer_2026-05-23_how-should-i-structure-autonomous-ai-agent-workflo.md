@@ -2,7 +2,7 @@
 
 **Question:** How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?
 **URL:** https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability
-**Score:** 3.85
+**Score:** 3.5
 **Answers:** 0
 
 ---

@@ -1,0 +1,24 @@
+Hi ToolHunter team,
+
+I’d like to suggest Ralph Workflow for ToolHunter.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Homepage: https://ralphworkflow.com
+
+Suggested listing blurb:
+Ralph Workflow — free and open-source AI coding workflow system for developers who want plan-build-verify loops and reviewable repo-native handoffs instead of another raw chat session.
+
+Why it seems like a fit for ToolHunter:
+- it is built for developers and technical teams doing real repo work, not generic consumer AI usage
+- it combines planning, implementation, and verification into one composable workflow for longer unattended coding runs
+- it fits naturally in AI coding assistants, open-source CLI utilities, and developer workflow tooling categories
+- it is free and open source, so engineers can inspect it, run it, and adapt it to their own workflow
+
+If you prefer a shorter version, this also works:
+Ralph Workflow is a free open-source workflow layer for autonomous coding that turns planning, implementation, and verification into a reviewable developer workflow.
+
+Thanks for taking a look.
+
+Best,
+Ralph Workflow

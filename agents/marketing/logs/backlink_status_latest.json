@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T07:24:43.846582+00:00",
+  "generated_at": "2026-05-23T10:16:51.024330+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -81,10 +81,18 @@
     },
     "DevToolCenter": {
       "directory": "DevToolCenter",
-      "listing_url": "https://www.devtoolcenter.com/tools/ralph-workflow",
-      "submit_url": "https://www.devtoolcenter.com/submit",
-      "check_results": [],
-      "listing_live": false
+      "listing_url": "https://www.devtool.center/tools/ralph-workflow",
+      "submit_url": "https://www.devtool.center/submit",
+      "check_results": [
+        {
+          "url": "https://www.devtool.center/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submission returned 201 pending on 2026-05-23 via the public devshelf-backend.onrender.com API; treat as submitted/in-review until the public listing resolves."
     }
   },
   "google_index": {

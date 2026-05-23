@@ -1,0 +1,26 @@
+Hi Jim / OpenAIToolsHub team,
+
+I’ve been following your coding-tool reviews and the way you compare tools by actual workflow fit rather than generic AI hype. Ralph Workflow seems like a strong fit for that lens.
+
+Ralph Workflow is a free and open-source operating system for autonomous coding: a composable loop framework and AI orchestrator for developers doing repo-scale software work that needs a structured workflow instead of a chat session.
+
+What makes it different is that it keeps a simple core loop, then composes that into planning, implementation, verification, and broader handoff flows so unattended runs come back reviewable instead of just sounding finished.
+
+Primary repo:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+GitHub mirror:
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+If you think it fits OpenAIToolsHub, I’d love for you to consider either:
+- a directory listing in the coding category, or
+- an editorial comparison/review alongside tools like Claude Code, Cursor, Continue, Aider, and other repo-scale coding agents.
+
+Suggested one-line listing:
+- Ralph Workflow — Free/open-source autonomous coding workflow framework with a strong default plan-build-verify loop for real software tasks.
+
+Happy to send a tighter category-specific summary if useful.
+
+Best,
+Ken
+Ralph Workflow

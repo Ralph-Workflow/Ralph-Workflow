@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T10:07:35.728289",
+  "generated_at": "2026-05-23T11:51:57.553513",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 0,
   "reddit_posts_analyzed": 6,
@@ -98,7 +98,7 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
-    "The active loop did execute a live marketing action recently (thetoolify_submission), so the system is still shipping output even though outcome movement is not visible yet.",
+    "The active loop did execute a live marketing action recently (vbwebtools_submission), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
   "next_moves": [
@@ -132,15 +132,15 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_thetoolify_submission.json",
-    "type": "thetoolify_submission",
-    "title": "thetoolify submission",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_vbwebtools_submission.json",
+    "type": "vbwebtools_submission",
+    "title": "vbwebtools submission",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
     "warning": null,
-    "url": "https://submit.thetoolify.dev/"
+    "url": "https://www.vbwebtools.com/submit-tool/"
   },
   "apollo_sequence_status": {
     "generated_at": "2026-05-23T08:46:28.794228+02:00",

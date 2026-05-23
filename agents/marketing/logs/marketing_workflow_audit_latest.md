@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-23T10:07:35.728289
+- Generated: 2026-05-23T11:51:57.553513
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **0**
 - Reddit posts analyzed: **6**
@@ -11,7 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.
-- The active loop did execute a live marketing action recently (thetoolify_submission), so the system is still shipping output even though outcome movement is not visible yet.
+- The active loop did execute a live marketing action recently (vbwebtools_submission), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## Observed risks
@@ -42,12 +42,12 @@
   - Success metric: No repeated openings in next audit window
 
 ## Latest executed marketing action
-- Type: thetoolify_submission
-- Title: thetoolify submission
+- Type: vbwebtools_submission
+- Title: vbwebtools submission
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_thetoolify_submission.json
-- URL: https://submit.thetoolify.dev/
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_vbwebtools_submission.json
+- URL: https://www.vbwebtools.com/submit-tool/
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

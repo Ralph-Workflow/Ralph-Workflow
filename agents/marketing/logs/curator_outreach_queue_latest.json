@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T05:32:06Z",
+  "generated_at": "2026-05-23T08:45:23.254460+00:00",
   "targets": [
     {
       "target": "1. ai-for-developers/awesome-ai-coding-tools",
@@ -179,6 +179,19 @@
       "last_contact_at": "2026-05-23T04:34:02.569847+00:00",
       "last_contact_path": "email:git-dev@hesreallyhim.com",
       "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_043402_hesreallyhim_curator_email.json"
+    },
+    {
+      "target": "ithiria894/awesome-claude-code-workflows",
+      "url": "https://github.com/ithiria894/awesome-claude-code-workflows",
+      "action": "Request inclusion in workflow catalog with Codeberg-primary entry",
+      "priority": "HIGH \u2014 workflow-focused curator list with direct RalphWorkflow fit",
+      "subject": "Suggested Awesome Claude Code Workflows listing: Ralph Workflow",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/ithiria894-awesome-claude-code-workflows-email.txt",
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-06",
+      "last_contact_at": "2026-05-23T08:45:23.254460+00:00",
+      "last_contact_path": "email:ithiria894@gmail.com",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_084523_ithiria894_curator_email.json"
     }
   ]
 }

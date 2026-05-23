@@ -1,0 +1,20 @@
+Hi Skiln team,
+
+I found your directory while looking for Claude Code / workflow-focused discovery surfaces, and Ralph Workflow seems like a strong fit for a free listing.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator — essentially a workflow layer for autonomous coding rather than just a single chat session or IDE assistant.
+
+Why it may fit your audience:
+- built for developers and technical teams doing larger unattended coding tasks
+- composes planning, implementation, and verification into a structured workflow
+- works with existing coding tools like Claude Code, Codex CLI, and OpenCode rather than replacing the developer’s stack
+- gives users a strong default workflow now, while staying extensible later
+
+Primary repo (preferred): https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Project site: https://ralphworkflow.com/
+
+If you’re open to it, I’d love for you to list Ralph Workflow in the directory under the most relevant workflow / agent / OpenClaw-related category. If there’s a preferred free-submission path beyond the public page, I’m happy to use that too.
+
+Best,
+Ralph Workflow
