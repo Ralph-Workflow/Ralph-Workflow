@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 _KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
     "claude": "https://docs.claude.com/claude-code",
     "opencode": "https://opencode.ai",
+    "agy": "https://github.com/google-antigravity/antigravity-cli",
 }
 
 

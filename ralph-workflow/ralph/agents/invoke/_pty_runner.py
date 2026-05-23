@@ -23,6 +23,7 @@ from ralph.agents.invoke._process_reader import (
     _subprocess_env,
 )
 from ralph.agents.invoke._pty_extras import _PtyExtras
+from ralph.agents.invoke._pty_helpers import _visible_tui_text
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._session import (
     _EXPLICIT_COMPLETION_MARKER,
@@ -90,6 +91,7 @@ def run_pty_and_read_lines(
                     parsed_output.append(stripped_line)
                     explicit_completion_seen = explicit_completion_seen or (
                         _EXPLICIT_COMPLETION_MARKER in stripped_line
+                        or _EXPLICIT_COMPLETION_MARKER in _visible_tui_text(stripped_line)
                     )
                     session_id = _extract_session_id_from_line(stripped_line)
                     if session_id is not None:
@@ -101,6 +103,7 @@ def run_pty_and_read_lines(
                     parsed_output.append(stripped_line)
                     explicit_completion_seen = explicit_completion_seen or (
                         _EXPLICIT_COMPLETION_MARKER in stripped_line
+                        or _EXPLICIT_COMPLETION_MARKER in _visible_tui_text(stripped_line)
                     )
                     session_id = _extract_session_id_from_line(stripped_line)
                     if session_id is not None:

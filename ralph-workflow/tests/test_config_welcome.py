@@ -140,6 +140,20 @@ def test_emit_first_run_welcome_flags_missing_agent() -> None:
     assert "missing" in output.lower() or "⚠" in output
 
 
+def test_emit_first_run_welcome_includes_agy_install_url() -> None:
+    """Missing AGY should include the known install URL in the welcome output."""
+    console = StringIO()
+    rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
+    results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
+    registry = _FakeRegistry({"agy": _FakeAgent("definitely-not-a-real-binary-xyz", "AGY")})
+    ctx = _make_display_context_for_console(rich_console)
+
+    emit_first_run_welcome(rich_console, results, agent_registry=registry, display_context=ctx)
+
+    output = console.getvalue()
+    assert "https://github.com/google-antigravity/antigravity-cli" in output
+
+
 def test_emit_first_run_welcome_marks_available_agent() -> None:
     """Available agent should not be flagged as missing."""
     console = StringIO()

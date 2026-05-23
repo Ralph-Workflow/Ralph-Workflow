@@ -211,6 +211,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -307,6 +308,7 @@ def test_codex_upstream_env_var_includes_mcp_toml_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
 
     list(
         invoke_agent(
@@ -377,8 +379,8 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
     config_at_launch: list[dict[str, object]] = []
     env_at_launch: list[dict[str, str]] = []
 
-    def fake_run_subprocess_and_read_lines(cmd: object, ctx: object) -> object:
-        del cmd
+    def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
+        del cmd, extras
         config_at_launch.append(
             cast("dict[str, object]", json.loads(config_path.read_text(encoding="utf-8")))
         )
@@ -386,8 +388,8 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr(
-        "ralph.agents.invoke.run_subprocess_and_read_lines",
-        fake_run_subprocess_and_read_lines,
+        "ralph.agents.invoke.run_pty_and_read_lines",
+        fake_run_pty_and_read_lines,
     )
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", lambda _workspace_path: ())
@@ -427,8 +429,14 @@ def test_agy_upstream_env_var_includes_mcp_toml_server(
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     seen_env: list[dict[str, str]] = []
-    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
+    def fake_run_pty_and_read_lines(cmd: object, ctx: object, extras: object = None) -> object:
+        del cmd, extras
+        seen_env.append(cast("dict[str, str]", cast("Any", ctx).extra_env))
+        yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+
+    monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_and_read_lines)
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr(
         "ralph.agents.invoke.load_existing_agy_upstream_servers",
         lambda workspace_path: (),
@@ -459,6 +467,7 @@ def test_opencode_non_colliding_native_server_preserved(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv(
         "OPENCODE_CONFIG_CONTENT",
         json.dumps(

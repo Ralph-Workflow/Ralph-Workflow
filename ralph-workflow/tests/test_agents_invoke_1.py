@@ -278,6 +278,7 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: FakeProcess(),
     )
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
 
     with pytest.raises(AgentInactivityTimeoutError, match="no output for 0s"):
         list(

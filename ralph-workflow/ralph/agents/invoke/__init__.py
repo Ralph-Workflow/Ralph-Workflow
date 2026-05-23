@@ -12,6 +12,7 @@ Key features:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -297,9 +298,14 @@ def invoke_agent(
             )
             lines_iter = run_pty_and_read_lines(cmd, ctx, extras)
             yield from lines_iter
-        elif transport == AgentTransport.AGY and runtime.mcp_endpoint and opts.workspace_path:
-            with agy_workspace_mcp_endpoint(opts.workspace_path, runtime.mcp_endpoint):
-                yield from run_subprocess_and_read_lines(cmd, ctx)
+        elif transport == AgentTransport.AGY:
+            mcp_ctx = (
+                agy_workspace_mcp_endpoint(opts.workspace_path, runtime.mcp_endpoint)
+                if runtime.mcp_endpoint and opts.workspace_path
+                else contextlib.nullcontext()
+            )
+            with mcp_ctx:
+                yield from run_pty_and_read_lines(cmd, ctx, _PtyExtras())
         else:
             yield from run_subprocess_and_read_lines(cmd, ctx)
 

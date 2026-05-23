@@ -7,7 +7,7 @@ import json
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pytest
 from loguru import logger
@@ -74,45 +74,13 @@ def _run_agy_transport_proxy_payload_check(
     monkeypatch.setenv("HOME", str(fake_home))
     agy_transport_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
 
-    class FakeAgyProcess:
-        pid: int = 12345
+    def fake_run_pty_agy(cmd: object, ctx: object, extras: object = None) -> object:
+        del cmd, extras
+        seen_envs["agy"] = cast("dict[str, str]", cast("Any", ctx).extra_env)
+        yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
-        def poll(self) -> int | None:
-            return self.returncode
-
-        def __init__(self) -> None:
-            self.stdout = iter(
-                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
-            )
-            self.stderr = SimpleNamespace(read=lambda: "")
-            self.returncode = 0
-
-        def __enter__(self) -> FakeAgyProcess:
-            return self
-
-        def __exit__(
-            self,
-            _exc_type: object,
-            exc: object,
-            _tb: object,
-        ) -> Literal[False]:
-            return False
-
-        def wait(self, timeout: float | None = None) -> int:
-            return self.returncode
-
-        def terminate(self) -> None:
-            self.returncode = -15
-
-        def kill(self) -> None:
-            self.returncode = -9
-
-    def fake_popen_agy(*args: object, **kwargs: object) -> FakeAgyProcess:
-        del args
-        seen_envs["agy"] = _env_dict(kwargs)
-        return FakeAgyProcess()
-
-    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_agy)
+    monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_agy)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
     agy_config_dir = fake_home / ".gemini" / "antigravity-cli"
     agy_config_dir.mkdir(parents=True)
     (agy_config_dir / "mcp_config.json").write_text(
@@ -589,6 +557,7 @@ def test_codex_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(

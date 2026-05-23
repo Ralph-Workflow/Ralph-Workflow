@@ -89,6 +89,32 @@ def test_agent_compatibility_has_current_provider_info() -> None:
     assert has_provider_info, "agent-compatibility.md should contain current provider information"
 
 
+def test_agy_mcp_setup_reflects_pty_injection() -> None:
+    """AGY docs must reflect PTY-based injection rather than stale pre-configure wording."""
+    stale_phrases_by_file = {
+        "ralph-workflow-vs-google-anti-gravity.md": [
+            "one manual step that Claude",
+            "configure the Ralph Workflow MCP endpoint",
+        ],
+        "architecture/mcp-upstream-proxy.md": [
+            "cannot inject a Ralph-only MCP config",
+            "users must pre-configure",
+        ],
+        "agent-compatibility.md": [
+            "config-discovery-based setup",
+            "--conversation",
+            "config-discovery-based, not env-var injection",
+            "pre-configure `mcp_config.json`",
+        ],
+    }
+    for relative_path, stale_phrases in stale_phrases_by_file.items():
+        content = (REPO_ROOT_DOCS_DIR / relative_path).read_text().lower()
+        for phrase in stale_phrases:
+            assert phrase.lower() not in content, (
+                f"{relative_path} should not contain stale AGY wording: {phrase!r}"
+            )
+
+
 def test_template_guide_is_python_focused() -> None:
     """template-guide.md should be Python-focused."""
     path = REPO_ROOT_DOCS_DIR / "template-guide.md"
