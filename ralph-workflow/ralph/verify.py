@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -40,82 +41,97 @@ def _default_runner(
 
 # Full verification steps: lint, type check, and test suite.
 # docs, test-cov, and test-subprocess-e2e are excluded from the fast verify chain
-# to satisfy the 30-second hard budget. Tests run as 22 concurrent shards to
+# to satisfy the 30-second hard budget. Tests run as balanced concurrent shards to
 # reduce tail latency without dropping coverage.
 _VERIFY_STEPS: tuple[tuple[str, ...], ...] = (
     ("lint",),
     ("typecheck",),
 )
 
-_PYTEST_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    (
-        "core",
-        (
-            "tests/agents",
-            "tests/config",
-            "tests/display",
-            "tests/fixtures",
-            "tests/unit",
-        ),
-    ),
-    ("runtime", ("tests/mcp", "tests/pipeline", "tests/recovery")),
-    ("root-a", ("tests/test_[aA]*.py",)),
-    ("root-b", ("tests/test_[bB]*.py",)),
-    ("root-c", ("tests/test_[cC]*.py",)),
-    ("root-d", ("tests/test_[dD]*.py",)),
-    ("root-e-f", ("tests/test_[e-fE-F]*.py",)),
-    ("root-g-h", ("tests/test_[g-hG-H]*.py",)),
-    ("root-i-j", ("tests/test_[i-jI-J]*.py",)),
-    ("root-k-l", ("tests/test_[k-lK-L]*.py",)),
-    ("root-m", ("tests/test_[mM]*.py",)),
-    ("root-n", ("tests/test_[nN]*.py",)),
-    ("root-o", ("tests/test_[oO]*.py",)),
-    ("root-pa-pc", ("tests/test_p[a-cA-C]*.py",)),
-    ("root-pd-pf", ("tests/test_p[d-fD-F]*.py",)),
-    ("root-pg-pi", ("tests/test_p[g-iG-I]*.py",)),
-    ("root-pj-pl", ("tests/test_p[j-lJ-L]*.py",)),
-    ("root-po", ("tests/test_po*.py",)),
-    ("root-pr", ("tests/test_pr*.py",)),
-    ("root-q-s", ("tests/test_[q-sQ-S]*.py",)),
-    ("root-t-z", ("tests/test_[t-zT-Z]*.py",)),
-    ("integration", ("tests/integration",)),
-)
-
-_TEST_TIMEOUT_SECONDS = DEFAULT_SUITE_TIMEOUT_SECONDS
 _PYTEST_SHARD_WORKERS = 8
+_PYTEST_SHARD_COUNT = 16
 
 
-def _expand_pytest_paths(cwd: Path, patterns: Sequence[str]) -> tuple[str, ...]:
-    """Expand pytest path globs relative to the workspace root."""
-    expanded: list[str] = []
-    for pattern in patterns:
-        matches = sorted(cwd.glob(pattern))
-        if not matches:
-            expanded.append(pattern)
-            continue
-        expanded.extend(str(match.relative_to(cwd)) for match in matches)
-    return tuple(expanded)
+def _workspace_root(cwd: Path) -> Path:
+    """Return the repository root used for pytest file discovery."""
+    if (cwd / "tests").exists():
+        return cwd
+    return Path(__file__).resolve().parents[1]
+
+
+def _collect_pytest_files(root: Path) -> tuple[Path, ...]:
+    """Collect all test files under tests/ in a stable order."""
+    tests_dir = root / "tests"
+    files = [path for path in tests_dir.rglob("test*.py") if path.name != "conftest.py"]
+    return tuple(sorted(files))
+
+
+def _test_file_weight(path: Path) -> int:
+    """Approximate a test file's runtime by counting test functions it defines."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return 1
+    weight = sum(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+        for node in ast.walk(tree)
+    )
+    return weight or 1
+
+
+def _weighted_file_sort_key(item: tuple[Path, int]) -> tuple[int, str]:
+    path, weight = item
+    return -weight, str(path)
+
+
+def _shard_balance_key(
+    index: int,
+    shard_weights: list[int],
+    shard_files: list[list[str]],
+) -> tuple[int, int, int]:
+    return shard_weights[index], len(shard_files[index]), index
 
 
 def _build_pytest_shards(*, cwd: Path) -> list[tuple[str, tuple[str, ...]]]:
-    """Build eight balanced shard commands for the filtered test suite."""
-    shard_specs: list[tuple[str, tuple[str, ...]]] = []
-    for label, patterns in _PYTEST_SHARDS:
-        shard_paths = _expand_pytest_paths(cwd, patterns)
-        shard_specs.append(
+    """Build balanced pytest shard commands for the filtered test suite."""
+    root = _workspace_root(cwd)
+    test_files = _collect_pytest_files(root)
+    if not test_files:
+        return []
+
+    weighted_files = sorted(
+        ((path, _test_file_weight(path)) for path in test_files),
+        key=_weighted_file_sort_key,
+    )
+    shard_count = min(_PYTEST_SHARD_COUNT, len(weighted_files))
+    shard_files: list[list[str]] = [[] for _ in range(shard_count)]
+    shard_weights = [0 for _ in range(shard_count)]
+    for path, weight in weighted_files:
+        shard_index = 0
+        for candidate_index in range(1, shard_count):
+            if _shard_balance_key(candidate_index, shard_weights, shard_files) < _shard_balance_key(
+                shard_index, shard_weights, shard_files
+            ):
+                shard_index = candidate_index
+        shard_files[shard_index].append(str(path.relative_to(root)))
+        shard_weights[shard_index] += weight
+
+    return [
+        (
+            f"shard-{index:02d}",
             (
-                label,
-                (
-                    "-m",
-                    "pytest",
-                    *shard_paths,
-                    "-q",
-                    "-m",
-                    "not subprocess_e2e",
-                ),
-            )
+                "-m",
+                "pytest",
+                *files,
+                "-q",
+                "-m",
+                "not subprocess_e2e",
+            ),
         )
-    return shard_specs
+        for index, files in enumerate(shard_files, start=1)
+        if files
+    ]
 
 
 def _run_pytest_shards(
@@ -125,18 +141,27 @@ def _run_pytest_shards(
     timeout: float,
 ) -> list[tuple[str, ProcessResult]]:
     shard_specs = _build_pytest_shards(cwd=cwd)
+    results: dict[str, ProcessResult] = {}
     with ThreadPoolExecutor(
         max_workers=min(_PYTEST_SHARD_WORKERS, len(shard_specs))
     ) as executor:
-        futures = [
-            executor.submit(runner, "python", args, cwd=cwd, timeout=timeout)
-            for _label, args in shard_specs
-        ]
-        results = [future.result() for future in futures]
-    return [
-        (label, result)
-        for (label, _args), result in zip(shard_specs, results, strict=True)
-    ]
+        future_to_label = {
+            executor.submit(runner, "python", args, cwd=cwd, timeout=timeout): label
+            for label, args in shard_specs
+        }
+        for future in as_completed(future_to_label):
+            label = future_to_label[future]
+            result = future.result()
+            results[label] = result
+            if result.stdout:
+                print(result.stdout, end="", flush=True)
+            if result.stderr:
+                print(result.stderr, end="", file=sys.stderr, flush=True)
+            if result.returncode != 0:
+                for pending in future_to_label:
+                    pending.cancel()
+                break
+    return [(label, results[label]) for label, _args in shard_specs if label in results]
 
 
 def format_verify_failure_banner(*, failed_command: str) -> str:
@@ -205,10 +230,6 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
 
     shard_results = _run_pytest_shards(cwd=cwd, runner=runner, timeout=remaining_budget)
     for shard_name, result in shard_results:
-        if result.stdout:
-            print(result.stdout, end="", flush=True)
-        if result.stderr:
-            print(result.stderr, end="", file=sys.stderr, flush=True)
         if result.returncode != 0:
             print(
                 format_verify_failure_banner(failed_command=f"pytest {shard_name} shard"),
