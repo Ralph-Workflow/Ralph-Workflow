@@ -38,7 +38,8 @@
     "indiehackers",
     "github-readme",
     "thenextai",
-    "aigearbase"
+    "aigearbase",
+    "openagents"
   ],
   "results": [
     {
@@ -1077,6 +1078,24 @@
         "category_id": 15,
         "pricing_type": "open_source"
       }
+    },
+    {
+      "name": "openagents",
+      "url": "https://www.openagents.pro/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T00:53:44Z",
+      "http_code": "200",
+      "final_url": "https://www.openagents.pro/submit",
+      "status": "accessible",
+      "note": "confirmed autonomous submit lane: Formspree-backed submit POST with browser-like headers succeeded with HTTP 200 on 2026-05-23",
+      "submission_status": "success",
+      "submission_note": "POST to Formspree endpoint returned 200 with ok=true",
+      "submitted_data": {
+        "name": "Ralph Workflow",
+        "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+        "category": "Coding"
+      }
     }
   ],
   "working": [
@@ -1107,6 +1126,12 @@
     {
       "name": "aigearbase",
       "url": "https://aigearbase.com/submit",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "openagents",
+      "url": "https://www.openagents.pro/submit",
       "method": "submit",
       "difficulty": "easy"
     }

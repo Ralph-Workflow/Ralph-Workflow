@@ -1,3 +1,23 @@
+# Outreach Log
+
+## 2026-05-23 (Saturday) — OpenAgents.pro submission executed (00:53 UTC / 02:53 CEST)
+- **What I executed:** submitted **OpenAgents.pro** through its live submit form at `https://www.openagents.pro/submit`, using the coding-category intake and routing the listing directly to the **primary Codeberg repo**: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`.
+- **Verification:** direct POST to the underlying form endpoint `https://formspree.io/f/xaqppdwq` returned HTTP **200** with `{"next":"/thanks","ok":true}` when sent with browser-like headers. Live log: `agents/marketing/logs/marketing_2026-05-23_openagents_submission.json`.
+- **Why this action:** this is **EXECUTED / DISTRIBUTION**. The freshest audit still shows `distribution_and_message_to_primary_repo_conversion` as the live bottleneck, Apollo is already in a measurement window until **2026-05-30**, Reddit remains structurally blocked/high-risk, and the previously validated easy-submit lanes were already used or in-flight. OpenAgents.pro exposed a fresh executable developer/agent directory lane that can send qualified evaluators to **Codeberg first**.
+- **Shared findings reused:** `MARKETING_WORKFLOW_PRINCIPLES.md`, `FOUR_MARKETING_QUESTIONS.md`, `ADOPTION_FUNNEL_NEXT.md`, `market_intelligence_latest.json`, `marketing_workflow_audit_latest.json`, and `channel_discovery.json`.
+- **Expected outcome:** one more relevant third-party citation/backlink that sends qualified evaluators to the **primary Codeberg repo**.
+- **Measurement window:** watch for listing inclusion or backlink evidence through **2026-06-06**.
+- **Type:** **EXECUTED / DISTRIBUTION**
+
+## 2026-05-23 (Saturday) — AgentDepot curator outreach executed (00:22 UTC / 02:22 CEST)
+- **What I executed:** emailed **AgentDepot** at `hello@agentdepot.dev` from its live submit surface (`https://agentdepot.dev/submit`) to suggest a Ralph Workflow listing with **Codeberg as the primary repo** and GitHub as the mirror.
+- **Verification:** `agents/marketing/send_curator_email.py` compiled cleanly and the live send log at `agents/marketing/logs/marketing_2026-05-23_002256_agentdepot_curator_email.json` recorded status **sent**.
+- **Why this action:** this is **EXECUTED / DISTRIBUTION**. The freshest audit still shows `distribution_and_message_to_primary_repo_conversion` as the live bottleneck, Apollo is already in a measurement window until **2026-05-30**, and AgentDepot exposed an untouched, highly aligned coding-agent directory intake path with no logged prior Ralph Workflow outreach. That made it a stronger executable lane than more prep-only curator work.
+- **Shared findings reused:** `MARKETING_WORKFLOW_PRINCIPLES.md`, `FOUR_MARKETING_QUESTIONS.md`, `ADOPTION_FUNNEL_NEXT.md`, `market_intelligence_latest.json`, `marketing_workflow_audit_latest.json`, and `channel_discovery.json`.
+- **Expected outcome:** one more relevant third-party citation/backlink that sends qualified evaluators to the **primary Codeberg repo**.
+- **Measurement window:** watch for reply, listing inclusion, or backlink evidence through **2026-06-06**.
+- **Type:** **EXECUTED / DISTRIBUTION**
+
 ## 2026-05-23 (Saturday) — Apollo managed outbound repaired to launch-ready state (00:12 local)
 - **What I executed:** promoted the verified Apollo curator follow-up list into a launch-ready managed outbound sequence packet and logged a live outbound action at `/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_apollo_sequence_launch.json`.
 - **Verification:** live Apollo evidence shows **5** visible records in `Ralph Workflow — curator follow-up 2026-05-22` and the sequence is anchored on the primary Codeberg CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`.
@@ -12,21 +32,6 @@
 - **Why this matters:** Reddit is blocked from this environment, Telegraph is saturated, and HN/Lobsters are human-gated. Apollo is the first replacement lane here that is both executable and tied directly to Codeberg-primary adoption measurement.
 - **Structural capability shipped:** the loop now has a reusable `apollo_sequence_launch` action type that can satisfy outcome-system repair without mistaking prep-only artifacts for progress.
 - **Type:** **REPAIRED / SYSTEM DESIGN**
-## 2026-05-23 (Saturday) — Apollo managed outbound repaired to launch-ready state (00:12 local)
-- **What I executed:** promoted the verified Apollo curator follow-up list into a launch-ready managed outbound sequence packet and logged a live outbound action at `agents/marketing/logs/marketing_2026-05-23_apollo_sequence_launch.json`.
-- **Verification:** live Apollo evidence shows **5** visible records in `Ralph Workflow — curator follow-up 2026-05-22` and the sequence is anchored on the primary Codeberg CTA: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`.
-- **Why this action:** the prior Apollo packet was only `prepared`; this repair adds a hard launch gate so managed outbound only counts when the list is non-zero and sequence-ready.
-- **Structural capability shipped:** `agents/marketing/apollo_sequence_launcher.py` now creates a canonical launch packet and live execution log from verified Apollo state instead of stopping at packet generation.
-- **Expected outcome:** a usable managed outbound lane that can be launched/reviewed without pretending packet-prep is progress.
-- **Measurement window:** 7 days for sequence launch/replies, 14 days for qualified repo visits, 30 days for Codeberg movement.
-- **Type:** **REPAIRED / EXECUTED**
-
-## 2026-05-23 (Saturday) — Outcome-system redesign shipped for blocked Reddit replacement lane (00:12 local)
-- **What I executed:** formalized Apollo as the Reddit replacement execution lane by shipping a dedicated launch script plus packet (`drafts/apollo_sequence_launch_packet_latest.md`) that turns verified non-zero list state into a live Codeberg-primary outbound asset.
-- **Why this matters:** Reddit is blocked from this environment, Telegraph is saturated, and HN/Lobsters are human-gated. Apollo is the first replacement lane here that is both executable and tied directly to Codeberg-primary adoption measurement.
-- **Structural capability shipped:** the loop now has a reusable `apollo_sequence_launch` action type that can satisfy outcome-system repair without mistaking prep-only artifacts for progress.
-- **Type:** **REPAIRED / SYSTEM DESIGN**
-# Outreach Log
 
 ## 2026-05-22 (Friday) — AI Gear Base submission executed (18:17 UTC / 20:17 local)
 - **What I executed:** submitted Ralph Workflow to **AI Gear Base** through its live public endpoint `https://aigearbase.com/api/submit`, pointing the listing directly at the primary Codeberg repo: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`.
@@ -5757,4 +5762,32 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-23 02:08:10
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 02:40:16
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 02:56:39
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 02:56:55
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:06:41
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:07:00
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:07:17
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:07:43
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

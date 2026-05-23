@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-23T02:07:50.076843",
+  "timestamp": "2026-05-23T03:07:32.525117",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6220,
+      "word_count": 6254,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"
@@ -30,7 +30,7 @@
     },
     "sitemap": {
       "status": 200,
-      "url_count": 66,
+      "url_count": 69,
       "urls": [
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/privacy",
@@ -40,6 +40,9 @@
         "https://ralphworkflow.com/conductor-alternative",
         "https://ralphworkflow.com/hermes-alternative",
         "https://ralphworkflow.com/claude-code-alternative",
+        "https://ralphworkflow.com/cursor-alternative",
+        "https://ralphworkflow.com/continue-alternative",
+        "https://ralphworkflow.com/copilot-alternative",
         "https://ralphworkflow.com/docs/",
         "https://ralphworkflow.com/contact",
         "https://ralphworkflow.com/docs/advanced-artifact-configuration",
@@ -48,10 +51,7 @@
         "https://ralphworkflow.com/docs/after-your-first-run",
         "https://ralphworkflow.com/docs/agents",
         "https://ralphworkflow.com/docs/ai-agent-orchestration-cli",
-        "https://ralphworkflow.com/docs/ai-agent-workflow-composer",
-        "https://ralphworkflow.com/docs/ai-coding-workflow-automation",
-        "https://ralphworkflow.com/docs/bounded-autonomy-for-unattended-coding",
-        "https://ralphworkflow.com/docs/claude-code-approval-mode"
+        "https://ralphworkflow.com/docs/ai-agent-workflow-composer"
       ]
     }
   },

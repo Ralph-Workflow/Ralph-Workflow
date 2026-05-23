@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-05-23T03:07:32.480167",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "directory_submission_execution",
+    "channel": "directory_submission",
+    "title": "Distribution lane execution: directory_submission",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_directory_submission_execution.md"
+  },
+  "why_this_action": {
+    "summary": "Prepared directory submission payloads for the next unused autonomous backlink lanes.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "channel_discovery.json: validated easy-submit directory lanes",
+      "outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff",
+      "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
+      "apollo_status.json: managed outbound is authenticated and available for execution packaging"
+    ],
+    "targets_prepared": [
+      "openagents"
+    ]
+  },
+  "result": {
+    "status": "prepared",
+    "ok": true,
+    "live_external_action": false,
+    "blocking_factors": []
+  }
+}

@@ -1,11 +1,11 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-23T02:10:19.130433+02:00
+- Checked: 2026-05-23T02:57:50.067710+02:00
 - Overall health: healthy_with_repairs
 - Primary failure mode: Architecture ownership and verifier freshness are repaired, but full signoff remains fail-closed on the marketing adoption watchpoint; the marketing runner bundle is red only because that owner loop is still failing closed.
 - Most urgent fix: Keep architecture green only as qualified/local green and leave full end-to-end certification blocked until marketing clears primary-repo adoption measurement or replaces the tactic.
 - Verifier status: independently verified pass
-- Verifier checked: 2026-05-23T02:10:54.550731+02:00
+- Verifier checked: 2026-05-23T03:07:45.372000+02:00
 - Verifier blockers: none
 
 ## Live topology
@@ -20,7 +20,7 @@
    - Mechanism: the architecture path is locally healthy, while the marketing loop is still intentionally fail-closed on flat primary-repo adoption inside its active measurement window.
    - Recommended fix: do not certify around the watchpoint; wait for measurable Codeberg movement or a marketing-owned tactic replacement at the review window.
 
-2. **Medium — Architecture verifier now classifies marketing review-followups as external watchpoints instead of local blockers**
+2. **Medium — Architecture verifier correctly localizes the live blocker outside the architecture owner loop**
    - Mechanism: fresh health-monitor follow-up items from the marketing loop no longer poison architecture signoff during the same refresh cycle.
    - Recommended fix: preserve that owner-boundary classification.
 
@@ -35,15 +35,15 @@
 
 ## Repaired this run
 
-- **refreshed_runtime_evidence** — refreshed loop integrity, refreshed health monitor, and re-read live Gateway cron topology before rewriting the architecture report.
-- **fixed_external_blocker_classification** — updated the architecture verifier chain so marketing review-followup artifacts stay external instead of being mislocalized as architecture blockers.
-- **synced_latest_artifacts** — rewrote the latest JSON/MD report from current live topology and blocker state.
+- **reran_current_stack** — reran loop integrity, architecture independent verification, architecture verifier, and architecture checker on the live topology.
+- **refreshed_runtime_evidence** — refreshed loop-integrity evidence, reused fresh health-monitor state, and rechecked live Gateway cron topology.
+- **synced_latest_artifacts** — updated the latest JSON/MD report so the current verdict and verification timestamp match this run.
 
 ## Independent verification
 
 - Performed: performed_qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Checked at: 2026-05-23T02:10:54.550731+02:00
+- Checked at: 2026-05-23T02:58:27.435935+02:00
 
 ## Still needs independent verification
 

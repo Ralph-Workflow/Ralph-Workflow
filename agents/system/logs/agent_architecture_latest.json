@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-23T02:10:19.130433+02:00",
+    "checked_at": "2026-05-23T02:57:50.067710+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus jobs.json comparison with explicit live-vs-persisted separation",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -161,27 +161,28 @@
   ],
   "repairs_applied_this_run": [
     {
+      "status": "reran_current_stack",
+      "target": "architecture audit/checker/verifier stack",
+      "change": "Reran loop_integrity_audit.py, agent_architecture_independent_verify.py, agent_architecture_verifier.py, and agent_architecture_checker.py against the live Gateway topology.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
+      ]
+    },
+    {
       "status": "refreshed_runtime_evidence",
       "target": "loop integrity and system health evidence",
-      "change": "Refreshed loop_integrity_latest.json, refreshed health_monitor_latest.json, and re-read live Gateway cron topology before rewriting the architecture report.",
+      "change": "Refreshed loop_integrity_latest.json, reused fresh health_monitor_latest.json, and rechecked live Gateway cron topology before rewriting the architecture report.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
       ]
     },
     {
-      "status": "fixed_external_blocker_classification",
-      "target": "architecture verifier chain",
-      "change": "Updated the architecture verifier and independent verifier so marketing review-followup artifacts stay classified as external watchpoints instead of architecture-owned blockers.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py"
-      ]
-    },
-    {
       "status": "synced_latest_artifacts",
       "target": "architecture latest report coherence",
-      "change": "Rewrote the latest JSON/MD report from current live topology, current loop evidence, and the marketing-only unresolved blocker set.",
+      "change": "Updated the latest JSON/MD report so the current verdict, live topology, and qualified-pass verification timestamp match the current run.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md"
@@ -197,7 +198,7 @@
       "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-23T02:10:54.550731+02:00"
+    "checked_at": "2026-05-23T02:58:27.435935+02:00"
   },
   "what_still_needs_independent_verification": [
     "Fresh marketing independent pass after primary-repo adoption moves or the current tactic is replaced at the end of the measurement window."
@@ -220,7 +221,7 @@
     ],
     "architecture_verifier_status": "pass",
     "architecture_verifier_errors": [],
-    "architecture_verifier_checked_at": "2026-05-23T02:10:54.550731+02:00",
+    "architecture_verifier_checked_at": "2026-05-23T03:07:45.372000+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "autonomous-marketing-stack": "error",

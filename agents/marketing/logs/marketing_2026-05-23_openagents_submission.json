@@ -1,0 +1,43 @@
+{
+  "timestamp_utc": "2026-05-23T00:53:44Z",
+  "action": "openagents_submission",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "OpenAgents.pro",
+    "submit_page": "https://www.openagents.pro/submit",
+    "endpoint": "https://formspree.io/f/xaqppdwq",
+    "status": "submitted_in_review",
+    "response": {
+      "http_status": 200,
+      "body": "{\"next\":\"/thanks\",\"ok\":true}"
+    }
+  },
+  "submitted_payload": {
+    "toolName": "Ralph Workflow",
+    "toolType": "AI Tool",
+    "category": "Coding",
+    "description": "Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for developers doing ambitious repo work. It composes planning, implementation, and verification into a reviewable workflow so unattended coding runs end in finished, tested code instead of another confident summary.",
+    "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "email": "ken@hireaegis.com",
+    "tags": "coding, autonomous coding, claude code, codex, workflow orchestration, open source"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, Apollo is already in a measurement window until 2026-05-30, Reddit remains structurally blocked/high-risk, and OpenAgents.pro exposed a fresh coding-category submission lane with a live form endpoint that can route evaluators directly to the primary Codeberg repo.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: bias toward free-use path and proof-led conversion instead of more generic posting",
+    "market_intelligence_latest.json: reused positioning truths and competitor-aware framing",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "channel_discovery.json: existing easy-submit lanes are largely exhausted or already in measurement, so a fresh executable directory lane is higher leverage"
+  ],
+  "verification": {
+    "submit_form_endpoint": "https://formspree.io/f/xaqppdwq",
+    "browser_like_headers_required": true,
+    "submission_result": "HTTP 200 with ok=true"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "live OpenAgents.pro listing or backlink pointing evaluators to the Codeberg primary repo",
+    "kill_condition": "If no listing or reply signal arrives by 2026-06-06, replace this lane with a different untouched curator/directory surface instead of resubmitting the same pitch."
+  }
+}

@@ -258,6 +258,14 @@ class ChannelDiscoveryTests(unittest.TestCase):
         self.assertEqual(status, "accessible")
         self.assertIn("/api/submit", note)
 
+    def test_openagents_validated_submit_host_short_circuits_to_accessible(self):
+        status, note = channel_discovery.classify_submission_surface_probe(
+            {"probe_status": "ok"},
+            page_url="https://www.openagents.pro/submit",
+        )
+        self.assertEqual(status, "accessible")
+        self.assertIn("Formspree-backed submit POST", note)
+
     def test_aigearbase_validated_submit_host_short_circuits_to_accessible(self):
         status, note = channel_discovery.classify_submission_surface_probe(
             {"probe_status": "ok"},

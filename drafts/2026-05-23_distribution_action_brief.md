@@ -1,11 +1,12 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-23T02:07:50
-Chosen lane: **curator_handoff_packet**
+Generated: 2026-05-23T03:07:32
+Chosen lane: **directory_submission**
 
 ## Why this lane
-- Prepared outreach targets already exist but GitHub auth is blocked here; refresh the canonical manual execution packet instead of discovering more targets.
+- Stop adding Telegraph-first volume; use the next unspent autonomous backlink lane.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 2 owned-content posts already shipped in the last 36 hours.
+- Validated easy-submit channels still unused: openagents.
 - Reddit is infrastructure-blocked from this environment, so the loop should not treat more Reddit monitoring as an execution lane.
 - HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
@@ -13,7 +14,6 @@ Chosen lane: **curator_handoff_packet**
 - 9 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.
 - 9 prepared curator targets still need a canonical execution handoff packet.
 - GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.
-- The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 
 ## Shared findings reused
@@ -27,9 +27,11 @@ Chosen lane: **curator_handoff_packet**
 - Start Here: Try Ralph Workflow on One Real Backlog Task (telegraph)
 - AI Coding Tool Comparison: Claude Code, Cursor, Aider, and the Workflow Layer Most Teams Actually Need (telegraph)
 
-## Immediate curator handoff work
-- Build one canonical packet from the highest-priority prepared curator targets that have not been sent yet
-- Include the comparison/backlink handoff packet too when prepared comparison targets are also waiting
-- Reuse the existing target-ready files instead of generating a new queue or another reset note
-- Include exact next actions, ready links, and Codeberg-primary wording so a human can execute quickly
-- Do not count another discovery/reset cycle as progress while prepared targets still await handoff
+## Immediate directory submission queue
+- **openagents** — validated easy-submit channel not yet recorded in outreach history
+
+## Required payload spine
+- Product: Ralph Workflow
+- Primary URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+- Positioning: free and open-source composable loop framework and AI orchestrator
+- Proof asset: latest comparison or start-here Telegraph piece

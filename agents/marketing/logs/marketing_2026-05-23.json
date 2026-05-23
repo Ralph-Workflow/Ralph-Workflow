@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-23T02:07:50.030978",
+  "timestamp": "2026-05-23T03:07:32.480167",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-23T01:12:19.294246",
+    "timestamp": "2026-05-23T02:40:50.688215",
     "metrics": [
       {
         "platform": "GitHub",
@@ -410,11 +410,12 @@
     }
   },
   "distribution_lane": {
-    "lane": "curator_handoff_packet",
-    "reason": "Prepared outreach targets already exist but GitHub auth is blocked here; refresh the canonical manual execution packet instead of discovering more targets.",
+    "lane": "directory_submission",
+    "reason": "Stop adding Telegraph-first volume; use the next unspent autonomous backlink lane.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
+      "Validated easy-submit channels still unused: openagents.",
       "Reddit is infrastructure-blocked from this environment, so the loop should not treat more Reddit monitoring as an execution lane.",
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
@@ -422,11 +423,12 @@
       "9 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "9 prepared curator targets still need a canonical execution handoff packet.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
-      "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity."
     ],
     "owned_content_posts_last_36h": 2,
-    "unsubmitted_directory_channels": [],
+    "unsubmitted_directory_channels": [
+      "openagents"
+    ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -437,17 +439,13 @@
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_distribution_action_brief.md"
   },
   "distribution_execution": {
-    "lane": "curator_handoff_packet",
-    "action_type": "curator_contact_discovery_execution",
+    "lane": "directory_submission",
+    "action_type": "directory_submission_execution",
     "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_discovery.md",
-    "summary": "Replaced stale curator handoff follow-through with real contact-channel discovery for the highest-priority prepared curator targets blocked on GitHub auth.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_directory_submission_execution.md",
+    "summary": "Prepared directory submission payloads for the next unused autonomous backlink lanes.",
     "targets_prepared": [
-      "7. 0xWelt/Awesome-Vibe-Coding",
-      "dariubs/awesome-workflow-automation",
-      "no-fluff/awesome-vibe-coding",
-      "vivy-yi/awesome-agent-orchestration",
-      "hesreallyhim/awesome-claude-code"
+      "openagents"
     ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
@@ -457,9 +455,7 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "live_external_action": false,
-    "blocking_factors": [
-      "github_auth_missing_for_live_pr_submission"
-    ]
+    "blocking_factors": []
   },
   "failure_signals": [
     "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption."
@@ -467,12 +463,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: lane=curator_handoff_packet",
+    "stdout": "skipped: lane=directory_submission",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: lane=curator_handoff_packet",
+    "stdout": "skipped: lane=directory_submission",
     "stderr": ""
   }
 }

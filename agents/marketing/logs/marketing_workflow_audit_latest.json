@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T02:08:10.316637",
+  "generated_at": "2026-05-23T03:07:43.111890",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -52,9 +52,11 @@
     ]
   },
   "failing_tactics": [
-    "reddit_style_repetition",
     "primary_repo_flat_window",
     "mirror_repo_flat_window"
+  ],
+  "dormant_risks": [
+    "reddit_style_repetition_suspended_while_channel_blocked"
   ],
   "repair_actions": [
     {
@@ -76,23 +78,12 @@
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
       "repair_state": "pending_measurement"
-    },
-    {
-      "target_tactic": "reddit_post_style",
-      "failure_type": "repetitive_outreach",
-      "repair_kind": "tactic",
-      "action": "REWRITE Reddit outreach template. Current opening has been used repeatedly. Draft 2-3 fresh openings tied to specific subreddit pain points. Do not reuse any opening across different subreddits.",
-      "kill_condition": "Same opening detected again in next audit",
-      "success_metric": "No repeated openings in next audit window",
-      "priority": 2,
-      "repair_state": "pending_measurement"
     }
   ],
   "repair_window_status": "measurement_pending",
   "measurement_pending_reasons": [
     "primary_repo_flat",
-    "mirror_repo_flat",
-    "repetitive_outreach"
+    "mirror_repo_flat"
   ],
   "has_failing_tactics": true,
   "reasons": [
@@ -100,8 +91,8 @@
     "Codeberg is the primary repo, so primary-repo movement matters more than mirror vanity metrics.",
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
-    "Reddit body repetition risk is visible, which weakens authenticity and makes the loop less likely to learn from fresh audience response.",
-    "The active loop did execute a live marketing action recently (apollo_sequence_launch), so the system is still shipping output even though outcome movement is not visible yet.",
+    "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
+    "The active loop did execute a live marketing action recently (openagents_submission), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
   "next_moves": [
@@ -135,18 +126,18 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_apollo_sequence_launch.json",
-    "type": "apollo_sequence_launch",
-    "title": "Apollo sequence launch",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_openagents_submission.json",
+    "type": "openagents_submission",
+    "title": "openagents submission",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
     "warning": null,
-    "url": "https://app.apollo.io/#/lists?sortByField=updated_at&sortAscending=false&groupBy[]=labelModality"
+    "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-23T02:08:01.778351+02:00",
+    "generated_at": "2026-05-23T03:07:42.814334+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",
