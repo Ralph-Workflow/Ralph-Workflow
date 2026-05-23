@@ -1,37 +1,4 @@
 {
-  "generated_at": "2026-05-23T07:15:00",
-  "targets": [
-    {
-      "target": "Agent-Analytics/awesome-multi-agent-orchestrators",
-      "url": "https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators",
-      "owner": "Agent-Analytics",
-      "repo": "awesome-multi-agent-orchestrators",
-      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
-      "status": "prepared",
-      "channels": [
-        {
-          "type": "email",
-          "value": "contact@agentanalytics.sh",
-          "label": "GitHub public email"
-        },
-        {
-          "type": "website",
-          "value": "https://agentanalytics.sh/contact",
-          "label": "possible contact page"
-        },
-        {
-          "type": "website",
-          "value": "https://agentanalytics.sh",
-          "label": "profile website"
-        },
-        {
-          "type": "github_issue",
-          "value": "https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators/issues/new",
-          "label": "repo contribution path"
-        }
-      ],
-      "recommended_next_step": "email fallback can run now",
-      "artifact_path": "/tmp/tmp53zl62ra/drafts/curator_outreach/2026-05-23/01_agent-analytics-awesome-multi-agent-orchestrators.md"
-    }
-  ]
+  "generated_at": "2026-05-23T19:33:40.574696",
+  "targets": []
 }

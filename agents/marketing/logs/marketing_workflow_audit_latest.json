@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T18:16:34.811561",
+  "generated_at": "2026-05-23T20:36:28.110771",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 0,
   "reddit_posts_analyzed": 6,
@@ -111,9 +111,9 @@
     "Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.",
     "GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.",
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
-    "14 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.",
+    "16 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.",
     "48 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.",
-    "The active loop did execute a live marketing action recently (editorial_contact_form_submission), so the system is still shipping output even though outcome movement is not visible yet.",
+    "The active loop did execute a live marketing action recently (aiforcode_submission), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
   "next_moves": [
@@ -147,18 +147,18 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_authorityaitools_contact_submission.json",
-    "type": "editorial_contact_form_submission",
-    "title": "Submitted Ralph Workflow suggestion to Authority AI Tools contact form",
-    "status": "submitted",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aiforcode_submission.json",
+    "type": "aiforcode_submission",
+    "title": "aiforcode submission",
+    "status": "executed",
     "ok": true,
     "live_external_action": true,
     "outcome_ready": true,
     "warning": null,
-    "url": null
+    "url": "https://aiforcode.io/"
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-23T15:43:13.946557+02:00",
+    "generated_at": "2026-05-23T20:36:27.819966+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",

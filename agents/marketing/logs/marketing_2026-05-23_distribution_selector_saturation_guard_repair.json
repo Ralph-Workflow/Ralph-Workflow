@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-05-23T19:40:00+02:00",
+  "run_type": "marketing_runtime_repair",
+  "chosen_action": {
+    "type": "distribution_selector_saturation_guard_repair",
+    "channel": "distribution_lane_selection",
+    "title": "Stop refreshing curator handoff packets while same-family windows are saturated",
+    "files_changed": [
+      "agents/marketing/distribution_lane_selector.py",
+      "agents/marketing/tests/test_marketing_system.py"
+    ]
+  },
+  "why_this_action": {
+    "summary": "The active marketing loop was still willing to pick curator handoff follow-through even after 48 curator contact attempts and 15 active curator review windows in the same day. That is fake progress against the audit's own overlap warning, so the highest-leverage move was to harden lane selection instead of letting the loop keep rewarding same-family churn.",
+    "shared_findings_used": [
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/distribution_lane_latest.json",
+      "agents/marketing/logs/curator_outreach_queue_latest.json",
+      "agents/marketing/logs/adoption_metrics_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "verification": [
+      "python3 -m unittest agents.marketing.tests.test_marketing_system.DistributionLaneSelectorFallbackTests agents.marketing.tests.test_marketing_system.DistributionLaneSelectorTests -v",
+      "python3 agents/marketing/distribution_lane_selector.py"
+    ],
+    "post_repair_lane": "distribution_reset",
+    "post_repair_reason": "Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet."
+  },
+  "expected_outcome": "The loop stops spending active cycles on same-family curator handoff churn during saturated measurement windows and instead biases toward genuinely new target discovery until a cleaner execution lane exists.",
+  "measurement_window": {
+    "review_at": "2026-05-24T19:40:00+02:00",
+    "success_metric": "No new curator_handoff_packet selection while curator measurement windows remain saturated; next chosen lane is non-overlapping or newly executable.",
+    "kill_condition": "If the selector still routes saturated curator states back into same-family packet churn, add a stronger fail-closed gate across all handoff-only lanes."
+  }
+}

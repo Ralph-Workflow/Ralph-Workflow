@@ -1,24 +1,23 @@
 {
-  "checked_at": "2026-05-23T17:24:35.150064+02:00",
+  "checked_at": "2026-05-23T20:36:28.317479+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=False generated_at=2026-05-23T15:43:14.389302"
+      "summary": "runner ok=False generated_at=2026-05-23T20:36:28.294261"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=needs_attention; actions=['primary_repo_adoption_flat', 'pending_repairs_detected']; watch_actions=[]"
+      "summary": "momentum status=needs_attention; actions=['primary_repo_adoption_flat', 'pending_repairs_detected']; watch_actions=['reddit_channel_blocked']"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "repair_window_status=needs_repair; failing_tactics=['reddit_style_repetition', 'primary_repo_flat_window', 'mirror_repo_flat_window', 'same_family_distribution_overlap', 'same_family_outreach_overlap']; measurement_pending_reasons=[]"
+      "summary": "repair_window_status=needs_repair; failing_tactics=['primary_repo_flat_window', 'mirror_repo_flat_window', 'same_family_distribution_overlap', 'same_family_outreach_overlap']; measurement_pending_reasons=[]"
     }
   ],
   "watchpoints": [],
   "blockers": [
-    "Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.",
     "Marketing runner bundle is not healthy.",
     "Momentum watchdog status is needs_attention with actions: primary_repo_adoption_flat, pending_repairs_detected.",
     "Workflow audit still reports needs_repair.",

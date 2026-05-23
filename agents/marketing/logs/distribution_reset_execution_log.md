@@ -109,3 +109,29 @@ Goal met: identified 4 additional untouched third-party citation/curator targets
 - These targets were checked against current outreach/log artifacts and were not already in the live curator or comparison queues.
 - They preserve the current Codeberg-first positioning while expanding beyond already-saturated same-day outreach windows.
 - Best immediate prioritization order: subinium/awesome-claude-code, saviorand/awesome-ai-assisted-coding, BNLNPPS/awesome-terminals-ai, nandhakt/awesome-ai-coding-resources.
+
+## 6) Fresh reset target discovery — 2026-05-23 (AI coding directories / workflow comparators)
+Goal met: identified 4 additional untouched third-party targets that are still close to the actual Ralph Workflow evaluation problem: AI coding workflow comparison, tool discovery, and agentic dev-tool curation.
+
+### Newly identified targets
+
+1. **AI for Code**  
+   URL: https://aiforcode.io/  
+   Why it fits: developer-facing AI coding tools directory with explicit comparisons, methodology pages, and a homepage submission path. Their contact page explicitly welcomes tool suggestions and the site already covers workflow orchestration platforms, coding agents, and Claude Code-adjacent evaluations.
+
+2. **VibeCoders tool directory**  
+   URL: https://vibecoders.sh/  
+   Why it fits: large vibe-coder community with a dedicated tool directory, visible “Submit a Tool to the Directory” CTA, and explicit Claude Code / AI Agents audience overlap. Good qualified-traffic surface for developers actively comparing coding workflows.
+
+3. **VibeFactory directory**  
+   URL: https://www.vibefactory.dev/directory  
+   Why it fits: 190-tool vibe-coding directory with workflow-style categorization and adjacent entries like OpenClaw, AGENTS.md, Spec Kit, and coding-agent tools. Strong contextual fit for a Codeberg-first workflow/orchestration listing.
+
+4. **AI Dev Setup**  
+   URL: https://aidevsetup.com/  
+   Why it fits: broad AI dev-tools directory with dedicated AI Agents, MCP, IDE, Coding, and compare-stack sections. The site is already organized around "Build Your AI Dev Setup," which maps well to Ralph Workflow’s default-workflow and composable-loop positioning.
+
+### Discovery notes
+- Checked against the current outreach log and marketing artifacts; these domains were not already targeted.
+- These are higher-fit than another low-intent generic directory because they already speak to AI coding workflows, tool comparison, or agentic dev setups.
+- Best immediate prioritization order: AI for Code, VibeFactory, AI Dev Setup, VibeCoders.

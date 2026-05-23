@@ -1,12 +1,12 @@
-# Reddit monitor — RalphWorkflow — 2026-05-23 19:47 Europe/Berlin
+# Reddit monitor — RalphWorkflow — 2026-05-23 19:45 Europe/Berlin
 
 ## Snapshot
 - **Threads/posts scanned:** 0
 - **Shortlisted:** 0
 - **Rejected / already-used / weak-fit / stale-pattern / too promo-heavy:** 0
-- **Query attempts:** 6
-- **Search diagnostics:** reddit_ip_blocked=5, time_budget_exceeded=1
-- **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`
+- **Query attempts:** 5
+- **Search diagnostics:** reddit_ip_blocked=4, time_budget_exceeded=1
+- **Prior context reviewed first:** `agents/marketing/REDDIT_LEARNINGS.md`, `agents/marketing/outreach-log.md`, `agents/marketing/logs/reddit_posts.jsonl`, `agents/marketing/logs/reddit_post_analysis.md`
 - **Messaging ground truth used:** <https://ralphworkflow.com>
 - **Search mode:** content-first across Reddit via broad query families; subreddit is a weak secondary hint only
 
@@ -46,7 +46,7 @@ Broad content-first search across Reddit around:
 - **No reliable coverage yet**: the monitor is currently being challenged by the search provider, so this pass does **not** prove there were no opportunities.
 - The search space is **not** bounded to a fixed subreddit list anymore; the remaining issue is provider access quality, not subreddit coverage design.
 - This pass should be treated as degraded telemetry until search coverage is restored.
-- **Runtime guard fired**: the pass hit the 60-second search budget and stopped early rather than burning the full cron window.
+- **Runtime guard fired**: the pass hit the 45-second search budget and stopped early rather than burning the full cron window.
 
 ## Next self-improving adjustment
 - Keep expanding query families when new pain clusters appear; do not solve search coverage by hardcoding more subreddit names.

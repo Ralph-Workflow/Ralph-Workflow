@@ -59,5 +59,12 @@
     "keyword": "unattended coding agent",
     "published_at": "2026-05-22T03:15:00Z",
     "notes": "Keyword-gap post. Core differentiator: bounded diff and review surface. Targets search around unattended coding agent evaluation."
+  },
+  {
+    "url": "https://telegra.ph/Claude-Code--Codex-Workflow-Plan-Build-Review-05-23-3",
+    "title": "Claude Code + Codex Workflow: Plan, Build, Review",
+    "keyword": "Claude Code + Codex workflow",
+    "published_at": "2026-05-23T17:40:19Z",
+    "notes": "Demand-capture workflow article published after Reddit suspension and flat Codeberg adoption; keeps Codeberg primary and GitHub mirror CTA."
   }
 ]

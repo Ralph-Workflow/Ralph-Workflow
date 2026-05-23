@@ -601,7 +601,113 @@ def main() -> int:
             timeout=30,
         )
 
+    # --- Repair-awareness gate ---
+    # If the audit has pending repairs (repair_state=needs_execution), the crons have
+    # kept running the same failing patterns while the repair plan sat unread.
+    # Intercept here and apply repair constraints before lane selection + execution.
+    AUDIT_PATH = LOG_DIR / "marketing_workflow_audit_latest.json"
+    pending_repairs: list[dict] = []
+    if AUDIT_PATH.exists():
+        try:
+            audit = json.loads(AUDIT_PATH.read_text(encoding="utf-8"))
+            if audit.get("repair_window_status") == "needs_repair":
+                pending_repairs = [
+                    r for r in audit.get("repair_actions", []) or []
+                    if r.get("repair_state") in ("needs_execution", "pending_measurement")
+                ]
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    is_repair_mode = bool(pending_repairs)
+    skip_directory_submissions = any(
+        r.get("failure_type") == "same_family_distribution_overlap"
+        for r in pending_repairs
+    )
+    skip_curator_outreach = any(
+        r.get("failure_type") == "same_family_outreach_overlap"
+        for r in pending_repairs
+    )
+    primary_repo_flat_repair = next(
+        (r for r in pending_repairs if r.get("failure_type") == "primary_repo_flat"),
+        None
+    )
+    if is_repair_mode:
+        print(f"[run.py] REPAIR MODE active — {len(pending_repairs)} pending repairs, "
+              f"skip_dir={skip_directory_submissions}, skip_curator={skip_curator_outreach}", flush=True)
+        # Mark repairs as measurement-pending immediately so the next audit sees them
+        # as in-flight rather than perpetually needs_execution.
+        try:
+            audit = json.loads(AUDIT_PATH.read_text(encoding="utf-8"))
+            for ra in audit.get("repair_actions", []):
+                if ra.get("repair_state") == "needs_execution":
+                    ra["repair_state"] = "pending_measurement"
+                    ra["repair_acknowledged_at"] = now.isoformat()
+            AUDIT_PATH.write_text(json.dumps(audit, indent=2), encoding="utf-8")
+            print("[run.py] repair_state updated to pending_measurement in audit", flush=True)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"[run.py] WARNING: could not update audit repair state: {e}", flush=True)
+
     distribution_lane = choose_distribution_lane(now)
+    # Apply repair constraints to the lane decision so the executor respects them.
+    if is_repair_mode:
+        # LaneDecision is frozen=True so use __setattr__.
+        object.__setattr__(distribution_lane, 'skip_directory_submissions', skip_directory_submissions)
+        object.__setattr__(distribution_lane, 'skip_curator_outreach', skip_curator_outreach)
+        # When primary_repo_flat repair is active, prefer comparison_backlink_outreach
+        # or another lane that creates Codeberg-primary conversion evidence.
+        if primary_repo_flat_repair and distribution_lane.lane in (
+            "directory_submission", "curator_outreach", "owned_content"
+        ):
+            # Redirect to a lane that does not depend on owned-content saturation.
+            redirect = "comparison_backlink_outreach"
+            print(f"[run.py] primary_repo_flat repair active — redirecting from "
+                  f"{distribution_lane.lane} to {redirect}", flush=True)
+            object.__setattr__(distribution_lane, 'lane', redirect)
+            object.__setattr__(distribution_lane, 'reason',
+                "Repair override: primary_repo_flat repair active; "
+                "pushing Codeberg-primary comparison backlinks instead of saturated patterns."
+            )
+            distribution_lane.reasons.insert(
+                0,
+                f"REPAIR: {primary_repo_flat_repair.get('action', primary_repo_flat_repair.get('failure_type', ''))[:120]}"
+            )
+
+    # --- Second repair gate: handle pending_measurement repairs ---
+    # After the first gate acknowledges repairs, subsequent runs reach here with
+    # repair_state=pending_measurement. The lane selector still picks normal lanes
+    # (distribution_reset etc.) without knowing about the repair redirect needs.
+    # Intercept here and redirect to the repair-appropriate lane.
+    pending_measurement_repairs = [
+        r for r in pending_repairs
+        if r.get("repair_state") == "pending_measurement"
+    ]
+    if pending_measurement_repairs:
+        # Check each pending repair and redirect accordingly.
+        for repair in pending_measurement_repairs:
+            ft = repair.get("failure_type", "")
+            if ft == "primary_repo_flat" and distribution_lane.lane in (
+                "directory_submission", "curator_outreach", "owned_content", "distribution_reset"
+            ):
+                redirect = "comparison_backlink_outreach"
+                print(f"[run.py] primary_repo_flat repair (pending_measurement) — redirecting from "
+                      f"{distribution_lane.lane} to {redirect}", flush=True)
+                object.__setattr__(distribution_lane, 'lane', redirect)
+                object.__setattr__(distribution_lane, 'reason',
+                    "Repair redirect: primary_repo_flat repair is in measurement window; "
+                    "pushing comparison backlinks to create Codeberg-primary conversion evidence.")
+                # Remove the redirect repair from list so we don't double-redirect.
+                pending_measurement_repairs.remove(repair)
+                break
+        # Remaining pending repairs: update skip flags.
+        for repair in pending_measurement_repairs:
+            ft = repair.get("failure_type", "")
+            if ft == "same_family_distribution_overlap":
+                object.__setattr__(distribution_lane, 'skip_directory_submissions', True)
+                print("[run.py] same_family_distribution_overlap repair (pending_measurement) — skip directory submissions", flush=True)
+            elif ft == "same_family_outreach_overlap":
+                object.__setattr__(distribution_lane, 'skip_curator_outreach', True)
+                print("[run.py] same_family_outreach_overlap repair (pending_measurement) — skip curator outreach", flush=True)
+
     distribution_execution = execute_distribution_lane(distribution_lane, now)
     print(f"[run.py] Chosen distribution lane: {distribution_lane.lane}", flush=True)
     if distribution_execution.artifact_path:

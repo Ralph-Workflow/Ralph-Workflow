@@ -1,7 +1,7 @@
 {
-  "checked_at": "2026-05-23T17:27:17.728046+02:00",
-  "verdict": "qualified_pass",
-  "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
+  "checked_at": "2026-05-23T20:33:10.417638+02:00",
+  "verdict": "fail",
+  "summary": "Independent verification found architecture blockers that prevent a healthy verdict.",
   "verified_repairs": [
     {
       "claim": "architecture report still reflects elevated overall risk, but that risk can be treated as externally blocked rather than a local escalation-design failure",
@@ -29,19 +29,9 @@
       "details": "loop_integrity_latest.json reports agent-architecture-watchdog status=ok with no ownership or topology errors."
     },
     {
-      "claim": "health monitor shows no architecture-owned live system issues while the architecture verifier is being independently checked",
-      "status": "verified",
-      "details": "health_monitor_latest.json records jobs_checked=20 and architecture-owned blockers are clear."
-    },
-    {
       "claim": "architecture verification isolates external domain blockers as watchpoints instead of manufacturing new architecture incidents",
       "status": "verified",
-      "details": "External blockers present: marketing-daily:timeout, marketing_independent_verification:loop_verification_fail, marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required, marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required, marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required, marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g:review_followup_required, marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without:review_followup_required"
-    },
-    {
-      "claim": "docs verifier is not just green once but stable across the recent repeat-failure window",
-      "status": "verified",
-      "details": "recent_failures=0, consecutive_passes_since_last_fail=14"
+      "details": "External blockers present: marketing_independent_verification:loop_verification_fail, marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar:review_followup_required, marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required, marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required, marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required, marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g:review_followup_required, marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without:review_followup_required"
     },
     {
       "claim": "shared market-intelligence reuse is still machine-verifiable for code-backed consumers",
@@ -52,17 +42,19 @@
       "claim": "marketing learning remains outcome-driven rather than activity-only",
       "status": "verified",
       "details": "marketing_workflow_audit_latest.json keeps the bottleneck explicit and ties repairs to Codeberg adoption movement."
-    },
-    {
-      "claim": "architecture escalation system is independently sound even though an external domain blocker remains unresolved",
-      "status": "verified",
-      "details": "All remaining blockers are externally classified and do not indicate a local architecture/escalation design failure."
     }
   ],
   "remaining_blockers": [
+    "health monitor has non-architecture issues: docs_verifier:artifact_contract_fail, docs_verifier_stability:loop_verification_fail",
+    "docs verifier did not show independent pass",
+    "latest docs verifier verdict is not pass: 'fail'",
     "marketing independent verification is not pass: 'fail'"
   ],
-  "architecture_errors": [],
+  "architecture_errors": [
+    "health monitor has non-architecture issues: docs_verifier:artifact_contract_fail, docs_verifier_stability:loop_verification_fail",
+    "docs verifier did not show independent pass",
+    "latest docs verifier verdict is not pass: 'fail'"
+  ],
   "external_blockers": [
     "marketing independent verification is not pass: 'fail'"
   ],
@@ -81,7 +73,7 @@
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-      "summary": "Health monitor reports jobs_checked=20 and issues_found=14."
+      "summary": "Health monitor reports jobs_checked=20 and issues_found=22."
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/market_intelligence_consumption_latest.json",

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T18:50:48.985316",
+  "generated_at": "2026-05-23T19:33:40.574696",
   "targets": [
     {
       "target": "1. ai-for-developers/awesome-ai-coding-tools",
@@ -243,6 +243,46 @@
       "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
       "subject": "Ralph Workflow for nandhakt/awesome-ai-coding-resources",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_nandhakt-awesome-ai-coding-resources.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-06"
+    },
+    {
+      "target": "AI for Code",
+      "url": "https://aiforcode.io/",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for AI for Code",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/01_ai-for-code.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-06"
+    },
+    {
+      "target": "VibeCoders tool directory",
+      "url": "https://vibecoders.sh/",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for VibeCoders tool directory",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/02_vibecoders-tool-directory.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-06"
+    },
+    {
+      "target": "VibeFactory directory",
+      "url": "https://www.vibefactory.dev/directory",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for VibeFactory directory",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/03_vibefactory-directory.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-06"
+    },
+    {
+      "target": "AI Dev Setup",
+      "url": "https://aidevsetup.com/",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for AI Dev Setup",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_ai-dev-setup.md",
       "status": "prepared",
       "review_due_date": "2026-06-06"
     }

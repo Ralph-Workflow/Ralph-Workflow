@@ -1,41 +1,41 @@
 {
-  "generated_at": "2026-05-23T18:50:48.985316",
+  "generated_at": "2026-05-23T19:33:40.574696",
   "targets": [
     {
-      "target": "subinium/awesome-claude-code",
-      "url": "https://github.com/subinium/awesome-claude-code",
-      "why_it_fits": "Fresh Claude Code ecosystem roundup focused on tools, skills, plugins, and MCP servers. Strong fit for Ralph Workflow's Claude Code workflow positioning and Codeberg-primary repo CTA.",
+      "target": "AI for Code",
+      "url": "https://aiforcode.io/",
+      "why_it_fits": "developer-facing AI coding tools directory with explicit comparisons, methodology pages, and a homepage submission path. Their contact page explicitly welcomes tool suggestions and the site already covers workflow orchestration platforms, coding agents, and Claude Code-adjacent evaluations.",
       "status": "promoted_to_curator_queue",
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
-      "promoted_at": "2026-05-23T18:50:48.985316",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/01_subinium-awesome-claude-code.md"
+      "promoted_at": "2026-05-23T19:33:40.574696",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/01_ai-for-code.md"
     },
     {
-      "target": "saviorand/awesome-ai-assisted-coding",
-      "url": "https://github.com/saviorand/awesome-ai-assisted-coding",
-      "why_it_fits": "Curated AI-assisted coding list that already groups command-line tools, coding agents, and code-quality workflows. High-fit citation target for Ralph Workflow's reviewable unattended-coding angle.",
+      "target": "VibeCoders tool directory",
+      "url": "https://vibecoders.sh/",
+      "why_it_fits": "large vibe-coder community with a dedicated tool directory, visible \u201cSubmit a Tool to the Directory\u201d CTA, and explicit Claude Code / AI Agents audience overlap. Good qualified-traffic surface for developers actively comparing coding workflows.",
       "status": "promoted_to_curator_queue",
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
-      "promoted_at": "2026-05-23T18:50:48.985316",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/02_saviorand-awesome-ai-assisted-coding.md"
+      "promoted_at": "2026-05-23T19:33:40.574696",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/02_vibecoders-tool-directory.md"
     },
     {
-      "target": "BNLNPPS/awesome-terminals-ai",
-      "url": "https://github.com/BNLNPPS/awesome-terminals-ai",
-      "why_it_fits": "Terminal-AI roundup with explicit sections for coding assistants, agents, and provider-native coding CLIs. Fits Ralph Workflow's terminal-first orchestrator story and Codeberg-primary CTA.",
+      "target": "VibeFactory directory",
+      "url": "https://www.vibefactory.dev/directory",
+      "why_it_fits": "190-tool vibe-coding directory with workflow-style categorization and adjacent entries like OpenClaw, AGENTS.md, Spec Kit, and coding-agent tools. Strong contextual fit for a Codeberg-first workflow/orchestration listing.",
       "status": "promoted_to_curator_queue",
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
-      "promoted_at": "2026-05-23T18:50:48.985316",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/03_bnlnpps-awesome-terminals-ai.md"
+      "promoted_at": "2026-05-23T19:33:40.574696",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/03_vibefactory-directory.md"
     },
     {
-      "target": "nandhakt/awesome-ai-coding-resources",
-      "url": "https://github.com/nandhakt/awesome-ai-coding-resources",
-      "why_it_fits": "Broad AI coding resources collection covering open-source AI development tools and editor alternatives. Good adjacent target for a free/open-source workflow layer positioned beyond one-shot editors.",
+      "target": "AI Dev Setup",
+      "url": "https://aidevsetup.com/",
+      "why_it_fits": "broad AI dev-tools directory with dedicated AI Agents, MCP, IDE, Coding, and compare-stack sections. The site is already organized around \"Build Your AI Dev Setup,\" which maps well to Ralph Workflow\u2019s default-workflow and composable-loop positioning.",
       "status": "promoted_to_curator_queue",
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_execution_log.md",
-      "promoted_at": "2026-05-23T18:50:48.985316",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_nandhakt-awesome-ai-coding-resources.md"
+      "promoted_at": "2026-05-23T19:33:40.574696",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_ai-dev-setup.md"
     }
   ]
 }

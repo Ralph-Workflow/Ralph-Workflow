@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -593,6 +594,67 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
 
 class DistributionLaneSelectorFallbackTests(unittest.TestCase):
+    def test_prefers_distribution_reset_over_curator_handoff_when_same_family_windows_are_saturated(self):
+        now = datetime(2026, 5, 23, 19, 40, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+
+        def recent_action(now_arg, *, action_types, hours=48):
+            if action_types == distribution_lane_selector.RECENT_RESET_ACTION_TYPES:
+                return True
+            if action_types == distribution_lane_selector.RECENT_PROOF_ASSET_ACTION_TYPES:
+                return True
+            return False
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('No duplicate directory submissions logged.', encoding='utf-8')
+
+            with ExitStack() as stack:
+                for patcher in [
+                    patch.object(distribution_lane_selector, 'LOG_DIR', log_dir),
+                    patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir),
+                    patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path),
+                    patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path),
+                    patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path),
+                    patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json),
+                    patch.object(distribution_lane_selector, 'LATEST_MD', latest_md),
+                    patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={'provider_degraded': True, 'reddit_blocked': True}),
+                    patch.object(distribution_lane_selector, '_github_auth_available', return_value=False),
+                    patch.object(distribution_lane_selector, '_apollo_ready', return_value=True),
+                    patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=True),
+                    patch.object(distribution_lane_selector, '_apollo_sequence_measurement_status', return_value={'measurement_pending': True}),
+                    patch.object(distribution_lane_selector, '_live_curator_queue_count', return_value=8),
+                    patch.object(distribution_lane_selector, '_prepared_curator_targets_waiting_for_handoff', return_value=4),
+                    patch.object(distribution_lane_selector, '_prepared_curator_target_names', return_value=['AI for Code', 'VibeFactory directory']),
+                    patch.object(distribution_lane_selector, '_curator_measurement_window_count', return_value=15),
+                    patch.object(distribution_lane_selector, '_contact_discovery_current_for_targets', return_value=False),
+                    patch.object(distribution_lane_selector, '_contact_discovery_has_targets', return_value=False),
+                    patch.object(distribution_lane_selector, '_manual_contact_targets_waiting_for_execution', return_value=[]),
+                    patch.object(distribution_lane_selector, '_comparison_queue_capacity', return_value=(8, 8)),
+                    patch.object(distribution_lane_selector, '_distribution_reset_targets_ready', return_value=0),
+                    patch.object(distribution_lane_selector, '_recent_live_action_family_count', side_effect=[14, 48]),
+                    patch.object(distribution_lane_selector, '_stack_overflow_measurement_pending', return_value=True),
+                    patch.object(distribution_lane_selector, '_stack_overflow_handoff_packet_current', return_value=True),
+                    patch.object(distribution_lane_selector, '_recent_executed_action_type', side_effect=recent_action),
+                ]:
+                    stack.enter_context(patcher)
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'distribution_reset')
+            self.assertIn('same-family curator windows are already saturated', decision.reason)
+
     def test_prefers_manual_follow_through_over_rerunning_stackoverflow_during_measurement_window(self):
         now = datetime(2026, 5, 23, 14, 49, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
