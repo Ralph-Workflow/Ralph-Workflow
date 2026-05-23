@@ -6,9 +6,11 @@ should not be committed (binaries, build artifacts, temporary files, etc.).
 
 from __future__ import annotations
 
+from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 
 from ralph.git.commit_cleanup import (
@@ -32,6 +34,8 @@ from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.recovery.classifier import FailureCategory
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.phases import PhaseContext
 
 COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
@@ -44,16 +48,87 @@ _UNSAFE_EXTENSIONS: frozenset[str] = frozenset({
 
 _UNSAFE_PATH_SEGMENTS: tuple[str, ...] = ("tests/", "test_", "_test.", "docs/", "doc/")
 
+_GENERATED_TEXT_MARKERS: frozenset[str] = frozenset({
+    "artifact",
+    "capture",
+    "debug",
+    "dump",
+    "generated",
+    "log",
+    "output",
+    "report",
+    "temp",
+    "tmp",
+    "trace",
+    "transcript",
+    "verify",
+})
 
-def _is_safe_to_delete(path: str) -> bool:
+_GENERATED_TEXT_DIRECTORIES: frozenset[str] = frozenset({
+    ".agent",
+    "artifacts",
+    "build",
+    "dist",
+    "out",
+    "reports",
+    "tmp",
+    "temp",
+})
+
+
+def _close_repo(repo: Repo | None) -> None:
+    close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+    if callable(close):
+        close()
+
+
+def _path_exists_in_head(repo_root: Path, relative_path: str) -> bool:
+    """Return True when ``relative_path`` already exists in HEAD."""
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root, search_parent_directories=False)
+        with suppress(Exception):
+            repo.git.cat_file("-e", f"HEAD:{relative_path}")
+            return True
+        return False
+    except InvalidGitRepositoryError:
+        return False
+    finally:
+        _close_repo(repo)
+
+
+def _is_generated_text_artifact(repo_root: Path, path: str) -> bool:
+    """Return True when a ``.txt`` file looks like generated output, not authored docs."""
+    candidate = Path(path)
+    name_tokens = {
+        token
+        for token in candidate.stem.lower().replace(".", "-").replace("_", "-").split("-")
+        if token
+    }
+    parent_parts = {part.lower() for part in candidate.parts[:-1]}
+    has_generated_signal = bool(name_tokens & _GENERATED_TEXT_MARKERS) or bool(
+        parent_parts & _GENERATED_TEXT_DIRECTORIES
+    )
+    if not has_generated_signal:
+        return False
+    return not _path_exists_in_head(repo_root, path)
+
+
+def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
     """Return True only if path is a housekeeping artifact safe to delete.
 
     Rejects source code, test files, documentation, and configuration files.
     """
-    if Path(path).suffix.lower() in _UNSAFE_EXTENSIONS:
-        return False
+    candidate = Path(path)
     path_lower = path.lower()
-    return not any(seg in path_lower for seg in _UNSAFE_PATH_SEGMENTS)
+    if any(seg in path_lower for seg in _UNSAFE_PATH_SEGMENTS):
+        return False
+
+    suffix = candidate.suffix.lower()
+    if suffix == ".txt":
+        return _is_generated_text_artifact(repo_root, path)
+
+    return suffix not in _UNSAFE_EXTENSIONS
 
 
 def _apply_cleanup_actions(
@@ -76,7 +151,7 @@ def _apply_cleanup_actions(
         elif act_type == "add_to_git_exclude" and action.pattern:
             git_exclude_patterns.append(action.pattern)
         elif act_type == "delete_file" and action.path:
-            if not _is_safe_to_delete(action.path):
+            if not _is_safe_to_delete(repo_root, action.path):
                 raise ValueError(
                     f"Refusing to delete non-housekeeping file: {action.path!r}. "
                     "Commit cleanup must only remove build artifacts, binaries, "
