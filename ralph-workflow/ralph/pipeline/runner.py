@@ -945,13 +945,19 @@ def write_start_commit_if_absent(workspace_root: Path) -> None:
     """Record the current HEAD as the cycle baseline if no baseline exists yet."""
     if read_cycle_baseline(workspace_root) is not None:
         return
+    repo: Repo | None = None
     try:
         repo = Repo(workspace_root)
     except InvalidGitRepositoryError:
         return
-    if not repo.head.is_valid():
-        return
-    write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
+    try:
+        if not repo.head.is_valid():
+            return
+        write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
+    finally:
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
 
 
 call_determine_effect_from_policy = _call_determine_effect_from_policy

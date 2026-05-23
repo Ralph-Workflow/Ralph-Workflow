@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from git import Repo
 
@@ -20,7 +20,7 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
     PreparePromptEffect,
 )
-from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass
+from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
 from ralph.pipeline.work_units import (
     WorkUnitsPlan,
     WorkUnitsValidationError,
@@ -30,6 +30,7 @@ from ralph.prompts.materialize import prompt_file_for_phase
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
@@ -154,7 +155,7 @@ def _recovery_prepare_effect(
     target_phase = previous_phase or policy_entry_phase
     if target_phase == failed_route:
         target_phase = policy_entry_phase
-    drain = state.current_drain if isinstance(state.current_drain, str) else None
+    drain = resolve_phase_drain(target_phase, pipeline_policy)
     return PreparePromptEffect(
         phase=target_phase,
         drain=drain,
@@ -201,10 +202,16 @@ def _commit_phase_effect(
 
 
 def _should_early_skip_commit(workspace_root: Path) -> bool:
+    repo: Repo | None = None
     try:
-        return not Repo(workspace_root).is_dirty(untracked_files=True)
+        repo = Repo(workspace_root)
+        return not repo.is_dirty(untracked_files=True)
     except Exception:
         return False
+    finally:
+        close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+        if callable(close):
+            close()
 
 
 def _agent_name_for_phase_from_policy(

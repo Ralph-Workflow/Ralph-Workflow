@@ -942,11 +942,11 @@ def _find_work_artifact(
 def _git_diff(workspace_root: Path) -> str:
     """Return the cumulative diff from the dev-cycle baseline through the working tree.
     When a baseline SHA is recorded in .agent/start_commit, the diff includes:
-    - All commits landed since the baseline (baseline..HEAD)
-    - Any uncommitted changes on top (HEAD vs working tree)
-    This is correct whether the user commits once per dev cycle or once per
-    individual dev iteration within a cycle.
+    - All commits landed since the baseline (baseline..HEAD), and any uncommitted
+      changes on top (HEAD vs working tree). This is correct whether the user
+      commits once per dev cycle or once per individual dev iteration within a cycle.
     """
+    repo: Repo | None = None
     try:
         repo = Repo(workspace_root)
         baseline_sha = read_cycle_baseline(workspace_root)
@@ -958,20 +958,36 @@ def _git_diff(workspace_root: Path) -> str:
         return _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
     except Exception:
         return "(no diff available)"
+    finally:
+        _close_repo(repo)
+
+
+def _close_repo(repo: Repo | None) -> None:
+    close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+    if callable(close):
+        close()
+
+
 def _pending_diff(workspace_root: Path) -> str:
     """Return the pending (staged but not committed) diff for a workspace."""
+    repo: Repo | None = None
     try:
         repo = Repo(workspace_root)
         return _sanitize_surrogates(cast("str", repo.git.diff("HEAD"))) or "(no diff available)"
     except Exception:
         return "(no diff available)"
+    finally:
+        _close_repo(repo)
 def _commit_phase_diff(workspace_root: Path) -> str:
     diff = _pending_diff(workspace_root).strip()
+    repo: Repo | None = None
     try:
         repo = Repo(workspace_root)
         untracked = cast("str", repo.git.ls_files("--others", "--exclude-standard")).strip()
     except Exception:
         untracked = ""
+    finally:
+        _close_repo(repo)
     if not untracked:
         return diff or "(no diff available)"
     if diff == "(no diff available)":
@@ -980,9 +996,5 @@ def _commit_phase_diff(workspace_root: Path) -> str:
     combined = (diff + section).strip()
     return combined or "(no diff available)"
 def commit_cleanup_diff(workspace_root: Path) -> str:
-    """Return only the pending commit diff for commit cleanup.
-
-    Commit cleanup must reason about content that is actually part of the pending
-    commit, not arbitrary untracked workspace files that happen to exist nearby.
-    """
+    """Return only the pending commit diff for commit cleanup."""
     return _pending_diff(workspace_root)

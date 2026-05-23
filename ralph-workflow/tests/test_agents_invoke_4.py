@@ -409,6 +409,7 @@ def test_claude_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -675,6 +676,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_claude)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("HOME", str(fake_home))
     list(
         invoke_agent(

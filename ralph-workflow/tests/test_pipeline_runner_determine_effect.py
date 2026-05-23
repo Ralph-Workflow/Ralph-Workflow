@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -39,6 +39,8 @@ from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
+
+    from ralph.config.models import UnifiedConfig
 
 
 DEVELOPER_ITERATIONS = 5
@@ -84,11 +86,11 @@ def _config_with_agents(
     *,
     agent_chains: dict[str, list[str]],
     agent_drains: dict[str, str],
-) -> object:
+) -> UnifiedConfig:
     config = MagicMock()
     config.agent_chains = agent_chains
     config.agent_drains = agent_drains
-    return config
+    return cast("UnifiedConfig", config)
 
 
 def _write_minimal_plan_artifacts(
@@ -360,6 +362,23 @@ class TestDetermineEffect:
         )
         assert isinstance(effect, PreparePromptEffect)
         assert effect.phase == "development"
+
+    def test_failed_phase_recovery_replaces_terminal_drain_with_target_phase_drain(self) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(
+            phase="failed_terminal",
+            previous_phase="planning",
+            last_error="Something went wrong",
+            current_drain="failed_terminal",
+        )
+
+        effect = runner_module.determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
+
+        assert isinstance(effect, PreparePromptEffect)
+        assert effect.phase == "planning"
+        assert effect.drain == "planning"
 
     def test_unknown_phase_returns_exit_failure(self) -> None:
         bundle = _load_default_policy_bundle()

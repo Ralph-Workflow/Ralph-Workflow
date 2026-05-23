@@ -7,9 +7,13 @@ wrapping GitPython to provide the functionality needed by the pipeline.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from git import Actor, InvalidGitRepositoryError, Repo
 from loguru import logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class GitOperationError(Exception):
@@ -32,6 +36,12 @@ class GitOperationError(Exception):
         super().__init__(f"Git {operation} failed: {message}")
 
 
+def _close_repo(repo: Repo | None) -> None:
+    close = cast("Callable[[], object] | None", getattr(repo, "close", None))
+    if callable(close):
+        close()
+
+
 def find_repo_root(start: Path | str = Path()) -> Path:
     """Locate git repo root from start path.
 
@@ -44,6 +54,7 @@ def find_repo_root(start: Path | str = Path()) -> Path:
     Raises:
         GitOperationError: If not inside a git repository.
     """
+    repo: Repo | None = None
     try:
         repo = Repo(start, search_parent_directories=True)
         if repo.working_tree_dir:
@@ -51,6 +62,8 @@ def find_repo_root(start: Path | str = Path()) -> Path:
         return Path(repo.working_dir).resolve()
     except InvalidGitRepositoryError as exc:
         raise GitOperationError("find_repo_root", "Not inside a git repository") from exc
+    finally:
+        _close_repo(repo)
 
 
 def find_main_worktree_root(start: Path | str = Path()) -> Path:
@@ -66,12 +79,15 @@ def find_main_worktree_root(start: Path | str = Path()) -> Path:
     invoked by ``ralph.pipeline.parallel.*`` modules. Callers in that package
     violate the same-workspace isolation contract.
     """
+    repo: Repo | None = None
     try:
         repo = Repo(start, search_parent_directories=True)
         common_dir = Path(repo.common_dir).resolve()
         return common_dir.parent.resolve()
     except InvalidGitRepositoryError as exc:
         raise GitOperationError("find_main_worktree_root", "Not inside a git repository") from exc
+    finally:
+        _close_repo(repo)
 
 
 def is_repo_clean(repo_root: Path | str) -> bool:
@@ -83,8 +99,12 @@ def is_repo_clean(repo_root: Path | str) -> bool:
     Returns:
         True if repository is clean (no uncommitted changes).
     """
-    repo = Repo(repo_root)
-    return not repo.is_dirty()
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        return not repo.is_dirty()
+    finally:
+        _close_repo(repo)
 
 
 def has_uncommitted_changes(repo_root: Path | str) -> bool:
@@ -94,8 +114,12 @@ def has_uncommitted_changes(repo_root: Path | str) -> bool:
     authoritative skip check for commit phases: if this returns False, there
     is literally nothing for a commit agent to package up.
     """
-    repo = Repo(repo_root)
-    return repo.is_dirty(untracked_files=True)
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        return repo.is_dirty(untracked_files=True)
+    finally:
+        _close_repo(repo)
 
 
 def has_commits_since(repo_root: Path | str, baseline_sha: str | None) -> bool:
@@ -106,11 +130,14 @@ def has_commits_since(repo_root: Path | str, baseline_sha: str | None) -> bool:
     """
     if baseline_sha is None:
         return True
-    repo = Repo(repo_root)
+    repo: Repo | None = None
     try:
+        repo = Repo(repo_root)
         return any(True for _ in repo.iter_commits(f"{baseline_sha}..HEAD"))
     except Exception:
         return True
+    finally:
+        _close_repo(repo)
 
 
 def has_staged_changes(repo_root: Path | str) -> bool:
@@ -122,8 +149,12 @@ def has_staged_changes(repo_root: Path | str) -> bool:
     Returns:
         True if there are staged changes.
     """
-    repo = Repo(repo_root)
-    return bool(repo.index.diff("HEAD")) or bool(repo.untracked_files)
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        return bool(repo.index.diff("HEAD")) or bool(repo.untracked_files)
+    finally:
+        _close_repo(repo)
 
 
 def get_staged_files(repo_root: Path | str) -> list[str]:
@@ -135,9 +166,13 @@ def get_staged_files(repo_root: Path | str) -> list[str]:
     Returns:
         List of staged file paths.
     """
-    repo = Repo(repo_root)
-    staged = repo.index.diff("HEAD")
-    return [item.a_path for item in staged if item.a_path] if staged else []
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        staged = repo.index.diff("HEAD")
+        return [item.a_path for item in staged if item.a_path] if staged else []
+    finally:
+        _close_repo(repo)
 
 
 def stage_all(repo_root: Path | str) -> None:
@@ -146,9 +181,13 @@ def stage_all(repo_root: Path | str) -> None:
     Args:
         repo_root: Path to the repository root.
     """
-    repo = Repo(repo_root)
-    repo.git.add(A=True)
-    logger.debug("Staged all changes in {}", repo_root)
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        repo.git.add(A=True)
+        logger.debug("Staged all changes in {}", repo_root)
+    finally:
+        _close_repo(repo)
 
 
 def stage_files(repo_root: Path | str, files: list[str]) -> None:
@@ -160,9 +199,13 @@ def stage_files(repo_root: Path | str, files: list[str]) -> None:
     if not files:
         logger.debug("No files requested for selective staging in {}", repo_root)
         return
-    repo = Repo(repo_root)
-    repo.git.add("--all", "--", *files)
-    logger.debug("Staged {} selected paths in {}", len(files), repo_root)
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        repo.git.add("--all", "--", *files)
+        logger.debug("Staged {} selected paths in {}", len(files), repo_root)
+    finally:
+        _close_repo(repo)
 
 
 def create_commit(
@@ -185,21 +228,20 @@ def create_commit(
     Raises:
         GitOperationError: If commit fails.
     """
-    repo = Repo(repo_root)
-
-    # Get author info with fallback
-    if not author_name or not author_email:
-        try:
-            config = repo.config_reader()
-            author_name = author_name or str(config.get_value("user", "name", "Ralph"))
-            author_email = author_email or str(config.get_value("user", "email", "ralph@ai"))
-        except Exception:
-            author_name = author_name or "Ralph"
-            author_email = author_email or "ralph@ai"
-
-    actor = Actor(author_name, author_email)
-
+    repo: Repo | None = None
     try:
+        repo = Repo(repo_root)
+
+        if not author_name or not author_email:
+            try:
+                config = repo.config_reader()
+                author_name = author_name or str(config.get_value("user", "name", "Ralph"))
+                author_email = author_email or str(config.get_value("user", "email", "ralph@ai"))
+            except Exception:
+                author_name = author_name or "Ralph"
+                author_email = author_email or "ralph@ai"
+
+        actor = Actor(author_name, author_email)
         commit = repo.index.commit(message, author=actor, committer=actor)
         logger.info(
             "Created commit {}: {}",
@@ -209,6 +251,8 @@ def create_commit(
         return commit.hexsha
     except Exception as exc:
         raise GitOperationError("create_commit", str(exc)) from exc
+    finally:
+        _close_repo(repo)
 
 
 def push(
@@ -226,14 +270,16 @@ def push(
     Raises:
         GitOperationError: If push fails.
     """
-    repo = Repo(repo_root)
-    active_branch = branch or repo.active_branch.name
-
+    repo: Repo | None = None
     try:
+        repo = Repo(repo_root)
+        active_branch = branch or repo.active_branch.name
         repo.remote(remote).push(active_branch)
         logger.info("Pushed {} to {}/{}", active_branch, remote, active_branch)
     except Exception as exc:
         raise GitOperationError("push", str(exc)) from exc
+    finally:
+        _close_repo(repo)
 
 
 def get_head_sha(repo_root: Path | str) -> str:
@@ -245,7 +291,12 @@ def get_head_sha(repo_root: Path | str) -> str:
     Returns:
         SHA of the current HEAD commit.
     """
-    return Repo(repo_root).head.commit.hexsha
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        return repo.head.commit.hexsha
+    finally:
+        _close_repo(repo)
 
 
 def merge_base(
@@ -266,8 +317,9 @@ def merge_base(
     Raises:
         GitOperationError: If merge base cannot be determined.
     """
-    repo = Repo(repo_root)
+    repo: Repo | None = None
     try:
+        repo = Repo(repo_root)
         bases = repo.merge_base(ref_a, ref_b)
         if not bases:
             msg = f"No merge base between {ref_a} and {ref_b}"
@@ -275,6 +327,8 @@ def merge_base(
         return bases[0].hexsha
     except Exception as exc:
         raise GitOperationError("merge_base", str(exc)) from exc
+    finally:
+        _close_repo(repo)
 
 
 def get_current_branch(repo_root: Path | str) -> str:
@@ -286,7 +340,12 @@ def get_current_branch(repo_root: Path | str) -> str:
     Returns:
         Name of the current branch.
     """
-    return Repo(repo_root).active_branch.name
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        return repo.active_branch.name
+    finally:
+        _close_repo(repo)
 
 
 def get_commits_between(
@@ -304,9 +363,13 @@ def get_commits_between(
     Returns:
         List of commit SHAs in reverse chronological order.
     """
-    repo = Repo(repo_root)
-    commits = repo.iter_commits(f"{from_ref}..{to_ref}")
-    return [c.hexsha for c in commits]
+    repo: Repo | None = None
+    try:
+        repo = Repo(repo_root)
+        commits = repo.iter_commits(f"{from_ref}..{to_ref}")
+        return [c.hexsha for c in commits]
+    finally:
+        _close_repo(repo)
 
 
 def append_to_gitignore(repo_root: Path | str, patterns: list[str]) -> None:
