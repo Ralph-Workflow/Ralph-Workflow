@@ -1,40 +1,83 @@
-# Start Here: Run Ralph Workflow on One Real Task
+# Start Here: Try Ralph Workflow on One Real Task
 
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect and follow Ralph Workflow on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
-It runs the coding agents you already use on your own machine, turns that simple loop structure into a stronger composable workflow for substantial, well-specified software engineering work, and gives you a strong default workflow before you customize anything.
+If you are evaluating Ralph Workflow, do not start with a vague demo.
+Start with **one real backlog task** you already care about.
 
-If you want the shortest honest first run, this page is it.
-Start with one real, well-specified backlog task and judge the outcome by what the software does now and what checks ran.
+## The fastest honest first run
 
-## Before you start
+1. Pick one meaningful task you can still judge in the morning.
+2. Paste the spec template below into `PROMPT.md`.
+3. Run Ralph Workflow tonight.
+4. Open the diff and the checks tomorrow.
+5. Ask: **would I merge this?**
 
-Have these ready:
+That is the whole evaluation.
 
-- one real git repo you care about
-- Python 3.12+
-- one supported agent CLI already installed
-- working auth for that agent
+## If you want the lowest-friction first run
+
+Start with one of these exact task shapes:
+- **Validation rule:** reject empty or whitespace-only names in one CLI or form flow
+- **Feature slice:** add one filter, one export, or one settings toggle with tests
+- **Isolated refactor:** replace one duplicated helper path with a shared utility and keep behavior stable
+
+If none of those sound easy to judge in the morning, the task is still too broad.
 
 ## Pick the right first task
 
-Good first tasks:
+Choose something that is:
+- small enough to judge in one sitting
+- real enough to matter
+- bounded enough that rollback is cheap
+- clear enough that success is easy to define
 
-- a focused feature slice
-- a refactor with tests and clear acceptance criteria
-- a verification or test-coverage pass on behavior you already rely on
-- a cleanup task with a real finish line
+Good first tasks:
+- a small feature slice
+- a bounded refactor with tests
+- a backlog item with obvious acceptance criteria
+- repetitive implementation work with clear verification
 
 Bad first tasks:
-
-- tiny edits where setup dominates the work
-- vague exploration
+- a vague product idea
 - risky production surgery
-- work that depends on constant mid-run steering
+- mixed multi-part work
+- anything where no one agrees what "done" means
 
-If you are unsure, use [docs/first-task-guide.md](./docs/first-task-guide.md).
+If you are still unsure, use [docs/first-task-guide.md](./docs/first-task-guide.md) before you run it.
+
+## Paste this spec template
+
+```md
+Change:
+[what should change]
+
+Keep unchanged:
+[what must stay stable]
+
+Done means:
+[observable outcome]
+
+Checks:
+[tests, lint, build, or other verification]
+```
+
+Example:
+
+```md
+Change:
+Add a billing history page with filters and CSV export.
+
+Keep unchanged:
+Do not alter the current invoice creation flow or billing calculations.
+
+Done means:
+Users can open billing history, filter by date range, and export matching rows to CSV.
+
+Checks:
+Relevant billing tests pass and any new billing-history tests pass.
+```
 
 ## Install and run
 
@@ -47,8 +90,34 @@ $EDITOR PROMPT.md
 ralph
 ```
 
+## Morning-after review checklist
+
+Do not ask whether the tool looked smart.
+
+Ask:
+- does the diff match the task?
+- are the changes small enough to review?
+- did the checks really run?
+- what still needs a human judgment call?
+- **would I merge this?**
+
+If yes, the workflow earned a harder task.
+If no, sharpen the spec and run it again.
+
+## If the first run is promising
+
+Use the public next step on **Codeberg**:
+- star the repo if you want to track it
+- watch it if you want updates
+- open an issue if your first run exposed friction or a missing doc
+
+That turns a private evaluation into a useful public signal or actionable feedback.
+
 ## Next pages only if you need them
 
 - task selection — [docs/first-task-guide.md](./docs/first-task-guide.md)
+- prompt templates — [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
+- what good output looks like — [docs/free-open-source-proof.md](./docs/free-open-source-proof.md)
+- after the run — [docs/after-your-first-run.md](./docs/after-your-first-run.md)
 - docs switchboard — [docs/README.md](./docs/README.md)
 - operator manual — [ralph-workflow/docs/sphinx/index.rst](./ralph-workflow/docs/sphinx/index.rst)
