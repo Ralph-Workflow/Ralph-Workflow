@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-05-23T05:31:27.805602",
+  "timestamp": "2026-05-23T06:01:32.215354",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "curator_contact_handoff_packet_execution",
-    "channel": "curator_handoff_packet",
-    "title": "Distribution lane execution: curator_handoff_packet",
+    "channel": "curator_contact_handoff_packet",
+    "title": "Distribution lane execution: curator_contact_handoff_packet",
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_handoff_packet.md"
   },
   "why_this_action": {

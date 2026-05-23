@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-23T04:59:43.683047
+- Generated: 2026-05-23T06:01:42.704765
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,7 +11,7 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- The active loop did execute a live marketing action recently (toolshelf_submission), so the system is still shipping output even though outcome movement is not visible yet.
+- The active loop did execute a live marketing action recently (indiestack_submission), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## Observed risks
@@ -40,11 +40,11 @@
 - Measurement-pending reasons: primary_repo_flat, mirror_repo_flat
 
 ## Latest executed marketing action
-- Type: toolshelf_submission
-- Title: toolshelf submission
+- Type: indiestack_submission
+- Title: indiestack submission
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_toolshelf_submission.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_indiestack_submission.json
 - URL: https://codeberg.org/RalphWorkflow/Ralph-Workflow
 
 ## Next highest-leverage moves

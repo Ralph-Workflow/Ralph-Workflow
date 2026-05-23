@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-05-23T05:58:05+02:00",
+  "action": "indiestack_submission",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "channel": "directory_submission",
+  "target": "IndieStack",
+  "submit_url": "https://indiestack.ai/submit",
+  "confirmation_url": "https://indiestack.ai/submit?status=success&tool=ralph-workflow",
+  "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "secondary_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+  "submitted_payload": {
+    "name": "Ralph Workflow",
+    "tagline": "Open-source workflow layer for autonomous coding that hands back reviewable, tested work.",
+    "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "description": "Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for developers doing ambitious software work. It keeps a simple core, then composes planning, implementation, and verification into a repo-native workflow so longer coding runs end in tested, reviewable output instead of another confident summary. You can use the default workflow as-is today or build your own on top.",
+    "category_id": "41",
+    "category_label": "AI Dev Tools",
+    "maker_name": "mistlight",
+    "maker_url": "https://ralphworkflow.com",
+    "tags": "open-source, AI dev tools, agent orchestration, claude code, codex",
+    "replaces": "ad hoc prompt chains, chat-only coding workflows",
+    "email": "ken@hireaegis.com"
+  },
+  "verification": {
+    "post_status_code": 303,
+    "post_redirect": "/submit?status=success&tool=ralph-workflow",
+    "confirmation_status_code": 200,
+    "confirmation_title": "Submitted — IndieStack"
+  },
+  "why_this_action": [
+    "Primary Codeberg adoption is still flat, so a fresh high-fit backlink lane beats more owned-content churn.",
+    "IndieStack is explicitly aimed at developer tools surfaced to AI coding agents, which matches Ralph Workflow's audience better than generic AI directories.",
+    "This target was not already present in outreach-log.md, so it expands distribution instead of duplicating an in-flight lane.",
+    "The public submission form was executable from this runtime and allowed a Codeberg-primary URL."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/outreach-log.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md"
+  ],
+  "expected_outcome": "Qualified developers and AI-coding-agent users discover Ralph Workflow through a developer-tool directory that points them to the Codeberg primary repo.",
+  "measurement_window": {
+    "listing_review_at": "2026-05-30T05:58:05+02:00",
+    "backlink_review_at": "2026-06-06T05:58:05+02:00",
+    "adoption_review_at": "2026-06-22T05:58:05+02:00"
+  },
+  "replacement_condition": "If there is no live IndieStack listing or referral evidence by 2026-06-06, treat IndieStack as pending only and shift the next fresh-action slot to another untouched developer-tool directory with an executable public submit path."
+}

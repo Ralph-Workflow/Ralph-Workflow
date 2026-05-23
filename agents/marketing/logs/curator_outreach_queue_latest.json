@@ -34,8 +34,11 @@
       "priority": "MEDIUM — complementary, not competing",
       "subject": "Ralph Workflow for 3. asheshgoplani/agent-deck",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_3-asheshgoplani-agent-deck.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-05"
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-05",
+      "last_contact_at": "2026-05-22T12:05:51Z",
+      "last_contact_path": "email:ashesh.goplani96@gmail.com",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-22_120551_agent_deck_curator_email.json"
     },
     {
       "target": "4. zhu1090093659/spec_driven_develop",
@@ -44,8 +47,11 @@
       "priority": "MEDIUM — philosophy-aligned, could be a good citation partner",
       "subject": "Ralph Workflow for 4. zhu1090093659/spec_driven_develop",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_4-zhu1090093659-spec-driven-develop.md",
-      "status": "prepared",
-      "review_due_date": "2026-06-05"
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-05",
+      "last_contact_at": "2026-05-23T04:28:19.676721+00:00",
+      "last_contact_path": "email:1090093659@qq.com",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_042819_zhu1090093659_curator_email.json"
     },
     {
       "target": "5. 23blocks-OS/ai-maestro",

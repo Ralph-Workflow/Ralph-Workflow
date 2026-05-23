@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-05-23T05:11:00+02:00",
+  "action_type": "repo_conversion_surface_repair",
+  "title": "README -> START_HERE -> docs route repair",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "outcome_ready": true,
+  "primary_target": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+  "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
+  "reasoning": "Fresh audits showed flat Codeberg adoption and docs-quality route drift. The highest-leverage safe action available right now was to tighten the repo's first-click conversion route so inbound traffic gets the canonical product story and a clearer first-use path.",
+  "files_touched": [
+    "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md",
+    "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+    "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md",
+    "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/first-task-guide.md"
+  ],
+  "expected_outcome": "Increase the chance that Codeberg-bound evaluators understand the product faster, choose a real first task, and convert into stars, watches, issues, or deeper repo inspection.",
+  "measurement_window": {
+    "start": "2026-05-23T05:11:00+02:00",
+    "check_after": "2026-05-30T05:11:00+02:00",
+    "success_metric": "Any improvement in Codeberg engagement signals or stronger evidence that inbound evaluators reach first-task pages and stay on the repo path.",
+    "kill_condition": "If adoption remains flat and no stronger inspection/use signals appear after the next window, treat docs-route repair as insufficient by itself and shift effort back to new external distribution/backlink lanes."
+  },
+  "verification": {
+    "method": "targeted diff review plus phrase-presence checks across README, START_HERE, docs/README, and docs/first-task-guide",
+    "result": "pass"
+  },
+  "review_note": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_docs_route_repair_review.md"
+}

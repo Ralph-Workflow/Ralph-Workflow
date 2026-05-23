@@ -1,0 +1,21 @@
+Hi there,
+
+I came across spec_driven_develop while reviewing projects focused on structured AI coding workflows, and the spec-first approach felt genuinely aligned with what Ralph Workflow is trying to solve.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. The core idea is to keep the loop simple, then compose planning, implementation, and verification into a workflow that can survive longer unattended runs and still come back reviewable instead of ending in another confident summary.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Why I think it may fit your audience:
+- spec_driven_develop is clearly aimed at developers who want a more disciplined software workflow than raw prompt-and-hope usage
+- Ralph Workflow is similarly focused on structured handoffs, explicit phases, and results that are easier to judge honestly
+- it gives teams a strong default workflow now, while still letting them extend or reshape it later
+
+If you're open to it, I'd love to suggest Ralph Workflow as a complementary project or citation where you list adjacent workflow tools.
+
+A short description if useful:
+Ralph Workflow — free and open-source composable loop framework and AI orchestrator for structured unattended coding workflows.
+
+Best,
+Ralph Workflow

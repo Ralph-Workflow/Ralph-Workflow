@@ -392,6 +392,73 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
             self.assertEqual(decision.lane, 'curator_handoff_packet')
             self.assertIn('do not spend this run repackaging the same outbound lane', '\n'.join(decision.reasons))
 
+    def test_prefers_curator_contact_handoff_when_contact_discovery_is_already_current(self):
+        now = datetime(2026, 5, 23, 9, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        reddit_report = (
+            '# Reddit monitor\n\n'
+            '- **Threads/posts scanned:** 0\n'
+            '- **Shortlisted:** 0\n'
+            '- **Query attempts:** 18\n'
+            '- **Search diagnostics:** ok=0, reddit_ip_blocked=9\n\n'
+            'Reddit is IP-blocked from this environment.\n'
+        )
+        curator_queue = {
+            'targets': [
+                {'target': '1. Example Curator', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+            ]
+        }
+        contact_discovery = {
+            'targets': [
+                {
+                    'target': '1. Example Curator',
+                    'channels': [{'type': 'website', 'value': 'https://example.com/contact'}],
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            seo_dir = tmp / 'seo-reports'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            seo_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            contact_discovery_path = log_dir / 'curator_contact_discovery_latest.json'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.', encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            contact_discovery_path.write_text(json.dumps(contact_discovery), encoding='utf-8')
+            (seo_dir / 'reddit_monitor_latest.md').write_text(reddit_report, encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'CURATOR_CONTACT_DISCOVERY_LATEST_PATH', contact_discovery_path), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', seo_dir / 'reddit_monitor_latest.md'), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'curator_contact_handoff_packet')
+            self.assertIn('manual-contact execution packet', decision.reason)
+
 
 class ApolloSequenceStatusTests(unittest.TestCase):
     def test_marks_recent_launch_as_measurement_pending(self):
@@ -1487,6 +1554,68 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('canonical human-executable contact list', artifact_text)
             self.assertIn('https://example.com/contact', artifact_text)
+
+    def test_curator_contact_handoff_lane_uses_contact_packet_directly(self):
+        now = datetime(2026, 5, 23, 8, 30, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='curator_contact_handoff_packet',
+            reason='Prepared curator targets already have non-GitHub contact channels; advance the manual-contact execution packet instead of another generic handoff refresh.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('Curator queue saturated.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            curator_queue = log_dir / 'curator_outreach_queue_latest.json'
+            curator_queue.write_text(json.dumps({'targets': [
+                {
+                    'target': '1. Example Curator',
+                    'url': 'https://github.com/example/awesome',
+                    'status': 'prepared',
+                    'priority': 'HIGH — example',
+                    'artifact_path': '/tmp/curator.md',
+                    'review_due_date': '2026-06-05',
+                },
+            ]}), encoding='utf-8')
+            comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
+            comparison_queue.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            curator_contact_discovery = log_dir / 'curator_contact_discovery_latest.json'
+            curator_contact_discovery.write_text(json.dumps({
+                'generated_at': now.isoformat(),
+                'targets': [{
+                    'target': '1. Example Curator',
+                    'url': 'https://github.com/example/awesome',
+                    'channels': [{'type': 'website', 'value': 'https://example.com/contact', 'label': 'profile contact page'}],
+                    'recommended_next_step': 'manual contact channel is now identified',
+                    'artifact_path': '/tmp/curator.md',
+                }],
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', curator_queue), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
+                 patch.object(distribution_lane_executor, 'CURATOR_CONTACT_DISCOVERY_LATEST_PATH', curator_contact_discovery), \
+                 patch('subprocess.run', return_value=SimpleNamespace(returncode=1)), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={'comparison_pages': [], 'competitors': {}}):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'curator_contact_handoff_packet_execution')
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('canonical human-executable contact list', artifact_text)
 
     def test_display_target_name_preserves_repo_names_starting_with_digits(self):
         self.assertEqual(

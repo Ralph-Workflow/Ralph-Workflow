@@ -1,26 +1,27 @@
 {
-  "generated_at": "2026-05-22T14:38:20.160712",
+  "generated_at": "2026-05-23T04:14:02.100349+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
       "directory": "AIToolsIndex",
-      "listing_url": "https://aitoolsindex.com/tools/ralph-workflow",
-      "submit_url": "https://aitoolsindex.com/submit/",
+      "listing_url": "https://aitoolsindex.org/tools/ralph-workflow",
+      "submit_url": "https://aitoolsindex.org/submit",
       "check_results": [
         {
-          "url": "https://aitoolsindex.com/ai-tools/ralph-workflow",
-          "status": null,
+          "url": "https://aitoolsindex.org/ai-tools/ralph-workflow",
+          "status": 404,
           "ok": false,
-          "error": "<urlopen error [Errno -5] No address associated with hostname>"
+          "error": "HTTP Error 404: Not Found"
         },
         {
-          "url": "https://aitoolsindex.com/tools/ralph-workflow",
-          "status": null,
+          "url": "https://aitoolsindex.org/tools/ralph-workflow",
+          "status": 404,
           "ok": false,
-          "error": "<urlopen error [Errno -5] No address associated with hostname>"
+          "error": "HTTP Error 404: Not Found"
         }
       ],
-      "listing_live": false
+      "listing_live": false,
+      "status_note": "Submission was confirmed via the public .org API on 2026-05-20; treat as submitted/in-review unless a live listing appears."
     },
     "ToolShelf": {
       "directory": "ToolShelf",
@@ -51,17 +52,17 @@
     },
     "ToolWise": {
       "directory": "ToolWise",
-      "listing_url": "https://www.toolwise.com/tools/ralph-workflow",
-      "submit_url": "https://www.toolwise.com/submit-tool/",
+      "listing_url": "https://toolwise.ai/tools/ralph-workflow",
+      "submit_url": "https://toolwise.ai/submit-tool",
       "check_results": [
         {
-          "url": "https://www.toolwise.com/ralph-workflow",
-          "status": null,
-          "ok": false,
-          "error": "<urlopen error [Errno -3] Temporary failure in name resolution>"
+          "url": "https://toolwise.ai/tools/ralph-workflow",
+          "status": 200,
+          "ok": true
         }
       ],
-      "listing_live": false
+      "listing_live": true,
+      "status_note": "Existing ToolWise listing already live and pointing to the primary Codeberg repo."
     },
     "MadeWithStack": {
       "directory": "MadeWithStack",
@@ -125,7 +126,7 @@
     }
   },
   "summary": {
-    "directories_with_live_listings": 1,
+    "directories_with_live_listings": 2,
     "queries_indexed": 1,
     "total_queries": 7,
     "check_urls": [
