@@ -256,6 +256,101 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'curator_outreach')
 
+    def test_prefers_repo_conversion_proof_asset_when_external_lanes_are_saturated_and_stackoverflow_packet_is_current(self):
+        now = datetime(2026, 5, 23, 16, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        curator_queue = {
+            "targets": [
+                {"target": f"target-{idx}", "status": "sent_via_email_fallback", "review_due_date": "2026-06-05", "last_contact_at": "2026-05-23T05:00:00"}
+                for idx in range(5)
+            ]
+        }
+        comparison_queue = {
+            "targets": [
+                {"slug": "aider", "name": "Aider", "status": "prepared", "review_due_date": "2026-06-05"}
+            ]
+        }
+        market_intelligence = {"comparison_pages": [{"slug": "aider", "name": "Aider", "path": "/tmp/aider.md"}]}
+        stackoverflow_latest = {
+            "drafts_created": 1,
+            "drafts": [{"question_title": "workflow reliability", "draft_file": "/tmp/so_answer.md"}],
+        }
+        apollo_sequence_status = {
+            "measurement_pending": True,
+            "next_review_at": "2026-05-30T00:14:49.075391+02:00",
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (drafts_dir / 'stackoverflow').mkdir()
+
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_queue.json'
+            comparison_queue_path = log_dir / 'comparison_queue.json'
+            market_path = log_dir / 'market.json'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            apollo_sequence_status_path = log_dir / 'apollo_sequence_status_latest.json'
+            stackoverflow_latest_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            stackoverflow_handoff_path = drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md'
+            reddit_monitor_path = tmp / 'reddit_monitor_latest.md'
+
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            apollo_sequence_status_path.write_text(json.dumps(apollo_sequence_status), encoding='utf-8')
+            stackoverflow_latest_path.write_text(json.dumps(stackoverflow_latest), encoding='utf-8')
+            stackoverflow_handoff_path.write_text('# current packet\n', encoding='utf-8')
+            reddit_monitor_path.write_text('Partial visibility only. Fail closed. reddit_direct_access_degraded=1\n', encoding='utf-8')
+
+            for idx in range(4):
+                (log_dir / f'marketing_2026-05-23_dir_{idx}_submission.json').write_text(json.dumps({
+                    'timestamp': f'2026-05-23T0{idx}:00:00',
+                    'status': 'executed',
+                    'result': {'ok': True, 'live_external_action': True},
+                }), encoding='utf-8')
+
+            for idx in range(5):
+                (log_dir / f'marketing_2026-05-23_curator_email_{idx}.json').write_text(json.dumps({
+                    'timestamp': f'2026-05-23T0{idx}:30:00',
+                    'status': 'executed',
+                    'result': {'ok': True, 'live_external_action': True},
+                }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_status_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_latest_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_HANDOFF_LATEST_PATH', stackoverflow_handoff_path), \
+                 patch.object(distribution_lane_selector, 'REDDIT_MONITOR_LATEST', reddit_monitor_path), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=False), \
+                 patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=False):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'repo_conversion_proof_asset')
+
     def test_submitted_channel_log_with_tld_name_counts_as_attempted(self):
         now = datetime(2026, 5, 23, 6, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}

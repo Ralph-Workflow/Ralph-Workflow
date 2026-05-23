@@ -1,0 +1,47 @@
+{
+  "timestamp": "2026-05-23T16:21:00+02:00",
+  "run_type": "marketing-live-action",
+  "chosen_action": {
+    "type": "repo_conversion_docs_upgrade",
+    "channel": "primary_repo_conversion_surface",
+    "title": "Upgrade README, START_HERE, and docs map for faster first-run conversion",
+    "targets": [
+      "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/README.md",
+      "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/START_HERE.md",
+      "/home/mistlight/.openclaw/workspace/repos/Ralph-Workflow/github-mirror/docs/README.md"
+    ]
+  },
+  "why_this_action": {
+    "summary": "Conversion from interest to free use is the current bottleneck, and the strongest executable move right now is to sharpen the primary repo's first-run path while external outreach lanes are either saturated or inside active measurement windows.",
+    "shared_findings_used": [
+      "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+      "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+      "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+      "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+      "agents/marketing/logs/market_intelligence_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.json",
+      "agents/marketing/logs/marketing_workflow_audit_latest.md",
+      "agents/marketing/logs/adoption_metrics_latest.md",
+      "agents/marketing/logs/reddit_post_analysis.md",
+      "agents/marketing/logs/stackoverflow_answer_lane_latest.json",
+      "agents/marketing/logs/curator_outreach_queue_latest.json"
+    ]
+  },
+  "result": {
+    "status": "executed",
+    "ok": true,
+    "live_external_action": false,
+    "artifact_created": true,
+    "files_changed": 3,
+    "verification": [
+      "Local link resolution check passed for updated conversion surfaces",
+      "Git diff inspected for README.md, START_HERE.md, and docs/README.md"
+    ]
+  },
+  "expected_outcome": "A clearer Codeberg-first first-run path that turns more repo visitors into real evaluators and increases the odds of stars, watches, useful issues, or repeat use.",
+  "measurement_window": {
+    "review_at": "2026-05-30T16:21:00+02:00",
+    "success_metric": "Any Codeberg adoption delta or higher-quality first-run feedback attributable to the stronger conversion surfaces.",
+    "kill_condition": "If Codeberg remains flat through the next review window, treat this docs upgrade as insufficient alone and pair the next run with a new high-intent demand-capture or citation lane."
+  }
+}

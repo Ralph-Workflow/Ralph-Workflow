@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-23T08:46:17.262767",
+  "timestamp": "2026-05-23T15:43:02.748363",
   "site_health": {
     "homepage": {
       "ok": true,
       "status": 200,
       "title": "Unattended coding agent \u2014 AI agent orchestration CLI \u2014 Ralph Workflow",
-      "meta_description": "Free open-source unattended coding agent and AI agent orchestration CLI. Inspect Codeberg first, run one real backlog task overnight, and wake up to finished, tested code ready to review.",
+      "meta_description": "Free open-source unattended coding agent and AI agent orchestration CLI for AI coding workflow automation. Inspect Codeberg first and wake up to finished, tested code ready to review.",
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
-        "description": "Free open-source unattended coding agent and AI agent orchestration CLI. Inspect Codeberg first, run one real backlog task overnight, and wake up to finished, tested code ready to review.",
+        "description": "Free open-source unattended coding agent and AI agent orchestration CLI for AI coding workflow automation. Inspect Codeberg first and wake up to finished, tested code ready to review.",
         "title": "Unattended coding agent \u2014 AI agent orchestration CLI",
         "type": "website",
         "url": "https://ralphworkflow.com/",
@@ -30,7 +30,7 @@
     },
     "sitemap": {
       "status": 200,
-      "url_count": 69,
+      "url_count": 74,
       "urls": [
         "https://ralphworkflow.com/",
         "https://ralphworkflow.com/privacy",
@@ -161,7 +161,6 @@
   "content_gap": {
     "gaps": [
       "spec-driven AI agent",
-      "AI coding workflow automation",
       "Claude Code automation",
       "Claude Code unattended",
       "AI agent workflow composer"
@@ -169,9 +168,10 @@
     "covered": [
       "unattended coding agent",
       "AI agent orchestration CLI",
+      "AI coding workflow automation",
       "Ralph Workflow"
     ],
-    "coverage_pct": 37.5
+    "coverage_pct": 50.0
   },
   "serp": {
     "position": null,
@@ -181,7 +181,7 @@
   },
   "priority_actions": [
     "Fix top on-page SEO issues (current score: 70/100)",
-    "Create content targeting: spec-driven AI agent, AI coding workflow automation, Claude Code automation",
+    "Create content targeting: spec-driven AI agent, Claude Code automation, Claude Code unattended",
     "Build backlinks: submit to directories, guest post, earn citations"
   ]
 }

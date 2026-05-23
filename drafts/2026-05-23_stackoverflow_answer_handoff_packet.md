@@ -1,5 +1,5 @@
 # Ralph Workflow StackOverflow Answer Handoff Packet
-Generated: 2026-05-23T15:00:26
+Generated: 2026-05-23T15:51:35
 
 ## Why this exists now
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
@@ -11,15 +11,44 @@ Generated: 2026-05-23T15:00:26
 - If live StackOverflow posting is unavailable, repurpose the answer into another high-intent proof surface instead of letting it sit idle.
 
 ## Ready drafts
-- so_answer_2026-05-23_how-should-i-structure-autonomous-ai-agent-workflo.md
-- so_answer_2026-05-23_mcp-server-in-c-for-sql-database-structure-schema-.md
-- so_answer_2026-05-23_analyzing-karate-failures-with-gpt-as-part-of-gith.md
-- so_answer_2026-05-23_how-to-combine-conversationalretrievalqachain-agen.md
-- so_answer_2026-05-23_are-vs-code-copilot-agent-debug-log-token-counts-t.md
+- How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform? (score=3.85, answers=0)
+  - https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability
+- MCP server in C# for SQL database structure/schema (in Visual Studio) for Github Copilot (score=2.65, answers=0)
+  - https://stackoverflow.com/questions/79856670/mcp-server-in-c-for-sql-database-structure-schema-in-visual-studio-for-github
+- Analyzing Karate Failures with GPT as part of Github Actions workflow (score=2.95, answers=0)
+  - https://stackoverflow.com/questions/79442207/analyzing-karate-failures-with-gpt-as-part-of-github-actions-workflow
+- How to combine ConversationalRetrievalQAChain, Agents, and Tools in LangChain (score=1.8, answers=1)
+  - https://stackoverflow.com/questions/76653423/how-to-combine-conversationalretrievalqachain-agents-and-tools-in-langchain
+- Are VS Code Copilot Agent Debug Log Token Counts the Exact Billing Metrics? (score=2.4, answers=0)
+  - https://stackoverflow.com/questions/79940318/are-vs-code-copilot-agent-debug-log-token-counts-the-exact-billing-metrics
+
+## Strongest draft to post or reuse first
+- Title: How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?
+- URL: https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability
+
+## Final answer text
+```md
+For unattended runs in a production codebase, reliability usually comes from narrowing the contract rather than making the agent more autonomous.
+
+The architecture I would use is:
+
+1. **Small task envelope** — one ticket-sized change, clear file boundaries, explicit non-goals.
+2. **Checkpointed phases** — spec -> implementation -> verification -> review package.
+3. **Idempotent recovery** — if a session dies, resume from the last artifact, not from memory.
+4. **Independent verification** — run tests/build/lint after implementation and block completion if any required check fails.
+5. **Human-readable finish state** — when you wake up you should see: what changed, what passed, what failed, and whether it is safe to merge.
+
+For a TypeScript/Next.js fintech stack, I would also add strict guardrails: no schema or payment-flow changes without targeted tests, no secret/config changes outside allowlisted files, and a hard stop on flaky or skipped checks.
+
+One open-source example of this pattern is Ralph Workflow, which keeps Codeberg as the primary repo: [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
+```
+
+## Reuse packet generated in this run
+- /home/mistlight/.openclaw/workspace/drafts/2026-05-23_stackoverflow_answer_reuse_packet.md
 
 ## Recommended next actions
-- Pick the strongest draft and prepare one clean manual posting handoff with title, URL, and final answer text.
-- Reuse the same answer spine in comparison/backlink outreach where a maintainer or curator would value a concrete reliability answer.
+- Post the strongest draft manually where a direct StackOverflow answer is possible, using the final answer text above.
+- Reuse the same answer spine in curator/comparison outreach with the generated reuse packet instead of rewriting the explanation from scratch.
 - Keep the answer focused on workflow reliability, visible finish state, tests, and reviewability; avoid generic promo framing.
 
 ## Measurement contract

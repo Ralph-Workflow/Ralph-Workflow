@@ -47,6 +47,35 @@ That means the goal is not maximum autonomy at any cost.
 
 The goal is a result you can open in the morning and judge quickly.
 
+## Reliability guardrails for production codebases
+
+If you want unattended work to hold up in a real app, reliability usually comes from narrowing the contract, not giving the agent more freedom.
+
+A safer default shape looks like this:
+
+1. **Small task envelope**
+   - one ticket-sized change
+   - clear file boundaries
+   - explicit non-goals
+2. **Checkpointed phases**
+   - spec → implementation → verification → review package
+3. **Idempotent recovery**
+   - resume from the last artifact, not from vague session memory
+4. **Independent verification**
+   - run the tests, lint, build, or task-specific checks after implementation
+   - block completion if required checks fail
+5. **Human-readable finish state**
+   - when you come back, you should see what changed, what passed, what failed, and whether it is safe to merge
+
+For higher-risk code, keep the guardrails stricter:
+- no schema or migration changes without targeted tests
+- no billing or payment-flow changes without explicit verification
+- no secret or config changes outside clearly allowed files
+- hard stop on flaky, skipped, or missing checks
+
+If your main concern is production reliability, read the deeper walkthrough:
+- [How to Structure Autonomous AI Agent Workflows for Production Reliability](https://ralphworkflow.com/blog/how-to-structure-autonomous-ai-agent-workflows-for-production-reliability)
+
 ## Who this is for
 
 Ralph Workflow fits best if you are:
@@ -87,6 +116,7 @@ If yes, the workflow is doing its job.
 
 Next:
 
-- [Start here on one real task](../../START_HERE_RALPHWORKFLOW.md)
+- [Start here on one real task](../../START_HERE.md)
+- [Example workflow composition](../examples/workflow_composition_example.md)
 - [Spec-driven AI agent guide](./spec_driven_ai_agent.md)
 - [Review bundle example](../examples/review_bundle_example.md)

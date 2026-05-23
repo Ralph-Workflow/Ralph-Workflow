@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-23T15:00:26
-Chosen lane: **stackoverflow_answer_handoff_packet**
+Generated: 2026-05-23T16:10:00
+Chosen lane: **repo_conversion_proof_asset**
 
 ## Why this lane
-- A fresh StackOverflow answer draft already exists and the other active lanes are still inside measurement windows; advance a posting/reuse handoff packet instead of regenerating the same demand-capture lane.
+- The StackOverflow reuse packet already exists and the external lanes are still in measurement windows; ship a missing repo proof asset instead of refreshing the same handoff packet again.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 1 owned-content posts already shipped in the last 36 hours.
 - 13 directory submissions already shipped in the last 24 hours.
@@ -18,6 +18,7 @@ Chosen lane: **stackoverflow_answer_handoff_packet**
 - Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
+- The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.
 
 ## Shared findings reused
 - adoption_metrics_latest.json: Codeberg movement is the primary success gate
@@ -29,9 +30,8 @@ Chosen lane: **stackoverflow_answer_handoff_packet**
 ## Recent owned-content already shipped
 - AI Coding Tool Comparison: Claude Code, Cursor, Aider, and the Workflow Layer Most Teams Actually Need (telegraph)
 
-## Immediate StackOverflow handoff work
-- Reuse the existing draft(s) in `drafts/stackoverflow/` instead of rerunning the search lane
-- Package the best answer for manual posting or near-term reuse on other high-intent developer surfaces
-- Keep the answer vendor-neutral, helpful first, and Codeberg-primary only where it naturally supports the answer
-- If live posting is blocked, reuse the draft as a proof asset for comparison pages, outbound follow-ups, or future Q&A surfaces instead of letting it idle
-- Do not treat another zero-draft StackOverflow scan as progress while a fresh answer asset already exists
+## Immediate repo proof-asset work
+- Ship one missing proof asset that helps a repo visitor understand how the workflow composes planning, build, verification, and morning-after review
+- Reuse the existing first-task, review-bundle, and market-positioning artifacts instead of creating another broad top-level rewrite
+- Keep Codeberg as the primary CTA and add the new proof asset to the first-run path only where it reduces evaluator friction
+- Do not count another StackOverflow handoff refresh as progress while the current packet is already fresh

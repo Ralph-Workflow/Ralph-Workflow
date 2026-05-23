@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "high_risk",
-    "primary_failure_mode": "Architecture verifier freshness/signoff is live-green again, but end-to-end certification remains externally blocked by the marketing owner loop: marketing-daily is timing out and the marketing independent artifact is stale/failing.",
-    "most_urgent_fix": "Keep architecture on qualified pass; clear the marketing-daily timeout, refresh the marketing independent artifact, and only reopen full-green certification after marketing produces fresh pass evidence and real primary-repo movement."
+    "primary_failure_mode": "Live red is localized to the marketing owner loop: marketing-daily most recently timed out and the marketing independent verifier is fail-closed on runner/momentum/workflow blockers.",
+    "most_urgent_fix": "Repair the marketing owner loop runtime and tactic state first; keep architecture on qualified pass until marketing produces fresh healthy evidence."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-23T14:25:02.761948+02:00",
+    "checked_at": "2026-05-23T15:46:24.147064+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus jobs.json comparison with explicit live-vs-persisted separation",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -106,30 +106,31 @@
   "findings": [
     {
       "severity": "high",
-      "title": "Marketing owner loop is the live blocker: timeout + stale/failing certification + flat adoption window",
-      "mechanism": "health_monitor_latest.json shows marketing-daily:timeout, marketing_loop_independent_verification.json is stale and verdict=fail, and marketing_workflow_audit_latest.json still reports primary repo adoption flat.",
+      "title": "Marketing owner loop is the live blocker",
+      "mechanism": "health_monitor_latest.json reports marketing-daily timeout plus marketing fail-closed review-followup escalations; loop_integrity_latest.json marks autonomous-marketing-stack error; marketing_loop_independent_verification.json stays fail.",
       "source_layer": "cross-loop ownership",
       "root_cause": "The remaining red state is inside the marketing owner loop, not the architecture watchdog path.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
       ],
       "confidence": 0.99,
-      "recommended_fix": "Repair the marketing-daily runtime path, rerun the marketing independent verifier so its artifact is fresh, and keep certification closed until Codeberg movement or a tactic replacement is proven."
+      "recommended_fix": "Repair marketing-daily and clear the runner/momentum/workflow blockers before any full-green claim."
     },
     {
       "severity": "medium",
-      "title": "Architecture verifier now needs to treat marketing-owned runtime failures as external watchpoints instead of architecture blockers",
-      "mechanism": "The verifier stack was classifying marketing-owned timeout/staleness evidence as architecture failure, which kept architecture signoff red even when the blocker belonged to the marketing loop.",
+      "title": "Architecture independent verifier false-green hole was repaired this run",
+      "mechanism": "The verifier previously risked overwriting prerequisite evidence failures before verdict synthesis; it now keeps those errors in the final decision path.",
       "source_layer": "verification contract",
-      "root_cause": "Owner-boundary classification in the architecture verifier stack was too narrow.",
+      "root_cause": "Precondition errors were not carried into the final verdict path.",
       "evidence_refs": [
         "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
       ],
-      "confidence": 0.96,
-      "recommended_fix": "Keep the broader marketing-owner classification so architecture stays qualified-pass while external marketing incidents remain red."
+      "confidence": 0.98,
+      "recommended_fix": "Keep the current fail-closed precondition handling and reverify after each architecture artifact refresh."
     },
     {
       "severity": "low",
@@ -147,55 +148,44 @@
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Keep architecture signoff coherent after refreshes and owner-boundary checks",
-      "why_now": "The watchdog should not misclassify marketing-owned runtime incidents as local architecture failures.",
-      "expected_effect": "Architecture verifier can pass in qualified mode while keeping the real red owner localized."
+      "goal": "Keep architecture verifier fail-closed on bad prerequisite evidence",
+      "why_now": "False-green signoff is worse than a visible red blocker.",
+      "expected_effect": "Architecture verifier cannot silently pass when required evidence is stale or contradictory."
     },
     {
       "order": 2,
-      "goal": "Clear the marketing-daily timeout and refresh marketing independent certification",
-      "why_now": "The live red path is a marketing runtime failure plus stale/failing marketing signoff.",
-      "expected_effect": "Marketing returns to a fresh measurable state instead of timing out and aging its own verifier artifact."
+      "goal": "Repair the marketing owner loop runtime and refresh its independent artifact",
+      "why_now": "The live red remains marketing-owned and blocks end-to-end green.",
+      "expected_effect": "Marketing returns to a fresh measurable state with current owner evidence."
     },
     {
       "order": 3,
-      "goal": "Earn outcome movement on the primary repo or replace the tactic again",
-      "why_now": "Even after runtime repair, Codeberg adoption is still flat across the measurement window.",
-      "expected_effect": "Full-green certification only becomes credible after real outcome movement."
+      "goal": "Reopen full-green only after marketing evidence turns healthy",
+      "why_now": "Current runner, momentum, and workflow evidence are still red.",
+      "expected_effect": "Architecture signoff stays honest about owner-localized blockers."
     }
   ],
   "repairs_applied_this_run": [
     {
-      "status": "reclassified_external_runtime_failures",
-      "target": "architecture verifier stack",
-      "change": "Broadened owner-boundary classification so marketing-owned timeout/staleness failures stay external watchpoints inside the architecture verifier stack.",
+      "status": "fixed_independent_verifier_precondition_error_handling",
+      "target": "architecture independent verifier",
+      "change": "Preserved missing/stale prerequisite evidence errors through final verdict synthesis so false-green output cannot bypass them.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py"
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py"
       ]
     },
     {
-      "status": "stopped_verifier_self_invalidation",
-      "target": "architecture verifier freshness loop",
-      "change": "Stopped the verifier from rewriting agent_architecture_latest.* so a successful verifier run no longer invalidates itself on the next freshness check.",
+      "status": "refreshed_loop_integrity_evidence",
+      "target": "loop integrity artifact",
+      "change": "Reran loop integrity so architecture verification is grounded on fresh live topology and owner-loop state.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ]
     },
     {
-      "status": "refreshed_architecture_artifacts",
-      "target": "architecture latest JSON/MD",
-      "change": "Updated the architecture audit artifacts to the current blocker set: marketing timeout, stale/failing marketing independent artifact, and flat primary-repo adoption.",
-      "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md"
-      ]
-    },
-    {
-      "status": "reran_architecture_independent_verification_and_verifier",
-      "target": "independent architecture verification + verifier",
-      "change": "Reran the architecture independent verifier and the architecture verifier against the refreshed report and live runtime evidence.",
+      "status": "reran_architecture_checker_independent_verifier_and_verifier",
+      "target": "architecture audit stack",
+      "change": "Reran checker, independent verification, and verifier against the refreshed architecture report and live owner evidence.",
       "proof": [
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
         "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
@@ -209,14 +199,14 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
     "summary": "Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.",
-    "checked_at": "2026-05-23T14:24:21.278862+02:00"
+    "checked_at": "2026-05-23T15:46:31.420361+02:00"
   },
   "what_still_needs_independent_verification": [
-    "Fresh marketing independent pass after marketing-daily stops timing out and the primary-repo measurement window shows movement or a newer tactic replacement."
+    "Fresh healthy marketing independent signoff after marketing-daily/runtime and runner/momentum/workflow blockers are cleared."
   ],
   "highest_risk_unresolved_issue": {
-    "title": "Marketing owner loop remains red on runtime stability and outcome movement",
-    "why": "marketing-daily timed out, its independent artifact is stale/failing, and Codeberg adoption is still flat, so full-green certification would be false."
+    "title": "Marketing owner loop remains red on runtime stability and outcome health",
+    "why": "marketing-daily most recently timed out, and marketing independent verification is fail-closed on runner, momentum, and workflow blockers, so a full-green architecture claim would be false."
   },
   "runtime_assertions": {
     "ownership_boundaries_ok": true,
@@ -235,7 +225,7 @@
     ],
     "architecture_verifier_status": "pass",
     "architecture_verifier_errors": [],
-    "architecture_verifier_checked_at": "2026-05-23T14:24:21.278862+02:00",
+    "architecture_verifier_checked_at": "2026-05-23T15:46:31.420361+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "autonomous-marketing-stack": "error",
@@ -247,21 +237,31 @@
       "codeberg-github-mirror-sync": "owner_only",
       "user-crontab-ownership": "ok"
     },
-    "health_monitor_issues_found": 4,
+    "health_monitor_issues_found": 14,
     "health_monitor_issue_names": [
       "marketing-daily",
       "marketing_independent_verification",
+      "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
+      "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with",
+      "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
+      "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g",
+      "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without",
       "marketing-daily_escalation",
-      "marketing_independent_verification_escalation"
+      "marketing_independent_verification_escalation",
+      "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
+      "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation",
+      "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation",
+      "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g_escalation",
+      "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without_escalation"
     ],
     "market_intelligence_generated_at": "2026-05-23T08:29:23.615191",
-    "docs_verifier_checked_at": "2026-05-23 08:57 UTC",
-    "marketing_workflow_audit_generated_at": "2026-05-23T14:09:52.761250",
+    "docs_verifier_checked_at": null,
+    "marketing_workflow_audit_generated_at": "2026-05-23T15:43:14.222150",
     "small_gate_passed": "AGENT_ARCHITECTURE_OK"
   },
   "verifier_invalidation": {
     "status": "pass",
-    "checked_at": "2026-05-23T14:24:21.278862+02:00",
+    "checked_at": "2026-05-23T15:46:31.420361+02:00",
     "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
     "errors": []
   }

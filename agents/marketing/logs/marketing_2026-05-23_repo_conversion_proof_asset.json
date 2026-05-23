@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-05-23T15:51:35.038351",
+  "timestamp": "2026-05-23T16:10:00",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
-    "channel": "stackoverflow_answer_handoff_packet",
-    "title": "Distribution lane decision: stackoverflow_answer_handoff_packet",
+    "channel": "repo_conversion_proof_asset",
+    "title": "Distribution lane decision: repo_conversion_proof_asset",
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_distribution_action_brief.md"
   },
   "why_this_action": {
@@ -15,7 +15,7 @@
       "market_intelligence_latest.json: reusable competitor comparisons and positioning truths",
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
-    "reasoning": "A fresh StackOverflow answer draft already exists and the other active lanes are still inside measurement windows; advance a posting/reuse handoff packet instead of regenerating the same demand-capture lane.",
+    "reasoning": "The StackOverflow reuse packet already exists and the external lanes are still in measurement windows; ship a missing repo proof asset instead of refreshing the same handoff packet again.",
     "supporting_reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "1 owned-content posts already shipped in the last 36 hours.",
@@ -30,7 +30,8 @@
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
       "Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.",
       "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
-      "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window."
+      "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
+      "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress."
     ]
   },
   "result": {

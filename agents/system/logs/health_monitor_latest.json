@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-23T14:23:31.632402",
+  "ts": "2026-05-23T15:45:14.146062",
   "jobs_checked": 20,
-  "issues_found": 4,
+  "issues_found": 14,
   "issues": [
     {
       "job_id": "fe8f8f62-cb85-4d49-9181-fc5f6c958950",
@@ -17,19 +17,60 @@
     {
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification",
-      "category": "stale_artifact",
+      "category": "loop_verification_fail",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
-      "artifact_age_minutes": 328.35,
-      "max_age_minutes": 240,
-      "likely_cause": "Required runtime artifact is stale"
+      "verdict": "fail",
+      "required_verdict": "pass",
+      "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
+      "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Marketing runner bundle is not healthy.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is not healthy."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Momentum watchdog status is needs_attention with actions: primary_repo_adoption_flat, pending_repairs_detected.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Momentum watchdog status is needs_attention with actions: primary_repo_adoption_flat, pending_repairs_detected."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Workflow audit still reports needs_repair.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit still reports needs_repair."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Workflow audit shows the primary repo adoption goal is still flat in the current window without a live measurement-pending repair state.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit shows the primary repo adoption goal is still flat in the current window without a live measurement-pending repair state."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Workflow audit still has failing tactics without a live measurement-pending repair window.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit still has failing tactics without a live measurement-pending repair window."
     },
     {
       "job_id": "fe8f8f62-cb85-4d49-9181-fc5f6c958950",
       "name": "marketing-daily_escalation",
       "category": "escalation_required",
       "last_error": "cron: job execution timed out",
-      "likely_cause": "Incident escalation level=critical: marketing-daily:timeout repeat_count=11",
-      "repeats_in_recent_history": 11,
+      "likely_cause": "Incident escalation level=critical: marketing-daily:timeout repeat_count=17",
+      "repeats_in_recent_history": 17,
       "owner_domain": "marketing",
       "incident_key": "marketing-daily::timeout",
       "escalation_level": "critical",
@@ -39,12 +80,82 @@
       "job_id": "__artifacts__",
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
-      "last_error": "",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:stale_artifact repeat_count=6",
-      "repeats_in_recent_history": 6,
+      "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=89",
+      "repeats_in_recent_history": 89,
       "owner_domain": "marketing",
-      "incident_key": "marketing_independent_verification::stale_artifact",
+      "incident_key": "marketing_independent_verification::loop_verification_fail",
       "escalation_level": "critical",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
+      "category": "escalation_required",
+      "last_error": "Marketing runner bundle is not healthy.",
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=32",
+      "repeats_in_recent_history": 32,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
+      "escalation_level": "critical",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with_escalation",
+      "category": "escalation_required",
+      "last_error": "Momentum watchdog status is needs_attention with actions: primary_repo_adoption_flat, pending_repairs_detected.",
+      "likely_cause": "Incident escalation level=owner: marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with:review_followup_required repeat_count=2",
+      "repeats_in_recent_history": 2,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with::review_followup_required",
+      "escalation_level": "owner",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair_escalation",
+      "category": "escalation_required",
+      "last_error": "Workflow audit still reports needs_repair.",
+      "likely_cause": "Incident escalation level=owner: marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair:review_followup_required repeat_count=2",
+      "repeats_in_recent_history": 2,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair::review_followup_required",
+      "escalation_level": "owner",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g_escalation",
+      "category": "escalation_required",
+      "last_error": "Workflow audit shows the primary repo adoption goal is still flat in the current window without a live measurement-pending repair state.",
+      "likely_cause": "Incident escalation level=owner: marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g:review_followup_required repeat_count=2",
+      "repeats_in_recent_history": 2,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g::review_followup_required",
+      "escalation_level": "owner",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without_escalation",
+      "category": "escalation_required",
+      "last_error": "Workflow audit still has failing tactics without a live measurement-pending repair window.",
+      "likely_cause": "Incident escalation level=owner: marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without:review_followup_required repeat_count=2",
+      "repeats_in_recent_history": 2,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without::review_followup_required",
+      "escalation_level": "owner",
       "blocked_by": [
         "marketing_independent_verification"
       ]
@@ -52,16 +163,52 @@
   ],
   "repairs_attempted": [
     {
+      "type": "immediate_review_followup_owner_action",
+      "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779543898311:88\"\n}"
+    },
+    {
+      "type": "immediate_review_followup_owner_action",
+      "job": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779543900115:89\"\n}"
+    },
+    {
+      "type": "immediate_review_followup_owner_action",
+      "job": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779543901810:90\"\n}"
+    },
+    {
+      "type": "immediate_review_followup_owner_action",
+      "job": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779543903508:91\"\n}"
+    },
+    {
+      "type": "immediate_review_followup_owner_action",
+      "job": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779543905260:92\"\n}"
+    },
+    {
       "type": "owner_loop_escalation",
       "job": "marketing-daily_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779543906932:93\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779543908613:94\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779543910445:95\"\n}"
     }
   ]
 }

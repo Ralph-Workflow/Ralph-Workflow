@@ -410,5 +410,5 @@ Apollo.io is a managed account-based outbound and distribution channel for Ralph
 
 ### Priority Actions (from SEO analysis)
 - Fix top on-page SEO issues (current score: 70/100)
-- Create content targeting: spec-driven AI agent, AI coding workflow automation, Claude Code automation
+- Create content targeting: spec-driven AI agent, Claude Code automation, Claude Code unattended
 - Build backlinks: submit to directories, guest post, earn citations

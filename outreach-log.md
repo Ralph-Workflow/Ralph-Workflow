@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-23 (Saturday) — Reddit monitoring (13:32 UTC / 15:32 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-23_1532.md`
+- **Scan summary:** 23 surfaced from fresh indexed web search, 4 shortlisted, 19 rejected.
+- **Coverage note:** direct Reddit coverage is still degraded from this server, so this pass used indexed web search only and should be treated as **partial visibility**, not full coverage.
+- **Current verdict:** credible discussion opportunities still exist, but only **0-1** are honest RalphWorkflow mention fits after degraded-coverage caution, thread-family saturation, and no-product-value filtering.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+  - `r/AIAgentsInAction` — "Everyone says they have AI agents in production. Nobody can clearly answer ‘how do you know it’s actually working’"
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+- **Repeated pains worth tracking:** production failure, review tax, visible finish state, proof-of-run, graceful downgrade paths, and morning-after evidence of what changed / what passed.
+- **Self-improving fix executed:** tightened the `review_tax` query family inside `agents/marketing/reddit_monitor.py` so the monitor now requires stronger coding-review context (`PR`, `merge`, `agent`) and stops drifting into tax-return communities.
+- **Posting note:** No posting attempted. Fail closed while direct Reddit coverage remains degraded.
+
 ## 2026-05-23 (Saturday) — AI Tools (aitools.inc) free listing submission executed (11:49 UTC / 13:49 CEST)
 - **What I executed:** submitted **Ralph Workflow** through the **AI Tools** free listing lane at `https://aitools.inc/submit`, which routes through a public Typeform. I used **Codeberg** (`https://codeberg.org/RalphWorkflow/Ralph-Workflow`) as the primary tool URL so any approved listing sends evaluators to the primary repo first.
 - **Verification:** a browser-run Playwright submission reached the Typeform thank-you state with the visible confirmation texts **"Thanks!"** and **"We'll be in touch over the next few days to proceed with your listing."**. Live log: `agents/marketing/logs/marketing_2026-05-23_aitools_inc_submission.json`.

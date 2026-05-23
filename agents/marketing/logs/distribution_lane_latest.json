@@ -1,6 +1,6 @@
 {
-  "lane": "stackoverflow_answer_handoff_packet",
-  "reason": "A fresh StackOverflow answer draft already exists and the other active lanes are still inside measurement windows; advance a posting/reuse handoff packet instead of regenerating the same demand-capture lane.",
+  "lane": "repo_conversion_proof_asset",
+  "reason": "The StackOverflow reuse packet already exists and the external lanes are still in measurement windows; ship a missing repo proof asset instead of refreshing the same handoff packet again.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "1 owned-content posts already shipped in the last 36 hours.",
@@ -15,7 +15,8 @@
     "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
     "Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.",
     "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
-    "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window."
+    "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
+    "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress."
   ],
   "owned_content_posts_last_36h": 1,
   "unsubmitted_directory_channels": [],

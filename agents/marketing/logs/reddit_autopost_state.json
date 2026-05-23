@@ -1,6 +1,6 @@
 {
-  "last_attempt_at": "2026-05-23T10:40:23.680575",
-  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-23_1033.md",
-  "last_attempt_status": "no_unused_opportunity",
-  "last_detail": "opportunity_state:fully_consumed; opportunities:0"
+  "last_attempt_at": "2026-05-23T15:47:41.328146",
+  "last_report": "/home/mistlight/.openclaw/workspace/seo-reports/reddit_monitor_2026-05-23_1533.md",
+  "last_attempt_status": "weak_fit_only_skip",
+  "last_detail": "opportunity_state:weak_fit_only; opportunities:10"
 }

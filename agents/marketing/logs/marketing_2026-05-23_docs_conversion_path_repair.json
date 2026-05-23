@@ -1,0 +1,53 @@
+{
+  "timestamp_utc": "2026-05-23T13:31:09Z",
+  "action_type": "site_conversion_repair",
+  "status": "deployed",
+  "summary": "Shipped a docs-surface conversion repair to push evaluators toward the Codeberg-first path and a real first task instead of leaving the docs in browse-only mode.",
+  "why_this_action": [
+    "adoption_metrics_latest.json showed Codeberg and GitHub adoption flat across the recent window, so the highest-leverage move was improving conversion on owned surfaces instead of adding more overlapping outreach.",
+    "distribution_lane_latest.md and the audit artifacts showed multiple outreach and directory lanes already inside active measurement windows, making another same-family distribution action low-signal overlap.",
+    "reddit_monitor_latest.md and reddit_post_analysis.json indicated degraded Reddit coverage / fail-closed execution, so live social posting was not the best executable lane from this runtime."
+  ],
+  "shared_findings_used": [
+    "agents/marketing/logs/adoption_metrics_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/reddit_post_analysis.json",
+    "seo-reports/reddit_monitor_latest.md",
+    "seo-reports/competitor_analysis_2026-05-23.md"
+  ],
+  "changes": [
+    {
+      "file": "Ralph-Site/app/views/docs/_injected_navbar.html.erb",
+      "change": "Added a visible docs navbar CTA: Start Here -> /docs/getting-started."
+    },
+    {
+      "file": "Ralph-Site/app/views/shared/_site_footer.html.erb",
+      "change": "Added a docs-only conversion panel with Codeberg-first CTA, first-task guide CTA, and prompt-template CTA framed around the morning-after merge test."
+    }
+  ],
+  "verification": {
+    "local_verify": "bin/rails verify passed",
+    "pre_publish_release_fidelity": "failed before publish with release drift detected: public/docs/index.html",
+    "git_commit": "4f4b98862e1ac6b6327c8a7e97502c7328c26a42",
+    "git_push": "origin/main updated to 4f4b988",
+    "deploy": "bundle exec cap production deploy executed via repo Ruby path and completed successfully",
+    "post_publish_release_fidelity": "RELEASE_RUNTIME_FIDELITY_OK (5 critical paths)",
+    "live_checks": [
+      "https://ralphworkflow.com/docs/ returned 200",
+      "live HTML contains: Start Here",
+      "live HTML contains: Best next step",
+      "live HTML contains: Choose your first task",
+      "live HTML contains: Inspect Codeberg first"
+    ]
+  },
+  "expected_effect": {
+    "primary_goal": "Increase docs-surface evaluator flow into Codeberg and first-run/task-selection pages.",
+    "measurement_hint": "Watch Codeberg stars/watchers/forks and any docs-path engagement deltas before adding more same-family outreach."
+  },
+  "notes": [
+    "This run chose owned-surface conversion repair over new outreach because current distribution lanes were already saturated with overlapping measurement windows.",
+    "No separate runtime-code repair was needed beyond using the repo's Ruby path for deploy execution on this host."
+  ]
+}

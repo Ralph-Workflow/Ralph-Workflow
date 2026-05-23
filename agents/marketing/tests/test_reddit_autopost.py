@@ -314,6 +314,27 @@ class RedditAutopostTests(unittest.TestCase):
         self.assertIn("free/open-source", handoff_body)
         self.assertIn("free/open-source", mixed_team_body)
 
+    def test_emergency_rewrite_falls_back_to_safe_codeberg_primary_body(self):
+        opp = reddit_autopost.Opportunity(
+            rank=1,
+            title="Claude Code stuck in approval loop",
+            url="https://www.reddit.com/r/ClaudeCode/comments/example/",
+            community="r/ClaudeCode",
+            angle="approval drag is really a weak stop-condition problem",
+            freshness="today",
+            mention_fit="**high**",
+        )
+        recent = [
+            "Approval mode stops feeling useful when every pause means another rescue loop instead of a real judgment call.",
+            "The session transcript is not the output — the diff plus the test results are the output.",
+            "What I set as the approval gate: finished code, a diff I can read in two minutes, and no unresolved decisions longer than a sentence.",
+        ]
+        body = reddit_autopost.emergency_rewrite(opp, recent=recent)
+        self.assertIn(reddit_autopost.CODEBERG_PRIMARY_URL, body)
+        self.assertIn("finished code", body.lower())
+        self.assertFalse(reddit_autopost.contains_banned_phrase(body))
+        self.assertFalse(reddit_autopost.candidate_policy_issues(body, opp))
+        self.assertFalse(reddit_autopost.opening_is_repetitive(body, recent))
 
     def test_choose_opportunity_prefers_medium_plus_fit_over_low_fit_same_day_thread(self):
         medium = reddit_autopost.Opportunity(

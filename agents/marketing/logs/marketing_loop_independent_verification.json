@@ -1,27 +1,27 @@
 {
-  "checked_at": "2026-05-23T08:55:08.555938+02:00",
+  "checked_at": "2026-05-23T15:43:14.412915+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=False generated_at=2026-05-23T08:55:08.534716"
+      "summary": "runner ok=False generated_at=2026-05-23T15:43:14.389302"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
-      "summary": "momentum status=watch; actions=[]; watch_actions=['reddit_channel_blocked', 'primary_repo_adoption_flat']"
+      "summary": "momentum status=needs_attention; actions=['primary_repo_adoption_flat', 'pending_repairs_detected']; watch_actions=[]"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json",
-      "summary": "repair_window_status=measurement_pending; failing_tactics=['reddit_style_repetition', 'primary_repo_flat_window', 'mirror_repo_flat_window']; measurement_pending_reasons=['primary_repo_flat', 'mirror_repo_flat', 'repetitive_outreach']"
+      "summary": "repair_window_status=needs_repair; failing_tactics=['reddit_style_repetition', 'primary_repo_flat_window', 'mirror_repo_flat_window', 'same_family_distribution_overlap', 'same_family_outreach_overlap']; measurement_pending_reasons=[]"
     }
   ],
-  "watchpoints": [
-    "primary repo adoption remains measurement-pending after shipped repairs",
-    "reddit is blocked from this environment, but a replacement distribution execution has already shipped"
-  ],
+  "watchpoints": [],
   "blockers": [
     "Marketing runner bundle is not healthy.",
-    "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
+    "Momentum watchdog status is needs_attention with actions: primary_repo_adoption_flat, pending_repairs_detected.",
+    "Workflow audit still reports needs_repair.",
+    "Workflow audit shows the primary repo adoption goal is still flat in the current window without a live measurement-pending repair state.",
+    "Workflow audit still has failing tactics without a live measurement-pending repair window."
   ]
 }

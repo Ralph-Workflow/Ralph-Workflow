@@ -1,11 +1,11 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-23T14:25:02.761948+02:00
+- Checked: 2026-05-23T15:46:24.147064+02:00
 - Overall health: high_risk
-- Primary failure mode: Architecture verifier freshness/signoff is live-green again, but end-to-end certification remains externally blocked by the marketing owner loop: marketing-daily is timing out and the marketing independent artifact is stale/failing.
-- Most urgent fix: Keep architecture on qualified pass; clear the marketing-daily timeout, refresh the marketing independent artifact, and only reopen full-green certification after marketing produces fresh pass evidence and real primary-repo movement.
+- Primary failure mode: Live red is localized to the marketing owner loop: marketing-daily most recently timed out and the marketing independent verifier is fail-closed on runner/momentum/workflow blockers.
+- Most urgent fix: Repair the marketing owner loop runtime and tactic state first; keep architecture on qualified pass until marketing produces fresh healthy evidence.
 - Verifier status: independently verified pass
-- Verifier checked: 2026-05-23T14:24:21.278862+02:00
+- Verifier checked: 2026-05-23T15:46:31.420361+02:00
 - Verifier blockers: none
 
 ## Live topology
@@ -16,45 +16,44 @@
 
 ## Severity-ranked findings
 
-1. **High — Marketing owner loop is the live blocker: timeout + stale/failing certification + flat adoption window**
-   - Mechanism: health_monitor_latest.json shows marketing-daily:timeout, marketing_loop_independent_verification.json is stale and verdict=fail, and marketing_workflow_audit_latest.json still reports primary repo adoption flat.
-   - Recommended fix: Repair the marketing-daily runtime path, rerun the marketing independent verifier so its artifact is fresh, and keep certification closed until Codeberg movement or a tactic replacement is proven.
+1. **High — Marketing owner loop is the live blocker**
+   - Mechanism: health_monitor_latest.json reports marketing-daily timeout plus marketing fail-closed review-followup escalations; loop_integrity_latest.json marks autonomous-marketing-stack error; marketing_loop_independent_verification.json stays fail.
+   - Recommended fix: Repair marketing-daily and clear the runner/momentum/workflow blockers before any full-green claim.
 
-2. **Medium — Architecture verifier now needs to treat marketing-owned runtime failures as external watchpoints instead of architecture blockers**
-   - Mechanism: The verifier stack was classifying marketing-owned timeout/staleness evidence as architecture failure, which kept architecture signoff red even when the blocker belonged to the marketing loop.
-   - Recommended fix: Keep the broader marketing-owner classification so architecture stays qualified-pass while external marketing incidents remain red.
+2. **Medium — Architecture independent verifier false-green hole was repaired this run**
+   - Mechanism: the verifier previously risked overwriting prerequisite evidence failures before verdict synthesis; it now keeps those errors in the final decision path.
+   - Recommended fix: Keep the current fail-closed precondition handling and reverify after each architecture artifact refresh.
 
 3. **Low — Persisted disabled cron history still exists but is not live-topology drift**
-   - Mechanism: jobs.json still contains disabled historical entries while openclaw cron list --json reports 20 live enabled jobs and 0 live disabled jobs.
+   - Mechanism: jobs.json still contains disabled historical entries while live cron has 20 enabled / 0 disabled.
    - Recommended fix: Keep reporting persisted disabled history separately from the live scheduler topology.
 
 ## Ordered fix plan
 
-1. Keep architecture signoff coherent after refreshes and owner-boundary checks
-2. Clear the marketing-daily timeout and refresh marketing independent certification
-3. Earn outcome movement on the primary repo or replace the tactic again
+1. Keep architecture verifier fail-closed on bad prerequisite evidence
+2. Repair the marketing owner loop runtime and refresh its independent artifact
+3. Reopen full-green only after marketing evidence turns healthy
 
 ## Repaired this run
 
-- **reclassified_external_runtime_failures** — Broadened owner-boundary classification so marketing-owned timeout/staleness failures stay external watchpoints inside the architecture verifier stack.
-- **stopped_verifier_self_invalidation** — Stopped the verifier from rewriting agent_architecture_latest.* so a successful verifier run no longer invalidates itself on the next freshness check.
-- **refreshed_architecture_artifacts** — Updated the architecture audit artifacts to the current blocker set: marketing timeout, stale/failing marketing independent artifact, and flat primary-repo adoption.
-- **reran_architecture_independent_verification_and_verifier** — Reran the architecture independent verifier and the architecture verifier against the refreshed report and live runtime evidence.
+- **fixed_independent_verifier_precondition_error_handling** — Preserved missing/stale prerequisite evidence errors through final verdict synthesis so false-green output cannot bypass them.
+- **refreshed_loop_integrity_evidence** — Reran loop integrity so architecture verification is grounded on fresh live topology and owner-loop state.
+- **reran_architecture_checker_independent_verifier_and_verifier** — Reran checker, independent verification, and verifier against the refreshed architecture report and live owner evidence.
 
 ## Independent verification
 
 - Performed: performed_qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Checked at: 2026-05-23T14:24:21.278862+02:00
+- Checked at: 2026-05-23T15:46:31.420361+02:00
 
 ## Still needs independent verification
 
-- Fresh marketing independent pass after marketing-daily stops timing out and the primary-repo measurement window shows movement or a newer tactic replacement.
+- Fresh healthy marketing independent signoff after marketing-daily/runtime and runner/momentum/workflow blockers are cleared.
 
 ## Highest-risk unresolved loop issue
 
-- Marketing owner loop remains red on runtime stability and outcome movement
-  - Why: marketing-daily timed out, its independent artifact is stale/failing, and Codeberg adoption is still flat, so full-green certification would be false.
+- Marketing owner loop remains red on runtime stability and outcome health
+  - Why: marketing-daily most recently timed out, and marketing independent verification is fail-closed on runner, momentum, and workflow blockers, so a full-green architecture claim would be false.
 
 ## Small gate passed
 
