@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -66,33 +65,6 @@ def _collect_pytest_files(root: Path) -> tuple[Path, ...]:
     return tuple(sorted(files))
 
 
-def _test_file_weight(path: Path) -> int:
-    """Approximate a test file's runtime by counting test functions it defines."""
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
-        return 1
-    weight = sum(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name.startswith("test_")
-        for node in ast.walk(tree)
-    )
-    return weight or 1
-
-
-def _weighted_file_sort_key(item: tuple[Path, int]) -> tuple[int, str]:
-    path, weight = item
-    return -weight, str(path)
-
-
-def _shard_balance_key(
-    index: int,
-    shard_weights: list[int],
-    shard_files: list[list[str]],
-) -> tuple[int, int, int]:
-    return shard_weights[index], len(shard_files[index]), index
-
-
 def _build_pytest_shards(*, cwd: Path) -> list[tuple[str, tuple[str, ...]]]:
     """Build balanced pytest shard commands for the filtered test suite."""
     root = _workspace_root(cwd)
@@ -100,22 +72,11 @@ def _build_pytest_shards(*, cwd: Path) -> list[tuple[str, tuple[str, ...]]]:
     if not test_files:
         return []
 
-    weighted_files = sorted(
-        ((path, _test_file_weight(path)) for path in test_files),
-        key=_weighted_file_sort_key,
-    )
-    shard_count = min(_PYTEST_SHARD_COUNT, len(weighted_files))
+    shard_count = min(_PYTEST_SHARD_COUNT, len(test_files))
     shard_files: list[list[str]] = [[] for _ in range(shard_count)]
-    shard_weights = [0 for _ in range(shard_count)]
-    for path, weight in weighted_files:
-        shard_index = 0
-        for candidate_index in range(1, shard_count):
-            if _shard_balance_key(candidate_index, shard_weights, shard_files) < _shard_balance_key(
-                shard_index, shard_weights, shard_files
-            ):
-                shard_index = candidate_index
+    for index, path in enumerate(test_files):
+        shard_index = index % shard_count
         shard_files[shard_index].append(str(path.relative_to(root)))
-        shard_weights[shard_index] += weight
 
     return [
         (
