@@ -206,13 +206,14 @@ policy-loader-smoke:
 	@python -c "import sys; sys.stderr = open('/dev/null', 'w'); from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
 
 packaging-smoke:
+	-@rm -rf $(shell realpath .)/../tmp/packaging-smoke
 	@mkdir -p $(shell realpath .)/../tmp
 	@python -m venv $(shell realpath .)/../tmp/packaging-smoke
 	@PYTHONPATH="" $(shell realpath .)/../tmp/packaging-smoke/bin/pip install --quiet $(shell realpath .)/../ralph-workflow/
 	@ls -la $(shell realpath .)/../tmp/packaging-smoke/bin/ralph-prompt
 	@PYTHONPATH="" $(shell realpath .)/../tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"
 	@uv run pytest -q tests/test_ralph_prompt_entry.py
-	@rm -rf $(shell realpath .)/../tmp/packaging-smoke
+	-@rm -rf $(shell realpath .)/../tmp/packaging-smoke
 
 dist-binary:
 	@echo "Building PyInstaller binary..."

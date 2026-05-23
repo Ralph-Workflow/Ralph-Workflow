@@ -617,6 +617,8 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
 
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_: None)
+
     seen_envs: dict[str, dict[str, str]] = {}
 
     class FakeProcess:

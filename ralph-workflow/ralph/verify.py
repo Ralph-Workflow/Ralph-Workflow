@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,33 +40,108 @@ def _default_runner(
 
 # Full verification steps: lint, type check, and test suite.
 # docs, test-cov, and test-subprocess-e2e are excluded from the fast verify chain
-# to satisfy the 30-second hard budget. Tests run via direct pytest invocation
-# (not make test) to avoid the 11-shard sequential overhead. Coverage is enforced
-# by the full test-cov target which runs separately. Run `make docs` and
-# `make test-subprocess-e2e` separately for full verification.
+# to satisfy the 30-second hard budget. Tests run as 22 concurrent shards to
+# reduce tail latency without dropping coverage.
 _VERIFY_STEPS: tuple[tuple[str, ...], ...] = (
     ("lint",),
     ("typecheck",),
 )
 
+_PYTEST_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "core",
+        (
+            "tests/agents",
+            "tests/config",
+            "tests/display",
+            "tests/fixtures",
+            "tests/unit",
+        ),
+    ),
+    ("runtime", ("tests/mcp", "tests/pipeline", "tests/recovery")),
+    ("root-a", ("tests/test_[aA]*.py",)),
+    ("root-b", ("tests/test_[bB]*.py",)),
+    ("root-c", ("tests/test_[cC]*.py",)),
+    ("root-d", ("tests/test_[dD]*.py",)),
+    ("root-e-f", ("tests/test_[e-fE-F]*.py",)),
+    ("root-g-h", ("tests/test_[g-hG-H]*.py",)),
+    ("root-i-j", ("tests/test_[i-jI-J]*.py",)),
+    ("root-k-l", ("tests/test_[k-lK-L]*.py",)),
+    ("root-m", ("tests/test_[mM]*.py",)),
+    ("root-n", ("tests/test_[nN]*.py",)),
+    ("root-o", ("tests/test_[oO]*.py",)),
+    ("root-pa-pc", ("tests/test_p[a-cA-C]*.py",)),
+    ("root-pd-pf", ("tests/test_p[d-fD-F]*.py",)),
+    ("root-pg-pi", ("tests/test_p[g-iG-I]*.py",)),
+    ("root-pj-pl", ("tests/test_p[j-lJ-L]*.py",)),
+    ("root-po", ("tests/test_po*.py",)),
+    ("root-pr", ("tests/test_pr*.py",)),
+    ("root-q-s", ("tests/test_[q-sQ-S]*.py",)),
+    ("root-t-z", ("tests/test_[t-zT-Z]*.py",)),
+    ("integration", ("tests/integration",)),
+)
+
 _TEST_TIMEOUT_SECONDS = DEFAULT_SUITE_TIMEOUT_SECONDS
+_PYTEST_SHARD_WORKERS = 8
 
 
-def _run_tests(*, cwd: Path, runner: VerifyRunner, timeout: float) -> int:
-    """Run pytest directly to avoid 11-shard sequential overhead."""
-    pytest_cmd = (
-        "-m", "pytest", "tests", "-q", "-n", "4",
-        "--dist", "worksteal", "-m", "not subprocess_e2e",
-    )
-    result = runner("python", pytest_cmd, cwd=cwd, timeout=timeout)
-    if result.stdout:
-        print(result.stdout, end="", flush=True)
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr, flush=True)
-    return result.returncode
+def _expand_pytest_paths(cwd: Path, patterns: Sequence[str]) -> tuple[str, ...]:
+    """Expand pytest path globs relative to the workspace root."""
+    expanded: list[str] = []
+    for pattern in patterns:
+        matches = sorted(cwd.glob(pattern))
+        if not matches:
+            expanded.append(pattern)
+            continue
+        expanded.extend(str(match.relative_to(cwd)) for match in matches)
+    return tuple(expanded)
 
 
-_VERIFY_FAILURE_BANNER_TEMPLATE = """
+def _build_pytest_shards(*, cwd: Path) -> list[tuple[str, tuple[str, ...]]]:
+    """Build eight balanced shard commands for the filtered test suite."""
+    shard_specs: list[tuple[str, tuple[str, ...]]] = []
+    for label, patterns in _PYTEST_SHARDS:
+        shard_paths = _expand_pytest_paths(cwd, patterns)
+        shard_specs.append(
+            (
+                label,
+                (
+                    "-m",
+                    "pytest",
+                    *shard_paths,
+                    "-q",
+                    "-m",
+                    "not subprocess_e2e",
+                ),
+            )
+        )
+    return shard_specs
+
+
+def _run_pytest_shards(
+    *,
+    cwd: Path,
+    runner: VerifyRunner,
+    timeout: float,
+) -> list[tuple[str, ProcessResult]]:
+    shard_specs = _build_pytest_shards(cwd=cwd)
+    with ThreadPoolExecutor(
+        max_workers=min(_PYTEST_SHARD_WORKERS, len(shard_specs))
+    ) as executor:
+        futures = [
+            executor.submit(runner, "python", args, cwd=cwd, timeout=timeout)
+            for _label, args in shard_specs
+        ]
+        results = [future.result() for future in futures]
+    return [
+        (label, result)
+        for (label, _args), result in zip(shard_specs, results, strict=True)
+    ]
+
+
+def format_verify_failure_banner(*, failed_command: str) -> str:
+    """Return the formatted failure banner text for a failing verify command."""
+    return f"""
 ╔══════════════════════════════════════════════════════════════════════════════════╗
 ║                     ACTION REQUIRED FOR AI AGENTS                           ║
 ╠══════════════════════════════════════════════════════════════════════════════════════╣
@@ -89,11 +165,6 @@ Required next step:
 2. Re-run `make verify`.
 3. Do not stop until verification passes cleanly.
 """.strip("\n")
-
-
-def format_verify_failure_banner(*, failed_command: str) -> str:
-    """Return the formatted failure banner text for a failing verify command."""
-    return _VERIFY_FAILURE_BANNER_TEMPLATE.format(failed_command=failed_command)
 
 
 def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
@@ -132,17 +203,19 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         )
         return 1
 
-    pytest_timeout = remaining_budget
-
-    # Run tests directly via pytest to avoid 11-shard sequential overhead
-    test_result = _run_tests(cwd=cwd, runner=runner, timeout=pytest_timeout)
-    if test_result != 0:
-        print(
-            format_verify_failure_banner(failed_command="pytest tests"),
-            file=sys.stderr,
-            flush=True,
-        )
-        return test_result
+    shard_results = _run_pytest_shards(cwd=cwd, runner=runner, timeout=remaining_budget)
+    for shard_name, result in shard_results:
+        if result.stdout:
+            print(result.stdout, end="", flush=True)
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr, flush=True)
+        if result.returncode != 0:
+            print(
+                format_verify_failure_banner(failed_command=f"pytest {shard_name} shard"),
+                file=sys.stderr,
+                flush=True,
+            )
+            return result.returncode
 
     return 0
 

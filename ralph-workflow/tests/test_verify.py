@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import TYPE_CHECKING
 
 from ralph.executor.process import ProcessResult
@@ -13,9 +14,10 @@ if TYPE_CHECKING:
 
 
 class StubRunner:
-    def __init__(self, results: list[ProcessResult]) -> None:
-        self._results = list(results)
+    def __init__(self, responses: dict[tuple[str, tuple[str, ...]], ProcessResult]) -> None:
+        self._responses = dict(responses)
         self.calls: list[tuple[str, tuple[str, ...], str | Path | None, float | None]] = []
+        self._lock = threading.Lock()
 
     def __call__(
         self,
@@ -27,8 +29,13 @@ class StubRunner:
         timeout: float | None = None,
     ) -> ProcessResult:
         del env
-        self.calls.append((command, tuple(args), cwd, timeout))
-        return self._results.pop(0)
+        key = (command, tuple(args))
+        with self._lock:
+            self.calls.append((command, tuple(args), cwd, timeout))
+            try:
+                return self._responses[key]
+            except KeyError as exc:  # pragma: no cover - defensive test helper guard
+                raise AssertionError(f"Unexpected command: {key}") from exc
 
 
 def _result(
@@ -46,35 +53,230 @@ def _result(
     )
 
 
+
+def _verify_pytest_args() -> tuple[tuple[str, ...], ...]:
+    shard_args = [
+        (
+            "-m",
+            "pytest",
+            "tests/agents",
+            "tests/config",
+            "tests/display",
+            "tests/fixtures",
+            "tests/unit",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/mcp",
+            "tests/pipeline",
+            "tests/recovery",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[aA]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[bB]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[cC]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[dD]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[e-fE-F]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[g-hG-H]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[i-jI-J]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[k-lK-L]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[mM]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[nN]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[oO]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_p[a-cA-C]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_p[d-fD-F]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_p[g-iG-I]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_p[j-lJ-L]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_po*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_pr*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[q-sQ-S]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/test_[t-zT-Z]*.py",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+        (
+            "-m",
+            "pytest",
+            "tests/integration",
+            "-q",
+            "-m",
+            "not subprocess_e2e",
+        ),
+    ]
+    return tuple(shard_args)
+
+
+
 def test_main_runs_all_verify_steps_when_successful(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    pytest_cmd = (
-        "-m", "pytest", "tests", "-q", "-n", "4",
-        "--dist", "worksteal", "-m", "not subprocess_e2e",
-    )
+    shard_pytests = _verify_pytest_args()
+    shard_labels = [f"shard-{index:02d}" for index in range(1, len(shard_pytests) + 1)]
     runner = StubRunner(
-        [
-            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
-            _result(args=("typecheck",), returncode=0, stdout="typecheck ok\n"),
-            ProcessResult(
-                command=("python", *pytest_cmd),
-                returncode=0,
-                stdout="test ok\n",
-                stderr="",
+        {
+            ("make", ("lint",)): _result(args=("lint",), returncode=0, stdout="lint ok\n"),
+            ("make", ("typecheck",)): _result(
+                args=("typecheck",), returncode=0, stdout="typecheck ok\n"
             ),
-        ]
+            **{
+                ("python", shard_args): ProcessResult(
+                    command=("python", *shard_args),
+                    returncode=0,
+                    stdout=f"{label} ok\n",
+                    stderr="",
+                )
+                for label, shard_args in zip(shard_labels, shard_pytests, strict=True)
+            },
+        }
     )
 
     exit_code = main([], runner=runner, cwd=tmp_path)
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert [call[:2] for call in runner.calls] == [
-        ("make", ("lint",)),
-        ("make", ("typecheck",)),
-        ("python", pytest_cmd),
+    assert runner.calls[:2] == [
+        ("make", ("lint",), tmp_path, None),
+        ("make", ("typecheck",), tmp_path, None),
     ]
+    pytest_calls = runner.calls[2:]
+    expected_pytest_calls = {("python", shard_args) for shard_args in shard_pytests}
+    assert {call[:2] for call in pytest_calls} == expected_pytest_calls
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
 
@@ -83,15 +285,12 @@ def test_main_prints_agent_fix_banner_when_verify_step_fails(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     runner = StubRunner(
-        [
-            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
-            _result(
-                args=("typecheck",),
-                returncode=1,
-                stdout="",
-                stderr="mypy failure\n",
+        {
+            ("make", ("lint",)): _result(args=("lint",), returncode=0, stdout="lint ok\n"),
+            ("make", ("typecheck",)): _result(
+                args=("typecheck",), returncode=1, stdout="", stderr="mypy failure\n"
             ),
-        ]
+        }
     )
 
     exit_code = main([], runner=runner, cwd=tmp_path)
@@ -116,33 +315,35 @@ def test_main_passes_remaining_budget_to_pytest(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Verify pytest receives only the remaining budget after lint/typecheck."""
-    pytest_cmd = (
-        "-m", "pytest", "tests", "-q", "-n", "4",
-        "--dist", "worksteal", "-m", "not subprocess_e2e",
-    )
+    shard_pytests = _verify_pytest_args()
+    shard_labels = [f"shard-{index:02d}" for index in range(1, len(shard_pytests) + 1)]
     runner = StubRunner(
-        [
-            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
-            _result(args=("typecheck",), returncode=0, stdout="typecheck ok\n"),
-            ProcessResult(
-                command=("python", *pytest_cmd),
-                returncode=0,
-                stdout="test ok\n",
-                stderr="",
+        {
+            ("make", ("lint",)): _result(args=("lint",), returncode=0, stdout="lint ok\n"),
+            ("make", ("typecheck",)): _result(
+                args=("typecheck",), returncode=0, stdout="typecheck ok\n"
             ),
-        ]
+            **{
+                ("python", shard_args): ProcessResult(
+                    command=("python", *shard_args),
+                    returncode=0,
+                    stdout=f"{label} ok\n",
+                    stderr="",
+                )
+                for label, shard_args in zip(shard_labels, shard_pytests, strict=True)
+            },
+        }
     )
 
     exit_code = main([], runner=runner, cwd=tmp_path)
 
     assert exit_code == 0
-    # Last call should be pytest with a positive timeout
-    last_call = runner.calls[-1]
-    assert last_call[0] == "python"
-    assert last_call[1] == pytest_cmd
-    # Timeout should be positive but less than or equal to 30 (the full budget)
-    assert last_call[3] is not None
-    assert 0 < last_call[3] <= 30.0
+    pytest_calls = [call for call in runner.calls if call[0] == "python"]
+    assert len(pytest_calls) == 22
+    for call in pytest_calls:
+        assert call[3] is not None
+        assert 0 < call[3] <= 30.0
+    assert {call[1] for call in pytest_calls} == set(shard_pytests)
 
 
 def test_main_refuses_to_run_pytest_when_budget_exhausted(
@@ -176,10 +377,12 @@ def test_main_refuses_to_run_pytest_when_budget_exhausted(
             return super().__call__(command, args, cwd=cwd, env=env, timeout=timeout)
 
     runner = BudgetExhaustedRunner(
-        [
-            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
-            _result(args=("typecheck",), returncode=0, stdout="typecheck ok\n"),
-        ]
+        {
+            ("make", ("lint",)): _result(args=("lint",), returncode=0, stdout="lint ok\n"),
+            ("make", ("typecheck",)): _result(
+                args=("typecheck",), returncode=0, stdout="typecheck ok\n"
+            ),
+        }
     )
 
     # Patch time.monotonic to return a value that makes remaining_budget <= 0
