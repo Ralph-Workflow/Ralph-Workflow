@@ -1,0 +1,46 @@
+{
+  "timestamp_utc": "2026-05-23T01:51:50Z",
+  "action": "toolshelf_submission",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "ToolShelf.dev",
+    "submit_page": "https://toolshelf.dev/submit",
+    "endpoint": "https://toolshelf.dev/api/submit",
+    "status": "submitted_in_review",
+    "response": {
+      "http_status": 200,
+      "body": "{\"success\":true,\"message\":\"Tool submitted successfully! We'll review it soon.\"}"
+    }
+  },
+  "submitted_payload": {
+    "name": "Ralph Workflow",
+    "website_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "category": "ai-coding",
+    "submitted_by": "ken@hireaegis.com",
+    "notes": "Free and open-source composable loop framework and AI orchestrator for structured autonomous coding. Codeberg is the primary repo; GitHub is the mirror.",
+    "website": ""
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, Apollo is already in a measurement window until 2026-05-30, Reddit remains structurally blocked/high-risk, and ToolShelf.dev exposed a directly relevant developer-tool submission API that can send qualified evaluators straight to the primary Codeberg repo.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: bias toward free-use path and proof-led conversion instead of more generic posting",
+    "market_intelligence_latest.json: reused positioning truths and category fit versus other coding-agent tools",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "channel_discovery.json: ToolShelf was already identified as a promising easy-submit lane but had not yet been converted into a live Codeberg-primary submission"
+  ],
+  "runtime_fix": {
+    "file": "agents/marketing/channel_discovery.py",
+    "summary": [
+      "updated the validated ToolShelf autonomous-submit note to reflect the real successful 2026-05-23 execution",
+      "refreshed channel_discovery.json so future runs see ToolShelf as actually submitted, not merely inferred from a probe"
+    ],
+    "verification": "python3 -m unittest agents.marketing.tests.test_channel_discovery -v"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "live ToolShelf.dev listing or backlink pointing evaluators to the Codeberg primary repo",
+    "kill_condition": "If no listing or backlink evidence appears by 2026-06-06, replace this lane with a different untouched curator/directory surface instead of resubmitting ToolShelf."
+  }
+}

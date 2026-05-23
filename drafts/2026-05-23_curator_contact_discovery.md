@@ -8,9 +8,6 @@ This pass replaces fake handoff follow-through with real contact-channel discove
 - Recommended next step: manual contact channel is now identified
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md
 - Discovered channels:
-  - profile website: https://github-readme-stats.vercel.app/api/wakatime?username=Nickydusk&layout=compact&langs_count=10&hide=Other
-  - profile website: https://github-readme-stats.vercel.app/api?username=0xWelt&rank_icon=percentile&show_icons=true&show=reviews&count_private=true
-  - profile website: https://orcid.org/0009-0001-4907-0304
   - profile LinkedIn: https://www.linkedin.com/in/welt-ding
 
 ## 2. dariubs/awesome-workflow-automation
@@ -18,15 +15,11 @@ This pass replaces fake handoff follow-through with real contact-channel discove
 - Recommended next step: manual contact channel is now identified
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_dariubs-awesome-workflow-automation.md
 - Discovered channels:
+  - profile X/Twitter: https://twitter.com/dariubs
   - GitHub-linked X/Twitter: https://x.com/dariubs
+  - profile LinkedIn: https://www.linkedin.com/in/dariush-abbasi
   - profile website: https://aifordevelopers.org
   - profile website: https://altern.ai
-  - profile website: https://altern.ai/@dariubs
-  - profile website: https://golang.college
-  - profile website: https://medium.com/@dariubs
-  - profile website: https://themarketingnewsletter.org
-  - profile X/Twitter: https://twitter.com/dariubs
-  - profile LinkedIn: https://www.linkedin.com/in/dariush-abbasi
   - repo contribution path: https://github.com/dariubs/awesome-workflow-automation/issues/new
 
 ## 3. no-fluff/awesome-vibe-coding
@@ -48,12 +41,8 @@ This pass replaces fake handoff follow-through with real contact-channel discove
 - Recommended next step: manual contact channel is now identified
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_hesreallyhim-awesome-claude-code.md
 - Discovered channels:
-  - profile website: https://reallyengineering.com
   - possible contact page: https://reallyengineering.com/contact
-  - profile website: https://demo.gpg-badge.hesreallyhim.com
-  - profile website: https://pypi.org/user/hesreallyhim
-  - profile website: https://six-stars.hesreallyhim.com
-  - profile website: https://www.npmjs.com/~hesreallyhim
+  - profile website: https://reallyengineering.com
   - repo contribution path: https://github.com/hesreallyhim/awesome-claude-code/issues/new
 
 ## Comparison backlink execution packet

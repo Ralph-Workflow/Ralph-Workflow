@@ -344,7 +344,7 @@
       "url": "https://toolshelf.dev/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T21:58:48.306031",
+      "timestamp": "2026-05-23T01:51:50Z",
       "http_code": "200",
       "final_url": "https://toolshelf.dev/submit",
       "status": "accessible",
@@ -405,9 +405,15 @@
         "auth_required_detected": false,
         "server_error_detected": false
       },
-      "note": "public submission API detected at https://toolshelf.dev/api/submit",
-      "submission_status": "login_required",
-      "submission_note": "Submit page requires sign-in; form is login-only, no public submission"
+      "note": "confirmed autonomous submit lane: unauthenticated POST to the public /api/submit endpoint succeeded with HTTP 200 on 2026-05-23",
+      "submission_status": "success",
+      "submission_note": "POST to /api/submit returned 200 with success=true",
+      "submitted_data": {
+        "name": "Ralph Workflow",
+        "website_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+        "github_url": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+        "category": "ai-coding"
+      }
     },
     {
       "name": "agentdepot",

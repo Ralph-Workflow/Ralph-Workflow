@@ -1,11 +1,11 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-23T02:57:50.067710+02:00
+- Checked: 2026-05-23T04:10:17+02:00
 - Overall health: healthy_with_repairs
-- Primary failure mode: Architecture ownership and verifier freshness are repaired, but full signoff remains fail-closed on the marketing adoption watchpoint; the marketing runner bundle is red only because that owner loop is still failing closed.
-- Most urgent fix: Keep architecture green only as qualified/local green and leave full end-to-end certification blocked until marketing clears primary-repo adoption measurement or replaces the tactic.
+- Primary failure mode: Architecture ownership and verifier freshness remain repaired, but full signoff stays fail-closed on the marketing primary-repo adoption watchpoint.
+- Most urgent fix: Keep architecture locally green only as a qualified pass until marketing clears the primary-repo adoption measurement window or replaces the tactic.
 - Verifier status: independently verified pass
-- Verifier checked: 2026-05-23T03:07:45.372000+02:00
+- Verifier checked: 2026-05-23T04:13:07.144861+02:00
 - Verifier blockers: none
 
 ## Live topology
@@ -35,15 +35,15 @@
 
 ## Repaired this run
 
-- **reran_current_stack** — reran loop integrity, architecture independent verification, architecture verifier, and architecture checker on the live topology.
-- **refreshed_runtime_evidence** — refreshed loop-integrity evidence, reused fresh health-monitor state, and rechecked live Gateway cron topology.
-- **synced_latest_artifacts** — updated the latest JSON/MD report so the current verdict and verification timestamp match this run.
+- **reran_current_stack** — reran loop integrity, refreshed the architecture latest report, then reran independent verification, verifier, and checker.
+- **localized_real_blocker** — rewrote the latest verdict so the only red item is the marketing primary-repo adoption watchpoint.
+- **resynced_live_assertions** — updated live cron counts, persisted disabled-history separation, health-monitor issue names, and verifier timestamps.
 
 ## Independent verification
 
 - Performed: performed_qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Checked at: 2026-05-23T02:58:27.435935+02:00
+- Checked at: 2026-05-23T04:03:19.568327+02:00
 
 ## Still needs independent verification
 
@@ -52,7 +52,7 @@
 ## Highest-risk unresolved loop issue
 
 - Primary Codeberg adoption is still flat under a live marketing measurement window
-  - Why: this is still the only blocker preventing a fully green end-to-end certification.
+  - Why: that is still the only blocker preventing a fully green end-to-end certification.
 
 ## Small gate passed
 

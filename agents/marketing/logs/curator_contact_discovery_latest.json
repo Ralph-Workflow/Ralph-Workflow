@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T02:07:50.030978",
+  "generated_at": "2026-05-23T04:12:42.555481",
   "targets": [
     {
       "target": "7. 0xWelt/Awesome-Vibe-Coding",
@@ -9,21 +9,6 @@
       "priority": "HIGH \u2014 active repo, 90+ stars, open PR flow visible",
       "status": "prepared",
       "channels": [
-        {
-          "type": "website",
-          "value": "https://github-readme-stats.vercel.app/api/wakatime?username=Nickydusk&layout=compact&langs_count=10&hide=Other",
-          "label": "profile website"
-        },
-        {
-          "type": "website",
-          "value": "https://github-readme-stats.vercel.app/api?username=0xWelt&rank_icon=percentile&show_icons=true&show=reviews&count_private=true",
-          "label": "profile website"
-        },
-        {
-          "type": "website",
-          "value": "https://orcid.org/0009-0001-4907-0304",
-          "label": "profile website"
-        },
         {
           "type": "linkedin",
           "value": "https://www.linkedin.com/in/welt-ding",
@@ -43,8 +28,18 @@
       "channels": [
         {
           "type": "x",
+          "value": "https://twitter.com/dariubs",
+          "label": "profile X/Twitter"
+        },
+        {
+          "type": "x",
           "value": "https://x.com/dariubs",
           "label": "GitHub-linked X/Twitter"
+        },
+        {
+          "type": "linkedin",
+          "value": "https://www.linkedin.com/in/dariush-abbasi",
+          "label": "profile LinkedIn"
         },
         {
           "type": "website",
@@ -55,36 +50,6 @@
           "type": "website",
           "value": "https://altern.ai",
           "label": "profile website"
-        },
-        {
-          "type": "website",
-          "value": "https://altern.ai/@dariubs",
-          "label": "profile website"
-        },
-        {
-          "type": "website",
-          "value": "https://golang.college",
-          "label": "profile website"
-        },
-        {
-          "type": "website",
-          "value": "https://medium.com/@dariubs",
-          "label": "profile website"
-        },
-        {
-          "type": "website",
-          "value": "https://themarketingnewsletter.org",
-          "label": "profile website"
-        },
-        {
-          "type": "x",
-          "value": "https://twitter.com/dariubs",
-          "label": "profile X/Twitter"
-        },
-        {
-          "type": "linkedin",
-          "value": "https://www.linkedin.com/in/dariush-abbasi",
-          "label": "profile LinkedIn"
         },
         {
           "type": "github_issue",
@@ -139,32 +104,12 @@
       "channels": [
         {
           "type": "website",
-          "value": "https://reallyengineering.com",
-          "label": "profile website"
-        },
-        {
-          "type": "website",
           "value": "https://reallyengineering.com/contact",
           "label": "possible contact page"
         },
         {
           "type": "website",
-          "value": "https://demo.gpg-badge.hesreallyhim.com",
-          "label": "profile website"
-        },
-        {
-          "type": "website",
-          "value": "https://pypi.org/user/hesreallyhim",
-          "label": "profile website"
-        },
-        {
-          "type": "website",
-          "value": "https://six-stars.hesreallyhim.com",
-          "label": "profile website"
-        },
-        {
-          "type": "website",
-          "value": "https://www.npmjs.com/~hesreallyhim",
+          "value": "https://reallyengineering.com",
           "label": "profile website"
         },
         {

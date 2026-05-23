@@ -1,0 +1,54 @@
+{
+  "timestamp_utc": "2026-05-23T02:07:56Z",
+  "action": "tools_ai_online_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "Tools AI Online",
+    "target_surface": "https://www.tools-ai.online/submit-tool",
+    "recipient": "info@tools-ai.online",
+    "subject": "Suggested Tools AI Online listing: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "suggested_entry": "Ralph Workflow — free open-source workflow system for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.",
+    "suggested_categories": [
+      "Productivity",
+      "Research & Learning",
+      "Aggregators"
+    ],
+    "suggested_tags": [
+      "task automation",
+      "workflow management",
+      "code generation",
+      "collaboration",
+      "research automation"
+    ],
+    "pricing": "Open Source",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_tools_ai_online_curator_email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_020756_tools_ai_online_curator_email.json"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck. Reddit remains repetition-prone/high-risk, Apollo is already in a measurement window until 2026-05-30, and Tools AI Online exposes a strong directory audience plus a live editorial email fallback when the submit form is blocked by reCAPTCHA. That made it the strongest executable fresh distribution action available right now.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: keep Codeberg primary and make the repo path explicit",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, and why now",
+    "ADOPTION_FUNNEL_NEXT.md: bias toward proof-led, free-use conversion instead of broad generic promotion",
+    "market_intelligence_latest.json: reused current positioning around autonomous coding reliability and reviewability",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "marketing_workflow_audit_latest.md: prioritize executable distribution over more planning",
+    "channel_discovery.json: tools-ai-online surface is CAPTCHA-blocked but exposes mailto fallback"
+  ],
+  "verification": {
+    "email_send_log_status": "sent",
+    "helper_compiles": true,
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py",
+    "submit_surface_note": "web submit requires reCAPTCHA and image upload; editorial email was the strongest legitimate path from this environment"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, live listing, or backlink/citation from Tools AI Online pointing evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or listing signal arrives by 2026-06-06, replace this lane with a different untouched curator/directory target instead of re-sending the same pitch."
+  }
+}

@@ -198,6 +198,43 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'curator_outreach')
 
+    def test_submitted_channel_log_with_tld_name_counts_as_attempted(self):
+        now = datetime(2026, 5, 23, 6, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": [{"name": "openagents"}]}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            (log_dir / 'marketing_a.json').write_text(json.dumps({"timestamp": "2026-05-22T22:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post A", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+            (log_dir / 'marketing_b.json').write_text(json.dumps({"timestamp": "2026-05-23T01:00:00", "chosen_action": {"type": "owned_content_publication", "title": "Post B", "channel": "telegraph"}, "result": {"ok": True}}), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_openagents_submission.json').write_text(json.dumps({"channel": {"name": "OpenAgents.pro"}}), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=False), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', tmp / 'missing.json'):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.unsubmitted_directory_channels, [])
+            self.assertNotEqual(decision.lane, 'directory_submission')
+
 
 class DistributionLaneSelectorFallbackTests(unittest.TestCase):
     def test_prefers_handoff_packet_when_apollo_is_only_authenticated_but_not_proven_live(self):
@@ -694,7 +731,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             channels,
             [
                 {'type': 'email', 'value': 'founder@example.com', 'label': 'email'},
-                {'type': 'website', 'value': 'https://example.com/contact', 'label': 'website'},
+                {'type': 'website', 'value': 'https://example.com/contact', 'label': 'contact page'},
                 {'type': 'linkedin', 'value': 'https://www.linkedin.com/in/example-founder', 'label': 'LinkedIn'},
             ],
         )
@@ -1369,7 +1406,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, '_discover_curator_channels', return_value=[{
                      'target': '1. Example Curator',
                      'url': 'https://github.com/example/awesome',
-                     'channels': [{'type': 'website', 'value': 'https://example.com/contact', 'label': 'profile website'}],
+                     'channels': [{'type': 'website', 'value': 'https://example.com/contact', 'label': 'profile contact page'}],
                      'recommended_next_step': 'manual contact channel is now identified',
                      'artifact_path': '/tmp/curator.md',
                  }]):
@@ -1380,6 +1417,41 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('contact-channel discovery', artifact_text)
             self.assertIn('https://example.com/contact', artifact_text)
+
+    def test_contact_discovery_filters_noisy_links_and_prioritizes_actionable_channels(self):
+        channels = distribution_lane_executor._extract_contact_links(' '.join([
+            'https://github-readme-stats.vercel.app/api?username=test',
+            'https://orcid.org/0000-0000-0000-0000',
+            'https://example.com/contact',
+            'https://example.com/blog/post',
+            'https://www.linkedin.com/in/example',
+            'https://x.com/example',
+        ]))
+        self.assertEqual(
+            channels,
+            [
+                {'type': 'website', 'value': 'https://example.com/contact', 'label': 'contact page'},
+                {'type': 'linkedin', 'value': 'https://www.linkedin.com/in/example', 'label': 'LinkedIn'},
+                {'type': 'x', 'value': 'https://x.com/example', 'label': 'X/Twitter'},
+            ],
+        )
+
+        prioritized = distribution_lane_executor._prioritize_contact_channels([
+            {'type': 'website', 'value': 'https://example.com', 'label': 'profile website'},
+            {'type': 'website', 'value': 'https://example.com/contact', 'label': 'possible contact page'},
+            {'type': 'website', 'value': 'https://example.com/about', 'label': 'about page'},
+            {'type': 'x', 'value': 'https://x.com/example', 'label': 'X/Twitter'},
+            {'type': 'linkedin', 'value': 'https://linkedin.com/in/example', 'label': 'LinkedIn'},
+        ])
+        self.assertEqual(
+            prioritized,
+            [
+                {'type': 'x', 'value': 'https://x.com/example', 'label': 'X/Twitter'},
+                {'type': 'linkedin', 'value': 'https://linkedin.com/in/example', 'label': 'LinkedIn'},
+                {'type': 'website', 'value': 'https://example.com/about', 'label': 'about page'},
+                {'type': 'website', 'value': 'https://example.com/contact', 'label': 'possible contact page'},
+            ],
+        )
 
     def test_distribution_reset_execution_uses_fresh_discovered_targets_instead_of_relogging_comparison_assets(self):
         now = datetime(2026, 5, 23, 7, 15, 0)
@@ -1539,14 +1611,41 @@ class DistributionLaneExecutorTests(unittest.TestCase):
 
 class MarketingLoopRunnerTests(unittest.TestCase):
     def test_runner_executes_outcome_engine_before_reporting_scripts(self):
-        self.assertEqual(marketing_loop_runner.SCRIPTS[0].name, 'run.py')
-        self.assertIn('marketing_workflow_audit.py', [path.name for path in marketing_loop_runner.SCRIPTS])
-        self.assertIn('marketing_loop_independent_verify.py', [path.name for path in marketing_loop_runner.SCRIPTS])
-        self.assertEqual(marketing_loop_runner.SCRIPTS[-1].name, 'marketing_loop_verifier.py')
+        names = [path.name for path in marketing_loop_runner.SCRIPTS]
+        self.assertEqual(names[0], 'run.py')
+        self.assertIn('marketing_workflow_audit.py', names)
+        self.assertIn('marketing_momentum_watchdog.py', names)
+        self.assertIn('marketing_loop_independent_verify.py', names)
+        self.assertLess(names.index('marketing_momentum_watchdog.py'), names.index('marketing_loop_independent_verify.py'))
+        self.assertEqual(names[-1], 'marketing_loop_verifier.py')
+
+    def test_runner_keeps_operational_ok_true_when_only_certification_scripts_fail(self):
+        script_results = {
+            script.name: SimpleNamespace(returncode=0, stdout='{}', stderr='')
+            for script in marketing_loop_runner.SCRIPTS
+        }
+        script_results['marketing_loop_independent_verify.py'] = SimpleNamespace(returncode=1, stdout='{"verdict":"fail"}', stderr='')
+        script_results['marketing_loop_verifier.py'] = SimpleNamespace(returncode=1, stdout='{"ok":false}', stderr='')
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / 'runner.json'
+
+            def fake_run(cmd, capture_output=True, text=True):
+                return script_results[Path(cmd[-1]).name]
+
+            with patch.object(marketing_loop_runner, 'OUT', out), \
+                 patch.object(marketing_loop_runner.subprocess, 'run', side_effect=fake_run):
+                rc = marketing_loop_runner.main()
+
+            self.assertEqual(rc, 1)
+            payload = json.loads(out.read_text(encoding='utf-8'))
+            self.assertTrue(payload['ok'])
+            self.assertTrue(payload['operational_ok'])
+            self.assertFalse(payload['certification_ok'])
 
 
 class MarketingMomentumWatchdogTests(unittest.TestCase):
-    def _run_watchdog_with_action(self, action_type: str, live_external_action: bool = False) -> tuple[int, dict]:
+    def _run_watchdog_with_action(self, action_type: str, live_external_action: bool = False, runner_payload: dict | None = None) -> tuple[int, dict]:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             status_dir = tmp / 'logs'
@@ -1557,6 +1656,7 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
             audit_path = status_dir / 'marketing_workflow_audit_latest.json'
             status_path = status_dir / 'marketing_momentum_watchdog.json'
             apollo_status = status_dir / 'apollo_status.json'
+            runner_path = status_dir / 'marketing_loop_runner_latest.json'
             reddit_jsonl = status_dir / 'reddit_posts.jsonl'
             retro_path = tmp / 'retro.py'
 
@@ -1574,6 +1674,8 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
             apollo_status.write_text(json.dumps({'status': 'login_succeeded', 'cloudflare_blocked': False}), encoding='utf-8')
             reddit_jsonl.write_text('', encoding='utf-8')
             retro_path.write_text('print("{}")\n', encoding='utf-8')
+            if runner_payload is not None:
+                runner_path.write_text(json.dumps(runner_payload), encoding='utf-8')
 
             with patch.object(marketing_momentum_watchdog, 'ROOT', tmp), \
                  patch.object(marketing_momentum_watchdog, 'SEO', seo_dir), \
@@ -1582,6 +1684,7 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
                  patch.object(marketing_momentum_watchdog, 'ADOPTION_PATH', adoption_path), \
                  patch.object(marketing_momentum_watchdog, 'AUDIT_PATH', audit_path), \
                  patch.object(marketing_momentum_watchdog, 'APOLLO_STATUS_PATH', apollo_status), \
+                 patch.object(marketing_momentum_watchdog, 'RUNNER_PATH', runner_path), \
                  patch.object(marketing_momentum_watchdog, 'LOG_JSONL', reddit_jsonl), \
                  patch.object(marketing_momentum_watchdog, 'RETRO', retro_path):
                 rc = marketing_momentum_watchdog.main()
@@ -1616,6 +1719,26 @@ class MarketingMomentumWatchdogTests(unittest.TestCase):
         self.assertIn('outcome_system_repair_missing', payload['actions'])
         self.assertIn('measurement_pending_without_repairs', payload['actions'])
         self.assertNotIn('no_recent_reddit_post', payload['actions'])
+        self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
+
+    def test_watchdog_does_not_fail_stale_reddit_report_when_recent_monitor_hit_cooldown(self):
+        runner_payload = {
+            'generated_at': datetime.now().isoformat(),
+            'results': [
+                {
+                    'script': '/tmp/reddit_monitor.py',
+                    'stdout': json.dumps({'status': 'cooldown_skip'}),
+                }
+            ],
+        }
+        rc, payload = self._run_watchdog_with_action(
+            'aigearbase_free_listing_submission',
+            live_external_action=True,
+            runner_payload=runner_payload,
+        )
+        self.assertEqual(rc, 0)
+        self.assertNotIn('reddit_monitor_stale', payload['actions'])
+        self.assertEqual(payload['reddit_monitor_runtime']['status'], 'cooldown_skip')
         self.assertIn('primary_repo_adoption_flat', payload['watch_actions'])
 
 

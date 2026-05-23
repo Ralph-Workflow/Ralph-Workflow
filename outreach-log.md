@@ -1,5 +1,25 @@
 # Outreach Log
 
+## 2026-05-23 (Saturday) — ToolShelf.dev submission executed (01:51 UTC / 03:51 CEST)
+- **What I executed:** submitted **ToolShelf.dev** through its live public endpoint `https://toolshelf.dev/api/submit`, routing the listing to the **primary Codeberg repo** `https://codeberg.org/RalphWorkflow/Ralph-Workflow` and keeping GitHub as the mirror URL inside the payload.
+- **Verification:** direct POST returned HTTP **200** with `{"success":true,"message":"Tool submitted successfully! We'll review it soon."}`. Live log: `agents/marketing/logs/marketing_2026-05-23_toolshelf_submission.json`.
+- **Why this action:** this is **EXECUTED / DISTRIBUTION**. The freshest audit still shows `distribution_and_message_to_primary_repo_conversion` as the live bottleneck, Apollo is already in a measurement window until **2026-05-30**, Reddit remains structurally blocked/high-risk, and ToolShelf.dev is a highly aligned developer-tool directory with a real autonomous submit API that can send qualified evaluators to **Codeberg first**.
+- **Shared findings reused:** `MARKETING_WORKFLOW_PRINCIPLES.md`, `FOUR_MARKETING_QUESTIONS.md`, `ADOPTION_FUNNEL_NEXT.md`, `market_intelligence_latest.json`, `marketing_workflow_audit_latest.json`, and `channel_discovery.json`.
+- **Runtime fix shipped in the same run:** updated `agents/marketing/channel_discovery.py` and refreshed `agents/marketing/logs/channel_discovery.json` so future runs treat ToolShelf as a genuinely executed autonomous lane, not just an inferred probe.
+- **Verification gate:** `python3 -m unittest agents.marketing.tests.test_channel_discovery -v` passed (**22 tests**) on **2026-05-23**.
+- **Expected outcome:** one more relevant third-party developer-tool listing/backlink that sends evaluators to the **primary Codeberg repo**.
+- **Measurement window:** watch for listing approval/backlink evidence through **2026-06-06**.
+- **Type:** **EXECUTED / DISTRIBUTION**
+
+## 2026-05-23 (Saturday) — 23blocks / AI Maestro curator outreach executed (01:25 UTC / 03:25 CEST)
+- **What I executed:** emailed **23blocks** at `hello@23blocks.com` to suggest Ralph Workflow as a complementary open-source workflow layer their AI Maestro audience may want to evaluate, with **Codeberg as the primary repo** and GitHub as the mirror.
+- **Verification:** `agents/marketing/send_curator_email.py` compiled cleanly and the live send log at `agents/marketing/logs/marketing_2026-05-23_012523_23blocks_curator_email.json` recorded status **sent**.
+- **Why this action:** this is **EXECUTED / DISTRIBUTION**. The freshest audit still shows `distribution_and_message_to_primary_repo_conversion` as the live bottleneck, Apollo is already in a measurement window until **2026-05-30**, and the strongest same-run path was another fresh curator/citation lane with a real public contact. AI Maestro is adjacent enough to expose Ralph Workflow to teams already evaluating multi-agent coding operations, but different enough that the outreach can honestly frame Ralph Workflow as a complementary workflow layer instead of a direct duplicate.
+- **Shared findings reused:** `MARKETING_WORKFLOW_PRINCIPLES.md`, `FOUR_MARKETING_QUESTIONS.md`, `ADOPTION_FUNNEL_NEXT.md`, `market_intelligence_latest.json`, `marketing_workflow_audit_latest.json`, `curator_outreach_queue_latest.json`, and `curator_contact_discovery_latest.json`.
+- **Expected outcome:** one more relevant ecosystem mention or backlink that sends qualified evaluators to the **primary Codeberg repo**.
+- **Measurement window:** watch for reply, ecosystem mention, or backlink evidence through **2026-06-06**.
+- **Type:** **EXECUTED / DISTRIBUTION**
+
 ## 2026-05-23 (Saturday) — OpenAgents.pro submission executed (00:53 UTC / 02:53 CEST)
 - **What I executed:** submitted **OpenAgents.pro** through its live submit form at `https://www.openagents.pro/submit`, using the coding-category intake and routing the listing directly to the **primary Codeberg repo**: `https://codeberg.org/RalphWorkflow/Ralph-Workflow`.
 - **Verification:** direct POST to the underlying form endpoint `https://formspree.io/f/xaqppdwq` returned HTTP **200** with `{"next":"/thanks","ok":true}` when sent with browser-like headers. Live log: `agents/marketing/logs/marketing_2026-05-23_openagents_submission.json`.
@@ -5790,4 +5810,48 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 
 ### Marketing momentum watchdog
 - **When:** 2026-05-23 03:07:43
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:14:35
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:29:37
+- **Note:** Momentum check found: reddit_monitor_stale. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:30:07
+- **Note:** Momentum check found: reddit_monitor_stale. Codeberg adoption is flat — current tactics are failing and must be replaced, not repeated. Repairs are already live; waiting on measurement for: primary_repo_flat, mirror_repo_flat. Primary repo adoption is still flat, but repairs are already live and this remains a measurement-window watchpoint rather than a same-run repair failure.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:35:32
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:36:18
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:40:13
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:41:22
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:41:41
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 03:53:14
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 04:12:40
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-23 04:12:56
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.

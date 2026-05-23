@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "2026-05-23T01:25:23.109932+00:00",
+  "action": "curator_email_outreach",
+  "status": "sent",
+  "channel": {
+    "recipient": "hello@23blocks.com",
+    "subject": "Related open-source workflow project for AI Maestro: Ralph Workflow",
+    "smtp_host": "smtp.ionos.com",
+    "smtp_port": 587
+  },
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_23blocks_curator_email.txt"
+}
