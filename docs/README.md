@@ -1,44 +1,53 @@
 # Documentation Map
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple core loop inspired by the original Ralph loop.
-That simple core composes into a stronger composable workflow system for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
-
 Use this page after [README.md](../README.md) and [START_HERE.md](../START_HERE.md).
-Those pages explain what Ralph Workflow is and how to judge one honest first run.
-This page routes you to the next page that best matches your question.
+Those pages explain what Ralph Workflow is, who it is for, and how to judge one honest first run.
+This page should answer one question quickly: **what do I read next?**
 
-## Current maintained route
+## Fastest route to a real first run
 
-- [Choose your first task](./first-task-guide.md)
-- [First-task prompt templates](./first-task-prompt-templates.md)
-- [Getting started in the manual](../ralph-workflow/docs/sphinx/getting-started.md)
+If you want the shortest path from interest to a useful evaluation, use these in order:
+
+1. [Choose your first task](./first-task-guide.md)
+2. [First-task prompt templates](./first-task-prompt-templates.md)
+3. [What good output looks like](./free-open-source-proof.md)
+4. [After your first run](./after-your-first-run.md)
+
+That path is the best fit if you want to try one real backlog task tonight and decide tomorrow whether the result actually holds up.
+
+## I want the maintained operator manual
+
+Use the Sphinx manual for setup, configuration, and day-to-day operation:
+
 - [Manual home](../ralph-workflow/docs/sphinx/index.rst)
+- [Getting started](../ralph-workflow/docs/sphinx/getting-started.md)
 - [Configuration](../ralph-workflow/docs/sphinx/configuration.md)
 - [Reference](../ralph-workflow/docs/sphinx/reference.md)
 - [User stories](../ralph-workflow/docs/sphinx/user-stories.md)
 
-## Current vs archival guidance
+## I want product framing before I go deeper
 
-- **Current / maintained / Python:** `README.md`, `START_HERE.md`, this docs map, and the maintained manual under `ralph-workflow/docs/sphinx/`.
-- **Historical / archival / Rust-era:** older notes under `docs/` that still describe cargo, xtask, or pre-Python runtime behavior should be treated as background context rather than current operator guidance.
-
-## Documentation families
-
-- **agents** — orchestration, verification, testing, and transport guidance live under `docs/agents/` and the maintained operator page at `ralph-workflow/docs/sphinx/agents.md`.
-- **code-style** — documentation rules, naming guidance, and contributor-facing style expectations live under `docs/code-style/`; check `documentation-rubric.md` first for public-doc work and treat Rust-era notes in that family as archival when they conflict with current Python behavior.
-- **tooling** — setup, CLI, MCP, and Python-tooling notes live under `docs/tooling/` plus the maintained manual pages such as `ralph-workflow/docs/sphinx/cli.md`.
-- **performance** — timeout, watchdog, and runtime-performance notes live under `docs/performance/`; the Python package is current, while explicit Rust-era performance notes in that family are archival.
-
-## Product framing before you go deeper
+Use these if you are still deciding where Ralph Workflow fits:
 
 - [AI agent orchestration CLI](./ai-agent-orchestration-cli.md)
 - [Why the spec still matters](./spec-driven-ai-agent.md)
 - [What unattended use should mean](./unattended-coding-agent.md)
+- [When Ralph Workflow fits — and when it does not](./when-unattended-coding-fits.md)
 
-## Keep proof secondary
+## I need the repo-root docs families mapped clearly
 
-Use proof-oriented pages only after you already understand the product story or the operator route.
-If you need deeper evidence, the manual and linked supporting pages will take you there.
+These repo-root docs are a **map of the surrounding documentation system**, not the main operator manual.
+The maintained day-to-day Python/operator path is the Sphinx manual above.
+
+- `docs/agents/` — current Python contributor and verification guidance
+- `docs/code-style/` — current Python style/process guidance, plus some historical pages
+- `docs/tooling/` — mixed-status tooling notes; prefer Python-specific guidance where available
+- `docs/performance/` — mostly archival Rust-era material, not the main Python operator path
+
+## Keep proof tied to action
+
+Proof pages matter only if they help someone try Ralph Workflow on a real task or decide whether to trust the result.
+If you finish reading this map and still do not know what to do next, go back to [START_HERE.md](../START_HERE.md).
 
 ## Primary repo
 
