@@ -11,20 +11,20 @@
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
-Ralph Workflow is a free and open-source **AI agent orchestration CLI** for developers and technical teams doing substantial, well-specified software work on their own machine.
+Ralph Workflow is a free and open-source **AI agent orchestration CLI** for substantial, well-specified software engineering on your own machine.
 
-It keeps the Ralph-loop core simple, then composes that core into a stronger workflow for planning, implementation, verification, review, and agent routing.
-That simplicity at the center is what makes the system extensible without turning it into glue-chaos.
+It takes the simple Ralph-loop idea and turns it into a **composable workflow system** for planning, implementation, verification, review, and agent routing.
+The core stays simple. That simplicity is what makes more complex workflows easier to build, easier to configure, and easier to extend.
 
-It also ships with a **strong default workflow for writing software**.
-Use the default as-is today, or build your own workflow on top later.
+Ralph Workflow also ships with a **strong default workflow for writing software**.
+You can use that default as-is, or build on top of it when you need something more advanced.
 
-## Start in 5 minutes
+## TL;DR — Start in 5 minutes
 
-1. Pick **one real backlog task** you can still judge tomorrow.
-2. Put a one-paragraph spec in `PROMPT.md`.
-3. Run Ralph Workflow tonight.
-4. Review the diff and the checks in the morning.
+1. Pick **one real backlog task** you can still judge tomorrow
+2. Put a one-paragraph spec in `PROMPT.md`
+3. Run Ralph Workflow tonight
+4. Review the diff and the checks in the morning
 5. Ask: **would I merge this?**
 
 ```md
@@ -53,8 +53,6 @@ If none of those feel easy to judge tomorrow morning, the task is still too broa
 1. [START_HERE.md](START_HERE.md) — shortest honest first run
 2. [docs/README.md](docs/README.md) — curated docs switchboard
 3. [ralph-workflow/docs/sphinx/index.rst](ralph-workflow/docs/sphinx/index.rst) — operator manual and configuration reference
-
-If you only click one next page, click [START_HERE.md](START_HERE.md).
 
 ## Install
 

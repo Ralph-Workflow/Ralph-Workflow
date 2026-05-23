@@ -25,6 +25,15 @@ Start with one of these exact task shapes:
 
 If none of those sound easy to judge in the morning, the task is still too broad.
 
+## Before you start
+
+Have these ready:
+
+- one real git repo you care about
+- Python 3.12+
+- one supported agent CLI already installed
+- working auth for that agent
+
 ## Pick the right first task
 
 Choose something that is:
@@ -43,7 +52,7 @@ Bad first tasks:
 - a vague product idea
 - risky production surgery
 - mixed multi-part work
-- anything where no one agrees what “done” means
+- anything where no one agrees what "done" means
 
 If you are still unsure, use [docs/first-task-guide.md](./docs/first-task-guide.md) before you run it.
 
@@ -90,6 +99,20 @@ $EDITOR PROMPT.md
 ralph
 ```
 
+If you are already trying to stitch Claude Code and Codex together by hand, read **[Claude Code + Codex workflow](./docs/claude-code-codex-workflow.md)** next.
+If your bigger question is how to judge the result before merge, read **[Review AI coding output before merge](./docs/review-ai-coding-output-before-merge.md)**.
+If you want the deeper reasoning behind the spec shape itself, read **[Spec-Driven AI Agent](./docs/spec-driven-ai-agent.md)**.
+
+## What a good result should include
+
+A useful Ralph Workflow run should hand back:
+- a scoped result
+- a real diff
+- changed files you can inspect
+- checks that actually ran
+- a reasoning trail
+- open questions called out clearly
+
 ## Morning-after review checklist
 
 Do not ask whether the tool looked smart.
@@ -113,11 +136,14 @@ Use the public next step on **Codeberg**:
 
 That turns a private evaluation into a useful public signal or actionable feedback.
 
-## Next pages only if you need them
+## Next examples
 
-- task selection — [docs/first-task-guide.md](./docs/first-task-guide.md)
-- prompt templates — [docs/first-task-prompt-templates.md](./docs/first-task-prompt-templates.md)
-- what good output looks like — [docs/free-open-source-proof.md](./docs/free-open-source-proof.md)
-- after the run — [docs/after-your-first-run.md](./docs/after-your-first-run.md)
-- docs switchboard — [docs/README.md](./docs/README.md)
-- operator manual — [ralph-workflow/docs/sphinx/index.rst](./ralph-workflow/docs/sphinx/index.rst)
+See:
+- [First-task guide](./docs/first-task-guide.md)
+- [First-task prompt templates](./docs/first-task-prompt-templates.md)
+- [Claude Code + Codex workflow](./docs/claude-code-codex-workflow.md)
+- [Good unattended task vs bad one](./docs/good-unattended-ai-coding-task.md)
+- [Review bundle example](./docs/example-review-bundle.md)
+- [After your first run](./docs/after-your-first-run.md)
+- [Docs map](./docs/README.md)
+- [Operator manual](./ralph-workflow/docs/sphinx/index.rst)
