@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T21:10:44.237872",
+  "generated_at": "2026-05-23T21:39:51.909742",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 0,
   "reddit_posts_analyzed": 6,
@@ -79,7 +79,8 @@
       "kill_condition": "Another audit adds more directory submissions before current listing windows have produced approval/backlink evidence or aged past their review checkpoints",
       "success_metric": "Next execution lane is not another directory submission burst and produces a cleaner measurement path toward Codeberg movement",
       "priority": 1,
-      "repair_state": "needs_execution"
+      "repair_state": "pending_measurement",
+      "repair_acknowledged_at": "2026-05-23T21:46:16.714866"
     },
     {
       "target_tactic": "curator_outreach_burst",
@@ -89,13 +90,14 @@
       "kill_condition": "Another audit adds more same-family curator outreach before the existing reply/backlink windows have materially aged or produced evidence",
       "success_metric": "Next execution lane advances a different family or executes an existing manual-contact packet instead of starting another same-day curator burst",
       "priority": 2,
-      "repair_state": "needs_execution"
+      "repair_state": "pending_measurement",
+      "repair_acknowledged_at": "2026-05-23T21:46:16.714866"
     },
     {
       "target_tactic": "github_mirror_outreach",
       "failure_type": "mirror_repo_flat",
       "repair_kind": "tactic",
-      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.",
+      "action": "Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence \u2014 do not allocate dedicated effort unless Codeberg is moving.",
       "kill_condition": "N/A (mirror, not primary)",
       "success_metric": "GitHub mirror shows any adoption delta",
       "priority": 3,
@@ -165,7 +167,7 @@
     "launch_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_apollo_sequence_launch.json",
     "launch_timestamp": "2026-05-23T00:14:49.075391+02:00",
     "record_count": 5,
-    "sequence_name": "Ralph Workflow curator follow-up — Codeberg CTA",
+    "sequence_name": "Ralph Workflow curator follow-up \u2014 Codeberg CTA",
     "final_url": "https://app.apollo.io/#/lists?sortByField=updated_at&sortAscending=false&groupBy[]=labelModality",
     "launch_review_at": "2026-05-30T00:14:49.075391+02:00",
     "repo_visit_review_at": "2026-06-06T00:14:49.075391+02:00",

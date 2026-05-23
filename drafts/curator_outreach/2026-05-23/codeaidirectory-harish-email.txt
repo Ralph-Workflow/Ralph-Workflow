@@ -1,0 +1,21 @@
+Hi Harish,
+
+I tried submitting Ralph Workflow through the public CodeAI Directory submit form today, but the backend submission path returned a server-side email error instead of completing. Rather than let that kill the listing request, I wanted to send the entry directly.
+
+Ralph Workflow is a free and open-source workflow layer for autonomous coding runs. The point is not another agent that says it is done — it is getting back finished, tested code that is ready to review, with a clearer spec -> execution -> verification -> review flow.
+
+Primary repo (canonical): https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Suggested listing blurb:
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for autonomous coding. It is built for developers and technical teams who want a stronger default workflow for planning, implementation, verification, and review instead of a bare chat session.
+
+Why it may fit CodeAI Directory:
+- coding-agent / workflow tooling, not just a generic chat wrapper
+- useful for Claude Code / Codex / multi-tool workflows where reviewability matters
+- Codeberg-first open-source project with a public mirror on GitHub
+
+If it fits your directory, I’d appreciate a listing. Also, if useful, the submit form currently appears to fail on the mail-delivery step, so this direct email may be the safer path until that is fixed.
+
+Thanks,
+Ken

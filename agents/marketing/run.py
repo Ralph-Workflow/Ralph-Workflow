@@ -73,6 +73,10 @@ CURATOR_LANE_ACTION_TYPES = {
     "curator_contact_handoff_follow_through",
 }
 
+MANUAL_CONTACT_REPAIR_ACTION_TYPES = {
+    "curator_contact_handoff_packet_execution",
+}
+
 
 def _repair_counts_as_live_outcome_repair(execution: Any) -> bool:
     return bool(getattr(execution, 'live_external_action', False)) or getattr(execution, 'action_type', '') in STRUCTURAL_REPLACEMENT_ACTION_TYPES
@@ -101,7 +105,7 @@ def _advance_audit_repairs_for_execution(*, audit: dict[str, Any], execution: An
         elif failure_type == 'same_family_distribution_overlap':
             should_advance = lane_action not in DIRECTORY_LANE_ACTION_TYPES
         elif failure_type == 'same_family_outreach_overlap':
-            should_advance = lane_action not in CURATOR_LANE_ACTION_TYPES
+            should_advance = lane_action not in CURATOR_LANE_ACTION_TYPES or lane_action in MANUAL_CONTACT_REPAIR_ACTION_TYPES
         elif repair.get('repair_kind') == 'system_design':
             should_advance = shipped_live_repair
 

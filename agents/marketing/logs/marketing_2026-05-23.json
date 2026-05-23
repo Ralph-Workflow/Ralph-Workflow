@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-23T20:36:16.851530",
+  "timestamp": "2026-05-23T21:46:39.701664",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -99,7 +99,7 @@
     },
     {
       "priority": "info",
-      "action": "Note: hermes-agent has 164014 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
+      "action": "Note: hermes-agent has 164211 GitHub stars \u2014 lean into Ralph's cost and flexibility advantages.",
       "reason": "Competitor intelligence for positioning decisions."
     }
   ],
@@ -137,7 +137,7 @@
       "competitors": {
         "hermes-agent": {
           "status": 200,
-          "stars": 164014,
+          "stars": 164211,
           "features_found": [
             "Persistent memory"
           ]
@@ -158,12 +158,12 @@
         },
         "aider": {
           "status": 200,
-          "stars": 45201,
+          "stars": 45206,
           "features_found": []
         },
         "continue": {
           "status": 200,
-          "stars": 33334,
+          "stars": 33343,
           "features_found": []
         },
         "cursor": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-23T20:20:46.052463",
+    "timestamp": "2026-05-23T21:23:55.753077",
     "metrics": [
       {
         "platform": "GitHub",
@@ -262,7 +262,7 @@
     }
   },
   "market_intelligence": {
-    "generated_at": "2026-05-23T17:22:30.743810",
+    "generated_at": "2026-05-23T20:38:58.997830",
     "source": "competitor_analysis.py",
     "positioning_doc": "/home/mistlight/.openclaw/workspace/agents/marketing/RALPH_WORKFLOW_POSITIONING.md",
     "summary_report": "/home/mistlight/.openclaw/workspace/seo-reports/competitor_analysis_2026-05-23.md",
@@ -314,7 +314,7 @@
         "name": "Hermes Agent",
         "positioning": "Self-improving agent that learns from experience",
         "site_status": 200,
-        "github_stars": 164014,
+        "github_stars": 164211,
         "key_features_found": [
           "Persistent memory"
         ]
@@ -341,14 +341,14 @@
         "name": "Aider",
         "positioning": "Terminal-based AI pair programming in your git repo",
         "site_status": 200,
-        "github_stars": 45201,
+        "github_stars": 45206,
         "key_features_found": []
       },
       "continue": {
         "name": "Continue",
         "positioning": "The leading AI code assistant inside your IDE",
         "site_status": 200,
-        "github_stars": 33334,
+        "github_stars": 33343,
         "key_features_found": []
       },
       "cursor": {
@@ -410,8 +410,8 @@
     }
   },
   "distribution_lane": {
-    "lane": "distribution_reset",
-    "reason": "Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.",
+    "lane": "curator_contact_handoff_packet",
+    "reason": "A manual-contact-only curator target is already waiting in the live queue; advance contact discovery + the execution packet instead of inventing fresh reset work.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "16 directory submissions already shipped in the last 24 hours.",
@@ -423,6 +423,7 @@
       "8 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "15 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "8 prepared curator targets still need a canonical execution handoff packet.",
+      "Manual-contact-only curator targets are still waiting for execution (vivy-yi/awesome-agent-orchestration), so the loop should use the existing contact-discovery asset before inventing new reset work.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
       "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
@@ -431,6 +432,7 @@
       "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
       "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
       "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.",
+      "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
     ],
     "owned_content_posts_last_36h": 0,
@@ -447,20 +449,13 @@
     "skip_curator_outreach": true
   },
   "distribution_execution": {
-    "lane": "distribution_reset",
-    "action_type": "distribution_reset_execution",
+    "lane": "curator_contact_handoff_packet",
+    "action_type": "curator_contact_handoff_packet_execution",
     "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_distribution_reset_execution.md",
-    "summary": "Shipped a queue-reset/discovery packet so the loop expands into new targets instead of logging saturated follow-through as progress.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_handoff_packet.md",
+    "summary": "Escalated existing curator contact discovery into one canonical manual-contact execution packet so the loop stops rediscovering the same blocked targets.",
     "targets_prepared": [
-      "Hermes Agent",
-      "Conductor OSS",
-      "Conductor (Teams)",
-      "Aider",
-      "Continue",
-      "Cursor",
-      "Claude Code",
-      "GitHub Copilot"
+      "vivy-yi/awesome-agent-orchestration"
     ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
@@ -470,7 +465,9 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "live_external_action": false,
-    "blocking_factors": []
+    "blocking_factors": [
+      "github_auth_missing_for_live_pr_submission"
+    ]
   },
   "failure_signals": [
     "MARK AS FAILING: Current content/distribution tactics are not driving repo adoption."
@@ -478,12 +475,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: lane=distribution_reset",
+    "stdout": "skipped: lane=curator_contact_handoff_packet",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: lane=distribution_reset",
+    "stdout": "skipped: lane=curator_contact_handoff_packet",
     "stderr": ""
   }
 }

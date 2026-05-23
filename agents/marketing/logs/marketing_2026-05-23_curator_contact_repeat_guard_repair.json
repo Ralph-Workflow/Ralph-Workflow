@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-05-23T21:56:01.403955",
+  "run_type": "marketing-system-repair",
+  "title": "Prevent repeated curator-contact handoff selection after current packet delivery",
+  "summary": "Patched the distribution lane selector so a curator-contact handoff packet that is already current and already delivered in the active review window is treated as in-flight work instead of a fresh action slot. This stops the loop from rediscovering the same manual-contact packet and lets the next run advance into a real new lane.",
+  "files_changed": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/tests/test_marketing_system.py"
+  ],
+  "shared_findings_reused": [
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_lane_latest.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_curator_contact_handoff_packet_execution.json",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/curator_contact_discovery_latest.json",
+    "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_handoff_packet.md",
+    "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json"
+  ],
+  "repair_summary": [
+    "Added selector logic that detects when the current manual-contact target set already matches curator_contact_handoff_packet_latest.md.",
+    "Required a recent successful curator_contact_handoff_packet_execution before treating that packet as current, so undelivered packets can still be selected normally.",
+    "Added a regression test proving the selector falls through to distribution_reset instead of reselecting curator_contact_handoff_packet once the current packet is already delivered.",
+    "Refactored the new regression test to use ExitStack so the test file stays under Python's static nested-block limit."
+  ],
+  "expected_effect": "Future marketing runs should stop burning the best action slot on an already-delivered manual-contact packet and should move into genuinely new demand-capture or reset lanes during the same saturated review window.",
+  "verification": {
+    "commands": [
+      "python3 -m py_compile agents/marketing/distribution_lane_selector.py agents/marketing/distribution_lane_executor.py",
+      "python3 -m unittest agents.marketing.tests.test_marketing_system.DistributionLaneSelectorManualContactFreshnessTests agents.marketing.tests.test_marketing_system.DistributionLaneSelectorTests",
+      "python3 agents/marketing/distribution_lane_executor.py"
+    ],
+    "status": "passed"
+  }
+}

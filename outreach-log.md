@@ -1,5 +1,18 @@
 # Outreach Log
 
+## 2026-05-23 (Saturday) — Reddit monitoring (19:31 UTC / 21:31 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-23_2131.md`
+- **Scan summary:** **4** same-day rescue-backed discussion opportunities re-validated; **0-1** honest RalphWorkflow mention fits.
+- **Coverage note:** the built-in local path returned **cooldown_skip** on this forced cron pass, and the latest fresh direct-provider pass (`reddit_monitor_2026-05-23_1947.md`) degraded to **reddit_ip_blocked=5** + **time_budget_exceeded=1**. This is **partial visibility**, not a clean zero-opportunity night.
+- **Current verdict:** same-day indexed-web rescue reports remain the fallback truth source tonight; the strongest current surfaces are still **production failure**, **review tax**, and **visible finish state**, but not enough for a confident posting recommendation.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Are you actually running AI agents in production? What’s failing the most?"
+  - `r/AgentsOfAI` — "AI-written code waits longer in review. The delay is a measurement."
+  - `r/AIAgentsInAction` — "Everyone says they have AI agents in production. Nobody can clearly answer ‘how do you know it’s actually working’"
+  - `r/AI_Agents` — "I build AI agents for businesses, here’s what actually breaks first when they run 24/7"
+- **Self-improving fix surfaced:** treat `reddit_monitor.py` **cooldown_skip** as runtime state, not telemetry, whenever cron explicitly asks for a fresh research pass; if a later direct-provider pass is weaker than an earlier same-day indexed-web rescue pass, reuse the rescue report as fallback truth instead of collapsing to a fake zero-opportunity result.
+- **Posting note:** No posting attempted. Fail closed while coverage remains degraded.
+
 ## 2026-05-23 (Saturday) — Reddit monitoring (13:32 UTC / 15:32 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-23_1532.md`
 - **Scan summary:** 23 surfaced from fresh indexed web search, 4 shortlisted, 19 rejected.

@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Reset Packet
-Generated: 2026-05-23T20:36:16
+Generated: 2026-05-23T21:56:01
 
 ## Why this exists now
 - Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.
@@ -21,6 +21,7 @@ Generated: 2026-05-23T20:36:16
 - finished code
 - tested code
 - ready to review
+- graceful downgrade paths
 
 ## Queue snapshot
 - Live curator targets: 24

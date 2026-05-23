@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-23T20:36:16.851530",
+  "timestamp": "2026-05-23T21:56:01.403955",
   "run_type": "marketing-distribution-lane",
   "chosen_action": {
     "type": "distribution_lane_switch",
@@ -27,6 +27,8 @@
       "8 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
       "15 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
       "8 prepared curator targets still need a canonical execution handoff packet.",
+      "Manual-contact-only curator targets are still waiting for execution (vivy-yi/awesome-agent-orchestration), so the loop should use the existing contact-discovery asset before inventing new reset work.",
+      "The manual-contact execution packet is already current for the waiting targets and was already delivered in this review window, so selecting it again would be fake progress.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
       "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
       "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
@@ -35,6 +37,7 @@
       "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
       "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
       "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.",
+      "The StackOverflow packet was already delivered for manual placement in the current review window, so another handoff packet now would be fake progress.",
       "Repo conversion proof assets already shipped recently, so this run should not loop on another docs-only proof-asset pass."
     ]
   },

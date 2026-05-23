@@ -1,4 +1,27 @@
 {
-  "generated_at": "2026-05-23T19:33:40.574696",
-  "targets": []
+  "generated_at": "2026-05-23T21:46:16.714866",
+  "targets": [
+    {
+      "target": "vivy-yi/awesome-agent-orchestration",
+      "url": "https://github.com/vivy-yi/awesome-agent-orchestration",
+      "owner": "vivy-yi",
+      "repo": "awesome-agent-orchestration",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "status": "email_invalid_manual_handoff_remaining",
+      "channels": [
+        {
+          "type": "email",
+          "value": "developer@claude-ai-hub.com",
+          "label": "latest public commit email"
+        },
+        {
+          "type": "github_issue",
+          "value": "https://github.com/vivy-yi/awesome-agent-orchestration/issues/new",
+          "label": "repo contribution path"
+        }
+      ],
+      "recommended_next_step": "email fallback can run now",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md"
+    }
+  ]
 }
