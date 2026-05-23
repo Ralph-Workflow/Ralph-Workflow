@@ -1,6 +1,6 @@
 {
-  "lane": "distribution_reset",
-  "reason": "Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.",
+  "lane": "directory_confirmation",
+  "reason": "Directory submissions already burst; refresh live listing and backlink evidence so the next move reuses real approvals instead of stacking more low-intent submissions.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "16 directory submissions already shipped in the last 24 hours.",
@@ -19,6 +19,8 @@
     "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
     "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
     "Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.",
+    "Backlink status already shows 4 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.",
+    "The directory-confirmation snapshot is stale relative to the current submission burst, so refresh live listing/backlink evidence before adding more low-intent distribution.",
     "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
     "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.",
     "The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.",

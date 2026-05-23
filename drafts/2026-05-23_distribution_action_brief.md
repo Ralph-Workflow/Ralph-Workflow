@@ -1,9 +1,9 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-23T21:56:01
-Chosen lane: **distribution_reset**
+Generated: 2026-05-23T23:40:48
+Chosen lane: **directory_confirmation**
 
 ## Why this lane
-- Fresh reset targets already shipped, but same-family curator windows are already saturated; expand untouched target classes instead of refreshing another curator handoff packet.
+- Directory submissions already burst; refresh live listing and backlink evidence so the next move reuses real approvals instead of stacking more low-intent submissions.
 - Primary Codeberg adoption is flat in the current measurement window.
 - 16 directory submissions already shipped in the last 24 hours.
 - 48 curator contact attempts already shipped in the last 24 hours.
@@ -21,6 +21,8 @@ Chosen lane: **distribution_reset**
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.
+- Backlink status already shows 4 live directory listing(s), so the loop should reuse that evidence instead of acting like every submission is still opaque.
+- The directory-confirmation snapshot is stale relative to the current submission burst, so refresh live listing/backlink evidence before adding more low-intent distribution.
 - The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.
 - A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window.
 - The StackOverflow handoff packet is already current, so regenerating it again would be fake progress.
@@ -34,8 +36,8 @@ Chosen lane: **distribution_reset**
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
 
-## Immediate queue-reset work
-- Do not count curator or comparison queue follow-through alone as a fresh repair
-- Reuse `market_intelligence_latest.json` and current queue logs to define the next untouched target classes
-- Add genuinely new third-party citation/backlink targets before the next outreach-prep execution
-- Keep Codeberg as the only primary CTA while expanding the target universe
+## Immediate directory confirmation work
+- Re-run `agents/marketing/backlink_status.py` and reuse `backlink_status_latest.json` as the canonical live-listing snapshot
+- Treat live listings as proof assets to reuse in curator/comparison packets instead of pretending all submissions are still pending black boxes
+- Identify which approved listings already route to Codeberg first and which still need follow-up or evidence capture
+- Do not count another net-new directory submission as progress until this confirmation pass is refreshed

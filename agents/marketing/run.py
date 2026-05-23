@@ -715,14 +715,18 @@ def main() -> int:
         if primary_repo_flat_repair and distribution_lane.lane in (
             "directory_submission", "curator_outreach", "owned_content"
         ):
-            # Redirect to a lane that does not depend on owned-content saturation.
-            redirect = "comparison_backlink_outreach"
+            # Redirect to a lane that does not depend on repeating the same saturated family.
+            redirect = "directory_confirmation" if distribution_lane.lane == "directory_submission" and skip_directory_submissions else "comparison_backlink_outreach"
             print(f"[run.py] primary_repo_flat repair active — redirecting from "
                   f"{distribution_lane.lane} to {redirect}", flush=True)
             object.__setattr__(distribution_lane, 'lane', redirect)
             object.__setattr__(distribution_lane, 'reason',
                 "Repair override: primary_repo_flat repair active; "
-                "pushing Codeberg-primary comparison backlinks instead of saturated patterns."
+                + (
+                    "refreshing live directory approval/backlink evidence instead of stacking more low-intent submissions."
+                    if redirect == "directory_confirmation" else
+                    "pushing Codeberg-primary comparison backlinks instead of saturated patterns."
+                )
             )
             distribution_lane.reasons.insert(
                 0,

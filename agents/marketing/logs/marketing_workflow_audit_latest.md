@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-23T21:39:51.909742
+- Generated: 2026-05-23T23:36:28.289177
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **0**
 - Reddit posts analyzed: **6**
@@ -12,8 +12,8 @@
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 16 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
-- 48 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
-- The active loop did execute a live marketing action recently (aiforcode_submission), so the system is still shipping output even though outcome movement is not visible yet.
+- 50 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
+- The active loop did execute a live marketing action recently (repo_conversion_surface_update), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## Observed risks
@@ -50,12 +50,11 @@
   - Success metric: GitHub mirror shows any adoption delta
 
 ## Latest executed marketing action
-- Type: aiforcode_submission
-- Title: aiforcode submission
+- Type: repo_conversion_surface_update
+- Title: repo conversion surface update
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_aiforcode_submission.json
-- URL: https://aiforcode.io/
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_repo_conversion_surface_update.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

@@ -275,6 +275,64 @@ class DistributionLaneSelectorTests(unittest.TestCase):
 
             self.assertEqual(decision.lane, 'curator_outreach')
 
+    def test_prefers_directory_confirmation_when_directory_burst_is_active_and_snapshot_is_stale(self):
+        now = datetime(2026, 5, 23, 23, 33, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            backlink_status_path = log_dir / 'backlink_status_latest.json'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps({"working": []}), encoding='utf-8')
+            outreach_path.write_text('', encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            backlink_status_path.write_text(json.dumps({
+                'generated_at': '2026-05-23T16:51:24+00:00',
+                'summary': {
+                    'directories_with_live_listings': 4,
+                    'queries_indexed': 1,
+                    'total_queries': 14,
+                },
+            }), encoding='utf-8')
+
+            for idx in range(4):
+                (log_dir / f'marketing_2026-05-23_example{idx}_submission.json').write_text(json.dumps({
+                    'timestamp': f'2026-05-23T1{idx}:00:00',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                    'submit_url': f'https://example{idx}.com/submit',
+                }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'BACKLINK_STATUS_LATEST_PATH', backlink_status_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', tmp / 'missing.json'), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=False), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'directory_confirmation')
+            self.assertIn('directory submissions already burst', decision.reason.lower())
+
     def test_prefers_repo_conversion_proof_asset_when_external_lanes_are_saturated_and_stackoverflow_packet_is_current(self):
         now = datetime(2026, 5, 23, 16, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -2283,6 +2341,58 @@ class MarketingWorkflowAuditBurstTests(unittest.TestCase):
 
 
 class DistributionLaneExecutorTests(unittest.TestCase):
+    def test_directory_confirmation_execution_refreshes_backlink_snapshot(self):
+        now = datetime(2026, 5, 23, 23, 40, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='directory_confirmation',
+            reason='test',
+            reasons=['test'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['agents/marketing/logs/backlink_status_latest.json'],
+            artifact_path='/tmp/test.md',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            backlink_status_path = log_dir / 'backlink_status_latest.json'
+            backlink_status_path.write_text(json.dumps({
+                'generated_at': '2026-05-23T21:30:00+00:00',
+                'directories': {
+                    'ToolWise': {
+                        'listing_url': 'https://toolwise.ai/tools/ralph-workflow',
+                        'listing_live': True,
+                        'status_note': 'Existing listing already live.'
+                    },
+                    'OpenAgents': {
+                        'listing_url': 'https://www.openagents.pro/tools/ralph-workflow',
+                        'listing_live': False,
+                        'status_note': 'Pending review.',
+                        'check_results': [{'status': 404, 'ok': False}],
+                    },
+                },
+                'summary': {
+                    'directories_with_live_listings': 1,
+                    'queries_indexed': 0,
+                    'total_queries': 14,
+                },
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'BACKLINK_STATUS_LATEST_PATH', backlink_status_path), \
+                 patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='', stderr='')):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'directory_confirmation_execution')
+            self.assertEqual(execution.status, 'executed')
+            self.assertIn('live listing', execution.summary.lower())
+            self.assertTrue((drafts_dir / '2026-05-23_directory_confirmation_execution.md').exists())
+
     def test_extract_contact_links_filters_github_asset_noise(self):
         html = '''
         <a href="https://www.linkedin.com/in/example-founder/">LinkedIn</a>
