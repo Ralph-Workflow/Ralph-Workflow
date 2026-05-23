@@ -157,6 +157,9 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
+
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_: None)
+
     source_home = tmp_path / "source-codex-home"
     source_home.mkdir()
     (source_home / "config.toml").write_text(

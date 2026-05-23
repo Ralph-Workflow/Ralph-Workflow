@@ -268,7 +268,9 @@ def invoke_agent(
         registry=registry,
     )
     liveness_probe = DefaultLivenessProbe(registry=registry)
-    monitor = _start_workspace_monitor(opts.workspace_path)
+    monitor = _start_workspace_monitor(
+        opts.workspace_path if opts.show_progress else None
+    )
     policy = _policy_from_options(opts)
 
     ctx = _AgentRunCtx(

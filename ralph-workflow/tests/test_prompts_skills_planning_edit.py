@@ -19,6 +19,7 @@ PLANNING_SKILL_NAMES = frozenset({
     "subagent-driven-development",
     "coding-standards",
     "verification-loop",
+    "security-review",
 })
 
 DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY = (
