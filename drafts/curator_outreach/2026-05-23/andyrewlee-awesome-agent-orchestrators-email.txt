@@ -1,0 +1,19 @@
+Hi Andrew,
+
+I found your awesome-agent-orchestrators list while checking current agent-orchestration discovery surfaces and wanted to suggest Ralph Workflow for inclusion.
+
+Ralph Workflow is a free and open-source workflow layer for autonomous coding runs. The point is not just to orchestrate agents, but to get back finished, tested code that is ready to review instead of another confident summary.
+
+Primary repo:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+Suggested entry:
+- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
+
+If it helps, there’s also a GitHub mirror here:
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Thanks for maintaining the list.
+
+Best,
+Ken

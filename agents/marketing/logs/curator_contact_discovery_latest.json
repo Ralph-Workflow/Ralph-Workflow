@@ -1,52 +1,37 @@
 {
-  "generated_at": "2026-05-23T07:14:28.855283",
+  "generated_at": "2026-05-23T07:15:00",
   "targets": [
     {
-      "target": "7. 0xWelt/Awesome-Vibe-Coding",
-      "url": "https://github.com/0xWelt/Awesome-Vibe-Coding",
-      "owner": "0xWelt",
-      "repo": "Awesome-Vibe-Coding",
-      "priority": "HIGH \u2014 active repo, 90+ stars, open PR flow visible",
-      "status": "sent_via_email_fallback",
+      "target": "Agent-Analytics/awesome-multi-agent-orchestrators",
+      "url": "https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators",
+      "owner": "Agent-Analytics",
+      "repo": "awesome-multi-agent-orchestrators",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "status": "prepared",
       "channels": [
         {
           "type": "email",
-          "value": "dinghao12601@gmail.com",
-          "label": "latest public Git commit email",
-          "status": "sent_2026-05-23"
+          "value": "contact@agentanalytics.sh",
+          "label": "GitHub public email"
         },
         {
-          "type": "linkedin",
-          "value": "https://www.linkedin.com/in/welt-ding",
-          "label": "profile LinkedIn"
-        }
-      ],
-      "recommended_next_step": "wait for reply or listing signal; if none by 2026-06-06, replace with a different untouched curator lane instead of re-sending",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md"
-    },
-    {
-      "target": "vivy-yi/awesome-agent-orchestration",
-      "url": "https://github.com/vivy-yi/awesome-agent-orchestration",
-      "owner": "vivy-yi",
-      "repo": "awesome-agent-orchestration",
-      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
-      "status": "email_invalid_manual_handoff_remaining",
-      "channels": [
+          "type": "website",
+          "value": "https://agentanalytics.sh/contact",
+          "label": "possible contact page"
+        },
         {
-          "type": "email",
-          "value": "developer@claude-ai-hub.com",
-          "label": "latest public commit email",
-          "status": "invalid_mx_550",
-          "note": "Attempted 2026-05-23; remote recipient rejected due to invalid MX/A/AAAA records."
+          "type": "website",
+          "value": "https://agentanalytics.sh",
+          "label": "profile website"
         },
         {
           "type": "github_issue",
-          "value": "https://github.com/vivy-yi/awesome-agent-orchestration/issues/new",
+          "value": "https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators/issues/new",
           "label": "repo contribution path"
         }
       ],
-      "recommended_next_step": "public email path failed (550 invalid MX); do not retry email. Remaining path is GitHub issue/manual curator handoff only.",
-      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md"
+      "recommended_next_step": "email fallback can run now",
+      "artifact_path": "/tmp/tmp53zl62ra/drafts/curator_outreach/2026-05-23/01_agent-analytics-awesome-multi-agent-orchestrators.md"
     }
   ]
 }

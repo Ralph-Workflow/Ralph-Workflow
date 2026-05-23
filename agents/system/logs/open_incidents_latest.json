@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-23T15:23:24.809788+00:00",
+  "updated_at": "2026-05-23T15:57:27.058161+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
@@ -136,7 +136,7 @@
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-22T23:28:25.701171+00:00",
-      "repeat_count": 93,
+      "repeat_count": 94,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -467,7 +467,7 @@
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-23T15:23:24.809750+00:00",
+      "last_seen": "2026-05-23T15:57:16.529115+00:00",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -477,7 +477,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 54,
+      "repeat_count": 55,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -715,8 +715,8 @@
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-23T15:22:48.454883+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verifier did not pass (verdict='fail')\",\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-23T17:21:32.749573+02:00\"\n}",
+      "last_seen": "2026-05-23T15:57:16.529211+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-23T17:27:17.728046+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
       "closed_at": "2026-05-23T15:23:20.226509+00:00"
@@ -726,7 +726,7 @@
       "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T00:07:36.250186+00:00",
-      "repeat_count": 36,
+      "repeat_count": 37,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -974,13 +974,20 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779549789638:105\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-23T15:57:19.979066+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-23T15:23:24.809756+00:00",
+      "last_seen": "2026-05-23T15:57:16.529127+00:00",
       "last_error": "Marketing runner bundle is not healthy.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is not healthy.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -1825,7 +1832,7 @@
       "name": "marketing_independent_verification_blockers_momentum-watchdog-status-is-needs-attention-with",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T13:44:56.633984+00:00",
-      "repeat_count": 6,
+      "repeat_count": 7,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1863,13 +1870,20 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779549791863:106\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-23T15:57:21.696398+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-23T15:23:24.809762+00:00",
+      "last_seen": "2026-05-23T15:57:16.529130+00:00",
       "last_error": "Momentum watchdog status is needs_attention with actions: primary_repo_adoption_flat, pending_repairs_detected.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Momentum watchdog status is needs_attention with actions: primary_repo_adoption_flat, pending_repairs_detected.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -1879,7 +1893,7 @@
       "name": "marketing_independent_verification_blockers_workflow-audit-still-reports-needs-repair",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T13:44:56.633992+00:00",
-      "repeat_count": 6,
+      "repeat_count": 7,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1917,13 +1931,20 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779549794005:107\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-23T15:57:23.504385+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-23T15:23:24.809767+00:00",
+      "last_seen": "2026-05-23T15:57:16.529147+00:00",
       "last_error": "Workflow audit still reports needs_repair.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit still reports needs_repair.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -1933,7 +1954,7 @@
       "name": "marketing_independent_verification_blockers_workflow-audit-shows-the-primary-repo-adoption-g",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T13:44:56.633997+00:00",
-      "repeat_count": 6,
+      "repeat_count": 7,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1971,13 +1992,20 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779549796102:108\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-23T15:57:25.329834+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-23T15:23:24.809772+00:00",
+      "last_seen": "2026-05-23T15:57:16.529174+00:00",
       "last_error": "Workflow audit shows the primary repo adoption goal is still flat in the current window without a live measurement-pending repair state.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit shows the primary repo adoption goal is still flat in the current window without a live measurement-pending repair state.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -1987,7 +2015,7 @@
       "name": "marketing_independent_verification_blockers_workflow-audit-still-has-failing-tactics-without",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T13:44:56.634001+00:00",
-      "repeat_count": 6,
+      "repeat_count": 7,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2025,16 +2053,81 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779549798150:109\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-23T15:57:27.058148+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-23T15:23:24.809778+00:00",
+      "last_seen": "2026-05-23T15:57:16.529180+00:00",
       "last_error": "Workflow audit still has failing tactics without a live measurement-pending repair window.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Workflow audit still has failing tactics without a live measurement-pending repair window.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
+    },
+    "docs_verifier::artifact_contract_fail": {
+      "key": "docs_verifier::artifact_contract_fail",
+      "name": "docs_verifier",
+      "category": "artifact_contract_fail",
+      "first_seen": "2026-05-23T15:57:16.529082+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "open",
+      "blocked_by": [],
+      "last_seen": "2026-05-23T15:57:16.529108+00:00",
+      "last_error": "",
+      "likely_cause": "Verifier artifact exists but does not show required pass contract",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md"
+    },
+    "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar::review_followup_required": {
+      "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar::review_followup_required",
+      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-23T15:57:16.529121+00:00",
+      "repeat_count": 1,
+      "owner_domain": "marketing",
+      "escalation_level": "none",
+      "owner_actions": [
+        {
+          "at": "2026-05-23T15:57:18.286805+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "blocked_external"
+        }
+      ],
+      "status": "blocked_external",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ],
+      "last_seen": "2026-05-23T15:57:16.529124+00:00",
+      "last_error": "Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is stale relative to marketing_workflow_audit_latest.json; rerun the full bundle before independent certification.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
+    },
+    "docs_verifier_stability::loop_verification_fail": {
+      "key": "docs_verifier_stability::loop_verification_fail",
+      "name": "docs_verifier_stability",
+      "category": "loop_verification_fail",
+      "first_seen": "2026-05-23T15:57:16.529187+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "open",
+      "blocked_by": [],
+      "last_seen": "2026-05-23T15:57:16.529192+00:00",
+      "last_error": "latest docs verifier verdict is not pass: 'fail'",
+      "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json"
     }
   }
 }

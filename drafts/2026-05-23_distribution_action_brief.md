@@ -1,18 +1,18 @@
 # Ralph Workflow Distribution Action Brief
-Generated: 2026-05-23T17:44:46
+Generated: 2026-05-23T18:36:44
 Chosen lane: **distribution_reset**
 
 ## Why this lane
 - The proof-asset lane already shipped recently and the current external lanes are still saturated or in-flight; create fresh reset targets instead of looping on the same docs and handoff surfaces.
 - Primary Codeberg adoption is flat in the current measurement window.
-- 1 owned-content posts already shipped in the last 36 hours.
-- 13 directory submissions already shipped in the last 24 hours.
-- 12 curator contact attempts already shipped in the last 24 hours.
+- 14 directory submissions already shipped in the last 24 hours.
+- 48 curator contact attempts already shipped in the last 24 hours.
 - Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.
 - Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.
 - Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.
 - Apollo already has an active measurement window until 2026-05-30T00:14:49.075391+02:00, so do not spend this run repackaging the same outbound lane.
-- 14 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
+- 15 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.
+- 4 fresh distribution-reset targets are waiting to be turned into real outreach assets.
 - Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.
 - The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.
 - Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.
@@ -27,9 +27,6 @@ Chosen lane: **distribution_reset**
 - outreach-log.md: avoid duplicate submission work and repeated HN/Lobsters-only handoff
 - market_intelligence_latest.json: reusable competitor comparisons and positioning truths
 - apollo_status.json: managed outbound is authenticated and available for execution packaging
-
-## Recent owned-content already shipped
-- AI Coding Tool Comparison: Claude Code, Cursor, Aider, and the Workflow Layer Most Teams Actually Need (telegraph)
 
 ## Immediate queue-reset work
 - Do not count curator or comparison queue follow-through alone as a fresh repair

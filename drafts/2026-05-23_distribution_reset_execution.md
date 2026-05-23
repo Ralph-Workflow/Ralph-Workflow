@@ -1,5 +1,5 @@
 # Ralph Workflow Distribution Reset Packet
-Generated: 2026-05-23T17:44:46
+Generated: 2026-05-23T18:50:48
 
 ## Why this exists now
 - The proof-asset lane already shipped recently and the current external lanes are still saturated or in-flight; create fresh reset targets instead of looping on the same docs and handoff surfaces.
@@ -24,13 +24,24 @@ Generated: 2026-05-23T17:44:46
 - graceful downgrade paths
 
 ## Queue snapshot
-- Live curator targets: 15
+- Live curator targets: 16
 - Live comparison targets: 8
 
 ## Next untouched target classes to create
 - comparison pages not yet turned into third-party citations or curated-list inclusions
 - your own repo coding tool roundups that can link directly to Codeberg instead of the GitHub mirror
 - workflow/orchestration directories or blog lists adjacent to the current comparison pages
+
+## Fresh targets discovered in this reset
+- **subinium/awesome-claude-code** — https://github.com/subinium/awesome-claude-code
+  - Why it fits: Fresh Claude Code ecosystem roundup focused on tools, skills, plugins, and MCP servers. Strong fit for Ralph Workflow's Claude Code workflow positioning and Codeberg-primary repo CTA.
+- **saviorand/awesome-ai-assisted-coding** — https://github.com/saviorand/awesome-ai-assisted-coding
+  - Why it fits: Curated AI-assisted coding list that already groups command-line tools, coding agents, and code-quality workflows. High-fit citation target for Ralph Workflow's reviewable unattended-coding angle.
+- **BNLNPPS/awesome-terminals-ai** — https://github.com/BNLNPPS/awesome-terminals-ai
+  - Why it fits: Terminal-AI roundup with explicit sections for coding assistants, agents, and provider-native coding CLIs. Fits Ralph Workflow's terminal-first orchestrator story and Codeberg-primary CTA.
+- **nandhakt/awesome-ai-coding-resources** — https://github.com/nandhakt/awesome-ai-coding-resources
+  - Why it fits: Broad AI coding resources collection covering open-source AI development tools and editor alternatives. Good adjacent target for a free/open-source workflow layer positioned beyond one-shot editors.
+- Queue log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/distribution_reset_targets_latest.json
 
 ## Comparison assets to extend
 - Hermes Agent — /home/mistlight/.openclaw/workspace/seo-reports/comparisons/hermes-agent.md
@@ -50,3 +61,12 @@ Generated: 2026-05-23T17:44:46
 ## Measurement contract
 - Expected outcome: at least 3 newly identified third-party backlink/citation targets before the next outreach-prep execution
 - Review window: next audit run should show a fresh executable lane instead of follow-through-only status
+
+## Promoted curator target files
+- /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23
+
+## Curator contact discovery
+- /home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_discovery.md
+
+## Curator contact execution packet
+- /home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_handoff_packet.md

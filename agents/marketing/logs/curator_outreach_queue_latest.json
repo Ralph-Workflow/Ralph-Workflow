@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T08:45:23.254460+00:00",
+  "generated_at": "2026-05-23T18:50:48.985316",
   "targets": [
     {
       "target": "1. ai-for-developers/awesome-ai-coding-tools",
@@ -192,6 +192,59 @@
       "last_contact_at": "2026-05-23T08:45:23.254460+00:00",
       "last_contact_path": "email:ithiria894@gmail.com",
       "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_084523_ithiria894_curator_email.json"
+    },
+    {
+      "target": "andyrewlee/awesome-agent-orchestrators",
+      "url": "https://github.com/andyrewlee/awesome-agent-orchestrators",
+      "action": "Email inclusion request with Codeberg-primary entry",
+      "priority": "HIGH \u2014 active agent-orchestration list, fresh target, direct fit",
+      "subject": "Ralph Workflow for awesome-agent-orchestrators",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/andyrewlee-awesome-agent-orchestrators.md",
+      "status": "sent_via_email_fallback",
+      "review_due_date": "2026-06-06",
+      "last_contact_at": "2026-05-23T15:56:07.757532+00:00",
+      "last_contact_path": "email:andyrewlee@gmail.com",
+      "last_contact_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_155607_andyrewlee_curator_email.json"
+    },
+    {
+      "target": "subinium/awesome-claude-code",
+      "url": "https://github.com/subinium/awesome-claude-code",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for subinium/awesome-claude-code",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/01_subinium-awesome-claude-code.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-06"
+    },
+    {
+      "target": "saviorand/awesome-ai-assisted-coding",
+      "url": "https://github.com/saviorand/awesome-ai-assisted-coding",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for saviorand/awesome-ai-assisted-coding",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/02_saviorand-awesome-ai-assisted-coding.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-06"
+    },
+    {
+      "target": "BNLNPPS/awesome-terminals-ai",
+      "url": "https://github.com/BNLNPPS/awesome-terminals-ai",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for BNLNPPS/awesome-terminals-ai",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/03_bnlnpps-awesome-terminals-ai.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-06"
+    },
+    {
+      "target": "nandhakt/awesome-ai-coding-resources",
+      "url": "https://github.com/nandhakt/awesome-ai-coding-resources",
+      "action": "Submit PR or request inclusion with a Codeberg-primary entry",
+      "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
+      "subject": "Ralph Workflow for nandhakt/awesome-ai-coding-resources",
+      "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/04_nandhakt-awesome-ai-coding-resources.md",
+      "status": "prepared",
+      "review_due_date": "2026-06-06"
     }
   ]
 }

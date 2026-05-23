@@ -83,3 +83,29 @@ Also present across 2026-05-20 through 2026-05-21, meaning prior Apollo attempts
 1. Add the 5 new targets into the next outreach-prep queue instead of logging another follow-through-only cycle.
 2. Use the fresh Reddit openings and map them per subreddit pain pattern rather than reusing one generic opener.
 3. If Apollo login is retried, use the live inbox as the verification-code source; the environment can fetch codes, so the remaining unblock work is browser/session execution, not email access.
+
+## 5) Fresh reset target discovery — 2026-05-23
+Goal met: identified 4 additional untouched third-party citation/curator targets after the earlier manual-contact lane stalled and the live queues stayed saturated.
+
+### Newly identified targets
+
+1. **subinium/awesome-claude-code**  
+   URL: https://github.com/subinium/awesome-claude-code  
+   Why it fits: Fresh Claude Code ecosystem roundup focused on tools, skills, plugins, and MCP servers. Strong fit for Ralph Workflow's Claude Code workflow positioning and Codeberg-primary repo CTA.
+
+2. **saviorand/awesome-ai-assisted-coding**  
+   URL: https://github.com/saviorand/awesome-ai-assisted-coding  
+   Why it fits: Curated AI-assisted coding list that already groups command-line tools, coding agents, and code-quality workflows. High-fit citation target for Ralph Workflow's reviewable unattended-coding angle.
+
+3. **BNLNPPS/awesome-terminals-ai**  
+   URL: https://github.com/BNLNPPS/awesome-terminals-ai  
+   Why it fits: Terminal-AI roundup with explicit sections for coding assistants, agents, and provider-native coding CLIs. Fits Ralph Workflow's terminal-first orchestrator story and Codeberg-primary CTA.
+
+4. **nandhakt/awesome-ai-coding-resources**  
+   URL: https://github.com/nandhakt/awesome-ai-coding-resources  
+   Why it fits: Broad AI coding resources collection covering open-source AI development tools and editor alternatives. Good adjacent target for a free/open-source workflow layer positioned beyond one-shot editors.
+
+### Discovery notes
+- These targets were checked against current outreach/log artifacts and were not already in the live curator or comparison queues.
+- They preserve the current Codeberg-first positioning while expanding beyond already-saturated same-day outreach windows.
+- Best immediate prioritization order: subinium/awesome-claude-code, saviorand/awesome-ai-assisted-coding, BNLNPPS/awesome-terminals-ai, nandhakt/awesome-ai-coding-resources.

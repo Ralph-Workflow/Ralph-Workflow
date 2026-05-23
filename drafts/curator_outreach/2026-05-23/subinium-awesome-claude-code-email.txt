@@ -1,0 +1,19 @@
+Hi Subin,
+
+I found your awesome-claude-code list while looking for fresh Claude Code ecosystem surfaces that could send evaluators to Codeberg-first open-source workflow tools, and Ralph Workflow looks like a strong fit for the Agent Orchestration section.
+
+Ralph Workflow is a free and open-source workflow layer for autonomous coding. The point is to compose planning, implementation, and verification so an unattended run ends in something reviewable instead of another confident summary.
+
+Primary repo:
+https://codeberg.org/RalphWorkflow/Ralph-Workflow
+
+Suggested entry:
+- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free and open-source autonomous coding workflow orchestrator for Claude Code/Codex-style runs that aims to hand back finished, tested code ready to review
+
+If it helps for GitHub-native readers, there is also a mirror here:
+https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Thanks for maintaining the list.
+
+Best,
+Ken

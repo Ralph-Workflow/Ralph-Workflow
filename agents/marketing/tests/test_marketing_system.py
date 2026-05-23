@@ -168,6 +168,24 @@ class MarketingDecisionTests(unittest.TestCase):
 
 
 class DistributionLaneSelectorTests(unittest.TestCase):
+    def test_recent_live_action_family_count_counts_sent_curator_email(self):
+        now = datetime(2026, 5, 23, 18, 0, 0)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            log_dir.mkdir()
+            (log_dir / 'marketing_2026-05-23_155607_andyrewlee_curator_email.json').write_text(json.dumps({
+                'timestamp_utc': '2026-05-23T15:56:07+00:00',
+                'action': 'curator_email_outreach',
+                'status': 'sent',
+                'channel': {'recipient': 'andyrewlee@gmail.com'},
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir):
+                count = distribution_lane_selector._recent_live_action_family_count(now, hours=24, family='curator_outreach')
+
+            self.assertEqual(count, 1)
+
     def test_prefers_directory_submission_when_content_is_saturated_and_new_easy_channel_exists(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
         adoption = {
@@ -1062,6 +1080,125 @@ class DistributionLaneSelectorFallbackTests(unittest.TestCase):
             self.assertIn('manual-contact execution packet', decision.reason)
 
 
+class DistributionLaneSelectorManualContactFreshnessTests(unittest.TestCase):
+    def test_falls_back_to_distribution_reset_when_manual_handoff_lacks_current_contact_discovery(self):
+        now = datetime(2026, 5, 23, 18, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        outreach_text = 'HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.'
+        curator_queue = {
+            'targets': [
+                {
+                    'target': 'vivy-yi/awesome-agent-orchestration',
+                    'url': 'https://github.com/vivy-yi/awesome-agent-orchestration',
+                    'action': 'Submit PR or request inclusion with a Codeberg-primary entry',
+                    'priority': 'HIGH',
+                    'status': 'email_invalid_manual_handoff_remaining',
+                    'review_due_date': '2026-06-06',
+                    'last_contact_at': '2026-05-23T05:32:06Z',
+                }
+            ]
+        }
+        comparison_queue = {
+            'targets': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+                for idx in range(1, 9)
+            ]
+        }
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'path': f'/comparisons/comp-{idx}.md'}
+                for idx in range(1, 9)
+            ]
+        }
+        apollo_sequence = {
+            'measurement_pending': True,
+            'next_review_at': '2026-05-30T00:14:49.075391+02:00',
+        }
+        stackoverflow_latest = {
+            'generated_at': '2026-05-23T16:34:38.381978',
+            'drafts_created': 0,
+            'drafts': [],
+            'skipped_existing_drafts': 1,
+            'top_questions': [
+                {
+                    'title': 'How should I structure autonomous AI agent workflows for production reliability?',
+                    'url': 'https://stackoverflow.com/questions/79942291/example',
+                    'score': 5.7,
+                    'votes': 0,
+                    'answers': 0,
+                }
+            ],
+        }
+        stale_contact_discovery = {'generated_at': '2026-05-23T18:19:57.821130', 'targets': []}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            stackoverflow_drafts_dir = drafts_dir / 'stackoverflow'
+            stackoverflow_drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            market_path = log_dir / 'market_intelligence.json'
+            apollo_sequence_path = log_dir / 'apollo_sequence_status_latest.json'
+            stackoverflow_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            contact_discovery_path = log_dir / 'curator_contact_discovery_latest.json'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            reset_log_path = log_dir / 'distribution_reset_execution_log.md'
+            stackoverflow_handoff_path = drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text(outreach_text, encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            apollo_sequence_path.write_text(json.dumps(apollo_sequence), encoding='utf-8')
+            stackoverflow_path.write_text(json.dumps(stackoverflow_latest), encoding='utf-8')
+            contact_discovery_path.write_text(json.dumps(stale_contact_discovery), encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            reset_log_path.write_text('# Distribution Reset Execution Log\n', encoding='utf-8')
+            stackoverflow_handoff_path.write_text('# StackOverflow handoff\n', encoding='utf-8')
+            (stackoverflow_drafts_dir / 'so_answer_79942291.md').write_text('draft', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_repo_conversion_docs_push.json').write_text(json.dumps({
+                'timestamp': '2026-05-23T15:00:00',
+                'action_type': 'repo_conversion_docs_push',
+                'result': {'ok': True},
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_HANDOFF_LATEST_PATH', stackoverflow_handoff_path), \
+                 patch.object(distribution_lane_selector, 'CURATOR_CONTACT_DISCOVERY_LATEST_PATH', contact_discovery_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_LOG_PATH', reset_log_path), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=True), \
+                 patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=True), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False), \
+                 patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={'provider_degraded': True, 'reddit_blocked': True, 'partial_visibility_only': True}):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'distribution_reset')
+            self.assertIn('fresh reset targets', decision.reason)
+
+
 class ApolloSequenceStatusTests(unittest.TestCase):
     def test_marks_recent_launch_as_measurement_pending(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1303,6 +1440,344 @@ class MarketingWorkflowAuditBurstTests(unittest.TestCase):
                 decision = distribution_lane_selector.choose_distribution_lane(now)
 
             self.assertEqual(decision.lane, 'distribution_reset')
+
+    def test_prefers_curator_outreach_when_fresh_reset_targets_exist_only_in_reset_log(self):
+        now = datetime(2026, 5, 23, 17, 45, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        outreach_text = 'HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.'
+        curator_queue = {'targets': []}
+        comparison_queue = {
+            'targets': [
+                {'slug': 'awesome-claude-code', 'name': 'hesreallyhim/awesome-claude-code', 'url': 'https://github.com/hesreallyhim/awesome-claude-code', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+            ]
+        }
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'path': f'/comparisons/comp-{idx}.md'}
+                for idx in range(1, 9)
+            ]
+        }
+        apollo_sequence = {
+            'measurement_pending': True,
+            'next_review_at': '2026-05-30T00:14:49.075391+02:00',
+        }
+        stackoverflow_latest = {
+            'drafts_created': 0,
+            'drafts': [],
+            'top_questions': [],
+        }
+        reset_log = """# Distribution Reset Execution Log
+
+1. **Agent-Analytics/awesome-multi-agent-orchestrators**
+   URL: https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators
+   Why it fits: explicitly curates multi-agent orchestrators.
+
+2. **hesreallyhim/awesome-claude-code**
+   URL: https://github.com/hesreallyhim/awesome-claude-code
+   Why it fits: Claude Code ecosystem roundup.
+"""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            market_path = log_dir / 'market_intelligence.json'
+            apollo_sequence_path = log_dir / 'apollo_sequence_status_latest.json'
+            stackoverflow_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            reset_log_path = log_dir / 'distribution_reset_execution_log.md'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text(outreach_text, encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            apollo_sequence_path.write_text(json.dumps(apollo_sequence), encoding='utf-8')
+            stackoverflow_path.write_text(json.dumps(stackoverflow_latest), encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            reset_log_path.write_text(reset_log, encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_repo_conversion_docs_push.json').write_text(json.dumps({
+                'timestamp': '2026-05-23T15:00:00',
+                'action_type': 'repo_conversion_docs_push',
+                'result': {'ok': True},
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_LOG_PATH', reset_log_path), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=True), \
+                 patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=True), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False), \
+                 patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={'provider_degraded': True, 'reddit_blocked': True, 'partial_visibility_only': True}):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'curator_outreach')
+            self.assertIn('Fresh reset targets exist', decision.reason)
+
+    def test_prefers_manual_contact_execution_before_distribution_reset_when_only_manual_handoff_remains(self):
+        now = datetime(2026, 5, 23, 18, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        outreach_text = 'HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.'
+        curator_queue = {
+            'targets': [
+                {
+                    'target': 'vivy-yi/awesome-agent-orchestration',
+                    'url': 'https://github.com/vivy-yi/awesome-agent-orchestration',
+                    'action': 'Submit PR or request inclusion with a Codeberg-primary entry',
+                    'priority': 'HIGH',
+                    'status': 'email_invalid_manual_handoff_remaining',
+                    'review_due_date': '2026-06-06',
+                    'last_contact_at': '2026-05-23T05:32:06Z',
+                }
+            ]
+        }
+        comparison_queue = {
+            'targets': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+                for idx in range(1, 9)
+            ]
+        }
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'path': f'/comparisons/comp-{idx}.md'}
+                for idx in range(1, 9)
+            ]
+        }
+        apollo_sequence = {
+            'measurement_pending': True,
+            'next_review_at': '2026-05-30T00:14:49.075391+02:00',
+        }
+        stackoverflow_latest = {
+            'generated_at': '2026-05-23T16:34:38.381978',
+            'drafts_created': 0,
+            'drafts': [],
+            'skipped_existing_drafts': 1,
+            'top_questions': [
+                {
+                    'title': 'How should I structure autonomous AI agent workflows for production reliability?',
+                    'url': 'https://stackoverflow.com/questions/79942291/example',
+                    'score': 5.7,
+                    'votes': 0,
+                    'answers': 0,
+                }
+            ],
+        }
+        contact_discovery = {
+            'targets': [
+                {
+                    'target': 'vivy-yi/awesome-agent-orchestration',
+                    'status': 'email_invalid_manual_handoff_remaining',
+                    'channels': [
+                        {'type': 'github_issue', 'value': 'https://github.com/vivy-yi/awesome-agent-orchestration/issues/new'}
+                    ],
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            stackoverflow_drafts_dir = drafts_dir / 'stackoverflow'
+            stackoverflow_drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            market_path = log_dir / 'market_intelligence.json'
+            apollo_sequence_path = log_dir / 'apollo_sequence_status_latest.json'
+            stackoverflow_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            contact_discovery_path = log_dir / 'curator_contact_discovery_latest.json'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            reset_log_path = log_dir / 'distribution_reset_execution_log.md'
+            stackoverflow_handoff_path = drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text(outreach_text, encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            apollo_sequence_path.write_text(json.dumps(apollo_sequence), encoding='utf-8')
+            stackoverflow_path.write_text(json.dumps(stackoverflow_latest), encoding='utf-8')
+            contact_discovery_path.write_text(json.dumps(contact_discovery), encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            reset_log_path.write_text('# Distribution Reset Execution Log\n', encoding='utf-8')
+            stackoverflow_handoff_path.write_text('# StackOverflow handoff\n', encoding='utf-8')
+            (stackoverflow_drafts_dir / 'so_answer_79942291.md').write_text('draft', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_repo_conversion_docs_push.json').write_text(json.dumps({
+                'timestamp': '2026-05-23T15:00:00',
+                'action_type': 'repo_conversion_docs_push',
+                'result': {'ok': True},
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_HANDOFF_LATEST_PATH', stackoverflow_handoff_path), \
+                 patch.object(distribution_lane_selector, 'CURATOR_CONTACT_DISCOVERY_LATEST_PATH', contact_discovery_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_LOG_PATH', reset_log_path), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=True), \
+                 patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=True), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False), \
+                 patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={'provider_degraded': True, 'reddit_blocked': True, 'partial_visibility_only': True}):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'curator_contact_handoff_packet')
+            self.assertIn('manual-contact execution packet', decision.reason)
+
+    def test_falls_back_to_distribution_reset_when_manual_handoff_lacks_current_contact_discovery(self):
+        now = datetime(2026, 5, 23, 18, 0, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        channel_log = {"working": []}
+        outreach_text = 'HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.'
+        curator_queue = {
+            'targets': [
+                {
+                    'target': 'vivy-yi/awesome-agent-orchestration',
+                    'url': 'https://github.com/vivy-yi/awesome-agent-orchestration',
+                    'action': 'Submit PR or request inclusion with a Codeberg-primary entry',
+                    'priority': 'HIGH',
+                    'status': 'email_invalid_manual_handoff_remaining',
+                    'review_due_date': '2026-06-06',
+                    'last_contact_at': '2026-05-23T05:32:06Z',
+                }
+            ]
+        }
+        comparison_queue = {
+            'targets': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'status': 'prepared', 'review_due_date': '2026-06-05'}
+                for idx in range(1, 9)
+            ]
+        }
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': f'comp-{idx}', 'name': f'Comp {idx}', 'path': f'/comparisons/comp-{idx}.md'}
+                for idx in range(1, 9)
+            ]
+        }
+        apollo_sequence = {
+            'measurement_pending': True,
+            'next_review_at': '2026-05-30T00:14:49.075391+02:00',
+        }
+        stackoverflow_latest = {
+            'generated_at': '2026-05-23T16:34:38.381978',
+            'drafts_created': 0,
+            'drafts': [],
+            'skipped_existing_drafts': 1,
+            'top_questions': [
+                {
+                    'title': 'How should I structure autonomous AI agent workflows for production reliability?',
+                    'url': 'https://stackoverflow.com/questions/79942291/example',
+                    'score': 5.7,
+                    'votes': 0,
+                    'answers': 0,
+                }
+            ],
+        }
+        stale_contact_discovery = {'generated_at': '2026-05-23T18:19:57.821130', 'targets': []}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            stackoverflow_drafts_dir = drafts_dir / 'stackoverflow'
+            stackoverflow_drafts_dir.mkdir()
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            market_path = log_dir / 'market_intelligence.json'
+            apollo_sequence_path = log_dir / 'apollo_sequence_status_latest.json'
+            stackoverflow_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            contact_discovery_path = log_dir / 'curator_contact_discovery_latest.json'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            reset_log_path = log_dir / 'distribution_reset_execution_log.md'
+            stackoverflow_handoff_path = drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md'
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps(channel_log), encoding='utf-8')
+            outreach_path.write_text(outreach_text, encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            apollo_sequence_path.write_text(json.dumps(apollo_sequence), encoding='utf-8')
+            stackoverflow_path.write_text(json.dumps(stackoverflow_latest), encoding='utf-8')
+            contact_discovery_path.write_text(json.dumps(stale_contact_discovery), encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            reset_log_path.write_text('# Distribution Reset Execution Log\n', encoding='utf-8')
+            stackoverflow_handoff_path.write_text('# StackOverflow handoff\n', encoding='utf-8')
+            (stackoverflow_drafts_dir / 'so_answer_79942291.md').write_text('draft', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_repo_conversion_docs_push.json').write_text(json.dumps({
+                'timestamp': '2026-05-23T15:00:00',
+                'action_type': 'repo_conversion_docs_push',
+                'result': {'ok': True},
+            }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_HANDOFF_LATEST_PATH', stackoverflow_handoff_path), \
+                 patch.object(distribution_lane_selector, 'CURATOR_CONTACT_DISCOVERY_LATEST_PATH', contact_discovery_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_LOG_PATH', reset_log_path), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=True), \
+                 patch.object(distribution_lane_selector, '_apollo_execution_ready', return_value=True), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False), \
+                 patch.object(distribution_lane_selector, '_load_recent_monitor_summary', return_value={'provider_degraded': True, 'reddit_blocked': True, 'partial_visibility_only': True}):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'distribution_reset')
+            self.assertIn('fresh reset targets', decision.reason)
 
     def test_prefers_handoff_packet_when_prepared_queues_exist_but_github_auth_is_blocked(self):
         now = datetime(2026, 5, 22, 6, 0, 0)
@@ -2540,6 +3015,78 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             self.assertIn('Agent-Analytics/awesome-multi-agent-orchestrators', artifact_text)
             self.assertNotIn('hesreallyhim/awesome-claude-code', execution.targets_prepared)
 
+    def test_curator_execution_promotes_distribution_reset_log_targets_when_queue_file_is_empty(self):
+        now = datetime(2026, 5, 23, 7, 15, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='curator_outreach',
+            reason='Fresh reset targets exist; promote them into real outreach assets before logging another reset or queue-housekeeping cycle.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+        market_intelligence = {
+            'comparison_pages': [
+                {'slug': 'claude-code', 'name': 'Claude Code', 'path': '/tmp/claude-code.md'},
+            ]
+        }
+        curator_targets = """### 1. Static target
+- **URL:** https://example.com/static
+- **Action:** Submit PR
+- **Priority:** HIGH
+"""
+        reset_log = """# Distribution Reset Execution Log
+
+1. **Agent-Analytics/awesome-multi-agent-orchestrators**
+   URL: https://github.com/Agent-Analytics/awesome-multi-agent-orchestrators
+   Why it fits: explicitly curates multi-agent orchestrators.
+"""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            seo_dir = tmp / 'seo-reports'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            seo_dir.mkdir()
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('HN/Lobsters blocker noted.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            curator_queue = log_dir / 'curator_outreach_queue_latest.json'
+            curator_queue.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
+            comparison_queue.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            target_path = tmp / 'curator_targets.md'
+            target_path.write_text(curator_targets, encoding='utf-8')
+            reset_queue = log_dir / 'distribution_reset_targets_latest.json'
+            reset_queue.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            reset_log_path = log_dir / 'distribution_reset_execution_log.md'
+            reset_log_path.write_text(reset_log, encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'SEO_REPORTS_DIR', seo_dir), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', curator_queue), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
+                 patch.object(distribution_lane_executor, 'TARGETS_PATH', target_path), \
+                 patch.object(distribution_lane_executor, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue), \
+                 patch.object(distribution_lane_executor, 'DISTRIBUTION_RESET_LOG_PATH', reset_log_path), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=market_intelligence), \
+                 patch('subprocess.run', return_value=SimpleNamespace(returncode=0, stdout='', stderr='')):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'curator_outreach_execution')
+            self.assertIn('Agent-Analytics/awesome-multi-agent-orchestrators', execution.targets_prepared)
+            queue_payload = json.loads(curator_queue.read_text(encoding='utf-8'))
+            self.assertEqual(queue_payload['targets'][0]['target'], 'Agent-Analytics/awesome-multi-agent-orchestrators')
+            reset_payload = json.loads(reset_queue.read_text(encoding='utf-8'))
+            self.assertEqual(reset_payload['targets'], [])
+
     def test_curator_execution_promotes_distribution_reset_targets_before_static_queue(self):
         now = datetime(2026, 5, 23, 7, 15, 0)
         decision = distribution_lane_selector.LaneDecision(
@@ -2907,6 +3454,31 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
             content_action = next(item for item in payload['repair_actions'] if item['target_tactic'] == 'content_distribution')
             self.assertIn('Owned content is saturated for now', content_action['action'])
 
+    def test_audit_treats_sent_curator_email_as_live_replacement_action(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            out_dir = tmp / 'logs'
+            out_dir.mkdir()
+
+            payload = {
+                'timestamp_utc': '2026-05-23T15:56:07.757532+00:00',
+                'action': 'curator_email_outreach',
+                'status': 'sent',
+                'channel': {
+                    'recipient': 'andyrewlee@gmail.com',
+                    'subject': 'Ralph Workflow for awesome-agent-orchestrators',
+                },
+                'body_file': 'drafts/curator_outreach/2026-05-23/andyrewlee-awesome-agent-orchestrators-email.txt',
+            }
+            path = out_dir / 'marketing_2026-05-23_155607_andyrewlee_curator_email.json'
+            path.write_text(json.dumps(payload), encoding='utf-8')
+
+            normalized = marketing_workflow_audit.normalize_marketing_action(payload, path)
+            self.assertEqual(normalized['chosen_action']['type'], 'curator_email_outreach')
+            self.assertTrue(normalized['result']['live_external_action'])
+            self.assertEqual(normalized['result']['status'], 'sent')
+
+        
     def test_audit_does_not_treat_curator_follow_through_as_shipped_system_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

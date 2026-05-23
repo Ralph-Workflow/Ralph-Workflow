@@ -1,35 +1,25 @@
 # Repo conversion docs push — 2026-05-23
 
-## Action
-Shipped the already-prepared Codeberg-first conversion docs upgrade to the live public repos.
+## What changed
+- Tightened the top-level README around the four marketing questions instead of a generic tool description.
+- Restored a concrete 5-minute first-run path with a spec template and morning-after merge test.
+- Kept Codeberg as the primary public CTA and GitHub as mirror-only.
 
-## What went live
-- `README.md`
-- `START_HERE.md`
-- `docs/README.md`
+## Why this belongs on these surfaces
+- `README.md` is the first conversion surface for qualified repo traffic.
+- `START_HERE.md` is where interest should turn into a real first run.
+- The change improves free-use clarity without pushing readers into deeper docs too early.
 
-Commit:
-- `76d93e0c50cc9d426de3b0c16f326b3d78081f26` — `docs: sharpen first-run conversion path`
+## What was pruned / shortened / merged
+- Removed vaguer framing that weakened the "who is this for / why now" story.
+- Collapsed the first-run path back into a short, explicit evaluation flow.
+- Avoided adding new top-level pages or more navigation clutter.
 
-## Why this was the highest-leverage move
-The current bottleneck is conversion from interest to free use on the primary repo. Reddit is structurally constrained, Apollo is already inside a live measurement window, and curator/directory lanes are saturated. Shipping the conversion upgrade to the live repo surfaces improved the main Codeberg evaluation path immediately.
+## Duplication check
+- README now gives the shortest product + why-now summary.
+- START_HERE carries the concrete first-run instructions.
+- Deeper proof and manual content stay in their existing docs pages.
 
-## Verification
-- committed only the three intended conversion-surface files
-- post-push markdown link check passed
-- `git ls-remote` confirmed the same commit on `origin/main` and `github/main`
-
-## Runtime repairs handled in the same run
-- recovered from a non-fast-forward Codeberg push rejection
-- rebased onto the latest primary repo head
-- resolved the docs-map conflict without dropping the stronger first-run route
-- preserved unrelated pre-existing local edits in stash plus a patch backup
-- restored the repo to a clean working tree instead of leaving conflicts behind
-
-## Expected outcome
-More qualified repo visitors should now reach a clearer first-task path, understand how to judge the morning-after result, and have a more direct Codeberg-first next step.
-
-## Measurement window
-- Review by: **2026-05-30 16:35 Europe/Berlin**
-- Success signal: any Codeberg star/watch/fork delta or better first-run feedback tied to the improved repo path
-- Replacement condition: if Codeberg stays flat, pair the next move with a new high-intent demand-capture or citation lane
+## Why the top-level experience is better now
+- A qualified visitor can understand what Ralph Workflow is, who it is for, why it is different, and how to try it in under a minute.
+- The next action is clearer: run one real task, review the result, then use Codeberg for public follow-through.

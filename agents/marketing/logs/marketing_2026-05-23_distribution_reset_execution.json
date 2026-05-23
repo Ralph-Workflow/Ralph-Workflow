@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-23T17:44:46.573266",
+  "timestamp": "2026-05-23T18:50:48.985316",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "distribution_reset_execution",
+    "type": "distribution_reset_promotion_execution",
     "channel": "distribution_reset",
     "title": "Distribution lane execution: distribution_reset",
     "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_distribution_reset_execution.md"
   },
   "why_this_action": {
-    "summary": "Shipped a queue-reset/discovery packet so the loop expands into new targets instead of logging saturated follow-through as progress.",
+    "summary": "Promoted fresh distribution-reset targets into real curator-ready assets instead of stopping at discovery. Also refreshed a manual-contact execution packet because GitHub PR auth is blocked in this runtime.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -17,14 +17,10 @@
       "apollo_status.json: managed outbound is authenticated and available for execution packaging"
     ],
     "targets_prepared": [
-      "Hermes Agent",
-      "Conductor OSS",
-      "Conductor (Teams)",
-      "Aider",
-      "Continue",
-      "Cursor",
-      "Claude Code",
-      "GitHub Copilot"
+      "subinium/awesome-claude-code",
+      "saviorand/awesome-ai-assisted-coding",
+      "BNLNPPS/awesome-terminals-ai",
+      "nandhakt/awesome-ai-coding-resources"
     ]
   },
   "result": {

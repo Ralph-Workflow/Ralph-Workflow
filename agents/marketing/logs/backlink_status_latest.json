@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T10:16:51.024330+00:00",
+  "generated_at": "2026-05-23T16:51:24.610522+00:00",
   "source": "backlink_status.py",
   "directories": {
     "AIToolsIndex": {
@@ -93,6 +93,124 @@
       ],
       "listing_live": false,
       "status_note": "Submission returned 201 pending on 2026-05-23 via the public devshelf-backend.onrender.com API; treat as submitted/in-review until the public listing resolves."
+    },
+    "AIToolboard": {
+      "directory": "AIToolboard",
+      "listing_url": "https://aitoolboard.com/tools/ralph-workflow",
+      "submit_url": "https://aitoolboard.com/submit",
+      "check_results": [
+        {
+          "url": "https://aitoolboard.com/tools/ralph-workflow",
+          "status": 200,
+          "ok": true
+        }
+      ],
+      "listing_live": true,
+      "status_note": "Submitted 2026-05-23 via API; slug=ralph-workflow; pending editorial review."
+    },
+    "IndieStack": {
+      "directory": "IndieStack",
+      "listing_url": "https://indiestack.ai/tools/ralph-workflow",
+      "submit_url": "https://indiestack.ai/submit",
+      "check_results": [
+        {
+          "url": "https://indiestack.ai/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-23; confirmation page confirmed; pending editorial review."
+    },
+    "ListYourTool": {
+      "directory": "ListYourTool",
+      "listing_url": "https://www.listyourtool.com/tools/ralph-workflow",
+      "submit_url": "https://www.listyourtool.com/submit-tool",
+      "check_results": [
+        {
+          "url": "https://www.listyourtool.com/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-23 via API; tool_id=e27adedd-3faa-432b-ab35-000a8bf66121; pending review."
+    },
+    "NavAI": {
+      "directory": "NavAI",
+      "listing_url": "https://nav-ai.net/tools/ralph-workflow",
+      "submit_url": "https://nav-ai.net/submit",
+      "check_results": [
+        {
+          "url": "https://nav-ai.net/tools/ralph-workflow",
+          "status": 200,
+          "ok": true
+        }
+      ],
+      "listing_live": true,
+      "status_note": "Submitted 2026-05-23 via Supabase REST API; HTTP 201; pending review."
+    },
+    "OpenAgents": {
+      "directory": "OpenAgents",
+      "listing_url": "https://www.openagents.pro/tools/ralph-workflow",
+      "submit_url": "https://www.openagents.pro/submit",
+      "check_results": [
+        {
+          "url": "https://www.openagents.pro/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-23 via Formspree; HTTP 200 ok=true; pending review."
+    },
+    "ToolScout": {
+      "directory": "ToolScout",
+      "listing_url": "https://toolscout.ai/tools/ralph-workflow",
+      "submit_url": "https://toolscout.ai/submit",
+      "check_results": [
+        {
+          "url": "https://toolscout.ai/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-23 via Bubble form; success screen rendered; pending review."
+    },
+    "VBWebTools": {
+      "directory": "VBWebTools",
+      "listing_url": "https://www.vbwebtools.com/tools/ralph-workflow",
+      "submit_url": "https://www.vbwebtools.com/submit-tool/",
+      "check_results": [
+        {
+          "url": "https://www.vbwebtools.com/tools/ralph-workflow",
+          "status": 404,
+          "ok": false,
+          "error": "HTTP Error 404: Not Found"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-23 via WordPress AJAX endpoint; HTTP 200; pending 2-3 day review."
+    },
+    "TheToolify": {
+      "directory": "TheToolify",
+      "listing_url": "https://submit.thetoolify.dev/tools/ralph-workflow",
+      "submit_url": "https://submit.thetoolify.dev/",
+      "check_results": [
+        {
+          "url": "https://submit.thetoolify.dev/tools/ralph-workflow",
+          "status": 401,
+          "ok": false,
+          "error": "HTTP Error 401: Unauthorized"
+        }
+      ],
+      "listing_live": false,
+      "status_note": "Submitted 2026-05-23 via headless browser; HTTP 200 success; pending review."
     }
   },
   "google_index": {
@@ -139,12 +257,54 @@
       "indexed": false,
       "found_urls": [],
       "status": 200
+    },
+    "ralph workflow indie stack": {
+      "query": "ralph workflow indie stack",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow listyourtool": {
+      "query": "ralph workflow listyourtool",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow nav-ai": {
+      "query": "ralph workflow nav-ai",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow openagents": {
+      "query": "ralph workflow openagents",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow toolscout": {
+      "query": "ralph workflow toolscout",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow vbwebtools": {
+      "query": "ralph workflow vbwebtools",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
+    },
+    "ralph workflow the toolify": {
+      "query": "ralph workflow the toolify",
+      "indexed": false,
+      "found_urls": [],
+      "status": 200
     }
   },
   "summary": {
-    "directories_with_live_listings": 2,
+    "directories_with_live_listings": 4,
     "queries_indexed": 1,
-    "total_queries": 7,
+    "total_queries": 14,
     "check_urls": [
       "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
       "https://github.com/Ralph-Workflow/Ralph-Workflow",
