@@ -1,8 +1,8 @@
-# Ralph Workflow — Unattended AI Coding Workflow Orchestrator
+# Ralph Workflow
 
-**Free, open-source CLI tool** that orchestrates AI coding agents into a reviewable unattended workflow.
-
-Run tonight. Review in the morning. Merge if earned.
+> **The operating system for autonomous coding.**
+>
+> **Write the spec. Wake up to working software.**
 
 [![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
@@ -11,19 +11,21 @@ Run tonight. Review in the morning. Merge if earned.
 > **GitHub is the mirror. Codeberg is the primary repo.**
 > Inspect, star, watch, fork, and open issues on Codeberg first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
-Ralph Workflow is the **operating system for autonomous coding**: a free and open-source composable workflow for substantial, well-specified software work on your own machine.
+Ralph Workflow is a free and open-source **AI agent orchestration CLI** for developers and technical teams doing substantial, well-specified software work on their own machine.
 
-It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
+It keeps the Ralph-loop core simple, then composes that core into a stronger workflow for planning, implementation, verification, review, and agent routing.
+That simplicity at the center is what makes the system extensible without turning it into glue-chaos.
 
-What makes it different is the finish: Ralph Workflow is built to hand back a **reviewable result** — diff, checks, artifacts, and open questions — instead of a transcript and a claim that the task is done.
+It also ships with a **strong default workflow for writing software**.
+Use the default as-is today, or build your own workflow on top later.
 
-## TL;DR — Start in 5 minutes
+## Start in 5 minutes
 
-1. **Pick one real backlog task** you already care about.
-2. **Paste this one-paragraph spec template** into `PROMPT.md`.
-3. **Run it tonight** with Ralph Workflow.
-4. **Wake up to a reviewable diff** and verification output.
-5. Ask one question: **would I merge this?**
+1. Pick **one real backlog task** you can still judge tomorrow.
+2. Put a one-paragraph spec in `PROMPT.md`.
+3. Run Ralph Workflow tonight.
+4. Review the diff and the checks in the morning.
+5. Ask: **would I merge this?**
 
 ```md
 Change:
@@ -39,10 +41,10 @@ Checks:
 [tests, lint, build, or other verification]
 ```
 
-If you want the lowest-friction first run, start with one of these task shapes:
-- **Validation rule:** reject empty or whitespace-only project names in one CLI or form flow
-- **Feature slice:** add one filter, one export, or one settings toggle with tests
-- **Isolated refactor:** replace one duplicated helper path with a shared utility and keep behavior stable
+If you want the lowest-friction first run, use one of these task shapes:
+- validation rule
+- focused feature slice
+- bounded refactor with tests
 
 If none of those feel easy to judge tomorrow morning, the task is still too broad.
 
@@ -70,18 +72,18 @@ Ralph Workflow does not replace those coding agents. It orchestrates them.
 
 ## Why people use it
 
-- **No new toolchain required** — keep your current agents
-- **Unattended runs with a clean finish** — not just a long session transcript
-- **Reviewable output** — changed files, checks, artifacts, open questions
-- **Composable default workflow** — start with the default and extend later without throwing it away
+- **No new toolchain required** — keep the coding agents you already trust
+- **Unattended runs with a clean finish** — not just a transcript and a claim
+- **Reviewable output** — diff, checks, artifacts, and open questions
+- **Composable default workflow** — start simple and extend later
 
 ## If the first run earns trust
 
 Use **Codeberg** as the public home:
-- ⭐ **Star the repo** — helps other developers find it
-- 👀 **Watch for updates** — follow the project's progress
-- 🐛 **File issues** — report first-run friction, not just bugs
-- 🔧 **Open PRs** — real improvements welcome
+- ⭐ star the repo
+- 👀 watch the repo
+- 🐛 open an issue if your first run exposed friction
+- 🔧 open a PR if you fix something real
 
 Use GitHub only if you strongly prefer the mirror.
 

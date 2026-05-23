@@ -43,7 +43,7 @@ Bad first tasks:
 - a vague product idea
 - risky production surgery
 - mixed multi-part work
-- anything where no one agrees what "done" means
+- anything where no one agrees what “done” means
 
 If you are still unsure, use [docs/first-task-guide.md](./docs/first-task-guide.md) before you run it.
 
