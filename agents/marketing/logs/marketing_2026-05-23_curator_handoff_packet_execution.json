@@ -1,14 +1,14 @@
 {
-  "timestamp": "2026-05-23T07:14:28.855283",
+  "timestamp": "2026-05-23T07:47:42.136610",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
-    "type": "curator_contact_discovery_execution",
+    "type": "curator_handoff_packet_execution",
     "channel": "curator_handoff_packet",
     "title": "Distribution lane execution: curator_handoff_packet",
-    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_discovery.md"
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_handoff_packet.md"
   },
   "why_this_action": {
-    "summary": "Replaced stale curator handoff follow-through with real contact-channel discovery for the highest-priority prepared curator targets blocked on GitHub auth.",
+    "summary": "Consolidated the highest-priority prepared curator targets into one canonical execution packet instead of repeating another reset/discovery cycle.",
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
       "channel_discovery.json: validated easy-submit directory lanes",
@@ -18,7 +18,7 @@
     ],
     "targets_prepared": [
       "7. 0xWelt/Awesome-Vibe-Coding",
-      "vivy-yi/awesome-agent-orchestration"
+      "6. GitHub Topics: AI agents"
     ]
   },
   "result": {

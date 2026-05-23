@@ -1,0 +1,24 @@
+Hi AIPowerStacks team,
+
+I’d like to suggest Ralph Workflow for the directory.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Homepage: https://ralphworkflow.com
+
+Suggested entry:
+Ralph Workflow — free and open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.
+
+Why it seems like a fit for AIPowerStacks:
+- it is for developers and technical teams doing ambitious software work that needs a structured workflow instead of another chat session
+- it helps people run meaningful coding work unattended and come back to something reviewable, with checks and clear handoff points
+- it fits naturally in AI coding, developer tools, agent automation, and workflow tooling comparisons
+- it is free and open source, so teams can try the default workflow as-is or build on top of it
+
+If you prefer a shorter blurb, this works too:
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator for developers who want proof of completion instead of another confident "done" message.
+
+Thanks for taking a look.
+
+Best,
+Ralph Workflow

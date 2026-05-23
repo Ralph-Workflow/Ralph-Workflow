@@ -1102,6 +1102,16 @@
         "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
         "category": "Coding"
       }
+    },
+    {
+      "name": "codeaidirectory",
+      "url": "https://www.codeaidirectory.com/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T05:32:06Z",
+      "http_code": "500",
+      "status": "broken_submit_surface",
+      "note": "Public POST endpoint exists at /api/submit, but remote backend currently fails with a Resend domain/email validation error when processing submissions."
     }
   ],
   "working": [

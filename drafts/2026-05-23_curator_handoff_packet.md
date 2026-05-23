@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Execution Handoff Packet
-Generated: 2026-05-23T07:05:40
+Generated: 2026-05-23T07:47:42
 
 ## Why this exists now
 - Prepared curator targets already exist, but the loop kept rediscovering/resetting instead of consolidating the best ready-to-execute items.
@@ -21,15 +21,7 @@ Generated: 2026-05-23T07:05:40
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md
 - Suggested next action: Submit PR adding Ralph Workflow to the CLI / autonomous coding section
 
-### 2. vivy-yi/awesome-agent-orchestration
-- Status: prepared
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://github.com/vivy-yi/awesome-agent-orchestration
-- Review due: 2026-06-05
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md
-- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
-
-### 3. GitHub Topics: AI agents
+### 2. GitHub Topics: AI agents
 - Status: prepared
 - Priority: MEDIUM — repo-level tagging improvement
 - URL: https://github.com/topics/ai-agents

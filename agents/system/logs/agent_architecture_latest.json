@@ -1,7 +1,7 @@
 {
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
-    "overall_health": "healthy_with_repairs",
+    "overall_health": "high_risk",
     "primary_failure_mode": "Architecture-owned runtime checks are green after refresh; end-to-end green is still blocked by the marketing-owned Codeberg adoption measurement window.",
     "most_urgent_fix": "Keep architecture at qualified pass and do not certify around the marketing measurement window until primary-repo adoption moves or marketing replaces the tactic."
   },
@@ -225,8 +225,10 @@
       "agents/marketing/run.py",
       "debug"
     ],
-    "architecture_verifier_status": "pass",
-    "architecture_verifier_errors": [],
+    "architecture_verifier_status": "fail",
+    "architecture_verifier_errors": [
+      "independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh"
+    ],
     "architecture_verifier_checked_at": "2026-05-23T07:15:31.923412+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
@@ -250,5 +252,13 @@
     "docs_verifier_checked_at": "2026-05-23T05:11:44.935500+00:00",
     "marketing_workflow_audit_generated_at": "2026-05-23T07:14:46.971907",
     "small_gate_passed": "AGENT_ARCHITECTURE_OK"
+  },
+  "verifier_invalidation": {
+    "status": "fail",
+    "checked_at": "2026-05-23T07:15:31.923412+02:00",
+    "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+    "errors": [
+      "independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh"
+    ]
   }
 }

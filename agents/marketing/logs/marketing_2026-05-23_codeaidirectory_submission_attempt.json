@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-05-23T05:32:06Z",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "directory_submission_attempt",
+    "channel": "codeaidirectory",
+    "title": "CodeAI Directory submission attempt",
+    "url": "https://www.codeaidirectory.com/submit"
+  },
+  "why_this_action": {
+    "summary": "After the vivy-yi email path failed, searched for a new Codeberg-relevant public submission lane and found a live public POST endpoint on CodeAI Directory.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "market_intelligence_latest.json: reuse positioning and Codeberg-primary CTA for new directory lanes",
+      "outreach-log.md: avoid duplicate directory submissions already executed today",
+      "channel_discovery.json: all previously validated easy-submit lanes were already spent, so the loop needed a new lane"
+    ],
+    "payload_summary": {
+      "name": "Ralph Workflow",
+      "primary_url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+      "mirror_url": "https://github.com/Ralph-Workflow/Ralph-Workflow"
+    }
+  },
+  "result": {
+    "status": "blocked_remote_submit_surface_broken",
+    "ok": false,
+    "live_external_action": false,
+    "http_status": 500,
+    "error": {
+      "type": "remote_email_validation_error",
+      "provider": "Resend",
+      "message": "Server-side submission email is misconfigured and rejected downstream mail delivery."
+    },
+    "response_excerpt": "Failed to send email / testing emails only to harish.garg@gmail.com unless sender domain is verified",
+    "replacement_path": "Mark CodeAI Directory as a broken submit surface until their backend mail configuration is fixed."
+  }
+}

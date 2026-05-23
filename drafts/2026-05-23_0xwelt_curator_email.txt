@@ -1,0 +1,17 @@
+Hi Hao,
+
+I’ve been following Awesome-Vibe-Coding and think Ralph Workflow would fit well in the CLI / autonomous coding section.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator for autonomous coding. It’s aimed at developers and technical teams who want a structured workflow instead of a chat session, with a simple core loop that composes planning, implementation, and verification into a reviewable flow.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Homepage: https://ralphworkflow.com
+
+Suggested entry:
+- Ralph Workflow — free and open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.
+
+If you prefer PRs, I’m happy to send the exact entry that way instead.
+
+Thanks for curating the list,
+Ralph Workflow

@@ -1,0 +1,48 @@
+{
+  "timestamp_utc": "2026-05-23T05:37:25Z",
+  "action": "aidevtools_curator_email_outreach",
+  "type": "EXECUTED / DISTRIBUTION",
+  "channel": {
+    "name": "AI Dev Tools Directory",
+    "target_surface": "https://www.aidevtools.dev/submit",
+    "recipient": "hello@aidevtools.dev",
+    "subject": "Suggested AI Dev Tools listing: Ralph Workflow",
+    "status": "sent"
+  },
+  "submitted_payload": {
+    "codeberg_primary": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "github_mirror": "https://github.com/Ralph-Workflow/Ralph-Workflow",
+    "homepage": "https://ralphworkflow.com",
+    "suggested_categories": [
+      "AI Agents & Automation",
+      "Terminal & CLI Tools"
+    ],
+    "suggested_entry": "Ralph Workflow — free and open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.",
+    "body_file": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_aidevtools_curator_email.txt",
+    "send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_053725_aidevtools_curator_email.json"
+  },
+  "why_this_action": "Shared artifacts still show distribution_and_message_to_primary_repo_conversion as the live bottleneck, the highest-priority need is still Codeberg-first qualified discovery rather than more owned content, and AI Dev Tools is a fresh developer-focused directory that matches Ralph Workflow's product shape unusually well. Its public submit page exposed a broken placeholder Formspree endpoint from this runtime, but the site also exposed a real editor contact address, so direct curator outreach was the strongest legitimate same-run fallback instead of abandoning the lane.",
+  "shared_findings_reused": [
+    "MARKETING_WORKFLOW_PRINCIPLES.md: prioritize Codeberg-first distribution and proof-led positioning",
+    "FOUR_MARKETING_QUESTIONS.md: preserved what it is, who it is for, why different, why now",
+    "ADOPTION_FUNNEL_NEXT.md: keep pushing proof-led free-use conversion instead of more generic posting",
+    "market_intelligence_latest.json: reused canonical positioning truths and category fit",
+    "marketing_workflow_audit_latest.json: current bottleneck is distribution_and_message_to_primary_repo_conversion",
+    "adoption_metrics_latest.md: Codeberg is still flat, so fresh qualified discovery lanes remain the priority",
+    "outreach-log.md: verified AI Dev Tools had not already been contacted"
+  ],
+  "verification": {
+    "submit_page_status": 200,
+    "broken_form_endpoint": "https://formspree.io/f/xform",
+    "broken_form_result": "HTTP 404 from the public submit form action",
+    "fallback_contact": "mailto:hello@aidevtools.dev from https://www.aidevtools.dev/about",
+    "email_send_log_status": "sent",
+    "helper_compiles": true,
+    "helper_compile_command": "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, listing inclusion on AI Dev Tools, or a live third-party citation/backlink pointing evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or listing signal arrives by 2026-06-06, replace this lane with a different untouched developer-tool curator surface instead of resending the same pitch."
+  }
+}

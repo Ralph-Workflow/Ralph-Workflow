@@ -7,15 +7,21 @@
       "owner": "0xWelt",
       "repo": "Awesome-Vibe-Coding",
       "priority": "HIGH \u2014 active repo, 90+ stars, open PR flow visible",
-      "status": "prepared",
+      "status": "sent_via_email_fallback",
       "channels": [
+        {
+          "type": "email",
+          "value": "dinghao12601@gmail.com",
+          "label": "latest public Git commit email",
+          "status": "sent_2026-05-23"
+        },
         {
           "type": "linkedin",
           "value": "https://www.linkedin.com/in/welt-ding",
           "label": "profile LinkedIn"
         }
       ],
-      "recommended_next_step": "manual contact channel is now identified",
+      "recommended_next_step": "wait for reply or listing signal; if none by 2026-06-06, replace with a different untouched curator lane instead of re-sending",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md"
     },
     {
@@ -24,12 +30,14 @@
       "owner": "vivy-yi",
       "repo": "awesome-agent-orchestration",
       "priority": "HIGH \u2014 fresh reset target, not yet prepared elsewhere",
-      "status": "prepared",
+      "status": "email_invalid_manual_handoff_remaining",
       "channels": [
         {
           "type": "email",
           "value": "developer@claude-ai-hub.com",
-          "label": "latest public commit email"
+          "label": "latest public commit email",
+          "status": "invalid_mx_550",
+          "note": "Attempted 2026-05-23; remote recipient rejected due to invalid MX/A/AAAA records."
         },
         {
           "type": "github_issue",
@@ -37,7 +45,7 @@
           "label": "repo contribution path"
         }
       ],
-      "recommended_next_step": "email fallback can run now",
+      "recommended_next_step": "public email path failed (550 invalid MX); do not retry email. Remaining path is GitHub issue/manual curator handoff only.",
       "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md"
     }
   ]

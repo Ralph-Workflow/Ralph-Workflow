@@ -1,8 +1,85 @@
 {
-  "generated_at": "2026-05-22T23:38:51.438834",
-  "total_questions_found": 0,
-  "questions_scored": 0,
-  "drafts_created": 0,
-  "top_questions": [],
-  "drafts": []
+  "generated_at": "2026-05-23T08:09:37.271034",
+  "total_questions_found": 32,
+  "questions_scored": 32,
+  "drafts_created": 5,
+  "top_questions": [
+    {
+      "title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+      "url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
+      "score": 2.9,
+      "votes": 0,
+      "answers": 0
+    },
+    {
+      "title": "Are VS Code Copilot Agent Debug Log Token Counts the Exact Billing Metrics?",
+      "url": "https://stackoverflow.com/questions/79940318/are-vs-code-copilot-agent-debug-log-token-counts-the-exact-billing-metrics",
+      "score": 2.4,
+      "votes": 0,
+      "answers": 0
+    },
+    {
+      "title": "How do i use agents in langgraph workflow",
+      "url": "https://stackoverflow.com/questions/79399279/how-do-i-use-agents-in-langgraph-workflow",
+      "score": 2.1999999999999997,
+      "votes": -2,
+      "answers": 1
+    },
+    {
+      "title": "How to combine ConversationalRetrievalQAChain, Agents, and Tools in LangChain",
+      "url": "https://stackoverflow.com/questions/76653423/how-to-combine-conversationalretrievalqachain-agents-and-tools-in-langchain",
+      "score": 1.8,
+      "votes": 10,
+      "answers": 1
+    },
+    {
+      "title": "MCP: Not All the Tools being Listed",
+      "url": "https://stackoverflow.com/questions/79659426/mcp-not-all-the-tools-being-listed",
+      "score": 1.7999999999999998,
+      "votes": 2,
+      "answers": 0
+    }
+  ],
+  "drafts": [
+    {
+      "question_title": "How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?",
+      "question_url": "https://stackoverflow.com/questions/79942291/how-should-i-structure-autonomous-ai-agent-workflows-for-production-reliability",
+      "question_score": 2.9,
+      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-should-i-structure-autonomous-ai-agent-workflo.md",
+      "answer_length": 1559,
+      "pain_family": "general"
+    },
+    {
+      "question_title": "Are VS Code Copilot Agent Debug Log Token Counts the Exact Billing Metrics?",
+      "question_url": "https://stackoverflow.com/questions/79940318/are-vs-code-copilot-agent-debug-log-token-counts-the-exact-billing-metrics",
+      "question_score": 2.4,
+      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_are-vs-code-copilot-agent-debug-log-token-counts-t.md",
+      "answer_length": 1607,
+      "pain_family": "general"
+    },
+    {
+      "question_title": "How do i use agents in langgraph workflow",
+      "question_url": "https://stackoverflow.com/questions/79399279/how-do-i-use-agents-in-langgraph-workflow",
+      "question_score": 2.1999999999999997,
+      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-do-i-use-agents-in-langgraph-workflow.md",
+      "answer_length": 1607,
+      "pain_family": "general"
+    },
+    {
+      "question_title": "How to combine ConversationalRetrievalQAChain, Agents, and Tools in LangChain",
+      "question_url": "https://stackoverflow.com/questions/76653423/how-to-combine-conversationalretrievalqachain-agents-and-tools-in-langchain",
+      "question_score": 1.8,
+      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_how-to-combine-conversationalretrievalqachain-agen.md",
+      "answer_length": 1569,
+      "pain_family": "general"
+    },
+    {
+      "question_title": "MCP: Not All the Tools being Listed",
+      "question_url": "https://stackoverflow.com/questions/79659426/mcp-not-all-the-tools-being-listed",
+      "question_score": 1.7999999999999998,
+      "draft_file": "/home/mistlight/.openclaw/workspace/drafts/stackoverflow/so_answer_2026-05-23_mcp-not-all-the-tools-being-listed.md",
+      "answer_length": 773,
+      "pain_family": "general"
+    }
+  ]
 }

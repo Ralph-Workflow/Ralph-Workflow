@@ -1,12 +1,12 @@
 # Agent Architecture Audit
 
 - Checked: 2026-05-23T07:15:09.070591+02:00
-- Overall health: healthy_with_repairs
+- Overall health: high_risk
 - Primary failure mode: Architecture-owned runtime checks are green after refresh; end-to-end green is still blocked by the marketing-owned Codeberg adoption measurement window.
 - Most urgent fix: Keep architecture at qualified pass and do not certify around the marketing measurement window until primary-repo adoption moves or marketing replaces the tactic.
-- Verifier status: independently verified pass
+- Verifier status: invalidated by fresh fail-closed verification
 - Verifier checked: 2026-05-23T07:15:31.923412+02:00
-- Verifier blockers: none
+- Verifier blockers: independent verification artifact predates newer runtime evidence (agent_architecture_latest.json); rerun independent verification after the latest architecture/runtime refresh
 
 ## Live topology
 

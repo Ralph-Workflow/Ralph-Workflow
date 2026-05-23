@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-05-23T05:32:06Z",
+  "run_type": "marketing-distribution-execution",
+  "chosen_action": {
+    "type": "curator_email_outreach_attempt",
+    "channel": "curator_outreach",
+    "title": "vivy-yi curator email fallback attempt",
+    "draft": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_vivy_yi_curator_email.txt"
+  },
+  "why_this_action": {
+    "summary": "Used the highest-priority unsent curator target from the shared queue after Reddit and Apollo were already constrained by current workflow rules.",
+    "shared_findings_used": [
+      "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
+      "marketing_workflow_audit_latest.json: distribution_and_message_to_primary_repo_conversion is the live bottleneck",
+      "curator_contact_discovery_latest.json: vivy-yi had an email fallback path marked runnable",
+      "outreach-log.md: avoid duplicate curator outreach and advance a prepared unsent target",
+      "market_intelligence_latest.json: reuse canonical Codeberg-first positioning instead of inventing a new pitch"
+    ]
+  },
+  "result": {
+    "status": "blocked_remote_contact_invalid",
+    "ok": false,
+    "live_external_action": false,
+    "attempted_recipient": "developer@claude-ai-hub.com",
+    "error": {
+      "type": "SMTPRecipientsRefused",
+      "smtp_code": 550,
+      "message": "mailbox unavailable; invalid DNS MX or A/AAAA resource record"
+    },
+    "replacement_path": "Do not retry this email. Keep only GitHub issue/manual curator handoff as the remaining path for vivy-yi."
+  }
+}
