@@ -1390,6 +1390,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             ]}), encoding='utf-8')
             comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
             comparison_queue.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            curator_contact_discovery = log_dir / 'curator_contact_discovery_latest.json'
             (drafts_dir / 'curator_handoff_packet_latest.md').write_text(
                 '# Ralph Workflow Curator Execution Handoff Packet\n\n### 1. Example Curator\n- Ready file: /tmp/curator.md\n',
                 encoding='utf-8',
@@ -1401,6 +1402,7 @@ class DistributionLaneExecutorTests(unittest.TestCase):
                  patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
                  patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', curator_queue), \
                  patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
+                 patch.object(distribution_lane_executor, 'CURATOR_CONTACT_DISCOVERY_LATEST_PATH', curator_contact_discovery), \
                  patch('subprocess.run', return_value=SimpleNamespace(returncode=1)), \
                  patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={'comparison_pages': [], 'competitors': {}}), \
                  patch.object(distribution_lane_executor, '_discover_curator_channels', return_value=[{
@@ -1417,6 +1419,84 @@ class DistributionLaneExecutorTests(unittest.TestCase):
             artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
             self.assertIn('contact-channel discovery', artifact_text)
             self.assertIn('https://example.com/contact', artifact_text)
+
+    def test_curator_handoff_packet_escalates_current_contact_discovery_into_contact_packet(self):
+        now = datetime(2026, 5, 23, 8, 30, 0)
+        decision = distribution_lane_selector.LaneDecision(
+            lane='curator_handoff_packet',
+            reason='Prepared outreach targets already exist but GitHub auth is blocked here; refresh the canonical manual execution packet instead of discovering more targets.',
+            reasons=['Primary Codeberg adoption is flat.'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['market_intelligence_latest.json: reusable competitor comparisons and positioning truths'],
+            artifact_path='/tmp/brief.md',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            drafts_dir = tmp / 'drafts'
+            log_dir = tmp / 'logs'
+            drafts_dir.mkdir()
+            log_dir.mkdir()
+            outreach_path = tmp / 'outreach-log.md'
+            outreach_path.write_text('Curator queue saturated.', encoding='utf-8')
+            adoption_path = tmp / 'adoption_metrics_latest.json'
+            adoption_path.write_text(json.dumps({'recent_window': {'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0}}}), encoding='utf-8')
+            curator_queue = log_dir / 'curator_outreach_queue_latest.json'
+            curator_queue.write_text(json.dumps({'targets': [
+                {
+                    'target': '1. Example Curator',
+                    'url': 'https://github.com/example/awesome',
+                    'status': 'prepared',
+                    'priority': 'HIGH — example',
+                    'artifact_path': '/tmp/curator.md',
+                    'review_due_date': '2026-06-05',
+                },
+            ]}), encoding='utf-8')
+            comparison_queue = log_dir / 'comparison_backlink_queue_latest.json'
+            comparison_queue.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            curator_contact_discovery = log_dir / 'curator_contact_discovery_latest.json'
+            curator_contact_discovery.write_text(json.dumps({
+                'generated_at': now.isoformat(),
+                'targets': [{
+                    'target': '1. Example Curator',
+                    'url': 'https://github.com/example/awesome',
+                    'channels': [{'type': 'website', 'value': 'https://example.com/contact', 'label': 'profile contact page'}],
+                    'recommended_next_step': 'manual contact channel is now identified',
+                    'artifact_path': '/tmp/curator.md',
+                }],
+            }), encoding='utf-8')
+            (drafts_dir / 'curator_handoff_packet_latest.md').write_text(
+                '# Ralph Workflow Curator Execution Handoff Packet\n\n### 1. Example Curator\n- Ready file: /tmp/curator.md\n',
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_executor, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_executor, 'CURATOR_QUEUE_LATEST_PATH', curator_queue), \
+                 patch.object(distribution_lane_executor, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue), \
+                 patch.object(distribution_lane_executor, 'CURATOR_CONTACT_DISCOVERY_LATEST_PATH', curator_contact_discovery), \
+                 patch('subprocess.run', return_value=SimpleNamespace(returncode=1)), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value={'comparison_pages': [], 'competitors': {}}):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            self.assertEqual(execution.action_type, 'curator_contact_handoff_packet_execution')
+            self.assertEqual(execution.targets_prepared, ['1. Example Curator'])
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            self.assertIn('canonical human-executable contact list', artifact_text)
+            self.assertIn('https://example.com/contact', artifact_text)
+
+    def test_display_target_name_preserves_repo_names_starting_with_digits(self):
+        self.assertEqual(
+            distribution_lane_executor._display_target_name('0xWelt/Awesome-Vibe-Coding'),
+            '0xWelt/Awesome-Vibe-Coding',
+        )
+        self.assertEqual(
+            distribution_lane_executor._display_target_name('7. Example Curator'),
+            'Example Curator',
+        )
 
     def test_contact_discovery_filters_noisy_links_and_prioritizes_actionable_channels(self):
         channels = distribution_lane_executor._extract_contact_links(' '.join([

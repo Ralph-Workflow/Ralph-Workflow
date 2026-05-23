@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T04:12:56.198771",
+  "generated_at": "2026-05-23T04:59:43.683047",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 6,
   "reddit_posts_analyzed": 6,
@@ -137,7 +137,7 @@
     "url": "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-23T04:12:53.560535+02:00",
+    "generated_at": "2026-05-23T04:59:43.410561+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",

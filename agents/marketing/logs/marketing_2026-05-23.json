@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-23T04:12:42.555481",
+  "timestamp": "2026-05-23T04:59:32.593054",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-23T03:28:20.486950",
+    "timestamp": "2026-05-23T04:43:23.491286",
     "metrics": [
       {
         "platform": "GitHub",
@@ -438,10 +438,10 @@
   },
   "distribution_execution": {
     "lane": "curator_handoff_packet",
-    "action_type": "curator_contact_discovery_execution",
+    "action_type": "curator_contact_handoff_packet_execution",
     "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_discovery.md",
-    "summary": "Replaced stale curator handoff follow-through with real contact-channel discovery for the highest-priority prepared curator targets blocked on GitHub auth.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_handoff_packet.md",
+    "summary": "Escalated existing curator contact discovery into one canonical manual-contact execution packet so the loop stops rediscovering the same blocked targets.",
     "targets_prepared": [
       "7. 0xWelt/Awesome-Vibe-Coding",
       "dariubs/awesome-workflow-automation",

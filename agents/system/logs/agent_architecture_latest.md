@@ -1,11 +1,11 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-23T04:10:17+02:00
+- Checked: 2026-05-23T05:00:20.344256+02:00
 - Overall health: healthy_with_repairs
-- Primary failure mode: Architecture ownership and verifier freshness remain repaired, but full signoff stays fail-closed on the marketing primary-repo adoption watchpoint.
-- Most urgent fix: Keep architecture locally green only as a qualified pass until marketing clears the primary-repo adoption measurement window or replaces the tactic.
+- Primary failure mode: Architecture ownership, freshness checks, and verifier fail-closed behavior are healthy; full end-to-end green remains blocked only by the marketing primary-repo adoption watchpoint.
+- Most urgent fix: Keep architecture on qualified-pass status until marketing clears the primary-repo adoption measurement window or replaces the tactic with one that moves Codeberg.
 - Verifier status: independently verified pass
-- Verifier checked: 2026-05-23T04:13:07.144861+02:00
+- Verifier checked: 2026-05-23T05:01:25.095637+02:00
 - Verifier blockers: none
 
 ## Live topology
@@ -17,16 +17,16 @@
 ## Severity-ranked findings
 
 1. **High — Marketing adoption watchpoint remains the only real live blocker**
-   - Mechanism: the architecture path is locally healthy, while the marketing loop is still intentionally fail-closed on flat primary-repo adoption inside its active measurement window.
-   - Recommended fix: do not certify around the watchpoint; wait for measurable Codeberg movement or a marketing-owned tactic replacement at the review window.
+   - Mechanism: The architecture path is locally healthy, while the marketing loop is still intentionally fail-closed on flat primary-repo adoption inside its active measurement window.
+   - Recommended fix: Do not certify around the watchpoint; wait for measurable Codeberg movement or a marketing-owned tactic replacement at the review window.
 
 2. **Medium — Architecture verifier correctly localizes the live blocker outside the architecture owner loop**
-   - Mechanism: fresh health-monitor follow-up items from the marketing loop no longer poison architecture signoff during the same refresh cycle.
-   - Recommended fix: preserve that owner-boundary classification.
+   - Mechanism: Fresh health-monitor follow-up items from the marketing loop no longer poison architecture signoff during the same refresh cycle.
+   - Recommended fix: Preserve that owner-boundary classification.
 
-3. **Low — Persisted disabled cron history is separate from live topology**
-   - Mechanism: jobs.json still keeps disabled history, while live Gateway has zero disabled jobs.
-   - Recommended fix: continue reporting persisted history separately from live runtime state.
+3. **Low — Persisted disabled cron history still exists but is not a live-topology problem**
+   - Mechanism: jobs.json contains disabled historical entries while the live Gateway topology has zero disabled jobs.
+   - Recommended fix: Keep separating persisted disabled history from live enabled runtime jobs in all architecture summaries.
 
 ## Ordered fix plan
 
@@ -35,24 +35,23 @@
 
 ## Repaired this run
 
-- **reran_current_stack** — reran loop integrity, refreshed the architecture latest report, then reran independent verification, verifier, and checker.
-- **localized_real_blocker** — rewrote the latest verdict so the only red item is the marketing primary-repo adoption watchpoint.
-- **resynced_live_assertions** — updated live cron counts, persisted disabled-history separation, health-monitor issue names, and verifier timestamps.
+- **reran_current_stack** — Reran loop_integrity_audit.py, then reran agent_architecture_independent_verify.py, agent_architecture_verifier.py, and agent_architecture_checker.py against the current live Gateway topology.
+- **resynced_live_assertions** — Resynced the latest architecture audit with current live cron counts, current marketing measurement-window evidence, and fresh verifier timestamps after independent verification passed.
 
 ## Independent verification
 
 - Performed: performed_qualified_pass
 - Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
-- Checked at: 2026-05-23T04:03:19.568327+02:00
+- Checked at: 2026-05-23T05:01:01.390263+02:00
 
 ## Still needs independent verification
 
-- Fresh marketing independent pass after primary-repo adoption moves or the current tactic is replaced at the end of the measurement window.
+- Fresh marketing independent pass after primary-repo adoption moves or the current tactic is replaced at the end of the active measurement window.
 
 ## Highest-risk unresolved loop issue
 
-- Primary Codeberg adoption is still flat under a live marketing measurement window
-  - Why: that is still the only blocker preventing a fully green end-to-end certification.
+- Primary Codeberg adoption is still flat under the active marketing measurement window
+  - Why: that marketing-owned outcome gap is still the only blocker preventing a fully green end-to-end certification.
 
 ## Small gate passed
 

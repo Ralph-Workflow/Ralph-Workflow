@@ -1,0 +1,20 @@
+Hi Come AI team,
+
+I’d like to suggest Ralph Workflow for inclusion in your directory.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator for developers and technical teams doing ambitious repo work. It keeps a simple core, then composes planning, implementation, and verification into a reviewable workflow so longer unattended coding runs end in finished, tested code instead of another confident summary.
+
+Suggested listing details:
+- Name: Ralph Workflow
+- Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+- GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+- Homepage: https://ralphworkflow.com
+- Short description: Free open-source workflow layer for autonomous coding that composes planning, implementation, and verification into a reviewable repo-native flow.
+- Suggested category: Coding
+- Pricing: Open Source
+
+Why it may fit Come AI: your directory already covers AI tools across business, coding, writing, and research, and Ralph Workflow fits the structured coding-agent / workflow layer for people trying to stop babysitting runs and come back to something they can actually review.
+
+If there’s a better category label in your system, happy to defer to your editorial judgment.
+
+Thanks for taking a look.
