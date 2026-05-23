@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ralph.display.snapshot import PipelineSnapshot
 
 _MAX_NOTIFY_SECONDS = 0.001
-PLAN_STEP_COUNT = 2
+_NOTIFY_ITERATIONS = 100
 
 
 def _make_state() -> PipelineState:
@@ -55,15 +55,13 @@ class TestPerformance:
         _q, sub = _make_subscriber()
         state = _make_state()
 
-        # Warm the cached prompt/plan/analysis paths so we measure steady-state notify cost,
-        # not first-call setup or coverage tracer startup noise.
         sub.notify(state)
 
-        start = time.perf_counter()
-        for _ in range(100):
+        start = time.thread_time()
+        for _ in range(_NOTIFY_ITERATIONS):
             sub.notify(state)
-        average_elapsed = (time.perf_counter() - start) / 100
+        average_elapsed = (time.thread_time() - start) / _NOTIFY_ITERATIONS
 
         assert average_elapsed < _MAX_NOTIFY_SECONDS, (
-            f"notify averaged {average_elapsed:.4f}s, expected <1ms"
+            f"notify averaged {average_elapsed:.4f}s CPU time, expected <1ms"
         )

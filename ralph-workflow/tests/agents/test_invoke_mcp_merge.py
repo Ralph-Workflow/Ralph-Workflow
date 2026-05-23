@@ -388,6 +388,7 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
         fake_run_subprocess_and_read_lines,
     )
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", lambda _workspace_path: ())
     monkeypatch.setattr(
         "ralph.agents.invoke.load_existing_agy_upstream_servers",

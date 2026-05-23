@@ -185,6 +185,7 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
 
     list(

@@ -78,6 +78,7 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     monkeypatch.setattr(
         invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
 
     list(
         invoke_agent(
@@ -115,6 +116,7 @@ def test_invoke_agent_probe_and_strategy_share_same_registry(
     monkeypatch.setattr(
         invoke_module, "run_subprocess_and_read_lines", fake_run_subprocess_and_read_lines
     )
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
 
     list(
         invoke_agent(

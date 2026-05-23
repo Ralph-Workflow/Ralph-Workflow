@@ -4,7 +4,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
-UNIT_TEST_SHARD_COUNT = 19
+UNIT_TEST_SHARD_COUNT = 25
 
 
 def _target_body(name: str) -> list[str]:
@@ -74,7 +74,13 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "python -m ralph.verify_timeout" in integration_body[0]
     assert all("--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in line for line in unit_body)
     assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
-    assert any("$(PYTEST_CORE_PATHS)" in line for line in unit_body)
+    assert any("$(PYTEST_CORE_AGENT_PATHS)" in line for line in unit_body)
+    assert any("$(PYTEST_CORE_CONFIG_PATHS)" in line for line in unit_body)
+    assert any("$(PYTEST_CORE_DISPLAY_PATHS)" in line for line in unit_body)
+    assert any("$(PYTEST_CORE_FIXTURES_PATHS)" in line for line in unit_body)
+    assert any("$(PYTEST_CORE_UNIT_AGENT_PATHS)" in line for line in unit_body)
+    assert any("$(PYTEST_CORE_UNIT_DISPLAY_PATHS)" in line for line in unit_body)
+    assert any("$(PYTEST_CORE_UNIT_PIPELINE_PATHS)" in line for line in unit_body)
     assert any("$(PYTEST_RUNTIME_PATHS)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_A)" in line for line in unit_body)
     assert any("$(PYTEST_ROOT_PATHS_B)" in line for line in unit_body)

@@ -602,6 +602,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
