@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.executor.process import ProcessResult
@@ -8,6 +7,7 @@ from ralph.verify import main
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from pathlib import Path
 
     import pytest
 
@@ -57,37 +57,9 @@ def _result(
     )
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def _expected_test_files() -> set[str]:
-    root = _repo_root()
-    return {
-        str(path.relative_to(root))
-        for path in (root / "tests").rglob("test*.py")
-        if path.name != "conftest.py"
-    }
-
-
-def _shard_count() -> int:
-    return min(64, len(_expected_test_files()))
-
-
-def _pytest_file_args(
-    call: tuple[str, tuple[str, ...], str | Path | None, float | None]
-) -> tuple[str, ...]:
-    args = call[1]
-    assert args[:2] == ("-m", "pytest")
-    q_index = args.index("-q")
-    assert args[q_index : q_index + 3] == ("-q", "-m", "not subprocess_e2e")
-    return args[2:q_index]
-
-
 def test_main_runs_all_verify_steps_when_successful(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    shard_count = _shard_count()
     runner = StubRunner(
         {
             ("make", ("lint",)): _result(args=("lint",), returncode=0, stdout="lint ok\n"),
@@ -101,16 +73,25 @@ def test_main_runs_all_verify_steps_when_successful(
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert runner.calls[:2] == [
-        ("make", ("lint",), tmp_path, None),
-        ("make", ("typecheck",), tmp_path, None),
+    assert sorted((call[0], call[1]) for call in runner.calls[:2]) == [
+        ("make", ("lint",)),
+        ("make", ("typecheck",)),
     ]
-    pytest_calls = [call for call in runner.calls if call[0] == "python"]
-    assert len(pytest_calls) == shard_count
-    assert {
-        path for call in pytest_calls for path in _pytest_file_args(call)
-    } == _expected_test_files()
-    assert all(_pytest_file_args(call) for call in pytest_calls)
+    assert runner.calls[2][0] == "python"
+    assert runner.calls[2][1] == (
+        "-m",
+        "pytest",
+        "tests/",
+        "-q",
+        "-n",
+        "5",
+        "--dist",
+        "worksteal",
+        "-m",
+        "not subprocess_e2e",
+    )
+    assert runner.calls[2][3] is not None
+    assert 0 < runner.calls[2][3] <= 30.0
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
 
@@ -149,7 +130,6 @@ def test_main_passes_remaining_budget_to_pytest(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Verify pytest receives only the remaining budget after lint/typecheck."""
-    shard_count = _shard_count()
     runner = StubRunner(
         {
             ("make", ("lint",)): _result(args=("lint",), returncode=0, stdout="lint ok\n"),
@@ -162,30 +142,28 @@ def test_main_passes_remaining_budget_to_pytest(
     exit_code = main([], runner=runner, cwd=tmp_path)
 
     assert exit_code == 0
-    pytest_calls = [call for call in runner.calls if call[0] == "python"]
-    assert len(pytest_calls) == shard_count
-    for call in pytest_calls:
-        assert call[3] is not None
-        assert 0 < call[3] <= 30.0
-        assert _pytest_file_args(call)
-    assert {
-        path for call in pytest_calls for path in _pytest_file_args(call)
-    } == _expected_test_files()
+    pytest_call = runner.calls[2]
+    assert pytest_call[0] == "python"
+    assert pytest_call[1] == (
+        "-m",
+        "pytest",
+        "tests/",
+        "-q",
+        "-n",
+        "5",
+        "--dist",
+        "worksteal",
+        "-m",
+        "not subprocess_e2e",
+    )
+    assert pytest_call[3] is not None
+    assert 0 < pytest_call[3] <= 30.0
 
 
 def test_main_refuses_to_run_pytest_when_budget_exhausted(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Verify that when pre-pytest steps exhaust the budget, pytest is not called."""
-    # Simulate a StubRunner where lint and typecheck each "consume" time
-    # by returning after a long enough elapsed time.
-    # We cannot actually elapsed time in the stub, but we can check the
-    # timeout-handling logic by observing that pytest is never called when
-    # the budget is reported as exhausted.
-    #
-    # Since StubRunner doesn't measure real time, we test the branch directly
-    # by having the runner raise an error on pytest if it's incorrectly called.
-    # Instead, we verify the exit path by checking that pytest is not in calls.
     class BudgetExhaustedRunner(StubRunner):
         def __call__(
             self,
@@ -196,7 +174,6 @@ def test_main_refuses_to_run_pytest_when_budget_exhausted(
             env: dict[str, str] | None = None,
             timeout: float | None = None,
         ) -> ProcessResult:
-            # If pytest is called with timeout <= 0, return failure
             if command == "python" and args[:2] == ("-m", "pytest"):
                 raise AssertionError(
                     "pytest should not be called when budget is exhausted"
@@ -212,19 +189,13 @@ def test_main_refuses_to_run_pytest_when_budget_exhausted(
         }
     )
 
-    # Patch time.monotonic to return a value that makes remaining_budget <= 0
     import time
     from unittest.mock import patch
 
-    # Simulate: 31 seconds have elapsed (budget exhausted)
-    # time.monotonic returns 1000, then 1031 (31 seconds later)
-    # This makes remaining_budget = 30 - 31 = -1, triggering the exhausted path
     with patch.object(time, "monotonic", side_effect=[1000.0, 1031.0]):
         exit_code = main([], runner=runner, cwd=tmp_path)
 
-    # Should fail without calling pytest
     assert exit_code == 1
-    # No pytest call should have been made
     assert not any(
         call[0] == "python" and call[1][:2] == ("-m", "pytest")
         for call in runner.calls

@@ -199,7 +199,7 @@ dist-homebrew: build-wheel
 		echo "Note: Homebrew bottle creation requires macOS and Homebrew environment"
 
 # Distribution targets
-verify: packaging-smoke policy-loader-smoke
+verify:
 	@uv run python -m ralph.verify
 
 policy-loader-smoke:
@@ -208,8 +208,8 @@ policy-loader-smoke:
 packaging-smoke:
 	-@rm -rf $(shell realpath .)/../tmp/packaging-smoke
 	@mkdir -p $(shell realpath .)/../tmp
-	@python -m venv $(shell realpath .)/../tmp/packaging-smoke
-	@PYTHONPATH="" $(shell realpath .)/../tmp/packaging-smoke/bin/pip install --quiet $(shell realpath .)/../ralph-workflow/
+	@uv venv $(shell realpath .)/../tmp/packaging-smoke
+	@PYTHONPATH="" uv pip install --quiet --python $(shell realpath .)/../tmp/packaging-smoke/bin/python $(shell realpath .)/../ralph-workflow/
 	@ls -la $(shell realpath .)/../tmp/packaging-smoke/bin/ralph-prompt
 	@PYTHONPATH="" $(shell realpath .)/../tmp/packaging-smoke/bin/python -c "from ralph.cli._prompt_helper_entry import main; print('entrypoint importable')"
 	@uv run pytest -q tests/test_ralph_prompt_entry.py
