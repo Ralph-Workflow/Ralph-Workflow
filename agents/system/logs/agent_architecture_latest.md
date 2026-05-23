@@ -1,12 +1,12 @@
 # Agent Architecture Audit
 
 - Checked: 2026-05-23T09:07:17.406080+02:00
-- Overall health: healthy_with_repairs
+- Overall health: high_risk
 - Primary failure mode: Architecture-owned freshness/signoff drift was repaired this run; end-to-end green remains blocked by the marketing-owned runner degradation and primary-repo adoption measurement window.
 - Most urgent fix: Keep architecture at qualified pass, but force the marketing owner loop to clear the runner-bundle degradation path and earn fresh outcome movement before any full-green certification.
-- Verifier status: independently verified pass
-- Verifier checked: 2026-05-23T11:03:30.596411+02:00
-- Verifier blockers: none
+- Verifier status: invalidated by fresh fail-closed verification
+- Verifier checked: 2026-05-23T12:27:40.517048+02:00
+- Verifier blockers: independent verifier did not pass (verdict='fail'); health monitor reports non-architecture live issues: marketing-daily:timeout
 
 ## Live topology
 

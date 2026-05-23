@@ -1,0 +1,26 @@
+Hi LaunchKit Tools team,
+
+I found LaunchKit Tools while looking for coding-focused AI tool directories, and Ralph Workflow seems like a strong fit for your Coding category.
+
+Ralph Workflow is a free and open-source composable loop framework and AI orchestrator — a workflow layer for autonomous coding built for developers and technical teams doing repo-scale work that needs more structure than a chat session.
+
+Why it fits your audience:
+- built for developers doing unattended or multi-phase coding work
+- composes planning, implementation, verification, and handoff into one workflow
+- works with existing agent tools like Claude Code, Codex CLI, and OpenCode
+- aims to bring back finished, tested code that is ready to review instead of just another confident summary
+
+Primary repo (preferred): https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Project site: https://ralphworkflow.com/
+
+Suggested one-line listing:
+Ralph Workflow — free/open-source workflow layer for autonomous coding with plan-build-verify loops and reviewable repo-native handoffs.
+
+I tried the public submit page, but its form currently points to a placeholder Formspree endpoint, so I’m sending the details here instead in case email is the better path right now.
+
+If it fits, I’d love to see Ralph Workflow included in LaunchKit Tools.
+
+Best,
+Ken
+Ralph Workflow

@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-05-23T13:35:00+02:00",
+  "action": "repo_conversion_proof_asset",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": false,
+  "channel": "repo_docs",
+  "target": "Codeberg-first conversion surface",
+  "title": "Add Claude Code + Codex workflow guide and route top-level docs toward it",
+  "why_this_action": [
+    "Primary Codeberg adoption is flat, while external lanes are either in active measurement windows, saturated, or auth-blocked.",
+    "Fresh shared findings say the repeated live pain is the Claude Code + Codex handoff gap and the current bottleneck is conversion from interest to free use.",
+    "A durable repo-native guide can capture high-intent evaluators now without waiting on external account access."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/NON_REDDIT_CHANNELS_NEXT.md",
+    "agents/marketing/logs/distribution_lane_latest.md"
+  ],
+  "files_changed": [
+    "content/guides/claude_code_codex_workflow.md",
+    "README.md",
+    "START_HERE.md"
+  ],
+  "docs_change_brief": {
+    "user_problem_addressed": "Evaluators interested in Claude Code + Codex workflows need a clearer repo-native path from curiosity to a real first run.",
+    "target_audience": "Developers and technical teams comparing manual multi-tool handoffs with a stronger workflow.",
+    "chosen_surface": "Deep guide plus README/START_HERE routing",
+    "why_this_surface": "The guide answers one concrete demand-capture question, while README and START_HERE are the shortest path to put that answer in front of high-intent repo visitors.",
+    "what_was_shortened_removed_merged": "README quick links stayed at four by replacing the broader unattended-workflow link with the new Claude Code + Codex workflow guide instead of adding another top-level link."
+  },
+  "docs_review_note": {
+    "what_changed": "Added a focused Claude Code + Codex workflow guide and routed README/START_HERE toward it for the handoff/review pain frame.",
+    "why_it_belongs_here": "This is the clearest high-intent question emerging from recent market and Reddit-adjacent findings, and it belongs one layer below README while still being promoted from the first-run path.",
+    "what_was_pruned_shortened_merged": "Kept README quick-link count flat by swapping in the new guide rather than expanding the top-level link set.",
+    "duplication_reduced": true,
+    "why_top_level_is_better": "The first-click path now better matches the current market pain without making README more branchy."
+  },
+  "verification": {
+    "link_check": {
+      "checked_files": [
+        "README.md",
+        "START_HERE.md",
+        "content/guides/claude_code_codex_workflow.md"
+      ],
+      "errors": []
+    },
+    "quick_link_count": 4
+  },
+  "measurement_window": {
+    "review_at": "2026-06-06T13:35:00+02:00",
+    "success_metric": "This guide becomes part of the repo-first evaluation path and contributes to clearer qualified inspection or Codeberg star/watch/fork movement.",
+    "kill_condition": "If Codeberg remains flat after the current external measurement windows close and this guide still has no visible reuse in distribution or conversion surfaces, replace it with a stronger proof asset instead of another light docs pass."
+  }
+}

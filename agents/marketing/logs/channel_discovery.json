@@ -1,11 +1,11 @@
 {
   "tried": [
-    "RSS directories",
     "agentdepot",
     "aigearbase",
     "aipowerstacks",
     "aisotools",
     "aitoolboard",
+    "aitools-inc",
     "aitoolsindex",
     "alternativeTo",
     "codaone",
@@ -32,6 +32,7 @@
     "quora",
     "reddit-programming",
     "reddit-r-programming",
+    "RSS directories",
     "saashub",
     "slashdot",
     "smashingmagazine",
@@ -48,314 +49,6 @@
     "vbwebtools"
   ],
   "results": [
-    {
-      "name": "dev.to",
-      "url": "https://dev.to",
-      "method": "api",
-      "difficulty": "hard",
-      "timestamp": "2026-05-09T11:02:20.437540",
-      "http_code": "200",
-      "status": "accessible",
-      "devto": {
-        "status": "unknown"
-      }
-    },
-    {
-      "name": "stackoverflow",
-      "url": "https://stackoverflow.com",
-      "method": "answer",
-      "difficulty": "medium",
-      "timestamp": "2026-05-09T11:02:21.550049",
-      "http_code": "302",
-      "status": "http_302",
-      "stackoverflow": {
-        "action": "answer",
-        "question_id": 79834436,
-        "title": "Cursor AI Agent sometimes applies code changes automatically without showing the \u201cKeep\u201d or \u201cUndo\u201d options",
-        "link": null,
-        "score": -3,
-        "status": "found_question"
-      }
-    },
-    {
-      "name": "quora",
-      "url": "https://quora.com",
-      "method": "answer",
-      "difficulty": "medium",
-      "timestamp": "2026-05-09T11:02:22.634667",
-      "http_code": "308",
-      "status": "http_308"
-    },
-    {
-      "name": "reddit-r-programming",
-      "url": "https://reddit.com/r/rprogramming",
-      "method": "post",
-      "difficulty": "hard",
-      "timestamp": "2026-05-09T11:02:23.599754",
-      "http_code": "301",
-      "status": "redirects"
-    },
-    {
-      "name": "reddit-programming",
-      "url": "https://reddit.com/r/programming",
-      "method": "post",
-      "difficulty": "hard",
-      "timestamp": "2026-05-09T11:02:24.149491",
-      "http_code": "301",
-      "status": "redirects"
-    },
-    {
-      "name": "hackernews",
-      "url": "https://news.ycombinator.com",
-      "method": "submit",
-      "difficulty": "impossible",
-      "timestamp": "2026-05-11T10:02:55.413814",
-      "http_code": "200",
-      "status": "accessible"
-    },
-    {
-      "name": "lobsters",
-      "url": "https://lobste.rs",
-      "method": "submit",
-      "difficulty": "impossible",
-      "timestamp": "2026-05-11T10:02:56.949368",
-      "http_code": "200",
-      "status": "accessible"
-    },
-    {
-      "name": "producthunt",
-      "url": "https://producthunt.com",
-      "method": "submit",
-      "difficulty": "hard",
-      "timestamp": "2026-05-11T10:02:57.995805",
-      "http_code": "403",
-      "status": "blocked",
-      "note": "Cloudflare or bot protection"
-    },
-    {
-      "name": "indiehackers",
-      "url": "https://indiehackers.com",
-      "method": "post",
-      "difficulty": "medium",
-      "timestamp": "2026-05-11T10:02:58.609657",
-      "http_code": "301",
-      "status": "redirects"
-    },
-    {
-      "name": "medium",
-      "url": "https://medium.com",
-      "method": "article",
-      "difficulty": "hard",
-      "timestamp": "2026-05-11T10:02:59.688118",
-      "http_code": "403",
-      "status": "blocked",
-      "note": "Cloudflare or bot protection"
-    },
-    {
-      "name": "dev.to-gist",
-      "url": "https://gist.github.com",
-      "method": "gist",
-      "difficulty": "blocked",
-      "timestamp": "2026-05-18T03:55:47.456024",
-      "http_code": "302",
-      "status": "http_302"
-    },
-    {
-      "name": "slashdot",
-      "url": "https://slashdot.org/submission",
-      "method": "submit",
-      "difficulty": "medium",
-      "timestamp": "2026-05-20T21:59:27.236937",
-      "http_code": "200",
-      "final_url": "https://slashdot.org/submission",
-      "status": "login_required",
-      "note": "submission requires login"
-    },
-    {
-      "name": "newsbrew",
-      "url": "https://newsbrew.io",
-      "method": "submit",
-      "difficulty": "unknown",
-      "timestamp": "2026-05-18T03:55:49.890293",
-      "http_code": "000",
-      "status": "http_000"
-    },
-    {
-      "name": "theresanaiforthat",
-      "url": "https://theresanaiforthat.com",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-18T03:55:51.869004",
-      "http_code": "403",
-      "status": "blocked",
-      "note": "Cloudflare or bot protection"
-    },
-    {
-      "name": "alternativeTo",
-      "url": "https://alternativeto.net",
-      "method": "submit",
-      "difficulty": "blocked",
-      "timestamp": "2026-05-18T03:58:32.978777",
-      "http_code": "403",
-      "final_url": "https://alternativeto.net",
-      "status": "blocked",
-      "note": "Cloudflare or bot protection"
-    },
-    {
-      "name": "saashub",
-      "url": "https://www.saashub.com/services/submit",
-      "method": "submit",
-      "difficulty": "medium",
-      "timestamp": "2026-05-20T14:53:24.705870",
-      "http_code": "200",
-      "final_url": "https://www.saashub.com/services/submit",
-      "status": "broken_submit_surface",
-      "surface_probe": {
-        "probe_status": "ok",
-        "form_count": 2,
-        "input_count": 2,
-        "textarea_count": 0,
-        "select_count": 0,
-        "body_excerpt": "Software Alternatives, Accelerators & Startups\nRegister | Login\nTools & Categories \n Feature My Product\nSubmit Product\nSubmit a Product\nSuccessful submission advice\nFollow the guidelines\nPlease read the guidelines below before submitting your product.\nAdd Categories\nList a few relevant categories. You may check your competitors' categories for inspiration.\nList Competitors\nThe submission will be slowed down and put to the bottom of the queue if there are not listed competitors.\nVerify the product\nVerifying your product will give it a higher priority. You will need an email address on the product's domain.\nWebsite URL\nA URL to the product website or a product page on your company's website.\nPlease note that all submitted products go through an approval process.\n\nThese types of products are ",
-        "forms": [
-          {
-            "index": 0,
-            "action": "/services/new",
-            "method": "get",
-            "text": "Website URL\nA URL to the product website or a product page on your company's website.\nPlease note that all submitted products go through an approval process.\n\nThese types of products are not accepted:\n\nSoftware development agencies.\nLanding pages with an email form for a waiting list.\nProducts that ",
-            "control_count": 2,
-            "named_control_count": 2
-          },
-          {
-            "index": 1,
-            "action": null,
-            "method": "dialog",
-            "text": "\nPlease confirm?\n\nCancel\nConfirm\n\n",
-            "control_count": 0,
-            "named_control_count": 0
-          }
-        ]
-      },
-      "source_probe": {
-        "probe_status": "ok",
-        "script_count": 2,
-        "same_origin_script_count": 0,
-        "scripts_fetched": 0,
-        "has_network_submission_markers": false,
-        "has_prevent_default": false,
-        "has_success_markers": false,
-        "submit_handler_window_count": 0,
-        "submit_handler_has_network_markers": false,
-        "submit_handler_has_success_markers": false,
-        "has_auth_markers": false,
-        "has_captcha_markers": false,
-        "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false,
-        "api_candidates": []
-      },
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://www.saashub.com/api/submit",
-        "get_code": 404,
-        "post_code": 404,
-        "post_body": "<!DOCTYPE html>\n<!-- saved from url=(0029)https://www.saashub.com/about -->\n<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n    <link rel=\"stylesheet\" media=\"all\" href=",
-        "public_submit_detected": false,
-        "auth_required_detected": false,
-        "server_error_detected": false
-      },
-      "note": "submission requires account creation plus hCaptcha / human-authenticated verification from this environment; treat SaaSHub as a managed existing listing, not an autonomous submit lane"
-    },
-    {
-      "name": "productpapa",
-      "url": "https://productpapa.com",
-      "method": "submit",
-      "difficulty": "unknown",
-      "timestamp": "2026-05-18T03:58:34.921931",
-      "status": "error",
-      "note": "<urlopen error timed out>"
-    },
-    {
-      "name": "stackshare",
-      "url": "https://stackshare.io",
-      "method": "submit",
-      "difficulty": "unknown",
-      "timestamp": "2026-05-18T03:58:45.509561",
-      "http_code": "429",
-      "final_url": "https://stackshare.io",
-      "status": "http_429"
-    },
-    {
-      "name": "github-readme",
-      "url": "https://github.com/RalphWorkflow/Ralph-Workflow",
-      "method": "update",
-      "difficulty": "blocked",
-      "timestamp": "2026-05-18T03:58:46.171630",
-      "http_code": "404",
-      "final_url": "https://github.com/RalphWorkflow/Ralph-Workflow",
-      "status": "missing",
-      "note": "page not found"
-    },
-    {
-      "name": "RSS directories",
-      "url": "https://blogsearch.google.com",
-      "method": "submit",
-      "difficulty": "medium",
-      "timestamp": "2026-05-18T21:58:36.751304",
-      "http_code": "200",
-      "final_url": "https://www.google.com/",
-      "status": "redirects",
-      "note": "redirected away from original host to google.com"
-    },
-    {
-      "name": "dmoz",
-      "url": "https://dmoz-odp.org",
-      "method": "submit",
-      "difficulty": "blocked",
-      "timestamp": "2026-05-18T03:59:49.326963",
-      "status": "error",
-      "note": "<urlopen error [Errno -3] Temporary failure in name resolution>"
-    },
-    {
-      "name": "dirwell",
-      "url": "https://dirwell.com",
-      "method": "submit",
-      "difficulty": "unknown",
-      "timestamp": "2026-05-18T04:00:26.164042",
-      "http_code": "526",
-      "final_url": "https://dirwell.com",
-      "status": "http_526"
-    },
-    {
-      "name": "smashingmagazine",
-      "url": "https://smashingmagazine.com",
-      "method": "contribute",
-      "difficulty": "hard",
-      "timestamp": "2026-05-18T04:00:27.127113",
-      "http_code": "200",
-      "final_url": "https://www.smashingmagazine.com/",
-      "status": "accessible"
-    },
-    {
-      "name": "css-tricks",
-      "url": "https://css-tricks.com",
-      "method": "article",
-      "difficulty": "hard",
-      "timestamp": "2026-05-18T04:00:40.984100",
-      "http_code": "200",
-      "final_url": "https://css-tricks.com",
-      "status": "accessible"
-    },
-    {
-      "name": "toolshelf",
-      "url": "https://toolshelf.dev/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-23T01:51:50Z",
-      "http_code": null,
-      "final_url": null,
-      "status": "broken_submit_surface",
-      "note": "seeded from failed execution log marketing_2026-05-23_toolshelf_submission.json"
-    },
     {
       "name": "agentdepot",
       "url": "https://agentdepot.dev/submit",
@@ -409,43 +102,113 @@
       "note": "submission falls back to email or GitHub issue handoff, not autonomous API/form submission"
     },
     {
-      "name": "toolwise",
-      "url": "https://toolwise.ai/submit-tool",
+      "name": "aigearbase",
+      "url": "https://aigearbase.com/submit",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T21:58:55.668652",
+      "timestamp": "2026-05-22T18:17:27Z",
+      "http_code": null,
+      "final_url": null,
+      "status": "broken_submit_surface",
+      "note": "seeded from failed execution log marketing_2026-05-22_aigearbase_submission.json"
+    },
+    {
+      "name": "aipowerstacks",
+      "url": "https://www.aipowerstacks.com/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-20T11:04:23.112698",
       "http_code": "200",
-      "final_url": "https://toolwise.ai/submit-tool",
-      "status": "accessible",
+      "final_url": "https://www.aipowerstacks.com/submit",
+      "status": "login_required",
       "surface_probe": {
         "probe_status": "ok",
-        "form_count": 2,
-        "input_count": 5,
-        "textarea_count": 3,
-        "select_count": 2,
-        "body_excerpt": "TW\nToolWise\nTOOL REVIEWS\nCATEGORIES\nINDUSTRIES\nARTICLES\nAI NEWS\nLIST YOUR TOOL\nSubmit Your Tool\n\nAdd your AI tool to the ToolWise directory. Free listings are published within 48 hours with an AI-researched profile. Want a full editor review? See listing options.\n\nTool Name *\nWebsite URL *\nTagline (one sentence) *\nCategory *\nSelect a category\nWriting & Content\nCustomer Service\nSales & CRM\nMarketing Automation\nSocial Media\nAccounting & Finance\nDesign & Creative\nHR & Hiring\nScheduling & Admin\nSEO\nVideo & Media\nWorkflow Automation\nE-commerce\nAnalytics & Data\nLegal & Contracts\nPricing Model *\nSelect pricing\nFree\nFreemium (free plan + paid tiers)\nPaid only\nContact for pricing\nDescription (2-3 sentences)\nKey Features (one per line)\nBest For (one per line)\nYour contact email\nFree submissions get ",
+        "form_count": 1,
+        "input_count": 1,
+        "textarea_count": 0,
+        "select_count": 0,
+        "body_excerpt": "Skip to content\nAIPowerStacks\nBrowse\nTracker\nCompare\nBlog\nMore\nSearch\u2026\n\u2318K\nLog in\nSign up\nCREATOR ONBOARDING\nSign In to List Your AI Tool\n\nA free account keeps listings spam-free and lets you manage, claim, or edit your tool anytime.\n\nLog In\nCreate Account\n\nAfter login, you'll return here automatically.\n\nAIPowerStacks\n\nDiscover and compare AI tools by use case, pricing, and integrations. Verified listings and real user reviews, updated every day.\n\nDIRECTORY\nAll AI Tools\nCompare Tools\nFree Tools\nFreemium Tools\nCategories\nSubmit a Tool\nCONTENT\nAI News\nFeatured Articles\nChangelog\nCOMPANY\nAbout\nAdvertise\nPrivacy Policy\nTerms of Service\nSubscribe\n\n\u00a9 2026 AIPowerStacks. All rights reserved.\n\nNew AI tool listings added daily.",
         "forms": [
           {
             "index": 0,
             "action": null,
             "method": null,
-            "text": "",
+            "text": "Subscribe",
             "control_count": 1,
             "named_control_count": 0
-          },
-          {
-            "index": 1,
-            "action": null,
-            "method": null,
-            "text": "Tool Name *\nWebsite URL *\nTagline (one sentence) *\nCategory *\nSelect a category\nWriting & Content\nCustomer Service\nSales & CRM\nMarketing Automation\nSocial Media\nAccounting & Finance\nDesign & Creative\nHR & Hiring\nScheduling & Admin\nSEO\nVideo & Media\nWorkflow Automation\nE-commerce\nAnalytics & Data\nLeg",
-            "control_count": 9,
-            "named_control_count": 9
           }
         ]
       },
       "source_probe": {
         "probe_status": "ok",
-        "script_count": 11,
+        "script_count": 21,
+        "same_origin_script_count": 21,
+        "scripts_fetched": 12,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 0,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": true,
+        "has_captcha_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false,
+        "api_candidates": [
+          "https://www.aipowerstacks.com/api/rss",
+          "https://www.aipowerstacks.com/api/rss\\"
+        ]
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://www.aipowerstacks.com/api/rss",
+        "get_code": 200,
+        "post_code": 405,
+        "post_body": "",
+        "public_submit_detected": false,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      },
+      "note": "submission requires account authentication"
+    },
+    {
+      "name": "aisotools",
+      "url": "https://aisotools.com/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-20T05:10:59.449944",
+      "http_code": "200",
+      "final_url": "https://aisotools.com/submit",
+      "status": "broken_submit_surface",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 2,
+        "input_count": 8,
+        "textarea_count": 1,
+        "select_count": 2,
+        "body_excerpt": "AISO\nTools\nCategories\nNew\nBlog\nCompare\nAdvertise\nSubmit Tool\nSubmit Your AI Tool\n\nGet your AI tool in front of thousands of developers, marketers, and creators. Basic listings are free forever. Want 10x more visibility? Upgrade to Featured \u2192\n\nWebsite\nTool Name *\nWebsite URL *\nCategory *\nSelect a category\n\u270d\ufe0f Writing & Content\n\ud83c\udfa8 Image Generation\n\ud83c\udfac Video & Animation\n\ud83c\udfb5 Audio & Music\n\ud83d\udcac Chatbots & Assistants\n\ud83d\udcbb Coding & Development\n\ud83d\udcc8 Marketing & SEO\n\u26a1 Productivity\n\ud83c\udfaf Design & UI/UX\n\ud83d\udcca Data & Analytics\n\ud83d\udcda Education & Research\n\ud83d\udcbc Business & Finance\n\ud83c\udfe5 Healthcare & Wellness\n\ud83d\udd0d Search & Knowledge\n\ud83e\udd16 AI Agent Infrastructure\n\ud83d\udee1\ufe0f AI Security & Testing\n\ud83e\uddca 3D & Spatial\n\ud83d\udd0e SEO Tools\n\ud83c\udfe1 Real Estate\n\ud83d\uddc3\ufe0f Data Extraction\nShort Description *\nFull Description *\nPricing Model *\nSelect pricing model\nFree\nFreemium (free tier +",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "Website\nTool Name *\nWebsite URL *\nCategory *\nSelect a category\n\u270d\ufe0f Writing & Content\n\ud83c\udfa8 Image Generation\n\ud83c\udfac Video & Animation\n\ud83c\udfb5 Audio & Music\n\ud83d\udcac Chatbots & Assistants\n\ud83d\udcbb Coding & Development\n\ud83d\udcc8 Marketing & SEO\n\u26a1 Productivity\n\ud83c\udfaf Design & UI/UX\n\ud83d\udcca Data & Analytics\n\ud83d\udcda Education & Research\n\ud83d\udcbc Business &",
+            "control_count": 10,
+            "named_control_count": 10
+          },
+          {
+            "index": 1,
+            "action": null,
+            "method": null,
+            "text": "Join",
+            "control_count": 1,
+            "named_control_count": 0
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 10,
         "same_origin_script_count": 10,
         "scripts_fetched": 10,
         "has_network_submission_markers": true,
@@ -459,22 +222,42 @@
         "has_mailto_submission_markers": false,
         "has_issue_handoff_markers": false,
         "api_candidates": [
-          "https://toolwise.ai/api/tools"
+          "https://aisotools.com/api/submit",
+          "https://aisotools.com/api/newsletter"
         ]
       },
       "api_probe": {
         "probe_status": "ok",
-        "submit_url": "https://toolwise.ai/api/tools",
-        "get_code": 200,
+        "submit_url": "https://aisotools.com/api/submit",
+        "get_code": 405,
         "post_code": 400,
-        "post_body": "{\"error\":\"Name and slug are required\"}",
+        "post_body": "{\"error\":\"Missing required fields: tool_name, url, category, short_description, description, pricing, features, email\"}",
         "public_submit_detected": true,
-        "auth_required_detected": false,
         "server_error_detected": false
       },
-      "note": "public submission API detected at https://toolwise.ai/api/tools",
-      "submission_status": "already_listed",
-      "submission_note": "POST /api/tools returned 409 slug-already-exists; listing exists at /tools/ralph-workflow"
+      "note": "real form submission with valid payload returns server misconfigured / 500 from this environment"
+    },
+    {
+      "name": "aitoolboard",
+      "url": "https://aitoolboard.com/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T06:43:10Z",
+      "http_code": "200",
+      "final_url": "https://aitoolboard.com/submit",
+      "status": "accessible",
+      "note": "seeded from verified execution log marketing_2026-05-23_aitoolboard_submission.json"
+    },
+    {
+      "name": "aitools-inc",
+      "url": "https://aitools.inc/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T13:49:54+02:00",
+      "http_code": "200",
+      "final_url": "https://loxr142exnq.typeform.com/to/RB6ZnEf2",
+      "status": "accessible",
+      "note": "seeded from verified execution log marketing_2026-05-23_aitools_inc_submission.json"
     },
     {
       "name": "aitoolsindex",
@@ -545,60 +328,15 @@
       }
     },
     {
-      "name": "tools-ai-online",
-      "url": "https://www.tools-ai.online/submit-tool",
+      "name": "alternativeTo",
+      "url": "https://alternativeto.net",
       "method": "submit",
-      "difficulty": "medium",
-      "timestamp": "2026-05-20T21:58:05.353505",
-      "http_code": "200",
-      "final_url": "https://www.tools-ai.online/submit-tool",
-      "status": "captcha_blocked",
-      "surface_probe": {
-        "probe_status": "ok",
-        "form_count": 1,
-        "input_count": 285,
-        "textarea_count": 2,
-        "select_count": 1,
-        "body_excerpt": "Online Tools\nCategories\nAdded Today\nNews\nAbout\nContact Us\nSubmit Tool\nFeature Your Tool\nSubmit Your AI Tool\n\nShare your innovative AI tools with our community. Submit your tool today and help others discover your powerful solutions for better efficiency and productivity!\n\nTool Name *\nWebsite URL *\nTool Description *\n\nSupports Markdown formatting: **bold**, *italic*, [links](url), `code`, lists, etc.\n\nCharacters: 0\nCategories *\n\nChoose up to 3 categories.\n\nSelect categories\nTags *\n\nChoose up to 5 tags.\n\nSelect tags\nPricing *\nSelect Pricing\nFree\nFreemium\nGitHub\nGoogle Colab\nOpen Source\nOther\nPaid\nContact Email *\n\nWe\u275bll notify you when your submission is reviewed\n\nTool Icon (optional)\n\nDrag & drop your tool icon here or click to browse\n\nRecommended: 512x512px, PNG or SVG (Max: 2MB)\n\nFeatured ",
-        "forms": [
-          {
-            "index": 0,
-            "action": null,
-            "method": null,
-            "text": "Tool Name *\nWebsite URL *\nTool Description *\n\nSupports Markdown formatting: **bold**, *italic*, [links](url), `code`, lists, etc.\n\nCharacters: 0\nCategories *\n\nChoose up to 3 categories.\n\nSelect categories\nTags *\n\nChoose up to 5 tags.\n\nSelect tags\nPricing *\nSelect Pricing\nFree\nFreemium\nGitHub\nGoogle ",
-            "control_count": 8,
-            "named_control_count": 5
-          }
-        ]
-      },
-      "source_probe": {
-        "probe_status": "ok",
-        "script_count": 17,
-        "same_origin_script_count": 17,
-        "scripts_fetched": 12,
-        "has_network_submission_markers": true,
-        "has_prevent_default": true,
-        "has_success_markers": false,
-        "submit_handler_window_count": 0,
-        "submit_handler_has_network_markers": false,
-        "submit_handler_has_success_markers": false,
-        "has_auth_markers": false,
-        "has_captcha_markers": true,
-        "has_mailto_submission_markers": true,
-        "has_issue_handoff_markers": false,
-        "api_candidates": []
-      },
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://www.tools-ai.online/api/submit",
-        "get_code": 404,
-        "post_code": 404,
-        "post_body": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/0c85235b60c0b9a0.css\" da",
-        "public_submit_detected": false,
-        "auth_required_detected": false,
-        "server_error_detected": false
-      },
-      "note": "submission requires a CAPTCHA-backed browser flow, not an autonomous public API"
+      "difficulty": "blocked",
+      "timestamp": "2026-05-18T03:58:32.978777",
+      "http_code": "403",
+      "final_url": "https://alternativeto.net",
+      "status": "blocked",
+      "note": "Cloudflare or bot protection"
     },
     {
       "name": "codaone",
@@ -644,72 +382,6 @@
         "server_error_detected": false
       },
       "note": "submission currently requires security verification / turnstile from this environment; direct POST probes return security-verification 400 or server-error 500"
-    },
-    {
-      "name": "aisotools",
-      "url": "https://aisotools.com/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-20T05:10:59.449944",
-      "http_code": "200",
-      "final_url": "https://aisotools.com/submit",
-      "status": "broken_submit_surface",
-      "surface_probe": {
-        "probe_status": "ok",
-        "form_count": 2,
-        "input_count": 8,
-        "textarea_count": 1,
-        "select_count": 2,
-        "body_excerpt": "AISO\nTools\nCategories\nNew\nBlog\nCompare\nAdvertise\nSubmit Tool\nSubmit Your AI Tool\n\nGet your AI tool in front of thousands of developers, marketers, and creators. Basic listings are free forever. Want 10x more visibility? Upgrade to Featured \u2192\n\nWebsite\nTool Name *\nWebsite URL *\nCategory *\nSelect a category\n\u270d\ufe0f Writing & Content\n\ud83c\udfa8 Image Generation\n\ud83c\udfac Video & Animation\n\ud83c\udfb5 Audio & Music\n\ud83d\udcac Chatbots & Assistants\n\ud83d\udcbb Coding & Development\n\ud83d\udcc8 Marketing & SEO\n\u26a1 Productivity\n\ud83c\udfaf Design & UI/UX\n\ud83d\udcca Data & Analytics\n\ud83d\udcda Education & Research\n\ud83d\udcbc Business & Finance\n\ud83c\udfe5 Healthcare & Wellness\n\ud83d\udd0d Search & Knowledge\n\ud83e\udd16 AI Agent Infrastructure\n\ud83d\udee1\ufe0f AI Security & Testing\n\ud83e\uddca 3D & Spatial\n\ud83d\udd0e SEO Tools\n\ud83c\udfe1 Real Estate\n\ud83d\uddc3\ufe0f Data Extraction\nShort Description *\nFull Description *\nPricing Model *\nSelect pricing model\nFree\nFreemium (free tier +",
-        "forms": [
-          {
-            "index": 0,
-            "action": null,
-            "method": null,
-            "text": "Website\nTool Name *\nWebsite URL *\nCategory *\nSelect a category\n\u270d\ufe0f Writing & Content\n\ud83c\udfa8 Image Generation\n\ud83c\udfac Video & Animation\n\ud83c\udfb5 Audio & Music\n\ud83d\udcac Chatbots & Assistants\n\ud83d\udcbb Coding & Development\n\ud83d\udcc8 Marketing & SEO\n\u26a1 Productivity\n\ud83c\udfaf Design & UI/UX\n\ud83d\udcca Data & Analytics\n\ud83d\udcda Education & Research\n\ud83d\udcbc Business &",
-            "control_count": 10,
-            "named_control_count": 10
-          },
-          {
-            "index": 1,
-            "action": null,
-            "method": null,
-            "text": "Join",
-            "control_count": 1,
-            "named_control_count": 0
-          }
-        ]
-      },
-      "source_probe": {
-        "probe_status": "ok",
-        "script_count": 10,
-        "same_origin_script_count": 10,
-        "scripts_fetched": 10,
-        "has_network_submission_markers": true,
-        "has_prevent_default": true,
-        "has_success_markers": false,
-        "submit_handler_window_count": 1,
-        "submit_handler_has_network_markers": false,
-        "submit_handler_has_success_markers": false,
-        "has_auth_markers": false,
-        "has_captcha_markers": false,
-        "has_mailto_submission_markers": false,
-        "has_issue_handoff_markers": false,
-        "api_candidates": [
-          "https://aisotools.com/api/submit",
-          "https://aisotools.com/api/newsletter"
-        ]
-      },
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://aisotools.com/api/submit",
-        "get_code": 405,
-        "post_code": 400,
-        "post_body": "{\"error\":\"Missing required fields: tool_name, url, category, short_description, description, pricing, features, email\"}",
-        "public_submit_detected": true,
-        "server_error_detected": false
-      },
-      "note": "real form submission with valid payload returns server misconfigured / 500 from this environment"
     },
     {
       "name": "comeai",
@@ -768,6 +440,476 @@
         "server_error_detected": false
       },
       "note": "real form submission with valid payload returns server error / 500 from this environment"
+    },
+    {
+      "name": "css-tricks",
+      "url": "https://css-tricks.com",
+      "method": "article",
+      "difficulty": "hard",
+      "timestamp": "2026-05-18T04:00:40.984100",
+      "http_code": "200",
+      "final_url": "https://css-tricks.com",
+      "status": "accessible"
+    },
+    {
+      "name": "dang-ai",
+      "url": "https://dang.ai/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-21T01:08:25.899378",
+      "http_code": "200",
+      "final_url": "https://dang.ai/submit",
+      "status": "captcha_blocked",
+      "note": "Webflow submit surface is protected by reCAPTCHA and is not a durable autonomous lane from this environment"
+    },
+    {
+      "name": "dev.to",
+      "url": "https://dev.to",
+      "method": "api",
+      "difficulty": "hard",
+      "timestamp": "2026-05-09T11:02:20.437540",
+      "http_code": "200",
+      "status": "accessible",
+      "devto": {
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "dev.to-gist",
+      "url": "https://gist.github.com",
+      "method": "gist",
+      "difficulty": "blocked",
+      "timestamp": "2026-05-18T03:55:47.456024",
+      "http_code": "302",
+      "status": "http_302"
+    },
+    {
+      "name": "devtoolcenter",
+      "url": "https://www.devtool.center/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T12:14:26+02:00",
+      "http_code": "201",
+      "final_url": "https://www.devtool.center/submit",
+      "status": "accessible",
+      "note": "seeded from verified execution log marketing_2026-05-23_devtoolcenter_submission.json"
+    },
+    {
+      "name": "directoryhunt",
+      "url": "https://directoryhunt.org/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-21T01:08:25.899378",
+      "http_code": "200",
+      "final_url": "https://directoryhunt.org/submit",
+      "status": "login_required",
+      "note": "project submission API requires authenticated sign-in; not an autonomous lane from this environment",
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://directoryhunt.org/api/projects",
+        "post_code": 401,
+        "post_body": "{\"error\":\"Authentication required. Please sign in to submit your AI project.\",\"code\":\"UNAUTHORIZED\"}",
+        "public_submit_detected": false,
+        "auth_required_detected": true,
+        "server_error_detected": false
+      }
+    },
+    {
+      "name": "dirwell",
+      "url": "https://dirwell.com",
+      "method": "submit",
+      "difficulty": "unknown",
+      "timestamp": "2026-05-18T04:00:26.164042",
+      "http_code": "526",
+      "final_url": "https://dirwell.com",
+      "status": "http_526"
+    },
+    {
+      "name": "dmoz",
+      "url": "https://dmoz-odp.org",
+      "method": "submit",
+      "difficulty": "blocked",
+      "timestamp": "2026-05-18T03:59:49.326963",
+      "status": "error",
+      "note": "<urlopen error [Errno -3] Temporary failure in name resolution>"
+    },
+    {
+      "name": "github-readme",
+      "url": "https://github.com/RalphWorkflow/Ralph-Workflow",
+      "method": "update",
+      "difficulty": "blocked",
+      "timestamp": "2026-05-18T03:58:46.171630",
+      "http_code": "404",
+      "final_url": "https://github.com/RalphWorkflow/Ralph-Workflow",
+      "status": "missing",
+      "note": "page not found"
+    },
+    {
+      "name": "hackernews",
+      "url": "https://news.ycombinator.com",
+      "method": "submit",
+      "difficulty": "impossible",
+      "timestamp": "2026-05-11T10:02:55.413814",
+      "http_code": "200",
+      "status": "accessible"
+    },
+    {
+      "name": "indiehackers",
+      "url": "https://indiehackers.com",
+      "method": "post",
+      "difficulty": "medium",
+      "timestamp": "2026-05-11T10:02:58.609657",
+      "http_code": "301",
+      "status": "redirects"
+    },
+    {
+      "name": "lobsters",
+      "url": "https://lobste.rs",
+      "method": "submit",
+      "difficulty": "impossible",
+      "timestamp": "2026-05-11T10:02:56.949368",
+      "http_code": "200",
+      "status": "accessible"
+    },
+    {
+      "name": "madewithstack",
+      "url": "https://www.madewithstack.com/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T09:22:52+02:00",
+      "http_code": null,
+      "final_url": "https://www.madewithstack.com/submit",
+      "status": "accessible",
+      "note": "seeded from verified execution log marketing_2026-05-23_madewithstack_submission.json"
+    },
+    {
+      "name": "medium",
+      "url": "https://medium.com",
+      "method": "article",
+      "difficulty": "hard",
+      "timestamp": "2026-05-11T10:02:59.688118",
+      "http_code": "403",
+      "status": "blocked",
+      "note": "Cloudflare or bot protection"
+    },
+    {
+      "name": "newsbrew",
+      "url": "https://newsbrew.io",
+      "method": "submit",
+      "difficulty": "unknown",
+      "timestamp": "2026-05-18T03:55:49.890293",
+      "http_code": "000",
+      "status": "http_000"
+    },
+    {
+      "name": "openagents",
+      "url": "https://www.openagents.pro/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T00:53:44Z",
+      "http_code": null,
+      "final_url": null,
+      "status": "broken_submit_surface",
+      "note": "seeded from failed execution log marketing_2026-05-23_openagents_submission.json"
+    },
+    {
+      "name": "openaitoolshub",
+      "url": "https://www.openaitoolshub.org/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-21T01:08:25.899378",
+      "http_code": "200",
+      "final_url": "https://www.openaitoolshub.org/submit",
+      "status": "captcha_blocked",
+      "note": "public /api/submit-tool exists, but enforced reCAPTCHA rejected both direct probes and a browser-run token from this environment",
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://www.openaitoolshub.org/api/submit-tool",
+        "post_code": 403,
+        "post_body": "{\"error\":\"reCAPTCHA verification failed. Please try again.\"}",
+        "public_submit_detected": false,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      }
+    },
+    {
+      "name": "producthunt",
+      "url": "https://producthunt.com",
+      "method": "submit",
+      "difficulty": "hard",
+      "timestamp": "2026-05-11T10:02:57.995805",
+      "http_code": "403",
+      "status": "blocked",
+      "note": "Cloudflare or bot protection"
+    },
+    {
+      "name": "productpapa",
+      "url": "https://productpapa.com",
+      "method": "submit",
+      "difficulty": "unknown",
+      "timestamp": "2026-05-18T03:58:34.921931",
+      "status": "error",
+      "note": "<urlopen error timed out>"
+    },
+    {
+      "name": "quora",
+      "url": "https://quora.com",
+      "method": "answer",
+      "difficulty": "medium",
+      "timestamp": "2026-05-09T11:02:22.634667",
+      "http_code": "308",
+      "status": "http_308"
+    },
+    {
+      "name": "reddit-programming",
+      "url": "https://reddit.com/r/programming",
+      "method": "post",
+      "difficulty": "hard",
+      "timestamp": "2026-05-09T11:02:24.149491",
+      "http_code": "301",
+      "status": "redirects"
+    },
+    {
+      "name": "reddit-r-programming",
+      "url": "https://reddit.com/r/rprogramming",
+      "method": "post",
+      "difficulty": "hard",
+      "timestamp": "2026-05-09T11:02:23.599754",
+      "http_code": "301",
+      "status": "redirects"
+    },
+    {
+      "name": "RSS directories",
+      "url": "https://blogsearch.google.com",
+      "method": "submit",
+      "difficulty": "medium",
+      "timestamp": "2026-05-18T21:58:36.751304",
+      "http_code": "200",
+      "final_url": "https://www.google.com/",
+      "status": "redirects",
+      "note": "redirected away from original host to google.com"
+    },
+    {
+      "name": "saashub",
+      "url": "https://www.saashub.com/services/submit",
+      "method": "submit",
+      "difficulty": "medium",
+      "timestamp": "2026-05-20T14:53:24.705870",
+      "http_code": "200",
+      "final_url": "https://www.saashub.com/services/submit",
+      "status": "broken_submit_surface",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 2,
+        "input_count": 2,
+        "textarea_count": 0,
+        "select_count": 0,
+        "body_excerpt": "Software Alternatives, Accelerators & Startups\nRegister | Login\nTools & Categories \n Feature My Product\nSubmit Product\nSubmit a Product\nSuccessful submission advice\nFollow the guidelines\nPlease read the guidelines below before submitting your product.\nAdd Categories\nList a few relevant categories. You may check your competitors' categories for inspiration.\nList Competitors\nThe submission will be slowed down and put to the bottom of the queue if there are not listed competitors.\nVerify the product\nVerifying your product will give it a higher priority. You will need an email address on the product's domain.\nWebsite URL\nA URL to the product website or a product page on your company's website.\nPlease note that all submitted products go through an approval process.\n\nThese types of products are ",
+        "forms": [
+          {
+            "index": 0,
+            "action": "/services/new",
+            "method": "get",
+            "text": "Website URL\nA URL to the product website or a product page on your company's website.\nPlease note that all submitted products go through an approval process.\n\nThese types of products are not accepted:\n\nSoftware development agencies.\nLanding pages with an email form for a waiting list.\nProducts that ",
+            "control_count": 2,
+            "named_control_count": 2
+          },
+          {
+            "index": 1,
+            "action": null,
+            "method": "dialog",
+            "text": "\nPlease confirm?\n\nCancel\nConfirm\n\n",
+            "control_count": 0,
+            "named_control_count": 0
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 2,
+        "same_origin_script_count": 0,
+        "scripts_fetched": 0,
+        "has_network_submission_markers": false,
+        "has_prevent_default": false,
+        "has_success_markers": false,
+        "submit_handler_window_count": 0,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": false,
+        "has_captcha_markers": false,
+        "has_mailto_submission_markers": false,
+        "has_issue_handoff_markers": false,
+        "api_candidates": []
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://www.saashub.com/api/submit",
+        "get_code": 404,
+        "post_code": 404,
+        "post_body": "<!DOCTYPE html>\n<!-- saved from url=(0029)https://www.saashub.com/about -->\n<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n    <link rel=\"stylesheet\" media=\"all\" href=",
+        "public_submit_detected": false,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      },
+      "note": "submission requires account creation plus hCaptcha / human-authenticated verification from this environment; treat SaaSHub as a managed existing listing, not an autonomous submit lane"
+    },
+    {
+      "name": "slashdot",
+      "url": "https://slashdot.org/submission",
+      "method": "submit",
+      "difficulty": "medium",
+      "timestamp": "2026-05-20T21:59:27.236937",
+      "http_code": "200",
+      "final_url": "https://slashdot.org/submission",
+      "status": "login_required",
+      "note": "submission requires login"
+    },
+    {
+      "name": "smashingmagazine",
+      "url": "https://smashingmagazine.com",
+      "method": "contribute",
+      "difficulty": "hard",
+      "timestamp": "2026-05-18T04:00:27.127113",
+      "http_code": "200",
+      "final_url": "https://www.smashingmagazine.com/",
+      "status": "accessible"
+    },
+    {
+      "name": "stackoverflow",
+      "url": "https://stackoverflow.com",
+      "method": "answer",
+      "difficulty": "medium",
+      "timestamp": "2026-05-09T11:02:21.550049",
+      "http_code": "302",
+      "status": "http_302",
+      "stackoverflow": {
+        "action": "answer",
+        "question_id": 79834436,
+        "title": "Cursor AI Agent sometimes applies code changes automatically without showing the \u201cKeep\u201d or \u201cUndo\u201d options",
+        "link": null,
+        "score": -3,
+        "status": "found_question"
+      }
+    },
+    {
+      "name": "stackshare",
+      "url": "https://stackshare.io",
+      "method": "submit",
+      "difficulty": "unknown",
+      "timestamp": "2026-05-18T03:58:45.509561",
+      "http_code": "429",
+      "final_url": "https://stackshare.io",
+      "status": "http_429"
+    },
+    {
+      "name": "thenextai",
+      "url": "https://www.thenextai.com/submit-ai-tool/",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-22T02:55:07.486911+00:00",
+      "http_code": null,
+      "final_url": null,
+      "status": "broken_submit_surface",
+      "note": "seeded from failed execution log marketing_2026-05-22_thenextai_submission.json"
+    },
+    {
+      "name": "theresanaiforthat",
+      "url": "https://theresanaiforthat.com",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-18T03:55:51.869004",
+      "http_code": "403",
+      "status": "blocked",
+      "note": "Cloudflare or bot protection"
+    },
+    {
+      "name": "thetoolify",
+      "url": "https://submit.thetoolify.dev/",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T09:46:00+02:00",
+      "http_code": "200",
+      "final_url": "https://submit.thetoolify.dev/",
+      "status": "accessible",
+      "note": "seeded from verified execution log marketing_2026-05-23_thetoolify_submission.json"
+    },
+    {
+      "name": "tools-ai-online",
+      "url": "https://www.tools-ai.online/submit-tool",
+      "method": "submit",
+      "difficulty": "medium",
+      "timestamp": "2026-05-20T21:58:05.353505",
+      "http_code": "200",
+      "final_url": "https://www.tools-ai.online/submit-tool",
+      "status": "captcha_blocked",
+      "surface_probe": {
+        "probe_status": "ok",
+        "form_count": 1,
+        "input_count": 285,
+        "textarea_count": 2,
+        "select_count": 1,
+        "body_excerpt": "Online Tools\nCategories\nAdded Today\nNews\nAbout\nContact Us\nSubmit Tool\nFeature Your Tool\nSubmit Your AI Tool\n\nShare your innovative AI tools with our community. Submit your tool today and help others discover your powerful solutions for better efficiency and productivity!\n\nTool Name *\nWebsite URL *\nTool Description *\n\nSupports Markdown formatting: **bold**, *italic*, [links](url), `code`, lists, etc.\n\nCharacters: 0\nCategories *\n\nChoose up to 3 categories.\n\nSelect categories\nTags *\n\nChoose up to 5 tags.\n\nSelect tags\nPricing *\nSelect Pricing\nFree\nFreemium\nGitHub\nGoogle Colab\nOpen Source\nOther\nPaid\nContact Email *\n\nWe\u275bll notify you when your submission is reviewed\n\nTool Icon (optional)\n\nDrag & drop your tool icon here or click to browse\n\nRecommended: 512x512px, PNG or SVG (Max: 2MB)\n\nFeatured ",
+        "forms": [
+          {
+            "index": 0,
+            "action": null,
+            "method": null,
+            "text": "Tool Name *\nWebsite URL *\nTool Description *\n\nSupports Markdown formatting: **bold**, *italic*, [links](url), `code`, lists, etc.\n\nCharacters: 0\nCategories *\n\nChoose up to 3 categories.\n\nSelect categories\nTags *\n\nChoose up to 5 tags.\n\nSelect tags\nPricing *\nSelect Pricing\nFree\nFreemium\nGitHub\nGoogle ",
+            "control_count": 8,
+            "named_control_count": 5
+          }
+        ]
+      },
+      "source_probe": {
+        "probe_status": "ok",
+        "script_count": 17,
+        "same_origin_script_count": 17,
+        "scripts_fetched": 12,
+        "has_network_submission_markers": true,
+        "has_prevent_default": true,
+        "has_success_markers": false,
+        "submit_handler_window_count": 0,
+        "submit_handler_has_network_markers": false,
+        "submit_handler_has_success_markers": false,
+        "has_auth_markers": false,
+        "has_captcha_markers": true,
+        "has_mailto_submission_markers": true,
+        "has_issue_handoff_markers": false,
+        "api_candidates": []
+      },
+      "api_probe": {
+        "probe_status": "ok",
+        "submit_url": "https://www.tools-ai.online/api/submit",
+        "get_code": 404,
+        "post_code": 404,
+        "post_body": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/0c85235b60c0b9a0.css\" da",
+        "public_submit_detected": false,
+        "auth_required_detected": false,
+        "server_error_detected": false
+      },
+      "note": "submission requires a CAPTCHA-backed browser flow, not an autonomous public API"
+    },
+    {
+      "name": "toolscout",
+      "url": "https://toolscout.ai/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T10:09:39.311840+00:00",
+      "http_code": "200",
+      "final_url": "https://toolscout.ai/submit",
+      "status": "accessible",
+      "note": "browser-run Bubble submission succeeded and showed success state; seeded from verified execution log marketing_2026-05-23_toolscout_submission.json"
+    },
+    {
+      "name": "toolshelf",
+      "url": "https://toolshelf.dev/submit",
+      "method": "submit",
+      "difficulty": "easy",
+      "timestamp": "2026-05-23T01:51:50Z",
+      "http_code": null,
+      "final_url": null,
+      "status": "broken_submit_surface",
+      "note": "seeded from failed execution log marketing_2026-05-23_toolshelf_submission.json"
     },
     {
       "name": "toolsland",
@@ -834,180 +976,72 @@
       "note": "real submit backend is broken from this environment: api.toolsland.ai/graphql presents a hostname-mismatched TLS certificate and direct POST probes return application not found / 404"
     },
     {
-      "name": "aipowerstacks",
-      "url": "https://www.aipowerstacks.com/submit",
+      "name": "toolwise",
+      "url": "https://toolwise.ai/submit-tool",
       "method": "submit",
       "difficulty": "easy",
-      "timestamp": "2026-05-20T11:04:23.112698",
+      "timestamp": "2026-05-20T21:58:55.668652",
       "http_code": "200",
-      "final_url": "https://www.aipowerstacks.com/submit",
-      "status": "login_required",
+      "final_url": "https://toolwise.ai/submit-tool",
+      "status": "accessible",
       "surface_probe": {
         "probe_status": "ok",
-        "form_count": 1,
-        "input_count": 1,
-        "textarea_count": 0,
-        "select_count": 0,
-        "body_excerpt": "Skip to content\nAIPowerStacks\nBrowse\nTracker\nCompare\nBlog\nMore\nSearch\u2026\n\u2318K\nLog in\nSign up\nCREATOR ONBOARDING\nSign In to List Your AI Tool\n\nA free account keeps listings spam-free and lets you manage, claim, or edit your tool anytime.\n\nLog In\nCreate Account\n\nAfter login, you'll return here automatically.\n\nAIPowerStacks\n\nDiscover and compare AI tools by use case, pricing, and integrations. Verified listings and real user reviews, updated every day.\n\nDIRECTORY\nAll AI Tools\nCompare Tools\nFree Tools\nFreemium Tools\nCategories\nSubmit a Tool\nCONTENT\nAI News\nFeatured Articles\nChangelog\nCOMPANY\nAbout\nAdvertise\nPrivacy Policy\nTerms of Service\nSubscribe\n\n\u00a9 2026 AIPowerStacks. All rights reserved.\n\nNew AI tool listings added daily.",
+        "form_count": 2,
+        "input_count": 5,
+        "textarea_count": 3,
+        "select_count": 2,
+        "body_excerpt": "TW\nToolWise\nTOOL REVIEWS\nCATEGORIES\nINDUSTRIES\nARTICLES\nAI NEWS\nLIST YOUR TOOL\nSubmit Your Tool\n\nAdd your AI tool to the ToolWise directory. Free listings are published within 48 hours with an AI-researched profile. Want a full editor review? See listing options.\n\nTool Name *\nWebsite URL *\nTagline (one sentence) *\nCategory *\nSelect a category\nWriting & Content\nCustomer Service\nSales & CRM\nMarketing Automation\nSocial Media\nAccounting & Finance\nDesign & Creative\nHR & Hiring\nScheduling & Admin\nSEO\nVideo & Media\nWorkflow Automation\nE-commerce\nAnalytics & Data\nLegal & Contracts\nPricing Model *\nSelect pricing\nFree\nFreemium (free plan + paid tiers)\nPaid only\nContact for pricing\nDescription (2-3 sentences)\nKey Features (one per line)\nBest For (one per line)\nYour contact email\nFree submissions get ",
         "forms": [
           {
             "index": 0,
             "action": null,
             "method": null,
-            "text": "Subscribe",
+            "text": "",
             "control_count": 1,
             "named_control_count": 0
+          },
+          {
+            "index": 1,
+            "action": null,
+            "method": null,
+            "text": "Tool Name *\nWebsite URL *\nTagline (one sentence) *\nCategory *\nSelect a category\nWriting & Content\nCustomer Service\nSales & CRM\nMarketing Automation\nSocial Media\nAccounting & Finance\nDesign & Creative\nHR & Hiring\nScheduling & Admin\nSEO\nVideo & Media\nWorkflow Automation\nE-commerce\nAnalytics & Data\nLeg",
+            "control_count": 9,
+            "named_control_count": 9
           }
         ]
       },
       "source_probe": {
         "probe_status": "ok",
-        "script_count": 21,
-        "same_origin_script_count": 21,
-        "scripts_fetched": 12,
+        "script_count": 11,
+        "same_origin_script_count": 10,
+        "scripts_fetched": 10,
         "has_network_submission_markers": true,
         "has_prevent_default": true,
         "has_success_markers": false,
-        "submit_handler_window_count": 0,
+        "submit_handler_window_count": 1,
         "submit_handler_has_network_markers": false,
         "submit_handler_has_success_markers": false,
-        "has_auth_markers": true,
+        "has_auth_markers": false,
         "has_captcha_markers": false,
         "has_mailto_submission_markers": false,
         "has_issue_handoff_markers": false,
         "api_candidates": [
-          "https://www.aipowerstacks.com/api/rss",
-          "https://www.aipowerstacks.com/api/rss\\"
+          "https://toolwise.ai/api/tools"
         ]
       },
       "api_probe": {
         "probe_status": "ok",
-        "submit_url": "https://www.aipowerstacks.com/api/rss",
+        "submit_url": "https://toolwise.ai/api/tools",
         "get_code": 200,
-        "post_code": 405,
-        "post_body": "",
-        "public_submit_detected": false,
+        "post_code": 400,
+        "post_body": "{\"error\":\"Name and slug are required\"}",
+        "public_submit_detected": true,
         "auth_required_detected": false,
         "server_error_detected": false
       },
-      "note": "submission requires account authentication"
-    },
-    {
-      "name": "openaitoolshub",
-      "url": "https://www.openaitoolshub.org/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-21T01:08:25.899378",
-      "http_code": "200",
-      "final_url": "https://www.openaitoolshub.org/submit",
-      "status": "captcha_blocked",
-      "note": "public /api/submit-tool exists, but enforced reCAPTCHA rejected both direct probes and a browser-run token from this environment",
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://www.openaitoolshub.org/api/submit-tool",
-        "post_code": 403,
-        "post_body": "{\"error\":\"reCAPTCHA verification failed. Please try again.\"}",
-        "public_submit_detected": false,
-        "auth_required_detected": false,
-        "server_error_detected": false
-      }
-    },
-    {
-      "name": "directoryhunt",
-      "url": "https://directoryhunt.org/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-21T01:08:25.899378",
-      "http_code": "200",
-      "final_url": "https://directoryhunt.org/submit",
-      "status": "login_required",
-      "note": "project submission API requires authenticated sign-in; not an autonomous lane from this environment",
-      "api_probe": {
-        "probe_status": "ok",
-        "submit_url": "https://directoryhunt.org/api/projects",
-        "post_code": 401,
-        "post_body": "{\"error\":\"Authentication required. Please sign in to submit your AI project.\",\"code\":\"UNAUTHORIZED\"}",
-        "public_submit_detected": false,
-        "auth_required_detected": true,
-        "server_error_detected": false
-      }
-    },
-    {
-      "name": "dang-ai",
-      "url": "https://dang.ai/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-21T01:08:25.899378",
-      "http_code": "200",
-      "final_url": "https://dang.ai/submit",
-      "status": "captcha_blocked",
-      "note": "Webflow submit surface is protected by reCAPTCHA and is not a durable autonomous lane from this environment"
-    },
-    {
-      "name": "thenextai",
-      "url": "https://www.thenextai.com/submit-ai-tool/",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-22T02:55:07.486911+00:00",
-      "http_code": null,
-      "final_url": null,
-      "status": "broken_submit_surface",
-      "note": "seeded from failed execution log marketing_2026-05-22_thenextai_submission.json"
-    },
-    {
-      "name": "aigearbase",
-      "url": "https://aigearbase.com/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-22T18:17:27Z",
-      "http_code": null,
-      "final_url": null,
-      "status": "broken_submit_surface",
-      "note": "seeded from failed execution log marketing_2026-05-22_aigearbase_submission.json"
-    },
-    {
-      "name": "openagents",
-      "url": "https://www.openagents.pro/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-23T00:53:44Z",
-      "http_code": null,
-      "final_url": null,
-      "status": "broken_submit_surface",
-      "note": "seeded from failed execution log marketing_2026-05-23_openagents_submission.json"
-    },
-    {
-      "name": "aitoolboard",
-      "url": "https://aitoolboard.com/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-23T06:43:10Z",
-      "http_code": "200",
-      "final_url": "https://aitoolboard.com/submit",
-      "status": "accessible",
-      "note": "seeded from verified execution log marketing_2026-05-23_aitoolboard_submission.json"
-    },
-    {
-      "name": "madewithstack",
-      "url": "https://www.madewithstack.com/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-23T09:22:52+02:00",
-      "http_code": null,
-      "final_url": "https://www.madewithstack.com/submit",
-      "status": "accessible",
-      "note": "seeded from verified execution log marketing_2026-05-23_madewithstack_submission.json"
-    },
-    {
-      "name": "thetoolify",
-      "url": "https://submit.thetoolify.dev/",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-23T09:46:00+02:00",
-      "http_code": "200",
-      "final_url": "https://submit.thetoolify.dev/",
-      "status": "accessible",
-      "note": "seeded from verified execution log marketing_2026-05-23_thetoolify_submission.json"
+      "note": "public submission API detected at https://toolwise.ai/api/tools",
+      "submission_status": "already_listed",
+      "submission_note": "POST /api/tools returned 409 slug-already-exists; listing exists at /tools/ralph-workflow"
     },
     {
       "name": "vbwebtools",
@@ -1019,34 +1053,18 @@
       "final_url": "https://www.vbwebtools.com/submit-tool/",
       "status": "accessible",
       "note": "seeded from verified execution log marketing_2026-05-23_vbwebtools_submission.json"
-    },
-    {
-      "name": "toolscout",
-      "url": "https://toolscout.ai/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-23T10:09:39.311840+00:00",
-      "http_code": "200",
-      "final_url": "https://toolscout.ai/submit",
-      "status": "accessible",
-      "note": "browser-run Bubble submission succeeded and showed success state; seeded from verified execution log marketing_2026-05-23_toolscout_submission.json"
-    },
-    {
-      "name": "devtoolcenter",
-      "url": "https://www.devtool.center/submit",
-      "method": "submit",
-      "difficulty": "easy",
-      "timestamp": "2026-05-23T12:14:26+02:00",
-      "http_code": "201",
-      "final_url": "https://www.devtool.center/submit",
-      "status": "accessible",
-      "note": "seeded from verified execution log marketing_2026-05-23_devtoolcenter_submission.json"
     }
   ],
   "working": [
     {
-      "name": "toolwise",
-      "url": "https://toolwise.ai/submit-tool",
+      "name": "aitoolboard",
+      "url": "https://aitoolboard.com/submit",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "aitools-inc",
+      "url": "https://aitools.inc/submit",
       "method": "submit",
       "difficulty": "easy"
     },
@@ -1057,8 +1075,8 @@
       "difficulty": "easy"
     },
     {
-      "name": "aitoolboard",
-      "url": "https://aitoolboard.com/submit",
+      "name": "devtoolcenter",
+      "url": "https://www.devtool.center/submit",
       "method": "submit",
       "difficulty": "easy"
     },
@@ -1075,20 +1093,20 @@
       "difficulty": "easy"
     },
     {
-      "name": "vbwebtools",
-      "url": "https://www.vbwebtools.com/submit-tool/",
-      "method": "submit",
-      "difficulty": "easy"
-    },
-    {
       "name": "toolscout",
       "url": "https://toolscout.ai/submit",
       "method": "submit",
       "difficulty": "easy"
     },
     {
-      "name": "devtoolcenter",
-      "url": "https://www.devtool.center/submit",
+      "name": "toolwise",
+      "url": "https://toolwise.ai/submit-tool",
+      "method": "submit",
+      "difficulty": "easy"
+    },
+    {
+      "name": "vbwebtools",
+      "url": "https://www.vbwebtools.com/submit-tool/",
       "method": "submit",
       "difficulty": "easy"
     }

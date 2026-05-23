@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-05-23T10:41:02.953568+00:00",
+  "action": "whichai_curator_outreach",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "channel": "curator_outreach",
+  "target": "WhichAI",
+  "target_url": "https://whichai.tech/",
+  "target_contact": "hello@whichai.tech",
+  "subject": "Suggested WhichAI evaluation: Ralph Workflow",
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/whichai-contact-email.txt",
+  "supporting_sources": [
+    "https://whichai.tech/",
+    "https://whichai.tech/about",
+    "https://whichai.tech/contact"
+  ],
+  "why_this_action": [
+    "WhichAI is an active, current AI coding tool comparison surface with an explicit independent evaluation policy and a visible tool-suggestion contact path.",
+    "The live lane creates a fresh high-intent curator target outside the already-saturated same-day outreach queue.",
+    "Ralph Workflow is meaningfully differentiated there because it is a workflow/orchestration layer, not another standalone editor or model."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.json",
+    "agents/marketing/logs/distribution_lane_latest.md",
+    "agents/marketing/FOUR_MARKETING_QUESTIONS.md"
+  ],
+  "runtime_fix": {
+    "files_changed": [
+      "agents/marketing/stackoverflow_answer_lane.py",
+      "agents/marketing/tests/test_stackoverflow_answer_lane.py"
+    ],
+    "summary": [
+      "blocked duplicate StackOverflow draft churn by skipping questions already drafted in the last 7 days",
+      "added duplicate-skip accounting so repeated dead-end drafts stop looking like fresh progress"
+    ],
+    "verification": [
+      "python3 -m unittest agents.marketing.tests.test_stackoverflow_answer_lane -v",
+      "python3 agents/marketing/stackoverflow_answer_lane.py"
+    ]
+  },
+  "expected_outcome": "Fresh evaluator traffic or coverage consideration from WhichAI, plus a fail-closed StackOverflow lane that no longer rewards duplicate draft churn.",
+  "measurement_window": {
+    "review_at": "2026-06-06",
+    "success_metric": "Reply, evaluation inclusion, or new qualified repo inspection signal tied to WhichAI; StackOverflow lane shows 0 duplicate draft churn on repeated candidate URLs.",
+    "kill_condition": "If no reply or listing signal appears by review date, replace this curator lane with a different untouched comparison/discovery surface instead of re-sending."
+  },
+  "email_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_104031_whichai_curator_email.json"
+}

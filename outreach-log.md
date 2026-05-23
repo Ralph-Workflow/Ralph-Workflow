@@ -1,5 +1,15 @@
 # Outreach Log
 
+## 2026-05-23 (Saturday) — AI Tools (aitools.inc) free listing submission executed (11:49 UTC / 13:49 CEST)
+- **What I executed:** submitted **Ralph Workflow** through the **AI Tools** free listing lane at `https://aitools.inc/submit`, which routes through a public Typeform. I used **Codeberg** (`https://codeberg.org/RalphWorkflow/Ralph-Workflow`) as the primary tool URL so any approved listing sends evaluators to the primary repo first.
+- **Verification:** a browser-run Playwright submission reached the Typeform thank-you state with the visible confirmation texts **"Thanks!"** and **"We'll be in touch over the next few days to proceed with your listing."**. Live log: `agents/marketing/logs/marketing_2026-05-23_aitools_inc_submission.json`.
+- **Why this action:** this is **EXECUTED / DISTRIBUTION**. The freshest audit still shows `distribution_and_message_to_primary_repo_conversion` as the bottleneck, Codeberg adoption is flat, Apollo is already in its measurement window until **2026-05-30**, and Reddit remains structurally degraded. AI Tools exposed a fresh, unauthenticated free-listing path that could actually be executed now, which is better than another draft or another same-family curator fallback.
+- **Shared findings reused:** `MARKETING_WORKFLOW_PRINCIPLES.md`, `FOUR_MARKETING_QUESTIONS.md`, `ADOPTION_FUNNEL_NEXT.md`, `market_intelligence_latest.json`, `marketing_workflow_audit_latest.json`, `adoption_metrics_latest.json`, `channel_discovery.json`, and `outreach-log.md`.
+- **Runtime fix shipped in the same run:** added `aitools.inc` to `agents/marketing/channel_discovery.py` as a validated easy-submit lane so future runs stop overlooking this surface.
+- **Expected outcome:** one more relevant third-party listing/backlink that sends qualified evaluators to the **primary Codeberg repo**.
+- **Measurement window:** review for listing/backlink evidence through **2026-06-13** and for repo-adoption movement through **2026-06-23**.
+- **Type:** **EXECUTED / DISTRIBUTION**
+
 ## 2026-05-23 (Saturday) — Reddit monitoring (08:27 UTC / 10:27 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-23_1027.md`
 - **Scan summary:** 30 surfaced from fresh indexed web search, 4 shortlisted, 26 rejected.

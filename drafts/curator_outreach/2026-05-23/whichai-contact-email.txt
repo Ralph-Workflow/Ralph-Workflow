@@ -1,0 +1,26 @@
+Hi Erik,
+
+I came across WhichAI while looking for coding-tool comparison surfaces that explicitly avoid paid placements, and Ralph Workflow seems like a strong candidate for your evaluation queue.
+
+Ralph Workflow is a free and open-source workflow layer for autonomous coding: a composable loop framework and AI orchestrator for developers and technical teams doing repo-scale work that benefits from more structure than a chat session.
+
+Why it may be worth evaluating for WhichAI readers:
+- it is not another model or editor; it is the workflow/orchestration layer around tools like Claude Code, Codex, and OpenCode
+- it is aimed at work that is too big to babysit but too risky to trust blindly
+- it composes planning, implementation, verification, and handoff so unattended runs end in something reviewable instead of just a confident transcript
+- it is free/open-source and lets people use the default workflow as-is or build on top of it
+
+Primary repo (preferred): https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Project site: https://ralphworkflow.com/
+
+If helpful, a concise way to frame it would be:
+Ralph Workflow — free/open-source workflow layer for autonomous coding with plan-build-verify loops and reviewable repo-native handoffs.
+
+I think it is especially relevant for users whose main question is not "which model feels smartest?" but "which setup helps me come back to finished, testable work I can actually review?"
+
+Thanks for building a comparison surface that is explicit about independence.
+
+Best,
+Ken
+Ralph Workflow

@@ -1,7 +1,7 @@
 {
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
-    "overall_health": "healthy_with_repairs",
+    "overall_health": "high_risk",
     "primary_failure_mode": "Architecture-owned freshness/signoff drift was repaired this run; end-to-end green remains blocked by the marketing-owned runner degradation and primary-repo adoption measurement window.",
     "most_urgent_fix": "Keep architecture at qualified pass, but force the marketing owner loop to clear the runner-bundle degradation path and earn fresh outcome movement before any full-green certification."
   },
@@ -226,9 +226,12 @@
       "agents/marketing/run.py",
       "debug"
     ],
-    "architecture_verifier_status": "pass",
-    "architecture_verifier_errors": [],
-    "architecture_verifier_checked_at": "2026-05-23T11:03:30.596411+02:00",
+    "architecture_verifier_status": "fail",
+    "architecture_verifier_errors": [
+      "independent verifier did not pass (verdict='fail')",
+      "health monitor reports non-architecture live issues: marketing-daily:timeout"
+    ],
+    "architecture_verifier_checked_at": "2026-05-23T12:27:40.517048+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "autonomous-marketing-stack": "error",
@@ -253,5 +256,14 @@
     "docs_verifier_checked_at": "2026-05-23T05:11:44.935500+00:00",
     "marketing_workflow_audit_generated_at": "2026-05-23T08:55:08.387797",
     "small_gate_passed": "AGENT_ARCHITECTURE_OK"
+  },
+  "verifier_invalidation": {
+    "status": "fail",
+    "checked_at": "2026-05-23T12:27:40.517048+02:00",
+    "source": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
+    "errors": [
+      "independent verifier did not pass (verdict='fail')",
+      "health monitor reports non-architecture live issues: marketing-daily:timeout"
+    ]
   }
 }

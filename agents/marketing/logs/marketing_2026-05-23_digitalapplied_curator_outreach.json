@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-05-23T13:11:48+02:00",
+  "action": "digitalapplied_curator_outreach",
+  "status": "executed",
+  "ok": true,
+  "live_external_action": true,
+  "channel": "curator_outreach",
+  "target": "Digital Applied",
+  "target_url": "https://www.digitalapplied.com/blog/agentic-coding-tools-q2-2026-20-platform-matrix",
+  "target_contact": "info@digitalapplied.com",
+  "subject": "Suggested Digital Applied matrix addition: Ralph Workflow",
+  "body_file": "/home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-23/digitalapplied-contact-email.txt",
+  "supporting_sources": [
+    "https://www.digitalapplied.com/blog/agentic-coding-tools-q2-2026-20-platform-matrix",
+    "https://www.digitalapplied.com/contact",
+    "https://www.digitalapplied.com/about"
+  ],
+  "why_this_action": [
+    "The latest workflow audit still says the bottleneck is distribution_and_message_to_primary_repo_conversion and Codeberg adoption is flat.",
+    "Apollo is already inside its launch measurement window until 2026-05-30 and Reddit is fail-closed/high-risk, so the strongest fresh lane is a new high-intent curator/comparison surface.",
+    "Digital Applied runs a fresh Q2 2026 20-platform agentic coding matrix with an audience that explicitly cares about workflow shape, autonomy, and review discipline — exactly where Ralph Workflow differentiates."
+  ],
+  "shared_findings_reused": [
+    "agents/marketing/MARKETING_SELF_IMPROVEMENT.md",
+    "agents/marketing/MARKETING_WORKFLOW_PRINCIPLES.md",
+    "agents/marketing/FOUR_MARKETING_QUESTIONS.md",
+    "agents/marketing/ADOPTION_FUNNEL_NEXT.md",
+    "agents/marketing/logs/market_intelligence_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.json",
+    "agents/marketing/logs/marketing_workflow_audit_latest.md",
+    "agents/marketing/logs/adoption_metrics_latest.md",
+    "agents/marketing/logs/reddit_post_analysis.md",
+    "agents/marketing/outreach-log.md"
+  ],
+  "runtime_fix": {
+    "files_changed": [
+      "agents/marketing/send_curator_email.py",
+      "agents/marketing/tests/test_send_curator_email.py"
+    ],
+    "summary": [
+      "hardened the curator-email helper to format the From header safely with display names that include special characters like @",
+      "added a regression test so future curator outreach runs do not fail on malformed sender headers"
+    ],
+    "verification": [
+      "python3 -m unittest agents.marketing.tests.test_send_curator_email -v",
+      "python3 -m py_compile /home/mistlight/.openclaw/workspace/agents/marketing/send_curator_email.py"
+    ]
+  },
+  "verification": {
+    "contact_page_status": 200,
+    "contact_proof": "Digital Applied contact page publishes info@digitalapplied.com with a stated 2h CET reply SLA.",
+    "email_send_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_111059_digitalapplied_curator_email.json",
+    "email_send_log_status": "sent"
+  },
+  "measurement_window": {
+    "review_through": "2026-06-06",
+    "success_signal": "reply, matrix/list inclusion, or a new Digital Applied citation/backlink pointing evaluators to the Codeberg primary repo",
+    "kill_condition": "If no reply or inclusion signal appears by 2026-06-06, replace this lane with a different untouched comparison/discovery surface instead of re-sending."
+  }
+}

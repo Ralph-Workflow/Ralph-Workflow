@@ -1,0 +1,27 @@
+Hi Digital Applied team,
+
+I came across your 20-platform matrix here:
+https://www.digitalapplied.com/blog/agentic-coding-tools-q2-2026-20-platform-matrix
+
+It already does a strong job separating tool categories by workflow shape instead of flattening everything into one leaderboard. One addition that may fit well for readers doing repo-scale autonomous work is Ralph Workflow.
+
+Ralph Workflow is a free and open-source workflow layer for autonomous coding: a composable loop framework and AI orchestrator for developers and technical teams who need more structure than a chat session.
+
+Why it may be a useful inclusion in this comparison:
+- it sits at the workflow/orchestration layer rather than the editor/model layer
+- it is built for work that is too big to babysit but too risky to trust blindly
+- it composes planning, implementation, verification, and handoff so unattended runs end in something reviewable
+- it gives open-source-first teams a Codeberg-primary option that can use the default workflow as-is or be extended
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+Project site: https://ralphworkflow.com/
+
+A concise framing if helpful:
+Ralph Workflow — free/open-source workflow layer for autonomous coding with plan-build-verify loops and reviewable repo-native handoffs.
+
+I think it fits especially well anywhere you discuss autonomy level, workflow pattern, review discipline, or the gap between a coding tool and a production-ready workflow.
+
+Best,
+Ken
+Ralph Workflow
