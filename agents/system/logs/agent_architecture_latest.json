@@ -2,8 +2,8 @@
   "schema_version": "ecc.agent-architecture-audit.report.v1",
   "executive_verdict": {
     "overall_health": "healthy_with_repairs",
-    "primary_failure_mode": "Architecture ownership, live topology checks, and fail-closed verification are healthy; end-to-end green remains blocked by a marketing-owned Codeberg adoption measurement window.",
-    "most_urgent_fix": "Hold architecture at qualified pass while marketing waits out or replaces the current Codeberg-primary distribution tactic if the active review window stays flat."
+    "primary_failure_mode": "Architecture-owned runtime checks are green after refresh; end-to-end green is still blocked by the marketing-owned Codeberg adoption measurement window.",
+    "most_urgent_fix": "Keep architecture at qualified pass and do not certify around the marketing measurement window until primary-repo adoption moves or marketing replaces the tactic."
   },
   "scope": {
     "target_name": "OpenClaw live agent runtime",
@@ -22,7 +22,7 @@
     ]
   },
   "audit_metadata": {
-    "checked_at": "2026-05-23T06:03:16.645471+02:00",
+    "checked_at": "2026-05-23T07:15:09.070591+02:00",
     "scheduler_inspection_method": "direct openclaw cron list --json plus jobs.json comparison with explicit live-vs-persisted separation",
     "live_jobs_checked": 20,
     "live_jobs_enabled": 20,
@@ -107,7 +107,7 @@
     {
       "severity": "high",
       "title": "Marketing adoption window remains the only live blocker to full green",
-      "mechanism": "Marketing runner execution recovered, but marketing independent verification still fails closed while Codeberg adoption stays flat inside the active measurement window.",
+      "mechanism": "Marketing runner execution is operational, but marketing independent verification still fails closed while Codeberg adoption remains flat in the active measurement window.",
       "source_layer": "cross-loop ownership",
       "root_cause": "Outcome evidence for the marketing owner loop is still missing.",
       "evidence_refs": [
@@ -120,22 +120,21 @@
     },
     {
       "severity": "medium",
-      "title": "Recovered marketing log-shape drift that was falsely reddening the runner bundle",
-      "mechanism": "Legacy marketing action logs stored channel as a string, which broke selector/audit normalization and created a local runner-bundle blocker unrelated to outcome health.",
-      "source_layer": "tool execution",
-      "root_cause": "Normalization code assumed channel payloads were always dicts.",
+      "title": "Architecture verifier depends on strict freshness ordering across peer artifacts",
+      "mechanism": "Any newer loop-integrity/docs/runtime peer artifact invalidates stale architecture signoff until independent verification is rerun.",
+      "source_layer": "verification contract",
+      "root_cause": "Fail-closed freshness gating is working as designed and requires deliberate reruns after peer-refresh repairs.",
       "evidence_refs": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_workflow_audit.py",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_independent_verify.py",
+        "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py"
       ],
-      "confidence": 0.98,
-      "recommended_fix": "Keep legacy-log normalization tolerant of both dict and string channel shapes so measurement-pending marketing state does not masquerade as a runtime crash."
+      "confidence": 0.96,
+      "recommended_fix": "Refresh architecture JSON/MD first, then rerun independent verification and verifier after any material peer-artifact change."
     },
     {
       "severity": "low",
       "title": "Persisted disabled cron history still exists but is not a live-topology problem",
-      "mechanism": "jobs.json contains disabled historical entries while the live Gateway topology has zero disabled jobs.",
+      "mechanism": "jobs.json still contains disabled historical entries while the live Gateway topology has zero disabled jobs.",
       "source_layer": "persistence",
       "root_cause": "Persisted history and live scheduler state are distinct surfaces and must stay reported separately.",
       "evidence_refs": [
@@ -148,44 +147,50 @@
   "ordered_fix_plan": [
     {
       "order": 1,
-      "goal": "Keep architecture signoff tied to the external marketing blocker and not to derivative runner/verifier redness inside that owner loop",
-      "why_now": "The architecture path is healthy in the live runtime and should stay localized to the real blocker.",
-      "expected_effect": "No bogus architecture incident while the real blocker remains marketing-owned."
+      "goal": "Keep architecture signoff tied only to true owner-loop blockers",
+      "why_now": "Docs and architecture refresh noise was repaired this run and should not be allowed to masquerade as a systemic architecture incident.",
+      "expected_effect": "Architecture remains green-on-ownership while marketing stays the only red owner loop."
     },
     {
       "order": 2,
-      "goal": "Resolve the marketing measurement window with measurable primary-repo movement or tactic replacement",
+      "goal": "Resolve the marketing measurement window with measurable primary-repo movement or a tactic replacement",
       "why_now": "Codeberg adoption is still flat across the active window.",
-      "expected_effect": "Either a marketing pass artifact or a concrete replacement path owned by marketing."
+      "expected_effect": "Marketing can produce a fresh pass artifact or a new owned tactic with measurable criteria."
     }
   ],
   "repairs_applied_this_run": [
     {
-      "status": "repaired_marketing_log_shape_handling",
-      "target": "marketing action normalization",
-      "change": "Patched distribution_lane_selector.py and marketing_workflow_audit.py to accept legacy string-valued channel payloads as well as dict payloads.",
+      "status": "reran_loop_integrity_audit",
+      "target": "architecture peer evidence",
+      "change": "Refreshed loop_integrity_audit.py against the live Gateway topology.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/distribution_lane_selector.py",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/marketing_workflow_audit.py"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json"
       ]
     },
     {
-      "status": "restored_marketing_runner_operational_health",
-      "target": "marketing runner bundle",
-      "change": "Reran marketing_loop_runner.py and marketing_workflow_audit.py; the runner bundle is operational again and only outcome certification remains red.",
+      "status": "restored_docs_verifier_health",
+      "target": "docs independent verification path",
+      "change": "Reran docs agentic review and docs verifier; the docs verifier is back to independently verified pass.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_workflow_audit_latest.json"
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md"
       ]
     },
     {
-      "status": "reran_architecture_stack",
-      "target": "architecture audit/checker/verifier chain",
-      "change": "Refreshed loop_integrity_audit.py, health_monitor.py, and architecture verifier inputs against the current live Gateway topology.",
+      "status": "reran_health_monitor",
+      "target": "live runtime issue localization",
+      "change": "Refreshed health_monitor.py and reconfirmed that only marketing-owned blockers remain after docs verifier recovery.",
       "proof": [
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/loop_integrity_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json",
-        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/health_monitor_latest.json"
+      ]
+    },
+    {
+      "status": "refreshed_architecture_artifacts",
+      "target": "architecture latest JSON/MD",
+      "change": "Updated the architecture report to the current live topology before fresh independent verification.",
+      "proof": [
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.json",
+        "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_latest.md"
       ]
     }
   ],
@@ -195,8 +200,8 @@
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json",
       "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md"
     ],
-    "summary": "Independent verification confirms architecture-owned checks are green and the remaining blocker is marketing-owned.",
-    "checked_at": "2026-05-23T06:03:28.172957+02:00"
+    "summary": "Independent verification confirms architecture-owned checks are green and the only remaining blocker is marketing-owned.",
+    "checked_at": "2026-05-23T07:15:31.923412+02:00"
   },
   "what_still_needs_independent_verification": [
     "Fresh marketing independent pass after primary-repo adoption moves or the current tactic is replaced at the end of the active measurement window."
@@ -222,7 +227,7 @@
     ],
     "architecture_verifier_status": "pass",
     "architecture_verifier_errors": [],
-    "architecture_verifier_checked_at": "2026-05-23T06:03:28.172957+02:00",
+    "architecture_verifier_checked_at": "2026-05-23T07:15:31.923412+02:00",
     "loop_integrity_statuses": {
       "ralph-docs-watchdog": "ok",
       "autonomous-marketing-stack": "error",
@@ -242,6 +247,8 @@
       "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation"
     ],
     "market_intelligence_generated_at": "2026-05-23T00:52:17.495672",
+    "docs_verifier_checked_at": "2026-05-23T05:11:44.935500+00:00",
+    "marketing_workflow_audit_generated_at": "2026-05-23T07:14:46.971907",
     "small_gate_passed": "AGENT_ARCHITECTURE_OK"
   }
 }

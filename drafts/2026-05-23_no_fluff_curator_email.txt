@@ -1,0 +1,22 @@
+Hi Toby,
+
+I’m reaching out because awesome-vibe-coding looks like a strong fit for Ralph Workflow.
+
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It keeps a simple Ralph-loop core, then composes planning, implementation, and verification into a workflow that can survive longer repo-native coding runs and come back reviewable instead of ending in another confident summary.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+Why I think it fits your list:
+- it is for developers and technical teams who want a structured workflow instead of another chat session
+- it maps well to the overnight / run-until-done crowd where the real bar is whether the output is finished, tested, and ready to review
+- it works as a workflow layer on top of existing coding agents instead of asking people to replace their whole stack
+
+If useful, here is a ready Codeberg-first entry:
+- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
+
+If you prefer a PR or issue-form submission path instead, I’m happy to reformat it around your intake flow.
+
+Best,
+Ken
+Ralph Workflow

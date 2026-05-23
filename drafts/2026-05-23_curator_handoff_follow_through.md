@@ -1,8 +1,8 @@
 # Ralph Workflow Manual Handoff Follow-Through
-Generated: 2026-05-23T05:31:27
+Generated: 2026-05-23T07:14:28
 
 ## Why this exists now
-- Prepared outreach targets already exist but GitHub auth is blocked here; refresh the canonical manual execution packet instead of discovering more targets.
+- Prepared curator targets exist but still lack one canonical execution packet; consolidate the best unsent targets instead of resetting the lane again.
 - Codeberg is still flat in the active window (9 samples; stars +0, watchers +0, forks +0).
 - The existing manual packet is still current, so rewriting it again would be fake activity.
 
@@ -12,10 +12,8 @@ Generated: 2026-05-23T05:31:27
 
 ## Top prepared targets still waiting for execution
 - 0xWelt/Awesome-Vibe-Coding
-- dariubs/awesome-workflow-automation
-- hesreallyhim/awesome-claude-code
-- no-fluff/awesome-vibe-coding
 - vivy-yi/awesome-agent-orchestration
+- GitHub Topics: AI agents
 
 ## Review dates already in force
 - ai-for-developers/awesome-ai-coding-tools — review due 2026-06-05

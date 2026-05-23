@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-23T06:01:32.215354",
+  "timestamp": "2026-05-23T07:14:28.855283",
   "weekly_mode": false,
   "site_health": {
     "homepage": {
@@ -202,7 +202,7 @@
     }
   },
   "adoption": {
-    "timestamp": "2026-05-23T05:23:17.674033",
+    "timestamp": "2026-05-23T07:03:13.361502",
     "metrics": [
       {
         "platform": "GitHub",
@@ -410,8 +410,8 @@
     }
   },
   "distribution_lane": {
-    "lane": "curator_contact_handoff_packet",
-    "reason": "Prepared curator targets already have non-GitHub contact channels; advance the manual-contact execution packet instead of another generic handoff refresh.",
+    "lane": "curator_handoff_packet",
+    "reason": "Prepared curator targets exist but still lack one canonical execution packet; consolidate the best unsent targets instead of resetting the lane again.",
     "reasons": [
       "Primary Codeberg adoption is flat in the current measurement window.",
       "2 owned-content posts already shipped in the last 36 hours.",
@@ -419,11 +419,9 @@
       "HN/Lobsters has repeated as a blocked ceiling, so the loop should create a different distribution lane in the same run.",
       "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
       "Apollo already has an active measurement window until 2026-05-30T00:14:49.075391+02:00, so do not spend this run repackaging the same outbound lane.",
-      "8 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
-      "8 prepared curator targets still need a canonical execution handoff packet.",
-      "Prepared curator targets already have current non-GitHub contact discovery, so the next packet should advance manual maintainer contact instead of another generic PR handoff.",
+      "3 curator outreach targets are already live in the queue, so the loop should advance or review them instead of regenerating the same packet.",
+      "3 prepared curator targets still need a canonical execution handoff packet.",
       "GitHub auth is unavailable here, so prepared PR/citation targets need a manual execution handoff before the loop discovers even more targets.",
-      "The curator queue is already saturated, so another queue-follow-through note would be fake activity unless the loop ships a fresh comparison/backlink asset.",
       "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity."
     ],
     "owned_content_posts_last_36h": 2,
@@ -438,17 +436,14 @@
     "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_distribution_action_brief.md"
   },
   "distribution_execution": {
-    "lane": "curator_contact_handoff_packet",
-    "action_type": "curator_contact_handoff_packet_execution",
+    "lane": "curator_handoff_packet",
+    "action_type": "curator_contact_discovery_execution",
     "status": "prepared",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_handoff_packet.md",
-    "summary": "Escalated existing curator contact discovery into one canonical manual-contact execution packet so the loop stops rediscovering the same blocked targets.",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/drafts/2026-05-23_curator_contact_discovery.md",
+    "summary": "Replaced stale curator handoff follow-through with real contact-channel discovery for the highest-priority prepared curator targets blocked on GitHub auth.",
     "targets_prepared": [
       "7. 0xWelt/Awesome-Vibe-Coding",
-      "dariubs/awesome-workflow-automation",
-      "no-fluff/awesome-vibe-coding",
-      "vivy-yi/awesome-agent-orchestration",
-      "hesreallyhim/awesome-claude-code"
+      "vivy-yi/awesome-agent-orchestration"
     ],
     "shared_findings_used": [
       "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
@@ -468,12 +463,12 @@
   "marketing_status": "failing",
   "content_generation": {
     "returncode": 0,
-    "stdout": "skipped: lane=curator_contact_handoff_packet",
+    "stdout": "skipped: lane=curator_handoff_packet",
     "stderr": ""
   },
   "posting": {
     "returncode": 0,
-    "stdout": "skipped: lane=curator_contact_handoff_packet",
+    "stdout": "skipped: lane=curator_handoff_packet",
     "stderr": ""
   }
 }

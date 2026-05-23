@@ -1,11 +1,11 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-23T06:03:16.645471+02:00
+- Checked: 2026-05-23T07:15:09.070591+02:00
 - Overall health: healthy_with_repairs
-- Primary failure mode: Architecture ownership, live topology checks, and fail-closed verification are healthy; end-to-end green remains blocked by a marketing-owned Codeberg adoption measurement window.
-- Most urgent fix: Hold architecture at qualified pass while marketing waits out or replaces the current Codeberg-primary distribution tactic if the active review window stays flat.
+- Primary failure mode: Architecture-owned runtime checks are green after refresh; end-to-end green is still blocked by the marketing-owned Codeberg adoption measurement window.
+- Most urgent fix: Keep architecture at qualified pass and do not certify around the marketing measurement window until primary-repo adoption moves or marketing replaces the tactic.
 - Verifier status: independently verified pass
-- Verifier checked: 2026-05-23T06:03:28.172957+02:00
+- Verifier checked: 2026-05-23T07:15:31.923412+02:00
 - Verifier blockers: none
 
 ## Live topology
@@ -17,33 +17,34 @@
 ## Severity-ranked findings
 
 1. **High — Marketing adoption window remains the only live blocker to full green**
-   - Mechanism: Marketing runner execution recovered, but marketing independent verification still fails closed while Codeberg adoption stays flat inside the active measurement window.
+   - Mechanism: Marketing runner execution is operational, but marketing independent verification still fails closed while Codeberg adoption remains flat in the active measurement window.
    - Recommended fix: Do not certify around the watchpoint; wait for measurable Codeberg movement or a marketing-owned tactic replacement at the review window.
 
-2. **Medium — Repaired legacy marketing log-shape drift**
-   - Mechanism: Legacy marketing action logs stored `channel` as a string, which broke selector/audit normalization and created a false local runner-bundle blocker.
-   - Recommended fix: Keep legacy-log normalization tolerant of both dict and string channel shapes.
+2. **Medium — Architecture verifier depends on strict freshness ordering across peer artifacts**
+   - Mechanism: Any newer loop-integrity/docs/runtime peer artifact invalidates stale architecture signoff until independent verification is rerun.
+   - Recommended fix: Refresh architecture JSON/MD first, then rerun independent verification and verifier after any material peer-artifact change.
 
 3. **Low — Persisted disabled cron history still exists but is not a live-topology problem**
-   - Mechanism: jobs.json contains disabled historical entries while the live Gateway topology has zero disabled jobs.
+   - Mechanism: jobs.json still contains disabled historical entries while the live Gateway topology has zero disabled jobs.
    - Recommended fix: Keep separating persisted disabled history from live enabled runtime jobs in all architecture summaries.
 
 ## Ordered fix plan
 
-1. Keep architecture signoff tied to the external marketing blocker and not to derivative runner/verifier redness inside that owner loop
-2. Resolve the marketing measurement window with measurable primary-repo movement or tactic replacement
+1. Keep architecture signoff tied only to true owner-loop blockers.
+2. Resolve the marketing measurement window with measurable primary-repo movement or a tactic replacement.
 
 ## Repaired this run
 
-- **repaired_marketing_log_shape_handling** — Patched `distribution_lane_selector.py` and `marketing_workflow_audit.py` to accept legacy string-valued `channel` payloads.
-- **restored_marketing_runner_operational_health** — Reran the marketing runner/audit bundle; operational health is green again and only outcome certification remains red.
-- **reran_architecture_stack** — Refreshed `loop_integrity_audit.py`, `health_monitor.py`, and architecture verifier inputs against the live Gateway topology.
+- **reran_loop_integrity_audit** — Refreshed `loop_integrity_audit.py` against the live Gateway topology.
+- **restored_docs_verifier_health** — Reran docs agentic review and docs verifier; docs signoff is back to pass.
+- **reran_health_monitor** — Refreshed `health_monitor.py` and reconfirmed that only marketing-owned blockers remain after the docs repair.
+- **refreshed_architecture_artifacts** — Updated the architecture report to the current live topology before fresh independent verification.
 
 ## Independent verification
 
 - Performed: performed_qualified_pass
-- Summary: Independent verification confirms architecture-owned checks are green and the remaining blocker is marketing-owned.
-- Checked at: 2026-05-23T06:03:28.172957+02:00
+- Summary: Independent verification confirms architecture-owned checks are green and the only remaining blocker is marketing-owned.
+- Checked at: 2026-05-23T07:15:31.923412+02:00
 
 ## Still needs independent verification
 

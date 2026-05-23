@@ -1,5 +1,5 @@
 # Ralph Workflow Curator Execution Handoff Packet
-Generated: 2026-05-23T01:43:36
+Generated: 2026-05-23T07:05:40
 
 ## Why this exists now
 - Prepared curator targets already exist, but the loop kept rediscovering/resetting instead of consolidating the best ready-to-execute items.
@@ -21,37 +21,21 @@ Generated: 2026-05-23T01:43:36
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_7-0xwelt-awesome-vibe-coding.md
 - Suggested next action: Submit PR adding Ralph Workflow to the CLI / autonomous coding section
 
-### 2. dariubs/awesome-workflow-automation
-- Status: prepared
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://github.com/dariubs/awesome-workflow-automation
-- Review due: 2026-06-05
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_dariubs-awesome-workflow-automation.md
-- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
-
-### 3. hesreallyhim/awesome-claude-code
-- Status: prepared
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://github.com/hesreallyhim/awesome-claude-code
-- Review due: 2026-06-05
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/02_hesreallyhim-awesome-claude-code.md
-- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
-
-### 4. no-fluff/awesome-vibe-coding
-- Status: prepared
-- Priority: HIGH — fresh reset target, not yet prepared elsewhere
-- URL: https://github.com/no-fluff/awesome-vibe-coding
-- Review due: 2026-06-05
-- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_no-fluff-awesome-vibe-coding.md
-- Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
-
-### 5. vivy-yi/awesome-agent-orchestration
+### 2. vivy-yi/awesome-agent-orchestration
 - Status: prepared
 - Priority: HIGH — fresh reset target, not yet prepared elsewhere
 - URL: https://github.com/vivy-yi/awesome-agent-orchestration
 - Review due: 2026-06-05
 - Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/01_vivy-yi-awesome-agent-orchestration.md
 - Suggested next action: Submit PR or request inclusion with a Codeberg-primary entry
+
+### 3. GitHub Topics: AI agents
+- Status: prepared
+- Priority: MEDIUM — repo-level tagging improvement
+- URL: https://github.com/topics/ai-agents
+- Review due: 2026-06-05
+- Ready file: /home/mistlight/.openclaw/workspace/drafts/curator_outreach/2026-05-22/03_6-github-topics-ai-agents.md
+- Suggested next action: Check if Ralph Workflow is already tagged; if not, could add topic tag to the Codeberg/GitHub repo description
 
 ## Process rule now in force
 - While prepared curator targets still exist, do not spend another run on distribution-reset discovery for the same lane.

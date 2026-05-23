@@ -1,0 +1,19 @@
+Hi Dariush,
+
+I’m reaching out because Ralph Workflow looks like a strong fit for your workflow automation / AI developer curation work.
+
+Ralph Workflow is a free open-source workflow layer for unattended coding runs. The goal is simple: end with finished, tested code that is ready to review instead of another confident summary.
+
+Primary repo: https://codeberg.org/RalphWorkflow/Ralph-Workflow
+GitHub mirror: https://github.com/Ralph-Workflow/Ralph-Workflow
+
+If it fits your bar, this is the cleanest Codeberg-first entry:
+- [Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — free open-source workflow layer for unattended coding runs that aims to hand back finished, tested code ready to review instead of another confident summary
+
+I originally prepared this for your awesome-workflow-automation curation lane, but it may also fit AIDir / Altern coverage if that is the better path on your side.
+
+If useful, I can also send PR-ready copy tailored specifically for awesome-workflow-automation.
+
+Thanks,
+Ken
+Ralph Workflow
