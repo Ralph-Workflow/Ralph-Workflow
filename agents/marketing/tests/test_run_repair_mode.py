@@ -3,6 +3,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from agents.marketing import run
+from agents.marketing.distribution_lane_selector import LaneDecision
 
 
 class RunRepairModeTests(unittest.TestCase):
@@ -109,6 +110,83 @@ class RunRepairModeTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(audit['repair_actions'][0]['repair_state'], 'pending_measurement')
         self.assertEqual(audit['repair_window_status'], 'clear')
+
+    def test_load_active_pending_repairs_keeps_measurement_window_repairs_live(self):
+        audit = {
+            'repair_window_status': 'measurement_pending',
+            'measurement_pending_reasons': ['primary_repo_flat'],
+            'repair_actions': [
+                {
+                    'failure_type': 'primary_repo_flat',
+                    'repair_kind': 'tactic',
+                    'repair_state': 'pending_measurement',
+                },
+                {
+                    'failure_type': 'same_family_distribution_overlap',
+                    'repair_kind': 'tactic',
+                    'repair_state': 'pending_measurement',
+                },
+            ],
+        }
+
+        repairs = run._load_active_pending_repairs(audit)
+
+        self.assertEqual(len(repairs), 2)
+        self.assertEqual({repair['failure_type'] for repair in repairs}, {'primary_repo_flat', 'same_family_distribution_overlap'})
+
+    def test_apply_repair_mode_overrides_keeps_distribution_reset_choice_during_measurement_window(self):
+        decision = LaneDecision(
+            lane='distribution_reset',
+            reason='base reason',
+            reasons=['base reason'],
+            owned_content_posts_last_36h=3,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/distribution_action_brief.md',
+        )
+        pending_repairs = [
+            {
+                'failure_type': 'primary_repo_flat',
+                'repair_kind': 'tactic',
+                'repair_state': 'pending_measurement',
+                'action': 'keep pushing conversion evidence while measurement is pending',
+            },
+            {
+                'failure_type': 'same_family_outreach_overlap',
+                'repair_kind': 'tactic',
+                'repair_state': 'pending_measurement',
+            },
+        ]
+
+        updated = run._apply_repair_mode_overrides(decision, pending_repairs)
+
+        self.assertEqual(updated.lane, 'distribution_reset')
+        self.assertTrue(updated.skip_curator_outreach)
+        self.assertEqual(updated.reason, 'base reason')
+
+    def test_apply_repair_mode_overrides_keeps_distribution_reset_choice_during_needs_execution_window(self):
+        decision = LaneDecision(
+            lane='distribution_reset',
+            reason='base reason',
+            reasons=['base reason'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='/tmp/distribution_action_brief.md',
+        )
+        pending_repairs = [
+            {
+                'failure_type': 'primary_repo_flat',
+                'repair_kind': 'tactic',
+                'repair_state': 'needs_execution',
+                'action': 'replace stale distribution with conversion-oriented work',
+            },
+        ]
+
+        updated = run._apply_repair_mode_overrides(decision, pending_repairs)
+
+        self.assertEqual(updated.lane, 'distribution_reset')
+        self.assertEqual(updated.reason, 'base reason')
 
 
 if __name__ == '__main__':

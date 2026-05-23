@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-23T23:36:28.289177
+- Generated: 2026-05-24T00:57:49.262457
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **0**
 - Reddit posts analyzed: **6**
@@ -13,7 +13,7 @@
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
 - 16 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
 - 50 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
-- The active loop did execute a live marketing action recently (repo_conversion_surface_update), so the system is still shipping output even though outcome movement is not visible yet.
+- The active loop did execute a live marketing action recently (saashub_live_listing_correction), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
 ## Observed risks
@@ -37,24 +37,26 @@
   - Kill condition: Still no Codeberg delta after 7 days of new approach
   - Success metric: Codeberg stars_delta_window > 0 or watchers_delta_window > 0 within 14 days
 - **same_family_distribution_overlap** (tactic) → PAUSE net-new low-intent directory submissions for now. Let the existing listing approvals mature, then use the next run on higher-intent demand capture or conversion-moving lanes such as StackOverflow answers, manual curator/contact execution packets, or direct comparison-backlink follow-through.
-  - Repair state: needs_execution
+  - Repair state: pending_measurement
   - Kill condition: Another audit adds more directory submissions before current listing windows have produced approval/backlink evidence or aged past their review checkpoints
   - Success metric: Next execution lane is not another directory submission burst and produces a cleaner measurement path toward Codeberg movement
 - **same_family_outreach_overlap** (tactic) → HOLD another same-day curator-contact burst. Reuse the prepared/manual-contact artifacts already in queue and spend the next active cycle on a different lane that can create clearer demand or cleaner follow-through measurement.
-  - Repair state: needs_execution
+  - Repair state: pending_measurement
   - Kill condition: Another audit adds more same-family curator outreach before the existing reply/backlink windows have materially aged or produced evidence
   - Success metric: Next execution lane advances a different family or executes an existing manual-contact packet instead of starting another same-day curator burst
 - **mirror_repo_flat** (tactic) → Ensure all public-facing content links Codeberg as primary and GitHub as mirror. If GitHub mirror remains flat, it is secondary evidence — do not allocate dedicated effort unless Codeberg is moving.
   - Repair state: needs_execution
   - Kill condition: N/A (mirror, not primary)
   - Success metric: GitHub mirror shows any adoption delta
+- No additional same-run repair actions remain. Existing repairs are live and the loop is now waiting on measurement.
+- Measurement-pending reasons: same_family_distribution_overlap, same_family_outreach_overlap
 
 ## Latest executed marketing action
-- Type: repo_conversion_surface_update
-- Title: repo conversion surface update
+- Type: saashub_live_listing_correction
+- Title: saashub live listing correction
 - Status: executed (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_repo_conversion_surface_update.json
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_saashub_live_listing_correction.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

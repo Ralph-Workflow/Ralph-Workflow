@@ -1,12 +1,12 @@
 # Agent Architecture Audit
 
-- Checked: 2026-05-23T20:33:03.803092+02:00
+- Checked: 2026-05-24T00:45:54.420432+02:00
 - Overall health: high_risk
-- Primary failure mode: Live red is now localized to two owner domains: docs independent signoff is red under an active docs lock, and the marketing owner loop remains fail-closed on stale runner state plus unresolved outcome blockers.
-- Most urgent fix: Clear the docs verifier red state and rerun the marketing owner bundle to fresh healthy signoff before any green architecture claim.
-- Verifier status: independently verified fail
-- Verifier checked: 2026-05-23T20:33:10.417638+02:00
-- Verifier blockers: health monitor has non-architecture issues: docs_verifier:artifact_contract_fail, docs_verifier_stability:loop_verification_fail, docs verifier did not show independent pass, latest docs verifier verdict is not pass: 'fail', marketing independent verification is not pass: 'fail'
+- Primary failure mode: Live architecture-owned checks are green again; the remaining red is isolated to the marketing owner loop, which still fails independent verification on unhealthy runner/outcome evidence.
+- Most urgent fix: Keep architecture fail-closed but stop treating it as locally broken; the next real fix is inside the marketing owner bundle until fresh marketing independent pass exists.
+- Verifier status: independently verified pass
+- Verifier checked: 2026-05-24T00:43:53.439176+02:00
+- Verifier blockers: marketing independent verification is not pass: 'fail'
 
 ## Live topology
 
@@ -16,17 +16,17 @@
 
 ## Severity-ranked findings
 
-1. **High — Docs independent signoff is live-red again**
-   - Mechanism: docs verifier artifacts are fail and the health monitor could not rerun the docs verifier because another docs loop process already held the global lock.
-   - Recommended fix: let the docs owner loop finish or rerun cleanly after lock release, then require fresh docs independent pass.
+1. **High — Marketing owner loop is the only remaining live red domain**
+   - Mechanism: marketing independent verification is still fail while the runner bundle is unhealthy, momentum is needs_attention, and the workflow audit remains needs_repair.
+   - Recommended fix: repair the marketing owner path and require fresh marketing independent pass.
 
-2. **High — Marketing owner loop remains fail-closed on stale runner plus outcome blockers**
-   - Mechanism: marketing independent verification flags runner staleness against refreshed momentum evidence, while momentum is needs_attention and workflow audit still reports needs_repair with flat primary-repo adoption.
-   - Recommended fix: rerun the full marketing owner bundle and keep the loop red until fresh independent marketing signoff passes.
+2. **Medium — Architecture verifier repair is live and independently holding**
+   - Mechanism: architecture independent verification is qualified_pass and the verifier artifact now shows independently verified pass.
+   - Recommended fix: preserve the fail-closed verifier behavior and keep external marketing red localized.
 
-3. **Medium — Architecture verifier is correctly fail-closed**
-   - Mechanism: architecture independent verification now fails because docs and marketing signoff are red, not because of topology drift.
-   - Recommended fix: keep fail-closed behavior; only expect green after fresh docs + marketing pass artifacts.
+3. **Low — Docs signoff recovered and is no longer architecture-blocking**
+   - Mechanism: docs verifier is pass and stability proof is present in the fresh independent architecture verification artifact.
+   - Recommended fix: keep the independent docs pass + stability gate.
 
 4. **Low — Persisted disabled cron history remains separate from live topology**
    - Mechanism: jobs.json still has disabled historical entries while the live scheduler has none disabled.
@@ -34,32 +34,27 @@
 
 ## Ordered fix plan
 
-1. Get a fresh docs independent pass artifact after the current docs lock clears
-2. Rerun the marketing owner bundle to clear stale runner state and refresh outcome evidence
-3. Rerun architecture independent verification only after docs and marketing evidence are fresh
+1. Repair the unhealthy marketing runner/outcome path and get a fresh marketing independent pass artifact
+2. Rerun architecture independent verification after the next material marketing evidence change
 
 ## Repaired this run
 
-- **refreshed_marketing_workflow_audit** — reran the marketing workflow audit so the current bottleneck and repair-window state are current.
-- **refreshed_marketing_momentum_and_independent_evidence** — reran momentum + marketing independent verification to localize the current marketing blocker set.
-- **refreshed_system_health_monitor** — reran the health monitor to verify the current live cron/artifact state and capture fresh escalations.
+- **refreshed_loop_integrity** — reran the loop integrity audit so live ownership/topology evidence is current.
+- **refreshed_system_health_monitor** — reran the health monitor; architecture verifier/runtime issues cleared and only marketing-owned red remains.
+- **refreshed_architecture_independent_signoff** — fresh architecture independent verification returned qualified_pass and the verifier artifact now shows independently verified pass.
 
 ## Independent verification
 
-- Performed: performed_fail_closed
-- Summary: Independent verification found architecture blockers that prevent a healthy verdict.
-- Checked at: 2026-05-23T20:33:10.417638+02:00
+- Performed: performed_qualified_pass
+- Summary: Independent verification confirms the repaired architecture verifier now fails closed on stale signoff, the live loop topology/ownership checks remain green, and shared market-intelligence reuse stays machine-verifiable.
+- Checked at: 2026-05-24T00:43:53.439176+02:00
 
 ## Still needs independent verification
 
-- Fresh docs independent pass after the active docs lock clears and the current verifier findings are resolved.
-- Fresh healthy marketing independent signoff after the runner bundle is rerun and outcome blockers are re-evaluated.
+- Fresh healthy marketing independent signoff after the runner bundle is healthy and the primary-repo outcome blockers clear.
 
 ## Highest-risk unresolved loop issue
 
-- Two owner loops are red at once: docs signoff and marketing outcome health
-  - Why: architecture can no longer localize the runtime as marketing-only because docs verifier is red while marketing still fails on stale runner state and flat primary-repo outcomes.
+- Marketing remains independently red on fresh evidence
+  - Why: architecture-owned checks are green again, but the system still cannot claim healthy overall behavior while marketing fails on unhealthy runner/outcome state.
 
-## Small gate passed
-
-- AGENT_ARCHITECTURE_OK

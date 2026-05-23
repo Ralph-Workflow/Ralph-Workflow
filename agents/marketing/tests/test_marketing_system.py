@@ -333,6 +333,118 @@ class DistributionLaneSelectorTests(unittest.TestCase):
             self.assertEqual(decision.lane, 'directory_confirmation')
             self.assertIn('directory submissions already burst', decision.reason.lower())
 
+    def test_prefers_directory_confirmation_over_reset_when_burst_and_snapshot_are_stale(self):
+        now = datetime(2026, 5, 24, 0, 58, 0)
+        adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
+        curator_queue = {
+            "targets": [
+                {"target": f"target-{idx}", "status": "sent_via_email_fallback", "review_due_date": "2026-06-05", "last_contact_at": "2026-05-23T05:00:00"}
+                for idx in range(5)
+            ]
+        }
+        comparison_queue = {
+            "targets": [
+                {"slug": f"comp-{idx}", "name": f"Comp {idx}", "status": "prepared", "review_due_date": "2026-06-05"}
+                for idx in range(1, 9)
+            ]
+        }
+        stackoverflow_latest = {
+            "drafts_created": 1,
+            "drafts": [{"question_title": "Workflow reliability question", "question_url": "https://stackoverflow.com/q/1"}],
+        }
+        apollo_sequence = {
+            "measurement_pending": True,
+            "next_review_at": "2026-05-30T00:14:49+02:00",
+        }
+        market_intelligence = {
+            "comparison_pages": [
+                {"slug": f"comp-{idx}", "name": f"Comp {idx}", "path": f"/comparisons/comp-{idx}.md"}
+                for idx in range(1, 9)
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (drafts_dir / 'stackoverflow').mkdir()
+
+            adoption_path = log_dir / 'adoption.json'
+            channel_path = log_dir / 'channels.json'
+            outreach_path = tmp / 'outreach-log.md'
+            latest_json = log_dir / 'distribution_lane_latest.json'
+            latest_md = log_dir / 'distribution_lane_latest.md'
+            curator_queue_path = log_dir / 'curator_outreach_queue_latest.json'
+            comparison_queue_path = log_dir / 'comparison_backlink_queue_latest.json'
+            backlink_status_path = log_dir / 'backlink_status_latest.json'
+            apollo_sequence_path = log_dir / 'apollo_sequence_status_latest.json'
+            stackoverflow_path = log_dir / 'stackoverflow_answer_lane_latest.json'
+            market_path = log_dir / 'market_intelligence.json'
+            reset_queue_path = log_dir / 'distribution_reset_targets_latest.json'
+            handoff_path = drafts_dir / 'stackoverflow_answer_handoff_packet_latest.md'
+
+            adoption_path.write_text(json.dumps(adoption), encoding='utf-8')
+            channel_path.write_text(json.dumps({"working": []}), encoding='utf-8')
+            outreach_path.write_text('HN/Lobsters blocker noted. HN/Lobsters blocker noted. HN/Lobsters blocker noted.', encoding='utf-8')
+            curator_queue_path.write_text(json.dumps(curator_queue), encoding='utf-8')
+            comparison_queue_path.write_text(json.dumps(comparison_queue), encoding='utf-8')
+            backlink_status_path.write_text(json.dumps({
+                'generated_at': '2026-05-23T16:51:24+00:00',
+                'summary': {
+                    'directories_with_live_listings': 4,
+                    'queries_indexed': 1,
+                    'total_queries': 14,
+                },
+            }), encoding='utf-8')
+            apollo_sequence_path.write_text(json.dumps(apollo_sequence), encoding='utf-8')
+            stackoverflow_path.write_text(json.dumps(stackoverflow_latest), encoding='utf-8')
+            market_path.write_text(json.dumps(market_intelligence), encoding='utf-8')
+            reset_queue_path.write_text(json.dumps({'targets': []}), encoding='utf-8')
+            handoff_path.write_text('# StackOverflow handoff\n', encoding='utf-8')
+            (drafts_dir / 'stackoverflow' / 'so_answer_2026-05-23_example.md').write_text('# draft\n', encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_stackoverflow_manual_delivery.json').write_text(json.dumps({
+                'timestamp': '2026-05-23T20:39:00+02:00',
+                'chosen_action': {'type': 'stackoverflow_manual_delivery'},
+                'result': {'status': 'executed', 'ok': True, 'live_external_action': False},
+            }), encoding='utf-8')
+            (log_dir / 'marketing_2026-05-23_repo_conversion_docs_push.json').write_text(json.dumps({
+                'timestamp': '2026-05-23T21:00:00+02:00',
+                'chosen_action': {'type': 'repo_conversion_docs_push'},
+                'result': {'status': 'executed', 'ok': True, 'live_external_action': True},
+            }), encoding='utf-8')
+            for idx in range(4):
+                (log_dir / f'marketing_2026-05-23_example{idx}_submission.json').write_text(json.dumps({
+                    'timestamp': f'2026-05-23T1{idx}:00:00',
+                    'status': 'executed',
+                    'ok': True,
+                    'live_external_action': True,
+                    'submit_url': f'https://example{idx}.com/submit',
+                }), encoding='utf-8')
+
+            with patch.object(distribution_lane_selector, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_selector, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_selector, 'ADOPTION_PATH', adoption_path), \
+                 patch.object(distribution_lane_selector, 'CHANNEL_DISCOVERY_PATH', channel_path), \
+                 patch.object(distribution_lane_selector, 'OUTREACH_LOG_PATH', outreach_path), \
+                 patch.object(distribution_lane_selector, 'LATEST_JSON', latest_json), \
+                 patch.object(distribution_lane_selector, 'LATEST_MD', latest_md), \
+                 patch.object(distribution_lane_selector, 'CURATOR_QUEUE_LATEST_PATH', curator_queue_path), \
+                 patch.object(distribution_lane_selector, 'COMPARISON_QUEUE_LATEST_PATH', comparison_queue_path), \
+                 patch.object(distribution_lane_selector, 'BACKLINK_STATUS_LATEST_PATH', backlink_status_path), \
+                 patch.object(distribution_lane_selector, 'APOLLO_SEQUENCE_STATUS_PATH', apollo_sequence_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_LATEST_PATH', stackoverflow_path), \
+                 patch.object(distribution_lane_selector, 'STACKOVERFLOW_HANDOFF_LATEST_PATH', handoff_path), \
+                 patch.object(distribution_lane_selector, 'MARKET_INTELLIGENCE_PATH', market_path), \
+                 patch.object(distribution_lane_selector, 'DISTRIBUTION_RESET_QUEUE_LATEST_PATH', reset_queue_path), \
+                 patch.object(distribution_lane_selector, '_apollo_ready', return_value=False), \
+                 patch.object(distribution_lane_selector, '_github_auth_available', return_value=False):
+                decision = distribution_lane_selector.choose_distribution_lane(now)
+
+            self.assertEqual(decision.lane, 'directory_confirmation')
+            self.assertIn('refresh live listing and backlink evidence', decision.reason.lower())
+
     def test_prefers_repo_conversion_proof_asset_when_external_lanes_are_saturated_and_stackoverflow_packet_is_current(self):
         now = datetime(2026, 5, 23, 16, 0, 0)
         adoption = {"evaluation": {"failing_signals": ["primary_repo_flat"]}}
@@ -4022,6 +4134,74 @@ class MarketingWorkflowAuditTests(unittest.TestCase):
                 targets = [item['target_tactic'] for item in payload['repair_actions']]
                 self.assertIn('marketing_system_architecture', targets)
                 self.assertEqual(payload['latest_executed_action']['type'], action_type)
+
+    def test_audit_preserves_pending_measurement_repairs_across_reruns(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            out_dir = tmp / 'logs'
+            out_dir.mkdir()
+            adoption_path = out_dir / 'adoption_metrics_latest.json'
+            retro_path = out_dir / 'reddit_post_analysis.json'
+            outreach_path = tmp / 'outreach-log.md'
+            principles_path = tmp / 'principles.md'
+            four_questions_path = tmp / 'four_questions.md'
+            self_improvement_path = tmp / 'self_improvement.md'
+            audit_json = out_dir / 'marketing_workflow_audit_latest.json'
+            audit_md = out_dir / 'marketing_workflow_audit_latest.md'
+
+            adoption_path.write_text(json.dumps({
+                'metrics': [],
+                'recent_window': {
+                    'Codeberg': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                    'GitHub': {'samples': 9, 'stars_delta_window': 0, 'watchers_delta_window': 0, 'forks_delta_window': 0},
+                },
+                'evaluation': {'failing_signals': ['primary_repo_flat']},
+            }), encoding='utf-8')
+            retro_path.write_text(json.dumps({'recent_posts': [], 'repeated_openings': []}), encoding='utf-8')
+            outreach_path.write_text('Reddit blocked; Apollo packet prepared.', encoding='utf-8')
+            principles_path.write_text('principles', encoding='utf-8')
+            four_questions_path.write_text('questions', encoding='utf-8')
+            self_improvement_path.write_text('self-improvement', encoding='utf-8')
+            audit_json.write_text(json.dumps({
+                'repair_window_status': 'needs_repair',
+                'measurement_pending_reasons': ['same_family_distribution_overlap'],
+                'repair_actions': [
+                    {
+                        'target_tactic': 'directory_submission_burst',
+                        'failure_type': 'same_family_distribution_overlap',
+                        'repair_kind': 'tactic',
+                        'action': 'pause directory submissions',
+                        'kill_condition': 'n/a',
+                        'success_metric': 'n/a',
+                        'priority': 1,
+                        'repair_state': 'pending_measurement',
+                        'repair_acknowledged_at': '2026-05-24T00:51:00+02:00',
+                    }
+                ],
+            }), encoding='utf-8')
+            (out_dir / 'marketing_2026-05-22_apollo_outreach_execution.json').write_text(json.dumps({
+                'chosen_action': {'type': 'apollo_outreach_execution', 'title': 'Distribution lane execution: apollo_outreach'},
+                'result': {'ok': True, 'status': 'prepared', 'live_external_action': False},
+            }), encoding='utf-8')
+
+            with patch.object(marketing_workflow_audit, 'OUT_DIR', out_dir), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_JSON', audit_json), \
+                 patch.object(marketing_workflow_audit, 'AUDIT_MD', audit_md), \
+                 patch.object(marketing_workflow_audit, 'OUTREACH', outreach_path), \
+                 patch.object(marketing_workflow_audit, 'ADOPTION', adoption_path), \
+                 patch.object(marketing_workflow_audit, 'RETRO', retro_path), \
+                 patch.object(marketing_workflow_audit, 'PRINCIPLES', principles_path), \
+                 patch.object(marketing_workflow_audit, 'FOUR_QUESTIONS_DOC', four_questions_path), \
+                 patch.object(marketing_workflow_audit, 'SELF_IMPROVEMENT_DOC', self_improvement_path), \
+                 patch.object(marketing_workflow_audit, 'recent_live_action_family_count', side_effect=lambda _now, family: marketing_workflow_audit.DIRECTORY_SUBMISSION_BURST_THRESHOLD if family == 'directory_submission' else 0):
+                rc = marketing_workflow_audit.main()
+
+            self.assertEqual(rc, 0)
+            payload = json.loads(audit_json.read_text(encoding='utf-8'))
+            repair = next(item for item in payload['repair_actions'] if item['failure_type'] == 'same_family_distribution_overlap')
+            self.assertEqual(repair['repair_state'], 'pending_measurement')
+            self.assertEqual(repair['repair_acknowledged_at'], '2026-05-24T00:51:00+02:00')
+            self.assertIn('same_family_distribution_overlap', payload['measurement_pending_reasons'])
 
     def test_audit_rejects_zero_record_apollo_live_execution_as_shipped_system_repair(self):
         with tempfile.TemporaryDirectory() as tmpdir:

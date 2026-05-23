@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-23T23:36:28.289177",
+  "generated_at": "2026-05-24T00:57:49.262457",
   "current_bottleneck": "distribution_and_message_to_primary_repo_conversion",
   "articles_logged": 0,
   "reddit_posts_analyzed": 6,
@@ -79,7 +79,8 @@
       "kill_condition": "Another audit adds more directory submissions before current listing windows have produced approval/backlink evidence or aged past their review checkpoints",
       "success_metric": "Next execution lane is not another directory submission burst and produces a cleaner measurement path toward Codeberg movement",
       "priority": 1,
-      "repair_state": "needs_execution"
+      "repair_state": "pending_measurement",
+      "repair_acknowledged_at": "2026-05-24T00:57:32.198736"
     },
     {
       "target_tactic": "curator_outreach_burst",
@@ -89,7 +90,8 @@
       "kill_condition": "Another audit adds more same-family curator outreach before the existing reply/backlink windows have materially aged or produced evidence",
       "success_metric": "Next execution lane advances a different family or executes an existing manual-contact packet instead of starting another same-day curator burst",
       "priority": 2,
-      "repair_state": "needs_execution"
+      "repair_state": "pending_measurement",
+      "repair_acknowledged_at": "2026-05-24T00:57:32.198736"
     },
     {
       "target_tactic": "github_mirror_outreach",
@@ -103,7 +105,10 @@
     }
   ],
   "repair_window_status": "needs_repair",
-  "measurement_pending_reasons": [],
+  "measurement_pending_reasons": [
+    "same_family_distribution_overlap",
+    "same_family_outreach_overlap"
+  ],
   "has_failing_tactics": true,
   "reasons": [
     "Owned content and outreach exist, but repo/public adoption signals are still low.",
@@ -113,7 +118,7 @@
     "Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.",
     "16 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.",
     "50 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.",
-    "The active loop did execute a live marketing action recently (repo_conversion_surface_update), so the system is still shipping output even though outcome movement is not visible yet.",
+    "The active loop did execute a live marketing action recently (saashub_live_listing_correction), so the system is still shipping output even though outcome movement is not visible yet.",
     "Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint."
   ],
   "next_moves": [
@@ -147,9 +152,9 @@
     "why_now": "You can use the default workflow as-is today, or build your own workflow on top without giving up control of your tools or process."
   },
   "latest_executed_action": {
-    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-23_repo_conversion_surface_update.json",
-    "type": "repo_conversion_surface_update",
-    "title": "repo conversion surface update",
+    "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_saashub_live_listing_correction.json",
+    "type": "saashub_live_listing_correction",
+    "title": "saashub live listing correction",
     "status": "executed",
     "ok": true,
     "live_external_action": true,
@@ -158,7 +163,7 @@
     "url": null
   },
   "apollo_sequence_status": {
-    "generated_at": "2026-05-23T21:46:51.062811+02:00",
+    "generated_at": "2026-05-24T00:57:43.556715+02:00",
     "status": "measurement_pending_launch_window",
     "measurement_pending": true,
     "summary": "Apollo launch is live and in the 7-day launch/reply measurement window.",

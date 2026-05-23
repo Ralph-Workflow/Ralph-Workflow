@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-05-23T20:36:28.317479+02:00",
+  "checked_at": "2026-05-24T00:43:50.782394+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=False generated_at=2026-05-23T20:36:28.294261"
+      "summary": "runner ok=False generated_at=2026-05-24T00:43:50.758023"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
