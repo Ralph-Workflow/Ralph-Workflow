@@ -1,25 +1,24 @@
 {
-  "lane": "stackoverflow_answer",
-  "reason": "Recent directory submissions already saturated the lowest-intent lane; use higher-intent StackOverflow demand capture while current approval/reply windows mature.",
+  "lane": "stackoverflow_answer_handoff_packet",
+  "reason": "A fresh StackOverflow answer draft already exists and the other active lanes are still inside measurement windows; advance a posting/reuse handoff packet instead of regenerating the same demand-capture lane.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
     "1 owned-content posts already shipped in the last 36 hours.",
-    "Validated easy-submit channels still unused: aitools-inc.",
     "13 directory submissions already shipped in the last 24 hours.",
-    "13 curator contact attempts already shipped in the last 24 hours.",
+    "12 curator contact attempts already shipped in the last 24 hours.",
     "Reddit search coverage is degraded, so more monitor passes are lower leverage than third-party distribution prep.",
     "Reddit execution is fail-closed from this environment right now, so the loop should not treat another Reddit pass as a shippable distribution lane.",
     "Apollo is authenticated and the runtime has recent proof of a usable live import/sequence step, so managed outbound is a real lane here.",
     "Apollo already has an active measurement window until 2026-05-30T00:14:49.075391+02:00, so do not spend this run repackaging the same outbound lane.",
     "14 curator targets are already inside active reply/backlink review windows, so another same-family outreach batch would mostly create unmeasurable overlap.",
+    "Curator outreach already has enough live measurement windows open; the next move should create fresh demand capture instead of piling on more curator contact.",
     "The comparison/backlink queue already covers every prepared comparison page, so another comparison follow-through would also be fake activity.",
     "Low-intent directory distribution is already in a same-family burst, so another submission right now would mostly stack overlapping approval windows instead of creating a cleaner adoption read.",
-    "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path."
+    "The prior StackOverflow draft pass returned zero candidates, so if that lane is chosen it must rely on the repaired API-driven search rather than the old scrape-only path.",
+    "A fresh StackOverflow answer draft already exists, so do not rerun the same demand-capture lane until that asset is posted, reused, or ages out of the current review window."
   ],
   "owned_content_posts_last_36h": 1,
-  "unsubmitted_directory_channels": [
-    "aitools-inc"
-  ],
+  "unsubmitted_directory_channels": [],
   "shared_findings_used": [
     "adoption_metrics_latest.json: Codeberg movement is the primary success gate",
     "channel_discovery.json: validated easy-submit directory lanes",
