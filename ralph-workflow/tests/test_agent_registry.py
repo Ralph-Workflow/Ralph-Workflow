@@ -109,7 +109,7 @@ def test_agent_registry_from_config_includes_builtin_agents() -> None:
     assert agy.transport == AgentTransport.AGY
     assert agy.yolo_flag == "--dangerously-skip-permissions"
     assert agy.print_flag == "--print"
-    assert agy.session_flag == "--conversation {}"
+    assert agy.session_flag is None
 
 
 def test_ccs_alias_keeps_claude_transport() -> None:

@@ -89,7 +89,10 @@ from ralph.mcp.protocol.startup import (
 )
 from ralph.mcp.session_plan import effective_session_mcp_plan_from_servers
 from ralph.mcp.tools.names import claude_tool_name
-from ralph.mcp.transport.agy import load_existing_agy_upstream_servers
+from ralph.mcp.transport.agy import (
+    agy_workspace_mcp_endpoint,
+    load_existing_agy_upstream_servers,
+)
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
 from ralph.mcp.transport.common import (
@@ -293,9 +296,12 @@ def invoke_agent(
                 stop_sentinel_path=opts.stop_sentinel_path,
             )
             lines_iter = run_pty_and_read_lines(cmd, ctx, extras)
+            yield from lines_iter
+        elif transport == AgentTransport.AGY and runtime.mcp_endpoint and opts.workspace_path:
+            with agy_workspace_mcp_endpoint(opts.workspace_path, runtime.mcp_endpoint):
+                yield from run_subprocess_and_read_lines(cmd, ctx)
         else:
-            lines_iter = run_subprocess_and_read_lines(cmd, ctx)
-        yield from lines_iter
+            yield from run_subprocess_and_read_lines(cmd, ctx)
 
         _log_workspace_completion(monitor)
     finally:
@@ -386,10 +392,9 @@ def resolve_invocation_runtime(
             )
 
     elif transport == AgentTransport.AGY:
-        # AGY has no documented env-var home override, so Ralph cannot inject
-        # the MCP endpoint directly. Upstream servers are read from the user's
-        # existing AGY config files and re-exposed via Ralph's upstream proxy.
-        # Users must pre-configure the Ralph endpoint in their AGY mcp_config.json.
+        # AGY upstream servers from existing config files are loaded for Ralph
+        # upstream proxy. Ralph injects its own run-scoped endpoint via
+        # agy_workspace_mcp_endpoint in invoke_agent().
         _apply_upstream_env(
             load_existing_agy_upstream_servers(workspace_path),
             workspace_path,

@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    import pytest
+
 
 class StubRunner:
     def __init__(self, results: list[ProcessResult]) -> None:
@@ -44,11 +46,11 @@ def _result(
     )
 
 
-def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys: object) -> None:
-    pytest_cmd = (
-        "-m", "pytest", "tests", "-q", "-n", "4",
-        "--dist", "worksteal", "-m", "not subprocess_e2e",
-    )
+def test_main_runs_all_verify_steps_when_successful(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("ralph.verify._PYTEST_SHARDS", (("shard", ("tests",)),))
+    pytest_cmd = ("-m", "pytest", "tests", "-q", "-m", "not subprocess_e2e")
     runner = StubRunner(
         [
             _result(args=("lint",), returncode=0, stdout="lint ok\n"),
@@ -75,8 +77,66 @@ def test_main_runs_all_verify_steps_when_successful(tmp_path: Path, capsys: obje
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
 
 
+def test_main_skips_empty_pytest_shards(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "ralph.verify._PYTEST_SHARDS",
+        (("empty-shard", ("tests/test_missing_*.py",)),),
+    )
+    runner = StubRunner(
+        [
+            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
+            _result(args=("typecheck",), returncode=0, stdout="typecheck ok\n"),
+        ]
+    )
+
+    exit_code = main([], runner=runner, cwd=tmp_path)
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert [call[:2] for call in runner.calls] == [
+        ("make", ("lint",)),
+        ("make", ("typecheck",)),
+    ]
+    assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
+
+
+def test_main_treats_pytest_no_tests_collected_as_success(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "ralph.verify._PYTEST_SHARDS",
+        (("subprocess-only-shard", ("tests/test_git_rebase.py",)),),
+    )
+    pytest_cmd = ("-m", "pytest", "tests/test_git_rebase.py", "-q", "-m", "not subprocess_e2e")
+    runner = StubRunner(
+        [
+            _result(args=("lint",), returncode=0, stdout="lint ok\n"),
+            _result(args=("typecheck",), returncode=0, stdout="typecheck ok\n"),
+            ProcessResult(
+                command=("python", *pytest_cmd),
+                returncode=5,
+                stdout="no tests ran\n",
+                stderr="",
+            ),
+        ]
+    )
+
+    exit_code = main([], runner=runner, cwd=tmp_path)
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert [call[:2] for call in runner.calls] == [
+        ("make", ("lint",)),
+        ("make", ("typecheck",)),
+        ("python", pytest_cmd),
+    ]
+    assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
+
+
 def test_main_prints_agent_fix_banner_when_verify_step_fails(
-    tmp_path: Path, capsys: object
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     runner = StubRunner(
         [
@@ -108,12 +168,12 @@ def test_main_prints_agent_fix_banner_when_verify_step_fails(
     assert "make typecheck" in captured.err
 
 
-def test_main_passes_remaining_budget_to_pytest(tmp_path: Path, capsys: object) -> None:
+def test_main_passes_remaining_budget_to_pytest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Verify pytest receives only the remaining budget after lint/typecheck."""
-    pytest_cmd = (
-        "-m", "pytest", "tests", "-q", "-n", "4",
-        "--dist", "worksteal", "-m", "not subprocess_e2e",
-    )
+    monkeypatch.setattr("ralph.verify._PYTEST_SHARDS", (("shard", ("tests",)),))
+    pytest_cmd = ("-m", "pytest", "tests", "-q", "-m", "not subprocess_e2e")
     runner = StubRunner(
         [
             _result(args=("lint",), returncode=0, stdout="lint ok\n"),
@@ -140,7 +200,7 @@ def test_main_passes_remaining_budget_to_pytest(tmp_path: Path, capsys: object) 
 
 
 def test_main_refuses_to_run_pytest_when_budget_exhausted(
-    tmp_path: Path, capsys: object
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Verify that when pre-pytest steps exhaust the budget, pytest is not called."""
     # Simulate a StubRunner where lint and typecheck each "consume" time

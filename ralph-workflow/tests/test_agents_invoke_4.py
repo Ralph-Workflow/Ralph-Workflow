@@ -848,6 +848,37 @@ def test_agy_command_includes_print_flag(tmp_path: Path) -> None:
     assert cmd[-1] == prompt_text
 
 
+def test_build_agy_command_all_flags_precede_print_and_prompt(tmp_path: Path) -> None:
+    prompt_text = "hello"
+    prompt_file = tmp_path / "task_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    config = AgentConfig(
+        cmd="agy",
+        print_flag="--print",
+        session_flag="--conversation {}",
+        yolo_flag="--dangerously-skip-permissions",
+        verbose_flag="--verbose",
+        can_commit=False,
+        transport=AgentTransport.AGY,
+    )
+
+    result = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(session_id="sess-1", verbose=True),
+    )
+
+    assert result == [
+        "agy",
+        "--dangerously-skip-permissions",
+        "--conversation",
+        "sess-1",
+        "--verbose",
+        "--print",
+        "hello",
+    ]
+
+
 def test_agy_command_appends_yolo_flag(tmp_path: Path) -> None:
     prompt_text = "Build the feature.\n"
     prompt_file = tmp_path / "task_prompt.md"

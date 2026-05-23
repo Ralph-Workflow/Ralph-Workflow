@@ -6,7 +6,6 @@ Research-confirmed facts:
 - Executable: agy
 - Print flag: --print
 - Yolo flag: --dangerously-skip-permissions
-- Session flag: --conversation {}
 - MCP config path: ~/.gemini/antigravity-cli/mcp_config.json
 - HTTP JSON key: serverUrl
 - Output format: plain text (not NDJSON) - uses JsonParserType.GENERIC
@@ -20,7 +19,8 @@ endpoint using AGY's serverUrl field.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import cast
 
@@ -49,6 +49,30 @@ def agy_mcp_config(endpoint: str) -> str:
         }
     }
     return json.dumps(config_payload, separators=(",", ":"))
+
+
+@contextmanager
+def agy_workspace_mcp_endpoint(workspace_path: Path, endpoint: str) -> Iterator[None]:
+    """Write a run-scoped Ralph-only MCP config for AGY and restore it after exit."""
+    config_path = workspace_path / ".agents" / "mcp_config.json"
+    original_bytes = config_path.read_bytes() if config_path.is_file() else None
+    config_payload = {
+        "mcpServers": {
+            RALPH_MCP_SERVER_NAME: {
+                "serverUrl": endpoint,
+            }
+        }
+    }
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
+        yield
+    finally:
+        if original_bytes is None:
+            if config_path.is_file():
+                config_path.unlink()
+        else:
+            config_path.write_bytes(original_bytes)
 
 
 def _normalize_agy_server_entry(name: str, entry: object) -> tuple[str, object] | None:
@@ -111,5 +135,6 @@ def _agy_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
 
 __all__ = [
     "agy_mcp_config",
+    "agy_workspace_mcp_endpoint",
     "load_existing_agy_upstream_servers",
 ]

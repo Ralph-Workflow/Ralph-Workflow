@@ -278,27 +278,19 @@ def _build_agy_command(
 ) -> list[str]:
     """Build the AGY command line.
 
-    AGY uses: agy --print <prompt> [--dangerously-skip-permissions] [--conversation <session_id>]
+    AGY uses: agy [--dangerously-skip-permissions] [--conversation <session_id>]
+    [--verbose] --print <prompt>
     """
     cmd = config.cmd.split()
-
-    # Add print flag for non-interactive output
-    if config.print_flag:
-        cmd.append(config.print_flag)
-
-    prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
-    cmd.append(prompt_text)
-
-    # Add yolo/permissions flag if present
     cmd.extend(_split_optional_flag(config.yolo_flag))
-
-    # Add session continuation flag if session_id is present
     if config.session_flag and options.session_id:
         cmd.extend(config.session_flag.format(options.session_id).split())
-
     if options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
-
+    if config.print_flag:
+        cmd.append(config.print_flag)
+    prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
+    cmd.append(prompt_text)
     return cmd
 
 
