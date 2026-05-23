@@ -449,6 +449,36 @@ class TestRenderAgentActivityLine:
             is SessionDrain.ANALYSIS
         )
 
+    def test_prompt_session_drain_prefers_target_phase_policy_over_stale_terminal_drain(
+        self,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+
+        assert (
+            runner_module.prompt_session_drain_for_phase(
+                "failed_terminal",
+                phase="planning",
+                pipeline_policy=bundle.pipeline,
+                agents_policy=bundle.agents,
+            )
+            is SessionDrain.PLANNING
+        )
+
+    def test_prompt_session_drain_falls_back_to_terminal_role_profile_for_failed_terminal(
+        self,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+
+        assert (
+            runner_module.prompt_session_drain_for_phase(
+                "failed_terminal",
+                phase="failed_terminal",
+                pipeline_policy=bundle.pipeline,
+                agents_policy=bundle.agents,
+            )
+            is SessionDrain.ANALYSIS
+        )
+
     def test_text_truncation_for_long_content(self) -> None:
         long_content = "a" * 300
         output = AgentOutputLine(type="text", content=long_content)

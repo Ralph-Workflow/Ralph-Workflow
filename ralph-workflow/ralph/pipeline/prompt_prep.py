@@ -43,36 +43,72 @@ if TYPE_CHECKING:
         ) -> str: ...
 
 
+def _session_drain_for_drain_class(drain_class: DrainClass) -> SessionDrain:
+    return {
+        DrainClass.PLANNING: SessionDrain.PLANNING,
+        DrainClass.DEVELOPMENT: SessionDrain.DEVELOPMENT,
+        DrainClass.ANALYSIS: SessionDrain.ANALYSIS,
+        DrainClass.REVIEW: SessionDrain.REVIEW,
+        DrainClass.FIX: SessionDrain.FIX,
+        DrainClass.COMMIT: SessionDrain.COMMIT,
+    }[drain_class]
+
+
+def _fallback_prompt_session_drain_for_role(role: str | None) -> SessionDrain:
+    if role == "execution":
+        return SessionDrain.DEVELOPMENT
+    if role == "analysis":
+        return SessionDrain.ANALYSIS
+    if role == "review":
+        return SessionDrain.REVIEW
+    if role == "commit":
+        return SessionDrain.COMMIT
+    if role == "fix":
+        return SessionDrain.FIX
+    return SessionDrain.ANALYSIS
+
+
 def _prompt_session_drain_for_phase(
     drain: str | None,
     *,
+    phase: str | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
     agents_policy: AgentsPolicy | None = None,
 ) -> SessionDrain:
     """Return the prompt capability profile for a policy drain."""
+    candidate_drains: list[str] = []
     if drain is not None:
+        candidate_drains.append(drain)
+
+    phase_def = None
+    if phase is not None and pipeline_policy is not None and hasattr(pipeline_policy, "phases"):
+        phase_def = pipeline_policy.phases.get(phase)
+        phase_drain = phase_def.drain if phase_def is not None else None
+        if phase_drain is not None and phase_drain not in candidate_drains:
+            candidate_drains.append(phase_drain)
+
+    for candidate in candidate_drains:
         try:
-            return SessionDrain(drain)
+            return SessionDrain(candidate)
         except ValueError:
             if agents_policy is not None:
-                drain_cfg = agents_policy.agent_drains.get(drain)
+                drain_cfg = agents_policy.agent_drains.get(candidate)
                 if drain_cfg is not None:
                     drain_class = drain_cfg.capability_class or drain_cfg.drain_class
                     if drain_class is not None:
-                        return {
-                            DrainClass.PLANNING: SessionDrain.PLANNING,
-                            DrainClass.DEVELOPMENT: SessionDrain.DEVELOPMENT,
-                            DrainClass.ANALYSIS: SessionDrain.ANALYSIS,
-                            DrainClass.REVIEW: SessionDrain.REVIEW,
-                            DrainClass.FIX: SessionDrain.FIX,
-                            DrainClass.COMMIT: SessionDrain.COMMIT,
-                        }[DrainClass(drain_class)]
-            raise
+                        return _session_drain_for_drain_class(DrainClass(drain_class))
+
+    if phase_def is not None:
+        return _fallback_prompt_session_drain_for_role(phase_def.role)
+
     return SessionDrain("cli")
 
 
 def session_capabilities_for_agent_phase(
     drain: str | None,
     *,
+    phase: str | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
     agent: AgentConfig | None = None,
     agents_policy: AgentsPolicy | None = None,
 ) -> SessionCapabilities:
@@ -81,7 +117,12 @@ def session_capabilities_for_agent_phase(
     if agent is not None:
         tool_name_prefix = tool_name_prefix_for_transport(agent.transport)
     return SessionCapabilities.defaults_for_drain(
-        _prompt_session_drain_for_phase(drain, agents_policy=agents_policy),
+        _prompt_session_drain_for_phase(
+            drain,
+            phase=phase,
+            pipeline_policy=pipeline_policy,
+            agents_policy=agents_policy,
+        ),
         tool_name_prefix=tool_name_prefix,
     )
 
@@ -178,6 +219,8 @@ def _materialize_prepared_prompt(
         pipeline_policy=pipeline_policy,
         session_caps=session_capabilities_for_agent_phase(
             phase_drain,
+            phase=effect.phase,
+            pipeline_policy=pipeline_policy,
             agent=agent,
             agents_policy=agents_policy,
         ),
@@ -223,6 +266,8 @@ def _materialize_agent_prompt_if_needed(
             effect.drain
             or resolve_phase_drain(effect.phase, policy_bundle.pipeline)
             or effect.phase,
+            phase=effect.phase,
+            pipeline_policy=policy_bundle.pipeline,
             agent=agent,
             agents_policy=policy_bundle.agents,
         ),
