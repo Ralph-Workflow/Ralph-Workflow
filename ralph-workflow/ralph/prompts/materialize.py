@@ -449,6 +449,8 @@ def _render_template_based_prompt(
         workspace, phase, pipeline_policy, artifacts_policy
     )
     last_retry_error = read_and_clear_retry_hint(workspace, phase)
+    has_docs_mcp = SkillManager().get_docs_mcp_available(workspace_root=workspace_root)
+    skills_inline_content = get_inline_skill_content()
     variables = phase_payload_variables(
         phase=phase,
         workspace_root=workspace_root,
@@ -475,6 +477,8 @@ def _render_template_based_prompt(
         variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
     variables.update(_current_prompt_variables(prompt_content, str(current_prompt_path)))
     variables["LAST_RETRY_ERROR"] = last_retry_error
+    variables["HAS_DOCS_MCP"] = "true" if has_docs_mcp else ""
+    variables["SKILLS_INLINE_CONTENT"] = skills_inline_content
     return render_template(
         template,
         _merged_variables(variables, session_caps),

@@ -107,7 +107,7 @@ The repo-owned workflow skills ship alongside the Python release and are publish
 cd ralph-workflow
 npm exec --yes --package=./skills-package skills list
 npm exec --yes --package=./skills-package skills read security-review
-npm exec --yes --package=./skills-package skills install /tmp/ralph-skills
+npm exec --yes --package=./skills-package skills install -- --target /tmp/ralph-skills
 ```
 
 Use `npm exec` against `./skills-package` for local validation, packaging checks, and release verification.

@@ -23,6 +23,17 @@ PLANNING_FALLBACK_HINT = (
     "`localhost:6280` in `.agent/mcp.toml` improves library and API "
     "documentation lookup quality during planning."
 )
+PLANNING_ANALYSIS_ACTIVE_TEXT = (
+    "The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`."
+)
+PLANNING_ANALYSIS_ACTIVE_INSTRUCTION = (
+    "1. Search documentation first using the docs-mcp search tool from your MCP tool list."
+)
+PLANNING_ANALYSIS_FALLBACK_HINT = (
+    "> **Documentation hint:** Configuring `arabold/docs-mcp-server` on "
+    "`localhost:6280` in `.agent/mcp.toml` improves library and API "
+    "documentation lookup quality during planning analysis."
+)
 DEVELOPER_ACTIVE_TEXT = (
     "The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`."
 )
@@ -102,6 +113,35 @@ def test_planning_prompt_materialization_uses_docs_mcp_fallback_branch(
 
     assert PLANNING_FALLBACK_HINT in rendered
     assert PLANNING_ACTIVE_INSTRUCTION not in rendered
+
+
+def test_planning_analysis_prompt_materialization_uses_docs_mcp_active_branch(
+    tmp_path: Path,
+) -> None:
+    rendered = _render_materialized_prompt(
+        phase="planning_analysis",
+        drain=SessionDrain.ANALYSIS,
+        has_docs_mcp=True,
+        tmp_path=tmp_path,
+    )
+
+    assert PLANNING_ANALYSIS_ACTIVE_TEXT in rendered
+    assert PLANNING_ANALYSIS_ACTIVE_INSTRUCTION in rendered
+    assert PLANNING_ANALYSIS_FALLBACK_HINT not in rendered
+
+
+def test_planning_analysis_prompt_materialization_uses_docs_mcp_fallback_branch(
+    tmp_path: Path,
+) -> None:
+    rendered = _render_materialized_prompt(
+        phase="planning_analysis",
+        drain=SessionDrain.ANALYSIS,
+        has_docs_mcp=False,
+        tmp_path=tmp_path,
+    )
+
+    assert PLANNING_ANALYSIS_FALLBACK_HINT in rendered
+    assert PLANNING_ANALYSIS_ACTIVE_INSTRUCTION not in rendered
 
 
 def test_developer_prompt_materialization_uses_docs_mcp_active_branch(
