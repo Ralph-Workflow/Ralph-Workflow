@@ -20,7 +20,7 @@ import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 ROOT = Path("/home/mistlight/.openclaw/workspace")
 if str(ROOT) not in sys.path:
@@ -55,6 +55,71 @@ RALPH_ADVANTAGES = [
     "True unattended execution with artifact-based completion",
     "Vendor-neutral: own your config, not the tool",
 ]
+
+STRUCTURAL_REPLACEMENT_ACTION_TYPES = {
+    "apollo_outreach_execution",
+}
+
+DIRECTORY_LANE_ACTION_TYPES = {
+    "directory_submission_execution",
+}
+
+CURATOR_LANE_ACTION_TYPES = {
+    "curator_outreach_execution",
+    "curator_queue_follow_through",
+    "curator_handoff_packet_execution",
+    "curator_handoff_follow_through",
+    "curator_contact_handoff_packet_execution",
+    "curator_contact_handoff_follow_through",
+}
+
+
+def _repair_counts_as_live_outcome_repair(execution: Any) -> bool:
+    return bool(getattr(execution, 'live_external_action', False)) or getattr(execution, 'action_type', '') in STRUCTURAL_REPLACEMENT_ACTION_TYPES
+
+
+def _advance_audit_repairs_for_execution(*, audit: dict[str, Any], execution: Any, now: datetime) -> bool:
+    """Advance repair states only when this run actually honored or shipped them.
+
+    Avoid fake-green transitions where needs_execution is flipped to pending_measurement
+    before any qualifying replacement action has run.
+    """
+    changed = False
+    lane_action = getattr(execution, 'action_type', '')
+    shipped_live_repair = _repair_counts_as_live_outcome_repair(execution)
+    repair_actions = audit.get('repair_actions', []) or []
+
+    for repair in repair_actions:
+        if repair.get('repair_state') != 'needs_execution':
+            continue
+
+        failure_type = repair.get('failure_type')
+        should_advance = False
+
+        if failure_type == 'primary_repo_flat':
+            should_advance = shipped_live_repair
+        elif failure_type == 'same_family_distribution_overlap':
+            should_advance = lane_action not in DIRECTORY_LANE_ACTION_TYPES
+        elif failure_type == 'same_family_outreach_overlap':
+            should_advance = lane_action not in CURATOR_LANE_ACTION_TYPES
+        elif repair.get('repair_kind') == 'system_design':
+            should_advance = shipped_live_repair
+
+        if should_advance:
+            repair['repair_state'] = 'pending_measurement'
+            repair['repair_acknowledged_at'] = now.isoformat()
+            changed = True
+
+    if changed:
+        remaining_needs_execution = any(
+            (repair or {}).get('repair_state') == 'needs_execution'
+            for repair in repair_actions
+        )
+        if not remaining_needs_execution and audit.get('repair_window_status') == 'needs_repair':
+            pending_reasons = audit.get('measurement_pending_reasons', []) or []
+            audit['repair_window_status'] = 'measurement_pending' if pending_reasons else 'clear'
+
+    return changed
 
 
 # ── Run seo_daily.py ──────────────────────────────────────────────────────────
@@ -634,18 +699,6 @@ def main() -> int:
     if is_repair_mode:
         print(f"[run.py] REPAIR MODE active — {len(pending_repairs)} pending repairs, "
               f"skip_dir={skip_directory_submissions}, skip_curator={skip_curator_outreach}", flush=True)
-        # Mark repairs as measurement-pending immediately so the next audit sees them
-        # as in-flight rather than perpetually needs_execution.
-        try:
-            audit = json.loads(AUDIT_PATH.read_text(encoding="utf-8"))
-            for ra in audit.get("repair_actions", []):
-                if ra.get("repair_state") == "needs_execution":
-                    ra["repair_state"] = "pending_measurement"
-                    ra["repair_acknowledged_at"] = now.isoformat()
-            AUDIT_PATH.write_text(json.dumps(audit, indent=2), encoding="utf-8")
-            print("[run.py] repair_state updated to pending_measurement in audit", flush=True)
-        except (json.JSONDecodeError, OSError) as e:
-            print(f"[run.py] WARNING: could not update audit repair state: {e}", flush=True)
 
     distribution_lane = choose_distribution_lane(now)
     # Apply repair constraints to the lane decision so the executor respects them.
@@ -712,6 +765,15 @@ def main() -> int:
     print(f"[run.py] Chosen distribution lane: {distribution_lane.lane}", flush=True)
     if distribution_execution.artifact_path:
         print(f"[run.py] Distribution execution artifact: {distribution_execution.artifact_path}", flush=True)
+
+    if is_repair_mode and AUDIT_PATH.exists():
+        try:
+            audit = json.loads(AUDIT_PATH.read_text(encoding="utf-8"))
+            if _advance_audit_repairs_for_execution(audit=audit, execution=distribution_execution, now=now):
+                AUDIT_PATH.write_text(json.dumps(audit, indent=2), encoding="utf-8")
+                print("[run.py] repair_state advanced after qualifying execution", flush=True)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"[run.py] WARNING: could not advance audit repair state: {e}", flush=True)
 
     if distribution_lane.lane == "owned_content":
         print("[run.py] Triggering content generation from SEO insights...", flush=True)
