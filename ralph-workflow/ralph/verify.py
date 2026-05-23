@@ -47,8 +47,8 @@ _VERIFY_STEPS: tuple[tuple[str, ...], ...] = (
     ("typecheck",),
 )
 
-_PYTEST_SHARD_WORKERS = 8
-_PYTEST_SHARD_COUNT = 16
+_PYTEST_SHARD_WORKERS = 4
+_PYTEST_SHARD_COUNT = 64
 
 
 def _workspace_root(cwd: Path) -> Path:
@@ -65,6 +65,24 @@ def _collect_pytest_files(root: Path) -> tuple[Path, ...]:
     return tuple(sorted(files))
 
 
+def _file_weight(path: Path) -> int:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return 1
+    weight = sum(
+        1
+        for line in text.splitlines()
+        if line.lstrip().startswith(("def test_", "async def test_"))
+    )
+    return weight or 1
+
+
+def _weight_sort_key(item: tuple[Path, int]) -> tuple[int, str]:
+    path, weight = item
+    return (-weight, str(path))
+
+
 def _build_pytest_shards(*, cwd: Path) -> list[tuple[str, tuple[str, ...]]]:
     """Build balanced pytest shard commands for the filtered test suite."""
     root = _workspace_root(cwd)
@@ -72,11 +90,24 @@ def _build_pytest_shards(*, cwd: Path) -> list[tuple[str, tuple[str, ...]]]:
     if not test_files:
         return []
 
-    shard_count = min(_PYTEST_SHARD_COUNT, len(test_files))
-    shard_files: list[list[str]] = [[] for _ in range(shard_count)]
-    for index, path in enumerate(test_files):
-        shard_index = index % shard_count
-        shard_files[shard_index].append(str(path.relative_to(root)))
+    weighted_files = sorted(
+        ((path, _file_weight(path)) for path in test_files),
+        key=_weight_sort_key,
+    )
+    shard_count = min(_PYTEST_SHARD_COUNT, len(weighted_files))
+    if shard_count == len(weighted_files):
+        shard_files = [[str(path.relative_to(root))] for path, _weight in weighted_files]
+    else:
+        shard_files = [[] for _ in range(shard_count)]
+        shard_weights = [0 for _ in range(shard_count)]
+
+        def pick_shard(index: int) -> tuple[int, int, int]:
+            return (shard_weights[index], len(shard_files[index]), index)
+
+        for path, weight in weighted_files:
+            shard_index = min(range(shard_count), key=pick_shard)
+            shard_files[shard_index].append(str(path.relative_to(root)))
+            shard_weights[shard_index] += weight
 
     return [
         (

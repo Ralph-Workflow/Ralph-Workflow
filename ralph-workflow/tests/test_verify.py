@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -62,19 +61,6 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _file_weight(path: Path) -> int:
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
-        return 1
-    weight = sum(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name.startswith("test_")
-        for node in ast.walk(tree)
-    )
-    return weight or 1
-
-
 def _expected_test_files() -> set[str]:
     root = _repo_root()
     return {
@@ -85,44 +71,7 @@ def _expected_test_files() -> set[str]:
 
 
 def _shard_count() -> int:
-    root = _repo_root()
-    files = sorted(
-        path for path in (root / "tests").rglob("test*.py") if path.name != "conftest.py"
-    )
-    return min(16, len(files))
-
-
-def _build_expected_commands() -> tuple[tuple[str, ...], ...]:
-    root = _repo_root()
-    files = sorted(
-        path for path in (root / "tests").rglob("test*.py") if path.name != "conftest.py"
-    )
-    weighted_files = sorted(
-        ((path, _file_weight(path)) for path in files),
-        key=lambda item: (-item[1], str(item[0])),
-    )
-    shard_count = min(16, len(weighted_files))
-    shard_files: list[list[str]] = [[] for _ in range(shard_count)]
-    shard_weights = [0 for _ in range(shard_count)]
-    for path, weight in weighted_files:
-        shard_index = min(
-            range(shard_count),
-            key=lambda index: (shard_weights[index], len(shard_files[index]), index),
-        )
-        shard_files[shard_index].append(str(path.relative_to(root)))
-        shard_weights[shard_index] += weight
-    return tuple(
-        (
-            "-m",
-            "pytest",
-            *files,
-            "-q",
-            "-m",
-            "not subprocess_e2e",
-        )
-        for files in shard_files
-        if files
-    )
+    return min(64, len(_expected_test_files()))
 
 
 def _pytest_file_args(
