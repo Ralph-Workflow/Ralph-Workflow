@@ -3,8 +3,8 @@
   "reason": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search.",
   "reasons": [
     "Primary Codeberg adoption is flat in the current measurement window.",
-    "7 directory submissions already shipped in the last 24 hours.",
-    "9 curator contact attempts already shipped in the last 24 hours.",
+    "6 directory submissions already shipped in the last 24 hours.",
+    "7 curator contact attempts already shipped in the last 24 hours.",
     "4 live external marketing action(s) already shipped in the last 6 hours.",
     "If no new outcome lands first, this short-window congestion clears at 2026-05-25T02:05:05. Before then, another live outbound action would mostly blur measurement.",
     "Fresh publisher-contact targets remain, but the short review window already has enough live external actions that another contact packet now would blur measurement more than it helps.",

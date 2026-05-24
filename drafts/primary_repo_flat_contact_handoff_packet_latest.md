@@ -1,5 +1,5 @@
 # Ralph Workflow Primary-Repo-Flat Publisher Contact Packet
-Generated: 2026-05-24T21:37:04
+Generated: 2026-05-24T22:05:47
 
 ## Why this exists now
 - Codeberg adoption is still flat in the active window.
@@ -47,7 +47,7 @@ Hi,
 
 I liked Tasks Are Not Goals (2026-05-22). A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
 
-Ralph Workflow is ralph workflow is the operating system for autonomous coding: a free and open-source composable loop framework and ai orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
+Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
 Why I thought of your audience: Contract-first, evidence-first agent workflow audience overlaps strongly with Ralph Workflow. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
 
 If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
@@ -57,105 +57,7 @@ Ralph Workflow
 ```
 - Short contact-form version:
 ```text
-I liked Tasks Are Not Goals (2026-05-22). Ralph Workflow is ralph workflow is the operating system for autonomous coding: a free and open-source composable loop framework and ai orchestrator. built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Contract-first, evidence-first agent workflow audience overlaps strongly with Ralph Workflow. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
-```
-
-### 2. AXME Code
-- URL: https://code.axme.ai/
-- Hook: Agent-native durability and Claude Code memory/safety positioning
-- Why this target: Adjacent reliability problem from the workflow side; likely receptive to comparative mention.
-- Suggested subject: RalphWorkflow as a complementary workflow layer to durable agent runs
-- Recommended next step: email/contact send path is now identified
-- First channel to try: Email first: contact@axme.ai
-- Contact channels:
-  - email: contact@axme.ai
-  - website: https://code.axme.ai
-- Outreach angle: keep it publisher-native and pain-led; ask for comparison/citation consideration with Codeberg as the canonical repo, not a generic product pitch.
-- Ready-to-send email draft:
-```text
-Hi,
-
-I liked Agent-native durability and Claude Code memory/safety positioning. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
-
-Ralph Workflow is ralph workflow is the operating system for autonomous coding: a free and open-source composable loop framework and ai orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
-Why I thought of your audience: Adjacent reliability problem from the workflow side; likely receptive to comparative mention. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
-
-If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
-
-Thanks,
-Ralph Workflow
-```
-- Short contact-form version:
-```text
-I liked Agent-native durability and Claude Code memory/safety positioning. Ralph Workflow is ralph workflow is the operating system for autonomous coding: a free and open-source composable loop framework and ai orchestrator. built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Adjacent reliability problem from the workflow side; likely receptive to comparative mention. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
-```
-
-### 3. WyeWorks
-- URL: https://www.wyeworks.com/blog
-- Hook: Workflow-engineering positioning and AI delivery consulting audience
-- Why this target: Publishes on AI workflow engineering and can plausibly cite open-source workflow systems.
-- Suggested subject: RalphWorkflow might fit your workflow-engineering follow-up
-- Recommended next step: email/contact send path is now identified
-- First channel to try: Email first: hello@wyeworks.com
-- Contact channels:
-  - email: hello@wyeworks.com
-  - contact page: https://www.wyeworks.com/about-us
-  - website: https://www.wyeworks.com
-  - website: https://wyeworks.com
-  - X/Twitter: https://twitter.com/wyeworks
-  - X/Twitter: https://x.com/wyeworks
-  - LinkedIn: https://www.linkedin.com/company/wyeworks
-- Outreach angle: keep it publisher-native and pain-led; ask for comparison/citation consideration with Codeberg as the canonical repo, not a generic product pitch.
-- Ready-to-send email draft:
-```text
-Hi,
-
-I liked Workflow-engineering positioning and AI delivery consulting audience. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
-
-Ralph Workflow is ralph workflow is the operating system for autonomous coding: a free and open-source composable loop framework and ai orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
-Why I thought of your audience: Publishes on AI workflow engineering and can plausibly cite open-source workflow systems. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
-
-If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
-
-Thanks,
-Ralph Workflow
-```
-- Short contact-form version:
-```text
-I liked Workflow-engineering positioning and AI delivery consulting audience. Ralph Workflow is ralph workflow is the operating system for autonomous coding: a free and open-source composable loop framework and ai orchestrator. built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Publishes on AI workflow engineering and can plausibly cite open-source workflow systems. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
-```
-
-### 4. Bollwerk / Werkstatt
-- URL: https://bollwerk.ai/blog/werkstatt-open-source/
-- Hook: Werkstatt open-source workflow/skill discipline positioning
-- Why this target: Adjacent coding-agent workflow audience; good fit for an adjacent-system mention or comparison.
-- Suggested subject: RalphWorkflow as an adjacent workflow-system reference for Werkstatt readers
-- Recommended next step: email/contact send path is now identified
-- First channel to try: Email first: sales@bollwerk.ai
-- Contact channels:
-  - email: sales@bollwerk.ai
-  - website: https://bollwerk.ai
-  - X/Twitter: https://twitter.com/bollwerkai
-  - X/Twitter: https://x.com/BollwerkAI
-  - LinkedIn: https://www.linkedin.com/company/bollwerkai
-- Outreach angle: keep it publisher-native and pain-led; ask for comparison/citation consideration with Codeberg as the canonical repo, not a generic product pitch.
-- Ready-to-send email draft:
-```text
-Hi,
-
-I liked Werkstatt open-source workflow/skill discipline positioning. A lot of teams can get agents to keep running, but they still have to babysit them because the workflow does not end in a trustworthy review handoff.
-
-Ralph Workflow is ralph workflow is the operating system for autonomous coding: a free and open-source composable loop framework and ai orchestrator. It is built around a plan → build → verify loop so the result is not another confident summary, but a concrete morning-after handoff in your own repo.
-Why I thought of your audience: Adjacent coding-agent workflow audience; good fit for an adjacent-system mention or comparison. It keeps a simple Ralph-loop core, then composes that core into planning, development, verification, and broader workflow loops with strong defaults.
-
-If you keep comparison roundups, workflow references, or follow-up links on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
-
-Thanks,
-Ralph Workflow
-```
-- Short contact-form version:
-```text
-I liked Werkstatt open-source workflow/skill discipline positioning. Ralph Workflow is ralph workflow is the operating system for autonomous coding: a free and open-source composable loop framework and ai orchestrator. built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Adjacent coding-agent workflow audience; good fit for an adjacent-system mention or comparison. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
+I liked Tasks Are Not Goals (2026-05-22). Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator. It is built around a plan → build → verify loop for teams that want no-babysitting agent runs that still end in a trustworthy review handoff. Contract-first, evidence-first agent workflow audience overlaps strongly with Ralph Workflow. If you keep comparisons or workflow references on this topic, the canonical repo is https://codeberg.org/RalphWorkflow/Ralph-Workflow.
 ```
 
 ## Process rule now in force

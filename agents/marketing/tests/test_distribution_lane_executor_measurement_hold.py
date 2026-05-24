@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from types import SimpleNamespace
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -200,6 +201,109 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         )
         self.assertIn('Best human-executable demand-capture asset still waiting', artifact_text)
         self.assertIn('stackoverflow_answer_handoff_packet_latest.md', artifact_text)
+
+    def test_measurement_hold_follow_through_schedules_post_hold_rerun(self):
+        now = datetime(2026, 5, 24, 21, 57, 0)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='Hold for truthful re-entry after the short review window clears.',
+            reasons=['multiple fresh external actions already overlap'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+            short_review_window_release_at='2026-05-25T02:05:05',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'short_review_window_release_at': '2026-05-25T02:05:05'}),
+                encoding='utf-8',
+            )
+            (log_dir / 'marketing_2026-05-24_measurement_hold_execution.json').write_text(
+                json.dumps({
+                    'timestamp': '2026-05-24T21:37:00',
+                    'chosen_action': {'type': 'measurement_hold_execution'},
+                    'why_this_action': {'summary': 'Existing short review window hold.'},
+                    'result': {'status': 'prepared', 'ok': True, 'live_external_action': False},
+                }),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(
+                     returncode=0,
+                     stdout=json.dumps({'job': {'id': 'cron-123', 'name': 'marketing-measurement-hold-release'}}),
+                     stderr='',
+                 )):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            board_text = board_path.read_text(encoding='utf-8')
+            cron_log = json.loads((log_dir / 'marketing_2026-05-24_215700_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(execution.action_type, 'measurement_hold_follow_through')
+        self.assertIn('Post-hold marketer rerun scheduled', artifact_text)
+        self.assertIn('2026-05-25T02:05:05', artifact_text)
+        self.assertIn('cron-123', artifact_text)
+        self.assertIn('Short review-window congestion clears at: 2026-05-25T02:05:05', board_text)
+        self.assertIn('Post-hold marketer rerun scheduled: 2026-05-25T02:05:05', board_text)
+        self.assertEqual(cron_log['type'], 'measurement_hold_release_cron')
+        self.assertEqual(cron_log['cron_job']['id'], 'cron-123')
+
+    def test_measurement_hold_execution_schedules_post_hold_rerun(self):
+        now = datetime(2026, 5, 24, 21, 57, 0)
+        decision = LaneDecision(
+            lane='measurement_hold',
+            reason='Hold for truthful re-entry after the short review window clears.',
+            reasons=['multiple fresh external actions already overlap'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+            short_review_window_release_at='2026-05-25T02:05:05',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(
+                json.dumps({'short_review_window_release_at': '2026-05-25T02:05:05'}),
+                encoding='utf-8',
+            )
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor.subprocess, 'run', return_value=SimpleNamespace(
+                     returncode=0,
+                     stdout=json.dumps({'job': {'id': 'cron-first-hold', 'name': 'marketing-measurement-hold-release'}}),
+                     stderr='',
+                 )):
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+                board_path, _targets = distribution_lane_executor._write_marketing_execution_board(now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+            board_text = board_path.read_text(encoding='utf-8')
+            cron_log = json.loads((log_dir / 'marketing_2026-05-24_215700_measurement_hold_release_cron.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(execution.action_type, 'measurement_hold_execution')
+        self.assertIn('Post-hold marketer rerun scheduled', artifact_text)
+        self.assertIn('cron-first-hold', artifact_text)
+        self.assertIn('Short review-window congestion clears at: 2026-05-25T02:05:05', artifact_text)
+        self.assertIn('Post-hold marketer rerun scheduled: 2026-05-25T02:05:05', board_text)
+        self.assertEqual(cron_log['cron_job']['id'], 'cron-first-hold')
 
     def test_measurement_hold_follow_through_does_not_resurface_stackoverflow_packet_when_post_cooldown_run_is_already_scheduled(self):
         now = datetime(2026, 5, 24, 5, 20, 0)
@@ -1279,6 +1383,40 @@ class DistributionLaneExecutorMeasurementHoldTests(unittest.TestCase):
         self.assertIn('How should I structure autonomous AI agent workflows for production reliability in a TypeScript/Next.js fintech platform?', execution.targets_prepared)
         self.assertEqual(execution.blocking_factors, [])
         self.assertIn('Reused manual-ready draft', artifact_text)
+
+    def test_distribution_architecture_repair_executes_instead_of_idle_hold(self):
+        now = datetime(2026, 5, 25, 9, 0, 0)
+        decision = LaneDecision(
+            lane='distribution_architecture_repair',
+            reason='The short review window already cleared, but every truthful external/manual lane is still blocked, exhausted, or already delivered; repair the lane architecture instead of logging another idle measurement hold.',
+            reasons=['Codeberg is still flat.'],
+            owned_content_posts_last_36h=0,
+            unsubmitted_directory_channels=[],
+            shared_findings_used=['adoption_metrics_latest.json'],
+            artifact_path='',
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            log_dir = tmp / 'logs'
+            drafts_dir = tmp / 'drafts'
+            log_dir.mkdir()
+            drafts_dir.mkdir()
+            (log_dir / 'distribution_lane_latest.json').write_text(json.dumps({}), encoding='utf-8')
+
+            with patch.object(distribution_lane_executor, 'LOG_DIR', log_dir), \
+                 patch.object(distribution_lane_executor, 'DRAFTS_DIR', drafts_dir), \
+                 patch.object(distribution_lane_executor, 'load_market_intelligence', return_value=None), \
+                 patch.object(distribution_lane_executor, '_write_marketing_execution_board', return_value=(drafts_dir / 'board.md', ['ctxt.dev / Signum'])):
+                (drafts_dir / 'board.md').write_text('# board\n', encoding='utf-8')
+                execution = distribution_lane_executor.execute_distribution_lane(decision, now)
+
+            artifact_text = Path(execution.artifact_path).read_text(encoding='utf-8')
+
+        self.assertEqual(execution.action_type, 'distribution_architecture_repair')
+        self.assertEqual(execution.status, 'executed')
+        self.assertIn('structural repair', artifact_text.lower())
+        self.assertIn('ctxt.dev / Signum', artifact_text)
 
 
 if __name__ == '__main__':

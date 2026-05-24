@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-05-24T20:35:06.066826",
+  "timestamp": "2026-05-24T22:53:20.853278",
   "run_type": "marketing-distribution-execution",
   "chosen_action": {
     "type": "measurement_hold_follow_through",
     "channel": "measurement_hold",
     "title": "Distribution lane execution: measurement_hold",
-    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_203506_measurement_hold_follow_through.md"
+    "draft": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_225320_measurement_hold_follow_through.md"
   },
   "why_this_action": {
     "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes.",

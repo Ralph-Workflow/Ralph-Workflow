@@ -1,5 +1,19 @@
 # Outreach Log
 
+## 2026-05-24 (Sunday) — Reddit monitoring (20:15 UTC / 22:15 CEST)
+- **Report:** `seo-reports/reddit_monitor_2026-05-24_2215.md`
+- **Scan summary:** forced-refresh local monitor returned **37 scanned / 4 shortlisted** with **ok=5 / reddit_ip_blocked=4 / time_budget_exceeded=1**.
+- **Coverage note:** this was a usable but still partial-visibility pass. Direct provider coverage improved from the most degraded evening snapshot, but Reddit blocking remained high enough that the pass should still fail closed on posting.
+- **Current verdict:** still **not** a posting pass. The best live surfaces remain stronger as discussion/research than as honest RalphWorkflow mention targets.
+- **Best current discussion fits:**
+  - `r/AI_Agents` — "Genuine question for people who have built multi-agent systems in production. how do you handle context continuity across enterprise tools?"
+  - `r/AI_Agents` — "How are you managing multiple coding agents in parallel without things getting messy?"
+  - `r/ClaudeAI` — "Running multiple AI coding agents in parallel with full dev environment (not git-worktree!)"
+  - `r/AI_Agents` — "Agents vs workflows"
+- **Repeated pains worth tracking:** production failure, workflow continuity, parallel shared-state drift, visible finish state, and morning-after reviewability.
+- **Self-improving lesson:** the content-first multi-family query mix is still the right shape; the current ceiling is provider coverage quality, not subreddit discovery breadth. Keep failing closed on posting while `reddit_ip_blocked` remains this high, and keep treating mention-fit separately from discussion-fit.
+- **Posting note:** No posting attempted. Research-first only while coverage stays partial.
+
 ## 2026-05-24 (Sunday) — Tembo publisher outreach executed (18:17 UTC / 20:17 CEST)
 - **What I executed:** emailed **Tembo** at `hello@tembo.io` after verifying its fresh guide **"What Is Agentic Coding? A Developer's Guide for 2026"** and its public homepage email path. The pitch positioned Ralph Workflow as a workflow-first open-source reference, with **Codeberg** as the primary repo and GitHub as the mirror.
 - **Verification:** the live send log at `agents/marketing/logs/marketing_2026-05-24_181741_tembo_publisher_email.json` recorded status **sent**, and the summary log at `agents/marketing/logs/marketing_2026-05-24_tembo_publisher_outreach.json` records SMTP acceptance by `smtp.ionos.com:587` over STARTTLS.
@@ -6327,3 +6341,23 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-24 21:37:31
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 22:19:58
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T23:04:30.752497.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 22:32:23
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T23:04:30.752497.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 22:50:01
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T23:04:30.752497.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 22:51:42
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T23:04:30.752497.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 22:54:49
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T23:04:30.752497.

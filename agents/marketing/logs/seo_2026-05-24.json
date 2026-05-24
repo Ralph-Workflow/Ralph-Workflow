@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-24T19:31:03.021470",
+  "timestamp": "2026-05-24T22:53:20.915634",
   "site_health": {
     "homepage": {
       "ok": true,
@@ -9,7 +9,7 @@
       "canonical": "https://ralphworkflow.com/",
       "og_tags": {
         "description": "Free open-source vendor-neutral AI coding workflow orchestration CLI with policy-driven structure and checkpoint/resume for unattended coding: plan, build, test, verify, and resume one backlog task overnight with Claude Code, Codex CLI, or OpenCode.",
-        "title": "Vendor-neutral AI coding workflow CLI",
+        "title": "Vendor-neutral AI coding workflow CLI \u2014 Ralph Workflow",
         "type": "website",
         "url": "https://ralphworkflow.com/",
         "site_name": "Ralph Workflow",
@@ -18,7 +18,7 @@
       "twitter_card": "summary_large_image",
       "json_ld": true,
       "has_h1": true,
-      "word_count": 6415,
+      "word_count": 6421,
       "has_nav": true,
       "has_main": true,
       "lang_attr": "en"

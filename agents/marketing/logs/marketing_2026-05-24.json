@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-05-24T19:31:02.961017",
+  "timestamp": "2026-05-24T22:53:20.853278",
   "weekly_mode": false,
   "marketing_status": "measurement_hold",
   "measurement_hold": {
     "active": true,
-    "hold_started_at": "2026-05-24T18:48:35.172158",
-    "hold_until": "2026-05-24T19:48:35.172158",
-    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_184835_measurement_hold_execution.json",
+    "hold_started_at": "2026-05-24T22:04:30.752497",
+    "hold_until": "2026-05-24T23:04:30.752497",
+    "source_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_220430_measurement_hold_execution.json",
     "reason": "The post-cooldown StackOverflow slot already burned without a fresh outcome, and the other external lanes are still in-flight; hold for a genuinely different executable window instead of rerunning the same demand-capture search."
   },
   "distribution_lane": {
@@ -17,14 +17,14 @@
   "distribution_execution": {
     "action_type": "measurement_hold_follow_through",
     "status": "executed",
-    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_193102_measurement_hold_follow_through.md",
+    "artifact_path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_225320_measurement_hold_follow_through.md",
     "summary": "Respected the active measurement-hold cooldown instead of resetting it with another short-window hold execution, and refreshed one consolidated execution board for the live manual lanes.",
     "targets_prepared": [],
     "live_external_action": false,
     "blocking_factors": []
   },
   "seo": {
-    "timestamp": "2026-05-24T19:31:03.021470",
+    "timestamp": "2026-05-24T22:53:20.915634",
     "onpage_score": "90/100 (A)",
     "homepage_ok": true,
     "sitemap_urls": 80,
@@ -70,6 +70,6 @@
     "stdout": "skipped: active measurement-hold cooldown",
     "stderr": ""
   },
-  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_193102_measurement_hold_skip.json",
-  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_193102_measurement_hold_follow_through.json"
+  "skip_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_225320_measurement_hold_skip.json",
+  "distribution_execution_log": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_225320_measurement_hold_follow_through.json"
 }
