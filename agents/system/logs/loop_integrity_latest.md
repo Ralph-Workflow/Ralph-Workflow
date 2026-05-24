@@ -1,6 +1,6 @@
 # Self-Improvement Loop Integrity Audit
 
-Timestamp: 2026-05-24 12:11 UTC
+Timestamp: 2026-05-24 17:33 UTC
 
 ## ralph-docs-watchdog
 - Status: error
@@ -26,8 +26,8 @@ Timestamp: 2026-05-24 12:11 UTC
   - runner failed after checker failure
   - independent verifier failed after remediation
   - checker still failing after remediation/verifier pass
-- Checker: `MARKETING_LOOP_FAIL: unexpected watch actions: measurement_hold_active`
-- Checker after repair: `MARKETING_LOOP_FAIL: unexpected watch actions: measurement_hold_active`
+- Checker: `MARKETING_LOOP_FAIL: stale artifacts: /home/mistlight/.openclaw/workspace/drafts/reddit_next_window_packets_latest.md`
+- Checker after repair: `MARKETING_LOOP_FAIL: stale artifacts: /home/mistlight/.openclaw/workspace/drafts/reddit_next_window_packets_latest.md`
 
 ## ralph-site-owner-loop
 - Status: owner_only

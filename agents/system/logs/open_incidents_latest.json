@@ -1,12 +1,12 @@
 {
-  "updated_at": "2026-05-24T17:00:15.130601+00:00",
+  "updated_at": "2026-05-24T18:06:19.907082+00:00",
   "incidents": {
     "agent_architecture_verifier::artifact_contract_fail": {
       "key": "agent_architecture_verifier::artifact_contract_fail",
       "name": "agent_architecture_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701121+00:00",
-      "repeat_count": 69,
+      "repeat_count": 73,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -177,22 +177,36 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779623160927:94\"\n}",
           "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-24T17:16:58.290286+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779643018243:1\"\n}",
+          "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-24T17:27:15.202965+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T17:00:15.130556+00:00",
+      "last_seen": "2026-05-24T17:27:01.566366+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_verifier_latest.md",
-      "closed_at": "2026-05-24T11:46:00.953839+00:00"
+      "closed_at": "2026-05-24T17:27:15.202980+00:00"
     },
     "marketing_independent_verification::loop_verification_fail": {
       "key": "marketing_independent_verification::loop_verification_fail",
       "name": "marketing_independent_verification",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-22T23:28:25.701171+00:00",
-      "repeat_count": 162,
+      "repeat_count": 165,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -664,13 +678,20 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779624391429:97\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T17:27:19.503887+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643639473:10\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-24T16:11:20.611582+00:00",
+      "last_seen": "2026-05-24T18:06:16.410755+00:00",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "likely_cause": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -680,7 +701,7 @@
       "name": "agent_architecture_verifier_runtime",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-22T23:28:25.701190+00:00",
-      "repeat_count": 108,
+      "repeat_count": 113,
       "owner_domain": "architecture",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1040,22 +1061,36 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:dc190b5f-f215-458b-bdce-ba36be178c80:1779623169563:95\"\n}",
           "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-24T17:17:06.242662+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-24T17:27:32.382797+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
+          "outcome": "resolved"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T17:00:15.130592+00:00",
-      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (market_intelligence_consumption_latest.json); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-24T14:10:04.536606+02:00\"\n}",
+      "last_seen": "2026-05-24T18:06:16.410784+00:00",
+      "last_error": "{\n  \"ok\": false,\n  \"errors\": [\n    \"independent verification artifact predates newer runtime evidence (ralph_verifier_latest.md); rerun independent verification after the latest architecture/runtime refresh\"\n  ],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-24T19:31:39.613895+02:00\"\n}",
       "likely_cause": "Live architecture verifier currently fails; stale or contradictory architecture signoff must not be treated as healthy",
       "path": "/home/mistlight/.openclaw/workspace/agents/system/agent_architecture_verifier.py",
-      "closed_at": "2026-05-24T11:46:09.590091+00:00"
+      "closed_at": "2026-05-24T17:27:32.382810+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
       "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T00:07:36.250186+00:00",
-      "repeat_count": 80,
+      "repeat_count": 83,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -1611,13 +1646,34 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779598287995:62\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T17:27:03.620635+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643623548:5\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T17:27:21.662379+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643641631:11\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T18:06:18.139712+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779645978112:16\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-24T04:51:38.824142+00:00",
+      "last_seen": "2026-05-24T18:06:16.410760+00:00",
       "last_error": "Marketing runner bundle is not healthy.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is not healthy.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -1627,7 +1683,7 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "category": "review_followup_required",
       "first_seen": "2026-05-23T00:07:36.250195+00:00",
-      "repeat_count": 80,
+      "repeat_count": 83,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2190,13 +2246,34 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779639082379:109\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T17:27:05.925742+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643625896:6\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T17:27:23.780753+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643643751:12\"\n}",
+          "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T18:06:19.907070+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779645979880:17\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-24T16:11:20.611585+00:00",
+      "last_seen": "2026-05-24T18:06:16.410764+00:00",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -2223,7 +2300,7 @@
       "name": "docs_agentic_review",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T05:06:09.078715+00:00",
-      "repeat_count": 24,
+      "repeat_count": 29,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2261,15 +2338,22 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-24T17:27:25.821000+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643645790:13\"\n}",
+          "outcome": "resolved"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T15:54:57.612271+00:00",
+      "last_seen": "2026-05-24T18:06:16.410767+00:00",
       "last_error": "status='fail'",
       "likely_cause": "Agentic review returned a contradictory pass artifact; contract normalization failed it closed.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-05-24T12:06:35.808696+00:00"
+      "closed_at": "2026-05-24T17:27:25.821014+00:00"
     },
     "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required": {
       "key": "docs_agentic_review_mustFix_repair-or-replace-the-agentic-review-path-so-doc::review_followup_required",
@@ -2548,7 +2632,7 @@
       "name": "marketing_independent_verification",
       "category": "stale_artifact",
       "first_seen": "2026-05-23T11:53:15.933119+00:00",
-      "repeat_count": 20,
+      "repeat_count": 23,
       "owner_domain": "marketing",
       "escalation_level": "critical",
       "owner_actions": [
@@ -2600,13 +2684,20 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "blocked_external"
+        },
+        {
+          "at": "2026-05-24T17:17:02.484484+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643022457:3\"\n}",
+          "outcome": "blocked_external"
         }
       ],
       "status": "blocked_external",
       "blocked_by": [
         "marketing_independent_verification"
       ],
-      "last_seen": "2026-05-24T17:00:15.130586+00:00",
+      "last_seen": "2026-05-24T17:17:11.019896+00:00",
       "last_error": "",
       "likely_cause": "Required runtime artifact is stale",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json"
@@ -4050,7 +4141,7 @@
       "name": "docs_verifier",
       "category": "artifact_contract_fail",
       "first_seen": "2026-05-23T15:57:16.529082+00:00",
-      "repeat_count": 46,
+      "repeat_count": 52,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4109,15 +4200,29 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-24T17:17:00.488557+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643020460:2\"\n}",
+          "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-24T17:27:17.346392+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643637316:9\"\n}",
+          "outcome": "resolved"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T17:00:15.130581+00:00",
+      "last_seen": "2026-05-24T18:06:16.410729+00:00",
       "last_error": "",
       "likely_cause": "Verifier artifact exists but does not show required pass contract",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.md",
-      "closed_at": "2026-05-24T12:06:29.547538+00:00"
+      "closed_at": "2026-05-24T17:27:17.346406+00:00"
     },
     "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar::review_followup_required": {
       "key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-stale-relative-to-mar::review_followup_required",
@@ -4171,7 +4276,7 @@
       "name": "docs_verifier_stability",
       "category": "loop_verification_fail",
       "first_seen": "2026-05-23T15:57:16.529187+00:00",
-      "repeat_count": 48,
+      "repeat_count": 54,
       "owner_domain": "docs",
       "escalation_level": "critical",
       "owner_actions": [
@@ -4244,15 +4349,29 @@
           "ok": true,
           "detail": "{\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}",
           "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-24T17:17:04.345204+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643024317:4\"\n}",
+          "outcome": "resolved"
+        },
+        {
+          "at": "2026-05-24T17:27:30.346606+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643650309:15\"\n}",
+          "outcome": "resolved"
         }
       ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T17:00:15.130589+00:00",
+      "last_seen": "2026-05-24T18:06:16.410781+00:00",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
       "likely_cause": "latest docs verifier verdict is not pass: 'fail'",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_verifier_latest.json",
-      "closed_at": "2026-05-24T12:06:37.909818+00:00"
+      "closed_at": "2026-05-24T17:27:30.346619+00:00"
     },
     "docs_agentic_review_mustFix_reviewable-output-md-lacks-explicit-what-this-pa::review_followup_required": {
       "key": "docs_agentic_review_mustFix_reviewable-output-md-lacks-explicit-what-this-pa::review_followup_required",
@@ -4954,17 +5073,32 @@
       "name": "docs_agentic_review_mustFix_reviewable-output-md-opens-with-two-nearly-ident",
       "category": "review_followup_required",
       "first_seen": "2026-05-24T12:30:55.223335+00:00",
-      "repeat_count": 1,
+      "repeat_count": 2,
       "owner_domain": "docs",
-      "escalation_level": "none",
-      "owner_actions": [],
+      "escalation_level": "owner",
+      "owner_actions": [
+        {
+          "at": "2026-05-24T17:27:08.204256+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643628175:7\"\n}",
+          "outcome": "no_progress"
+        },
+        {
+          "at": "2026-05-24T17:27:28.036900+00:00",
+          "action_type": "owner_loop_escalation",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643648009:14\"\n}",
+          "outcome": "resolved"
+        }
+      ],
       "status": "resolved",
       "blocked_by": [],
-      "last_seen": "2026-05-24T12:30:55.223338+00:00",
-      "last_error": "reviewable-output.md opens with two nearly identical 'supporting proof' disclaimers in the first 3 lines \u2014 deduplicate to one",
-      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md opens with two nearly identical 'supporting proof' disclaimers in the first 3 lines \u2014 deduplicate to one",
+      "last_seen": "2026-05-24T17:27:01.566425+00:00",
+      "last_error": "reviewable-output.md opens with two nearly identical 'supporting proof' framing sentences (lines 4 and 8) \u2014 deduplicate to one clean opening.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md opens with two nearly identical 'supporting proof' framing sentences (lines 4 and 8) \u2014 deduplicate to one clean opening.",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
-      "closed_at": "2026-05-24T12:53:17.532689+00:00"
+      "closed_at": "2026-05-24T17:27:28.036917+00:00"
     },
     "docs_agentic_review_mustFix_reviewable-output-md-has-a-duplicate-disclaimer::review_followup_required": {
       "key": "docs_agentic_review_mustFix_reviewable-output-md-has-a-duplicate-disclaimer::review_followup_required",
@@ -5135,6 +5269,148 @@
       "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: reviewable-output.md contains a duplicated sentence fragment on lines 4 and 7 (minor copy deglitch)",
       "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
       "closed_at": "2026-05-24T16:11:20.611600+00:00"
+    },
+    "docs_agentic_review_mustFix_sphinx-has-a-first-task-guide-page-that-may-dupl::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_sphinx-has-a-first-task-guide-page-that-may-dupl::review_followup_required",
+      "name": "docs_agentic_review_mustFix_sphinx-has-a-first-task-guide-page-that-may-dupl",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T17:15:15.338756+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T17:15:15.338759+00:00",
+      "last_error": "Sphinx has a first-task-guide page that may duplicate the repo-root docs/first-task-guide.md \u2014 if they have the same content, merge or differentiate; if they differ, the duplication is confusing. Worth a 5-minute audit.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Sphinx has a first-task-guide page that may duplicate the repo-root docs/first-task-guide.md \u2014 if they have the same content, merge or differentiate; if they differ, the duplication is confusing. Worth a 5-minute audit.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-24T17:16:56.357211+00:00"
+    },
+    "docs_agentic_review_mustFix_every-sphinx-sub-page-getting-started-quickstart::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_every-sphinx-sub-page-getting-started-quickstart::review_followup_required",
+      "name": "docs_agentic_review_mustFix_every-sphinx-sub-page-getting-started-quickstart",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T17:17:11.019903+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T17:17:11.019908+00:00",
+      "last_error": "Every Sphinx sub-page (getting-started, quickstart, reference, configuration, advanced-*, user-stories) repeats the identical boilerplate intro. A maintained manual introduces the product once on index.rst and lets sub-pages get to their specific content. Current pattern is page-pile energy.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Every Sphinx sub-page (getting-started, quickstart, reference, configuration, advanced-*, user-stories) repeats the identical boilerplate intro. A maintained manual introduces the product once on index.rst and lets sub-pages get to their specific content. Current pattern is page-pile energy.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-24T17:27:01.566465+00:00"
+    },
+    "docs_agentic_review_mustFix_positioning-boilerplate-varies-slightly-between::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_positioning-boilerplate-varies-slightly-between::review_followup_required",
+      "name": "docs_agentic_review_mustFix_positioning-boilerplate-varies-slightly-between",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T17:27:01.566430+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [
+        {
+          "at": "2026-05-24T17:27:10.570080+00:00",
+          "action_type": "immediate_review_followup_owner_action",
+          "ok": true,
+          "detail": "{\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643630537:8\"\n}",
+          "outcome": "no_progress"
+        }
+      ],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T17:27:01.566436+00:00",
+      "last_error": "Positioning boilerplate varies slightly between 'AI agent orchestrator' and 'AI agent orchestration system' across pages \u2014 minor but could be unified for tighter consistency.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Positioning boilerplate varies slightly between 'AI agent orchestrator' and 'AI agent orchestration system' across pages \u2014 minor but could be unified for tighter consistency.",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-24T17:27:37.034258+00:00"
+    },
+    "docs_agentic_review_mustFix_public-readme-lacks-explicit-who-it-is-not-for-s::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_public-readme-lacks-explicit-who-it-is-not-for-s::review_followup_required",
+      "name": "docs_agentic_review_mustFix_public-readme-lacks-explicit-who-it-is-not-for-s",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T17:27:37.034213+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T17:27:37.034220+00:00",
+      "last_error": "Public README lacks explicit 'who it is not for' section",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Public README lacks explicit 'who it is not for' section",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-24T18:06:16.410793+00:00"
+    },
+    "docs_agentic_review_mustFix_start-here-lacks-an-explicit-what-success-looks::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_start-here-lacks-an-explicit-what-success-looks::review_followup_required",
+      "name": "docs_agentic_review_mustFix_start-here-lacks-an-explicit-what-success-looks",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T17:27:37.034225+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T17:27:37.034228+00:00",
+      "last_error": "START_HERE lacks an explicit 'what success looks like' section",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: START_HERE lacks an explicit 'what success looks like' section",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-24T18:06:16.410795+00:00"
+    },
+    "docs_agentic_review_mustFix_positioning-boilerplate-ralph-workflow-is-a-free::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_positioning-boilerplate-ralph-workflow-is-a-free::review_followup_required",
+      "name": "docs_agentic_review_mustFix_positioning-boilerplate-ralph-workflow-is-a-free",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T17:27:37.034233+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "resolved",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T17:27:37.034236+00:00",
+      "last_error": "Positioning boilerplate ('Ralph Workflow is a free and open-source...') is mechanically copy-pasted on every single sub-page; deeper manual pages could use a shorter variant",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Positioning boilerplate ('Ralph Workflow is a free and open-source...') is mechanically copy-pasted on every single sub-page; deeper manual pages could use a shorter variant",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "closed_at": "2026-05-24T18:06:16.410796+00:00"
+    },
+    "docs_agentic_review_mustFix_remove-the-verbatim-ralph-workflow-is-a-free-and::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_remove-the-verbatim-ralph-workflow-is-a-free-and::review_followup_required",
+      "name": "docs_agentic_review_mustFix_remove-the-verbatim-ralph-workflow-is-a-free-and",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T18:06:16.410770+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "open",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T18:06:16.410773+00:00",
+      "last_error": "Remove the verbatim 'Ralph Workflow is a free and open-source...' boilerplate opening from every Sphinx page \u2014 let each page lead with its specific job, not a context paragraph that is identical across 15+ pages",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Remove the verbatim 'Ralph Workflow is a free and open-source...' boilerplate opening from every Sphinx page \u2014 let each page lead with its specific job, not a context paragraph that is identical across 15+ pages",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
+    },
+    "docs_agentic_review_mustFix_the-reviewable-output-md-page-has-a-redundant-th::review_followup_required": {
+      "key": "docs_agentic_review_mustFix_the-reviewable-output-md-page-has-a-redundant-th::review_followup_required",
+      "name": "docs_agentic_review_mustFix_the-reviewable-output-md-page-has-a-redundant-th",
+      "category": "review_followup_required",
+      "first_seen": "2026-05-24T18:06:16.410776+00:00",
+      "repeat_count": 1,
+      "owner_domain": "docs",
+      "escalation_level": "none",
+      "owner_actions": [],
+      "status": "open",
+      "blocked_by": [],
+      "last_seen": "2026-05-24T18:06:16.410779+00:00",
+      "last_error": "The 'reviewable-output.md' page has a redundant 'This page is supporting proof...' sentence in its opening paragraph that reads like an editing artifact \u2014 deduplicate to one sentence",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: The 'reviewable-output.md' page has a redundant 'This page is supporting proof...' sentence in its opening paragraph that reads like an editing artifact \u2014 deduplicate to one sentence",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json"
     }
   }
 }

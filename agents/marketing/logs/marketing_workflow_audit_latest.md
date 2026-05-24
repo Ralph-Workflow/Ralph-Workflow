@@ -1,6 +1,6 @@
 # Marketing Workflow Audit
 
-- Generated: 2026-05-24T18:50:51.099109
+- Generated: 2026-05-24T20:27:55.778007
 - Current bottleneck: **distribution_and_message_to_primary_repo_conversion**
 - Owned articles logged: **6**
 - Reddit posts analyzed: **6**
@@ -11,9 +11,9 @@
 - Codeberg adoption is flat across the recent measurement window, so the active tactics are not earning real adoption movement yet.
 - GitHub mirror adoption is also flat, which reinforces that activity is not converting anywhere meaningful yet.
 - Historical Reddit repetition is still on record, but Reddit is blocked from this environment, so do not spend this run rewriting a suspended channel.
-- 8 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
+- 7 directory submissions already shipped in the last 24 hours; more same-family submissions now would mostly create overlapping approval windows and noisier measurement, not a cleaner adoption signal.
 - 9 curator contact attempts already shipped in the last 24 hours; more same-family outreach should be treated as overlap risk unless a materially different demand-capture lane is chosen.
-- The most recent runtime activity was measurement_hold_execution, but the latest meaningful external/replacement execution remains curator_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
+- The most recent runtime activity was distribution_lane_switch, but the latest meaningful external/replacement execution remains curator_email_outreach; do not confuse follow-through with fresh outcome-bearing distribution.
 - The active loop did execute a live marketing action recently (curator_email_outreach), so the system is still shipping output even though outcome movement is not visible yet.
 - Apollo managed outbound is already inside an active measurement window until 2026-05-30T00:14:49.075391+02:00, so the loop should not repackage the same lane before that checkpoint.
 
@@ -54,11 +54,10 @@
 
 ## Latest executed marketing action
 - Type: curator_email_outreach
-- Title: TIMEWELL benchmark inclusion request
-- Status: executed (ok=True)
+- Title: curator email outreach
+- Status: sent (ok=True)
 - Outcome-ready: True
-- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_timewell_curator_execution.json
-- URL: https://timewell.jp/en/columns/ai-coding-tools-complete-benchmark-2026
+- Source log: /home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_2026-05-24_181741_tembo_publisher_email.json
 
 ## Next highest-leverage moves
 - Kill or rewrite any tactic that stays flat across the recent adoption window instead of rewarding it for mere activity.

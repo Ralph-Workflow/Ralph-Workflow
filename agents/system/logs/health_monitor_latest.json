@@ -1,7 +1,7 @@
 {
-  "ts": "2026-05-24T14:06:42.480061",
+  "ts": "2026-05-24T19:27:37.037006",
   "jobs_checked": 20,
-  "issues_found": 8,
+  "issues_found": 15,
   "issues": [
     {
       "job_id": "__artifacts__",
@@ -23,11 +23,51 @@
     },
     {
       "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
+      "last_error": "Marketing runner bundle is not healthy.",
+      "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Marketing runner bundle is not healthy."
+    },
+    {
+      "job_id": "__artifacts__",
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "category": "review_followup_required",
       "path": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_independent_verification.json",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
       "likely_cause": "Reviewer left unresolved required follow-up item in blockers: Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review",
+      "category": "loop_verification_fail",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "status='fail'",
+      "likely_cause": "Agentic review returned a contradictory pass artifact; contract normalization failed it closed."
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_public-readme-lacks-explicit-who-it-is-not-for-s",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "Public README lacks explicit 'who it is not for' section",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Public README lacks explicit 'who it is not for' section"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_start-here-lacks-an-explicit-what-success-looks",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "START_HERE lacks an explicit 'what success looks like' section",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: START_HERE lacks an explicit 'what success looks like' section"
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "docs_agentic_review_mustFix_positioning-boilerplate-ralph-workflow-is-a-free",
+      "category": "review_followup_required",
+      "path": "/home/mistlight/.openclaw/workspace/agents/docs_quality/ralph_agentic_latest.json",
+      "last_error": "Positioning boilerplate ('Ralph Workflow is a free and open-source...') is mechanically copy-pasted on every single sub-page; deeper manual pages could use a shorter variant",
+      "likely_cause": "Reviewer left unresolved required follow-up item in mustFix: Positioning boilerplate ('Ralph Workflow is a free and open-source...') is mechanically copy-pasted on every single sub-page; deeper manual pages could use a shorter variant"
     },
     {
       "job_id": "__artifacts__",
@@ -44,8 +84,8 @@
       "name": "docs_verifier_escalation",
       "category": "escalation_required",
       "last_error": "",
-      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=31",
-      "repeats_in_recent_history": 31,
+      "likely_cause": "Incident escalation level=critical: docs_verifier:artifact_contract_fail repeat_count=51",
+      "repeats_in_recent_history": 51,
       "owner_domain": "docs",
       "incident_key": "docs_verifier::artifact_contract_fail",
       "escalation_level": "critical",
@@ -56,10 +96,24 @@
       "name": "marketing_independent_verification_escalation",
       "category": "escalation_required",
       "last_error": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=149",
-      "repeats_in_recent_history": 149,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification:loop_verification_fail repeat_count=164",
+      "repeats_in_recent_history": 164,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": [
+        "marketing_independent_verification"
+      ]
+    },
+    {
+      "job_id": "__artifacts__",
+      "name": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
+      "category": "escalation_required",
+      "last_error": "Marketing runner bundle is not healthy.",
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy:review_followup_required repeat_count=82",
+      "repeats_in_recent_history": 82,
+      "owner_domain": "marketing",
+      "incident_key": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy::review_followup_required",
       "escalation_level": "critical",
       "blocked_by": [
         "marketing_independent_verification"
@@ -70,8 +124,8 @@
       "name": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
       "category": "escalation_required",
       "last_error": "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet.",
-      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=67",
-      "repeats_in_recent_history": 67,
+      "likely_cause": "Incident escalation level=critical: marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin:review_followup_required repeat_count=82",
+      "repeats_in_recent_history": 82,
       "owner_domain": "marketing",
       "incident_key": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin::review_followup_required",
       "escalation_level": "critical",
@@ -81,11 +135,23 @@
     },
     {
       "job_id": "__artifacts__",
+      "name": "docs_agentic_review_escalation",
+      "category": "escalation_required",
+      "last_error": "status='fail'",
+      "likely_cause": "Incident escalation level=critical: docs_agentic_review:loop_verification_fail repeat_count=28",
+      "repeats_in_recent_history": 28,
+      "owner_domain": "docs",
+      "incident_key": "docs_agentic_review::loop_verification_fail",
+      "escalation_level": "critical",
+      "blocked_by": []
+    },
+    {
+      "job_id": "__artifacts__",
       "name": "docs_verifier_stability_escalation",
       "category": "escalation_required",
       "last_error": "latest docs verifier verdict is not pass: 'fail'",
-      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=33",
-      "repeats_in_recent_history": 33,
+      "likely_cause": "Incident escalation level=critical: docs_verifier_stability:loop_verification_fail repeat_count=53",
+      "repeats_in_recent_history": 53,
       "owner_domain": "docs",
       "incident_key": "docs_verifier_stability::loop_verification_fail",
       "escalation_level": "critical",
@@ -95,9 +161,15 @@
   "repairs_attempted": [
     {
       "type": "immediate_review_followup_owner_action",
+      "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643623548:5\"\n}"
+    },
+    {
+      "type": "immediate_review_followup_owner_action",
       "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779624381124:96\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643625896:6\"\n}"
     },
     {
       "type": "rerun_docs_verifier",
@@ -107,21 +179,15 @@
     },
     {
       "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_reviewable-output-md-has-a-duplicated-this-page",
+      "job": "docs_agentic_review_mustFix_reviewable-output-md-opens-with-two-nearly-ident",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643628175:7\"\n}"
     },
     {
       "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_the-identical-opening-paragraph-across-all-sphin",
+      "job": "docs_agentic_review_mustFix_positioning-boilerplate-varies-slightly-between",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
-    },
-    {
-      "type": "immediate_review_followup_owner_action",
-      "job": "docs_agentic_review_mustFix_the-convention-over-configuration-and-batteries",
-      "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643630537:8\"\n}"
     },
     {
       "type": "rerun_docs_verifier_for_stability",
@@ -130,34 +196,70 @@
       "detail": "SKIP: another Ralph docs loop process already holds the global lock"
     },
     {
+      "type": "rerun_independent_architecture_verification",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "python3 agents/system/agent_architecture_independent_verify.py"
+    },
+    {
+      "type": "rerun_architecture_verifier",
+      "job": "agent_architecture_verifier_runtime",
+      "ok": true,
+      "detail": "{\n  \"ok\": true,\n  \"errors\": [],\n  \"artifact\": \"/home/mistlight/.openclaw/workspace/agents/system/logs/agent_architecture_independent_verification.json\",\n  \"checked_at\": \"2026-05-24T19:27:12.973632+02:00\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+    },
+    {
       "type": "owner_loop_escalation",
       "job": "docs_verifier_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643637316:9\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779624391429:97\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643639473:10\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "marketing_independent_verification_blockers_marketing-runner-bundle-is-not-healthy_escalation",
+      "ok": true,
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643641631:11\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "marketing_independent_verification_blockers_primary-repo-adoption-remains-measurement-pendin_escalation",
       "ok": true,
-      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779624393718:98\"\n}"
+      "detail": "owner=marketing-active-loop; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:5d2cc5b0-5c6c-4ff1-8865-a39dd24af854:1779643643751:12\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_agentic_review_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643645790:13\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "docs_agentic_review_mustFix_reviewable-output-md-opens-with-two-nearly-ident_escalation",
+      "ok": true,
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643648009:14\"\n}"
     },
     {
       "type": "owner_loop_escalation",
       "job": "docs_verifier_stability_escalation",
       "ok": true,
-      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
+      "detail": "owner=ralph-workflow-docs-verifier-supervisor; {\n  \"ok\": true,\n  \"enqueued\": true,\n  \"runId\": \"manual:49041897-5970-4473-9732-7e69d74b0e5a:1779643650309:15\"\n}"
+    },
+    {
+      "type": "owner_loop_escalation",
+      "job": "agent_architecture_verifier_runtime_escalation",
+      "ok": true,
+      "detail": "owner=agent-architecture-watchdog; {\n  \"ok\": true,\n  \"ran\": false,\n  \"reason\": \"already-running\"\n}"
     }
   ]
 }

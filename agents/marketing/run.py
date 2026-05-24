@@ -427,12 +427,15 @@ def parse_iso_date(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
     except ValueError:
         try:
             return datetime.strptime(value, "%Y-%m-%d")
         except ValueError:
             return None
+    if dt.tzinfo is not None:
+        return dt.astimezone().replace(tzinfo=None)
+    return dt
 
 
 def recent_successful_posts(posts: Iterable[dict], now: datetime, days: int = 30) -> list[dict]:

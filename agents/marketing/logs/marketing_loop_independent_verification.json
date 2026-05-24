@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-05-24T14:11:42.341912+02:00",
+  "checked_at": "2026-05-24T19:33:21.057966+02:00",
   "verdict": "fail",
   "summary": "Independent verifier fails closed because live marketing evidence is still not healthy enough to issue a pass artifact.",
   "evidence": [
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_loop_runner_latest.json",
-      "summary": "runner ok=True generated_at=2026-05-24T14:11:42.318256"
+      "summary": "runner ok=False generated_at=2026-05-24T19:33:21.029165"
     },
     {
       "source": "/home/mistlight/.openclaw/workspace/agents/marketing/logs/marketing_momentum_watchdog.json",
@@ -22,6 +22,7 @@
     "reddit is blocked from this environment, but a replacement distribution execution has already shipped"
   ],
   "blockers": [
+    "Marketing runner bundle is not healthy.",
     "Primary repo adoption remains measurement-pending after shipped repairs; do not issue a healthy certification artifact yet."
   ]
 }

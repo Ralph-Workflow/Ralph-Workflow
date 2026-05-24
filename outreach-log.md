@@ -1,5 +1,14 @@
 # Outreach Log
 
+## 2026-05-24 (Sunday) — Tembo publisher outreach executed (18:17 UTC / 20:17 CEST)
+- **What I executed:** emailed **Tembo** at `hello@tembo.io` after verifying its fresh guide **"What Is Agentic Coding? A Developer's Guide for 2026"** and its public homepage email path. The pitch positioned Ralph Workflow as a workflow-first open-source reference, with **Codeberg** as the primary repo and GitHub as the mirror.
+- **Verification:** the live send log at `agents/marketing/logs/marketing_2026-05-24_181741_tembo_publisher_email.json` recorded status **sent**, and the summary log at `agents/marketing/logs/marketing_2026-05-24_tembo_publisher_outreach.json` records SMTP acceptance by `smtp.ionos.com:587` over STARTTLS.
+- **Why this action:** this is **EXECUTED / DISTRIBUTION**. Codeberg adoption is still flat, Reddit is still blocked/degraded for honest posting, Apollo is already inside its launch measurement window until **2026-05-30**, and the strongest fresh executable lane was a new untouched publisher contact with strong workflow fit and a live public email.
+- **Shared findings reused:** `MARKETING_WORKFLOW_PRINCIPLES.md`, `FOUR_MARKETING_QUESTIONS.md`, `ADOPTION_FUNNEL_NEXT.md`, `market_intelligence_latest.json`, `marketing_workflow_audit_latest.md`, `adoption_metrics_latest.json`, and the latest Tembo article/homepage evidence.
+- **Expected outcome:** a mention, comparison inclusion, or workflow-reference citation that sends qualified evaluators to the **primary Codeberg repo**.
+- **Measurement window:** reply review through **2026-05-31** and citation review through **2026-06-07**.
+- **Type:** **EXECUTED / DISTRIBUTION**
+
 ## 2026-05-24 (Sunday) — Reddit monitoring (16:23 UTC / 18:23 CEST)
 - **Report:** `seo-reports/reddit_monitor_2026-05-24_1823.md`
 - **Scan summary:** forced-refresh local monitor returned **12 scanned / 2 shortlisted** with **ok=1 / reddit_ip_blocked=5 / time_budget_exceeded=1**.
@@ -6278,3 +6287,39 @@ The execution ceiling is confirmed and genuine — HN/Lobsters cannot be execute
 ### Marketing momentum watchdog
 - **When:** 2026-05-24 18:19:39
 - **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T18:44:33.494765.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 19:05:44
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T19:48:35.172158.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 19:19:26
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T19:48:35.172158.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 19:20:53
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T19:48:35.172158.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 19:23:14
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T19:48:35.172158.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 19:28:13
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T19:48:35.172158.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 19:33:20
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped; measurement hold is active until 2026-05-24T19:48:35.172158.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 20:14:49
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 20:20:54
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
+
+### Marketing momentum watchdog
+- **When:** 2026-05-24 20:28:19
+- **Note:** Momentum watch state: primary repo adoption is still flat against the stated marketing goal; Reddit is blocked from this environment, but a replacement distribution path has already shipped.
