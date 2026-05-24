@@ -8,9 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from git import Repo
-
 from ralph.config.enums import AgentTransport
+from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.handoffs import (
     ensure_markdown_handoff_from_artifact,
@@ -939,6 +938,18 @@ def _find_work_artifact(
         else:
             return resolve_required_artifact(artifacts_policy, drain=pdef.drain)
     return None
+def _git_output(workspace_root: Path, *args: str) -> str:
+    """Run a git command in the workspace and return sanitized stdout."""
+    result = run_process(
+        "git",
+        args,
+        options=ProcessRunOptions(cwd=workspace_root),
+    )
+    if result.returncode != 0:
+        return "(no diff available)"
+    return _sanitize_surrogates(result.stdout).strip() or "(no diff available)"
+
+
 def _git_diff(workspace_root: Path) -> str:
     """Return the cumulative diff from the dev-cycle baseline through the working tree.
     When a baseline SHA is recorded in .agent/start_commit, the diff includes:
@@ -946,55 +957,31 @@ def _git_diff(workspace_root: Path) -> str:
       changes on top (HEAD vs working tree). This is correct whether the user
       commits once per dev cycle or once per individual dev iteration within a cycle.
     """
-    repo: Repo | None = None
-    try:
-        repo = Repo(workspace_root)
-        baseline_sha = read_cycle_baseline(workspace_root)
-        if baseline_sha:
-            committed = _sanitize_surrogates(cast("str", repo.git.diff(baseline_sha, "HEAD")))
-            uncommitted = _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
-            parts = [p for p in (committed, uncommitted) if p]
-            return "\n".join(parts) if parts else "(no diff available)"
-        return _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
-    except Exception:
-        return "(no diff available)"
-    finally:
-        _close_repo(repo)
-
-
-def _close_repo(repo: Repo | None) -> None:
-    close = cast("Callable[[], object] | None", getattr(repo, "close", None))
-    if callable(close):
-        close()
+    baseline_sha = read_cycle_baseline(workspace_root)
+    if baseline_sha:
+        committed = _git_output(workspace_root, "diff", baseline_sha, "HEAD")
+        uncommitted = _git_output(workspace_root, "diff", "HEAD")
+        parts = [p for p in (committed, uncommitted) if p and p != "(no diff available)"]
+        return "\n".join(parts) if parts else "(no diff available)"
+    return _git_output(workspace_root, "diff", "HEAD")
 
 
 def _pending_diff(workspace_root: Path) -> str:
     """Return the pending (staged but not committed) diff for a workspace."""
-    repo: Repo | None = None
-    try:
-        repo = Repo(workspace_root)
-        return _sanitize_surrogates(cast("str", repo.git.diff("HEAD"))) or "(no diff available)"
-    except Exception:
-        return "(no diff available)"
-    finally:
-        _close_repo(repo)
+    return _git_output(workspace_root, "diff", "HEAD")
+
+
 def _commit_phase_diff(workspace_root: Path) -> str:
     diff = _pending_diff(workspace_root).strip()
-    repo: Repo | None = None
-    try:
-        repo = Repo(workspace_root)
-        untracked = cast("str", repo.git.ls_files("--others", "--exclude-standard")).strip()
-    except Exception:
-        untracked = ""
-    finally:
-        _close_repo(repo)
-    if not untracked:
+    untracked = _git_output(workspace_root, "ls-files", "--others", "--exclude-standard").strip()
+    if not untracked or untracked == "(no diff available)":
         return diff or "(no diff available)"
     if diff == "(no diff available)":
         diff = ""
     section = "\n\n## Untracked files (will be staged by git add -A):\n" + untracked
     combined = (diff + section).strip()
     return combined or "(no diff available)"
+
 def commit_cleanup_diff(workspace_root: Path) -> str:
     """Return only the pending commit diff for commit cleanup."""
     return _pending_diff(workspace_root)

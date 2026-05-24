@@ -205,6 +205,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
@@ -343,6 +344,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr("ralph.agents.invoke.provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
@@ -372,6 +374,7 @@ def test_agy_upstream_env_var_includes_mcp_toml_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setattr(
         "ralph.agents.invoke.load_existing_agy_upstream_servers",
         lambda workspace_path: (),
@@ -402,6 +405,7 @@ def test_opencode_non_colliding_native_server_preserved(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
     monkeypatch.setenv(
         "OPENCODE_CONFIG_CONTENT",
         json.dumps(

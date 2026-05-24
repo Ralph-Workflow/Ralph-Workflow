@@ -15,7 +15,6 @@ from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from git import Repo
 from rich.text import Text
 
 from ralph.agents.invoke import (
@@ -36,6 +35,7 @@ from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.artifact_renderer import render_commit_message
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.executor.process import ProcessRunOptions, run_process
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
@@ -297,10 +297,22 @@ def _commit_drain_agent_supported(registry: AgentRegistry, agent_name: str) -> b
 
 
 def _working_tree_diff(repo_root: Path) -> str:
-    repo = Repo(repo_root)
-    if repo.head.is_valid():
-        return _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
-    return _sanitize_surrogates(cast("str", repo.git.diff("--cached")))
+    head_check = run_process(
+        "git",
+        ["rev-parse", "--verify", "HEAD"],
+        options=ProcessRunOptions(cwd=repo_root),
+    )
+    if head_check.returncode == 0:
+        result = run_process("git", ["diff", "HEAD"], options=ProcessRunOptions(cwd=repo_root))
+    else:
+        result = run_process(
+            "git",
+            ["diff", "--cached"],
+            options=ProcessRunOptions(cwd=repo_root),
+        )
+    if result.returncode != 0:
+        return "(no diff available)"
+    return _sanitize_surrogates(result.stdout) or "(no diff available)"
 
 
 def _commit_submit_artifact_tool_names(

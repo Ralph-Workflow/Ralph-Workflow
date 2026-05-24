@@ -4,6 +4,8 @@ import builtins
 import importlib
 import runpy
 import sys
+from types import ModuleType
+from typing import Any, cast
 
 import pytest
 
@@ -46,7 +48,9 @@ def test_ralph_mcp_server_entrypoint_calls_main(monkeypatch: pytest.MonkeyPatch)
     def fake_main() -> None:
         called.append("called")
 
-    monkeypatch.setattr("ralph.mcp.server.runtime.main", fake_main)
+    fake_runtime = ModuleType("ralph.mcp.server.runtime")
+    cast("Any", fake_runtime).main = fake_main
+    monkeypatch.setitem(sys.modules, "ralph.mcp.server.runtime", fake_runtime)
 
     _run_entrypoint("ralph.mcp.server.__main__")
 
@@ -72,7 +76,7 @@ def test_mcp_tool_bridge_exports_and_error() -> None:
 def test_mcp_server_package_import_is_lazy_when_mcp_dependency_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original_import = builtins.__import__
+    original_import = cast("Any", builtins.__import__)
 
     def guarded_import(name: str, *args: object, **kwargs: object) -> object:
         if name.startswith("mcp"):
