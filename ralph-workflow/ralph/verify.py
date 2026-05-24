@@ -51,21 +51,76 @@ _TEST_TIMEOUT_SECONDS = DEFAULT_SUITE_TIMEOUT_SECONDS
 _PYTEST_WORKERS = 4
 
 
-def _pytest_commands(_cwd: Path) -> tuple[tuple[str, ...], ...]:
+def _glob_has_matches(cwd: Path, pattern: str) -> bool:
+    return any(cwd.glob(pattern))
+
+
+def _pytest_args(*paths: str) -> tuple[str, ...]:
     return (
-        (
-            "-m",
-            "pytest",
-            "tests",
-            "-q",
-            "-n",
-            str(_PYTEST_WORKERS),
-            "--dist",
-            "worksteal",
-            "-m",
-            "not subprocess_e2e",
-        ),
+        "-m",
+        "pytest",
+        *paths,
+        "-q",
+        "-n",
+        str(_PYTEST_WORKERS),
+        "--dist",
+        "worksteal",
+        "-m",
+        "not subprocess_e2e",
     )
+
+
+def _pytest_commands(_cwd: Path) -> tuple[tuple[str, ...], ...]:
+    command_specs: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+        (
+            (
+                "tests/agents/**/*.py",
+                "tests/config/**/*.py",
+                "tests/display/**/*.py",
+                "tests/fixtures/**/*.py",
+                "tests/unit/**/*.py",
+            ),
+            _pytest_args(
+                "tests/agents",
+                "tests/config",
+                "tests/display",
+                "tests/fixtures",
+                "tests/unit",
+            ),
+        ),
+        (
+            (
+                "tests/mcp/**/*.py",
+                "tests/pipeline/**/*.py",
+                "tests/recovery/**/*.py",
+            ),
+            _pytest_args("tests/mcp", "tests/pipeline", "tests/recovery"),
+        ),
+        (("tests/test_[aA]*.py",), _pytest_args("tests/test_[aA]*.py")),
+        (("tests/test_[bB]*.py",), _pytest_args("tests/test_[bB]*.py")),
+        (("tests/test_[c-dC-D]*.py",), _pytest_args("tests/test_[c-dC-D]*.py")),
+        (("tests/test_[e-fE-F]*.py",), _pytest_args("tests/test_[e-fE-F]*.py")),
+        (("tests/test_[g-hG-H]*.py",), _pytest_args("tests/test_[g-hG-H]*.py")),
+        (("tests/test_[i-jI-J]*.py",), _pytest_args("tests/test_[i-jI-J]*.py")),
+        (("tests/test_[k-lK-L]*.py",), _pytest_args("tests/test_[k-lK-L]*.py")),
+        (("tests/test_[mM]*.py",), _pytest_args("tests/test_[mM]*.py")),
+        (("tests/test_[nN]*.py",), _pytest_args("tests/test_[nN]*.py")),
+        (("tests/test_[oO]*.py",), _pytest_args("tests/test_[oO]*.py")),
+        (("tests/test_p[a-cA-C]*.py",), _pytest_args("tests/test_p[a-cA-C]*.py")),
+        (("tests/test_p[d-fD-F]*.py",), _pytest_args("tests/test_p[d-fD-F]*.py")),
+        (("tests/test_p[g-iG-I]*.py",), _pytest_args("tests/test_p[g-iG-I]*.py")),
+        (("tests/test_p[j-lJ-L]*.py",), _pytest_args("tests/test_p[j-lJ-L]*.py")),
+        (("tests/test_p[m-zM-Z]*.py",), _pytest_args("tests/test_p[m-zM-Z]*.py")),
+        (("tests/test_[q-sQ-S]*.py",), _pytest_args("tests/test_[q-sQ-S]*.py")),
+        (("tests/test_[t-zT-Z]*.py",), _pytest_args("tests/test_[t-zT-Z]*.py")),
+        (("tests/integration/**/*.py",), _pytest_args("tests/integration/")),
+    )
+    commands = [
+        args
+        for patterns, args in command_specs
+        if any(_glob_has_matches(_cwd, pattern) for pattern in patterns)
+    ]
+    return tuple(commands)
 
 
 def _run_tests(*, cwd: Path, runner: VerifyRunner, timeout: float) -> int:
